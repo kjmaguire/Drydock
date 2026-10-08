@@ -188,7 +188,7 @@ type ConnectReq struct {
 }
 
 var (
-	tokenRe = regexp.MustCompile(`^[\x21-\x7E]{8,4096}$`) // printable ASCII, no spaces or newlines: a token cannot inject a header
+	tokenRe = regexp.MustCompile(`^[\x21-\x7E]{8,}$`) // printable ASCII, no spaces or newlines: a token cannot inject a header
 	cfgKeys = map[string][]string{
 		KindLinear: {"team"}, KindNotion: {"query"}, KindSentry: {"organization", "project", "query"}, KindAikido: {"workspace", "repo", "argv"},
 	}
@@ -245,7 +245,7 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 	if err != nil {
 		return ConnectionView{}, err
 	}
-	if r.Token != "" && !tokenRe.MatchString(r.Token) {
+	if r.Token != "" && (len(r.Token) > 4096 || !tokenRe.MatchString(r.Token)) {
 		return ConnectionView{}, errf(ErrBadRequest, "the token must be 8 to 4096 printable characters without spaces or line breaks")
 	}
 	if existing == nil && r.Token == "" {

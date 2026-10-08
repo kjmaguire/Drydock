@@ -63,8 +63,8 @@ var riskPatterns = []riskPattern{
 	{"tool-call-imitation", 3, regexp.MustCompile(`(?i)(<\s*(tool_call|function_call|tool_use|invoke|antml:[a-z_]+)\b|"?(tool_calls?|function_call)"?\s*:\s*[\[{])`)},
 	{"role-tag-imitation", 2, regexp.MustCompile(`(?im)(<\|(im_start|im_end|system|assistant|user)\|>|\[/?INST\]|<</?SYS>>|^\s*(system|assistant)\s*:\s)`)},
 	{"untrusted-tag", 2, regexp.MustCompile(`(?i)</?\s*untrusted\b`)},
-	{"hidden-comment", 2, regexp.MustCompile(`<!--[\s\S]{0,2000}?-->`)},
-	{"long-base64", 2, regexp.MustCompile(`[A-Za-z0-9+/]{200,}={0,2}`)},
+	{"hidden-comment", 2, regexp.MustCompile(`<!--[\s\S]*?-->`)},
+	{"long-base64", 2, regexp.MustCompile(`[A-Za-z0-9+/]{200,}`)},
 	{"exfiltrate", 2, regexp.MustCompile(`(?i)\b(send|post|upload|email|exfiltrate)\b[^.\n]{0,60}\b(secrets?|credentials?|api[ _-]?keys?|tokens?|\.env|ssh keys?|passwords?)\b`)},
 }
 
