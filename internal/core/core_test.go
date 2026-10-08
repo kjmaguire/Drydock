@@ -325,3 +325,33 @@ func TestGatedConnectionsNeedHumanAcknowledgementAndItSurvivesRestart(t *testing
 		}
 	}
 }
+
+// A secret pasted into the room is redacted before it is stored, so it never reaches the database or the event log.
+func TestSecretsPastedIntoTheRoomAreRedactedBeforeStorage(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var rooms []room.Room
+	a.call("room.list", map[string]any{"projectId": p.ID}, &rooms)
+	secret := "ghp_" + strings.Repeat("aB3dE5fG7h", 3) + "aB3dE5"
+	a.call("room.post", map[string]any{"roomId": rooms[0].ID, "body": "use this token " + secret + " for the deploy"}, nil)
+	var msgs []room.Message
+	a.call("room.messages", map[string]any{"roomId": rooms[0].ID, "limit": 50}, &msgs)
+	found := false
+	for _, m := range msgs {
+		if strings.Contains(m.Body, secret) {
+			t.Fatalf("the secret was stored in the message body: %q", m.Body)
+		}
+		if strings.Contains(m.Body, "for the deploy") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the (redacted) message was not stored: %+v", msgs)
+	}
+	var n int
+	a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM events WHERE data LIKE '%' || ? || '%'`, secret).Scan(&n)
+	if n != 0 {
+		t.Fatalf("the secret reached %d event(s)", n)
+	}
+}

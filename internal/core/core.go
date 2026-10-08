@@ -28,6 +28,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/watchdog"
@@ -62,6 +63,7 @@ type Core struct {
 	Watch       *watchdog.Watchdog
 	Context     *ctxeng.Engine
 	Presence    *room.Tracker
+	Scanner     *security.Scanner
 	Connections *connections.Service
 	Deps        pipeline.Deps
 
@@ -122,7 +124,17 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		c.adapters[k] = v
 	}
 	c.Bus = events.NewSQLBus(db, 4096)
-	c.Room = room.New(db, c.Bus, room.Options{OnError: func(err error) { c.logf("room: %v", err) }})
+	if c.Scanner, err = security.NewScanner(); err != nil {
+		cancel()
+		db.Close()
+		return nil, fmt.Errorf("secret scanner: %w", err)
+	}
+	// every message body is scanned before it is stored, so a secret pasted into the room never reaches the database, the
+	// event log or another agent's context (security.md s8)
+	c.Room = room.New(db, c.Bus, room.Options{
+		Redact:  func(body string) (string, error) { return c.Scanner.Redact(body), nil },
+		OnError: func(err error) { c.logf("room: %v", err) },
+	})
 	c.Tasks = &tasks.Service{DB: db, Bus: c.Bus, Hooks: tasks.Hooks{
 		OnCreate: func(ctx context.Context, t tasks.Task) {
 			if _, err := c.Room.CreateTaskChannel(ctx, room.TaskChannelSpec{ProjectID: t.ProjectID, TaskID: t.ID, Number: t.Seq, Title: t.Title, CreatedBy: room.Human(cfg.User)}); err != nil {
