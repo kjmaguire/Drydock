@@ -11,7 +11,6 @@ package mcp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -283,5 +282,3 @@ func (f CredentialFunc) Credential(ctx context.Context, serverID, keyringRef str
 
 // Duration formatting helper for events.
 func ms(d time.Duration) int64 { return d.Milliseconds() }
-
-func errf(format string, a ...any) error { return fmt.Errorf(format, a...) }

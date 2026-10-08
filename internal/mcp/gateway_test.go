@@ -1016,3 +1016,38 @@ func TestShapeURLParamsReachTheUpstream(t *testing.T) {
 		}
 	}
 }
+
+func TestPurgeAndInvalidateCache(t *testing.T) {
+	e, ep, st := cacheServer(t, time.Minute, nil)
+	cs := e.connect(ep)
+	for i := 0; i < 3; i++ {
+		callTool(t, cs, "srv__echo", map[string]any{"text": fmt.Sprint("e", i)})
+	}
+	if n, err := e.g.PurgeCache(context.Background()); err != nil || n != 0 {
+		t.Fatalf("nothing is expired yet: %d %v", n, err)
+	}
+	e.clock.Advance(2 * time.Minute)
+	callTool(t, cs, "srv__echo", map[string]any{"text": "fresh"}) // a live entry among expired ones
+	if n, err := e.g.PurgeCache(context.Background()); err != nil || n != 3 {
+		t.Fatalf("purged %d (%v), want 3", n, err)
+	}
+	if evs := e.events(EventCacheEvict); len(evs) != 1 || eventData(t, evs[0])["entries"].(float64) != 3 {
+		t.Fatalf("evict events: %v", evs)
+	}
+	files, _ := filepath.Glob(filepath.Join(e.dir, "mcp-cache", "*.json"))
+	if len(files) != 1 {
+		t.Fatalf("cache files on disk after purge: %d, want 1", len(files))
+	}
+	before := st.count("echo")
+	callTool(t, cs, "srv__echo", map[string]any{"text": "fresh"})
+	if st.count("echo") != before {
+		t.Fatal("the live entry must survive the purge")
+	}
+	if n, err := e.g.InvalidateCache(context.Background(), "srv"); err != nil || n != 1 {
+		t.Fatalf("invalidate: %d %v", n, err)
+	}
+	callTool(t, cs, "srv__echo", map[string]any{"text": "fresh"})
+	if st.count("echo") != before+1 {
+		t.Fatal("invalidated entry must miss")
+	}
+}

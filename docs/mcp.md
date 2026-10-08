@@ -199,3 +199,11 @@ Servers start lazily on the first allowed call, are shared per (server id, crede
 - Model-API tool-name length limits, the chars/4 token estimate, default TTLs, `max_inline_bytes`, and the egress heuristics are design defaults awaiting measurement (brief section 23 evals).
 - Role-default allowlists are a starting point; the brief does not specify them.
 - Contradiction noted: brief section 14 lists Linear/Notion/Sentry servers in the shipped catalog; D14 forbids bundling Sentry's and Notion's local servers and Aikido's. Resolved here as hosted entries only plus user-install templates.
+
+## As built (2026-10-08, Linux sandbox)
+
+`internal/mcp` implements the gateway (one loopback endpoint `/mcp/<run_id>` per run with a 256-bit bearer token, Host and Origin checks, rate-limited `mcp.auth_failed`), the per-call pipeline (allowlist, approval gate, egress check, cache, scan, shape with `fetch_range`, untrusted wrapping, audit), the stdio shim (refuses non-loopback URLs), the nine-tool workspace server with symlink-safe confinement, and the catalog (`catalog.yaml`; Sentry and Aikido are non-bundled stdio templates, D14). Migration `00040_mcp.sql` adds `mcp_cache` and `mcp_usage`. `go vet` (also `GOOS=windows`) and the tests pass; `-race` passed on the worker's run.
+
+Differences from the text above: events are `mcp.cache_hit` and `mcp.cache_evict`; truncation is head-only so `fetch_range` offsets are exact; a critical upstream failure can pause a run (`OnCritical`), an extension; `repo_map` is listed but returns the D5 gated error instead of being absent; unknown tools of a `private_data` server are treated as write-class and approval-gated; the catalog schema gained `data_class`, `read_only_tools`, `allow_tools`, `tools`, `critical`, `recommended_roles`, `default_enabled`, `template`, `auth.scheme`, `auth.optional`, `command.secret_env`.
+
+Not built: the `permission_prompt` tool, the role-default policy table, OAuth flows, the Windows peer check (`GetExtendedTcpTable`). Unverified: every live server (the Learn live test skips because the sandbox proxy returns Forbidden), whether each agent CLI accepts the generated configs or the shim (only Claude's is expected to work), the Sentry `secret_env` variable name, and all Windows behaviour.
