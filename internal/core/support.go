@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/git"
@@ -82,3 +83,5 @@ func remoteRepo(ctx context.Context, repo *git.Repo) (owner, name string, err er
 	}
 	return m[1], m[2], nil
 }
+
+var timeZero time.Time

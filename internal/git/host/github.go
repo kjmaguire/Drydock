@@ -274,8 +274,8 @@ type Issue struct {
 	Body   string   `json:"body"`
 	URL    string   `json:"html_url"`
 	State  string   `json:"state"`
-	Labels []string `json:"-"`
-	Author string   `json:"-"`
+	Labels []string `json:"labels"`
+	Author string   `json:"author"`
 }
 
 // Issues lists open issues (pull requests are excluded).

@@ -42,6 +42,31 @@ func (c *Core) Methods() map[string]Method {
 		"project.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Projects(ctx) }),
 		"project.get":  bind(func(ctx context.Context, p idParam) (any, error) { return c.GetProject(ctx, p.ID) }),
 
+		"project.update": bind(func(ctx context.Context, p struct {
+			ID            string `json:"id"`
+			Mode          string `json:"mode"`
+			MergeStrategy string `json:"mergeStrategy"`
+		}) (any, error) {
+			return c.UpdateProject(ctx, p.ID, p.Mode, p.MergeStrategy)
+		}),
+		"github.issues": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			Labels    string `json:"labels"`
+		}) (any, error) {
+			return c.GitHubIssues(ctx, p.ProjectID, p.Labels)
+		}),
+		"github.importIssue": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			Number    int    `json:"number"`
+		}) (any, error) {
+			return c.ImportIssue(ctx, p.ProjectID, p.Number)
+		}),
+		"github.pullRequest": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+		}) (any, error) {
+			return c.PullRequest(ctx, p.TaskID)
+		}),
+
 		"adapter.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.DescribeAdapters(ctx), nil }),
 		"agent.create": bind(func(ctx context.Context, p AgentSpec) (any, error) { return c.CreateAgent(ctx, p) }),
 		"agent.list": bind(func(ctx context.Context, p struct {
