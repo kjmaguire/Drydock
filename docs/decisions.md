@@ -50,6 +50,9 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 - **P5. Secrets hygiene.** The sandbox exposed injected tokens in a tool output during Phase 0. Nothing was recorded; the owner should rotate them. Repository scanning with gitleaks is part of the Slice 2 `secrets` check and a pre-commit hook in the Taskfile.
 - **P6. Module layout.** One Go module at the repository root, `github.com/kjmaguire/drydock`. The Phase 0 probes under `evidence/` are separate modules and are not part of the product build.
 
+- **P7. Review text on PRs is untrusted.** Only OWNER, MEMBER and COLLABORATOR authors can start an automatic rework, and their text reaches the agent quoted as data. Everything else is shown to the human in the approval and is never acted on by an agent. Drydock's own comments carry a marker and are never read back. Merging is a `human:` action and is guarded by the reviewed head SHA, so a push after review cannot be merged unseen.
+- **P8. OpenRouter `data_class`.** The `private` filter can be enforced on requests Drydock makes itself (router/LLM client) but cannot be injected into requests that an agent CLI makes; CLIs pointed at OpenRouter rely on the account-level privacy setting, which the Providers page tells the user to verify (refines D4).
+
 ## 4. Locked versus open
 
 Locked: everything in section 1 except D5 and D7 proof, and the stack rows in section 2.

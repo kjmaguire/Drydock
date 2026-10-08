@@ -126,7 +126,7 @@ Each item states the evidence, the tradeoff, and my recommendation. None has bee
 - **D14. Integrations and licensing.**
   - Sentry's MCP server is FSL-1.1-Apache-2.0 (source-available, not OSI); Aikido's official MCP (`@aikidosec/mcp`) is AGPL or commercial and is a local stdio server; Notion's local MCP server is unmaintained, so only the remote OAuth server (`https://mcp.notion.com/mcp`) is supported. **Do not bundle any of these**; connect to hosted servers or to user-installed ones.
   - Aikido's public API is OAuth client-credentials only, so every customer creates their own credentials; findings per repository are exportable. Linear, Notion, Sentry and Aikido commercial-resale terms are UNVERIFIED.
-  - `gh pr view --json` has no review threads, and `gh repo create` and `gh release create` have no `--json`; resolving threads needs `gh api graphql` (the GitHub MCP server handles threads natively). A 304 through `gh api` is UNVERIFIED, so poll with `If-None-Match` from Go if ETag savings matter (conditional 304s do not count against the primary rate limit, per GitHub docs).
+  - `gh pr view --json` has no review threads, and `gh repo create` and `gh release create` have no `--json`; resolving threads needs `gh api graphql` (the GitHub MCP server handles threads natively). **VERIFIED (2026-10-08, live read-only test against kjmaguire/Drydock):** `gh api -i -H 'If-None-Match: <etag>'` returns `HTTP 304`, which `internal/git/host` maps to `ErrNotModified`; conditional 304s do not count against the primary rate limit, per GitHub docs. Drydock therefore polls PRs and checks through `gh api` with ETags and needs no token of its own. GraphQL is blocked in this sandbox, so only review-thread resolution (the one GraphQL operation) is unexercised here.
   - Cloudflare docs content is CC BY 4.0 (attribution needed when we redistribute excerpts in a paid product). Microsoft Learn MCP content is CC BY 4.0 with code MIT; terms for commercial use were not found.
   - Cloudflare says to start new projects on Workers, not Pages, and is moving tooling to `cf`; the golden starter should target Workers.
 
@@ -262,3 +262,10 @@ On your go-ahead, in this order:
 3. I build Slice 1A through 1E. Work that depends on Windows (process manager, ConPTY, installer, tree-sitter CI) needs a Windows runner or machine; without one I can write and unit-test the Go core on Linux but cannot meet the brief's "tests green on the Windows CI runner" gate.
 
 I recommend a short Windows validation of items 1 to 3 in section 7 before Slice 1A starts, because the process-tree design (D7) and the tree-sitter CGO decision (D5) shape package layout.
+
+
+## Addendum: results verified after the first pass (2026-10-08)
+
+- **Claude Code headless (real CLI 2.1.294):** `-p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` accepts user messages as `{"type":"user","message":{"role":"user","content":"..."}}`; an interrupt is `control_request{subtype:"interrupt"}`; after an interrupt the turn ends with a result of subtype `error_during_execution` and the session stays alive for the next message. Fixtures in `internal/agents/claude/testdata/` are captured from real output. Measured cost on the haiku model: about $0.0043 per simple turn, $0.0112 per pipeline task, $0.0115 per worker+reviewer loop.
+- **GitHub write path:** pushing branches and opening PRs through the sandbox proxy is partly blocked (`POST /git/refs` and remote branch deletion are refused), so the write round trip is an opt-in live test (`DRYDOCK_E2E_GITHUB_WRITE=owner/repo`) and the PR flow is tested against a labeled protocol fixture with a real bare git remote.
+- **Still unproven:** every Windows claim (P2), tree-sitter CGO, the Wails shell, NSIS and the updater.
