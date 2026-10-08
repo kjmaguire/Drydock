@@ -177,14 +177,16 @@ func (c *Core) ArchiveAgent(ctx context.Context, id string) (Agent, error) {
 	return a, nil
 }
 
-// agentInstructions is Runtime.Instructions: the human's standing instructions for the agent, framed so they cannot outrank
-// the task, Drydock's review and approval rules, or the CLI's own safety rules. Empty when the agent has no purpose.
+// agentInstructions is Runtime.Instructions: the human's standing instructions for the agent. The framing was chosen by measuring
+// the real CLI (Claude Code 2.1.295, haiku, low effort, a style instruction after a tool call): "do not override the task" wording
+// was followed in about 2 of 9 runs, "always in force... how you work" wording in 7 of 8. The review and approval rules do not
+// depend on this text: they are enforced by the workflow, not by the prompt. Empty when the agent has no purpose.
 func (c *Core) agentInstructions(ctx context.Context, agentID string) string {
 	a, err := c.agent(ctx, agentID)
 	if err != nil || strings.TrimSpace(a.Purpose) == "" {
 		return ""
 	}
-	return fmt.Sprintf("You are %s, a member of an engineering team that works through Drydock. The person who set up this team wrote the standing instructions below for you. "+
-		"They describe your purpose on this project; follow them in all your work here. They do not override the task you are given, "+
-		"the rule that a different agent reviews your work and a human approves it, or your safety rules.\n\n%s", a.Name, strings.TrimSpace(a.Purpose))
+	return fmt.Sprintf("You are %s, a member of an engineering team that works through Drydock. The person who set up this team gave you the standing instructions below. "+
+		"They are always in force: they apply to everything you do on this project, in every task and every reply, including your final answer after you have used tools. "+
+		"The task you are given each turn says what to work on; these instructions say how you work. They do not change the rule that a different agent reviews your work and a human approves it.\n\n%s", a.Name, strings.TrimSpace(a.Purpose))
 }

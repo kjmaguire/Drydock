@@ -34,7 +34,7 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 		t.Fatalf("agent %+v", w)
 	}
 	ins := a.c.Runtime.Instructions(ctx, w.ID)
-	if !strings.Contains(ins, "Own the payments service. Never touch the UI.") || !strings.Contains(ins, "You are Pay") || !strings.Contains(ins, "do not override the task") {
+	if !strings.Contains(ins, "Own the payments service. Never touch the UI.") || !strings.Contains(ins, "You are Pay") || !strings.Contains(ins, "always in force") {
 		t.Fatalf("instructions = %q", ins)
 	}
 	r, err := create(core.AgentSpec{Name: "Rev", Adapter: "claude", Role: "reviewer"})

@@ -52,7 +52,8 @@ func (a *app) econPending(taskID string, want int) core.TaskDetail {
 	var d core.TaskDetail
 	a.waitFor("a pending request", func() bool {
 		a.call("task.get", map[string]string{"id": taskID}, &d)
-		return len(d.Pending) == want
+		// the request is stored a moment before the run's status becomes WAITING_HUMAN; wait for both so callers see one state
+		return len(d.Pending) == want && (want == 0 || (d.Run != nil && d.Run.Status == "WAITING_HUMAN"))
 	})
 	return d
 }
