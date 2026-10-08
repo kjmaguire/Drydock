@@ -16,8 +16,9 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
-	"github.com/kjmaguire/drydock/internal/agents/claude"
+	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/connections"
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
@@ -51,17 +52,18 @@ type Config struct {
 
 // Core is the running application.
 type Core struct {
-	cfg      Config
-	DB       *storage.DB
-	Bus      *events.SQLBus
-	Tasks    *tasks.Service
-	Room     *room.Service
-	Engine   *workflow.Engine
-	Runtime  *rt.Runtime
-	Watch    *watchdog.Watchdog
-	Context  *ctxeng.Engine
-	Presence *room.Tracker
-	Deps     pipeline.Deps
+	cfg         Config
+	DB          *storage.DB
+	Bus         *events.SQLBus
+	Tasks       *tasks.Service
+	Room        *room.Service
+	Engine      *workflow.Engine
+	Runtime     *rt.Runtime
+	Watch       *watchdog.Watchdog
+	Context     *ctxeng.Engine
+	Presence    *room.Tracker
+	Connections *connections.Service
+	Deps        pipeline.Deps
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
@@ -91,7 +93,31 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	bg, cancel := context.WithCancel(context.Background())
-	c := &Core{cfg: cfg, DB: db, cancel: cancel, adapters: map[string]agents.Adapter{"claude": claude.New()}, repos: map[string]*git.Repo{}}
+	c := &Core{cfg: cfg, DB: db, cancel: cancel, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
+	acked, err := c.loadGateAcks(ctx)
+	if err != nil {
+		cancel()
+		db.Close()
+		return nil, err
+	}
+	// Adapters come from the embedded manifests (Claude headless; Codex, Gemini, OpenCode and Goose over ACP; Antigravity is
+	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
+	c.Connections, err = connections.NewService(connections.Config{
+		Manifests: manifests.Options{ScrubEnv: true},
+		Detection: connections.Options{PM: cfg.Procs, Acked: acked},
+	})
+	if err != nil {
+		cancel()
+		db.Close()
+		return nil, fmt.Errorf("connections: %w", err)
+	}
+	built, failed := c.Connections.Registry.BuildAll()
+	for id, e := range failed {
+		c.logf("adapter %s unavailable: %v", id, e)
+	}
+	for k, v := range built {
+		c.adapters[k] = v
+	}
 	for k, v := range cfg.Adapters {
 		c.adapters[k] = v
 	}
@@ -338,6 +364,14 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	}
 	if _, err := c.GetProject(ctx, s.ProjectID); err != nil {
 		return Agent{}, err
+	}
+	// a gated Connection (for example Antigravity's terms notice) cannot be used until the human acknowledged the gate
+	if conn, err := c.Connections.Check(ctx, s.Adapter); err == nil {
+		for _, g := range conn.Gates {
+			if !g.Acked {
+				return Agent{}, fmt.Errorf("%s needs your acknowledgement first (%s): %s", s.Adapter, g.ID, g.Text)
+			}
+		}
 	}
 	if strings.TrimSpace(s.Name) == "" || strings.TrimSpace(s.Role) == "" {
 		return Agent{}, errors.New("an agent needs a name and a role")

@@ -67,6 +67,17 @@ func (c *Core) Methods() map[string]Method {
 			return c.PullRequest(ctx, p.TaskID)
 		}),
 
+		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Connections.DetectAll(ctx), nil }),
+		"connection.acknowledge": bind(func(ctx context.Context, p struct {
+			GateID string `json:"gateId"`
+		}) (any, error) {
+			return nil, c.AcknowledgeGate(ctx, p.GateID)
+		}),
+		"connection.test": bind(func(ctx context.Context, p struct {
+			Adapter string `json:"adapter"`
+		}) (any, error) {
+			return c.TestConnection(ctx, p.Adapter)
+		}),
 		"adapter.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.DescribeAdapters(ctx), nil }),
 		"agent.create": bind(func(ctx context.Context, p AgentSpec) (any, error) { return c.CreateAgent(ctx, p) }),
 		"agent.list": bind(func(ctx context.Context, p struct {

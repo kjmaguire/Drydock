@@ -279,3 +279,49 @@ func TestRestartKeepsTheRunWaitingForTheHuman(t *testing.T) {
 }
 
 func mustJSON(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+
+func TestGatedConnectionsNeedHumanAcknowledgementAndItSurvivesRestart(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	a := open(t, dataDir)
+	var conns []struct {
+		ID    string `json:"adapter"`
+		Gates []struct {
+			ID    string `json:"id"`
+			Acked bool   `json:"acked"`
+		} `json:"gates"`
+	}
+	a.call("connection.list", nil, &conns)
+	gate := ""
+	ids := map[string]bool{}
+	for _, c := range conns {
+		ids[c.ID] = true
+		if c.ID == "antigravity" && len(c.Gates) == 1 && !c.Gates[0].Acked {
+			gate = c.Gates[0].ID
+		}
+	}
+	for _, want := range []string{"claude", "codex", "gemini", "opencode", "goose", "antigravity"} {
+		if !ids[want] {
+			t.Errorf("connection %s missing: %v", want, ids)
+		}
+	}
+	if gate == "" {
+		t.Fatalf("antigravity must be gated: %+v", conns)
+	}
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	spec := core.AgentSpec{ProjectID: p.ID, Name: "Antigravity", Adapter: "antigravity", Role: "frontend"}
+	if _, err := a.c.Call(context.Background(), "agent.create", mustJSON(spec)); err == nil || !strings.Contains(err.Error(), "acknowledgement") {
+		t.Fatalf("an unacknowledged gated connection must not be usable: %v", err)
+	}
+	a.call("connection.acknowledge", map[string]string{"gateId": gate}, nil)
+	a.call("agent.create", spec, nil)
+	a.c.Close()
+
+	b := open(t, dataDir)
+	b.call("connection.list", nil, &conns)
+	for _, c := range conns {
+		if c.ID == "antigravity" && !c.Gates[0].Acked {
+			t.Fatal("the acknowledgement was not persisted")
+		}
+	}
+}
