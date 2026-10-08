@@ -46,10 +46,7 @@ export async function listItems(db: D1Database, userId: string): Promise<Item[]>
 }
 
 export async function getItem(db: D1Database, userId: string, id: number): Promise<Item | null> {
-  const row = await db
-    .prepare(`SELECT ${COLUMNS} FROM items WHERE id = ?1 AND user_id = ?2`)
-    .bind(id, userId)
-    .first<ItemRow>();
+  const row = await db.prepare(`SELECT ${COLUMNS} FROM items WHERE id = ?1 AND user_id = ?2`).bind(id, userId).first<ItemRow>();
   return row ? toItem(row) : null;
 }
 

@@ -58,12 +58,8 @@
       "migrations_dir": "migrations"
     }
   ],
-  "kv_namespaces": [
-    { "binding": "KV", "id": "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID" }
-  ],
-  "r2_buckets": [
-    { "binding": "ATTACHMENTS", "bucket_name": "starter-saas-attachments-prod" }
-  ],
+  "kv_namespaces": [{ "binding": "KV", "id": "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID" }],
+  "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "starter-saas-attachments-prod" }],
 
   // PREVIEW bindings (D6). Same binding names, DIFFERENT resources.
   "previews": {
@@ -80,11 +76,7 @@
         "migrations_dir": "migrations"
       }
     ],
-    "kv_namespaces": [
-      { "binding": "KV", "id": "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID" }
-    ],
-    "r2_buckets": [
-      { "binding": "ATTACHMENTS", "bucket_name": "starter-saas-attachments-preview" }
-    ]
+    "kv_namespaces": [{ "binding": "KV", "id": "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID" }],
+    "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "starter-saas-attachments-preview" }]
   }
 }

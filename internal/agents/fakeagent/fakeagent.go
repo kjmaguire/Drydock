@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,14 @@ type Step struct {
 	SleepMS int             `json:"sleepMs,omitempty"`
 	Block   bool            `json:"block,omitempty"` // wait for an interrupt (or stdin close)
 	Exit    int             `json:"exit,omitempty"`  // exit the process with this code (non-zero) mid-turn
+	// Write makes the agent really write a file (relative to its working directory) and report it as a Write tool call.
+	Write *WriteSpec `json:"write,omitempty"`
+}
+
+// WriteSpec is a scripted file write.
+type WriteSpec struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 // LoadScript reads the JSON script named by the DRYDOCK_FAKE_SCRIPT environment variable.
@@ -227,6 +236,25 @@ loop:
 				}
 				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
 					"content": []any{map[string]any{"type": "text", "text": st.Say}}, "usage": a.usage()}})
+			case st.Write != nil:
+				a.mu.Lock()
+				a.toolSeq++
+				id := fmt.Sprintf("toolu_fake_%04d", a.toolSeq)
+				a.mu.Unlock()
+				full := st.Write.Path
+				if !filepath.IsAbs(full) {
+					full = filepath.Join(mustGetwd(), st.Write.Path)
+				}
+				werr := os.WriteFile(full, []byte(st.Write.Content), 0o644)
+				in, _ := json.Marshal(map[string]any{"file_path": st.Write.Path, "content": st.Write.Content})
+				res := "File written: " + st.Write.Path
+				if werr != nil {
+					res = werr.Error()
+				}
+				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
+					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": "Write", "input": json.RawMessage(in)}}, "usage": a.usage()}})
+				a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user",
+					"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": res, "is_error": werr != nil}}}})
 			case st.Tool != "":
 				a.mu.Lock()
 				a.toolSeq++

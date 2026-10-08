@@ -18,10 +18,7 @@ app.get("/api/health", async (c) => {
   } catch {
     database = false;
   }
-  return c.json(
-    { status: database ? "ok" : "degraded", environment: c.env.ENVIRONMENT, database },
-    database ? 200 : 503,
-  );
+  return c.json({ status: database ? "ok" : "degraded", environment: c.env.ENVIRONMENT, database }, database ? 200 : 503);
 });
 
 app.route("/api/auth", auth);

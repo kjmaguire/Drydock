@@ -416,3 +416,17 @@ func (s *store) listApprovals(ctx context.Context, status string) ([]ApprovalRow
 	}
 	return out, nil
 }
+
+func (s *store) setSafePoint(ctx context.Context, run RunID, node NodeID, step, attempt int, ref string) error {
+	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE node_executions SET safe_point_ref=? WHERE run_id=? AND node_id=? AND step=? AND attempt=?`, ref, string(run), string(node), step, attempt)
+		return err
+	})
+}
+
+// SafePointRef returns the safe point recorded for an attempt ("" if none).
+func (e *Engine) SafePointRef(ctx context.Context, run RunID, node NodeID, step, attempt int) (string, error) {
+	var ref string
+	err := e.st.db.Reader().QueryRowContext(ctx, `SELECT safe_point_ref FROM node_executions WHERE run_id=? AND node_id=? AND step=? AND attempt=?`, string(run), string(node), step, attempt).Scan(&ref)
+	return ref, err
+}

@@ -12,6 +12,7 @@
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    "allowJs": true,
     "types": ["node", "vite/client", "@cloudflare/vitest-plugin/types"],
     "target": "ES2022",
     "module": "ES2022",

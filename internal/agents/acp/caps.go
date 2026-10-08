@@ -96,6 +96,7 @@ type SessionInfo struct {
 	Models       []string `json:"models,omitempty"`       // values of the config option in the "model" category
 	Efforts      []string `json:"efforts,omitempty"`      // values of the "thought_level" category
 	ModelOption  string   `json:"modelOption,omitempty"`  // config option id to set the model through
+	CurrentModel string   `json:"currentModel,omitempty"` // model in effect at session start
 	EffortOption string   `json:"effortOption,omitempty"` // config option id to set the effort through
 	ModeOption   string   `json:"modeOption,omitempty"`   // config option id of the "mode" category, if modes are exposed that way
 }

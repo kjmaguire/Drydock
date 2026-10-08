@@ -1,0 +1,462 @@
+package acp
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/coder/acp-go-sdk"
+
+	"github.com/kjmaguire/drydock/internal/workflow"
+)
+
+// client is the callback side the agent calls: session/update notifications, permission requests, fs and terminal methods.
+type client struct{ s *Session }
+
+var _ acp.Client = (*client)(nil)
+
+// maxToolOutput caps one tool_result's text.
+const maxToolOutput = 64 << 10
+
+// toolState is what has been learned about one tool call across tool_call and tool_call_update messages.
+type toolState struct {
+	id        string
+	name      string
+	title     string
+	kind      string
+	status    string
+	input     any
+	locations []string
+	output    string
+	rawOutput any
+	metaName  string
+
+	emittedCall   bool
+	emittedResult bool
+}
+
+func (t *toolState) haveInput() bool {
+	if t.input == nil {
+		return false
+	}
+	b, err := json.Marshal(t.input)
+	if err != nil {
+		return false
+	}
+	switch string(bytes.TrimSpace(b)) {
+	case "null", "{}", `""`, "[]":
+		return false
+	}
+	return true
+}
+
+// args renders the tool input. When the agent supplied no rawInput the kind and locations stand in, so repeated calls still
+// compare equal and a human still sees what was touched.
+func (t *toolState) args() json.RawMessage {
+	if t.haveInput() {
+		b, _ := json.Marshal(t.input)
+		return b
+	}
+	m := map[string]any{}
+	if t.kind != "" && t.kind != string(acp.ToolKindOther) {
+		m["kind"] = t.kind
+	}
+	if len(t.locations) > 0 {
+		m["locations"] = t.locations
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	b, _ := json.Marshal(m)
+	return b
+}
+
+func (t *toolState) toolName() string {
+	switch {
+	case t.metaName != "":
+		return t.metaName
+	case t.title != "":
+		return t.title
+	case t.kind != "":
+		return t.kind
+	}
+	return "tool"
+}
+
+// metaToolName reads the raw tool name some agents put in `_meta` (the Claude bridge uses _meta.claudeCode.toolName).
+func metaToolName(meta map[string]any) string {
+	if meta == nil {
+		return ""
+	}
+	if cc, ok := meta["claudeCode"].(map[string]any); ok {
+		if n, ok := cc["toolName"].(string); ok && n != "" {
+			return n
+		}
+	}
+	for _, k := range []string{"toolName", "tool_name"} {
+		if n, ok := meta[k].(string); ok && n != "" {
+			return n
+		}
+	}
+	return ""
+}
+
+func textOf(b acp.ContentBlock) (string, bool) {
+	if b.Text != nil {
+		return b.Text.Text, true
+	}
+	return "", false
+}
+
+func isTerminal(status string) bool { return status == "completed" || status == "failed" }
+
+// SessionUpdate maps session/update notifications onto normalized chunks.
+func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	s := c.s
+	u := n.Update
+	s.mu.Lock()
+	replay := s.replaying
+	s.mu.Unlock()
+	if replay {
+		return nil // history replayed by session/load is not new output
+	}
+	switch {
+	case u.AgentMessageChunk != nil:
+		if t, ok := textOf(u.AgentMessageChunk.Content); ok && t != "" {
+			id := ""
+			if u.AgentMessageChunk.MessageId != nil {
+				id = *u.AgentMessageChunk.MessageId
+			}
+			s.mu.Lock()
+			if id != "" && s.msgID != "" && id != s.msgID {
+				s.mu.Unlock()
+				s.flushMessage()
+				s.mu.Lock()
+			}
+			if id != "" {
+				s.msgID = id
+			}
+			s.msg.WriteString(t)
+			s.mu.Unlock()
+			s.emitKind(workflow.ChunkText, workflow.TextDelta{Text: t})
+		}
+	case u.AgentThoughtChunk != nil:
+		if t, ok := textOf(u.AgentThoughtChunk.Content); ok && t != "" {
+			s.emitKind(workflow.ChunkThinking, workflow.TextDelta{Text: t})
+		}
+	case u.ToolCall != nil:
+		tc := u.ToolCall
+		s.flushMessage() // a tool call ends the assistant message before it
+		st := s.toolFor(tc.ToolCallId)
+		s.mu.Lock()
+		st.title = firstNonEmpty(tc.Title, st.title)
+		st.kind = firstNonEmpty(string(tc.Kind), st.kind)
+		st.status = firstNonEmpty(string(tc.Status), st.status)
+		st.metaName = firstNonEmpty(metaToolName(tc.Meta), st.metaName)
+		if tc.RawInput != nil {
+			st.input = tc.RawInput
+		}
+		st.locations = locPaths(tc.Locations, st.locations)
+		st.absorbOutput(tc.Content, tc.RawOutput)
+		s.mu.Unlock()
+		s.progressTool(st)
+	case u.ToolCallUpdate != nil:
+		tu := u.ToolCallUpdate
+		st := s.toolFor(tu.ToolCallId)
+		s.mu.Lock()
+		if tu.Title != nil {
+			st.title = *tu.Title
+		}
+		if tu.Kind != nil {
+			st.kind = string(*tu.Kind)
+		}
+		if tu.Status != nil {
+			st.status = string(*tu.Status)
+		}
+		st.metaName = firstNonEmpty(metaToolName(tu.Meta), st.metaName)
+		if tu.RawInput != nil {
+			st.input = tu.RawInput
+		}
+		st.locations = locPaths(tu.Locations, st.locations)
+		st.absorbOutput(tu.Content, tu.RawOutput)
+		s.mu.Unlock()
+		s.progressTool(st)
+	case u.Plan != nil:
+		s.emitKind(workflow.ChunkPlan, planChunk(u.Plan.Entries))
+	case u.PlanUpdate != nil:
+		if it := u.PlanUpdate.Plan.Items; it != nil {
+			s.emitKind(workflow.ChunkPlan, planChunk(it.Entries))
+		}
+	case u.UsageUpdate != nil:
+		s.mu.Lock()
+		s.usage.onUpdate(u.UsageUpdate)
+		s.usageSeen = true
+		s.mu.Unlock()
+	case u.CurrentModeUpdate != nil:
+		s.mu.Lock()
+		s.sinfo.CurrentMode = string(u.CurrentModeUpdate.CurrentModeId)
+		s.mu.Unlock()
+	}
+	return nil
+}
+
+func planChunk(es []acp.PlanEntry) workflow.PlanChunk {
+	pc := workflow.PlanChunk{Entries: []workflow.PlanEntry{}}
+	for _, e := range es {
+		pc.Entries = append(pc.Entries, workflow.PlanEntry{Content: e.Content, Status: string(e.Status), Priority: string(e.Priority)})
+	}
+	return pc
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func locPaths(ls []acp.ToolCallLocation, prev []string) []string {
+	if len(ls) == 0 {
+		return prev
+	}
+	out := make([]string, 0, len(ls))
+	for _, l := range ls {
+		out = append(out, l.Path)
+	}
+	return out
+}
+
+// absorbOutput records the latest tool output: content blocks (text, diffs, terminals) win over rawOutput.
+func (t *toolState) absorbOutput(content []acp.ToolCallContent, raw any) {
+	if raw != nil {
+		t.rawOutput = raw
+	}
+	var parts []string
+	for _, c := range content {
+		switch {
+		case c.Content != nil:
+			if txt, ok := textOf(c.Content.Content); ok && txt != "" {
+				parts = append(parts, txt)
+			}
+		case c.Diff != nil:
+			parts = append(parts, fmt.Sprintf("diff %s (%d bytes new)", c.Diff.Path, len(c.Diff.NewText)))
+		case c.Terminal != nil:
+			parts = append(parts, "terminal "+c.Terminal.TerminalId)
+		}
+	}
+	if len(parts) > 0 {
+		t.output = strings.Join(parts, "\n")
+	}
+}
+
+func (t *toolState) outputText() string {
+	out := t.output
+	if out == "" && t.rawOutput != nil {
+		switch v := t.rawOutput.(type) {
+		case string:
+			out = v
+		default:
+			b, _ := json.Marshal(v)
+			out = string(b)
+		}
+	}
+	if len(out) > maxToolOutput {
+		out = out[:maxToolOutput] + "\n[truncated]"
+	}
+	return out
+}
+
+func (s *Session) toolFor(id acp.ToolCallId) *toolState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.tools[id]
+	if !ok {
+		st = &toolState{id: string(id)}
+		s.tools[id] = st
+		s.toolOrder = append(s.toolOrder, id)
+	}
+	return st
+}
+
+// progressTool emits the tool_call chunk once there is something to show (input, or a status past "pending"), and the
+// tool_result chunk when the call completes or fails. Each is emitted at most once per call.
+func (s *Session) progressTool(st *toolState) {
+	s.mu.Lock()
+	callNow := !st.emittedCall && (st.haveInput() || (st.status != "" && st.status != "pending"))
+	s.mu.Unlock()
+	if callNow {
+		s.emitCall(st)
+	}
+	s.mu.Lock()
+	resultNow := st.emittedCall && !st.emittedResult && isTerminal(st.status)
+	var res workflow.ToolResult
+	if resultNow {
+		st.emittedResult = true
+		res = workflow.ToolResult{ID: st.id, Name: st.toolName(), Args: st.args(), Output: st.outputText(), IsError: st.status == "failed"}
+	}
+	s.mu.Unlock()
+	if resultNow {
+		s.emitKind(workflow.ChunkToolResult, res)
+	}
+}
+
+func (s *Session) emitCall(st *toolState) {
+	s.mu.Lock()
+	if st.emittedCall {
+		s.mu.Unlock()
+		return
+	}
+	st.emittedCall = true
+	tc := workflow.ToolCall{ID: st.id, Name: st.toolName(), Args: st.args()}
+	s.mu.Unlock()
+	s.flushMessage()
+	s.emitKind(workflow.ChunkToolCall, tc)
+}
+
+// flushTools emits calls that were held back waiting for input, and results for those already finished, at turn end.
+func (s *Session) flushTools() {
+	s.mu.Lock()
+	order := append([]acp.ToolCallId(nil), s.toolOrder...)
+	s.mu.Unlock()
+	for _, id := range order {
+		s.mu.Lock()
+		st := s.tools[id]
+		s.mu.Unlock()
+		if st == nil {
+			continue
+		}
+		s.emitCall(st)
+		s.progressTool(st)
+	}
+	s.mu.Lock()
+	s.tools = map[acp.ToolCallId]*toolState{}
+	s.toolOrder = nil
+	s.mu.Unlock()
+}
+
+// flushMessage emits the accumulated assistant text as one message_end chunk.
+func (s *Session) flushMessage() {
+	s.mu.Lock()
+	txt := s.msg.String()
+	s.msg.Reset()
+	s.msgID = ""
+	s.mu.Unlock()
+	if strings.TrimSpace(txt) != "" {
+		s.emitKind(workflow.ChunkMessageEnd, workflow.TextDelta{Text: txt})
+	}
+}
+
+// RequestPermission surfaces the request as a permission_request chunk, asks the PermissionHandler and answers the agent.
+// The default handler rejects. A cancelled turn or a stopped session answers "cancelled".
+func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	s := c.s
+	cancelled := acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{Outcome: "cancelled"}}}
+
+	st := s.toolFor(p.ToolCall.ToolCallId)
+	s.mu.Lock()
+	if p.ToolCall.Title != nil {
+		st.title = *p.ToolCall.Title
+	}
+	if p.ToolCall.Kind != nil {
+		st.kind = string(*p.ToolCall.Kind)
+	}
+	st.metaName = firstNonEmpty(metaToolName(p.ToolCall.Meta), st.metaName)
+	if p.ToolCall.RawInput != nil {
+		st.input = p.ToolCall.RawInput
+	}
+	st.locations = locPaths(p.ToolCall.Locations, st.locations)
+	s.permSeq++
+	req := PermissionRequest{
+		ID: fmt.Sprintf("perm_%d", s.permSeq), SessionID: string(p.SessionId), ToolCallID: st.id,
+		Tool: st.toolName(), Title: st.title, Kind: st.kind, Args: st.args(), Locations: st.locations,
+	}
+	s.mu.Unlock()
+	for _, o := range p.Options {
+		req.Options = append(req.Options, PermissionOption{ID: string(o.OptionId), Name: o.Name, Kind: string(o.Kind)})
+	}
+	s.emitCall(st) // the call must precede its permission request in the stream
+	s.emitKind(workflow.ChunkPermission, req)
+
+	handler := s.adapter.cfg.Permission
+	if handler == nil {
+		handler = RejectOnce
+	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	s.mu.Lock()
+	s.perms[req.ID] = cancel
+	s.mu.Unlock()
+	defer func() {
+		cancel()
+		s.mu.Lock()
+		delete(s.perms, req.ID)
+		s.mu.Unlock()
+	}()
+
+	type answer struct{ id string }
+	ch := make(chan answer, 1)
+	go func() { ch <- answer{handler(ctx, req)} }()
+	var chosen string
+	select {
+	case a := <-ch:
+		chosen = a.id
+	case <-ctx.Done():
+		return cancelled, nil
+	}
+	if ctx.Err() != nil {
+		return cancelled, nil
+	}
+	for _, o := range req.Options {
+		if o.ID == chosen && chosen != "" {
+			return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{
+				OptionId: acp.PermissionOptionId(chosen), Outcome: "selected"}}}, nil
+		}
+	}
+	return cancelled, nil // "" or an id the agent did not offer is never an approval
+}
+
+// ReadTextFile serves fs/read_text_file for paths inside the session cwd only.
+func (c *client) ReadTextFile(_ context.Context, p acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
+	if c.s.adapter.cfg.NoFS {
+		return acp.ReadTextFileResponse{}, acp.NewMethodNotFound(acp.ClientMethodFsReadTextFile)
+	}
+	txt, err := c.s.guard.readFile(p.Path, p.Line, p.Limit)
+	if err != nil {
+		return acp.ReadTextFileResponse{}, reqErr(err)
+	}
+	return acp.ReadTextFileResponse{Content: txt}, nil
+}
+
+// WriteTextFile serves fs/write_text_file for paths inside the session cwd only.
+func (c *client) WriteTextFile(_ context.Context, p acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
+	if c.s.adapter.cfg.NoFS {
+		return acp.WriteTextFileResponse{}, acp.NewMethodNotFound(acp.ClientMethodFsWriteTextFile)
+	}
+	if err := c.s.guard.writeFile(p.Path, p.Content); err != nil {
+		return acp.WriteTextFileResponse{}, reqErr(err)
+	}
+	return acp.WriteTextFileResponse{}, nil
+}
+
+// reqErr turns a guard error into a JSON-RPC error the agent can show its model without us leaking host paths beyond
+// what the agent itself sent.
+func reqErr(err error) error {
+	return &acp.RequestError{Code: -32602, Message: err.Error()}
+}
+
+func (c *client) CreateTerminal(ctx context.Context, p acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
+	return c.s.terms.create(ctx, p)
+}
+func (c *client) KillTerminal(_ context.Context, p acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
+	return c.s.terms.kill(p)
+}
+func (c *client) TerminalOutput(_ context.Context, p acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error) {
+	return c.s.terms.output(p)
+}
+func (c *client) ReleaseTerminal(_ context.Context, p acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {
+	return c.s.terms.release(p)
+}
+func (c *client) WaitForTerminalExit(ctx context.Context, p acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error) {
+	return c.s.terms.wait(ctx, p)
+}

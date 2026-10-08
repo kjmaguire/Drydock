@@ -24,6 +24,10 @@ type Config struct {
 	DataDir  string        // runs/<run>/<node>/<attempt>/ lives under here
 	Owner    string        // lease owner id; default hostname:pid:random
 	LeaseTTL time.Duration // default 30s
+	// SafePoint, if set, is called before every agent_task attempt to record the worktree's exact state (a hidden git
+	// commit, brief section 13). The returned ref is stored on the attempt's node_executions row. Failures are reported
+	// as events and never block the attempt.
+	SafePoint func(ctx context.Context, n NodeInfo) (string, error)
 }
 
 // ObserverFactory returns a StreamObserver for one node execution, or nil for none.
@@ -466,6 +470,15 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		}
 		if err := e.st.execStart(ctx, info.ID, n.ID, step, attempt, partial); err != nil {
 			return NodeOutput{}, err
+		}
+		if e.cfg.SafePoint != nil && n.Kind == KindAgentTask {
+			ni := NodeInfo{RunID: info.ID, ProjectID: info.ProjectID, TaskID: info.TaskID, Workflow: g.Name, NodeID: n.ID, Kind: n.Kind, Step: step, Attempt: attempt}
+			if ref, serr := e.cfg.SafePoint(ctx, ni); serr == nil && ref != "" {
+				_ = e.st.setSafePoint(ctx, info.ID, n.ID, step, attempt, ref)
+				e.emit(ctx, "git.safe_point_created", info, map[string]any{"node": n.ID, "step": step, "attempt": attempt, "ref": ref})
+			} else if serr != nil {
+				e.emit(ctx, "git.safe_point_failed", info, map[string]any{"node": n.ID, "error": serr.Error()})
+			}
 		}
 		out, err := e.invoke(ctx, info, g, n, step, attempt, inbox, st, prev, partial)
 		if err == nil {

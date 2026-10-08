@@ -26,7 +26,10 @@ function toBase64Url(bytes: Uint8Array): string {
 
 function fromBase64Url(value: string): Uint8Array<ArrayBuffer> | null {
   if (!/^[A-Za-z0-9_-]*$/.test(value)) return null;
-  const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const padded = value
+    .replaceAll("-", "+")
+    .replaceAll("_", "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
   try {
     const binary = atob(padded);
     const bytes = new Uint8Array(binary.length);

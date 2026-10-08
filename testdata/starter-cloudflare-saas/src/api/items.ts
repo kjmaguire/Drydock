@@ -1,14 +1,5 @@
 import { type Context, Hono } from "hono";
-import {
-  createItem,
-  deleteItem,
-  getItem,
-  type Item,
-  listItems,
-  setAttachmentKey,
-  updateItem,
-  validateTitle,
-} from "../lib/items";
+import { createItem, deleteItem, getItem, type Item, listItems, setAttachmentKey, updateItem, validateTitle } from "../lib/items";
 import { requireAuth } from "./middleware";
 import { type AppEnv, HttpError } from "./types";
 
