@@ -1,0 +1,167 @@
+package events
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/kjmaguire/drydock/internal/storage"
+)
+
+func newBus(t *testing.T) (*SQLBus, *storage.DB, string) {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := storage.OpenTemp(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := NewSQLBus(db, 16)
+	t.Cleanup(func() { b.Close(); db.Close() })
+	return b, db, dir
+}
+
+func TestPublishAssignsMonotonicSequenceAndReplays(t *testing.T) {
+	b, _, _ := newBus(t)
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	seqs := make(chan uint64, 200)
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			s, err := b.Publish(ctx, Event{Type: "agent.output", AgentID: "a1", Data: json.RawMessage(`{"i":1}`)})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			seqs <- s
+		}(i)
+	}
+	wg.Wait()
+	close(seqs)
+	seen := map[uint64]bool{}
+	for s := range seqs {
+		if seen[s] {
+			t.Fatalf("duplicate seq %d", s)
+		}
+		seen[s] = true
+	}
+	if len(seen) != 200 {
+		t.Fatalf("got %d seqs", len(seen))
+	}
+	evs, err := b.Replay(ctx, 0, Filter{}, 1000)
+	if err != nil || len(evs) != 200 {
+		t.Fatalf("replay: %v len=%d", err, len(evs))
+	}
+	for i := 1; i < len(evs); i++ {
+		if evs[i].Seq <= evs[i-1].Seq {
+			t.Fatal("replay not ordered")
+		}
+	}
+	tail, _ := b.Replay(ctx, evs[150].Seq, Filter{}, 1000)
+	if len(tail) != 49 {
+		t.Fatalf("after-seq replay got %d want 49", len(tail))
+	}
+}
+
+func TestFilterPrefixAndScope(t *testing.T) {
+	b, _, _ := newBus(t)
+	ctx := context.Background()
+	for _, e := range []Event{
+		{Type: "workflow.step_started", RunID: "r1"},
+		{Type: "workflow.step_completed", RunID: "r1"},
+		{Type: "workflow.step_started", RunID: "r2"},
+		{Type: "task.created", TaskID: "t1"},
+	} {
+		if _, err := b.Publish(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := b.Replay(ctx, 0, Filter{Types: []string{"workflow.*"}, RunID: "r1"}, 0)
+	if len(got) != 2 {
+		t.Fatalf("want 2 got %d", len(got))
+	}
+	got, _ = b.Replay(ctx, 0, Filter{Types: []string{"task.created"}}, 0)
+	if len(got) != 1 {
+		t.Fatalf("want 1 got %d", len(got))
+	}
+}
+
+func TestSubscribeLiveAndSlowSubscriberIsClosedNotBlocking(t *testing.T) {
+	b, _, _ := newBus(t)
+	ctx := context.Background()
+	live, cancel := b.Subscribe(Filter{Types: []string{"agent.*"}})
+	defer cancel()
+	slow, cancelSlow := b.Subscribe(Filter{})
+	defer cancelSlow()
+
+	done := make(chan struct{})
+	go func() { // fast consumer
+		n := 0
+		for range live {
+			n++
+			if n == 100 {
+				close(done)
+				return
+			}
+		}
+	}()
+	start := time.Now()
+	for i := 0; i < 100; i++ {
+		if _, err := b.Publish(ctx, Event{Type: "agent.output"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("fast subscriber starved")
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("publishers were blocked by the slow subscriber")
+	}
+	// the slow subscriber never read: its channel (cap 16) overflowed and was closed
+	n := 0
+	for range slow {
+		n++
+	}
+	if n != 16 {
+		t.Fatalf("slow subscriber should have received exactly its buffer (16) before being closed, got %d", n)
+	}
+}
+
+func TestDurableAcrossReopen(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	db, _ := storage.OpenTemp(ctx, dir)
+	b := NewSQLBus(db, 8)
+	for i := 0; i < 5; i++ {
+		if _, err := b.Publish(ctx, Event{Type: "agent.started", AgentID: "a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b.Close()
+	db.Close()
+
+	db2, err := storage.OpenTemp(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db2.Close()
+	b2 := NewSQLBus(db2, 8)
+	defer b2.Close()
+	last, _ := b2.LastSeq(ctx)
+	if last != 5 {
+		t.Fatalf("last seq %d want 5", last)
+	}
+	s, _ := b2.Publish(ctx, Event{Type: "agent.stopped"})
+	if s != 6 {
+		t.Fatalf("sequence must continue monotonically across restart, got %d", s)
+	}
+	missed, _ := b2.Replay(ctx, 3, Filter{}, 0) // a UI that last saw seq 3 catches up
+	if len(missed) != 3 {
+		t.Fatalf("catch-up want 3 got %d", len(missed))
+	}
+}

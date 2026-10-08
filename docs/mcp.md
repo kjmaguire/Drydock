@@ -1,0 +1,201 @@
+# Drydock: MCP Gateway, Workspace server and docs-server catalog
+
+Scope: this document specifies how Drydock gives agent CLIs access to tools and knowledge over MCP (brief section 14, plus the token-control rules of section 7). Every agent run gets exactly one MCP endpoint, served by the in-process MCP Gateway, which applies a per-role tool allowlist, an exact-match result cache with per-server TTL, result shaping with `fetch_range` continuation, untrusted-content marking with secret scanning, and per-call audit events. Behind that one endpoint sit the Workspace server (the app's own knowledge: packs, requirements, memory, repo map, ranges, tasks, skills, room, handoffs) and upstream servers from the catalog (Microsoft Learn, Cloudflare docs, GitHub, Context7, Linear, Notion, Sentry, user-added). It covers the transports (stdio shim versus loopback streamable HTTP with a bearer token), allowlists, caching, shaping, audit, token accounting, the Workspace tool schemas, `catalog.yaml`, how each CLI is pointed at the gateway, starting upstream stdio servers under the process manager, and licensing (D14). Decisions in [`decisions.md`](decisions.md) win over the brief.
+
+Evidence tags: `[cli §n]` = [`phase0/agent-clis.md`](phase0/agent-clis.md), `[tool §n]` = [`phase0/tooling-integrations.md`](phase0/tooling-integrations.md), `[go §n]` = [`phase0/go-platform.md`](phase0/go-platform.md), `Dn` = decisions.md. Unmarked design choices are labelled **design**; unconfirmed facts are labelled **unverified**. Related: [`connections.md`](connections.md) (CLI manifests and capability matrix), [`expert-packs.md`](expert-packs.md) (`search_pack`, live packs), [`github.md`](github.md), [`integrations.md`](integrations.md).
+
+## 1. Topology
+
+```
+ agent CLI (own Job Object)
+   |  MCP (one server named "drydock")
+   +--[A] stdio: drydock.exe mcp-shim  --HTTP-->+
+   +--[B] streamable HTTP, Authorization: Bearer-+--> Gateway (127.0.0.1:<ephemeral>/mcp/<run_id>)
+                                                    |  allowlist -> cache -> shape/scan/mark -> audit -> usage
+                          +-------------------------+----------------------------+
+                  Workspace server (in-process)          Upstream pool: remote HTTP (OAuth/bearer held by Drydock)
+                  search_pack, repo_map, task, ...        and stdio servers under the Process Manager (Job Object)
+```
+
+The Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` v1.8.0, behind our own `MCPManager` interface) supplies `NewStreamableHTTPHandler`, `StreamableClientTransport`, `IOTransport` and `CommandTransport`; it targets MCP spec 2026-07-28 and earlier [go §9]. Its license text is a mixed MIT/Apache-2.0 transition; legal sign-off is open (decisions.md section 2).
+
+## 2. Per-run endpoint and transports
+
+| Aspect | Design |
+|---|---|
+| Listener | One app-wide HTTP listener on `127.0.0.1` with an ephemeral port; never `0.0.0.0` (brief section 16: no-TLS only on loopback). Route `/mcp/<run_id>`. Requests with an unexpected `Host` or any `Origin` header are rejected (DNS-rebinding defence). |
+| Per-run credential | 256-bit random bearer token minted by the Agent Runtime before spawn, held in memory plus the run's config file, never in SQLite, logs, events, prompts or memory. Invalid, expired or run-mismatched tokens return 401 and emit `mcp.auth_failed`. Token and endpoint die when the run's Job Object closes. |
+| Peer check (hardening) | On Windows, map the connecting loopback port to a PID (`GetExtendedTcpTable`) and require membership in the run's Job Object (`IsProcessInJob`). **Design, unproven on Windows.** |
+| Transport A: stdio shim (default) | The CLI spawns `drydock.exe mcp-shim`, a tiny stdio-to-HTTP proxy that reads `DRYDOCK_MCP_URL` and `DRYDOCK_MCP_TOKEN` from the env block written in the CLI's MCP config. Works for every CLI that supports stdio MCP servers (all of them), needs no header support, and the shim runs in the CLI's own process tree, so Job Object kill covers it. |
+| Transport B: streamable HTTP | The CLI connects directly with `Authorization: Bearer`. Used only when the capability matrix says HTTP is supported **and** the CLI can send a header or read a bearer env var: Codex (`bearer_token_env_var`), Gemini (`httpUrl` + `headers`), OpenCode remote (`headers`) are documented; Claude and Goose header support is **unverified** [cli §1-§5]. SSE is never offered. |
+| Choice | Gateway picks per run from `capabilities.mcp.transports` and `http_headers`; default A; B is an optimization (one fewer process). The T6 step of Test connection proves which one actually works ([`connections.md`](connections.md) section 5). |
+| Readiness | The gateway listens before the CLI is spawned and answers `initialize` and `tools/list` without contacting any upstream (lazy start), because Claude waits at most `MCP_TIMEOUT` (30 s, >=2.1.221) in `-p` mode and OpenCode's MCP `timeout` defaults to 5000 ms [cli §1, §4]. |
+| Config file | `<app data>/runs/<run_id>/mcp.json` (Claude `--mcp-config`) containing the endpoint and, for transport A, the token in the shim's `env`. The file is user-ACL only and deleted at run end. Whether this satisfies the "no secrets in files Drydock logs" rule depends on the support-bundle excluding `runs/*/mcp.json`: required. |
+
+## 3. Allowlists
+
+Deny by default. `RunPolicy{RunID, Role, Allow map[serverID][]toolGlob, Approve []toolGlob, Egress map[serverID]EgressRule}` is built by the Context Engine from role defaults, project policy (CEL) and task overrides. Enforcement is in the gateway on both `tools/list` (filtered) and `tools/call` (re-checked), because CLI-side filters are defence in depth only: Claude `--allowedTools mcp__drydock__*` plus `--tools`; Codex `enabled_tools`; Gemini `includeTools`/`--allowed-mcp-server-names` [cli §1-§3]. Exposed upstream tool names are `<server_id>__<tool>` with short ids (`cfdocs`, `mslearn`, `gh`, `ctx7`, `linear`, `notion`, `sentry`); tool-name length limits of the model APIs are **unverified**, so ids stay at 8 characters or fewer.
+
+Write-class tools (`side_effects: true` in the catalog: create or update issues, comments, PRs, merges, Notion edits, Sentry resolve) are never in role defaults. If a project enables one, the call is parked as an `approvals` row bound to the hash of the exact call (brief section 12) and executed only after approval; agents cannot answer approvals (brief section 16). Role defaults (**design**, tune in Slice 1D):
+
+| Role | Workspace read (`search_pack`, `search_requirements`, `search_memory`, `repo_map`, `read_range`, `skills`) | Workspace act (`task`, `room`, `handoff`) | Docs servers (`cfdocs`, `mslearn`, `ctx7`) | `gh` read | Trackers read (`linear`, `notion`) | `sentry` read |
+|---|---|---|---|---|---|---|
+| PM | requirements, memory, packs | y | - | - | y | - |
+| Architect | all | y | y | y | y | - |
+| UX Designer | requirements, packs, `read_range` | y | y | - | y | - |
+| Frontend, Backend, Database | all | y | y | - | - | - |
+| DevOps | all | y | y (`cfdocs` first) | y | - | y |
+| QA | all | y | - | y | - | y |
+| Security | all | y | y | y | - | y |
+| Reviewer | all | y (`room`, `handoff`) | - | y | - | - |
+
+## 4. Result cache
+
+Exact-match only (brief sections 7, 14). The key is `sha256(scope || server_id || server_ident || tool || canonical_json(args))` where `canonical_json` sorts object keys and normalizes numbers and whitespace, `server_ident` is a hash of the server URL/command+version and the credential identity (never the secret), and `scope` is `global` for public documentation servers or `project:<id>` for anything that can return private data (GitHub, Linear, Notion, Sentry).
+
+| Field | Rule |
+|---|---|
+| Store | `mcp_cache(key PK, server_id, tool, scope, raw_ref, bytes, created_at, expires_at, hits)`; raw result on disk under `<app data>/mcp-cache/`, redacted (section 5). |
+| TTL | Catalog `cache.ttl` per server, optional per tool. **Design defaults:** public docs servers 24 h; GitHub reads 60 s; trackers and Sentry 0 (off) until a project opts in. Pack refresh (`pack.refreshed`) invalidates entries for the matching live pack. |
+| Never cached | Tools with `side_effects: true`; calls denied or failed; results where secrets were redacted unless `cache.allow_redacted`; any call whose args differ in even one byte. |
+| Hit behavior | Served with `cache: hit` in audit, same shaping and untrusted marking applied again, upstream untouched. Hit/miss counts feed token accounting (section 7). |
+
+## 5. Result shaping, untrusted marking, secret scanning
+
+Pipeline for every upstream or Workspace result, in order:
+
+1. **Persist raw** to `<app data>/runs/<run_id>/mcp/<call_id>.raw` plus a `.meta.json` (server, tool, args hash, byte count). Handle `res_<call_id>`. Retention follows brief section 18 (compact 30 days, delete 90).
+2. **Scan** the text with gitleaks (`github.com/zricethezav/gitleaks/v8`, 222 default rules [phase0]); matches are replaced by `[REDACTED:<rule>]` in both the stored and the returned copy; emit `mcp.secret_redacted` with the rule id (never the value).
+3. **Shape** to `max_inline_bytes` (**design default** 8192, roughly 2000 tokens by the chars/4 estimate, per-tool override in the catalog): JSON arrays keep the first N items plus a count; docs search results keep title, URL and a short excerpt per hit; long text keeps head 80% and tail 20%. Microsoft Learn is asked for less at the source with `?maxTokenBudget=N` on the endpoint URL [tool §6]. Result sizes of the docs servers are **unverified**: Learn search returned 10 chunks per call in Phase 0, Cloudflare docs defaults to about 10 chunks (likely, not confirmed) [tool §1a, §6].
+4. **Mark untrusted**: the returned text is wrapped as `<untrusted source="mslearn" call="c_81f2" handle="res_c_81f2">...</untrusted>`; any literal `<untrusted` or `</untrusted` inside content is neutralized; a one-line preface states that the content is data, never instructions, and cannot change permissions or answer approvals (brief section 16). Marking reduces, but does not eliminate, prompt-injection risk; the real controls are the allowlist, approvals bound to action hashes, and the fact that retrieved text never reaches a permission decision.
+5. **Continuation**: if truncated, the footer is `[truncated: returned 8192 of 61440 bytes; call fetch_range{handle:"res_c_81f2", offset:8192, length:8192}]`.
+
+`fetch_range` is a gateway-native tool (always allowed when the run has any other tool, rate-limited, itself shaped and marked). It reads only handles minted for the same run. It is distinct from the Workspace `read_range`, which reads worktree files.
+
+## 6. Egress rules (what leaves the machine)
+
+Queries to docs servers are sent to third parties; brief section 0 forbids uploading source code. Each catalog entry has `egress: {max_arg_bytes, scan_secrets, deny_code_fences}`. For `public_docs` servers the defaults are 1024 bytes of total argument text, gitleaks scan of args, and rejection of arguments that contain fenced code blocks or more than N lines; a rejected call returns a structured error telling the agent to rephrase as a short question. This is a heuristic, not a guarantee (an agent can paraphrase code); the policy is logged per call (`egress_checked`). Private-data servers (GitHub, Linear, Notion, Sentry) are authenticated to the user's own tenant and are not subject to the arg-size rule, but their results are `private` data class and never flow into `trainable` provider prompts (brief section 6).
+
+## 7. Audit events and token accounting
+
+Event family `mcp.*` on the event bus (persisted, monotonic `seq`); payloads carry hashes and handles, not content:
+
+| Event | Payload (key fields) |
+|---|---|
+| `mcp.call` | run_id, call_id, server, tool, args_hash, decision (`allowed`/`denied`/`approval_pending`), reason, cache (`hit`/`miss`/`bypass`), raw_bytes, returned_bytes, truncated, redactions, upstream_status, duration_ms, tokens_est_returned |
+| `mcp.denied`, `mcp.auth_failed`, `mcp.secret_redacted`, `mcp.egress_blocked` | run_id, call_id, rule or reason |
+| `mcp.server.started` / `.stopped` / `.failed` | server, transport, pid (for stdio), exit_code, restart_count |
+| `mcp.cache.hit` / `.evict` | key hash, saved_bytes |
+
+Token accounting (brief section 7: estimated versus reported never mixed silently): each result gets `tokens_est_returned = ceil(returned_chars / 4)` stored with `source = 'estimated'`; the corresponding `tokens_est_saved_truncation` and `tokens_est_saved_cache` are the differences against raw size and a cache-hit's original size. They land in `model_usage`-adjacent table `mcp_usage(call_id, run_id, tokens_est_returned, tokens_est_saved_truncation, tokens_est_saved_cache, source)`. The agent's actual input-token charge comes from the CLI's own usage report ([`connections.md`](connections.md) section 9); reports join to `mcp_usage` by run and turn, so evals can show cost per accepted task with and without the gateway's savings. The chars/4 estimator is an assumption and is calibrated against reported usage once real streams exist (phase0 section 7, item 8).
+
+## 8. Workspace server
+
+In-process server (go-sdk server with typed handlers), always present, tools filtered by the allowlist. All results pass through section 5. Paths are worktree-relative; the server enforces worktree boundary, path traversal and symlink protection (brief section 16). JSON Schemas (input; outputs are text blocks with a structured JSON `structuredContent` where the SDK allows it):
+
+```json
+{"search_pack":{"type":"object","required":["query"],"properties":{"query":{"type":"string","maxLength":512},"pack_ids":{"type":"array","items":{"type":"string"}},"k":{"type":"integer","minimum":1,"maximum":10,"default":5}}},
+ "search_requirements":{"type":"object","required":["query"],"properties":{"query":{"type":"string","maxLength":512},"doc_id":{"type":"string"},"k":{"type":"integer","minimum":1,"maximum":10,"default":5}}},
+ "search_memory":{"type":"object","required":["query"],"properties":{"query":{"type":"string","maxLength":512},"scope":{"enum":["project","workspace"],"default":"project"},"k":{"type":"integer","minimum":1,"maximum":10,"default":5}}},
+ "repo_map":{"type":"object","properties":{"focus_paths":{"type":"array","items":{"type":"string"}},"token_budget":{"type":"integer","minimum":256,"maximum":8192,"default":2048}}},
+ "read_range":{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"start_line":{"type":"integer","minimum":1},"end_line":{"type":"integer","minimum":1},"max_bytes":{"type":"integer","maximum":65536,"default":16384}}},
+ "task":{"type":"object","required":["action"],"properties":{"action":{"enum":["get","add_note","propose_status"]},"task_id":{"type":"string"},"note":{"type":"string","maxLength":4000},"status":{"enum":["BLOCKED","WAITING_HUMAN","REVIEW"]},"evidence_refs":{"type":"array","items":{"type":"string"}}}},
+ "skills":{"type":"object","required":["action"],"properties":{"action":{"enum":["list","get","for_paths"]},"name":{"type":"string"},"paths":{"type":"array","items":{"type":"string"},"maxItems":50}}},
+ "room":{"type":"object","required":["action"],"properties":{"action":{"enum":["read","post"]},"channel":{"type":"string"},"thread_id":{"type":"string"},"kind":{"enum":["CHAT","STATUS","RESULT","QUESTION","DECISION","HANDOFF"]},"mentions":{"type":"array","items":{"type":"string"}},"body":{"type":"string","maxLength":4000},"limit":{"type":"integer","maximum":50}}},
+ "handoff":{"type":"object","required":["action"],"properties":{"action":{"enum":["create","get"]},"handoff_id":{"type":"string"},"summary":{"type":"string","maxLength":6000},"done":{"type":"array","items":{"type":"string"}},"open":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}}}},
+ "fetch_range":{"type":"object","required":["handle"],"properties":{"handle":{"type":"string"},"offset":{"type":"integer","minimum":0},"length":{"type":"integer","maximum":65536,"default":8192}}}}
+```
+
+Semantics: `search_pack` returns chunks with citations `{pack, version, url, heading_path, chunk_id, fetched_at}` or an explicit "nothing found" (brief section 15; see [`expert-packs.md`](expert-packs.md)). `repo_map` is registered only when the tree-sitter build tag is on and the Windows CI job is green (D5); otherwise the tool is absent rather than faked. `task` lets an agent add notes and propose a move to `BLOCKED`, `WAITING_HUMAN` or `REVIEW` (with evidence); it cannot set `COMPLETED`, `CANCELLED` or `READY` (brief section 12: acceptance is human). `skills.for_paths` is how non-Claude CLIs receive glob-scoped skills on demand. `room.post` is rate-limited and typed; posted bodies are agent output, never executed. For Claude's `--permission-prompt-tool` the Workspace server also hosts an internal `permission_prompt` tool, hidden from `tools/list` for every other client and absent from role allowlists; it turns a Claude permission request into a workflow request bound to an action hash (D1, brief sections 4, 12).
+
+## 9. `catalog.yaml`
+
+Shipped in the binary, signed with the release; users add custom servers through the same schema (stored in `<app data>/mcp/user-servers.yaml`) and pass the same allowlist, cache, shaping and egress pipeline. Schema:
+
+```yaml
+schema: 1
+servers:
+  - id: <=8-char slug
+    display: string
+    transport: http | stdio            # remote streamable HTTP, or a local command
+    url: https://...                   # http
+    command: {argv: [...], pin: "pkg@x.y.z"}   # stdio; user-installed unless bundled: true
+    auth: {kind: none | bearer | oauth2_pkce | oauth_dcr, header: Authorization, keyring: <ref>}
+    trust: public_docs | third_party_docs | private_data
+    side_effects_tools: [tool, ...]    # always approval-gated
+    cache: {ttl: 24h, scope: global | project}
+    shape: {max_inline_bytes: 8192, url_params: {maxTokenBudget: 2000}}
+    egress: {max_arg_bytes: 1024, scan_secrets: true, deny_code_fences: true}
+    license: {server: SPDX, content: SPDX, attribution: "text shown in citations", bundled: false}
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: verified | unverified
+```
+
+| id | Entry (facts from [tool §5, §6]) |
+|---|---|
+| `mslearn` | `https://learn.microsoft.com/api/mcp`, streamable HTTP, auth none. Tools `microsoft_docs_search{query}`, `microsoft_docs_fetch{url}`, `microsoft_code_sample_search{query, language?}`. `?maxTokenBudget=N` truncates search responses. Content CC BY 4.0, code MIT; Learn Terms of Use apply; commercial-use terms **unverified**. `trust: public_docs`, TTL 24 h. |
+| `cfdocs` | `https://docs.mcp.cloudflare.com/mcp`, stateless streamable HTTP (`/sse` is only an alias; legacy SSE GET returns 410), auth none. Tools `search_cloudflare_documentation{query}` (returns `{results:[{similarity,url,title,text}]}`) and `migrate_pages_to_workers_guide{}`. Server repo Apache-2.0; docs content CC BY 4.0 (attribution required), code MIT. Best-effort service, no SLA found; cache. Cloudflare's recommended "Code Mode" server `https://mcp.cloudflare.com/mcp` has **unverified** auth and is not in v1. |
+| `gh` | Remote `https://api.githubcopilot.com/mcp/`, streamable HTTP; OAuth, or `Authorization: Bearer <PAT>`. MIT. About 90 tools in toolsets; the catalog enables a read subset: `pull_request_read{method: get\|get_diff\|get_status\|get_files\|get_commits\|get_review_comments\|get_reviews\|get_comments\|get_check_runs, owner, repo, pullNumber, page?, perPage?, after?}`, `actions_get/list`, `get_job_logs`, `list_issues`, `search_*`. Write tools (`pull_request_review_write` incl. `resolve_thread`, `create_pull_request`, `merge_pull_request`) are `side_effects_tools`. It covers review threads natively, which `gh pr view --json` does not (D14; [`github.md`](github.md)). A local Go server `github.com/github/github-mcp-server/v2` (stdio, MIT) is an option, not bundled in v1. `trust: private_data`. |
+| `ctx7` | `https://mcp.context7.com/mcp` (streamable HTTP) or `npx @upstash/context7-mcp` (stdio, user-installed). `Authorization: Bearer <API key>`; a free key from context7.com/dashboard is recommended for rate limits. Server MIT; backend, parsing and crawling are private and not in the repo. Tools `resolve-library-id{query, libraryName}`, `query-docs{libraryId, query}`. Community-submitted docs carry an accuracy/security disclaimer, so `trust: third_party_docs` (extra marking, never auto-attached to packs). |
+| `linear` | `https://mcp.linear.app/mcp`, streamable HTTP, OAuth 2.1 with dynamic client registration; an OAuth token or API key is also accepted as `Authorization: Bearer`; a read-only endpoint `/mcp/readonly` exists. Hosted, not open source; snippet-level evidence, **unverified** [tool §5]. Default enabled endpoint for agents: the read-only one. |
+| `notion` | `https://mcp.notion.com/mcp` (preferred) and `/sse` (fallback); OAuth 2.0 with PKCE, interactive only. The local `makenotion/notion-mcp-server` is retired and unsupported (D14). Terms **unverified**. |
+| `sentry` | `https://mcp.sentry.dev/mcp`, OAuth, or `Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`. The stdio package `npx @sentry/mcp-server@latest --access-token=...` (scopes `org:read project:read project:write team:read team:write event:write`) is **FSL-1.1-Apache-2.0 and is not bundled** (D14); a user-installed template entry exists with `bundled: false`. |
+| (template) Aikido | `@aikidosec/mcp@1.0.27`, local stdio, AGPL or commercial: never bundled (D14), shown only as a user-install template; auth `AIKIDO_API_KEY`. See [`integrations.md`](integrations.md). |
+
+Upstream OAuth (Linear, Notion, Sentry, GitHub): the user completes a browser flow once from the Connection; tokens go to the credential store (values over 2560 bytes encrypted into SQLite, key in Credential Manager [go §3]). The gateway attaches credentials on upstream requests, so agents never see them. The go-sdk has `auth`/`oauthex` packages whose client OAuth is marked experimental [go §9]; the Notion access-token lifetime of 1 h is snippet-only.
+
+## 10. Pointing each CLI at the single gateway entry
+
+The registered server name is `drydock` in every CLI. Facts from [cli §1-§8]:
+
+| CLI | Mechanism (per-run, no user-level config touched) | Notes |
+|---|---|---|
+| Claude Code | `--mcp-config <run>/mcp.json --strict-mcp-config`; tool filter `--allowedTools mcp__drydock__*`; approvals via `--permission-prompt-tool mcp__drydock__permission_prompt` | stdio, http (`streamable-http` alias), sse (deprecated), ws. `-p` waits up to `MCP_TIMEOUT` 30 s. |
+| Codex | ACP `session/new.mcpServers` (stdio, http; `sse:false`); or `-c mcp_servers.drydock.url=... -c mcp_servers.drydock.bearer_token_env_var=DRYDOCK_MCP_TOKEN -c mcp_servers.drydock.enabled_tools=[...]` | stdio + streamable HTTP only. |
+| Gemini CLI | ACP `session/new.mcpServers`; or `settings.json` `mcpServers.drydock` with `httpUrl`+`headers` (or `command`/`args`/`env`) plus `--allowed-mcp-server-names drydock`, `includeTools` | `url` is SSE, `httpUrl` is streamable HTTP. |
+| OpenCode | ACP `session/new.mcpServers`; or `OPENCODE_CONFIG_CONTENT` inline config `mcp.drydock` as `type: local` (`command[]`, `environment`) or `type: remote` (`url`, headers) | `timeout` default 5000 ms; tools are prefixed by server name. |
+| Goose | ACP `session/new.mcpServers` (stdio, http; `sse:false`), merged into extensions; headless `--with-extension "<cmd>"` or `--with-streamable-http-extension URL` | Header support on the HTTP flag is **unverified**; use the shim. |
+| Antigravity | `mcp_config.json`; per-session scoping and ACP behavior **unverified**; plugin MCP servers are namespaced `<plugin>_<server>` | Whether a per-run config path is honored is unverified; until proven the Connection records `mcp: unknown` and the gateway is not offered. |
+| Custom | Manifest `mcp.inject: config_file \| acp_session_new \| env`; if none, the CLI gets no MCP and the Connection records `mcp: absent` | |
+
+ACP `McpServer` descriptors for `session/new` follow the ACP schema (stdio command/args/env; HTTP url and, per the schema, headers); header support in `coder/acp-go-sdk` v0.13.5 types is **unverified** here and is checked when the adapter is built.
+
+## 11. Upstream stdio servers under the process manager
+
+`CommandTransport` in the Go SDK closes stdin, waits `TerminateDuration` (5 s), then `Process.Signal(SIGTERM)` and `Kill()`. On Windows only `Kill` works, and it terminates the direct child only, so `npx.cmd`, `uvx` and similar wrappers leave grandchildren [go §9]. Therefore Drydock never uses `CommandTransport` for upstream servers:
+
+```go
+func (m *Manager) startStdio(ctx context.Context, s ServerSpec) (*Upstream, error) {
+    p, err := m.proc.Start(ctx, proc.Spec{Argv: s.Argv, Env: s.Env, Cwd: s.Cwd,
+        Job: proc.JobOwn /* own Job Object, KILL_ON_JOB_CLOSE, suspended-then-resume (D7) */})
+    if err != nil { return nil, err }
+    t := &mcp.IOTransport{Reader: p.Stdout(), Writer: p.Stdin()} // go-sdk transport over our pipes
+    c, err := m.client.Connect(ctx, t) // initialize with a 10 s budget
+    ...
+    return &Upstream{Proc: p, Client: c}, nil
+}
+```
+
+Servers start lazily on the first allowed call, are shared per (server id, credential identity) across runs, multiplexed by the gateway with per-run allowlists, and stopped after an idle timeout (**design default** 10 min) or at app exit (the app-level job kills any survivor, D7). A crash emits `mcp.server.failed`; calls return a structured error (`upstream_unavailable`) with a circuit breaker (3 failures, 60 s open); the run continues (brief section 17, "MCP failure"). stdout/stderr go to the run log, redacted. The `.cmd` argument-escaping behavior is an open Windows item [go].
+
+## 12. Licensing notes (D14, brief section 26)
+
+| Item | License | Rule |
+|---|---|---|
+| Sentry MCP server | FSL-1.1-Apache-2.0 (source-available, not OSI; competing-use restriction) | Do not bundle; hosted `mcp.sentry.dev` or a user-installed copy only. |
+| Aikido MCP (`@aikidosec/mcp`) | AGPL, or commercial | Do not bundle or embed; user-installed separate process only (legal review). |
+| Notion local MCP server | MIT text, unmaintained | Unsupported; hosted remote MCP only. |
+| GitHub MCP server | MIT | Remote hosted by default; local not bundled in v1. |
+| Context7 MCP server | MIT; backend private | Hosted or user `npx`. |
+| Cloudflare docs MCP server | Apache-2.0 | Hosted; content CC BY 4.0 needs attribution when we redistribute excerpts (catalog `license.attribution` is rendered in citations, minutes exports and PR drafts). |
+| Microsoft Learn | content CC BY 4.0, code MIT; service terms not read | Attribution as above; commercial-resale terms **unverified**. |
+| go-sdk (MCP) | mixed MIT/Apache-2.0 | Legal sign-off before release; `THIRD_PARTY_NOTICES.md` entry. |
+
+## 13. Open questions / unverified
+
+- No docs MCP server was called in Phase 0; result sizes, rate limits and commercial terms for Learn, Cloudflare docs and Context7 are unverified [tool §6]. Linear, Notion, Sentry and Aikido MCP and API facts are mostly snippet-level.
+- Whether Claude, Goose, Antigravity and each ACP agent accept an HTTP MCP server with an `Authorization` header is unverified; the stdio shim is the default for that reason. Whether a secret in the run's `mcp.json` is acceptable, and whether the shim inherits env, is a design call to confirm with a live run.
+- `GetExtendedTcpTable`/`IsProcessInJob` peer checks, loopback-only listener behavior with Windows Defender Firewall, and `Host`/`Origin` validation in the go-sdk handler are design only (NEEDS-WINDOWS). `.cmd` shim argument escaping and `IOTransport` over Process Manager pipes are not yet exercised.
+- Model-API tool-name length limits, the chars/4 token estimate, default TTLs, `max_inline_bytes`, and the egress heuristics are design defaults awaiting measurement (brief section 23 evals).
+- Role-default allowlists are a starting point; the brief does not specify them.
+- Contradiction noted: brief section 14 lists Linear/Notion/Sentry servers in the shipped catalog; D14 forbids bundling Sentry's and Notion's local servers and Aikido's. Resolved here as hosted entries only plus user-install templates.

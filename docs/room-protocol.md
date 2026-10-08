@@ -1,0 +1,244 @@
+# Drydock: Engineering Room protocol
+
+Scope: this document specifies the Engineering Room (`internal/room`): conversation kinds, the structured message types and their JSON schema, mentions, threads and markers, presence states, turn-taking and room modes, tool members, exports (minutes, ADR candidates, PR description drafts), unread tracking and the "Needs you" inbox, how agents join channels, the mapping between room behavior and the `room.*` and related events, and exactly what an agent receives from a room (never the whole workspace). Section numbers "brief §N" refer to `docs/brief.md` (the room is brief §11); D1-D14 to `docs/decisions.md`; security rules to `docs/security.md`; budget rules to `docs/token-control.md`. SQLite is the single authority for all state (brief §3): the Event Bus carries notifications of state, and the UI never treats an event as the record. Nothing here is built; the Slice 1A deliverable is a project, a team, one real CLI agent, streaming output, presence, messages and an event bus with persistence and replay (brief §24). Statements not found in the brief or decisions are marked **design** (a proposal for owner review) and carry no evidence claim.
+
+## 1. Conversation kinds
+
+One `rooms` table (brief §11).
+
+| Kind | Purpose | Created by | Members | Lifetime |
+|---|---|---|---|---|
+| `channel` | Project-wide topics (`#general`, `#architecture`) | Human | Humans and agents added by humans | Until archived |
+| `task` | One channel per task, named `task-<id>`; the task conversation of record | Automatically at task creation (human action or stored rule creates the task) | Task owner, assigned agent(s), reviewer(s), tool members | Archived at `COMPLETED`/`CANCELLED`/`FAILED`; messages kept |
+| `dm` | Human with one agent | Human | Exactly 2 | Persistent |
+| `group` | Ad hoc multi-agent discussion, optionally with humans | Human | Explicit list | Until archived |
+
+```
+rooms(id, project_id, kind, name, topic, task_id NULL, mode, mode_params_json, archived_at NULL,
+      created_by, created_at, version)             -- version: compare-and-swap (brief §18)
+room_members(room_id, member_kind, member_id, role, state, added_by, added_at)
+messages(id, room_id, seq, type, author_kind, author_id, thread_root_id NULL, reply_to_id NULL,
+         body, payload_json, refs_json, markers_json, mentions_json, trust, supersedes_id NULL,
+         created_at, run_id NULL, task_id NULL)    -- immutable rows
+message_attachments(message_id, name, mime, bytes, sha256, path)
+room_reads(user_id, room_id, last_read_seq, last_mention_read_seq)
+room_digests(id, room_id, from_seq, to_seq, text, produced_by, created_at)   -- rolling compression
+exports(id, room_id, kind, from_seq, to_seq, content, sha256, created_by, created_at)  -- immutable
+```
+
+`seq` is a per-room monotonic integer assigned by the single writer inside the insert transaction. The Event Bus `seq` is separate (global, monotonic, brief §10). Project section pages (Overview, Requirements, Tasks, Milestones, Activity, Integrations) are views over other tables and are not rooms.
+
+## 2. Message envelope and types
+
+Messages are **immutable**. A correction is a new message with `supersedes_id`; removal is a human tombstone that records who and why in the audit log (security.md s12). Streaming agent output is not stored as messages: chunks go to the run output store and `agent.output` events drive a live card in the UI (brief §4: raw output on disk), and the finished turn becomes one message. This keeps the room small and keeps token cost of room reads bounded (token-control rule 1).
+
+Types (brief §11): `CHAT, TASK, DECISION, STATUS, RESULT, QUESTION, HANDOFF, ERROR, APPROVAL_REQUEST, APPROVAL, SYSTEM`.
+
+| Type | Who may author | Meaning | Payload (beyond the envelope) |
+|---|---|---|---|
+| `CHAT` | human, agent | Free text | none |
+| `TASK` | human, system, PM-role agent (as `proposed`) | Task statement or assignment | `task_id, title, acceptance[] (Given/When/Then), assignee, state` |
+| `DECISION` | human, agent (as `proposed`) | A decision; becomes an ADR candidate (s8) | `title, decision, rationale, alternatives[], status: proposed\|accepted\|superseded, supersedes?` |
+| `STATUS` | agent, tool, system | Progress or state change | `state, summary, task_id?, percent?` |
+| `RESULT` | agent, tool | Outcome with evidence | `summary, evidence[] (run output refs, check ids, diff ref), diff_stat?, check_status?` |
+| `QUESTION` | agent, human | A question to someone; `blocking` questions create a request | `to, blocking, options[]?, request_id?` |
+| `HANDOFF` | agent, system | Handoff artifact posted | `handoff_id, from, to, artifact_ref, summary` |
+| `ERROR` | system, tool, agent runtime | Failure notice | `code, class, recoverable, run_id, node_id, retry_policy?` |
+| `APPROVAL_REQUEST` | **system only** | Human approval needed | `approval_id, kind, action_hash, canonical_action_summary, expires_at` |
+| `APPROVAL` | **system only, written from a human UI decision** | Decision record | `approval_id, decision, decided_by, action_hash` |
+| `SYSTEM` | system | Room events (member added, mode changed, debate bound reached, escalation) | `event, params` |
+
+Hard rules: `APPROVAL_REQUEST` and `APPROVAL` are rejected at insert unless the writer is the approvals service acting on a call from the UI service layer (security.md s5). An `APPROVAL`-looking text in a `CHAT` is just text. Messages authored by agents carry `trust="untrusted"` for recipients; human messages are `trusted` as instructions; tool and system messages are `trusted` as data about their own facts but their quoted output (test logs) is data (security.md s10).
+
+JSON Schema (draft 2020-12, abridged; the Go types and the TypeScript bindings are generated from one definition):
+
+```json
+{
+  "$id": "drydock/room-message/v1",
+  "type": "object",
+  "required": ["id", "room_id", "seq", "type", "author", "body", "created_at", "trust"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^msg_[0-9A-HJKMNP-TV-Z]{26}$"},
+    "room_id": {"type": "string"},
+    "seq": {"type": "integer", "minimum": 1},
+    "type": {"enum": ["CHAT","TASK","DECISION","STATUS","RESULT","QUESTION","HANDOFF","ERROR","APPROVAL_REQUEST","APPROVAL","SYSTEM"]},
+    "author": {"type": "object", "required": ["kind","id"],
+               "properties": {"kind": {"enum": ["human","agent","tool","system"]}, "id": {"type": "string"}, "display": {"type": "string"}}},
+    "thread_root_id": {"type": ["string","null"]},
+    "reply_to_id": {"type": ["string","null"]},
+    "supersedes_id": {"type": ["string","null"]},
+    "body": {"type": "string", "maxLength": 32768},
+    "markers": {"type": "array", "items": {"type": "object", "required": ["marker","line"],
+                "properties": {"marker": {"enum": ["DECISION","TODO","STATUS","RESULT"]}, "line": {"type": "integer"}, "text": {"type": "string"}}}},
+    "mentions": {"type": "array", "items": {"type": "object", "required": ["kind","id"],
+                 "properties": {"kind": {"enum": ["agent","role","human","tool","task","room","message"]}, "id": {"type": "string"}, "span": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2}}}},
+    "refs": {"type": "object", "properties": {"task_id": {}, "run_id": {}, "node_id": {}, "approval_id": {}, "checkpoint_id": {}, "handoff_id": {}, "commit": {}, "export_id": {}}},
+    "attachments": {"type": "array", "items": {"type": "object", "required": ["name","mime","bytes","sha256"]}},
+    "trust": {"enum": ["trusted","untrusted"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "payload": {}
+  },
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "APPROVAL_REQUEST"}}},
+     "then": {"properties": {"author": {"properties": {"kind": {"const": "system"}}},
+                             "payload": {"required": ["approval_id","kind","action_hash","expires_at"]}}}},
+    {"if": {"properties": {"type": {"const": "APPROVAL"}}},
+     "then": {"properties": {"author": {"properties": {"kind": {"const": "system"}}},
+                             "payload": {"required": ["approval_id","decision","decided_by","action_hash"]}}}},
+    {"if": {"properties": {"type": {"const": "DECISION"}}},
+     "then": {"properties": {"payload": {"required": ["title","decision","status"]}}}}
+  ]
+}
+```
+
+(Per-type payload schemas follow the table above; ULID format for ids is a **design** choice.) Body limit 32 KiB and attachment storage on disk (hash recorded, content never inlined in prompts) are **design** defaults.
+
+## 3. Mentions, threads, markers
+
+**Mentions.** Syntax `@handle` (agent instance or human), `@role:Reviewer` (resolved to the room's member with that role), `@Tests` (tool member), `#task-<id>`, `#room-name`, `^msg_<id>` (message reference). Resolution happens server-side at insert and the resolved targets are stored in `mentions_json`; an unresolved mention produces a `SYSTEM` hint and no wake. A mention is a delivery rule, not an instruction channel: it makes the target eligible for a turn according to the room mode (s6); it never grants a permission. Mentioning an agent who is not a member produces a prompt to add the agent, which is a human action (s10). Agent-to-agent mentions are allowed only where the room mode allows agent turns and count toward the debate round counter (s6).
+
+**Threads.** `thread_root_id` points at the first message of a thread; replies set both `thread_root_id` and `reply_to_id`. Threads are one level deep (design). Task rooms use the root `TASK` message as the thread anchor for the task's work. The right-hand thread panel shows one thread. An agent working a thread receives that thread, not the channel (s11).
+
+**Markers.** A line in a `CHAT`/`STATUS`/`RESULT` body that starts with `[DECISION]`, `[TODO]`, `[STATUS]` or `[RESULT]` is parsed by a deterministic parser (no LLM) into `markers_json`. Effects are proposals, never silent state changes: `[DECISION]` creates a `proposed` decision candidate linked to the message; `[TODO]` creates a task-checklist entry on the room's task (or a backlog proposal in a channel) that a human or a stored rule must confirm to become a `TASK`; `[STATUS]` and `[RESULT]` are display hints that fill the corresponding card fields. Markers inside quoted or untrusted blocks are ignored.
+
+## 4. Presence
+
+Brief §11 presence states: Working, Thinking, Idle, Waiting, Completed, Needs Attention, Failed, Paused. Presence is derived from agent state (brief §12) and run telemetry, never stored as chat.
+
+| Presence | Derivation |
+|---|---|
+| Working | agent `WORKING` with a tool call in flight or output streaming |
+| Thinking | agent `WORKING`, last event is an agent thought chunk (ACP `agent_thought_chunk`) or a model request with no output yet |
+| Idle | agent `IDLE`; also `STARTING` (sub-label "starting") |
+| Waiting | agent `WAITING`: awaiting a turn grant, a human response, an approval, or a lease |
+| Completed | agent `COMPLETED` (task finished, awaiting nothing) |
+| Needs Attention | agent `NEEDS_ATTENTION` (watchdog stage 2, repeated errors, adapter drift on its provider) |
+| Failed | agent `FAILED` |
+| Paused | agent `PAUSED`; also budget-paused scope |
+
+Gap: the brief's agent states include `STOPPED` and `STARTING`, which have no presence state of their own. **Design**: `STARTING` shows as Idle with a label; `STOPPED` shows as Paused with the label "stopped". Humans have presence `online/away` only (design). Tool members have no presence, only a last-result badge. Presence changes are coalesced (at most one `room.presence_changed` per member per second, design) so a busy agent does not flood the bus.
+
+## 5. Posting rights and the approval path
+
+Agents post through the Workspace MCP server's `room` tool (brief §14) or, for turn results, through the Agent Runtime converting the finished turn into a message. The `room` tool enforces: agent may post only `CHAT, STATUS, RESULT, QUESTION, HANDOFF, ERROR`, and may post `DECISION`/`TASK` only as `proposed`; rate cap per turn (default 3 messages, **design**) and body size cap; secret scan before insert (security.md s8; findings redact or block); untrusted marking. `APPROVAL_REQUEST` is created by the approvals service when a workflow request port or an agent permission request needs a human (brief §4); the UI renders the **canonical action** from the descriptor (security.md s5), the human clicks, the UI service layer calls `Decide`, and the approvals service writes the `APPROVAL` message. No agent, tool, MCP server, GitHub or integration text can reach this path.
+
+## 6. Turn-taking and room modes
+
+Agents act only when granted a turn (token-control rules 1 to 3). Modes are per room (`rooms.mode`):
+
+| Mode | Who speaks next | Cost behavior |
+|---|---|---|
+| `auto` | Deterministic rules choose eligible members: explicit mentions first, then the assignee of the thread/task, then a role match; at most one agent turn per trigger unless the rule set allows parallel independent turns; no LLM chooses the speaker (token-control rule 15) | Default for task rooms |
+| `sequential` | Members take turns in a fixed order, one round at a time; each member speaks once per round and may pass | Bounded debate |
+| `moderator` | A moderator (a human, or a designated agent role such as PM or Architect) names the next speaker; if the moderator is an agent its decisions are ordinary agent turns and are billed | For structured design discussions |
+
+```go
+type TurnScheduler interface {
+    OnMessage(ctx context.Context, m Message) ([]TurnGrant, error) // may return none
+    Complete(ctx context.Context, g TurnGrant, res TurnResult) error
+}
+type TurnGrant struct{ ID, RoomID, ThreadID string; Member MemberRef; Round int; MaxRounds int; ContextPlan ContextPlan; Expires time.Time }
+```
+
+Rules: (1) The Agent Runtime refuses to start a turn without a `TurnGrant`. (2) Debate is bounded: per thread or topic a round counter increments each time a different agent responds to another agent; the default bound is 3 (brief §7 "about 3 rounds"); at the bound the scheduler posts a `SYSTEM` message and either creates a `DECISION` candidate from the converged position or raises a human `QUESTION`; further agent turns on that topic need a human message. (3) A human message always preempts: it resets the round counter and is eligible for immediate grants. (4) Grants carry a `ContextPlan` (s11) so the Context Engine knows what to include. (5) Team size and who may speak are also limited by the router's `TeamSize` (model-routing s1). (6) Hosts never exceed `max_concurrent_agents` (brief §6), so grants queue; a queued agent shows presence Waiting. (7) Group-collaboration workflow nodes (brief §4) use the same scheduler in `sequential` mode with the node's bound; the node ends when the bound is reached or the group returns `SHIP`/a decision.
+
+Task rooms in the Iterate Until Verified template (brief §22) are not a conversation among agents: the engine drives worker and reviewer turns, and the room shows the resulting `RESULT`/`STATUS` messages, so chat-style mentions do not create extra turns there.
+
+## 7. Tool members
+
+`Tests`, `Lint`, `Types`, `Secrets`, `CI`, `Preview` (brief §11) post check results at zero model cost. They are members with `author.kind="tool"`, produced by deterministic `check` nodes and external check sources, never by an LLM.
+
+| Tool member | Check kind (brief §13a) | Source | Notes |
+|---|---|---|---|
+| Tests | `test` (and `e2e` results when present) | project test command (human-configured) / Playwright with screenshots | Failure summary uses the normalized failure signature (token-control s5) |
+| Lint | `lint` | project command | |
+| Types | `typecheck` (and `build`) | project command | |
+| Secrets | `secrets` | gitleaks over the worktree (brief §13a) | Reports rule ids and locations, never secret values |
+| CI | `ci` | GitHub checks via `gh` (Slice 1E); failing logs are fed back to the worker as untrusted data | |
+| Preview | `preview` | preview deployment with the preview-only credential/account (D6) | Posts the URL; production deployment is never a check |
+
+Gap: `build`, `deps` (osv-scanner) and `e2e` are check kinds in the brief with no named tool member. **Design**: `build` is reported by Types, `e2e` by Tests, and `deps` by a seventh member `Deps` (osv-scanner discloses that package metadata goes to osv.dev unless offline, TI s2). Check payload: `{check_kind, status: pass|fail|error|skipped, duration_ms, command_digest, failure_signature?, summary (bounded), log_ref, diff_hash}`. A human can run a tool member from the composer (`/run tests`) which only enqueues the deterministic check; mentioning a tool member in prose does not execute anything.
+
+## 8. Exports
+
+Exports are immutable rows in `exports` (brief §11); regenerating creates a new row.
+
+- **Minutes (Markdown).** Deterministic template from a message range (default: the room or task from creation to now): participants, decisions (with their message ids), TODOs and their status, results and check outcomes, open questions, approvals and their outcomes, links to run/checkpoint ids. No LLM by default. An optional summary section can be produced through `LLMClient` on a `private` provider; it is labeled generated and cached.
+- **ADR candidates.** Every `DECISION` message, plus accepted `[DECISION]` markers, yields a candidate: `{title, status, context, decision, consequences, alternatives, source_message_ids}`. A human accepts, edits or rejects. Acceptance creates a document proposal, and writing it into the repository (for example `docs/adr/NNNN-title.md`) is a normal task in a worktree with human review; the room never commits on its own. Candidate format is **design** (a MADR-like layout).
+- **PR description draft.** Assembled from the task, its `RESULT` messages, check results, diff stat and accepted decisions. It passes the secret scan, and the text sent to GitHub through `gh` is an outbound write that needs approval by default (brief §11, security.md s5). GitHub review-comment text returning into the room is untrusted.
+
+Each export stores `sha256` of its content and the covered `seq` range so it can be verified against the immutable messages.
+
+## 9. Unread and the "Needs you" inbox
+
+**Unread.** Per user and room: `room_reads.last_read_seq`; unread count = messages with `seq > last_read_seq` that the user may see; a separate mention cursor drives the badge. The cursor advances when the user views a room position (client report, batched), and updates are idempotent. Muted rooms count unread but do not notify.
+
+**Needs you.** A derived list, not a table of messages: a query over source-of-truth tables, so it cannot drift from reality and items vanish when the underlying state changes.
+
+| Item | Source | Resolves when |
+|---|---|---|
+| Approval waiting | `approvals` in `REQUESTED` | decided, expired, cancelled |
+| Blocking question to a human | `QUESTION` with `blocking` and `request_id` | answered |
+| Review requested (spec gate, diff review, `SHIP` review) | pending request of kind `review` | human response |
+| Task `WAITING_HUMAN` | `tasks.state` | state changes |
+| Agent `NEEDS_ATTENTION` or `FAILED` | `agents.state` | state changes |
+| Budget paused | `budget.paused` scope state | resumed or limit raised |
+| Provider consent or Connection problem (`unauthenticated`, `degraded`, drift) | Connections status | fixed |
+| Mentions of me not yet read | `messages` with mention cursor | read |
+
+Ordering: severity (approvals and failures first), then age. The inbox is per user; in v1 there is one local user. Desktop notifications use the Wails notifications service (listed among built-in services, GP s1); behavior on Windows is unverified.
+
+## 10. How agents join channels
+
+Agents never join on their own. Membership rows are written by (a) a human action (add to channel, group or DM), (b) task creation, which adds the assignee, the reviewer and the tool members to the task room, or (c) a stored rule a human created (for example "Security agent joins every `task` room touching `auth/`"). An agent can ask to join through a `QUESTION` ("request to join #architecture") that becomes a `Needs you` item; granting it is a human action. Member states: `active` (eligible for turns), `observer` (read access, no turns unless mentioned), `muted`. Removing an agent revokes the Workspace `room` tool scope for that room immediately. The Workspace MCP `room` tool checks membership on every call (read and write); a non-member agent cannot read a room even if it knows the id.
+
+## 11. What agents receive (never the whole workspace)
+
+A turn's room context is selected by the Context Engine from the `TurnGrant.ContextPlan`; the sources, in priority order, and their bounds:
+
+1. The triggering message and its thread (last K messages of the thread, default K=12, **design**; older thread parts come as a `room_digest`).
+2. The task statement and acceptance criteria, `DECISION` messages accepted for this task, and any `HANDOFF` addressed to this agent.
+3. Messages that mention the agent or its role since its last turn (bounded by count and tokens).
+4. A rolling digest of older history in this room (brief §9), produced incrementally by a cheap `private` model through `LLMClient` or by deterministic extraction of markers and decisions when no model is available.
+5. Retrieval on demand through the Workspace `room` tool: `read_thread(thread_id, range)`, `read_messages(from_seq, to_seq)`, `search_room(query)` over FTS5, `list_decisions()`; calls are bounded, secret-scanned, and logged by the Gateway (brief §14).
+
+Excluded by construction: other rooms the agent is not a member of; the channel's full history; other agents' raw transcripts and private DMs; workspace-wide memory beyond `search_memory` hits; anything older than the digest unless fetched. Agent-authored messages from others arrive wrapped as untrusted data with attribution; human messages are the only instructions besides the role and project instructions. The manifest lists every included message by id with the reason (token-control s2), so a human can see exactly what an agent was given.
+
+## 12. Event mapping
+
+Events are persisted with the global monotonic `seq` and fanned out; the UI reconnects with `Replay(afterSeq)` (brief §10). Room events carry ids, counts and headers; bodies are fetched from `messages` by id so private content is not duplicated into the event log, and OpenTelemetry export never includes message bodies (brief §10).
+
+| Event | Emitted when | Payload (ids only) | UI effect |
+|---|---|---|---|
+| `room.created`, `room.archived` | room lifecycle | room id, kind | sidebar |
+| `room.member_added`, `room.member_removed`, `room.member_state_changed` | s10 | room id, member | member list |
+| `room.mode_changed` | mode edit by human | room id, old, new | mode chip, `SYSTEM` message |
+| `room.message_posted` | any message insert | room id, message id, `seq`, type, author | timeline, unread, inbox |
+| `room.presence_changed` | s4 (coalesced) | member, presence | presence dots |
+| `room.turn_granted`, `room.turn_completed` | scheduler | grant id, member, round | Waiting/Working, round counter |
+| `room.debate_bounded` | round bound reached | thread id, rounds | `SYSTEM` message and `DECISION`/`QUESTION` |
+| `room.marker_promoted` | marker created a candidate | message id, kind | candidate list |
+| `room.digest_created` | rolling digest | room id, seq range | none (internal) |
+| `room.export_created` | export row written | export id, kind | export list |
+| `room.read_cursor_updated` | cursor update | user, room, seq | unread badge |
+
+Cross-family mappings: `approval.requested` writes `APPROVAL_REQUEST`; `approval.decided` writes `APPROVAL`; `approval.mismatch` writes `ERROR`; `task.*` state changes write `STATUS`/`SYSTEM` into the task room; `routing.escalated` and `routing.fallback` write `SYSTEM` (the reason string from model-routing `Explain`); `watchdog.trip` writes `SYSTEM` for stage 1 and `ERROR` with a Needs-you item for stage 2; `budget.warn`/`budget.paused` write `SYSTEM`; `agent.*` transitions drive presence only (no message); check completion writes the tool member `RESULT`; `git.*` and `github.*` events write `STATUS`; `workflow.*` transitions write `STATUS` into the task room at superstep boundaries only (not per node chunk).
+
+## 13. Concurrency and consistency
+
+Rooms carry `version` for compare-and-swap updates (mode, name, membership batches); messages are append-only. Duplicate delivery is harmless: message inserts accept an optional client-supplied `idempotency_key` (receipts idempotent by `(scope, receipt_id)`, brief §18), which also protects agent posts that are retried after a crash. On restart the UI catches up from the event log, and presence is recomputed from agent state rather than replayed (brief §24, Slice 1A).
+
+## 14. Tests
+
+Unit: marker parser golden corpus (including quoted and untrusted blocks); mention resolution; schema validation, with `APPROVAL`/`APPROVAL_REQUEST` insert rejection for non-system authors; scheduler mode tables and round bounds (a labeled participant stub only for the always-disagree failure boundary); presence derivation table; unread cursor idempotency; `needs_you` query resolves when state changes; export immutability and hash verification; membership revocation blocks the `room` tool. Integration (real CLI where available, otherwise skipped with a reason, P3): an agent receives only its thread context (manifest assertion); streaming output does not create messages; app restart catches up from `Replay`; a room with three real agents under `sequential` mode stops at 3 rounds.
+
+## Open questions / unverified
+
+- Message ids as ULIDs, 32 KiB body cap, 3 posts per turn, thread depth of one, K=12 thread window, presence coalescing at 1 second, and the minutes/ADR/PR templates are **design** values with no evidence behind them; they need owner review and tuning.
+- Presence gap: brief §11 has no state for agent `STARTING` or `STOPPED`; proposed mapping above needs a decision.
+- Tool-member gap: `build`, `deps` and `e2e` have no member in the brief; proposed mapping above (adds `Deps`) needs a decision.
+- Wails event throughput under streaming load and Windows notification behavior are unverified (phase0 s7 item 3).
+- Whether every supported CLI can use the Workspace `room` tool through its MCP configuration in practice is unverified: MCP support is documented per CLI (AC s1 to s5) but no live run exists; the fallback is the Runtime posting the finished turn.
+- Rolling digests use a model call; the quality of cheap-model digests is unmeasured, and the deterministic fallback loses prose context.
+- Multi-user rooms (several humans) are not designed: v1 assumes one local user; read cursors and inbox are keyed by user for future use.
+- Interaction with Iterate Until Verified (engine-driven turns instead of chat turns) should be confirmed against `workflow-engine.md` once written.

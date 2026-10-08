@@ -1,0 +1,280 @@
+# Drydock: security design
+
+Scope: this document is the security design for Drydock v1 (Windows-only desktop app that orchestrates real AI coding agent CLIs). It covers the threat model, the explicit statement that a Git worktree is not a sandbox, approval kinds and the action-hash binding, path and symlink guards, command analysis (including an honest Windows PowerShell/cmd strategy, because `mvdan/sh` parses POSIX only), secret scanning with gitleaks, `data_class` enforcement points, untrusted-content rules, provider-terms consent gates (D1 Claude, D2 Antigravity/Gemini), the Windows hardening roadmap, the audit log, and the Cloudflare preview/production agent-side allowlist (D6). Section numbers cited as "brief §N" refer to `docs/brief.md`; D1-D14 and P1-P6 refer to `docs/decisions.md`; evidence is cited to `docs/phase0.md` and `docs/phase0/*.md`. Nothing here is implemented yet; every Windows behavior is unproven (P2). Statements not backed by the brief, decisions or appendices are marked **design assumption** or **unverified**.
+
+## 1. Principles
+
+1. All AI-generated actions and all retrieved content are untrusted (brief §16). Retrieved content is data, never instructions, and can never change permissions or answer approvals.
+2. Be honest about enforcement strength. Drydock hard-enforces only what Drydock itself executes or mediates. Everything an agent CLI does inside its own process is **cooperative** (we ask, the CLI may comply) unless an OS-level control (section 14) is in place. The UI must never imply a sandbox that does not exist.
+3. Fail closed: unparseable command, unresolvable path, unknown provider policy, missing consent, scanner error: deny or ask, never allow.
+4. No cloud component and no automatic upload of source (brief §0). Telemetry export is optional, off by default and never carries prompts, code, tool output or secrets (brief §10, D12).
+5. Humans answer approvals. No message from an agent, tool, MCP server, GitHub, or integration can produce an `APPROVAL`.
+
+## 2. Threat model
+
+Assets: user source code and uncommitted work; credentials (CLI logins, API keys, Credential Manager entries, `gh` token); Drydock's SQLite database and raw run output; the user's machine and other repositories; production infrastructure (Cloudflare, GitHub); the user's standing with vendors (account suspension, D1/D2).
+
+Actors: (a) the user (trusted); (b) agent CLIs (semi-trusted code running with the user's OS permissions, steered by untrusted model output); (c) model providers (see `data_class`); (d) content authors reachable through repo files, docs, MCP servers, GitHub issues/PR comments, Linear/Notion/Sentry/Aikido items, web docs (untrusted); (e) other agents in the room (untrusted for instruction purposes); (f) supply chain (npm ACP bridges, MCP servers, skills, dependencies).
+
+| # | Threat | Primary controls | Residual risk |
+|---|---|---|---|
+| T1 | Prompt injection in repo/docs/issue text makes an agent run a destructive or exfiltrating command | Untrusted-content rules (s10); command analysis + approvals (s5, s7); per-role MCP allowlist; secrets never in agent env (s8) | CLI-internal tools are cooperative; an injected agent with a shell can do anything the user can (s3) |
+| T2 | Agent writes/deletes outside its worktree | Path guard on every Drydock-mediated FS operation (s6); permission requests analyzed; Job Object + env scrub; roadmap OS isolation | Agent-native file tools and spawned programs are not intercepted in v1 |
+| T3 | Agent plants a hook/config that Drydock later executes (`.git/hooks`, git config, `.gitattributes` filters) | Drydock runs git with hooks and risky config neutralized; common-git-dir writes watched (s3) | Design assumption: general Git behavior, to be proven in tests |
+| T4 | Secret in a prompt, log, event, room message, memory or MCP result | gitleaks on outbound/inbound text (s8); exact-value redactor for known keys; secrets only in Credential Manager or encrypted SQLite | Detection is heuristic; the CLI's own reads of the worktree are not visible to us |
+| T5 | Private code sent to a provider that may train on it | `data_class` enforced in router, Context Engine, LLMClient, provider-config writer, MCP gateway (s9); OpenRouter `provider:{data_collection:"deny", zdr:true}` (D4) | Agent-CLI-originated OpenRouter requests may not carry the filter (open question Q1); subscription-CLI retention terms are not verified |
+| T6 | Approval confusion: human approves X, agent executes Y | Action-hash binding, single use, lineage-bound, UI shows canonical action not agent prose (s5) | Agent-native execution after `allow_once` cannot be forced to equal the hashed action (post-hoc mismatch detection only) |
+| T7 | Production deploy or production data change by an agent | D6 allowlist, no production token in agent processes, separate account for previews (s13) | Cooperative unless credentials are truly absent; Wrangler's cached login location unverified (Q6) |
+| T8 | Poisoned dependency/skill/MCP server/bridge | Pinned versions and commits (D9, brief §9); skills scanned for secrets and injection; MCP servers started under our process manager (D7); no bundling of FSL/AGPL servers (D14) | npm bridge packages execute with user rights |
+| T9 | Agent reads or alters Drydock's own state (SQLite DB, Credential Manager entries, other agents' worktrees, `~/.claude/.credentials.json`) | Env scrub, DB outside any worktree, audit hash chain (tamper-evident, not tamper-proof), never read CLI credential files ourselves (D1) | Same-user processes can read these files and Credential Manager entries; only the roadmap (s14) changes this |
+| T10 | Vendor terms violation leading to account suspension | Consent gates, unmodified official binaries only, no credential handling (s11) | Terms may change; Google's position unconfirmed (D2) |
+| T11 | Lethal-trifecta runs: private data + untrusted content + egress | Role-scoped MCP allowlists; tool restriction flags where the CLI has them (Claude `--tools/--allowedTools/--disallowedTools`, agent-clis §1); outbound writes approval-gated (brief §11) | CLIs with built-in web tools that cannot be disabled |
+| T12 | Resource abuse (fork bombs, runaway processes) | Job Object kill-on-close (D7) now; active-process and memory limits on the roadmap (s14) | v1 has no CPU/memory limits |
+
+## 3. A worktree is not a sandbox
+
+Statement (shown in onboarding, in the Agent Inspector and in the approval dialog footer): **A Git worktree isolates branches and files for review. It does not restrict what an agent process can read, write, execute or send over the network. Agents run with your Windows user's permissions.**
+
+Concretely, in v1 an agent process can, if it decides or is tricked to: read and write any file the user can (other repositories, `%USERPROFILE%\.ssh`, `%USERPROFILE%\.claude\.credentials.json`, Codex `auth.json`, Gemini `oauth_creds.json`, OpenCode `auth.json`; locations from agent-clis §13); read and write Drydock's own database and raw run output; read Credential Manager entries of the same user; spawn any program; make arbitrary network requests; modify other worktrees of the same repository.
+
+Git-specific consequences (**design assumption**, general Git behavior, must be proven by a Windows integration test): linked worktrees share the main repository's `.git` directory, so hooks (`.git/hooks`), `.git/config` (including `core.hooksPath`, `core.fsmonitor`, `core.sshCommand`, filter/diff drivers) and refs are writable from any worktree. Drydock therefore: (1) runs every `git` invocation it makes with `-c core.hooksPath=<empty dir> -c core.fsmonitor=false` and with filter/external-diff drivers disabled, so a planted hook or driver does not execute in the Drydock process context; (2) snapshots hash of `.git/config` and `.git/hooks/*` at task start and flags changes as `security.repo_config_changed` (approval required to proceed); (3) never runs user-repo hooks as part of safe-point commits (brief §13); (4) treats `.gitattributes`, `.gitmodules`, `.vscode/*`, `.husky/*`, npm lifecycle scripts, Playwright and Wrangler configs as code-execution surfaces: they only run inside `check` nodes whose commands a human configured (never inside commands an agent composed without analysis).
+
+Instruction-file poisoning: Drydock owns `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.goosehints` in each worktree (brief §9). An agent can edit them. Human edits are offered back as memory updates (brief §9), but diffs to these files authored by an agent run are never auto-merged into project memory or standing instructions; they appear as a proposed memory change that only a human can accept. Generated files are regenerated from memory on the next run, which bounds persistence.
+
+## 4. Enforcement tiers
+
+| Surface | Control | Strength in v1 |
+|---|---|---|
+| Git operations, worktree lifecycle, file deletion initiated by Drydock, merge, push, `gh` calls | Drydock executes; approval consume + path guard | Hard |
+| Agent file access via ACP `fs/read_text_file`, `fs/write_text_file` (our `acp.Client`) | Path guard in the client implementation (the SDK example client only checks "absolute path", go-platform §5) | Hard, only if the agent uses ACP fs methods |
+| ACP `session/request_permission`; Claude `--permission-prompt-tool`; OpenCode/Antigravity ACP or deny modes (D11) | Analyzer + approval, answer chosen by human | Cooperative: gates only what the CLI chooses to ask about |
+| Agent shell/exec tools | CLI permission mode set conservatively; analyzer on requests; PATH shims for sensitive tools (s13) | Cooperative |
+| MCP calls via the per-run Gateway | Per-role allowlist, shaping, secret scan, untrusted marking, audit | Hard for tools reached through the Gateway; the CLI may also have its own MCP config, so adapters use strict configs (`--strict-mcp-config` for Claude, agent-clis §1) |
+| Provider routing | Router + Context Engine + LLMClient + config writer | Hard for Drydock-originated calls |
+| Process lifetime | Job Object KILL_ON_JOB_CLOSE (D7) | Hard (unproven on Windows, P2) |
+| Credential exposure | Env builder allowlist; no tokens in env except the provider key an agent needs | Hard for env; files under the user profile remain readable |
+
+Adapters set the most restrictive permission mode that still lets the task proceed and surface denials to the human rather than silently widening. Known: OpenCode headless `run` auto-rejects unanswered permissions unless `--auto`, and Antigravity `-p` soft-denies (D11); Drydock never passes `--auto`, `--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`, or `bypassPermissions` unless the user explicitly selects that mode for an agent, which requires an `approval` of kind `permission_mode_escalation` and a persistent red badge.
+
+## 5. Approvals
+
+States (brief §12): `REQUESTED -> APPROVED | REJECTED | EXPIRED | CANCELLED`, `APPROVED -> CONSUMED`. Requests are workflow request ports (brief §4); the run waits in `WAITING_HUMAN`.
+
+| Kind | Trigger (examples) | Default policy | Notes |
+|---|---|---|---|
+| `fs_delete` | Delete files, delete a worktree (dirty worktrees never deleted without it, brief §13) | Ask | Hash includes resolved targets with file identity |
+| `fs_outside_worktree` | Read/write outside the worktree boundary | Deny, ask to grant once | Path guard result (s6) |
+| `git_force_push`, `git_branch_delete` | `push --force`/`+refspec`, `branch -D`, remote branch delete | Ask, never remembered | Hash includes remote ref, old and new object ids |
+| `git_push` | Push of a task branch | Ask once per branch/target (**design assumption**) | `pr_flow`, brief §13b |
+| `deploy` | Any deploy command | Agent processes: **hard deny** for production (D6); human-initiated deploy flows only outside agent processes | Reconciles brief §16 ("approval for deploying") with D6 and brief §13a ("production deployment is never a check") |
+| `db_migration` | Remote/production migrations (`d1 migrations apply --remote`-style) | Ask; local-state migrations in the worktree do not need it | Wrangler local state is per worktree (tooling §1e) |
+| `secrets_access` | Creating/reading secrets, `wrangler secret ...`, reading credential files | Ask | Reading CLI credential files is always denied for agents we mediate |
+| `infra_change` | Cloud/IaC changes | Ask | |
+| `shell_destructive` | Analyzer class `destructive` | Ask | s7 |
+| `shell_unanalyzable` | Analyzer confidence `opaque` | Ask, never auto-allowed by stored rules | s7 |
+| `mcp_write_tool` / `integration_write` | State-changing MCP tool; outbound write to Linear/Notion/Sentry/Aikido/GitHub | Ask by default (brief §11) | Content derived from untrusted input is flagged in the dialog |
+| `permission_mode_escalation` | Switching an agent to bypass/yolo style modes | Ask, persistent badge | |
+| `repo_config_changed` | Hook/config drift (s3) | Ask | |
+
+Merge is a human action (brief §13), not an approval an agent can request. `review` and `question` requests are different request types and carry no execution authority.
+
+**Action hash.** An approval is bound to a canonical description of the exact action, not to prose.
+
+```go
+type ActionDescriptor struct {
+    V        int      // descriptor schema version
+    Kind     string   // approval kind
+    Project  string
+    RunID, NodeID string; Step, Attempt int // same tuple as the idempotency key (brief §4)
+    AgentID, WorktreeID string
+    Cwd      string   // canonical resolved path
+    Tool     string   // e.g. "shell", "git", "fs.delete", "mcp:<server>/<tool>"
+    Shell    string   // bash|powershell|cmd|none
+    Command  string   // exact text as executed; plus normalized argv when parsed
+    ArgvDigest string // digest of CommandReport invocations (s7)
+    Targets  []Target // resolved paths with volume serial + file index, or {remote, ref, oldOID, newOID}
+    EnvKeys  []string // names only, never values
+}
+// ActionHash = hex(SHA-256(canonicalJSON(descriptor))); canonicalJSON = sorted keys, UTF-8, no insignificant whitespace (own implementation).
+type Approvals interface {
+    Request(ctx, a ActionDescriptor, ttl time.Duration) (ApprovalID, error)
+    Decide(ctx, id ApprovalID, d Decision, by HumanPrincipal) error // by must be a human principal from the UI service layer
+    Consume(ctx, id ApprovalID, actual ActionDescriptor) error      // recompute hash from the real operation; constant-time compare; CAS APPROVED->CONSUMED in the same tx as the receipt
+}
+```
+
+Rules: (1) The executor of the action recomputes the descriptor from what it is about to do and calls `Consume`; mismatch returns `ErrHashMismatch` and emits `approval.mismatch`. (2) Single use: `CONSUMED` is terminal; receipts are idempotent by `(scope, receipt_id)` (brief §18), so a crash between consume and effect cannot double-execute (the node idempotency key `(run_id, node_id, step, attempt)` is part of the descriptor). (3) Lineage: because the descriptor contains run, node, step and attempt, an approval granted on one checkpoint lineage cannot be consumed by a time-travel branch (brief §4); branching cancels outstanding approvals (`CANCELLED`). (4) Expiry: default 30 minutes (**design assumption**), configurable; `EXPIRED` is automatic. (5) The dialog renders the canonical action (resolved paths, exact command, refs and object ids), never the agent's description. (6) Stored allow rules ("always allow") match on the normalized form (program + argv pattern + path scope), never on raw strings, and are not offered for `git_force_push`, `deploy`, `secrets_access`, `shell_unanalyzable`. (7) Only the UI service layer can call `Decide`; the room accepts `APPROVAL` messages only from that layer (room-protocol s5); the Gateway and adapters have no code path to it.
+
+**Binding to agent-native permission requests.** ACP `RequestPermission` returns an option choice and carries the tool call kind and `rawInput`, so hashing and binding is feasible (phase0 item 13, Partial). Flow: request arrives, analyzer runs, descriptor built from `toolCall`, approval created, human decides, we answer with the `allow_once`/`reject_once` option kinds only (the demo agent offers these, go-platform §5; real agents unverified). After `allow_once` the CLI executes by itself, so the matching `tool_call_update` is compared with the descriptor; a mismatch emits `approval.mismatch` and pauses the run. Whether agent permission modes skip the request entirely and the exact Claude `--permission-prompt-tool` input/response shape are **unverified** (need logged-in runs, phase0 s7 item 8).
+
+## 6. Path and symlink guards
+
+Package `internal/security/pathguard`. Every Drydock-mediated file operation and every path extracted by the analyzer goes through one function.
+
+```go
+type Guard interface {
+    Resolve(root WorktreeRoot, requested string, op Op) (Resolved, error)
+}
+type Resolved struct{ Canonical string; FileID FileID; InsideRoot bool; ViaReparse bool; Class PathClass }
+```
+
+Algorithm (design assumption; to be proven on Windows with a fixture suite, P1/P2): (1) reject NUL, reject empty; (2) reject device namespaces and non-drive prefixes unless explicitly allowed: `\\.\`, `\\?\GLOBALROOT`, UNC paths (`\\host\share`) are denied by default (Claude docs note UNC symlink targets for instructions are not followed, agent-clis §13); (3) reject reserved device names (CON, NUL, COM1..) and trailing dot/space segments; (4) reject alternate data streams (`name:stream`) for writes; (5) join relative paths onto the worktree root, never onto the process cwd; reject drive-relative `C:foo`; (6) lexically clean `..`; (7) open the deepest existing ancestor and resolve the **final path from the open handle** (`GetFinalPathNameByHandle`), not `EvalSymlinks` on a string, so junctions, symlinks and mount points are followed exactly as the OS would; compare with the root's final path case-insensitively using Windows volume-serial + file-index identity for the root; (8) if any component is a reparse point whose target leaves the root: `ViaReparse=true, InsideRoot=false` and the operation is denied or escalated to `fs_outside_worktree`; (9) 8.3 short names are expanded by step 7; (10) for create/write, validate the parent, open with `FILE_FLAG_OPEN_REPARSE_POINT` semantics and re-verify after open to narrow TOCTOU (the residual race against a hostile concurrent process is acknowledged: this is why the guard is not a sandbox).
+
+Protected paths regardless of root: `.git` internals for writes by agents (hooks, config), `<app data>` (DB, runs), generated instruction files for non-owner writes (agent edits allowed but flagged, s3), credential files of known CLIs (never readable through mediated tools). Worktree deletion: refuse if dirty, refuse if the target resolves outside `<app data>/worktrees`, refuse if any reparse point inside leads outside (do not recurse through junctions; remove the link itself). Long paths and non-ASCII are in the fixture suite.
+
+## 7. Command analysis
+
+`mvdan.cc/sh/v3` v3.14.1 is a POSIX shell parser (it parsed `rm -rf` and `git push --force` pipelines correctly on Linux; go-platform §10) and does **not** parse cmd or PowerShell (phase0 s3.12). On Windows, Claude Code uses Git Bash when Git for Windows is installed and a PowerShell tool otherwise (agent-clis §1); Goose's developer extension depends on Git Bash (agent-clis §13). So three flavors occur and the analyzer must be explicit about what it can and cannot know.
+
+```go
+type Confidence int // ParsedExact > LexedConservative > Opaque
+type Analyzer interface{ Analyze(ctx context.Context, in CommandInput) (CommandReport, error) }
+type CommandInput struct{ Raw string; Shell ShellKind /*bash|powershell|cmd|unknown*/; Cwd string; Root WorktreeRoot }
+type CommandReport struct {
+    Confidence Confidence
+    Invocations []Invocation // program (normalized), argv, redirects, pipeline/conditional edges, nested scripts
+    Classes []Class          // readonly, workspace_write, destructive, network, exec_code, deploy, secrets, db_migration, git_history_rewrite, unknown
+    Paths []Resolved         // from the path guard
+    Reasons []string
+    Digest string            // goes into ActionDescriptor.ArgvDigest
+}
+```
+
+Pipeline: (1) shell flavor from the adapter (tool name such as Bash vs PowerShell; ACP `execute` kind plus adapter hint); unknown flavor: try POSIX, and if it does not parse cleanly, `Opaque`. (2) Cap input (16 KiB, **design assumption**); longer is `Opaque`. (3) Flavor-specific parse. (4) Normalize the program: strip directory and `.exe/.cmd/.bat/.ps1`, case-fold, apply the alias table (PowerShell `rm, ri, del, erase, rd, rmdir -> Remove-Item`; `iex -> Invoke-Expression`; `iwr, curl, wget -> Invoke-WebRequest` when invoked in PowerShell; `saps -> Start-Process`). (5) Unwrap known wrappers up to depth 3 (`env`, `command`, `nohup`, `time`, `xargs`, `cmd /c`, `powershell/pwsh -Command`, `bash -c`, `wsl -e`, `npx`, `npm run`); beyond that or for unknown wrappers: `Opaque`. (6) Classify against data tables in `internal/security/rules/*.yaml` (reviewable, versioned, testable): destructive (`rm -rf`, `Remove-Item -Recurse -Force`, `del /s /q`, `rd /s /q`, `git clean -fdx`, `git reset --hard`, `git push --force`/`-f`/`+ref`, `git branch -D`, `format`, `diskpart`, `reg delete`), network, deploy, secrets, migrations. These examples are illustrative, not an evidence-backed complete list. (7) Resolve every path-like argument and redirect target through the path guard. (8) Combine: severity is the max, confidence is the min.
+
+Decision table:
+
+| Confidence | Class | Action |
+|---|---|---|
+| ParsedExact | readonly; or workspace_write with all paths inside the worktree | Allow if CLI mode permits; stored allow rules may apply |
+| ParsedExact | destructive, history rewrite, deploy, secrets, migration | `shell_destructive` / specific kind approval; hard-deny set below |
+| LexedConservative | readonly or workspace_write inside root | Ask unless a stored rule matches the normalized form exactly |
+| LexedConservative or ParsedExact | any path outside root | `fs_outside_worktree` |
+| Opaque | any | `shell_unanalyzable`, never auto-allowed |
+
+Hard-deny set (not approvable from an agent process): production deploy commands (D6), `Set-ExecutionPolicy`, `-EncodedCommand`/`-enc` with non-literal payload, disabling Defender or firewall, `format`/`diskpart`, reading known CLI credential files. A human can still perform the action themselves outside the agent.
+
+**POSIX (Git Bash, WSL).** `mvdan/sh` AST walk collects `CallExpr`, redirects, `Subshell`, `CmdSubst`, `ProcSubst`, `Block`, `IfClause/ForClause/WhileClause`, `FuncDecl`. Command name that is not a literal word (variable, substitution, `eval`, `source`, `.`) is `Opaque`. Parameter expansions in arguments are resolved only when the variable is assigned a literal earlier in the same script; else the argument is marked `dynamic` and path checks treat it as outside the root. Parse error: `Opaque`.
+
+**PowerShell, phase A (v1, ships first).** There is no PowerShell parser in Go and none was evaluated in Phase 0 (**unverified**). Phase A is a conservative lexer written in Go that recognizes a small subset: single and double quoted strings (expandable strings containing `$(`, `${`, or backtick escapes mark the argument `dynamic`), here-strings, statement separators (`;`, newline, `|`, and `&&`/`||` on PowerShell 7), script blocks `{ ... }` analyzed recursively, comments, and simple `Verb-Noun -Param value` invocations. It returns `LexedConservative` only for statements wholly inside that subset; anything else returns `Opaque`: `Invoke-Expression`/`iex`, call operator `&` or dot-source `.` with a non-literal target, `$(...)`/`@(...)` in command position, `-EncodedCommand`, backtick continuation, `[Type]::Method(...)` static calls (except an allowlist such as `[IO.Path]::Combine`), `Add-Type`, `New-Object -ComObject`, `Start-Process`, `Invoke-Command`, `Start-Job`, any pipe into an unknown cmdlet, splatting, and unrecognized parameter binding. Because PowerShell allows unambiguous parameter abbreviation and aliases, the cmdlet table lists aliases and the lexer rejects abbreviated parameters on destructive cmdlets (`-Rec` -> treated as Recurse by treating any unrecognized prefix as `Opaque`).
+
+**PowerShell, phase B (after a Windows proof).** Use PowerShell's own parser out of process: `System.Management.Automation.Language.Parser.ParseInput` returns an AST and parse errors without executing the text. A single long-lived helper (`powershell.exe -NoProfile -NonInteractive`, inside the app's Job Object) receives the command over stdin and returns AST JSON that the same rule engine consumes. This promotes statements to `ParsedExact` where the AST has only literal command elements. Open items (**unverified**, to be measured on Windows): startup and per-call latency, behavior differences between Windows PowerShell 5.1 and PowerShell 7, and whether the helper can be locked down. Phase A remains the fallback when the helper is unavailable.
+
+**cmd.exe.** Lexer for `&`, `&&`, `||`, `|`, grouping parentheses, `^` escapes, quotes, redirections. `%VAR%` and `!VAR!` expansions, `for /f`, `call :label`, and any `.bat/.cmd` invocation (content can change after analysis) make the statement `Opaque`. Destructive table: `del /s`, `rd /s`, `rmdir /s`, `erase`, `format`, `diskpart`, `reg delete`, `takeown`, `icacls` changes.
+
+**Interpreters and package managers.** `node -e`, `python -c`, `npm run`, `npx`, `pnpm dlx`, `uvx`, build tools and test runners execute arbitrary code that no command analysis can see into. They classify as `exec_code`. Inside `check` nodes (human-configured commands) they are expected and allowed. As agent-composed commands they are allowed only when the CLI's own mode permits and are logged; the honest statement is that command analysis reduces accidents and obvious abuse and is not a security boundary against a hostile agent (s3).
+
+Stored policy interplay: CEL rules (google `cel-go`) may restrict which classes/kinds are auto-approved per project, but cannot lower an invariant (hard-deny, opaque never auto-allowed).
+
+## 8. Secrets
+
+Rules (brief §16): never put secrets in SQLite, logs, prompts, events or memory. Provider keys live in Windows Credential Manager via `zalando/go-keyring`; values over 2560 bytes are encrypted in SQLite with the key held in the credential store (the limit is confirmed in source and Microsoft docs, go-platform §3). Missing/locked store is a startup error shown honestly, never a plaintext fallback.
+
+Scanning uses the gitleaks library (`github.com/zricethezav/gitleaks/v8` v8.30.1; `NewDetectorDefaultConfig` loaded 222 rules and flagged a fake AWS key, go-platform §10):
+
+| Scan point | Direction | On finding |
+|---|---|---|
+| Context Engine package, before sending to any agent or provider | outbound | Redact `[REDACTED:<rule>]` for included snippets; block the source if redaction would change meaning (config files); record in manifest |
+| LLMClient request body | outbound | Block call, event `security.secret_blocked` |
+| MCP Gateway results | inbound | Redact before the agent sees it; mark untrusted |
+| Agent output, tool output, raw run files, room messages, handoffs | inbound | Redact before persistence in SQLite/room/events; raw on-disk output is scanned asynchronously and flagged |
+| Skills and Expert Pack content on import | inbound | Reject or quarantine (brief §9) |
+| Memory writes | inbound | Block |
+| `secrets` check node (gitleaks) on the repository | worktree | Result posted by the Secrets tool member; also a pre-commit hook in the Taskfile (P5) |
+
+Log and event pipeline additionally uses an exact-value redactor seeded with every secret currently in the credential store (cheap, catches keys that no rule matches), so the structured logger never needs to run regex rule sets per line. Gitleaks throughput under Defender on Windows is **unverified**; scanning is size-capped and runs off the UI path.
+
+Limits stated plainly: Drydock cannot scan what a CLI reads directly from the worktree and sends to its own provider (a premium CLI sees the files); that is why route choice (s9) and approvals, not scanning, are the control for CLI-originated traffic. The Context Engine excludes by default `.env*`, `*.pem`, `*.pfx`, `id_rsa*`, credential files and anything gitleaks flags from relevant-files selection.
+
+Agent environment: the Process Manager builds the environment from an allowlist (PATH, system roots, locale, `HOME`/`USERPROFILE`, the specific provider key variable an agent needs). It strips `GH_TOKEN/GITHUB_TOKEN`, `CLOUDFLARE_*`, `ANTHROPIC_API_KEY` (unless that agent's provider is Anthropic API), `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `GEMINI_API_KEY` unless required. OTLP export is off by default and never carries prompts, code, tool output or secrets (brief §10).
+
+## 9. `data_class` enforcement
+
+Definitions: provider `data_class` is `private` or `trainable` (D13 maps the provider report's `public` to `trainable`). Content class is `private` (repo content, diffs, room history, project memory, requirements, private-derived pack content, tool output from private sources; the default for anything not explicitly tagged) or `public_docs` (public documentation text and a CONSULT question that passed the guard below). A `trainable` provider is usable only for Expert Pack CONSULT over public documentation (brief §6).
+
+| # | Enforcement point | Mechanism |
+|---|---|---|
+| E1 | Router candidate filter | Drop `trainable` candidates when the run's context ceiling is `private`; tier `free` never for agent work. Invariant in code, not a user CEL rule (model-routing s7) |
+| E2 | Context Engine | Every manifest entry carries a sensitivity label; `Assemble(target Provider)` fails with `ErrDataClass` if any `private` entry would reach a `trainable` target; the manifest records the refusal (brief §9) |
+| E3 | LLMClient | Per-request `DataClass`; wrapper compares with the provider's class before the quota reservation and refuses (brief §8); cache key includes data class |
+| E4 | Provider-config writer (OpenCode/Goose/Codex configs) | Writes only providers whose class matches the run; Codex additionally requires validated Responses support (D3) |
+| E5 | OpenRouter request builder | Every `private` route sends `provider:{data_collection:"deny", zdr:true}` and fails closed on 404/503 "no endpoint" (D4; model-providers §A.8); never sends `X-OpenRouter-Cache` for private (response cache stores completions at OpenRouter, model-providers §A.8) |
+| E6 | CONSULT guard | Query text is built from the user's question plus pack metadata, scanned by gitleaks, and rejected if it contains winnowed shingles matching repository file content (**design assumption**, threshold to be tuned) or exceeds a length cap |
+| E7 | MCP Gateway | A run whose provider is `trainable` has no repo-reading tools at all; results from private sources are never forwarded into CONSULT |
+
+Provider presets (evidence in model-providers §A-E): OpenRouter paid with the request filter `private`; OpenRouter `:free` and `openrouter/free` `trainable`; OpenRouter paid without the filter `trainable`; Anthropic API and OpenAI API `private` (OpenAI evidence is secondary and must be re-verified against the live data-controls page); Google AI Studio from an unbilled project `trainable`, from a user-attested billing-enabled project `private` only with grounding, Interactions `store`, File API and explicit caching disabled; self-hosted vLLM/SGLang/Ollama `private` on loopback or behind verified TLS plus auth. Anthropic Covered Models require 30-day retention and are not available with ZDR; a policy demanding zero retention excludes them and the 400 retention error maps to a clear message (model-providers §D). Subscription CLI routes (Claude Code, Codex, Antigravity, Gemini CLI) have vendor-side retention and training terms that depend on account settings Drydock cannot read; the appendices do not establish them (Q2). A Gemini API key from an unbilled project is `trainable`, so a Gemini CLI/Antigravity agent on such a key cannot work on private code.
+
+Transport rule (brief §16): hosts without TLS only on loopback or private addresses; public hosts require verified HTTPS (self-signed pinned by SHA-256 fingerprint). Enforced at registration and at dial time (custom `DialContext` rechecks the resolved IP to resist DNS rebinding; **design assumption**). Tension: a bare Ollama has no inbound auth or TLS (model-providers §E, source grep), so a LAN Ollama is not safely `private`; a non-loopback plain-HTTP host requires an explicit user attestation and a warning, and defaults to concurrency 1 (Q3).
+
+## 10. Untrusted content
+
+Untrusted sources: repository files and comments (including AI-written ones), dependency code, Expert Pack and doc content (Cloudflare, Microsoft Learn, Context7), MCP tool output, GitHub issues/PR bodies/review comments/CI logs, Linear/Notion/Sentry/Aikido items, requirements documents, skills from registries, web pages, other agents' messages, and the output of any tool.
+
+Rules:
+1. Context Engine wraps each such entry in a typed provenance block (`<untrusted source="mcp:github" ref="..." fetched="...">`) placed after the stable prefix and never in a system/role/instruction position. Wrapping is a mitigation, not a guarantee.
+2. Untrusted content never: creates or answers an approval, edits permissions or tool allowlists, edits CEL rules or routing policy, edits project memory or standing instructions without a human accepting the diff, creates a task or milestone without a human action or a stored rule (brief §11), or selects a provider/model.
+3. Content derived from untrusted input that feeds an outbound write (PR comment, issue update, Notion/Linear write) goes through `integration_write`/`mcp_write_tool` approval with the origin shown.
+4. The MCP Gateway marks results untrusted, scans them for secrets, shapes/truncates them and writes a per-call audit event (brief §14). Skills are glob-scoped Markdown pinned to commits, scanned for secrets and injection, never pulled from arbitrary GitHub (brief §9).
+5. Agent-to-agent messages are untrusted by the recipient. They are delivered with author attribution as quoted data. An agent message can ask a human a question; it can never answer one.
+6. Review-comment and issue text from GitHub is untrusted even when authored by the user's collaborators (brief §13b).
+7. Injection heuristics (instruction-like phrases, tool-call-shaped text, hidden Unicode) raise a warning label in the UI and add a `suspicious` flag in the manifest. They are never relied on to block.
+8. Lethal-trifecta guard (T11): a run that has private data, untrusted content and an egress-capable tool in the same session gets its MCP allowlist narrowed by role and surfaces a warning; where the CLI offers tool-restriction flags the adapter applies them.
+9. Because injected output can only cause actions that pass through approvals, the approval dialog shows the canonical action (s5), not agent narration.
+
+## 11. Provider terms and consent gates
+
+Data model: `provider_terms(id, provider, version, source_url, retrieved_at, text_sha256, summary, risk)` and `consents(id, user, terms_id, accepted_at, app_version)`. A gate blocks adapter startup unless a consent for the current terms version exists; a terms version bump re-prompts. Consent text is shown verbatim and its hash stored.
+
+| Case | Behavior |
+|---|---|
+| **D1 Claude Code** | Drive only the user's own unmodified, user-logged-in `claude` headlessly (`-p`, stream-json in/out, `--permission-prompt-tool`). Drydock never reads, copies, refreshes or transmits Claude credentials (lint/test: no code path opens `%USERPROFILE%\.claude\.credentials.json`; `claude auth status` JSON is the only probe). First-run notice states the terms position and that the user's own login is used. The Claude ACP bridge is disabled by default (flag `claude_acp_bridge_enabled=false`) and ships only after written confirmation from Anthropic or counsel; it bundles its own Claude Code copy and is an Agent SDK product (phase0 s3.1). `--bare` is never used (it disables OAuth, agent-clis §1) |
+| **D2 Gemini CLI** | API-key or Vertex auth only; warning on the Connection that consumer sign-in was reported retired on 2026-06-18 (SNIPPET-ONLY, re-verify). Repo terms say routing Gemini CLI OAuth through third-party tools violates terms (agent-clis §9.2) so Drydock never handles OAuth tokens |
+| **D2 Antigravity** | Adapter drives only the official `agy` binary the user installed and logged into; never touches credentials. Behind an explicit acknowledgement gate whose plain-language text states: no Google statement permitting third-party orchestration was found; a clause bars third-party tools from accessing the service; account suspensions were reported in Feb 2026 (SNIPPET-ONLY); AI Studio or Vertex keys are recommended where available. Conservative `--mode`, denied actions surfaced to the human (D11) |
+| Codex | OpenAI terms for third-party orchestration were not readable (UNVERIFIED, agent-clis §9.3). Informational notice; the user's own login or API key; Codex joins the cheap tier only via a Responses-validated provider (D3) |
+| OpenRouter, others | Show the data-handling summary derived from the appendices and the first-run checklist for account-level toggles Drydock cannot read (logging, "use of inputs" discounts, free-model training; model-providers §A.8) |
+
+Nothing is downloaded on the user's behalf (brief §5); install guidance only. Counsel confirmation for D1/D2 is an open owner action (decisions s4 item 4).
+
+## 12. Audit log
+
+Append-only table `audit_log(seq, ts, actor_kind, actor_id, action, subject, approval_id, action_hash, outcome, rule_ids, detail_ref, prev_hash, hash)`; `hash = SHA-256(prev_hash || canonicalJSON(row without hash))`. Written in the same SQLite transaction as the effect it records (single writer connection, phase0 s3.13). Records: approval request/decide/consume/mismatch, path-guard denials, analyzer verdicts with `Digest`, consent events, provider data_class refusals, secret findings (rule id and location only, never the secret), Gateway calls, hard-deny hits, credential-store access, permission-mode changes, repo-config drift. It is a security view over the append-only event bus (`approval.*`, `mcp.*`, `watchdog.*`...), retained indefinitely like events (brief §18). The hash chain detects accidental or agent-made edits; it does not stop a same-user process from rewriting the whole file (T9). An "export audit log" action writes an unsigned JSON bundle for the user.
+
+## 13. Cloudflare preview/production separation (D6)
+
+Cloudflare is an agent-side template, not part of Drydock's infrastructure. No token scope separates preview from production: upload-version, create-deployment and direct upload all need `Workers Scripts Write`; Pages uses `Pages Write` for both and `--branch` decides which (tooling §1d). `wrangler versions upload` Version URLs reuse the Worker's existing configuration and resources (production bindings); `wrangler preview` (Wrangler >= 4.135, `previews` block required) isolates Durable Objects and, with separate bound resources, KV/D1/R2, while service bindings, routes, cron and queue consumers still point at production (tooling §1c).
+
+Controls:
+1. Preview credentials belong to a **separate Cloudflare account** (or none). An account-scoped token cannot touch another account: the only real boundary.
+2. Production tokens never enter agent processes (env builder, s8). Verified by an integration test that dumps the agent environment.
+3. Agent-process command allowlist enforced by the analyzer plus PATH shims (`wrangler.cmd` shim first on PATH in the agent environment, delegating after checking argv): allowed `wrangler dev` (ports allocated by Drydock: `--port`, `--inspector-port`), `wrangler preview ...`, local D1 migrations with `--persist-to`, `wrangler types`, `wrangler d1 ... --local`; allowed only when the preview credential is a separate account: `wrangler versions upload`; denied: `deploy`, `pages deploy` (`--branch` can equal the production branch), `rollback`, `delete`, `secret put/delete` (non-preview), `d1 ... --remote`, `kv`/`r2` writes against non-preview resources, and any `cf deploy` equivalent. The allowlist also covers the new `cf` CLI (beta) names (tooling §1c).
+4. Starter template `previews` block binds separate KV/D1/R2/DO resources; the `preview` check (brief §13a) uses the preview-account credential and posts the URL through the Preview tool member. Production deployment is never a check.
+5. PATH shims and analyzer are cooperative: `npx wrangler`, absolute paths into `node_modules\.bin`, or a script run via `node` can bypass them. The real protection is credential absence. Where Wrangler caches an OAuth login (`wrangler login`) and whether it can be redirected per agent (for example a per-agent config home) is **unverified** (Q6). Until proven, onboarding tells the user to keep the production Cloudflare login out of the Windows profile that agents run under.
+6. `wrangler dev` state is `<worktree>\.wrangler\state` per worktree; migrations are applied per worktree; workerd file locks when deleting worktrees are unverified (tooling §1e, §8).
+
+## 14. Windows hardening roadmap
+
+| Phase | Control | Status and evidence |
+|---|---|---|
+| H0 (v1) | Drydock process in a `KILL_ON_JOB_CLOSE` job; per-agent job for pipe-spawned agents (assigned suspended, then resumed; job-list attribute 0x2000D defined by us); ConPTY children tree-killed by walking the job after spawn (D7); env allowlist; cwd = worktree; path guard on mediated ops | Proven only by the `jobtree` probe on Windows (blocked, P2). `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and the job APIs exist in `x/sys/windows` v0.48.0 (go-platform §14); nested-job behavior untested |
+| H1 | Job limits: active process count, per-process and job memory (`JOBOBJECT_EXTENDED_LIMIT_INFORMATION` has `ProcessMemoryLimit/JobMemoryLimit`, verified present), CPU rate, UI restrictions, job completion port for `new process` and `exit` notifications | Fields for memory verified; the rest **unverified** here |
+| H2 | Run agents under a restricted token or a separate low-privilege local account so they cannot read the user's profile secrets or Drydock's DB. `go-pty` already uses `CreateProcessAsUser` internally (go-platform §10) so a token-based launch path exists | **Unverified**: CLIs need their login files and Git, Node, network; breakage is likely and must be measured per CLI |
+| H3 | Stronger isolation: WSL run mode (`wsl`, brief §5; WSL can still reach `/mnt/c`, so not a sandbox), CLI-native sandboxes where they exist (Codex ships Windows sandbox helpers `codex-windows-sandbox-setup.exe` and `codex-command-runner.exe`, agent-clis §2; Claude Code sandboxing is "Not supported" natively on Windows and supported on WSL2, agent-clis §1), AppContainer or a VM | Research; per-app firewall rules need elevation, which conflicts with the user-scope installer (D8) (**unverified**) |
+| H4 | Network egress allowlist per run | Not designed; depends on H2/H3 |
+
+Every release states which phase is active. The UI shows the isolation level in the Agent Inspector.
+
+## 15. Tests that prove it (written with each slice, run on the Windows runner)
+
+Approval consume/mismatch/expiry/lineage-cancel; descriptor canonical JSON golden vectors; path guard fixture suite (junction, symlink, UNC, `\\?\`, ADS, 8.3 names, reserved names, trailing dot, case, long paths, TOCTOU swap); analyzer golden corpus per flavor (POSIX, PowerShell phase A, cmd) including obfuscations that must come out `Opaque`; secrets redaction across every scan point; data_class refusal in router, Context Engine, LLMClient, config writer; environment dump shows no production/Cloudflare/GitHub tokens; agent-edited instruction file never reaches memory without a human accept; hook/config drift detection; consent gate blocks Antigravity start without a current acknowledgement; audit chain verification detects a modified row.
+
+## Open questions / unverified
+
+- Q1. Do OpenCode/Goose/Codex requests to OpenRouter carry `provider:{data_collection:"deny", zdr:true}`? Per-model option passthrough is unverified. Candidate designs: CLI config passthrough, or a loopback Drydock proxy that injects the object, scans traffic and records ledger headers. D4 requires the filter on every private OpenRouter request, so this needs a decision before the cheap tier is enabled for private work.
+- Q2. Vendor-side training and retention terms for subscription CLI routes (Claude Code, Codex, Antigravity, Gemini CLI) are not established by the appendices; OpenAI API terms are secondary evidence; Gemini wording is snippet-level.
+- Q3. Plain-HTTP LAN hosts: brief §16 allows private addresses; model-providers §E shows Ollama has no auth. Needs an owner decision on the attestation model.
+- Q4. Real ACP and `--permission-prompt-tool` permission behavior with logged-in agents, whether permission modes skip requests, and mid-tool interrupt behavior (phase0 s7 item 8).
+- Q5. All Windows behavior: reparse-point resolution via final path name, Job Objects, nested jobs, ConPTY termination, Git worktree shared-config assumptions, PowerShell parser helper latency and PS 5.1 versus 7 differences, gitleaks speed under Defender.
+- Q6. Where Wrangler stores its OAuth login on Windows and whether it can be isolated per agent; `wrangler dev` port selection and workerd locks.
+- Q7. Whether hook neutralization flags fully cover Git execution paths Drydock uses; FSL/AGPL MCP servers are not bundled (D14) but user-installed ones run with user rights.
+- Q8. Defaults marked design assumption (approval TTL 30 min, command length cap, push policy, shingle thresholds) need owner review.
+- Contradiction notes: brief §16 lists "deploying" as approval-gated while D6/brief §13a make production deploy never available to agents (resolved above as hard deny); D6 lists `versions upload` on the allowlist while tooling §1c shows Version URLs hit production bindings (resolved above as allowed only with a separate preview account).
