@@ -1,0 +1,81 @@
+# Windows is the only product target, so this is the only CI platform (decision P1). It has not run yet: GitHub Actions is
+# unavailable for this private repository (decision P2). Until it runs, nothing marked "Windows" in the docs is proven.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  go:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Git identity for tests
+        run: |
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - run: go vet ./...
+      - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are skipped when absent)
+        run: go test ./... -count=1 -timeout 25m
+      - name: Windows-only process tree tests
+        run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
+  repomap-cgo:
+    # Decision D5: tree-sitter needs CGO. The repo map ships only if this job is green.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build and run the tree-sitter probe with CGO
+        working-directory: evidence/phase0/go-probes/ts
+        env:
+          CGO_ENABLED: "1"
+        run: go run .
+  ui:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: npm test
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+  app:
+    needs: [go, ui]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci && npm run build
+        working-directory: ui
+      - name: Build the Wails app (CGO off, as Wails v3 needs none on Windows)
+        env:
+          CGO_ENABLED: "0"
+        run: go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drydock-windows-unsigned
+          path: drydock.exe
