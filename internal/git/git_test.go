@@ -240,3 +240,146 @@ func TestSlug(t *testing.T) {
 		}
 	}
 }
+
+// A task's diff is its own work. Once another task has merged into the base branch, a diff taken against the branch's current
+// tip would show that other task's changes as deletions in this one.
+func TestDiffIsAgainstTheMergeBaseNotTheMovingTip(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	w, _ := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_a", Title: "a", Parent: parent})
+	write(t, w.Path, "src/a.go", "package main\n// a\n")
+	if _, err := r.Commit(ctx, w, "task a"); err != nil {
+		t.Fatal(err)
+	}
+	// another task lands on main in the meantime
+	write(t, r.Root, "src/other.go", "package main\n// other\n")
+	r.git(ctx, r.Root, nil, "add", "-A")
+	r.git(ctx, r.Root, nil, "commit", "-qm", "other task")
+
+	d, err := r.Diff(ctx, w, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(d, "src/a.go") || strings.Contains(d, "other.go") {
+		t.Fatalf("the diff must hold only this task's change:\n%s", d)
+	}
+	ds, _ := r.DiffStat(ctx, w, "")
+	if ds.Files != 1 || ds.Deletions != 0 {
+		t.Fatalf("stat %+v", ds)
+	}
+	paths, err := r.ChangedPaths(ctx, w, "")
+	if err != nil || strings.Join(paths, ",") != "src/a.go" {
+		t.Fatalf("footprint %v %v", paths, err)
+	}
+	if n, _ := r.Behind(ctx, w, "main"); n != 1 {
+		t.Fatalf("behind = %d, want 1", n)
+	}
+	// uncommitted and untracked work is part of the footprint too
+	write(t, w.Path, "src/b.go", "package main\n")
+	write(t, w.Path, "README.md", "# changed\n")
+	paths, _ = r.ChangedPaths(ctx, w, "")
+	if strings.Join(paths, ",") != "README.md,src/a.go,src/b.go" {
+		t.Fatalf("footprint %v", paths)
+	}
+}
+
+func TestMergeInBringsTheBaseIntoTheBranchAndLeavesConflictsForTheAgent(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	w, _ := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_m", Title: "m", Parent: parent})
+	write(t, w.Path, "src/feature.go", "package main\n// feature\n")
+	r.Commit(ctx, w, "feature")
+
+	// nothing to bring in
+	if ch, conf, err := r.MergeIn(ctx, w, "main"); err != nil || ch || len(conf) != 0 {
+		t.Fatalf("up to date: %v %v %v", ch, conf, err)
+	}
+	// main moves without touching our files: a clean merge, history kept
+	write(t, r.Root, "src/other.go", "package main\n")
+	r.git(ctx, r.Root, nil, "add", "-A")
+	r.git(ctx, r.Root, nil, "commit", "-qm", "other")
+	ch, conf, err := r.MergeIn(ctx, w, "main")
+	if err != nil || !ch || len(conf) != 0 {
+		t.Fatalf("clean merge: %v %v %v", ch, conf, err)
+	}
+	if _, err := os.Stat(filepath.Join(w.Path, "src", "other.go")); err != nil {
+		t.Fatal("the base's file did not arrive in the worktree")
+	}
+	if n, _ := r.Behind(ctx, w, "main"); n != 0 {
+		t.Fatalf("still behind by %d", n)
+	}
+	if d, _ := r.Diff(ctx, w, ""); strings.Contains(d, "other.go") {
+		t.Fatalf("after bringing the base in, the diff is still only this task's work:\n%s", d)
+	}
+
+	// a conflict: the merge stays in progress with markers in the file
+	write(t, w.Path, "README.md", "# from the task\n")
+	r.Commit(ctx, w, "readme")
+	write(t, r.Root, "README.md", "# from main\n")
+	r.git(ctx, r.Root, nil, "commit", "-aqm", "main readme")
+	ch, conf, err = r.MergeIn(ctx, w, "main")
+	if err != nil || !ch || len(conf) != 1 || conf[0] != "README.md" {
+		t.Fatalf("conflicting merge: %v %v %v", ch, conf, err)
+	}
+	if !r.MergeInProgress(ctx, w) {
+		t.Fatal("the merge should be left in progress for the agent")
+	}
+	if left := r.UnresolvedConflicts(ctx, w); len(left) != 1 {
+		t.Fatalf("markers should be reported: %v", left)
+	}
+	// the agent resolves it by editing the file; committing completes the merge
+	write(t, w.Path, "README.md", "# from the task and main\n")
+	if left := r.UnresolvedConflicts(ctx, w); len(left) != 0 {
+		t.Fatalf("resolved file still reported: %v", left)
+	}
+	if _, err := r.Commit(ctx, w, "resolve"); err != nil {
+		t.Fatal(err)
+	}
+	if r.MergeInProgress(ctx, w) {
+		t.Fatal("the merge should be complete")
+	}
+	if n, _ := r.Behind(ctx, w, "main"); n != 0 {
+		t.Fatalf("behind %d after resolving", n)
+	}
+	// a dirty worktree is refused: the work must be committed first
+	write(t, w.Path, "src/dirty.go", "package main\n")
+	write(t, r.Root, "src/more.go", "package main\n")
+	r.git(ctx, r.Root, nil, "add", "-A")
+	r.git(ctx, r.Root, nil, "commit", "-qm", "more")
+	if _, _, err := r.MergeIn(ctx, w, "main"); !errors.Is(err, ErrDirtyWorktree) {
+		t.Fatalf("dirty worktree: %v", err)
+	}
+}
+
+// Two approvals at once must not race on git's index lock: merges into the base branch are one at a time.
+func TestMergesIntoTheBaseBranchAreSerialized(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	const n = 6
+	var ws []Worktree
+	for i := 0; i < n; i++ {
+		w, err := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_p" + string(rune('a'+i)), Title: "p", Parent: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, w.Path, "src/p"+string(rune('a'+i))+".go", "package main\n")
+		if _, err := r.Commit(ctx, w, "p"); err != nil {
+			t.Fatal(err)
+		}
+		ws = append(ws, w)
+	}
+	errs := make(chan error, n)
+	for _, w := range ws {
+		go func(w Worktree) { _, err := r.Merge(ctx, w, "main", MergeCommit, ""); errs <- err }(w)
+	}
+	for i := 0; i < n; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent merge failed: %v", err)
+		}
+	}
+	for i := 0; i < n; i++ {
+		if _, err := os.Stat(filepath.Join(r.Root, "src", "p"+string(rune('a'+i))+".go")); err != nil {
+			t.Fatalf("merge %d is missing", i)
+		}
+	}
+}

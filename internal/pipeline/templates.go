@@ -150,6 +150,7 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 		workflow.AgentTask("work", td.implement()).With("agent", "work"),
 		workflow.Check("verify", td.verifyTDD()),
 		workflow.Route("finalize", Finalize(td.Deps)),
+		workflow.Route("sync", Sync(td.Deps, td.projectFn())),
 		workflow.AgentTask("review", Review(td.Deps)).With("agent", "review"),
 		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
 		workflow.Route("changes", Changes(td.Deps)),
@@ -160,7 +161,12 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 	g.Edge("work", "verify").
 		EdgeWhen("verify", "finalize", "pass").
 		Loop("verify", "work", "fail", n, "limit").
-		Edge("finalize", "review")
+		Edge("finalize", "sync").
+		EdgeWhen("sync", "review", RouteCurrent).
+		EdgeWhen("sync", "merge", RouteApproved).
+		Loop("sync", "verify", RouteChanged, n, "limit").
+		Loop("sync", "work", RouteConflict, n, "limit").
+		Loop("merge", "sync", RouteStale, n, "limit")
 	next := workflow.NodeID("approve")
 	if len(extraBeforeApprove) > 0 {
 		next = extraBeforeApprove[0]
@@ -277,6 +283,7 @@ func (td TemplateDeps) SecurityGraph() *workflow.Graph {
 		workflow.Check("verify", Verify(td.Deps)),
 		workflow.Check("gate", td.scanNode("gate", false)),
 		workflow.Route("finalize", Finalize(td.Deps)),
+		workflow.Route("sync", Sync(td.Deps, td.projectFn())),
 		workflow.AgentTask("sreview", td.securityReview()).With("agent", RoleSecurity),
 		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
 		workflow.Route("changes", Changes(td.Deps)),
@@ -291,7 +298,12 @@ func (td TemplateDeps) SecurityGraph() *workflow.Graph {
 		Loop("verify", "work", "fail", n, "limit").
 		EdgeWhen("gate", "finalize", "pass").
 		Loop("gate", "work", "fail", n, "limit").
-		Edge("finalize", "sreview").
+		Edge("finalize", "sync").
+		EdgeWhen("sync", "sreview", RouteCurrent).
+		EdgeWhen("sync", "merge", RouteApproved).
+		Loop("sync", "verify", RouteChanged, n, "limit").
+		Loop("sync", "work", RouteConflict, n, "limit").
+		Loop("merge", "sync", RouteStale, n, "limit").
 		EdgeWhen("sreview", "approve", "ship").
 		Loop("sreview", "work", "revise", n, "limit").
 		EdgeWhen("sreview", "limit", "limit").

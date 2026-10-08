@@ -199,6 +199,42 @@ func Approve(d Deps) workflow.NodeHandler {
 	}
 }
 
+// approvalKind is the evidence kind that remembers a human approval and the change it was for.
+const approvalKind = "approval"
+
+func rememberApproval(ctx context.Context, d Deps, t tasks.Task, by, patch string) {
+	data, _ := json.Marshal(map[string]string{"by": by, "patchId": patch})
+	ok := true
+	_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: approvalKind, Passed: &ok, Summary: "approved by " + by, Data: data})
+}
+
+// approvalFor finds a human approval of exactly this change (the same patch id). Only the merge step writes these, from the
+// answer of a "human:" identity, so an agent cannot produce one.
+func approvalFor(ctx context.Context, d Deps, taskID, patch string) (string, bool) {
+	if patch == "" {
+		return "", false
+	}
+	ev, err := d.Tasks.Evidence(ctx, taskID)
+	if err != nil {
+		return "", false
+	}
+	for i := len(ev) - 1; i >= 0; i-- {
+		if ev[i].Kind != approvalKind {
+			continue
+		}
+		var a struct{ By, PatchID string }
+		var raw map[string]string
+		if json.Unmarshal(ev[i].Data, &raw) != nil {
+			continue
+		}
+		a.By, a.PatchID = raw["by"], raw["patchId"]
+		if a.PatchID == patch && strings.HasPrefix(a.By, "human:") {
+			return a.By, true
+		}
+	}
+	return "", false
+}
+
 // Changes handles a human "request changes": the task goes back to IN_PROGRESS carrying the human's feedback.
 func Changes(d Deps) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
@@ -263,9 +299,6 @@ func Merge(d Deps, project func(ctx context.Context, projectID string) (ProjectI
 			return workflow.NodeOutput{}, err
 		}
 		h := humanResponse(in)
-		if !strings.HasPrefix(h.by, "human:") {
-			return workflow.NodeOutput{}, fmt.Errorf("merge requires an approval by a human; got %q", h.by)
-		}
 		repo, err := d.Repo(ctx, t.ProjectID)
 		if err != nil {
 			return workflow.NodeOutput{}, err
@@ -274,11 +307,31 @@ func Merge(d Deps, project func(ctx context.Context, projectID string) (ProjectI
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		target := pi.DefaultBranch
-		if target == "" {
-			target = t.BaseBranch
-		}
+		target := baseTarget(t, pi)
 		w := worktreeOf(t)
+		patch, _ := repo.PatchID(ctx, w, target)
+		switch {
+		case strings.HasPrefix(h.by, "human:"):
+			// remember exactly which change the human approved, so that bringing the base branch in later does not need a second
+			// approval when the change itself is the same
+			if h.decision == "approved" && patch != "" {
+				rememberApproval(ctx, d, t, h.by, patch)
+			}
+		default:
+			// reached again after the base moved (sync): the approval stands only for the very same change
+			by, ok := approvalFor(ctx, d, t.ID, patch)
+			if !ok {
+				return workflow.NodeOutput{}, fmt.Errorf("merge requires an approval by a human; got %q", h.by)
+			}
+			h.by = by
+		}
+		// Another task may have merged since the checks ran: what was checked and approved is then not what would land. Go back
+		// and bring the base in, run the checks again and ask again, instead of merging an unchecked combination.
+		if behind, berr := repo.Behind(ctx, w, target); berr == nil && behind > 0 {
+			d.emit(ctx, "task.stale_at_merge", t, map[string]any{"target": target, "behind": behind})
+			b, _ := json.Marshal(map[string]any{"target": target, "behind": behind})
+			return workflow.NodeOutput{Value: b, Route: RouteStale}, nil
+		}
 		commit, err := repo.Merge(ctx, w, target, pi.MergeStrategy, "Merge "+t.Title+" (Drydock "+t.ID+")")
 		if err != nil {
 			var ce *git.ConflictError
@@ -318,6 +371,7 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 			workflow.AgentTask("work", Work(d)).With("agent", "work"),
 			workflow.Check("verify", Verify(d)),
 			workflow.Route("finalize", Finalize(d)),
+			workflow.Route("sync", Sync(d, project)),
 			workflow.AgentTask("review", Review(d)).With("agent", "review"),
 			&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(d)},
 			workflow.Route("changes", Changes(d)),
@@ -328,7 +382,12 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 		Edge("work", "verify").
 		EdgeWhen("verify", "finalize", "pass").
 		Loop("verify", "work", "fail", maxLoops, "limit").
-		Edge("finalize", "review").
+		Edge("finalize", "sync").
+		EdgeWhen("sync", "review", RouteCurrent).
+		EdgeWhen("sync", "merge", RouteApproved).
+		Loop("sync", "verify", RouteChanged, maxLoops, "limit").
+		Loop("sync", "work", RouteConflict, maxLoops, "limit").
+		Loop("merge", "sync", RouteStale, maxLoops, "limit").
 		EdgeWhen("review", "approve", "ship").
 		Loop("review", "work", "revise", maxLoops, "limit").
 		EdgeWhen("review", "limit", "limit").

@@ -284,3 +284,27 @@ func TestSequenceNumbersPerProjectAndHooks(t *testing.T) {
 		t.Fatal("empty title must be refused")
 	}
 }
+
+// A task reopened because the base branch moved needs no feedback and keeps its iteration count; only the system may do it.
+func TestResyncReopensWithoutSpendingAnIteration(t *testing.T) {
+	s, _ := newSvc(t)
+	ctx := context.Background()
+	task, _ := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "Resync", MaxIterations: 2})
+	driveToReview(t, s, task.ID, "agent-1", "agent-2")
+	addPassingEvidence(t, s, task.ID)
+	if _, err := s.Transition(ctx, task.ID, Review, TransitionOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Transition(ctx, task.ID, InProgress, TransitionOpts{By: "human:kyle", Resync: true}); err == nil {
+		t.Fatal("only the system may resync")
+	}
+	for i := 0; i < 3; i++ {
+		got, err := s.Transition(ctx, task.ID, InProgress, TransitionOpts{By: "system", Reason: "main moved", Resync: true})
+		if err != nil || got.Iteration != 0 {
+			t.Fatalf("resync %d: %+v %v", i, got, err)
+		}
+		if _, err := s.Transition(ctx, task.ID, Review, TransitionOpts{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

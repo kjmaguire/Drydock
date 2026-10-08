@@ -232,7 +232,18 @@ func WorkPrompt(t tasks.Task, in workflow.NodeInput) string {
 		}
 		var o map[string]any
 		if json.Unmarshal(m.Value, &o) == nil {
-			if w, ok := o["watchdog"].(string); ok {
+			if c, ok := o["conflict"].(map[string]any); ok {
+				var files []string
+				if fl, ok := c["files"].([]any); ok {
+					for _, f := range fl {
+						if s, ok := f.(string); ok {
+							files = append(files, s)
+						}
+					}
+				}
+				target, _ := c["target"].(string)
+				feedback = append(feedback, conflictPrompt(files, target))
+			} else if w, ok := o["watchdog"].(string); ok {
 				feedback = append(feedback, w)
 			} else if fb, ok := o["feedback"].(string); ok {
 				feedback = append(feedback, "Reviewer feedback:\n"+fb)
@@ -282,6 +293,17 @@ func Verify(d Deps) workflow.NodeHandler {
 			return workflow.NodeOutput{}, errors.New("no checks detected for this project: add a Taskfile with build/test targets or configure checks")
 		}
 		specs = append(specs, d.extraChecks(ctx, repo, t)...)
+		// a merge that brought the base branch in and was not resolved cannot pass: markers are not code
+		if repo.MergeInProgress(ctx, worktreeOf(t)) {
+			if left := repo.UnresolvedConflicts(ctx, worktreeOf(t)); len(left) > 0 {
+				cr := workflow.CheckResult{Name: "merge-conflicts", Passed: false, ExitCode: 1,
+					Output: "Conflict markers are still in: " + strings.Join(left, ", ") + ". Edit each file so it keeps what both changes were for and remove every <<<<<<<, ======= and >>>>>>> line."}
+				failedFlag := false
+				_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "merge-conflicts", Passed: &failedFlag, Summary: "conflict markers remain in " + strings.Join(left, ", ")})
+				b, _ := json.Marshal(cr)
+				return workflow.NodeOutput{Value: b, Route: "fail"}, nil
+			}
+		}
 		logDir := filepath.Join(d.DataDir, "runs", string(in.RunID), "checks")
 		diffHash, _ := repo.DiffHash(ctx, worktreeOf(t))
 		var last checks.Result

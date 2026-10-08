@@ -341,6 +341,9 @@ type TransitionOpts struct {
 	By       string // 'human:<name>', agent id, or 'system'
 	Reason   string
 	Feedback string // for REVIEW/VERIFICATION -> IN_PROGRESS: what to fix (becomes the next iteration's only context)
+	// Resync reopens a REVIEW/VERIFICATION task only because the base branch moved: nothing was wrong with the work, so it needs
+	// no feedback and does not use up an iteration. The workflow graph bounds how often this can repeat.
+	Resync bool
 }
 
 // Transition moves a task through the state machine, enforcing guards, with compare-and-swap on version.
@@ -368,7 +371,7 @@ func (s *Service) Transition(ctx context.Context, id string, to Status, o Transi
 				set = append(set, "started_at=?")
 				args = append(args, now)
 			}
-			if t.Status == Review || t.Status == Verification {
+			if (t.Status == Review || t.Status == Verification) && !o.Resync {
 				set = append(set, "iteration=iteration+1", "review_feedback=?")
 				args = append(args, o.Feedback)
 			}
@@ -525,6 +528,12 @@ func (s *Service) guard(ctx context.Context, t Task, to Status, o TransitionOpts
 			return bad("the latest test evidence is not passing")
 		}
 	case InProgress:
+		if o.Resync && (!strings.HasPrefix(o.By, "system")) {
+			return bad("only the system reopens a task because the base branch moved")
+		}
+		if o.Resync {
+			return nil
+		}
 		if (t.Status == Review || t.Status == Verification) && strings.TrimSpace(o.Feedback) == "" {
 			return bad("changes requested without feedback: the next iteration needs the review feedback")
 		}

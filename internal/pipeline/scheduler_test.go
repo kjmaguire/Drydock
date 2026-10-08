@@ -366,6 +366,7 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Logf("%s -> %s %s", cur.Title, info.Status, info.FailedReason)
 		if info.Status == workflow.StatusCompleted {
 			merged++
 		} else if info.Status == workflow.StatusWaitingHuman {
@@ -375,10 +376,15 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 	if merged != 3 || conflicted == "" {
 		t.Fatalf("merged %d conflicted %q", merged, conflicted)
 	}
+	// The conflicting task was not forced into main and was not parked as a dead end: the base was merged into its branch,
+	// the worker was told what collided, and the result came back for the human to approve again.
 	time.Sleep(60 * time.Millisecond)
 	p, _ := e.eng.Pending(context.Background(), conflicted)
-	if len(p) != 1 || !strings.Contains(p[0].Spec.Title, "Merge conflict") {
+	if len(p) != 1 || p[0].NodeID != "approve" {
 		t.Fatalf("pending %+v", p)
+	}
+	if wp := e.prompts(aWork); !hasPrompt(wp, "Another task was merged into main") {
+		t.Fatalf("the worker was never told about the collision: %q", wp)
 	}
 	for _, f := range []string{"multiply.go", "divide.go"} {
 		if _, err := os.Stat(filepath.Join(e.repo.Root, f)); err != nil {
@@ -423,4 +429,13 @@ func maxOverlap(e *tpl) int {
 		}
 	}
 	return max
+}
+
+func hasPrompt(ps []string, sub string) bool {
+	for _, p := range ps {
+		if strings.Contains(p, sub) {
+			return true
+		}
+	}
+	return false
 }

@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -255,11 +256,26 @@ func (r *Repo) Status(ctx context.Context, w Worktree) (Status, error) {
 	return s, nil
 }
 
-// Diff returns the unified diff of the worktree (committed and uncommitted changes, including untracked files) against base.
-func (r *Repo) Diff(ctx context.Context, w Worktree, base string) (string, error) {
+// diffBase turns a branch name into the commit the worktree's branch shares with it. Diffing against the branch's CURRENT tip would
+// show every change that landed on it since the worktree was made (for example another task's merge) as if this task had
+// removed it; the merge base shows only this task's own work. If the name is not a ref the worktree shares history with (a
+// commit id, an unrelated ref) it is used as given.
+func (r *Repo) diffBase(ctx context.Context, w Worktree, base string) string {
 	if base == "" {
 		base = w.Base
 	}
+	if mb, err := r.git(ctx, w.Path, nil, "merge-base", "HEAD", base); err == nil {
+		if mb = strings.TrimSpace(mb); mb != "" {
+			return mb
+		}
+	}
+	return base
+}
+
+// Diff returns the unified diff of the worktree (committed and uncommitted changes, including untracked files) against base. A
+// branch name is resolved to its merge base with the worktree, so only the worktree's own changes appear.
+func (r *Repo) Diff(ctx context.Context, w Worktree, base string) (string, error) {
+	base = r.diffBase(ctx, w, base)
 	// make untracked files visible to `git diff` without staging them for real: intent-to-add in a throwaway index
 	idx, cleanup, err := r.tempIndex(ctx, w)
 	if err != nil {
@@ -281,9 +297,7 @@ type DiffStat struct {
 }
 
 func (r *Repo) DiffStat(ctx context.Context, w Worktree, base string) (DiffStat, error) {
-	if base == "" {
-		base = w.Base
-	}
+	base = r.diffBase(ctx, w, base)
 	idx, cleanup, err := r.tempIndex(ctx, w)
 	if err != nil {
 		return DiffStat{}, err
@@ -393,6 +407,7 @@ const (
 // Merge brings the task branch into target in the main working tree (which must be clean and is switched to target).
 // On conflict the merge is aborted and a *ConflictError is returned. A human action.
 func (r *Repo) Merge(ctx context.Context, w Worktree, target string, strategy MergeStrategy, msg string) (string, error) {
+	defer r.lockMain()()
 	st, err := r.Status(ctx, Worktree{Path: r.Root})
 	if err != nil {
 		return "", err
@@ -630,4 +645,146 @@ func (r *Repo) Push(ctx context.Context, w Worktree, remote string) error {
 	}
 	_, err := r.git(ctx, w.Path, nil, "push", "--set-upstream", remote, "refs/heads/"+w.Branch+":refs/heads/"+w.Branch)
 	return err
+}
+
+// MergeBase returns the commit the worktree's branch shares with ref.
+func (r *Repo) MergeBase(ctx context.Context, w Worktree, ref string) (string, error) {
+	out, err := r.git(ctx, w.Path, nil, "merge-base", "HEAD", ref)
+	return strings.TrimSpace(out), err
+}
+
+// Behind counts the commits on ref that the worktree's branch does not have yet.
+func (r *Repo) Behind(ctx context.Context, w Worktree, ref string) (int, error) {
+	out, err := r.git(ctx, w.Path, nil, "rev-list", "--count", "HEAD.."+ref)
+	if err != nil {
+		return 0, err
+	}
+	var n int
+	_, err = fmt.Sscan(strings.TrimSpace(out), &n)
+	return n, err
+}
+
+// ChangedPaths lists the paths the worktree has changed against base's merge base: committed, uncommitted and untracked, with a
+// rename counted as the old and the new path. It is the task's footprint, used to see whether two tasks touch the same files.
+func (r *Repo) ChangedPaths(ctx context.Context, w Worktree, base string) ([]string, error) {
+	base = r.diffBase(ctx, w, base)
+	idx, cleanup, err := r.tempIndex(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	env := []string{"GIT_INDEX_FILE=" + idx}
+	if _, err := r.git(ctx, w.Path, env, "add", "-A"); err != nil {
+		return nil, err
+	}
+	out, err := r.git(ctx, w.Path, env, "diff", "--cached", "--name-only", "--no-renames", base)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			paths = append(paths, l)
+		}
+	}
+	return paths, nil
+}
+
+// MergeIn brings ref into the worktree's branch with a merge commit (history is not rewritten). The worktree must be clean.
+// changed is false when the branch already contained ref. On conflicts the merge is LEFT IN PROGRESS with the markers in the
+// files and conflicts lists them, so the agent that owns the worktree can resolve them; ResolveCheck says when they are gone.
+func (r *Repo) MergeIn(ctx context.Context, w Worktree, ref string) (changed bool, conflicts []string, err error) {
+	st, err := r.Status(ctx, w)
+	if err != nil {
+		return false, nil, err
+	}
+	if st.Dirty() {
+		return false, nil, fmt.Errorf("%w: commit the work before bringing %s in", ErrDirtyWorktree, ref)
+	}
+	behind, err := r.Behind(ctx, w, ref)
+	if err != nil || behind == 0 {
+		return false, nil, err
+	}
+	_, mergeErr := r.git(ctx, w.Path, nil, "merge", "--no-edit", "-m", "Bring "+ref+" into "+w.Branch, ref)
+	if mergeErr != nil {
+		if files := r.conflictFiles(ctx, w.Path); len(files) > 0 {
+			return true, files, nil
+		}
+		return false, nil, mergeErr
+	}
+	return true, nil, nil
+}
+
+// MergeInProgress reports whether the worktree is in the middle of a merge (a conflict that is not resolved and committed yet).
+func (r *Repo) MergeInProgress(ctx context.Context, w Worktree) bool {
+	out, err := r.git(ctx, w.Path, nil, "rev-parse", "-q", "--verify", "MERGE_HEAD")
+	return err == nil && strings.TrimSpace(out) != ""
+}
+
+// AbortMerge ends a merge that is in progress and restores the branch to where it was.
+func (r *Repo) AbortMerge(ctx context.Context, w Worktree) error {
+	_, err := r.git(ctx, w.Path, nil, "merge", "--abort")
+	return err
+}
+
+// UnresolvedConflicts lists the files of an in-progress merge that still contain conflict markers.
+func (r *Repo) UnresolvedConflicts(ctx context.Context, w Worktree) []string {
+	var left []string
+	for _, f := range r.conflictFiles(ctx, w.Path) {
+		b, err := os.ReadFile(filepath.Join(w.Path, filepath.FromSlash(f)))
+		if err != nil {
+			continue // a file the agent deleted counts as resolved
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, "<<<<<<< ") || strings.HasPrefix(l, ">>>>>>> ") || l == "=======" {
+				left = append(left, f)
+				break
+			}
+		}
+	}
+	return left
+}
+
+var mergeLocks sync.Map // repository root -> *sync.Mutex
+
+// lockMain serializes the operations that change the main working tree of one repository (merging a task into the base branch).
+// Two approvals at the same moment would otherwise race on git's index lock and one would fail half-way.
+func (r *Repo) lockMain() func() {
+	v, _ := mergeLocks.LoadOrStore(r.Root, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// PatchID identifies the worktree's own committed change independent of where it sits in history (git patch-id --stable of the
+// diff against the merge base with ref). Bringing the base branch into the branch cleanly moves the merge base but not this value;
+// resolving a conflict, or any edit, changes it. It is how "the same change that was approved" is recognized.
+func (r *Repo) PatchID(ctx context.Context, w Worktree, ref string) (string, error) {
+	mb, err := r.MergeBase(ctx, w, ref)
+	if err != nil {
+		return "", err
+	}
+	diff, err := r.git(ctx, w.Path, nil, "diff", "--no-color", "--no-renames", mb, "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(diff) == "" {
+		return "empty", nil
+	}
+	ctx2, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx2, "git", "patch-id", "--stable")
+	cmd.Dir = w.Path
+	cmd.Env = r.env()
+	cmd.Stdin = strings.NewReader(diff)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git patch-id: %w", err)
+	}
+	f := strings.Fields(out.String())
+	if len(f) == 0 {
+		return "", errors.New("git patch-id printed nothing")
+	}
+	return f[0], nil
 }
