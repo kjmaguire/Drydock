@@ -103,4 +103,3 @@ func (s *Store) Start(ctx context.Context, every time.Duration) (stop func()) {
 	}()
 	return func() { cancel(); <-done }
 }
-

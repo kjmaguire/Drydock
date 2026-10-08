@@ -70,10 +70,12 @@ func (r *rig) runLeakyWorkflow() {
 			in.Emit(workflow.NewChunk(workflow.ChunkToolCall, workflow.ToolCall{ID: "t1", Name: "Bash", Args: json.RawMessage(`{"command":"cat secrets.env"}`)}))
 			in.Emit(workflow.NewChunk(workflow.ChunkToolResult, workflow.ToolResult{ID: "t1", Output: toolOutput + " " + codeText}))
 			in.Emit(workflow.NewChunk(workflow.ChunkUsage, workflow.UsageChunk{Model: "claude-sonnet-x", InputTokens: 1000, OutputTokens: 200, CachedTokens: 5000, CacheWriteTokens: 300, CostUSD: 0.0123, Source: "reported"}))
-			return workflow.NodeOutput{Value: json.RawMessage(`"` + codeText + `"`)}, nil
+			v, _ := json.Marshal(codeText)
+			return workflow.NodeOutput{Value: v}, nil
 		}).With("note", promptText),
 			workflow.Check("verify", func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
-				return workflow.NodeOutput{Value: json.RawMessage(`{"name":"test","passed":true,"output":"` + toolOutput + `"}`), Route: "pass"}, nil
+				v, _ := json.Marshal(map[string]any{"name": "test", "passed": true, "output": toolOutput})
+				return workflow.NodeOutput{Value: v, Route: "pass"}, nil
 			})).
 		Edge("work", "verify").Start("work")
 	if err := r.eng.Register(g); err != nil {

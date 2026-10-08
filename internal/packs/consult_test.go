@@ -109,10 +109,10 @@ func TestConsultAnswererOutputIsValidatedAndCitationsComeFromStoredMetadata(t *t
 		t.Fatalf("pins %d", n)
 	}
 	for name, res := range map[string]AnswerResult{
-		"out of range":    {Text: "x [9]", Used: []int{9}, Route: RoutePrivate},
-		"zero":            {Text: "x", Used: []int{0}, Route: RoutePrivate},
-		"no citation":     {Text: "answer without a citation", Used: nil, Route: RoutePrivate},
-		"empty text":      {Text: " ", Used: []int{1}, Route: RoutePrivate},
+		"out of range":     {Text: "x [9]", Used: []int{9}, Route: RoutePrivate},
+		"zero":             {Text: "x", Used: []int{0}, Route: RoutePrivate},
+		"no citation":      {Text: "answer without a citation", Used: nil, Route: RoutePrivate},
+		"empty text":       {Text: " ", Used: []int{1}, Route: RoutePrivate},
 		"trainable denied": {Text: "x", Used: []int{1}, Route: RouteTrainable},
 	} {
 		ans.res = res

@@ -136,7 +136,9 @@ func TestFetcherLimitsAndRedirects(t *testing.T) {
 	d.set("/big.md", strings.Repeat("x", 100000))
 	d.set("/small.md", "# ok\n")
 	d.set("/bin", "\x00\x01\x02binary")
-	d.extra["/to-other"] = func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "http://localhost:"+strings.Split(d.host(), ":")[1]+"/small.md", http.StatusFound) }
+	d.extra["/to-other"] = func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://localhost:"+strings.Split(d.host(), ":")[1]+"/small.md", http.StatusFound)
+	}
 	d.extra["/to-same"] = func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/small.md", http.StatusFound) }
 	d.extra["/loop"] = func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/loop", http.StatusFound) }
 	d.extra["/slow"] = func(w http.ResponseWriter, r *http.Request) { time.Sleep(2 * time.Second) }
