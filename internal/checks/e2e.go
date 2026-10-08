@@ -26,19 +26,18 @@ import (
 const SkippedExitCode = -2
 
 // SkippedResult builds the Result of a check that did not run. Passed is false on purpose: a skipped check is not a pass,
-// and callers must test IsSkipped before treating Passed=false as a failure.
+// and it is not a failure either (Result.Skipped, shared with the secrets and deps checks), so the loop never sends it
+// back to an agent.
 func SkippedResult(name, reason string) Result {
-	r := Result{Argv: nil}
+	r := Result{Skipped: true, SkipReason: reason}
 	r.Name = name
 	r.ExitCode = SkippedExitCode
 	r.Output = "skipped: " + reason
 	return r
 }
 
-// IsSkipped reports whether r came from SkippedResult.
-func IsSkipped(r Result) bool {
-	return r.ExitCode == SkippedExitCode && strings.HasPrefix(r.Output, "skipped:")
-}
+// IsSkipped reports whether r is a check that was not run.
+func IsSkipped(r Result) bool { return r.Skipped }
 
 // E2EOptions configures one e2e run.
 type E2EOptions struct {
@@ -148,8 +147,6 @@ type PlaywrightSummary struct {
 // E2EResult is the outcome of RunE2E.
 type E2EResult struct {
 	Result
-	Skipped     bool               `json:"skipped"`
-	SkipReason  string             `json:"skipReason,omitempty"`
 	Source      string             `json:"source,omitempty"`
 	Summary     *PlaywrightSummary `json:"summary,omitempty"`
 	Screenshots []string           `json:"screenshots,omitempty"` // copies under LogDir/e2e-screenshots
@@ -162,8 +159,7 @@ var reportCandidates = []string{filepath.Join("test-results", "e2e-report.json")
 // and an error only when the command could not be started at all.
 func RunE2E(ctx context.Context, pm proc.Manager, dir string, o E2EOptions, onLine func(string)) (E2EResult, error) {
 	skip := func(src, reason string) E2EResult {
-		r := SkippedResult("e2e", reason)
-		return E2EResult{Result: r, Skipped: true, SkipReason: reason, Source: src}
+		return E2EResult{Result: SkippedResult("e2e", reason), Source: src}
 	}
 	if !o.Enabled {
 		return skip("", "e2e is switched off in this project's settings"), nil

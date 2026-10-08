@@ -48,10 +48,8 @@ type PreviewOptions struct {
 // PreviewResult is the outcome of StartPreview.
 type PreviewResult struct {
 	Result
-	Skipped    bool   `json:"skipped"`
-	SkipReason string `json:"skipReason,omitempty"`
-	URL        string `json:"url,omitempty"`
-	Source     string `json:"source,omitempty"`
+	URL    string `json:"url,omitempty"`
+	Source string `json:"source,omitempty"`
 }
 
 // PreviewHandle is a running preview. Stop kills its process tree; it is idempotent.
@@ -124,7 +122,6 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 	res.Name = "preview"
 	skip := func(reason string) (*PreviewHandle, PreviewResult, error) {
 		res.Result = SkippedResult("preview", reason)
-		res.Skipped, res.SkipReason = true, reason
 		return nil, res, nil
 	}
 	if !o.Enabled {
@@ -166,7 +163,6 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 	if err != nil {
 		return nil, res, err
 	}
-	res.LogRef = ""
 	env := append(os.Environ(), o.Env...)
 	env = append(env, "CI=1", "NO_COLOR=1", "FORCE_COLOR=0")
 	// The process outlives this call, so it is not tied to ctx; ctx only bounds the wait.
