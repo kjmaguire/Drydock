@@ -15,7 +15,7 @@ import (
 
 // awsKey and ghToken are well-known example formats that the gitleaks rules match; they are not real credentials.
 const (
-	awsKey  = "AKIAIOSFODNN7EXAMPLE"
+	awsKey  = "AKIAQYLPMN5HHHFPZAM2"
 	ghToken = "ghp_" + "Z9q8W7e6R5t4Y3u2I1o0P9a8S7d6F5g4H3j2"
 )
 
