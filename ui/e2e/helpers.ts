@@ -32,7 +32,7 @@ export async function createAgent(page: Page, name: string, role: string): Promi
   await page.getByTestId('nav-team').click();
   await page.getByLabel('Agent name').fill(name);
   await page.getByLabel('Role', { exact: true }).fill(role);
-  await page.getByLabel('Adapter').selectOption('claude');
+  await page.getByLabel('Adapter', { exact: true }).selectOption('claude');
   await page.getByRole('button', { name: 'Create agent' }).click();
   await expect(page.getByTestId('agent').filter({ hasText: name })).toBeVisible();
 }
@@ -45,8 +45,8 @@ export async function createAndStartTask(page: Page, title: string, worker: stri
   await page.getByLabel('Acceptance criteria').fill('Given 5 and 3 When Subtract is called Then 2');
   await page.getByRole('button', { name: 'Create task' }).click();
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(title) })).toBeVisible();
-  await page.getByLabel('Worker').selectOption({ label: `${worker} (backend)` });
-  await page.getByLabel('Reviewer').selectOption({ label: `${reviewer} (reviewer)` });
+  await page.getByLabel('Worker', { exact: true }).selectOption({ label: `${worker} (backend)` });
+  await page.getByLabel('Reviewer', { exact: true }).selectOption({ label: `${reviewer} (reviewer)` });
   await page.getByRole('button', { name: 'Assign' }).click();
   await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
   await page.getByRole('button', { name: 'Start' }).click();

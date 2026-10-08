@@ -190,7 +190,7 @@ export function PullRequestsView({ projectId, tasks }: { projectId: string; task
         <>
           <label>
             Task
-            <select value={taskId ?? ''} onChange={(e) => setSelected(e.target.value)}>
+            <select aria-label="Task" value={taskId ?? ''} onChange={(e) => setSelected(e.target.value)}>
               {withPR.map((t) => (
                 <option key={t.id} value={t.id}>
                   #{t.seq} {t.title} ({t.prRef})

@@ -170,7 +170,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
       </label>
       <label>
         Adapter
-        <select value={adapterId} onChange={(e) => setAdapter(e.target.value)} required>
+        <select aria-label="Adapter" value={adapterId} onChange={(e) => setAdapter(e.target.value)} required>
           {adapters.map((a) => (
             <option key={a.id} value={a.id}>
               {a.id} ({a.detection.installed ? a.detection.status : 'not installed'})

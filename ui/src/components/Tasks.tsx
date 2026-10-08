@@ -213,7 +213,7 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
         <>
           <label>
             Worker
-            <select value={worker} onChange={(e) => setWorker(e.target.value)}>
+            <select aria-label="Worker" value={worker} onChange={(e) => setWorker(e.target.value)}>
               <option value="">Choose a worker</option>
               {list.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -224,7 +224,7 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
           </label>
           <label>
             Reviewer
-            <select value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
+            <select aria-label="Reviewer" value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
               <option value="">Choose a reviewer</option>
               {list.map((a) => (
                 <option key={a.id} value={a.id}>

@@ -91,14 +91,14 @@ export function ProjectSettings({ project, onChanged }: { project: Project; onCh
         <ErrorNote error={error} what="Not saved" />
         <label>
           Mode
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <select aria-label="Mode" value={mode} onChange={(e) => setMode(e.target.value)}>
             <option value="local_merge">Merge locally after my approval</option>
             <option value="pr_flow">Open a GitHub pull request (needs a github.com origin and gh)</option>
           </select>
         </label>
         <label>
           Merge strategy
-          <select value={strategy} onChange={(e) => setStrategy(e.target.value)}>
+          <select aria-label="Merge strategy" value={strategy} onChange={(e) => setStrategy(e.target.value)}>
             <option value="merge">Merge commit</option>
             <option value="squash">Squash</option>
             <option value="rebase">Rebase</option>
