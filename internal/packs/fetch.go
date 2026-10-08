@@ -298,7 +298,7 @@ func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite, 
 func textual(ct string, body []byte) bool {
 	ct = strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
 	switch {
-	case strings.HasPrefix(ct, "text/"), ct == "application/xml", ct == "application/xhtml+xml", ct == "application/x-markdown", strings.HasSuffix(ct, "+xml"):
+	case strings.HasPrefix(ct, "text/"), ct == "application/xml", ct == "application/xhtml+xml", ct == "application/x-markdown", ct == "application/json", strings.HasSuffix(ct, "+xml"), strings.HasSuffix(ct, "+json"):
 	case ct == "" || ct == "application/octet-stream":
 		if !strings.HasPrefix(http.DetectContentType(body), "text/") {
 			return false

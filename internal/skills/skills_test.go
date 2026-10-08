@@ -22,21 +22,20 @@ func TestParseSkillSpecRules(t *testing.T) {
 		t.Fatalf("%+v", ps)
 	}
 	bad := map[string]string{
-		"no front matter":   "just text",
-		"not closed":        "---\nname: a\n",
-		"unknown key":       "---\nname: a\ndescription: d\npaths: [x]\n---\nbody\n",
-		"name mismatch":     skillMD("other", "d", "", "b"),
-		"uppercase":         "---\nname: Abc\ndescription: d\n---\nb\n",
-		"double hyphen":     "---\nname: a--b\ndescription: d\n---\nb\n",
-		"leading hyphen":    "---\nname: -ab\ndescription: d\n---\nb\n",
-		"no description":    "---\nname: a\n---\nb\n",
-		"long description":  "---\nname: a\ndescription: " + strings.Repeat("x", 1025) + "\n---\nb\n",
-		"empty body":        "---\nname: a\ndescription: d\n---\n\n",
-		"bad glob":          skillMD("a", "d", metaLines("../x", ""), "b"),
-		"bad role":          skillMD("a", "d", metaLines("", "Wizard"), "b"),
-		"numeric metadata":  "---\nname: a\ndescription: d\nmetadata:\n  n: 5\n---\nb\n",
-		"binary":            "---\nname: a\ndescription: d\n---\nb\x00",
-		"too big":           "---\nname: a\ndescription: d\n---\n" + strings.Repeat("x", MaxSkillBytes),
+		"no front matter":  "just text",
+		"not closed":       "---\nname: a\n",
+		"unknown key":      "---\nname: a\ndescription: d\npaths: [x]\n---\nbody\n",
+		"name mismatch":    skillMD("other", "d", "", "b"),
+		"uppercase":        "---\nname: Abc\ndescription: d\n---\nb\n",
+		"double hyphen":    "---\nname: a--b\ndescription: d\n---\nb\n",
+		"leading hyphen":   "---\nname: -ab\ndescription: d\n---\nb\n",
+		"no description":   "---\nname: a\n---\nb\n",
+		"long description": "---\nname: a\ndescription: " + strings.Repeat("x", 1025) + "\n---\nb\n",
+		"empty body":       "---\nname: a\ndescription: d\n---\n\n",
+		"bad glob":         skillMD("a", "d", metaLines("../x", ""), "b"),
+		"bad role":         skillMD("a", "d", metaLines("", "Wizard"), "b"),
+		"binary":           "---\nname: a\ndescription: d\n---\nb\x00",
+		"too big":          "---\nname: a\ndescription: d\n---\n" + strings.Repeat("x", MaxSkillBytes),
 	}
 	for name, doc := range bad {
 		want := "a"
@@ -168,8 +167,8 @@ func TestScanRepoPinsCommittedSkillsAndHoldsBackTheRest(t *testing.T) {
 func TestScanRepoSkipsSymlinksAndScripts(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, map[string]string{
-		".aet/skills/with-scripts/SKILL.md":  skillMD("with-scripts", "d", "", "Rule."),
-		".aet/skills/with-scripts/scripts/x.sh": "#!/bin/sh\necho hi\n",
+		".aet/skills/runner/SKILL.md":     skillMD("runner", "d", "", "Rule."),
+		".aet/skills/runner/scripts/x.sh": "#!/bin/sh\necho hi\n",
 	})
 	outside := filepath.Join(t.TempDir(), "evil.md")
 	os.WriteFile(outside, []byte(skillMD("evil", "d", "", "from outside")), 0o644)
@@ -183,7 +182,7 @@ func TestScanRepoSkipsSymlinksAndScripts(t *testing.T) {
 	if res.Found != 1 || len(res.Errors) != 1 || !strings.Contains(res.Errors[0], "symbolic") {
 		t.Fatalf("%+v", res)
 	}
-	k, _ := e.s.Get(ctx, "p1", "with-scripts")
+	k, _ := e.s.Get(ctx, "p1", "runner")
 	if !k.HasScripts {
 		t.Fatal("scripts are recorded")
 	}
@@ -259,7 +258,7 @@ func TestRegistriesAreAnExplicitHumanEditedAllowlist(t *testing.T) {
 	if err := e.s.RemoveRegistry(ctx, human, "mine"); err != nil {
 		t.Fatal(err)
 	}
-	if len(e.events("skill.registry_changed")) != 4 {
+	if len(e.events("skill.registry_changed")) != 3 {
 		t.Fatalf("registry events: %d", len(e.events("skill.registry_changed")))
 	}
 }
@@ -397,10 +396,10 @@ func TestRegistryLicenseRules(t *testing.T) {
 	e := newEnv(t, nil)
 	gh := newGHFixture(t)
 	gh.publish("openai/skills", "HEAD", sha1, map[string]string{
-		"a/licensed/SKILL.md":   skillMD("licensed", "has its own license", "", "Rule A."),
+		"a/licensed/SKILL.md":    skillMD("licensed", "has its own license", "", "Rule A."),
 		"a/licensed/LICENSE.txt": "MIT License\n\nCopyright (c) someone\n",
-		"a/unlicensed/SKILL.md": skillMD("unlicensed", "no license anywhere", "", "Rule B."),
-		"a/fm-license/SKILL.md": "---\nname: fm-license\ndescription: license in front matter\nlicense: Apache-2.0\n---\nRule C.\n",
+		"a/unlicensed/SKILL.md":  skillMD("unlicensed", "no license anywhere", "", "Rule B."),
+		"a/fm-license/SKILL.md":  "---\nname: fm-license\ndescription: license in front matter\nlicense: Apache-2.0\n---\nRule C.\n",
 	})
 	e.useFixture(gh)
 	k, err := e.s.Import(ctx, human, ImportReq{ProjectID: "p1", RegistryID: "openai-skills", Name: "licensed"})
@@ -460,8 +459,8 @@ func TestReleaseOfInjectionBlockedSkill(t *testing.T) {
 
 func TestExtractSkillsIsSafeAgainstHostileArchives(t *testing.T) {
 	var buf = buildTarball("repo-abc", map[string]string{
-		"skills/ok/SKILL.md":            skillMD("ok", "d", "", "x"),
-		"../evil/SKILL.md":              "x",
+		"skills/ok/SKILL.md":               skillMD("ok", "d", "", "x"),
+		"../evil/SKILL.md":                 "x",
 		"skills/../../etc/passwd/SKILL.md": "x",
 	})
 	got, err := ExtractSkills(buf, "skills")

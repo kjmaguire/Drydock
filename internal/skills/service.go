@@ -255,7 +255,8 @@ func (s *Service) upsert(ctx context.Context, projectID string, r record) (Skill
 			return e
 		}
 		sameContent := oldHash == r.hash && oldOrigin == r.origin
-		if sameContent && (oldStatus == StatusAccepted || oldStatus == StatusRejected) && !r.verdict.Blocked {
+		humanDecided := security.IsHumanPrincipal(oldDecidedBy)
+		if sameContent && (humanDecided || ((oldStatus == StatusAccepted || oldStatus == StatusRejected) && !r.verdict.Blocked)) {
 			status, decidedBy, decidedAt = oldStatus, oldDecidedBy, oldDecidedAt // a human decision on identical content stands
 		}
 		changed = !(sameContent && oldPin == r.pinned)
