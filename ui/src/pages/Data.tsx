@@ -58,7 +58,10 @@ function ScanSummary({ m }: { m: ExportManifest }) {
 function ExportSection({ projects, current }: { projects: Project[]; current: Project | undefined }) {
   const client = useClient();
   const act = useAction();
-  const [projectId, setProjectId] = useState(current?.id ?? projects[0]?.id ?? '');
+  // The user's pick, if it still exists; otherwise the sidebar's project, otherwise the first one (so a project that appears
+  // after mount, for example from an import on this page, is selectable straight away).
+  const [picked, setPicked] = useState('');
+  const projectId = projects.some((p) => p.id === picked) ? picked : (current?.id ?? projects[0]?.id ?? '');
   const [includeRuns, setIncludeRuns] = useState(false);
   const [ack, setAck] = useState(false);
   const [dest, setDest] = useState('');
@@ -82,7 +85,7 @@ function ExportSection({ projects, current }: { projects: Project[]; current: Pr
       <div className="form">
         <label>
           Project
-          <select aria-label="Project to export" value={projectId} onChange={(e) => { setProjectId(e.target.value); reset(); }}>
+          <select aria-label="Project to export" value={projectId} onChange={(e) => { setPicked(e.target.value); reset(); }}>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -286,7 +289,11 @@ function ImportSection() {
                 disabled={!repo.trim() || act.busy !== ''}
                 onClick={async () => {
                   const r = await act.run('import', () => client.projectImport({ path: path.trim(), repoPath: repo.trim(), name: name.trim() || undefined }));
-                  if (r) setResult(r);
+                  if (r) {
+                    // Done: drop the preview so the same archive cannot be imported twice by another click.
+                    setResult(r);
+                    setPreview(undefined);
+                  }
                 }}
               >
                 {act.busy === 'import' ? 'Importing...' : 'Import as a new project'}

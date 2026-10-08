@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '../api/client';
 import type { BackupList, BackupSettings, BundlePreview, ExportManifest, ExportPreview, ImportPreview, ImportStats, LicenseView } from '../api/pkgTypes';
 import type { Project } from '../api/types';
+import { BudgetPausePanel } from '../components/BudgetPause';
 import { ProjectCreate } from '../components/ProjectPages';
 import { SchedulerPanel } from '../components/Scheduler';
+import { SpecGate } from '../components/Tasks';
 import { UpdatesSection } from '../components/Settings';
 import { AppServicesProvider } from '../state/context';
 import { LicenseBanner, LicenseProvider } from '../state/license';
@@ -79,7 +81,7 @@ describe('License page', () => {
     expect(document.body.textContent).not.toContain('SECRET-TOKEN');
   });
 
-  it('shows the core refusal verbatim and still clears the field', async () => {
+  it('shows the core refusal verbatim and keeps the pasted token so a typo can be fixed', async () => {
     const licenseImport = vi.fn(async () => {
       throw new Error('this is not a Drydock license token');
     });
@@ -88,7 +90,7 @@ describe('License page', () => {
     field.value = 'junk';
     fireEvent.click(screen.getByRole('button', { name: 'Import license' }));
     expect((await screen.findByRole('alert')).textContent).toContain('this is not a Drydock license token');
-    expect(field.value).toBe('');
+    expect(field.value).toBe('junk');
   });
 
   it('imports from a file path when no token is pasted, and removing needs a confirmation', async () => {
@@ -138,6 +140,24 @@ describe('License banner and read-only controls', () => {
     expect(btn.hasAttribute('disabled')).toBe(true);
     expect(btn.getAttribute('title')).toBe(expired.banner);
     expect(screen.getByTestId('readonly-note').textContent).toContain('Open License');
+  });
+
+  it('read-only turns off approving but never refusing: Stop the run stays available', async () => {
+    const budgetResume = vi.fn(async () => ({}) as never);
+    shell(expired, <BudgetPausePanel payload={{ gate: 'budget', message: 'Budget limit reached.', exceeded: [] }} runId="run-1" requestId="req-1" onDone={() => undefined} />, { budgetResume });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Resume' }).hasAttribute('disabled')).toBe(true));
+    const stop = screen.getByRole('button', { name: 'Stop the run' });
+    expect(stop.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(stop);
+    await waitFor(() => expect(budgetResume).toHaveBeenCalledWith(expect.objectContaining({ decision: 'rejected' })));
+  });
+
+  it('a read-only spec gate cannot accept but can still send the spec back', () => {
+    const onRespond = vi.fn(async () => undefined);
+    const payload = { title: 'T', spec: 'text', criteria: [{ id: 'AC-1', given: 'a', when: 'b', then: 'c' }] } as never;
+    render(<SpecGate payload={payload} busy={false} readOnly onRespond={onRespond} />);
+    expect(screen.getByRole('button', { name: 'Accept spec' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Reject with feedback' }).hasAttribute('disabled')).toBe(false);
   });
 
   it('disables the scheduler tick when read-only and leaves reading alone', async () => {
@@ -298,6 +318,37 @@ describe('Backups page', () => {
     await waitFor(() => expect(backupSettingsSet).toHaveBeenCalledWith({ enabled: false, dir: 'D:\\bk', daily: 10, weekly: 4 }));
   });
 
+  it('does not leave a stale "Saved." after a later edit or a refused save', async () => {
+    let fail = false;
+    const backupSettingsSet = vi.fn(async (_s: object) => {
+      if (fail) throw new Error('daily must be between 1 and 365');
+      return settings();
+    });
+    withServices(<BackupsPage />, { backupList: async () => backups(), backupSettingsSet, backupRestoreStatus: async () => ({ pending: false }) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save schedule' }));
+    await screen.findByTestId('settings-saved');
+    fireEvent.change(screen.getByLabelText('Daily backups to keep'), { target: { value: '0' } });
+    expect(screen.queryByTestId('settings-saved')).toBeNull();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('between 1 and 365');
+    expect(screen.queryByTestId('settings-saved')).toBeNull();
+  });
+
+  it('forgets a verification when the backup file is pruned or replaced', async () => {
+    const backupVerify = vi.fn(async (name: string) => ({ name, size: 2048, created: '', ok: true, schemaVersion: 30, restorableHere: true }));
+    let list = backups();
+    const client = { backupList: async () => list, backupVerify, backupRestoreStatus: async () => ({ pending: false }) };
+    const { unmount } = withServices(<BackupsPage />, client);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify b1.db' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Restore b1.db' }).hasAttribute('disabled')).toBe(false));
+    unmount();
+    // same name, different file on disk: it must be verified again
+    list = backups({ backups: [{ ...backups().backups![0]!, size: 4096, created: '2026-02-02T00:00:00Z' }] });
+    withServices(<BackupsPage />, client);
+    expect((await screen.findByRole('button', { name: 'Restore b1.db' })).hasAttribute('disabled')).toBe(true);
+  });
+
   it('shows the core message when settings are refused', async () => {
     const backupSettingsSet = vi.fn(async () => {
       throw new Error('the backup folder must be an absolute path');
@@ -382,6 +433,30 @@ describe('Export and import page', () => {
     fireEvent.click(screen.getByLabelText(/Include raw run output/));
     expect(screen.queryByTestId('export-preview')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
+  });
+
+  it('follows a project that appears after the page opened, and imports an archive only once', async () => {
+    const preview: ImportPreview = { manifest: manifest(), appSchema: 30, needsMigration: false, counts: { tasks: 3 }, pending: pending() };
+    const projectImport = vi.fn(async (_r: object) => ({ projectId: 'prj_new', name: 'Alpha (imported)', sourceProjectId: 'prj_1', counts: {}, idsRemapped: 1, runFilesRestored: 0, migratedForward: false, pending: pending(), sourceSchema: 30 }));
+    const projectExportPreview = vi.fn(async (): Promise<ExportPreview> => ({ manifest: manifest(), totalBytes: 1, includeRuns: false }));
+    const client = { projectImportPreview: async () => preview, projectImport, projectExportPreview };
+    const { rerender } = withServices(<DataPage projects={[]} current={undefined} />, client);
+    expect(screen.getByRole('button', { name: 'Preview the export' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Archive path/), { target: { value: 'a.zip' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview the import' }));
+    await screen.findByTestId('import-preview');
+    fireEvent.change(screen.getByLabelText(/Local repository to link/), { target: { value: 'C:\\r' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import as a new project' }));
+    await screen.findByTestId('import-result');
+    // the preview and the import button are gone, so a second click cannot import the archive again
+    expect(screen.queryByRole('button', { name: 'Import as a new project' })).toBeNull();
+    expect(projectImport).toHaveBeenCalledTimes(1);
+    // the project list now has the new project: export is usable without remounting
+    rerender(<AppServicesProvider services={services(client)}><DataPage projects={[proj('prj_new', 'Alpha (imported)')]} current={undefined} /></AppServicesProvider>);
+    const btn = screen.getByRole('button', { name: 'Preview the export' });
+    expect(btn.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(btn);
+    await waitFor(() => expect(projectExportPreview).toHaveBeenCalledWith('prj_new', false));
   });
 
   it('previews an import and lists everything that comes in untrusted, then imports with a repo path', async () => {

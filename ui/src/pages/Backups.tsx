@@ -6,7 +6,7 @@ import { useClient } from '../state/context';
 import { useLive } from '../state/hooks';
 import { Badge, ErrorNote, Page } from '../components/common';
 
-function SettingsForm({ s, onSaved }: { s: BackupSettings; onSaved: () => void }) {
+function SettingsForm({ s, onSaved, onEdit }: { s: BackupSettings; onSaved: () => void; onEdit: () => void }) {
   const client = useClient();
   const act = useAction();
   const [enabled, setEnabled] = useState(s.enabled);
@@ -15,6 +15,7 @@ function SettingsForm({ s, onSaved }: { s: BackupSettings; onSaved: () => void }
   const [weekly, setWeekly] = useState(String(s.weekly));
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    onEdit();
     const r = await act.run('save', () => client.backupSettingsSet({ enabled, dir: dir.trim(), daily: numOrUndef(daily), weekly: numOrUndef(weekly) }));
     if (r) onSaved();
   };
@@ -22,19 +23,19 @@ function SettingsForm({ s, onSaved }: { s: BackupSettings; onSaved: () => void }
     <form className="form form-grid" onSubmit={submit} aria-label="Backup schedule">
       <ErrorNote error={act.error} what="Settings not saved" />
       <label className="inline">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Back up automatically (once a day while Drydock is open)
+        <input type="checkbox" checked={enabled} onChange={(e) => { setEnabled(e.target.checked); onEdit(); }} /> Back up automatically (once a day while Drydock is open)
       </label>
       <label>
         Backup folder (an absolute path; leave empty for the default)
-        <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder={s.defaultDir} spellCheck={false} />
+        <input value={dir} onChange={(e) => { setDir(e.target.value); onEdit(); }} placeholder={s.defaultDir} spellCheck={false} />
       </label>
       <label>
         Daily backups to keep
-        <input inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} />
+        <input inputMode="numeric" value={daily} onChange={(e) => { setDaily(e.target.value); onEdit(); }} />
       </label>
       <label>
         Weekly backups to keep
-        <input inputMode="numeric" value={weekly} onChange={(e) => setWeekly(e.target.value)} />
+        <input inputMode="numeric" value={weekly} onChange={(e) => { setWeekly(e.target.value); onEdit(); }} />
       </label>
       <div className="form-actions">
         <button type="submit" className="primary" disabled={act.busy !== ''}>
@@ -103,7 +104,8 @@ export default function BackupsPage() {
   const status = useLive(() => client.backupRestoreStatus(), [], (e) => e.type.startsWith('backup.'));
   const act = useAction();
   const [label, setLabel] = useState('');
-  const [verified, setVerified] = useState<Record<string, BackupVerify>>({});
+  // A verification belongs to the file as it was when checked (name, time, size): a pruned or replaced file loses it.
+  const [checked, setChecked] = useState<Record<string, { v: BackupVerify; fp: string }>>({});
   const [confirming, setConfirming] = useState('');
   const [staged, setStaged] = useState<RestoreStaged | undefined>();
   const [made, setMade] = useState('');
@@ -116,9 +118,15 @@ export default function BackupsPage() {
     list.reload();
     status.reload();
   };
-  const verify = async (name: string) => {
-    const r = await act.run(`verify:${name}`, () => client.backupVerify(name));
-    if (r) setVerified((m) => ({ ...m, [name]: r }));
+  const fingerprint = (b: BackupInfo) => `${b.created}|${b.size}`;
+  const verified: Record<string, BackupVerify> = {};
+  for (const b of l?.backups ?? []) {
+    const c = checked[b.name];
+    if (c && c.fp === fingerprint(b)) verified[b.name] = c.v;
+  }
+  const verify = async (b: BackupInfo) => {
+    const r = await act.run(`verify:${b.name}`, () => client.backupVerify(b.name));
+    if (r) setChecked((m) => ({ ...m, [b.name]: { v: r, fp: fingerprint(b) } }));
   };
   return (
     <Page title="Backups">
@@ -216,6 +224,7 @@ export default function BackupsPage() {
           ) : null}
           <SettingsForm
             s={s}
+            onEdit={() => setSaved(false)}
             onSaved={() => {
               setSaved(true);
               reloadAll();
@@ -259,7 +268,7 @@ export default function BackupsPage() {
                   <td>{b.label}</td>
                   <td>
                     <div className="form-actions">
-                      <button disabled={act.busy !== ''} onClick={() => verify(b.name)} aria-label={`Verify ${b.name}`}>
+                      <button disabled={act.busy !== ''} onClick={() => verify(b)} aria-label={`Verify ${b.name}`}>
                         Verify
                       </button>
                       <button

@@ -108,13 +108,14 @@ export default function LicensePage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    // The token lives only in the uncontrolled input: read once and cleared before the request leaves. It is never shown back.
+    // The token lives only in the uncontrolled input and is never shown back. It is cleared once the core accepted it; a failed
+    // import leaves it in place so the user can fix a typo without pasting it again.
     const token = tokenRef.current?.value.trim() ?? '';
-    if (tokenRef.current) tokenRef.current.value = '';
     if (!token && !path.trim()) return;
     setDone('');
     const r = await act.run('import', () => client.licenseImport(token ? { token } : { path: path.trim() }));
     if (r) {
+      if (tokenRef.current) tokenRef.current.value = '';
       setPath('');
       setDone(r.message);
       q.reload();

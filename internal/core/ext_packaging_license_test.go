@@ -242,6 +242,17 @@ func TestLicenseStateMachineAndReadOnlyEnforcement(t *testing.T) {
 	a.mustBeReadOnlyError("agent.create", a.callErr("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "X", Adapter: "claude", Role: "backend"}))
 	a.mustBeReadOnlyError("project.create", a.callErr("project.create", map[string]any{"name": "x", "repoPath": newRepo(t)}))
 	a.mustBeReadOnlyError("run.respond", a.callErr("run.respond", map[string]any{"runId": "run_x", "requestId": "req_x", "decision": "approved"}))
+	// refusing work stays available while read-only (reject, decline, stop a paused run): these must get past the license gate
+	// and fail only because the run and approval do not exist
+	for name, params := range map[string]map[string]any{
+		"run.respond":                 {"runId": "run_x", "requestId": "req_x", "decision": "rejected"},
+		"budget.resume":               {"runId": "run_x", "requestId": "req_x", "decision": "rejected"},
+		"integration.outbound.decide": {"id": "out_x", "approve": false},
+	} {
+		if err := a.callErr(name, params); err != nil && strings.Contains(err.Error(), "read-only") {
+			t.Errorf("%s (a refusal) was blocked by read-only mode: %v", name, err)
+		}
+	}
 	a.mustBeReadOnlyError("plan.propose", a.callErr("plan.propose", map[string]any{"projectId": p.ID, "goal": "g"}))
 	a.mustBeReadOnlyError("scheduler.tick", a.callErr("scheduler.tick", map[string]any{"projectId": p.ID}))
 	a.mustBeReadOnlyError("provider.create", a.callErr("provider.create", map[string]any{"name": "x"}))

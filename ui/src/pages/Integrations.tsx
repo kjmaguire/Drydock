@@ -150,7 +150,7 @@ function Outbound({ conn, projects }: { conn: IntegrationView; projects: Project
             {o.status === 'awaiting_approval' ? (
               <>
                 <button className="primary" disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { await act.run('approve', () => client.integrationOutboundDecide({ id: o.id, approve: true })); q.reload(); }}>Approve this exact text</button>
-                <button disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { await act.run('decline', () => client.integrationOutboundDecide({ id: o.id, approve: false })); q.reload(); }}>Decline</button>
+                <button disabled={act.busy !== ''} onClick={async () => { await act.run('decline', () => client.integrationOutboundDecide({ id: o.id, approve: false })); q.reload(); }}>Decline</button>
               </>
             ) : null}
             {o.status === 'approved' ? (

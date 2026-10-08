@@ -162,8 +162,11 @@ func (c *Core) TaskDiff(ctx context.Context, id string) (string, error) {
 // Respond answers a pending request of a run as the human. Only the human identity is ever attached here: an agent has no
 // path to this method.
 func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, data []byte) error {
-	if err := c.RequireLicensed(ctx, "approve"); err != nil {
-		return err
+	// Rejecting only refuses work, so it stays available in read-only mode (an approval does not).
+	if decision != "rejected" {
+		if err := c.RequireLicensed(ctx, "approve"); err != nil {
+			return err
+		}
 	}
 	var d []byte = data
 	return c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d})

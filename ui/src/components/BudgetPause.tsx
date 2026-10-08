@@ -63,7 +63,7 @@ export function BudgetPausePanel({ payload, runId, requestId, onDone }: { payloa
         <button className="primary" disabled={act.busy !== '' || !runId || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={() => resume('approved')}>
           Resume
         </button>
-        <button disabled={act.busy !== '' || !runId || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={() => resume('rejected')}>
+        <button disabled={act.busy !== '' || !runId} onClick={() => resume('rejected')}>
           Stop the run
         </button>
       </div>

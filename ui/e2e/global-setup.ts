@@ -76,22 +76,29 @@ export default async function globalSetup() {
 
   const main = await start(exe, ['-repos', String(REPOS), '-green-repos', String(GREEN)]);
   const started: ChildProcess[] = [main.child];
+  const stopAll = async () => {
+    for (const c of started) c.kill('SIGTERM');
+    await new Promise((r) => setTimeout(r, 500));
+    for (const c of started) if (c.exitCode === null) c.kill('SIGKILL');
+  };
   process.env.DRYDOCK_E2E_URL = main.url;
   process.env.DRYDOCK_E2E_REPOS = JSON.stringify(main.repos);
   process.env.DRYDOCK_E2E_GREEN_REPOS = JSON.stringify(main.greens);
   process.env.DRYDOCK_E2E_DOCS = main.docs;
 
   // TEST HARNESS MODE: a build that has a (throwaway) license key. See cmd/drydock-e2e/main.go.
-  const licensed = await start(exe, ['-licensed', '-repos', String(LICENSED_REPOS)]);
+  let licensed: Awaited<ReturnType<typeof start>>;
+  try {
+    licensed = await start(exe, ['-licensed', '-repos', String(LICENSED_REPOS)]);
+  } catch (err) {
+    await stopAll(); // do not leak the first harness (its port and temp dir) when the second one fails to start
+    throw err;
+  }
   started.push(licensed.child);
   process.env.DRYDOCK_E2E_LICENSED_URL = licensed.url;
   process.env.DRYDOCK_E2E_LICENSED_REPOS = JSON.stringify(licensed.repos);
   process.env.DRYDOCK_E2E_LICENSE_ACTIVE = licensed.extra.active ?? '';
   process.env.DRYDOCK_E2E_LICENSE_EXPIRED = licensed.extra.expired ?? '';
 
-  return async () => {
-    for (const c of started) c.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
-    for (const c of started) if (c.exitCode === null) c.kill('SIGKILL');
-  };
+  return stopAll;
 }

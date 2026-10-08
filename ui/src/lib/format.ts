@@ -94,9 +94,12 @@ export function formatBytes(n: number | undefined | null): string {
   const units = ['KB', 'MB', 'GB', 'TB'];
   let v = n / 1024;
   let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
+  // Round first, then pick the unit, so 1,048,500 bytes reads "1.0 MB" and never "1024 KB".
+  const shown = (x: number) => Number(x.toFixed(x < 10 ? 1 : 0));
+  while (shown(v) >= 1024 && i < units.length - 1) {
     v /= 1024;
     i++;
   }
-  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+  const r = shown(v);
+  return `${r.toFixed(r < 10 ? 1 : 0)} ${units[i]}`;
 }

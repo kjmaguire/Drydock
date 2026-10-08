@@ -388,7 +388,8 @@ export const criterionLine = (c: Criterion) => `Given ${c.given}, when ${c.when}
  * output (untrusted) and is shown inert. You can edit the criteria before accepting (sent as data.criteria) or send the spec
  * back with feedback. The buttons answer this request id; no text in the spec can answer it.
  */
-export function SpecGate({ payload, busy, onRespond }: { payload: SpecReviewPayload; busy: boolean; onRespond: (decision: string, data?: unknown) => Promise<void> }) {
+/** `busy` is a request in flight; `readOnly` (license) turns off approving only: sending a spec back stays available. */
+export function SpecGate({ payload, busy, readOnly = false, onRespond }: { payload: SpecReviewPayload; busy: boolean; readOnly?: boolean; onRespond: (decision: string, data?: unknown) => Promise<void> }) {
   const original = (payload.criteria ?? []).map(criterionLine);
   const [lines, setLines] = useState(original.join('\n'));
   const [rejecting, setRejecting] = useState(false);
@@ -429,7 +430,7 @@ export function SpecGate({ payload, busy, onRespond }: { payload: SpecReviewPayl
         </div>
       ) : (
         <div className="form-actions">
-          <button className="primary" disabled={busy} onClick={() => onRespond('approved', edited ? { criteria: lines.split('\n').map((l) => l.trim()).filter(Boolean) } : undefined)}>
+          <button className="primary" disabled={busy || readOnly} onClick={() => onRespond('approved', edited ? { criteria: lines.split('\n').map((l) => l.trim()).filter(Boolean) } : undefined)}>
             {edited ? 'Accept spec with my edited criteria' : 'Accept spec'}
           </button>
           <button disabled={busy} onClick={() => setRejecting(true)}>
@@ -468,7 +469,9 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
     }
   };
   const ro = useReadOnly();
-  const busy = state !== 'idle' || ro.readOnly;
+  // Refusing work (reject, request changes) stays available in read-only mode; approving and answering do not.
+  const sending = state !== 'idle';
+  const busy = sending || ro.readOnly;
   return (
     <div className="pending" data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
       <h3>{p.spec.title}</h3>
@@ -505,7 +508,7 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
       {budgetPause ? (
         <BudgetPausePanel payload={budgetPause} runId={runId} requestId={p.id} onDone={onChanged} />
       ) : spec ? (
-        <SpecGate payload={spec} busy={busy} onRespond={respond} />
+        <SpecGate payload={spec} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
       ) : p.spec.kind === 'question' ? (
         <div className="form">
           <label>
@@ -524,7 +527,7 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
             <button className="primary" disabled={busy} onClick={() => respond('approved')}>
               Approve
             </button>
-            <button disabled={busy} onClick={() => setMode('changes')}>
+            <button disabled={sending} onClick={() => setMode('changes')}>
               Request changes
             </button>
           </div>
@@ -532,13 +535,13 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
           <div className="form">
             <label>
               Feedback for the worker
-              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} disabled={busy} />
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} disabled={sending} />
             </label>
             <div className="form-actions">
-              <button className="primary" disabled={busy || !text.trim()} onClick={() => respond('rejected', { feedback: text.trim() })}>
+              <button className="primary" disabled={sending || !text.trim()} onClick={() => respond('rejected', { feedback: text.trim() })}>
                 Send feedback
               </button>
-              <button disabled={busy} onClick={() => setMode('idle')}>
+              <button disabled={sending} onClick={() => setMode('idle')}>
                 Back
               </button>
             </div>
@@ -549,7 +552,7 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
           <button className="primary" disabled={busy} onClick={() => respond('approved')}>
             Approve
           </button>
-          <button disabled={busy} onClick={() => respond('rejected')}>
+          <button disabled={sending} onClick={() => respond('rejected')}>
             Reject
           </button>
         </div>

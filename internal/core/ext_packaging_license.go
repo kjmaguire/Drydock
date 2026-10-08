@@ -264,6 +264,26 @@ var gatedMethods = map[string]string{
 	"agent.create": "create_agent", "project.create": "create_project", "provider.create": "add_connection", "integration.connect": "add_connection",
 }
 
+// onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an
+// outbound action, stopping a paused run. Those stay available while Drydock is read-only, because refusing them would leave a
+// risky pending item stuck until a license is imported.
+func onlyReduces(method string, params json.RawMessage) bool {
+	var p struct {
+		Decision string `json:"decision"`
+		Approve  *bool  `json:"approve"`
+	}
+	if json.Unmarshal(params, &p) != nil {
+		return false
+	}
+	switch method {
+	case "run.respond", "budget.resume":
+		return p.Decision == "rejected"
+	case "integration.outbound.decide":
+		return p.Approve != nil && !*p.Approve
+	}
+	return false
+}
+
 // gateMethods wraps the gated methods of a registry so an expired license refuses them before they run.
 func (c *Core) gateMethods(m map[string]Method) {
 	if c.pkg() == nil {
@@ -274,10 +294,12 @@ func (c *Core) gateMethods(m map[string]Method) {
 		if !ok {
 			continue
 		}
-		action, inner := action, inner
+		name, action, inner := name, action, inner
 		m[name] = func(ctx context.Context, params json.RawMessage) (any, error) {
-			if err := c.RequireLicensed(ctx, action); err != nil {
-				return nil, err
+			if !onlyReduces(name, params) {
+				if err := c.RequireLicensed(ctx, action); err != nil {
+					return nil, err
+				}
 			}
 			return inner(ctx, params)
 		}
