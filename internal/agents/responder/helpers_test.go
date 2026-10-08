@@ -201,3 +201,15 @@ func authors(ms []room.Message) string {
 	}
 	return strings.Join(out, " ")
 }
+
+// setMode changes the room mode as the human, reading the current version (adding members bumps it).
+func (h *harness) setMode(r room.Room, mode room.Mode, params room.ModeParams) {
+	h.t.Helper()
+	cur, err := h.room.GetRoom(h.ctx, r.ID)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if _, err := h.room.SetMode(h.ctx, r.ID, mode, params, cur.Version, kyle); err != nil {
+		h.t.Fatal(err)
+	}
+}

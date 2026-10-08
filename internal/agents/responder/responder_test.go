@@ -90,8 +90,8 @@ func TestMentionedAgentAnswersAsItselfInAThreadWithBoundedContext(t *testing.T) 
 	if _, ok := inc["room:"+q.ID]; !ok || exc["room history"] == "" || exc["other rooms"] == "" {
 		t.Fatalf("manifest %+v", mf.Items)
 	}
-	if len(ms) < 3 || exc["room:"+ms[0].ID] != "not_addressed" {
-		t.Fatalf("the unrelated message must be listed as excluded (not_addressed): %+v", exc)
+	if _, leaked := inc["room:"+ms[0].ID]; leaked {
+		t.Fatalf("the unrelated message must not be in the manifest as included: %+v", inc)
 	}
 
 	// usage rows are recorded by the runtime under the agent
@@ -215,9 +215,7 @@ func TestSequentialModeStopsAtTheRoundBoundAndAsksTheHuman(t *testing.T) {
 	alice := h.agent("alice", "Alice", "backend", say("ALICE-VIEW"))
 	bob := h.agent("bob", "Bob", "frontend", say("BOB-VIEW"))
 	ch := h.channel("design", alice, bob)
-	if _, err := h.room.SetMode(h.ctx, ch.ID, room.ModeSequential, room.ModeParams{Order: []string{alice, bob}}, ch.Version, kyle); err != nil {
-		t.Fatal(err)
-	}
+	h.setMode(ch, room.ModeSequential, room.ModeParams{Order: []string{alice, bob}})
 	q := h.human(ch, "How should we shape the API?")
 	out, err := h.r.Handle(h.ctx, q.ID)
 	if err != nil {
@@ -261,7 +259,7 @@ func TestSequentialPassEndsAPassWithoutCostingAReplyBody(t *testing.T) {
 	alice := h.agent("alice", "Alice", "backend", say("PASS"))
 	bob := h.agent("bob", "Bob", "frontend", say("BOB-VIEW"))
 	ch := h.channel("design", alice, bob)
-	h.room.SetMode(h.ctx, ch.ID, room.ModeSequential, room.ModeParams{Order: []string{alice, bob}, MaxRounds: 1}, ch.Version, kyle)
+	h.setMode(ch, room.ModeSequential, room.ModeParams{Order: []string{alice, bob}, MaxRounds: 1})
 	q := h.human(ch, "anything to add?")
 	out, err := h.r.Handle(h.ctx, q.ID)
 	if err != nil {
@@ -318,9 +316,7 @@ func TestModeratorModeLetsTheModeratorNameTheSpeakers(t *testing.T) {
 	bob := h.agent("bob", "Bob", "frontend", say("ANSWER-FROM-BOB: fine"))
 	carol := h.agent("carol", "Carol", "qa", say("carol must stay silent"))
 	ch := h.channel("design", mod, alice, bob, carol)
-	if _, err := h.room.SetMode(h.ctx, ch.ID, room.ModeModerator, room.ModeParams{Moderator: mod}, ch.Version, kyle); err != nil {
-		t.Fatal(err)
-	}
+	h.setMode(ch, room.ModeModerator, room.ModeParams{Moderator: mod})
 	q := h.human(ch, "Please design the API")
 	out, err := h.r.Handle(h.ctx, q.ID)
 	if err != nil {
@@ -491,7 +487,7 @@ func TestHardCapAndDisabledProject(t *testing.T) {
 	bob := h.agent("bob", "Bob", "backend", say("B"))
 	carol := h.agent("carol", "Carol", "backend", say("C"))
 	ch := h.channel("design", alice, bob, carol)
-	h.room.SetMode(h.ctx, ch.ID, room.ModeSequential, room.ModeParams{Order: []string{alice, bob, carol}}, ch.Version, kyle)
+	h.setMode(ch, room.ModeSequential, room.ModeParams{Order: []string{alice, bob, carol}})
 	out, err := h.r.Handle(h.ctx, h.human(ch, "go").ID)
 	if err != nil || len(out.Turns) != 2 || !strings.Contains(out.Stopped, "hard cap") {
 		t.Fatalf("%v %+v", err, out)
@@ -502,8 +498,10 @@ func TestHardCapAndDisabledProject(t *testing.T) {
 	c2 := h2.channel("dev", a2)
 	_ = c2
 	off := responder.New(responder.Deps{Room: h2.room, Runtime: h2.rt, DB: h2.db, Bus: h2.bus, Enabled: func(context.Context, string) bool { return false },
-		LookupAgent: func(context.Context, string) (responder.Agent, error) { return responder.Agent{}, errors.New("unreachable") },
-		Cwd:         func(context.Context, room.Room) (string, error) { return h2.dir, nil }}, responder.Options{})
+		LookupAgent: func(context.Context, string) (responder.Agent, error) {
+			return responder.Agent{}, errors.New("unreachable")
+		},
+		Cwd: func(context.Context, room.Room) (string, error) { return h2.dir, nil }}, responder.Options{})
 	o2, err := off.Handle(h2.ctx, h2.human(c2, "@alice hello").ID)
 	if err != nil || len(o2.Turns) != 0 || !strings.Contains(o2.Stopped, "switched off") {
 		t.Fatalf("%v %+v", err, o2)
