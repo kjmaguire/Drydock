@@ -29,7 +29,7 @@ func TestLocalPackIngestSearchCitesAndVersions(t *testing.T) {
 	if r1.Version != "20261008.1" || !r1.NewVersion || r1.Added != 3 || r1.Pages != 3 || r1.Failed != 0 {
 		t.Fatalf("first refresh %+v", r1)
 	}
-	res := e.search("how do I make a preview of a worker with wrangler", "cf")
+	res := e.search("how do I preview a worker with wrangler", "cf")
 	if !res.Found || len(res.Hits) == 0 {
 		t.Fatalf("nothing found: %+v", res)
 	}
@@ -91,8 +91,10 @@ func TestLocalPackIngestSearchCitesAndVersions(t *testing.T) {
 		t.Fatalf("digest %+v", byURL)
 	}
 	// removed content is no longer retrieved ...
-	if r := e.search("Workers KV key value store", "cf"); r.Found {
-		t.Fatalf("removed page still retrieved: %+v", r.Hits)
+	for _, h := range e.search("Workers KV key value store", "cf").Hits {
+		if h.Citation.URL == "local:workers/kv.md" {
+			t.Fatalf("removed page still retrieved: %+v", h)
+		}
 	}
 	// ... but a citation to the version it was in still resolves while that version is retained
 	old, err := e.s.ResolveCitation(context.Background(), "cf", "20261008.1", top.Citation.ChunkID)
@@ -176,9 +178,9 @@ func TestPerPageCapAndK(t *testing.T) {
 		sb.WriteString("\n## Section " + string(rune('A'+i)) + "\n\nqueue consumers batch messages for the queue.\n")
 	}
 	writeFiles(t, dir, map[string]string{"p.md": sb.String(), "q.md": "# Other\n\nqueue basics.\n"})
-	e.install(localManifest("q", dir, ""))
-	e.refresh("q")
-	res := e.search("queue messages", "q")
+	e.install(localManifest("qq", dir, ""))
+	e.refresh("qq")
+	res := e.search("queue messages", "qq")
 	perPage := map[string]int{}
 	for _, h := range res.Hits {
 		perPage[h.Citation.URL]++

@@ -211,6 +211,20 @@ func (l *Linear) Put(i LinearIssue) {
 	l.issues[i.ID] = i
 }
 
+// Get returns an issue by id.
+func (l *Linear) Get(id string) LinearIssue {
+	l.mu2.Lock()
+	defer l.mu2.Unlock()
+	return l.issues[id]
+}
+
+// Delete removes an issue.
+func (l *Linear) Delete(id string) {
+	l.mu2.Lock()
+	defer l.mu2.Unlock()
+	delete(l.issues, id)
+}
+
 // Server returns the MCP server.
 func (l *Linear) Server() *sdk.Server { return l.srv }
 
@@ -306,6 +320,13 @@ func (n *Notion) Put(p NotionPage) {
 	n.pages[p.ID] = p
 }
 
+// Get returns a page by id.
+func (n *Notion) Get(id string) NotionPage {
+	n.mu2.Lock()
+	defer n.mu2.Unlock()
+	return n.pages[id]
+}
+
 // Server returns the MCP server.
 func (n *Notion) Server() *sdk.Server { return n.srv }
 
@@ -398,6 +419,13 @@ func (s *Sentry) Put(i SentryIssue) {
 	s.mu2.Lock()
 	defer s.mu2.Unlock()
 	s.issues[i.ID] = i
+}
+
+// Get returns an issue by id.
+func (s *Sentry) Get(id string) SentryIssue {
+	s.mu2.Lock()
+	defer s.mu2.Unlock()
+	return s.issues[id]
 }
 
 // Server returns the MCP server.

@@ -114,11 +114,12 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 	defer mu.Unlock()
 
 	start := s.now()
-	_ = s.setStatus(ctx, packID, "refreshing", "")
+	outer := context.WithoutCancel(ctx) // the failure record must survive the refresh budget expiring
+	_ = s.setStatus(outer, packID, "refreshing", "")
 	defer func() {
 		if err != nil {
-			_ = s.markFailed(ctx, packID, err, start)
-			s.emit(ctx, EventRefreshFailed, map[string]any{"pack": packID, "error": s.o.Scanner.Redact(err.Error()), "by": by})
+			_ = s.markFailed(outer, packID, err, start)
+			s.emit(outer, EventRefreshFailed, map[string]any{"pack": packID, "error": s.o.Scanner.Redact(err.Error()), "by": by})
 		}
 	}()
 	ctx, cancel := context.WithTimeout(ctx, m.Crawl.Budget.D())
@@ -357,7 +358,7 @@ func (s *Store) markFailed(ctx context.Context, id string, cause error, started 
 	if len(msg) > 500 {
 		msg = msg[:500]
 	}
-	return s.o.DB.WriteTx(context.WithoutCancel(ctx), func(tx *sql.Tx) error {
+	return s.o.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `UPDATE packs SET status='failed', last_error=?, last_refresh_at=? WHERE id=?`, msg, s.now().UnixMilli(), id)
 		return err
 	})
