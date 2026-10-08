@@ -39,14 +39,15 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 
     // the task channel: Tests check card, the worker's message, the reviewer's verdict
     await openTaskChannel(page);
-    const tests = page.getByTestId('check-card').filter({ has: page.locator('[class*=check-icon]') }).first();
     await expect(page.getByTestId('check-card').first()).toBeVisible();
     await expect(page.locator('[data-testid=check-card][data-tool=Tests]').first()).toHaveAttribute('data-status', /pass|fail/);
-    void tests;
     await expect(page.locator('[data-testid=check-card][data-tool=Tests][data-status=pass]').last()).toBeVisible();
     await expect(page.locator('[data-testid=message][data-author-kind=tool]').first()).toBeVisible();
     await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'Worker One' }).filter({ hasText: 'implemented Subtract' })).toBeVisible();
     await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'Reviewer One' }).filter({ hasText: 'SHIP' })).toBeVisible();
+
+    // presence dots come from presence.list plus live events: some agent is no longer "Unknown"
+    await expect.poll(async () => (await page.getByTestId('presence').allInnerTexts()).filter((t) => !/Unknown/.test(t)).length, { timeout: 30_000 }).toBeGreaterThan(0);
 
     // approve with the button bound to the request
     await page.getByRole('link', { name: 'Task details' }).click();
@@ -104,4 +105,29 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.getByRole('button', { name: 'Create project' }).click();
     await expect(page.getByRole('alert')).toContainText('not a usable Git repository');
   });
+});
+
+test('project delivery settings and the Pull Requests view show the core\'s honest answers (no GitHub origin in this repo)', async ({ page }) => {
+  await createProject(page, 'gocalc-pr');
+  await page.getByRole('link', { name: 'Project settings' }).click();
+  await page.getByLabel('Mode', { exact: true }).selectOption('pr_flow');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
+  await page.getByRole('link', { name: 'Pull Requests' }).click();
+  await expect(page.getByText('No task has a pull request')).toBeVisible();
+  await page.getByRole('button', { name: 'Load open issues' }).click();
+  await expect(page.getByRole('alert')).toContainText('origin');
+});
+
+test('the sidebar is keyboard navigable and Needs you comes first', async ({ page }) => {
+  await createProject(page, 'gocalc-keys');
+  const items = page.locator('nav[aria-label=Main] [data-nav]');
+  await expect(items.first()).toHaveAttribute('href', '#/project/new');
+  await page.getByTestId('nav-needs-you').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('link', { name: '# alerts' })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByTestId('nav-needs-you')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { level: 1, name: 'Needs you' })).toBeVisible();
 });
