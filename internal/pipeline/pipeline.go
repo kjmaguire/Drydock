@@ -19,6 +19,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -45,6 +46,10 @@ type Deps struct {
 	OnTurn func(ctx context.Context, t tasks.Task, agentID, role, text string)
 	// Context, if set, owns the generated instruction files and the per-attempt context manifest (brief section 9).
 	Context *ctxeng.Engine
+	// Scanner scans the lines a task added for secrets (the `secrets` check). Default: checks.DefaultScanner.
+	Scanner security.SecretScanner
+	// DepsBinary overrides the osv-scanner executable of the `deps` check (tests; default osv-scanner on PATH).
+	DepsBinary string
 }
 
 // Input is the run input of pipeline workflows.
@@ -235,8 +240,11 @@ func WorkPrompt(t tasks.Task, in workflow.NodeInput) string {
 	return sb.String()
 }
 
-// Verify runs the project's checks in order (build, test, lint, typecheck as detected), stopping at the first failure. It
-// records evidence for each and returns the failing (or final passing) CheckResult with Route pass or fail.
+// Verify runs the project's checks in order (build, test, lint, typecheck as detected, then the settings-controlled
+// `secrets` and `deps` checks), stopping at the first failure. It records evidence for each and returns the failing (or
+// final passing) CheckResult with Route pass or fail. A check that could not be evaluated (osv-scanner not installed, a
+// tool that broke) is recorded as evidence with no verdict and an inconclusive event; it is never a pass and never sends
+// the work back to an agent.
 func Verify(d Deps) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, d, in)
@@ -255,9 +263,11 @@ func Verify(d Deps) workflow.NodeHandler {
 		if len(specs) == 0 {
 			return workflow.NodeOutput{}, errors.New("no checks detected for this project: add a Taskfile with build/test targets or configure checks")
 		}
+		specs = append(specs, d.extraChecks(ctx, repo, t)...)
 		logDir := filepath.Join(d.DataDir, "runs", string(in.RunID), "checks")
 		diffHash, _ := repo.DiffHash(ctx, worktreeOf(t))
 		var last checks.Result
+		failed := false
 		for _, spec := range specs {
 			spec.LogDir = logDir
 			res, err := checks.Run(ctx, d.PM, spec, func(line string) {
@@ -267,13 +277,23 @@ func Verify(d Deps) workflow.NodeHandler {
 				return workflow.NodeOutput{}, err
 			}
 			res.DiffHash = diffHash
+			kind := spec.Name
+			data, _ := json.Marshal(map[string]any{"argv": res.Argv, "exitCode": res.ExitCode, "failing": res.FailingTests, "durationMs": res.Duration.Milliseconds(),
+				"skipped": res.Skipped, "errored": res.Errored})
+			if res.Inconclusive() {
+				status := "skipped"
+				if res.Errored {
+					status = "error"
+				}
+				summary := fmt.Sprintf("%s %s: %s", kind, status, nonEmptyStr(res.SkipReason, res.Output))
+				if _, err := d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: kind, Passed: nil, Summary: truncateStr(summary, 300), Ref: res.LogRef, Data: data}); err != nil {
+					return workflow.NodeOutput{}, err
+				}
+				d.emit(ctx, "task.check_inconclusive", t, map[string]any{"kind": kind, "status": status, "reason": truncateStr(nonEmptyStr(res.SkipReason, res.Output), 300), "logRef": res.LogRef, "diffHash": diffHash})
+				continue
+			}
 			last = res
 			passed := res.Passed
-			kind := spec.Name
-			if kind == "build" || kind == "test" || kind == "lint" || kind == "typecheck" {
-				// "test" evidence gates REVIEW; the others are recorded under their own kind
-			}
-			data, _ := json.Marshal(map[string]any{"argv": res.Argv, "exitCode": res.ExitCode, "failing": res.FailingTests, "durationMs": res.Duration.Milliseconds()})
 			if _, err := d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: kind, Passed: &passed, Summary: summarize(res), Ref: res.LogRef, Data: data}); err != nil {
 				return workflow.NodeOutput{}, err
 			}
@@ -281,16 +301,51 @@ func Verify(d Deps) workflow.NodeHandler {
 				d.OnCheck(ctx, t, res)
 			}
 			if !res.Passed {
+				failed = true
 				break
 			}
 		}
 		b, _ := json.Marshal(last.CheckResult)
 		route := "pass"
-		if !last.Passed {
+		if failed {
 			route = "fail"
 		}
 		return workflow.NodeOutput{Value: b, Route: route}, nil
 	}
+}
+
+// extraChecks returns the project's enabled `secrets` and `deps` checks (per-project settings; secrets default on, deps off).
+func (d Deps) extraChecks(ctx context.Context, repo *git.Repo, t tasks.Task) []checks.Spec {
+	x := checks.Extras{Settings: checks.LoadSettings(ctx, d.Tasks.DB, t.ProjectID), Dir: t.Worktree,
+		Diff: func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }, Scanner: d.Scanner,
+		Deps: checks.DepsOptions{Binary: d.DepsBinary}}
+	if x.Settings.Secrets && x.Scanner == nil {
+		sc, err := checks.DefaultScanner()
+		if err != nil {
+			// the scanner cannot start: say so as an inconclusive secrets check rather than silently not scanning
+			broken := checks.Spec{Name: "secrets", Argv: []string{"drydock", "scan-added-lines"}, Dir: t.Worktree, InProcess: func(context.Context, proc.Manager, checks.Spec) (checks.Result, error) {
+				return checks.Result{Errored: true, ExitCode: 2, Output: "secrets scanner unavailable: " + err.Error()}, nil
+			}}
+			x.Settings.Secrets = false
+			return append([]checks.Spec{broken}, checks.ExtraSpecs(x)...)
+		}
+		x.Scanner = sc
+	}
+	return checks.ExtraSpecs(x)
+}
+
+func nonEmptyStr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func truncateStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 func summarize(r checks.Result) string {

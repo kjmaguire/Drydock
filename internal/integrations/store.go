@@ -745,7 +745,10 @@ func scanOutbox(r rowScanner) (Outbox, error) {
 
 // InsertOutbox stores a proposal. When a live row with the same idempotency key exists it is returned instead (existing=true).
 func (s *Store) InsertOutbox(ctx context.Context, o Outbox) (out Outbox, existing bool, err error) {
-	pb, _ := json.Marshal(o.Payload)
+	pb := []byte(o.rawPayload) // the exact bytes the hash was computed over
+	if len(pb) == 0 {
+		pb, _ = json.Marshal(o.Payload)
+	}
 	o.ID = ids.New("out")
 	o.Created, o.Version = s.now(), 1
 	err = s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
