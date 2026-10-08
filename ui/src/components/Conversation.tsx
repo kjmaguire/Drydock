@@ -3,7 +3,8 @@ import type { Agent, Message, Room } from '../api/types';
 import { Markdown } from '../lib/Markdown';
 import { authorName, formatTime } from '../lib/format';
 import { useClient } from '../state/context';
-import { useMessages } from '../state/hooks';
+import { useLive, useMessages } from '../state/hooks';
+import { useUi } from '../state/ui';
 import { Badge, ErrorNote } from './common';
 
 const MARKERS = new Set(['DECISION', 'TODO', 'STATUS', 'RESULT']);
@@ -47,7 +48,7 @@ function CheckCard({ m }: { m: Message }) {
   );
 }
 
-function MessageCard({ m, agents }: { m: Message; agents: readonly Agent[] }) {
+function MessageCard({ m, agents, replies, onReply }: { m: Message; agents: readonly Agent[]; replies: number; onReply?: () => void }) {
   const name = authorName(m.author, agents);
   const isCheck = m.author.kind === 'tool' && !!(m.payload as CheckPayload | null | undefined)?.check_kind;
   const quiet = m.type === 'SYSTEM' || m.type === 'STATUS';
@@ -70,6 +71,12 @@ function MessageCard({ m, agents }: { m: Message; agents: readonly Agent[] }) {
         <time className="muted" dateTime={m.created_at}>
           {formatTime(m.created_at)}
         </time>
+        {m.thread_root_id ? <span className="muted">reply in thread</span> : null}
+        {onReply && !m.thread_root_id && m.type !== 'SYSTEM' ? (
+          <button className="link-button" onClick={onReply} aria-label={`Open thread on message by ${name}${replies > 0 ? `, ${replies} ${replies === 1 ? 'reply' : 'replies'}` : ''}`}>
+            {replies > 0 ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}
+          </button>
+        ) : null}
       </header>
       {isCheck ? (
         <CheckCard m={m} />
@@ -142,6 +149,10 @@ function Composer({ room, disabled, onSent }: { room: Room; disabled: boolean; o
 export function Conversation({ room, agents }: { room: Room; agents: readonly Agent[] }) {
   const client = useClient();
   const { messages, error, loading } = useMessages(room.id);
+  const ui = useUi();
+  const members = useLive(() => client.roomMembers(room.id), [room.id], (e) => e.type.startsWith('room.member'));
+  const replyCount = new Map<string, number>();
+  for (const m of messages) if (m.thread_root_id) replyCount.set(m.thread_root_id, (replyCount.get(m.thread_root_id) ?? 0) + 1);
   const logRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [pulse, setPulse] = useState(0);
@@ -168,6 +179,19 @@ export function Conversation({ room, agents }: { room: Room; agents: readonly Ag
         {room.kind === 'task' && room.taskId ? <a href={`#/task/${encodeURIComponent(room.taskId)}`}>Task details</a> : null}
         {room.archived ? <Badge tone="muted">archived</Badge> : null}
         {room.topic ? <span className="muted">{room.topic}</span> : null}
+        {members.data && members.data.length > 0 ? (
+          <details className="members">
+            <summary>Members ({members.data.length})</summary>
+            <ul>
+              {members.data.map((mb) => (
+                <li key={`${mb.member.kind}:${mb.member.id}`}>
+                  <span className={`author-badge author-${mb.member.kind}`}>{mb.member.kind}</span> {authorName(mb.member, agents)}
+                  {mb.role ? <span className="muted"> {mb.role}</span> : null} <span className="muted">{mb.state}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </header>
       <ErrorNote error={error} what="Could not load messages" />
       <div
@@ -186,7 +210,7 @@ export function Conversation({ room, agents }: { room: Room; agents: readonly Ag
         {loading && messages.length === 0 ? <p className="muted">Loading messages...</p> : null}
         {!loading && messages.length === 0 && !error ? <p className="muted">No messages yet.</p> : null}
         {messages.map((m) => (
-          <MessageCard key={m.id} m={m} agents={agents} />
+          <MessageCard key={m.id} m={m} agents={agents} replies={replyCount.get(m.id) ?? 0} onReply={() => ui.openThread(room.id, m.id)} />
         ))}
       </div>
       <Composer

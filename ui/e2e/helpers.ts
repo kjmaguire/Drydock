@@ -15,13 +15,19 @@ export function freshRepo(): string {
   return r;
 }
 
+/** First run shows the create form directly; later runs have a "+ New project" link. Wait for whichever the app renders. */
+export async function showNewProjectForm(page: Page): Promise<void> {
+  const field = page.getByLabel('Repository path');
+  const link = page.getByRole('link', { name: '+ New project' });
+  await field.or(link).first().waitFor();
+  if (!(await field.isVisible())) await link.click();
+  await expect(field).toBeVisible();
+}
+
 /** Open the app with the token, create a project for a fresh repo, and return its name. */
 export async function createProject(page: Page, name: string): Promise<void> {
   await page.goto(appUrl());
-  // first run (or a later project): the create form
-  if (!(await page.getByLabel('Repository path').isVisible().catch(() => false))) {
-    await page.getByRole('link', { name: '+ New project' }).click();
-  }
+  await showNewProjectForm(page);
   await page.getByLabel('Repository path').fill(freshRepo());
   await page.getByLabel('Project name (optional)').fill(name);
   await page.getByRole('button', { name: 'Create project' }).click();

@@ -67,6 +67,13 @@ export function authorName(a: Author, agents: readonly Agent[]): string {
   }
 }
 
+/** DM rooms are named "dm:human:<you>+<agent id>"; show the agent's name instead. */
+export function roomLabel(r: { kind: string; name: string }, agents: readonly Agent[]): string {
+  if (r.kind !== 'dm') return r.name;
+  const id = r.name.slice(r.name.lastIndexOf('+') + 1);
+  return agents.find((a) => a.id === id)?.name ?? id;
+}
+
 export const agentName = (id: string | undefined, agents: readonly Agent[]): string => (id ? (agents.find((a) => a.id === id)?.name ?? id) : '');
 
 export const presenceFor = (agentId: string, list: readonly PresenceState[] | undefined): PresenceState | undefined => list?.find((p) => p.agentId === agentId);

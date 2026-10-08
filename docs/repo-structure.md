@@ -49,5 +49,5 @@ Dependency direction (arrows = "may import"): `app â†’ everything`; `pipeline â†
 
 ## Open questions / unverified
 
-- `ui/` status: built against the development HTTP/SSE transport. 63 vitest tests (event store, Markdown sanitization, client error handling, review panel, PR view) and Playwright e2e against the real Go core with the scripted fake agent pass on Linux/Chromium. Nothing has run in WebView2 or on Windows; `ui/src/api/wails.ts` is written against `app/bridge_windows.go` but is exercised only with fakes and is not selected by `main.tsx`. Monaco, xterm, React Flow, cmdk and TanStack Virtual are not used. The layout of `app/` is specified in [`ui.md`](ui.md) section 11.
+- `ui/` status: built against the development HTTP/SSE transport and a Wails transport written from the Wails v3.0.0-beta.28 source. 83 vitest tests and 9 Playwright e2e tests against the real Go core (scripted fake agent and in-memory credential store as the only test doubles) pass on Linux/Chromium. Nothing has run in WebView2 or on Windows. Monaco, xterm, React Flow, cmdk and TanStack Virtual are not used. The layout of `app/` is specified in [`ui.md`](ui.md) section 11.
 - Whether the Wails module (beta) should live in the root module or its own is undecided; the root module is assumed.

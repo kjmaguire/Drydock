@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Agent, PresenceState } from './api/types';
+import type { Agent, PresenceState, Room } from './api/types';
 import { ActivityView } from './components/Activity';
+import { ConnectionsView } from './components/Connections';
+import { AgentInspector } from './components/Inspector';
+import { ProvidersView } from './components/Providers';
+import { ThreadPanel } from './components/Thread';
+import { UiProvider, useUi } from './state/ui';
 import { Empty, ErrorNote, Page, PresenceDot } from './components/common';
 import { Conversation } from './components/Conversation';
 import { NeedsYouView } from './components/NeedsYou';
@@ -37,11 +42,20 @@ function useRoute(): Route {
 }
 
 export function App() {
+  const [rightOpen, setRightOpen] = useState(true);
+  const reveal = useCallback(() => setRightOpen(true), []);
+  return (
+    <UiProvider onReveal={reveal}>
+      <AppShell rightOpen={rightOpen} setRightOpen={setRightOpen} />
+    </UiProvider>
+  );
+}
+
+function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpen: (f: (v: boolean) => boolean) => void }) {
   const client = useClient();
   const route = useRoute();
   const stream = useStoreSnapshot();
   const [theme, setTheme] = useState<ThemeChoice>(loadTheme);
-  const [rightOpen, setRightOpen] = useState(true);
   useEffect(() => applyTheme(theme), [theme]);
 
   const info = useLive(() => client.appInfo(), [], () => false);
@@ -62,6 +76,7 @@ export function App() {
 
   const agents = useAgents(pid);
   const rooms = useRooms(pid);
+  const ui = useUi();
   const unread = useUnread(pid);
   const needs = useNeedsYou(pid);
   const presence = usePresence();
@@ -70,6 +85,20 @@ export function App() {
   const agentList = agents.data ?? [];
   const roomList = rooms.data ?? [];
   const needsCount = needs.data?.length ?? 0;
+  const [dmError, setDmError] = useState<Error | undefined>();
+  const openDM = useCallback(
+    async (agentId: string) => {
+      if (!pid) return;
+      setDmError(undefined);
+      try {
+        const r = await client.roomCreateDM(pid, agentId);
+        window.location.hash = `#/room/${encodeURIComponent(r.id)}`;
+      } catch (e) {
+        setDmError(e as Error);
+      }
+    },
+    [client, pid],
+  );
 
   useEffect(() => {
     document.title = needsCount > 0 ? `(${needsCount}) Drydock` : 'Drydock';
@@ -107,19 +136,9 @@ export function App() {
       case 'needs-you':
         center = <NeedsYouView projectId={project.id} agents={agentList} />;
         break;
-      case 'room': {
-        const room = roomList.find((r) => r.id === route.id);
-        center = room ? (
-          <Conversation room={room} agents={agentList} key={room.id} />
-        ) : rooms.loading && !rooms.data ? (
-          <p className="muted pad">Loading...</p>
-        ) : (
-          <Empty title="Channel not found">
-            <p>It may be archived: the core lists only active channels, and a task channel is archived when its task ends.</p>
-          </Empty>
-        );
+      case 'room':
+        center = <RoomRoute id={route.id} rooms={roomList} loadingRooms={rooms.loading && !rooms.data} agents={agentList} />;
         break;
-      }
       case 'tasks':
         center = <TaskList projectId={project.id} agents={agentList} />;
         break;
@@ -133,7 +152,22 @@ export function App() {
         center = <PullRequestsView projectId={project.id} tasks={tasks.data ?? []} />;
         break;
       case 'team':
-        center = <TeamView projectId={project.id} agents={agentList} presence={presence.data ?? []} onCreated={agents.reload} />;
+        center = (
+          <TeamView
+            projectId={project.id}
+            agents={agentList}
+            presence={presence.data ?? []}
+            onCreated={agents.reload}
+            onInspect={ui.openInspector}
+            onMessage={openDM}
+          />
+        );
+        break;
+      case 'connections':
+        center = <ConnectionsView />;
+        break;
+      case 'providers':
+        center = <ProvidersView />;
         break;
       case 'activity':
         center = <ActivityView projectId={project.id} />;
@@ -171,6 +205,7 @@ export function App() {
         stream={stream.status}
       />
       <main id="main" className="center" tabIndex={-1}>
+        <ErrorNote error={dmError} what="Could not open the direct message" />
         {center}
       </main>
       <aside className="right" aria-label="Details">
@@ -179,7 +214,7 @@ export function App() {
         </button>
         {rightOpen ? (
           <div id="right-body" className="right-body">
-            <RightColumn taskId={taskContext} agents={agentList} presence={presence.data ?? []} />
+            <RightColumn taskId={taskContext} agents={agentList} presence={presence.data ?? []} onMessage={openDM} />
           </div>
         ) : null}
       </aside>
@@ -187,22 +222,27 @@ export function App() {
   );
 }
 
-function RightColumn({ taskId, agents, presence }: { taskId: string | undefined; agents: Agent[]; presence: PresenceState[] }) {
-  const [tab, setTab] = useState<'agents' | 'task'>('agents');
-  const active = tab === 'task' && taskId ? 'task' : 'agents';
+function RightColumn({ taskId, agents, presence, onMessage }: { taskId: string | undefined; agents: Agent[]; presence: PresenceState[]; onMessage: (agentId: string) => void }) {
+  const ui = useUi();
+  const tab = ui.tab === 'task' && !taskId ? 'agents' : ui.tab === 'thread' && !ui.thread ? 'agents' : ui.tab === 'inspector' && !ui.inspectId ? 'agents' : ui.tab;
+  const tabs: { id: 'agents' | 'task' | 'thread' | 'inspector'; label: string; show: boolean }[] = [
+    { id: 'agents', label: 'Agents', show: true },
+    { id: 'task', label: 'Task', show: !!taskId },
+    { id: 'thread', label: 'Thread', show: !!ui.thread },
+    { id: 'inspector', label: 'Inspector', show: !!ui.inspectId },
+  ];
   return (
     <>
       <div role="tablist" aria-label="Details" className="tabs">
-        <button role="tab" id="tab-agents" aria-selected={active === 'agents'} aria-controls="panel-agents" onClick={() => setTab('agents')}>
-          Agents
-        </button>
-        {taskId ? (
-          <button role="tab" id="tab-task" aria-selected={active === 'task'} aria-controls="panel-task" onClick={() => setTab('task')}>
-            Task
-          </button>
-        ) : null}
+        {tabs
+          .filter((t) => t.show)
+          .map((t) => (
+            <button key={t.id} role="tab" id={`tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`panel-${t.id}`} onClick={() => ui.setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
       </div>
-      {active === 'agents' ? (
+      {tab === 'agents' ? (
         <div role="tabpanel" id="panel-agents" aria-labelledby="tab-agents">
           {agents.length === 0 ? <p className="muted">No agents yet.</p> : null}
           <ul className="agent-list">
@@ -215,17 +255,46 @@ function RightColumn({ taskId, agents, presence }: { taskId: string | undefined;
                     <PresenceDot presence={p} />
                   </div>
                   {p?.activity ? <div className="muted">{p.activity}</div> : null}
+                  <button className="link-button" onClick={() => ui.openInspector(a.id)}>
+                    Inspect
+                  </button>
                 </li>
               );
             })}
           </ul>
         </div>
-      ) : (
+      ) : null}
+      {tab === 'task' && taskId ? (
         <div role="tabpanel" id="panel-task" aria-labelledby="tab-task">
-          {taskId ? <TaskSummary taskId={taskId} agents={agents} /> : null}
+          <TaskSummary taskId={taskId} agents={agents} />
         </div>
-      )}
+      ) : null}
+      {tab === 'thread' && ui.thread ? (
+        <div role="tabpanel" id="panel-thread" aria-labelledby="tab-thread">
+          <ThreadPanel roomId={ui.thread.roomId} rootId={ui.thread.rootId} agents={agents} onClose={ui.closeThread} />
+        </div>
+      ) : null}
+      {tab === 'inspector' ? (
+        <div role="tabpanel" id="panel-inspector" aria-labelledby="tab-inspector">
+          <AgentInspector agentId={ui.inspectId} presence={presence} onMessage={onMessage} />
+        </div>
+      ) : null}
     </>
+  );
+}
+
+/** A room route: the active list first, else room.get, so an archived task channel still opens. */
+function RoomRoute({ id, rooms, loadingRooms, agents }: { id: string; rooms: Room[]; loadingRooms: boolean; agents: Agent[] }) {
+  const client = useClient();
+  const inList = rooms.find((r) => r.id === id);
+  const fetched = useLive(() => client.roomGet(id), [id], (e) => e.type.startsWith('room.archived') || e.type.startsWith('room.created'), !inList && !loadingRooms);
+  const room = inList ?? fetched.data;
+  if (room) return <Conversation room={room} agents={agents} key={room.id} />;
+  if (loadingRooms || fetched.loading) return <p className="muted pad">Loading...</p>;
+  return (
+    <Empty title="Channel not found">
+      <ErrorNote error={fetched.error} />
+    </Empty>
   );
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createClient } from './client';
 import { HttpTransport, RpcError, parseEvent, resolveToken, type EventSourceLike } from './transport';
-import { WailsTransport } from './wails';
+import { BRIDGE_FQN, bridgeFromRuntime, isWailsHost, loadWailsRuntime, WailsTransport } from './wails';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const text = (body: string, status: number) => new Response(body, { status, headers: { 'Content-Type': 'text/plain' } });
@@ -202,5 +202,69 @@ describe('WailsTransport (against fakes; never run in WebView2)', () => {
     expect(got).toEqual([8, 9]);
     s.close();
     expect(off).toHaveBeenCalled();
+  });
+});
+
+describe('round 2 client methods', () => {
+  it('sends the parameter names the core decodes and normalizes nulls', async () => {
+    const f = vi.fn(async (url: string) => {
+      if (url.endsWith('events.head')) return json({ result: 77 });
+      if (url.endsWith('agent.get')) return json({ result: { agent: { id: 'a' }, runs: null, usage: null } });
+      if (url.endsWith('connection.test')) return json({ result: { adapter: 'x', steps: null, matrix: null, summary: 's', ok: true } });
+      if (url.endsWith('provider.test')) return json({ result: { ProviderID: 'p', OK: true, Models: null, Warnings: null } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.eventsHead()).toBe(77);
+    expect(await c.agentGet('a')).toMatchObject({ runs: [], usage: [] });
+    expect(await c.connectionTest('x')).toMatchObject({ steps: [], matrix: {} });
+    expect(await c.providerTest('p')).toMatchObject({ Models: [], Warnings: [] });
+    expect(await c.connectionList()).toEqual([]);
+    expect(await c.providerList()).toEqual([]);
+    expect(await c.providerModels('p')).toEqual([]);
+    expect(await c.roomMembers('r')).toEqual([]);
+    expect(await c.roomThread('m')).toEqual([]);
+    await c.roomList('p', true);
+    await c.roomGet('r1');
+    await c.roomCreateDM('p', 'a1');
+    await c.usageList({ taskId: 't' });
+    await c.connectionAcknowledge('g');
+    await c.providerSetEnabled('p', false);
+    await c.providerDelete('p');
+    await c.providerCreate({ Name: 'n', Kind: 'direct', BaseURL: 'https://x', DataClass: 'private', Tier: 'cheap' });
+    const sent = f.mock.calls.map((x) => [(x as unknown as [string])[0].replace('/rpc/', ''), JSON.parse((x as unknown as [string, RequestInit])[1].body as string)]);
+    const by = (m: string) => sent.find((x) => x[0] === m)![1];
+    expect(by('room.list')).toEqual({ projectId: 'p', includeArchived: true });
+    expect(by('room.get')).toEqual({ id: 'r1' });
+    expect(by('room.createDM')).toEqual({ projectId: 'p', agentId: 'a1' });
+    expect(by('usage.list')).toEqual({ taskId: 't', agentId: '', limit: 0 });
+    expect(by('connection.acknowledge')).toEqual({ gateId: 'g' });
+    expect(by('provider.setEnabled')).toEqual({ id: 'p', enabled: false });
+    expect(by('provider.create')).toEqual({ Name: 'n', Kind: 'direct', BaseURL: 'https://x', DataClass: 'private', Tier: 'cheap' });
+    expect(by('room.thread')).toEqual({ rootId: 'm' });
+  });
+});
+
+describe('Wails runtime wiring (against a fake runtime module; never run in WebView2)', () => {
+  it('addresses the bridge by its fully qualified name and passes arguments in order', async () => {
+    const ByName = vi.fn(async (name: string) => (name.endsWith('.Call') ? '{"ok":true}' : null));
+    const On = vi.fn(() => () => undefined);
+    const t = WailsTransport.fromRuntime({ Call: { ByName }, Events: { On } });
+    expect(await t.call('project.list', {})).toEqual({ ok: true });
+    expect(ByName).toHaveBeenCalledWith('github.com/kjmaguire/drydock/app.Bridge.Call', 'project.list', '{}');
+    t.openEventStream(9, { onOpen: () => undefined, onEvent: () => undefined, onError: () => undefined });
+    expect(ByName).toHaveBeenCalledWith('github.com/kjmaguire/drydock/app.Bridge.Subscribe', 9);
+    expect(On).toHaveBeenCalledWith('drydock:event', expect.any(Function));
+    expect(BRIDGE_FQN).toBe('github.com/kjmaguire/drydock/app.Bridge');
+    expect(typeof bridgeFromRuntime({ Call: { ByName }, Events: { On } }).Call).toBe('function');
+  });
+  it('detects the Wails host and refuses a runtime module that lacks the API', async () => {
+    expect(isWailsHost({ chrome: { webview: {} } })).toBe(true);
+    expect(isWailsHost({ _wails: {} })).toBe(true);
+    expect(isWailsHost({})).toBe(false);
+    expect(isWailsHost(undefined)).toBe(false);
+    await expect(loadWailsRuntime(async () => ({}))).rejects.toThrow(/did not expose/);
+    const rt = { Call: { ByName: async () => null }, Events: { On: () => () => undefined } };
+    expect(await loadWailsRuntime(async (u) => (expect(u).toBe('/wails/runtime.js'), rt))).toBe(rt);
   });
 });

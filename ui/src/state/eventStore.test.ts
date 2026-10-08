@@ -157,4 +157,16 @@ describe('EventStore', () => {
     store.start();
     expect(t.opens).toHaveLength(1);
   });
+
+  it('backfill adds history without telling event listeners and never moves lastSeq back', () => {
+    const { store } = setup({ initialAfter: 100 });
+    const seen: number[] = [];
+    store.onEvent((e) => seen.push(e.seq));
+    store.ingest(ev(101));
+    expect(store.backfill([ev(50), ev(51), ev(101), ev(52)])).toBe(3);
+    expect(store.backfill([ev(50)])).toBe(0);
+    expect(seen).toEqual([101]);
+    expect(store.getSnapshot().events.map((e) => e.seq)).toEqual([50, 51, 52, 101]);
+    expect(store.getSnapshot().lastSeq).toBe(101);
+  });
 });

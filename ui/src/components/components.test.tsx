@@ -206,7 +206,7 @@ describe('Conversation', () => {
     const roomMessages = vi.fn(async (_r: string, after = 0) => messages.filter((m) => m.seq > after));
     const { container } = withServices(<Conversation room={room} agents={[{ id: 'agt1', projectId: 'p', name: 'Backend #1', adapter: 'claude', role: 'backend', model: '', effort: '', providerId: '', permissionMode: '', status: '' }]} />, {
       roomMessages,
-      roomMarkRead: async () => true,
+      roomMarkRead: async () => true, roomMembers: async () => [],
     });
     await screen.findAllByTestId('message');
     await waitFor(() => expect(screen.getAllByTestId('message')).toHaveLength(5));
@@ -228,7 +228,7 @@ describe('Conversation', () => {
     const roomPost = vi.fn(async () => {
       throw new Error('blocked by secret scan');
     });
-    withServices(<Conversation room={{ ...room, kind: 'channel', name: 'general' }} agents={[]} />, { roomMessages: async () => [], roomMarkRead: async () => true, roomPost });
+    withServices(<Conversation room={{ ...room, kind: 'channel', name: 'general' }} agents={[]} />, { roomMessages: async () => [], roomMarkRead: async () => true, roomMembers: async () => [], roomPost });
     fireEvent.change(screen.getByLabelText('Message to #general'), { target: { value: 'key=sk-123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText(/blocked by secret scan/);
@@ -236,7 +236,7 @@ describe('Conversation', () => {
   });
 
   it('disables the composer for an archived room', async () => {
-    withServices(<Conversation room={{ ...room, archived: true }} agents={[]} />, { roomMessages: async () => [], roomMarkRead: async () => true });
+    withServices(<Conversation room={{ ...room, archived: true }} agents={[]} />, { roomMessages: async () => [], roomMarkRead: async () => true, roomMembers: async () => [] });
     expect((screen.getByLabelText('Message to #task-1') as HTMLTextAreaElement).disabled).toBe(true);
   });
 });

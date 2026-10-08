@@ -1,6 +1,8 @@
 import { useRef, type KeyboardEvent } from 'react';
 import type { Agent, PresenceState, Project, Room, Unread } from '../api/types';
 import type { Route } from '../lib/route';
+import { roomLabel } from '../lib/format';
+import { useUi } from '../state/ui';
 import { Badge, PresenceDot } from './common';
 
 interface Props {
@@ -26,6 +28,7 @@ function NavLink({ href, current, children, testId }: { href: string; current: b
 
 export function Sidebar({ projects, project, onProject, route, rooms, unread, needsCount, agents, presence, stream }: Props) {
   const nav = useRef<HTMLElement>(null);
+  const ui = useUi();
   const unreadOf = (id: string) => unread.find((u) => u.roomId === id)?.unread ?? 0;
   const channels = rooms.filter((r) => r.kind === 'channel');
   const taskRooms = rooms.filter((r) => r.kind === 'task');
@@ -34,8 +37,8 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
     <li key={r.id}>
       <NavLink href={`#/room/${encodeURIComponent(r.id)}`} current={route.name === 'room' && route.id === r.id} testId="room-link">
         <span>
-          {r.kind === 'task' ? '' : '# '}
-          {r.name}
+          {r.kind === 'channel' ? '# ' : ''}
+          {roomLabel(r, agents)}
         </span>
         {unreadOf(r.id) > 0 ? <Badge tone="info" title={`${unreadOf(r.id)} unread`}>{unreadOf(r.id)}</Badge> : null}
       </NavLink>
@@ -139,7 +142,9 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
               <ul className="nav-list agents-mini">
                 {agents.map((a) => (
                   <li key={a.id} className="agent-mini">
-                    <span>{a.name}</span>
+                    <button className="link-button" data-nav="" onClick={() => ui.openInspector(a.id)} aria-label={`Inspect ${a.name}`}>
+                      {a.name}
+                    </button>
                     <PresenceDot presence={presence.find((p) => p.agentId === a.id)} />
                   </li>
                 ))}
@@ -150,6 +155,16 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
       ) : null}
       <div className="sidebar-foot">
         <ul className="nav-list">
+          <li>
+            <NavLink href="#/connections" current={route.name === 'connections'} testId="nav-connections">
+              Connections
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/providers" current={route.name === 'providers'} testId="nav-providers">
+              Providers
+            </NavLink>
+          </li>
           <li>
             <NavLink href="#/settings" current={route.name === 'settings'}>
               Settings and About

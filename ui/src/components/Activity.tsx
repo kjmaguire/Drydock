@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DrydockEvent } from '../api/types';
 import { formatTime } from '../lib/format';
-import { useStoreSnapshot } from '../state/context';
-import { Empty, Page } from './common';
+import { useClient, useServices, useStoreSnapshot } from '../state/context';
+import { Empty, ErrorNote, Page } from './common';
 
 /** Prefix filter as in the core: "task.*" or "task." match by prefix, anything else exactly. Comma separated; empty matches all. */
 export function matchesFilter(type: string, filter: string): boolean {
@@ -16,6 +16,21 @@ export function matchesFilter(type: string, filter: string): boolean {
 
 export function ActivityView({ projectId }: { projectId: string | undefined }) {
   const snap = useStoreSnapshot();
+  const client = useClient();
+  const { store } = useServices();
+  const [historyError, setHistoryError] = useState<Error | undefined>();
+  // The stream starts at the head, so older events are loaded here on demand (the most recent ~1000 sequence numbers).
+  useEffect(() => {
+    let live = true;
+    const from = Math.max(0, store.getSnapshot().lastSeq - 1000);
+    client
+      .eventsReplay(from, { limit: 1000 })
+      .then((evs) => live && store.backfill(evs))
+      .catch((e: Error) => live && setHistoryError(e));
+    return () => {
+      live = false;
+    };
+  }, [client, store]);
   const [filter, setFilter] = useState('');
   const [thisProject, setThisProject] = useState(true);
   const rows = useMemo(() => {
@@ -32,6 +47,7 @@ export function ActivityView({ projectId }: { projectId: string | undefined }) {
       <p className="muted">
         The event log as the core persisted it (newest first). Stream: {snap.status}, last seq {snap.lastSeq}, {snap.events.length} events held.
       </p>
+      <ErrorNote error={historyError} what="Could not load earlier events" />
       <div className="form-actions">
         <label>
           Filter by type prefix

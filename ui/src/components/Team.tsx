@@ -88,7 +88,21 @@ export function sortAdapters(list: readonly AdapterInfo[]): AdapterInfo[] {
   return [...list].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
 }
 
-export function TeamView({ projectId, agents, presence, onCreated }: { projectId: string; agents: readonly Agent[]; presence: readonly PresenceState[]; onCreated: () => void }) {
+export function TeamView({
+  projectId,
+  agents,
+  presence,
+  onCreated,
+  onInspect,
+  onMessage,
+}: {
+  projectId: string;
+  agents: readonly Agent[];
+  presence: readonly PresenceState[];
+  onCreated: () => void;
+  onInspect?: (agentId: string) => void;
+  onMessage?: (agentId: string) => void;
+}) {
   const adapters = useAdapters();
   const sorted = sortAdapters(adapters.data ?? []);
   return (
@@ -102,6 +116,16 @@ export function TeamView({ projectId, agents, presence, onCreated }: { projectId
             <strong>{a.name}</strong> <span className="muted">{a.role}</span> <code>{a.adapter}</code>
             {a.model ? <span className="muted"> model {a.model}</span> : null}
             {a.effort ? <span className="muted"> effort {a.effort}</span> : null}
+            {onInspect ? (
+              <button className="link-button" onClick={() => onInspect(a.id)}>
+                Inspect
+              </button>
+            ) : null}
+            {onMessage ? (
+              <button className="link-button" onClick={() => onMessage(a.id)}>
+                Message
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>

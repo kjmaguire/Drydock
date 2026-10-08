@@ -13,6 +13,7 @@
 //	DRYDOCK_E2E_REPO <path>              a fresh git repository copied from testdata/fixtures/gocalc (repeated -repos times)
 //	DRYDOCK_E2E http://127.0.0.1:PORT/?token=TOKEN
 //
+// The harness also installs an in-memory credential store (a test double) so provider keys can be entered in the e2e.
 // The second line is printed last, after the server listens.
 package main
 
@@ -36,6 +37,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
 )
 
@@ -111,6 +113,9 @@ func run(uiDir, fixture string, nRepos, port int) error {
 		User:     "e2e",
 		LeaseTTL: 3 * time.Second,
 		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self}},
+		// TEST DOUBLE: an in-memory credential store so the Providers page can be exercised with a fake API key. The shipped
+		// app uses the Windows Credential Manager; nothing entered here is persisted anywhere.
+		Credentials: providers.NewMemoryCredentialStoreForTests(),
 	})
 	if err != nil {
 		return err

@@ -3,7 +3,8 @@ import type { Agent, Evidence, PendingRequest, ReviewRecord, Task, TaskDetail } 
 import { Markdown } from '../lib/Markdown';
 import { agentName, formatCost, formatDateTime } from '../lib/format';
 import { useClient } from '../state/context';
-import { useAgents, useTaskDetail, useTasks } from '../state/hooks';
+import { useAgents, useLive, useTaskDetail, useTasks } from '../state/hooks';
+import { distinctSources, SourceTag, UsageTable } from './Usage';
 import { Badge, Empty, ErrorNote, Page, SourceBadge, StatusChip } from './common';
 
 // --- list + create ---
@@ -140,7 +141,7 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
           Attempt {t.iteration} of {t.maxIterations}
         </span>
         <span>
-          Cost: <strong data-testid="task-cost">{formatCost(t.costUsd)}</strong> {t.costUsd > 0 ? <SourceBadge source="unknown" /> : null}
+          Cost: <strong data-testid="task-cost">{formatCost(t.costUsd)}</strong> <CostSources taskId={t.id} costUsd={t.costUsd} />
         </span>
         {t.issueRef ? <span>Issue: {t.issueRef}</span> : null}
         {t.prRef ? <span>PR: {t.prRef}</span> : null}
@@ -174,6 +175,8 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
       <EvidenceList evidence={d.evidence} />
       <h2>Reviews</h2>
       <ReviewList reviews={d.reviews} agents={agents} />
+      <h2>Usage</h2>
+      <TaskUsage taskId={t.id} />
       <h2>Diff</h2>
       <DiffView taskId={t.id} hasDiff={d.evidence.some((e) => e.kind === 'diff')} />
     </Page>
@@ -258,6 +261,34 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
         <button onClick={() => setConfirmCancel(true)}>Cancel task</button>
       )}
     </div>
+  );
+}
+
+function useTaskUsage(taskId: string) {
+  const client = useClient();
+  return useLive(() => client.usageList({ taskId }), [taskId], (e) => e.taskId === taskId || e.type.startsWith('llm.'));
+}
+
+/** Source badges for the task's cost, taken from the usage rows the core returns (reported, estimated, or both). */
+function CostSources({ taskId, costUsd }: { taskId: string; costUsd: number }) {
+  const rows = useTaskUsage(taskId).data ?? [];
+  if (rows.length === 0) return costUsd > 0 ? <SourceBadge source="unknown" /> : null;
+  return (
+    <>
+      {distinctSources(rows).map((s) => (
+        <SourceTag key={s} source={s} />
+      ))}
+    </>
+  );
+}
+
+function TaskUsage({ taskId }: { taskId: string }) {
+  const q = useTaskUsage(taskId);
+  return (
+    <>
+      <ErrorNote error={q.error} what="Could not load usage" />
+      <UsageTable rows={q.data ?? []} />
+    </>
   );
 }
 
