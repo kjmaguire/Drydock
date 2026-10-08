@@ -198,12 +198,12 @@ func TestNotionEtagSkipsBodyFetchAndUnsortedResultsAreFullyWalked(t *testing.T) 
 	for i := 6; i < 12; i++ {
 		fx.Put(itfixture.NotionPage{ID: fmt.Sprintf("page-%d", i), Title: fmt.Sprintf("Spec %d", i), Text: "x", Edited: baseTime.Add(-time.Duration(i) * time.Hour)})
 	}
-	old := fx.Get("page-11")
+	old := fx.Get("page-5") // an already-synced page, edited: it is the newest, and the scrambled listing puts it last
 	old.Edited = baseTime.Add(2 * time.Minute)
 	old.Text = "edited behind the scrambled order"
 	fx.Put(old)
 	r4 := h.sync(c.ID, integrations.SyncOpts{})
-	if r4.New != 5 || r4.Changed != 1 {
+	if r4.New != 6 || r4.Changed != 1 {
 		t.Fatalf("unsorted: %+v", r4)
 	}
 }
@@ -213,6 +213,7 @@ func TestFullSweepMarksMissingItemsGone(t *testing.T) {
 	fx, url := linearFixture(t, 5)
 	c := h.connect(integrations.KindLinear, linearToken, url, nil)
 	h.sync(c.ID, integrations.SyncOpts{})
+	h.clk.Advance(time.Minute)
 	fx.Delete("uuid-0004")
 	r := h.sync(c.ID, integrations.SyncOpts{Full: true})
 	if r.Gone != 1 || !r.Complete {
@@ -222,6 +223,7 @@ func TestFullSweepMarksMissingItemsGone(t *testing.T) {
 		t.Fatalf("live rows %d", got)
 	}
 	// a normal sync never marks anything gone: deletion is only detectable by a sweep
+	h.clk.Advance(time.Minute)
 	fx.Delete("uuid-0003")
 	if r := h.sync(c.ID, integrations.SyncOpts{}); r.Gone != 0 {
 		t.Fatalf("%+v", r)

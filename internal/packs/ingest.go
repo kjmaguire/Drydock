@@ -175,6 +175,15 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 	if res.Failed == len(pages) {
 		return res, errors.New("every page failed; the previous version is kept")
 	}
+	loaded := 0
+	for _, r := range results {
+		if r.status == "new" || r.status == "changed" || r.status == "unchanged" {
+			loaded++
+		}
+	}
+	if loaded == 0 {
+		return res, fmt.Errorf("no page could be indexed (%s); the previous version is kept", topReason(res.Reasons))
+	}
 
 	listed := map[string]bool{}
 	for _, p := range pages {

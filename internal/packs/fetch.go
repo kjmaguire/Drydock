@@ -339,6 +339,9 @@ func (f *Fetcher) robotsFor(ctx context.Context, u *url.URL) (*Robots, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if errors.Is(err, ErrBlockedAddr) || errors.Is(err, ErrRedirect) {
+			return nil, err // a policy refusal, not an unreachable server: keep the cause visible
+		}
 		r = &Robots{DisallowAll: true, signals: map[string]string{}}
 	}
 	f.rmu.Lock()
