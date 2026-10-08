@@ -144,9 +144,14 @@ func TestSchedulerStartsWithinTheLimitInPriorityOrderAndRespectsDependencies(t *
 	if peak.Load() > 2 {
 		t.Fatalf("peak concurrent runs %d, limit is 2", peak.Load())
 	}
-	// the dependent starts only after its dependency is COMPLETED
-	e.db.Writer().Exec(`UPDATE tasks SET status='COMPLETED' WHERE id=?`, low.ID)
-	time.Sleep(900 * time.Millisecond)
+	// the dependent starts only after its dependency is COMPLETED (set directly once low's own run has finished, so the two
+	// writers cannot race)
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if n, _ := countActive(e); n == 0 {
+			break
+		}
+	}
+	e.db.Writer().Exec(`UPDATE tasks SET status='COMPLETED', version=version+1 WHERE id=?`, low.ID)
 	res4, _ := s.Tick(context.Background(), "p1")
 	if len(res4.Started) != 1 || res4.Started[0] != child.ID || len(res4.Promoted) == 0 {
 		t.Fatalf("%+v", res4)
