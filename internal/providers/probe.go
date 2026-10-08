@@ -157,6 +157,12 @@ func (pr *Prober) finish(ctx context.Context, p Provider, res *ProbeResult) {
 			res.Warnings = append(res.Warnings, "catalog upsert failed: "+err.Error())
 		}
 	}
+	if res.OK && res.Flavor == FlavorOllama && p.MaxConcurrent == 0 {
+		// OLLAMA_NUM_PARALLEL defaults to 1 (docs/phase0/model-providers.md E): serialize agents until the user raises it.
+		if err := pr.reg.setMaxConcurrentIfZero(ctx, p.ID, 1); err != nil {
+			res.Warnings = append(res.Warnings, "could not set the ollama concurrency default: "+err.Error())
+		}
+	}
 	var info json.RawMessage
 	if len(res.ServerInfo) > 0 {
 		info, _ = json.Marshal(res.ServerInfo)

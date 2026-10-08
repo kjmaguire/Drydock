@@ -89,8 +89,8 @@ func TestProbeOllamaWarnsOnSmallContext(t *testing.T) {
 		t.Fatalf("%+v", res)
 	}
 	got, _ := e.reg.Get(e.ctx, p.ID)
-	if got.Flavor != FlavorOllama {
-		t.Fatalf("flavor %s", got.Flavor)
+	if got.Flavor != FlavorOllama || got.MaxConcurrent != 1 {
+		t.Fatalf("flavor %s max_concurrent %d (Ollama serves one request at a time by default)", got.Flavor, got.MaxConcurrent)
 	}
 }
 

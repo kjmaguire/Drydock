@@ -340,6 +340,14 @@ func (r *Registry) SetResponsesValidated(ctx context.Context, id string, at time
 	return r.exec(ctx, id, `UPDATE providers SET responses_validated_at=?, updated_at=? WHERE id=?`, ms(at), storage.Now(), id)
 }
 
+// setMaxConcurrentIfZero sets max_concurrent_agents when the user left it unlimited.
+func (r *Registry) setMaxConcurrentIfZero(ctx context.Context, id string, n int) error {
+	return r.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE providers SET max_concurrent_agents=? WHERE id=? AND max_concurrent_agents=0`, n, id)
+		return err
+	})
+}
+
 // setStatus records probe or health results.
 func (r *Registry) setStatus(ctx context.Context, id string, status Health, seen time.Time, flavor Flavor, info json.RawMessage) error {
 	return r.db.WriteTx(ctx, func(tx *sql.Tx) error {
