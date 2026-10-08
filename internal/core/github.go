@@ -119,6 +119,6 @@ func (c *Core) PullRequest(ctx context.Context, taskID string) (PRState, error) 
 	return st, nil
 }
 
-// ChannelAllowed reports whether the installed license entitles the user to an update channel. Until the license screen is
-// wired (internal/license is built and tested) only the stable channel is allowed.
-func (c *Core) ChannelAllowed(ch string) bool { return ch == "stable" }
+// ChannelAllowed reports whether the installed license entitles the user to an update channel (ext_packaging.go): the
+// channels of the license token, stable only without a license, and every channel in a build that has no licensing keys.
+func (c *Core) ChannelAllowed(ch string) bool { return c.licenseChannelAllowed(ch) }

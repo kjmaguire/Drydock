@@ -204,6 +204,7 @@ func (c *Core) Methods() map[string]Method {
 			base[k] = v
 		}
 	}
+	c.gateMethods(base) // expired license: methods that start work are refused with a plain message (ext_packaging.go)
 	return base
 }
 

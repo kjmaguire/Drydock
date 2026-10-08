@@ -102,6 +102,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
 	}
+	applyPendingRestore(ctx, cfg.DataDir) // a restore staged by backup.restore is applied BEFORE the database is opened
 	db, err := storage.Open(ctx, filepath.Join(cfg.DataDir, "drydock.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -230,7 +231,9 @@ func (c *Core) Close() {
 }
 
 func (c *Core) logf(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "drydock: "+format+"\n", a...)
+	msg := fmt.Sprintf(format, a...)
+	fmt.Fprintf(os.Stderr, "drydock: %s\n", msg)
+	c.fileLog(msg) // also <data>/logs, scrubbed (ext_packaging.go)
 }
 
 // Human is the identity every human action carries. Only "human:"-prefixed identities can accept tasks and approve merges.
@@ -267,6 +270,9 @@ type Project struct {
 
 // CreateProject registers a local Git repository as a project and creates its default channels.
 func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Project, error) {
+	if err := c.RequireLicensed(ctx, "create_project"); err != nil {
+		return Project{}, err
+	}
 	repo, err := git.Open(ctx, repoPath)
 	if err != nil {
 		return Project{}, fmt.Errorf("%s is not a usable Git repository: %w", repoPath, err)
@@ -404,6 +410,9 @@ type AgentSpec struct {
 
 // CreateAgent adds an agent to the team. The adapter must be one Drydock knows.
 func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
+	if err := c.RequireLicensed(ctx, "create_agent"); err != nil {
+		return Agent{}, err
+	}
 	c.mu.Lock()
 	_, known := c.adapters[s.Adapter]
 	c.mu.Unlock()

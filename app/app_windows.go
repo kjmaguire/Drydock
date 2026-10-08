@@ -41,6 +41,7 @@ func Run(assets fs.FS) error {
 	if err != nil {
 		return err
 	}
+	core.AppVersion = Version // the build's version for support bundles and project exports
 	c, err := core.Open(context.Background(), core.Config{DataDir: dir})
 	if err != nil {
 		return fmt.Errorf("open Drydock: %w", err)

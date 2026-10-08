@@ -139,7 +139,8 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 			return a.limiter.Acquire(ctx, projectID, ag.ProviderID)
 		},
 		Enabled: func(ctx context.Context, projectID string) bool {
-			return pipeline.LoadDevSettings(ctx, c.DB, projectID).Respond
+			// an agent reply is work started on the human's behalf: off while the license is expired (read-only)
+			return c.RequireLicensed(ctx, "room_reply") == nil && pipeline.LoadDevSettings(ctx, c.DB, projectID).Respond
 		},
 		OnCost: func(ctx context.Context, taskID string, usd float64) {
 			_, _ = c.Tasks.Patch(ctx, taskID, tasks.Update{AddCost: usd})
@@ -373,6 +374,9 @@ type StartTemplateResult struct {
 // StartTemplate resolves the template's roles from the team (overrides win), pins them in the run input and starts the
 // workflow. Templates set defaults, not locks: the human can override any role and the settings can switch checks.
 func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTemplateResult, error) {
+	if err := c.RequireLicensed(ctx, "start_template"); err != nil {
+		return StartTemplateResult{}, err
+	}
 	tpl, ok := pipeline.TemplateByName(req.Template)
 	if !ok {
 		names := []string{}

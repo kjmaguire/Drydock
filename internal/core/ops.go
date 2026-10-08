@@ -68,6 +68,9 @@ func (c *Core) AssignTask(ctx context.Context, taskID, assignee, reviewer string
 
 // StartTask starts the task's workflow: local_merge projects use iterate-until-verified, pr_flow projects the PR variant.
 func (c *Core) StartTask(ctx context.Context, taskID string) (workflow.RunID, error) {
+	if err := c.RequireLicensed(ctx, "start_task"); err != nil {
+		return "", err
+	}
 	t, err := c.Tasks.Get(ctx, taskID)
 	if err != nil {
 		return "", err
@@ -159,6 +162,9 @@ func (c *Core) TaskDiff(ctx context.Context, id string) (string, error) {
 // Respond answers a pending request of a run as the human. Only the human identity is ever attached here: an agent has no
 // path to this method.
 func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, data []byte) error {
+	if err := c.RequireLicensed(ctx, "approve"); err != nil {
+		return err
+	}
 	var d []byte = data
 	return c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d})
 }
