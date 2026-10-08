@@ -91,22 +91,22 @@ const (
 
 // Errors.
 var (
-	ErrNotFound         = errors.New("integrations: not found")
-	ErrConflict         = errors.New("integrations: concurrent modification (version mismatch)")
-	ErrNotHuman         = errors.New("integrations: this action needs a human; agents, tools and external content cannot do it")
-	ErrNoCredential     = errors.New("integrations: no token is stored for this connection")
-	ErrRateLimited      = errors.New("integrations: the vendor asked Drydock to slow down")
-	ErrSyncBusy         = errors.New("integrations: a sync for this connection is already running")
-	ErrAlreadyImported  = errors.New("integrations: this item already has a task")
-	ErrNotImportable    = errors.New("integrations: this item cannot become a task")
-	ErrOpUnsupported    = errors.New("integrations: this operation is not supported for this integration")
-	ErrContainsSecret   = errors.New("integrations: the text contains what looks like a secret, so it is not sent")
-	ErrNotApproved      = errors.New("integrations: the action is not approved")
-	ErrPayloadChanged   = errors.New("integrations: the action changed after it was approved")
-	ErrBadRequest       = errors.New("integrations: invalid request")
-	ErrSendFailed       = errors.New("integrations: the vendor did not accept the write")
-	ErrRuleNotAllowed   = errors.New("integrations: this rule is not allowed")
-	ErrToolMissing      = errors.New("integrations: the server does not offer the tool Drydock needs")
+	ErrNotFound          = errors.New("integrations: not found")
+	ErrConflict          = errors.New("integrations: concurrent modification (version mismatch)")
+	ErrNotHuman          = errors.New("integrations: this action needs a human; agents, tools and external content cannot do it")
+	ErrNoCredential      = errors.New("integrations: no token is stored for this connection")
+	ErrRateLimited       = errors.New("integrations: the vendor asked Drydock to slow down")
+	ErrSyncBusy          = errors.New("integrations: a sync for this connection is already running")
+	ErrAlreadyImported   = errors.New("integrations: this item already has a task")
+	ErrNotImportable     = errors.New("integrations: this item cannot become a task")
+	ErrOpUnsupported     = errors.New("integrations: this operation is not supported for this integration")
+	ErrContainsSecret    = errors.New("integrations: the text contains what looks like a secret, so it is not sent")
+	ErrNotApproved       = errors.New("integrations: the action is not approved")
+	ErrPayloadChanged    = errors.New("integrations: the action changed after it was approved")
+	ErrBadRequest        = errors.New("integrations: invalid request")
+	ErrSendFailed        = errors.New("integrations: the vendor did not accept the write")
+	ErrRuleNotAllowed    = errors.New("integrations: this rule is not allowed")
+	ErrToolMissing       = errors.New("integrations: the server does not offer the tool Drydock needs")
 	ErrCredentialsLocked = errors.New("integrations: the credential store is not available")
 )
 
@@ -160,39 +160,39 @@ type ToolInfo struct {
 
 // Item is a stored external item. All text fields are sanitized: they are data, never instructions.
 type Item struct {
-	ID               string            `json:"id"`
-	IntegrationID    string            `json:"integrationId"`
-	Source           string            `json:"source"`
-	ProjectID        string            `json:"projectId"`
-	ExternalID       string            `json:"externalId"`
-	Kind             string            `json:"kind"`
-	IssueRef         string            `json:"issueRef"`
-	URL              string            `json:"url"`
-	Title            string            `json:"title"`
-	Excerpt          string            `json:"excerpt"`
-	BodyRef          string            `json:"-"`
-	State            string            `json:"state"`
-	Labels           []string          `json:"labels"`
-	Assignee         string            `json:"assignee"`
-	Priority         string            `json:"priority"`
-	ParentExternalID string            `json:"parentExternalId,omitempty"`
-	Meta             map[string]any    `json:"meta"`
-	ExternalCreated  int64             `json:"externalCreatedAt"`
-	ExternalUpdated  int64             `json:"externalUpdatedAt"`
-	Etag             string            `json:"etag"`
-	ContentHash      string            `json:"contentHash"`
-	FetchedAt        int64             `json:"fetchedAt"`
-	Risk             int               `json:"risk"`
-	RiskFlags        []string          `json:"riskFlags"`
-	Redactions       int               `json:"redactions"`
-	Truncated        bool              `json:"truncated"`
-	Untrusted        bool              `json:"untrusted"` // always true
-	TaskID           string            `json:"taskId,omitempty"`
-	ImportedBy       string            `json:"importedBy,omitempty"`
-	ImportedAt       int64             `json:"importedAt,omitempty"`
-	Gone             bool              `json:"gone"`
-	Version          int64             `json:"version"`
-	Warnings         []string          `json:"warnings,omitempty"`
+	ID               string         `json:"id"`
+	IntegrationID    string         `json:"integrationId"`
+	Source           string         `json:"source"`
+	ProjectID        string         `json:"projectId"`
+	ExternalID       string         `json:"externalId"`
+	Kind             string         `json:"kind"`
+	IssueRef         string         `json:"issueRef"`
+	URL              string         `json:"url"`
+	Title            string         `json:"title"`
+	Excerpt          string         `json:"excerpt"`
+	BodyRef          string         `json:"-"`
+	State            string         `json:"state"`
+	Labels           []string       `json:"labels"`
+	Assignee         string         `json:"assignee"`
+	Priority         string         `json:"priority"`
+	ParentExternalID string         `json:"parentExternalId,omitempty"`
+	Meta             map[string]any `json:"meta"`
+	ExternalCreated  int64          `json:"externalCreatedAt"`
+	ExternalUpdated  int64          `json:"externalUpdatedAt"`
+	Etag             string         `json:"etag"`
+	ContentHash      string         `json:"contentHash"`
+	FetchedAt        int64          `json:"fetchedAt"`
+	Risk             int            `json:"risk"`
+	RiskFlags        []string       `json:"riskFlags"`
+	Redactions       int            `json:"redactions"`
+	Truncated        bool           `json:"truncated"`
+	Untrusted        bool           `json:"untrusted"` // always true
+	TaskID           string         `json:"taskId,omitempty"`
+	ImportedBy       string         `json:"importedBy,omitempty"`
+	ImportedAt       int64          `json:"importedAt,omitempty"`
+	Gone             bool           `json:"gone"`
+	Version          int64          `json:"version"`
+	Warnings         []string       `json:"warnings,omitempty"`
 }
 
 // ItemFilter selects items.
@@ -208,15 +208,15 @@ type ItemFilter struct {
 
 // SyncResult is the outcome of one Sync call.
 type SyncResult struct {
-	IntegrationID string `json:"integrationId"`
-	Pages         int    `json:"pages"`
-	Seen          int    `json:"seen"`
-	New           int    `json:"new"`
-	Changed       int    `json:"changed"`
-	Unchanged     int    `json:"unchanged"`
-	Gone          int    `json:"gone"`
-	Complete      bool   `json:"complete"` // the sweep reached the watermark (or the end); false = more pages next time
-	Skipped       string `json:"skipped,omitempty"`
+	IntegrationID string        `json:"integrationId"`
+	Pages         int           `json:"pages"`
+	Seen          int           `json:"seen"`
+	New           int           `json:"new"`
+	Changed       int           `json:"changed"`
+	Unchanged     int           `json:"unchanged"`
+	Gone          int           `json:"gone"`
+	Complete      bool          `json:"complete"` // the sweep reached the watermark (or the end); false = more pages next time
+	Skipped       string        `json:"skipped,omitempty"`
 	RuleResults   []RuleOutcome `json:"ruleResults,omitempty"`
 }
 

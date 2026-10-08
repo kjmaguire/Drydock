@@ -15,9 +15,9 @@ import (
 
 // Size limits for inbound content (docs/integrations.md section 6; design defaults awaiting measurement).
 const (
-	MaxTitleRunes     = 160  // stored titles
-	MaxTaskTitleRunes = 100  // task titles (they appear on one line in agent prompts)
-	MaxExcerptRunes   = 400  // the excerpt kept in SQLite
+	MaxTitleRunes     = 160 // stored titles
+	MaxTaskTitleRunes = 100 // task titles (they appear on one line in agent prompts)
+	MaxExcerptRunes   = 400 // the excerpt kept in SQLite
 	MaxBodyBytes      = 64 << 10
 	MaxQuoteRunes     = 4000 // the quoted block inside a task description
 	MaxStackRunes     = 3000 // the Sentry stack trace excerpt

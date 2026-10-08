@@ -373,4 +373,3 @@ func (s *Service) LinkBack(ctx context.Context, by, taskID, prURL string) (Outbo
 	body := fmt.Sprintf("Drydock opened a pull request for this item: %s\n(task %s, action posted after human approval)", u, taskID)
 	return s.Propose(ctx, by, ProposeReq{IntegrationID: conn.ID, Op: "comment", Target: it.ExternalID, TaskID: taskID, ProjectID: it.ProjectID, Params: map[string]string{"body": body}})
 }
-

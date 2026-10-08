@@ -694,27 +694,27 @@ func (s *Store) CountRuleTasks(ctx context.Context, ruleID string, since int64) 
 
 // Outbox is one proposed outbound write.
 type Outbox struct {
-	ID              string         `json:"id"`
-	IntegrationID   string         `json:"integrationId"`
-	ProjectID       string         `json:"projectId"`
-	TaskID          string         `json:"taskId,omitempty"`
-	Op              string         `json:"op"`
-	Target          string         `json:"target"`
-	Tool            string         `json:"tool"`
-	Payload         map[string]any `json:"payload"`
-	PayloadHash     string         `json:"payloadHash"`
-	Preview         string         `json:"preview"`
-	ApprovalID      string         `json:"approvalId"`
-	Status          string         `json:"status"`
-	IdempotencyKey  string         `json:"idempotencyKey"`
-	CreatedBy       string         `json:"createdBy"`
-	Created         int64          `json:"created"`
-	DecidedBy       string         `json:"decidedBy,omitempty"`
-	SentAt          int64          `json:"sentAt,omitempty"`
-	Receipt         string         `json:"receipt,omitempty"`
-	Error           string         `json:"error,omitempty"`
-	Version         int64          `json:"version"`
-	rawPayload      string
+	ID             string         `json:"id"`
+	IntegrationID  string         `json:"integrationId"`
+	ProjectID      string         `json:"projectId"`
+	TaskID         string         `json:"taskId,omitempty"`
+	Op             string         `json:"op"`
+	Target         string         `json:"target"`
+	Tool           string         `json:"tool"`
+	Payload        map[string]any `json:"payload"`
+	PayloadHash    string         `json:"payloadHash"`
+	Preview        string         `json:"preview"`
+	ApprovalID     string         `json:"approvalId"`
+	Status         string         `json:"status"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+	CreatedBy      string         `json:"createdBy"`
+	Created        int64          `json:"created"`
+	DecidedBy      string         `json:"decidedBy,omitempty"`
+	SentAt         int64          `json:"sentAt,omitempty"`
+	Receipt        string         `json:"receipt,omitempty"`
+	Error          string         `json:"error,omitempty"`
+	Version        int64          `json:"version"`
+	rawPayload     string
 }
 
 // Outbox statuses.
@@ -812,13 +812,13 @@ func (s *Store) ListOutbox(ctx context.Context, integrationID, status string, li
 
 // OutboxUpdate is a compare-and-swap on status: the row changes only while its status is one of from.
 type OutboxUpdate struct {
-	From      []string
-	To        string
+	From       []string
+	To         string
 	ApprovalID *string
-	DecidedBy *string
-	SentAt    *int64
-	Receipt   *string
-	Error     *string
+	DecidedBy  *string
+	SentAt     *int64
+	Receipt    *string
+	Error      *string
 }
 
 // UpdateOutbox applies u and reports whether the row was in an allowed state.

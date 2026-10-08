@@ -324,7 +324,9 @@ func (d Deps) extraChecks(ctx context.Context, repo *git.Repo, t tasks.Task) []c
 		if err != nil {
 			// the scanner cannot start: say so as an inconclusive secrets check rather than silently not scanning
 			broken := checks.Spec{Name: "secrets", Argv: []string{"drydock", "scan-added-lines"}, Dir: t.Worktree, InProcess: func(context.Context, proc.Manager, checks.Spec) (checks.Result, error) {
-				return checks.Result{Errored: true, ExitCode: 2, Output: "secrets scanner unavailable: " + err.Error()}, nil
+				var r checks.Result
+				r.Errored, r.ExitCode, r.Output = true, 2, "secrets scanner unavailable: "+err.Error()
+				return r, nil
 			}}
 			x.Settings.Secrets = false
 			return append([]checks.Spec{broken}, checks.ExtraSpecs(x)...)

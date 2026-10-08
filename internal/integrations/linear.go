@@ -112,7 +112,9 @@ func (linearAdapter) Page(ctx context.Context, cl *Client, after string, limit i
 	return pg, nil
 }
 
-func (linearAdapter) Detail(context.Context, *Client, string) (string, bool, error) { return "", false, nil }
+func (linearAdapter) Detail(context.Context, *Client, string) (string, bool, error) {
+	return "", false, nil
+}
 
 func (linearAdapter) TaskMapping(it Item) TaskMapping {
 	return TaskMapping{Priority: priorityTask(it.Priority), Label: "issue"}
