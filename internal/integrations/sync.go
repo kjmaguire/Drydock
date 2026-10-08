@@ -232,6 +232,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 	bodyBudget := s.o.MaxBodyFetch
 	complete := false
 	for page := 0; page < s.o.MaxPages; page++ {
+		snap := cur // what was committed before this page: a failure persists this, never half a page's progress
 		pageAfter := cur.After
 		pg, perr := ad.Page(ctx, cl, pageAfter, s.o.PageSize)
 		if perr != nil {
@@ -239,7 +240,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 			if !errors.As(perr, &f) {
 				f = Classify(conn.Kind, perr, "")
 			}
-			return res, s.fail(ctx, conn, cur, f)
+			return res, s.fail(ctx, conn, snap, f)
 		}
 		res.Pages++
 		sorted := sortedDesc(pg.Items)
@@ -281,7 +282,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 						f = Classify(conn.Kind, derr, "")
 					}
 					if f.Code == CodeRateLimited || f.Code == CodeUnauthorized || f.Code == CodeUnreachable || f.Code == CodeTimeout {
-						return res, s.fail(ctx, conn, cur, f)
+						return res, s.fail(ctx, conn, snap, f)
 					}
 					has = false // a page whose body cannot be read is stored with its summary only
 				}
@@ -361,6 +362,9 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 // fail records a failed attempt: a plain-language message, a backoff, and the connection status; the cursor keeps its resume
 // position so the next attempt continues where this one stopped.
 func (s *Service) fail(ctx context.Context, conn Connection, cur Cursor, f *Failure) error {
+	if ctx.Err() != nil {
+		return ctx.Err() // the app is shutting down: that is not the vendor's failure and earns no backoff
+	}
 	now := s.nowMS()
 	cur.LastAttemptAt = now
 	cur.LastError = s.scrub(f.Message)

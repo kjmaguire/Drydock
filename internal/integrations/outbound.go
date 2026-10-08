@@ -373,3 +373,29 @@ func (s *Service) LinkBack(ctx context.Context, by, taskID, prURL string) (Outbo
 	body := fmt.Sprintf("Drydock opened a pull request for this item: %s\n(task %s, action posted after human approval)", u, taskID)
 	return s.Propose(ctx, by, ProposeReq{IntegrationID: conn.ID, Op: "comment", Target: it.ExternalID, TaskID: taskID, ProjectID: it.ProjectID, Params: map[string]string{"body": body}})
 }
+
+// RecoverInterrupted marks actions that were executing when the app stopped as failed. Their approval was spent and the write may
+// or may not have reached the vendor, so Drydock never re-sends them by itself: the person checks the vendor and proposes the
+// action again if it is still needed. It returns how many rows it changed. The core extension calls it at startup.
+func (s *Service) RecoverInterrupted(ctx context.Context) int {
+	rows, err := s.st.ListOutbox(ctx, "", OutExecuting, 200)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, o := range rows {
+		msg := "Drydock stopped while this action was being sent, so it is not known whether it reached " + vendorOf(s, ctx, o) + ". Check there, then propose it again if it is still needed."
+		if ok, _ := s.st.UpdateOutbox(ctx, o.ID, OutboxUpdate{From: []string{OutExecuting}, To: OutFailed, Error: &msg}); ok {
+			n++
+			s.emit(ctx, EventOutboundFailed, o.ProjectID, o.TaskID, map[string]any{"outboxId": o.ID, "integrationId": o.IntegrationID, "code": "interrupted"})
+		}
+	}
+	return n
+}
+
+func vendorOf(s *Service, ctx context.Context, o Outbox) string {
+	if c, err := s.st.GetConnection(ctx, o.IntegrationID); err == nil {
+		return vendor(c.Kind)
+	}
+	return "the vendor"
+}

@@ -127,7 +127,8 @@ func (s *Service) prepare(format, title, text string) (prepared, error) {
 		return prepared{}, errors.New("requirements: the document is empty")
 	}
 	red := packs.RedactSecrets(s.Scanner, md)
-	p := prepared{text: red.Text, redactions: red.Count, hash: packs.HashHex(md)}
+	stored, _ := packs.StripHidden(red.Text) // hidden-character marks are for chunk scanning only; they are never stored
+	p := prepared{text: stored, redactions: red.Count, hash: packs.HashHex(md)}
 	t, chunks := packs.ChunkMarkdown(red.Text, strings.TrimSpace(title), packs.DefaultChunkOptions())
 	p.title = strings.TrimSpace(title)
 	if p.title == "" {

@@ -296,3 +296,27 @@ func TestAikidoWritesNeverAutoAndNeedAReason(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestInterruptedExecutionIsNeverResentAndIsReportedAsFailed(t *testing.T) {
+	h, fx, c := linearWithComment(t)
+	ctx := context.Background()
+	o := propose(t, h, c, human, "Half sent")
+	if _, err := h.svc.Decide(ctx, human, o.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	// the app died after spending the approval and before knowing the outcome
+	if _, err := h.db.Writer().Exec(`UPDATE integration_outbox SET status='executing' WHERE id=?`, o.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.restart()
+	if n := h.svc.RecoverInterrupted(ctx); n != 1 {
+		t.Fatalf("recovered %d", n)
+	}
+	cur, _ := h.svc.Store().GetOutbox(ctx, o.ID)
+	if cur.Status != integrations.OutFailed || !strings.Contains(cur.Error, "not known whether it reached Linear") {
+		t.Fatalf("%+v", cur)
+	}
+	if _, err := h.svc.Execute(ctx, human, o.ID); err == nil || len(fx.CommentsSent()) != 0 {
+		t.Fatalf("an interrupted action was re-sent: %v %v", err, fx.CommentsSent())
+	}
+}

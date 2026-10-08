@@ -11,7 +11,7 @@ import (
 // HiddenMark replaces every run of hidden characters (zero-width, bidi controls, tag characters, other control characters)
 // that Normalize removed. Chunk scanning counts the marks (hidden text is an injection technique) and then deletes them,
 // so what is stored and served never contains a hidden character.
-const HiddenMark = ''
+const HiddenMark = '\uE000'
 
 // HashHex returns the hex SHA-256 of the parts joined with a NUL byte.
 func HashHex(parts ...string) string {

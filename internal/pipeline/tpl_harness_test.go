@@ -77,6 +77,8 @@ type tpl struct {
 	logs  map[string]agentLog // by agent id
 	roles map[string]string   // template role -> agent id
 	dev   pipeline.DevSettings
+	// previews are the running previews started through the template's preview node; they are stopped at cleanup
+	previews []*checks.PreviewHandle
 }
 
 // tplOpts configures a template environment.
@@ -86,6 +88,7 @@ type tplOpts struct {
 	desc     string
 	accept   []string
 	template string
+	preview  bool // install the real preview runner (checks.StartPreview) and keep the handles
 }
 
 const (
@@ -168,6 +171,21 @@ func newTpl(t *testing.T, scripts map[string]fakeagent.Script, o tplOpts) *tpl {
 		},
 		Dev:      func(context.Context, string) pipeline.DevSettings { return e.dev },
 		MaxLoops: 3,
+	}
+	if o.preview {
+		e.td.Preview = func(ctx context.Context, tk tasks.Task, dev pipeline.DevSettings) (checks.PreviewResult, error) {
+			h, res, err := checks.StartPreview(ctx, proc.New(), tk.Worktree, checks.PreviewOptions{Enabled: dev.Preview.Enabled, Command: dev.Preview.Command,
+				HealthURL: dev.Preview.URL, Timeout: 30 * time.Second, LogDir: filepath.Join(e.dir, "data", "previews")}, nil)
+			if h != nil {
+				e.previews = append(e.previews, h)
+			}
+			return res, err
+		}
+		t.Cleanup(func() {
+			for _, h := range e.previews {
+				h.Stop()
+			}
+		})
 	}
 	e.eng = workflow.New(workflow.Config{DB: db, Bus: e.bus, DataDir: filepath.Join(e.dir, "data"), LeaseTTL: 3 * time.Second, SafePoint: pipeline.SafePointHook(deps)})
 	if err := pipeline.RegisterTemplates(e.eng, e.td); err != nil {
@@ -272,3 +290,7 @@ func shipReviewer() fakeagent.Script {
 
 var _ = checks.Detect
 var _ = strings.Contains
+
+func gitWT(t tasks.Task) git.Worktree {
+	return git.Worktree{Path: t.Worktree, Branch: t.Branch, Base: t.BaseBranch, TaskID: t.ID}
+}

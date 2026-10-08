@@ -487,6 +487,7 @@ func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPag
 	r.redact = red.Count
 	r.text = red.Text
 	pageTitle, chunks := ChunkMarkdown(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	r.text, _ = StripHidden(r.text) // the stored page never contains hidden characters (the chunks already carry their scan flags)
 	r.title = strings.TrimSpace(pageTitle)
 	if r.title == "" {
 		r.title = pageTitleFromURL(p.URL)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
+	"github.com/kjmaguire/drydock/internal/security"
 )
 
 // awsKey and ghToken are well-known example formats that the gitleaks rules match; they are not real credentials.
@@ -139,7 +140,7 @@ func TestQuoteKeepsEveryLineInsideTheQuote(t *testing.T) {
 	}
 }
 
-func TestSanitizerLimitsSizeAndFailsClosedOnScanError(t *testing.T) {
+func TestSanitizerLimitsSize(t *testing.T) {
 	h := newHarness(t, nil)
 	_ = h
 	s := integrations.Sanitizer{Scanner: h.scan}
@@ -255,7 +256,7 @@ func TestNotionPageBecomesARequirementsCandidateNotATask(t *testing.T) {
 		t.Fatal("the event must carry ids and a hash, not the page text")
 	}
 	page, err := h.svc.NotionPage(ctx, it.ID)
-	if err != nil || !page.Untrusted || !contains(page.Text, "The system shall let a user pay.") || contains(page.Text, ghToken) || page.Risk < integrations.RiskThreshold || page.ContentHash == "" {
+	if err != nil || page.SourceRef != "notion:pg1" || !page.Untrusted || !contains(page.Text, "The system shall let a user pay.") || contains(page.Text, ghToken) || page.Risk < integrations.RiskThreshold || page.ContentHash == "" {
 		t.Fatalf("%+v %v", page, err)
 	}
 	// a Linear item is not a Notion page
@@ -277,15 +278,41 @@ func TestSchemaConstraintsKeepItemsUntrustedAndBodiesOnDiskRedacted(t *testing.T
 	if _, err := h.db.Writer().Exec(`UPDATE external_items SET untrusted=0`); err == nil {
 		t.Fatal("untrusted could be cleared")
 	}
-	if _, err := h.db.Writer().Exec(`UPDATE integration_outbox SET status='bogus'`); err == nil {
-		// no rows: the CHECK is only evaluated on rows, so insert one
-		t.Log("no outbox rows to violate the check")
-	}
 	files, _ := filepath.Glob(filepath.Join(h.dir, "integrations", c.ID, "*.txt"))
 	if len(files) != 1 {
 		t.Fatalf("body files %v", files)
 	}
 	if st, err := os.Stat(files[0]); err != nil || st.Mode().Perm()&0o077 != 0 && os.PathSeparator == '/' {
 		t.Fatalf("body file permissions %v %v", st, err)
+	}
+}
+
+type failingScanner struct{}
+
+func (failingScanner) Scan(context.Context, string) ([]security.Finding, error) {
+	return nil, errors.New("scanner unavailable")
+}
+func (failingScanner) Redact(string) string { return "" }
+
+func TestSanitizerWithholdsTextItCannotScan(t *testing.T) {
+	s := integrations.Sanitizer{Scanner: failingScanner{}}
+	c := s.Text(context.Background(), "totally normal text with a hidden key "+ghToken, 1000)
+	if strings.Contains(c.Text, ghToken) || !strings.Contains(c.Text, "withheld") || c.Redactions == 0 {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestACancelledSyncIsNotAVendorFailure(t *testing.T) {
+	h := newHarness(t, nil)
+	_, url := linearFixture(t, 3)
+	c := h.connect(integrations.KindLinear, linearToken, url, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := h.svc.Sync(ctx, c.ID, integrations.SyncOpts{}); err == nil {
+		t.Fatal("expected an error")
+	}
+	v, _ := h.svc.Get(context.Background(), c.ID)
+	if v.Sync.ConsecutiveFailures != 0 || v.Sync.NextAttemptAt != 0 || v.Status != integrations.StatusUntested {
+		t.Fatalf("shutdown was recorded as a vendor failure: %+v %s", v.Sync, v.Status)
 	}
 }

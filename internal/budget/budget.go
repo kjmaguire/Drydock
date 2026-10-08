@@ -140,9 +140,15 @@ type Filter struct {
 
 // List returns budgets, project scope first.
 func (s *Store) List(ctx context.Context, f Filter) ([]Budget, error) {
-	q := `SELECT ` + cols + ` FROM budgets WHERE (?='' OR scope=?) AND (?='' OR scope_id=?) AND (?='' OR project_id=? OR (scope='project' AND scope_id=?))
+	// a project filter keeps the budgets that belong to the project: its own, its ceiling templates, and those on its
+	// tasks, runs and agents
+	q := `SELECT ` + cols + ` FROM budgets WHERE (?='' OR scope=?) AND (?='' OR scope_id=?) AND (?='' OR project_id=?
+		OR (scope='project' AND scope_id=?)
+		OR (scope='task' AND scope_id IN (SELECT id FROM tasks WHERE project_id=?))
+		OR (scope='agent' AND scope_id IN (SELECT id FROM agents WHERE project_id=?))
+		OR (scope='run' AND scope_id IN (SELECT id FROM workflow_runs WHERE project_id=?)))
 		ORDER BY CASE scope WHEN 'project' THEN 0 WHEN 'task' THEN 1 WHEN 'run' THEN 2 ELSE 3 END, scope_id, id`
-	rows, err := s.DB.Reader().QueryContext(ctx, q, string(f.Scope), string(f.Scope), f.ScopeID, f.ScopeID, f.ProjectID, f.ProjectID, f.ProjectID)
+	rows, err := s.DB.Reader().QueryContext(ctx, q, string(f.Scope), string(f.Scope), f.ScopeID, f.ScopeID, f.ProjectID, f.ProjectID, f.ProjectID, f.ProjectID, f.ProjectID, f.ProjectID)
 	if err != nil {
 		return nil, err
 	}

@@ -256,11 +256,11 @@ func TestInjectionQuarantineAndSecretRedaction(t *testing.T) {
 func TestHiddenCharactersAreStrippedAndFlagged(t *testing.T) {
 	e := newEnv(t)
 	dir := filepath.Join(e.dir, "h")
-	writeFiles(t, dir, map[string]string{"x.md": "# Hidden\n\nVisible​ text​ with ​ zero‮ width marks.\n"})
+	writeFiles(t, dir, map[string]string{"x.md": "# Hidden\n\nVisible\u200B text\u200B with \u200B zero\u202E width marks.\n"})
 	e.install(localManifest("hid", dir, ""))
 	e.refresh("hid")
 	res := e.search("visible text zero width", "hid")
-	if !res.Found || strings.ContainsAny(res.Hits[0].Text, "​‮") {
+	if !res.Found || strings.ContainsAny(res.Hits[0].Text, "\u200B\u202E\uE000") {
 		t.Fatalf("hidden characters must not be stored: %q", res.Hits[0].Text)
 	}
 	var flags string

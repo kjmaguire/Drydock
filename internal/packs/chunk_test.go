@@ -126,7 +126,7 @@ func TestBuildMatch(t *testing.T) {
 }
 
 func TestNormalizeStripsHiddenAndMarksIt(t *testing.T) {
-	in := "a​​b\r\nc\x00d‮  \n\n\n\ne"
+	in := "a\u200B\u200Bb\r\nc\x00d\u202E  \n\n\n\ne"
 	out, runs := Normalize(in)
 	if runs != 3 {
 		t.Fatalf("runs %d in %q", runs, out)

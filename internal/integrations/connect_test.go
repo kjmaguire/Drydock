@@ -2,8 +2,6 @@ package integrations_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
+	"github.com/kjmaguire/drydock/internal/mcp"
 )
 
 // readAll concatenates every file under dir plus the database files, for "the secret is nowhere on disk" checks.
@@ -415,7 +414,47 @@ func TestCredentialsServeBothAppSyncAndTheGatewayCatalogRefs(t *testing.T) {
 	if _, err := creds.Credential(ctx, "x", "somewhere/else"); err == nil {
 		t.Fatal("an arbitrary reference resolved")
 	}
-	// a disabled connection's token is not offered to the gateway
-	sum := sha256.Sum256([]byte(linearToken))
-	_ = hex.EncodeToString(sum[:])
+}
+
+func TestServerSpecsComeFromTheCatalogAndNeverCarryTheTokenInArgv(t *testing.T) {
+	cat, err := mcp.LoadBuiltin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lin := integrations.Connection{Kind: integrations.KindLinear, CredentialRef: "integrations/int_x/token"}
+	rd, err := integrations.ServerSpecFor(cat, lin, false)
+	if err != nil || rd.URL != "https://mcp.linear.app/mcp/readonly" || rd.Auth.Keyring != "integrations/int_x/token" || rd.Auth.Kind != mcp.AuthBearer {
+		t.Fatalf("%+v %v", rd, err)
+	}
+	wr, _ := integrations.ServerSpecFor(cat, lin, true)
+	if wr.URL != "https://mcp.linear.app/mcp" {
+		t.Fatalf("writes must use the read-write endpoint: %s", wr.URL)
+	}
+	sen, _ := integrations.ServerSpecFor(cat, integrations.Connection{Kind: integrations.KindSentry, CredentialRef: "r"}, false)
+	if sen.Auth.Scheme != "Sentry-Bearer" || sen.URL != "https://mcp.sentry.dev/mcp" {
+		t.Fatalf("%+v", sen)
+	}
+	aik, _ := integrations.ServerSpecFor(cat, integrations.Connection{Kind: integrations.KindAikido, CredentialRef: "integrations/int_y/token"}, false)
+	if aik.Transport != mcp.TransportStdio || aik.Command.SecretEnv["AIKIDO_API_KEY"] != "integrations/int_y/token" || aik.License.Bundled || aik.Command.Pin != "@aikidosec/mcp@1.0.27" {
+		t.Fatalf("%+v", aik)
+	}
+	for _, a := range aik.Command.Argv {
+		if strings.Contains(a, "integrations/") {
+			t.Fatalf("a credential reference in argv: %v", aik.Command.Argv)
+		}
+	}
+	notion, _ := integrations.ServerSpecFor(cat, integrations.Connection{Kind: integrations.KindNotion, CredentialRef: "r"}, false)
+	if notion.URL != "https://mcp.notion.com/mcp" {
+		t.Fatalf("%s", notion.URL)
+	}
+	if _, err := integrations.ServerSpecFor(cat, integrations.Connection{Kind: integrations.KindLinear}, false); !errors.Is(err, integrations.ErrNoCredential) {
+		t.Fatalf("%v", err)
+	}
+	// the template entries in the catalog are the user-install kind and are never bundled (D14)
+	for _, id := range []string{"aikido", "sentryx"} {
+		s, _ := cat.Get(id)
+		if !s.Template || s.License.Bundled {
+			t.Fatalf("%s: %+v", id, s)
+		}
+	}
 }

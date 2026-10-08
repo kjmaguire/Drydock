@@ -57,7 +57,7 @@ func (s *Service) Import(ctx context.Context, by, itemID, projectOverride string
 
 func (s *Service) notionCandidate(ctx context.Context, by string, conn Connection, it Item) (TaskResult, error) {
 	s.emit(ctx, EventNotionPageReady, conn.ProjectID, "", map[string]any{
-		"integrationId": conn.ID, "itemId": it.ID, "externalId": it.ExternalID, "hash": it.ContentHash, "risk": it.Risk, "by": by,
+		"integrationId": conn.ID, "itemId": it.ID, "externalId": it.ExternalID, "sourceRef": "notion:" + it.ExternalID, "hash": it.ContentHash, "risk": it.Risk, "by": by,
 		"projectId": conn.ProjectID, "untrusted": true,
 	})
 	return TaskResult{ItemID: it.ID, IssueRef: it.IssueRef, Requirements: true, Warnings: riskWarnings(it.RiskFlags)}, nil
@@ -68,6 +68,7 @@ type NotionPageText struct {
 	ItemID      string   `json:"itemId"`
 	ProjectID   string   `json:"projectId"`
 	ExternalID  string   `json:"externalId"`
+	SourceRef   string   `json:"sourceRef"` // "notion:<page id>", the stable id the Requirements area keys a synced document by
 	Title       string   `json:"title"`
 	URL         string   `json:"url"`
 	Text        string   `json:"text"`
@@ -92,7 +93,7 @@ func (s *Service) NotionPage(ctx context.Context, itemID string) (NotionPageText
 	if text == "" {
 		text = it.Excerpt
 	}
-	return NotionPageText{ItemID: it.ID, ProjectID: it.ProjectID, ExternalID: it.ExternalID, Title: it.Title, URL: it.URL, Text: text, ContentHash: it.ContentHash,
+	return NotionPageText{ItemID: it.ID, ProjectID: it.ProjectID, ExternalID: it.ExternalID, SourceRef: "notion:" + it.ExternalID, Title: it.Title, URL: it.URL, Text: text, ContentHash: it.ContentHash,
 		Untrusted: true, Risk: it.Risk, RiskFlags: it.RiskFlags, Truncated: it.Truncated}, nil
 }
 

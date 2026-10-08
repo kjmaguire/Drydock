@@ -44,8 +44,7 @@ func Normalize(format, text string) (string, error) {
 		out, _ := packs.Normalize(text)
 		return out, nil
 	case FormatText, FormatPDFText:
-		pre, _ := packs.Normalize(text)
-		pre = strings.ReplaceAll(pre, "\f", "\n\n")
+		pre, _ := packs.Normalize(strings.ReplaceAll(text, "\f", "\n\n")) // form feeds are page breaks, not hidden characters
 		lines := strings.Split(pre, "\n")
 		if format == FormatPDFText {
 			lines = dropPDFNoise(lines)
@@ -88,14 +87,22 @@ func detectHeadings(lines []string) []string {
 	for i, l := range lines {
 		out[i] = l
 		t := strings.TrimSpace(l)
-		if t == "" || atxLine.MatchString(t) || listItem.MatchString(t) {
+		if t == "" || atxLine.MatchString(t) {
 			continue
 		}
 		prevBlank := i == 0 || strings.TrimSpace(lines[i-1]) == ""
-		nextText := i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != ""
+		nextBlank := i+1 >= len(lines) || strings.TrimSpace(lines[i+1]) == ""
+		nextText := !nextBlank
+		// "1.2 Scope" is a heading when it stands alone as a paragraph (or is clearly multi-level); "1. Install" inside a
+		// list is not
 		if m := numberedHeading.FindStringSubmatch(t); m != nil && !strings.HasSuffix(t, ".") && !strings.HasSuffix(t, ",") && prevBlank {
 			depth := strings.Count(m[1], ".") + 1
-			out[i] = strings.Repeat("#", min(depth, 4)) + " " + m[1] + " " + m[2]
+			if depth >= 2 || nextBlank || !listItem.MatchString(t) {
+				out[i] = strings.Repeat("#", min(depth, 4)) + " " + m[1] + " " + m[2]
+				continue
+			}
+		}
+		if listItem.MatchString(t) {
 			continue
 		}
 		if prevBlank && nextText && isAllCaps(t) {

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -54,7 +55,7 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	approvals := security.NewApprovals(c.DB, c.Bus, audit, security.WithApprovalRedactor(c.Scanner))
 	svc, err := integrations.New(integrations.Options{
 		DB: c.DB, Bus: c.Bus, Vault: vault, Callers: integrations.GatewayFactory{Gateway: gw}, Scanner: c.Scanner, Approvals: approvals,
-		BodyDir: c.cfg.DataDir + "/integrations", Logf: c.logf,
+		BodyDir: filepath.Join(c.cfg.DataDir, "integrations"), Logf: c.logf,
 		RegisterSecret:     func(name, v string) { _ = c.Scanner.RegisterSecret(name, v) },
 		UnregisterSecret:   c.Scanner.UnregisterSecret,
 		OnCredentialChange: gw.StopUpstream,
@@ -69,6 +70,7 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		return nil, nil, err
 	}
 	integrationServices.Store(c, svc)
+	svc.RecoverInterrupted(ctx)
 	// teach the scanner the exact token values again after a restart, so they are redacted from anything that passes through it
 	if vault != nil {
 		if conns, err := store.ListConnections(ctx); err == nil {
@@ -80,10 +82,23 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		}
 	}
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		svc.Run(ctx, 15*time.Second)
+	}()
+	go func() { // the gateway has no listener here, so its idle reaper does not run by itself
+		defer wg.Done()
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				gw.ReapIdle()
+			}
+		}
 	}()
 	closeFn := func() {
 		wg.Wait() // ctx is cancelled by Core.Close before the extension hooks run

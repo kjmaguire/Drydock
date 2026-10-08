@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/mcp"
@@ -54,12 +55,15 @@ type GatewayFactory struct {
 
 type gatewayCaller struct{ up *mcp.AppUpstream }
 
+// builtinCatalog parses the embedded catalog once.
+var builtinCatalog = sync.OnceValues(mcp.LoadBuiltin)
+
 // Caller implements CallerFactory.
 func (f GatewayFactory) Caller(ctx context.Context, c Connection, write bool) (Caller, error) {
 	cat := f.Catalog
 	if cat == nil {
 		var err error
-		if cat, err = mcp.LoadBuiltin(); err != nil {
+		if cat, err = builtinCatalog(); err != nil {
 			return nil, err
 		}
 	}

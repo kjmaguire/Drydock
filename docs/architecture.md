@@ -59,7 +59,8 @@ Ownership rules that the code enforces:
 | `internal/security` | approvals with action-hash binding, path guard, command analyzer, secret scanning, audit chain | in progress |
 | `internal/mcp` | gateway, workspace server, catalog | in progress |
 | `app/`, `ui/` | Wails shell and React UI | **not built** |
-| `internal/integrations`, `internal/packs`, `internal/skills`, `internal/requirements`, `internal/telemetry`, `internal/budget` | Slices 2 to 5 | **not built** |
+| `internal/integrations`, `internal/packs`, `internal/skills`, `internal/requirements` | Slices 3 to 5 | see their own status |
+| `internal/budget`, `internal/evals`, `internal/telemetry`, `internal/llm/probe`; `secrets`/`deps` in `internal/checks` | Slice 2: budgets and pause, evaluation metrics and `routing_outcomes`, local telemetry sink, tool-call probe and cheap-model selection, the two extra checks | built and tested on Linux; wired by `internal/core/ext_economics.go`; Windows unproven (P2); see [`token-control.md`](token-control.md), [`model-routing.md`](model-routing.md), [`evals.md`](evals.md) "As built" sections |
 
 ## 3. The core loop (Slice 1D), as implemented
 
@@ -81,7 +82,7 @@ Built first, in this order (each with tests): storage, events, process manager, 
 
 ## 5. Explicitly not built yet
 
-The Wails shell and every UI screen; the repo map (gated, D5); Expert Packs, Requirements and Skills sync (Slice 3); the Model Router's intelligence beyond the static router, budgets enforcement, the `deps`/`secrets` checks, the OTel exporter (Slice 2); spec gate, `e2e`/`preview` checks, multi-agent templates, `PlanTeam`, Claude Design (Slice 4); Linear/Notion/Sentry/Aikido (Slice 5); the Pull Requests view and issue import UI (the host and the pr_flow nodes are built); installer, updater, licensing.
+The Wails shell and every UI screen; the repo map (gated, D5); Expert Packs, Requirements and Skills sync (Slice 3); routing of agent turns through the Model Router (the router, probe and budgets are built and exposed, but `core.agentConfig` still assigns each agent's configured model), the OTLP exporter (the local telemetry sink is built, D12), pre-call budget reservation and wall-time ceilings (Slice 2); spec gate, `e2e`/`preview` checks, multi-agent templates, `PlanTeam`, Claude Design (Slice 4); Linear/Notion/Sentry/Aikido (Slice 5); the Pull Requests view and issue import UI (the host and the pr_flow nodes are built); installer, updater, licensing.
 
 ## 6. Locked decisions
 

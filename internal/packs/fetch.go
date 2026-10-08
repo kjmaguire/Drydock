@@ -41,6 +41,9 @@ type FetchPolicy struct {
 	// AllowLoopback permits http:// and loopback addresses for the allowed hosts. Used by tests and by a deliberately local
 	// mirror; the product's crawler leaves it false. Private ranges, link-local and metadata addresses stay blocked.
 	AllowLoopback bool
+	// NoRobots skips the robots.txt and content-signal checks. It is for API endpoints a human configured explicitly
+	// (skill registries on api.github.com), which are not crawls; page crawling never sets it.
+	NoRobots bool
 	// UseSystemProxy sends requests through HTTP(S)_PROXY. The address check cannot see the final address then (the proxy
 	// resolves it), so it is off by default.
 	UseSystemProxy bool
@@ -210,10 +213,30 @@ func (f *Fetcher) Get(ctx context.Context, rawURL string, cond Conditional) (*Re
 	if err := f.checkURL(u); err != nil {
 		return nil, err
 	}
-	if err := f.checkRobots(ctx, u); err != nil {
+	if !f.policy.NoRobots {
+		if err := f.checkRobots(ctx, u); err != nil {
+			return nil, err
+		}
+	}
+	return f.do(ctx, u, cond, true, false, f.policy.MaxBytes)
+}
+
+// GetBinary fetches a non-text document (a source tarball) with the same address, host, redirect and time checks and its own
+// size cap. It exists for skill registries; pack crawling uses Get.
+func (f *Fetcher) GetBinary(ctx context.Context, rawURL string, maxBytes int64) (*Response, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
 		return nil, err
 	}
-	return f.do(ctx, u, cond, true)
+	if err := f.checkURL(u); err != nil {
+		return nil, err
+	}
+	if !f.policy.NoRobots {
+		if err := f.checkRobots(ctx, u); err != nil {
+			return nil, err
+		}
+	}
+	return f.do(ctx, u, Conditional{}, true, true, maxBytes)
 }
 
 // HTTPError is a non-success response.
@@ -224,7 +247,7 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("GET %s: HTTP %d", e.URL, e.Status) }
 
-func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite bool) (*Response, error) {
+func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite, binary bool, maxBytes int64) (*Response, error) {
 	if polite {
 		if err := f.wait(ctx); err != nil {
 			return nil, err
@@ -255,17 +278,17 @@ func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite b
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return out, &HTTPError{Status: resp.StatusCode, URL: u.String()}
 	}
-	if resp.ContentLength > f.policy.MaxBytes {
+	if resp.ContentLength > maxBytes {
 		return out, fmt.Errorf("%w: %d bytes", ErrTooLarge, resp.ContentLength)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, f.policy.MaxBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return out, err
 	}
-	if int64(len(body)) > f.policy.MaxBytes {
-		return out, fmt.Errorf("%w: more than %d bytes", ErrTooLarge, f.policy.MaxBytes)
+	if int64(len(body)) > maxBytes {
+		return out, fmt.Errorf("%w: more than %d bytes", ErrTooLarge, maxBytes)
 	}
-	if !textual(out.ContentType, body) {
+	if !binary && !textual(out.ContentType, body) {
 		return out, fmt.Errorf("%w: %q", ErrContentType, out.ContentType)
 	}
 	out.Body = body
@@ -329,7 +352,7 @@ func (f *Fetcher) robotsFor(ctx context.Context, u *url.URL) (*Robots, error) {
 		return r, nil
 	}
 	ru := &url.URL{Scheme: u.Scheme, Host: u.Host, Path: "/robots.txt"}
-	resp, err := f.do(ctx, ru, Conditional{}, true)
+	resp, err := f.do(ctx, ru, Conditional{}, true, false, 512<<10)
 	switch {
 	case err == nil:
 		r = ParseRobots(string(resp.Body))

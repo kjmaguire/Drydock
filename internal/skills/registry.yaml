@@ -1,0 +1,17 @@
+# Curated skill registries (docs/expert-packs.md section 9). This is the allowlist: Drydock fetches skills from these
+# repositories and from no others. A human adds, disables or removes entries (with a warning); nothing here is imported until
+# a human picks a skill, and an imported skill stays "offered" until a human accepts it.
+# Seeded from Phase 0 evidence [tool §7]. Last-commit dates, per-skill licenses and skill counts are UNVERIFIED (github.com was
+# unreachable in Phase 0); none is asserted here.
+schema: 1
+registries:
+  - {id: cloudflare-skills, repo: cloudflare/skills, root: skills/, license: Apache-2.0, trust: vendor_official, also: "docs site publishes /.well-known/agent-skills/* (index.json, SKILL.md, tarballs)", notes: "wrangler skill defers to cf CLI when cloudflare.config.ts exists"}
+  - {id: stripe-ai, repo: stripe/ai, root: skills/, license: MIT, trust: vendor_official, notes: "synced from docs.stripe.com/.well-known/skills"}
+  - {id: react-router, repo: remix-run/react-router, root: .agents/skills/react-router, license: MIT, trust: vendor_official, notes: "repo AGENTS.md files are contributor guidance, not app rules: exclude"}
+  - {id: microsoft-skills, repo: microsoft/skills, root: .github/skills/, license: MIT, trust: vendor_official, import: selective_only, notes: "175 skills; repo warns loading all causes context rot"}
+  - {id: msdocs-agent-skills, repo: MicrosoftDocs/Agent-Skills, license: CC-BY-4.0, trust: vendor_official}
+  - {id: msdocs-mcp-skills, repo: MicrosoftDocs/mcp, license: "content CC BY 4.0, code MIT", trust: vendor_official, notes: "3 skills: microsoft-docs, microsoft-code-reference, microsoft-skill-creator"}
+  - {id: vercel-agent-skills, repo: vercel-labs/agent-skills, license: MIT, trust: vendor_official}
+  - {id: openai-skills, repo: openai/skills, license_scope: per_skill, trust: vendor_official, notes: "license is per skill (LICENSE.txt)"}
+  - {id: anthropic-skills, repo: anthropics/skills, license_scope: per_skill, import: per_skill_review, trust: vendor_official, notes: "no root LICENSE; some skills are source-available"}
+  - {id: msgraph-community, repo: merill/msgraph, license: MIT, trust: community, notes: "no official Microsoft Graph skills repo found"}

@@ -55,6 +55,10 @@ type Engine struct {
 	Memory memory.Store
 	// Standing returns the project's standing instructions text (settings).
 	Standing func(ctx context.Context, projectID string) string
+	// Sections and Files (optional, see hooks.go) let attached packs and skills add AGENTS.md sections and app-owned files
+	// such as .claude/rules/<name>.md to a worktree.
+	Sections SectionsFunc
+	Files    FilesFunc
 }
 
 const headerPrefix = "<!-- drydock:generated sha256="
@@ -86,6 +90,10 @@ func (f Files) Names() []string {
 // Generate renders the instruction files for a project. existing is the repository's own content for each file name
 // (read from the worktree before Drydock overwrites it): user-authored files are imported as a section, never lost.
 func (e *Engine) Generate(ctx context.Context, projectID string, existing map[string]string) (Files, Manifest, error) {
+	return e.generate(ctx, projectID, "", existing)
+}
+
+func (e *Engine) generate(ctx context.Context, projectID, worktree string, existing map[string]string) (Files, Manifest, error) {
 	var m Manifest
 	var sb strings.Builder
 	sb.WriteString("# Project instructions\n\n")
@@ -129,6 +137,25 @@ func (e *Engine) Generate(ctx context.Context, projectID string, existing map[st
 		}
 		if len(lines) > 0 {
 			sb.WriteString("\n## " + sec.title + "\n\n" + strings.Join(lines, "\n") + "\n")
+		}
+	}
+	if e.Sections != nil {
+		extra, err := e.Sections(ctx, projectID, worktree)
+		if err != nil {
+			return nil, m, err
+		}
+		sort.SliceStable(extra, func(i, j int) bool {
+			if extra[i].Priority != extra[j].Priority {
+				return extra[i].Priority < extra[j].Priority
+			}
+			return extra[i].Title < extra[j].Title
+		})
+		for _, sec := range extra {
+			if strings.TrimSpace(sec.Body) == "" {
+				continue
+			}
+			sb.WriteString("\n## " + sec.Title + "\n\n" + strings.TrimSpace(sec.Body) + "\n")
+			m.Add(sec.Source, true, len(sec.Body), sec.Reason, sec.Priority)
 		}
 	}
 	sb.WriteString(`
@@ -181,6 +208,10 @@ type WriteResult struct {
 	Written  []string
 	Imported []string // user-authored files whose content was folded into AGENTS.md
 	Edited   []string // generated files a human edited: left alone, edit offered back as a memory proposal
+	// Extras are the files written for other subsystems (also listed in Written); SkippedExtras were left alone because they
+	// are the repository's own files or their path was refused.
+	Extras        []string
+	SkippedExtras []string
 }
 
 // Write materialises the instruction files into a worktree. User-authored files are read first and imported into the
@@ -195,7 +226,7 @@ func (e *Engine) Write(ctx context.Context, projectID, worktree string) (WriteRe
 			existing[name] = string(b)
 		}
 	}
-	files, m, err := e.Generate(ctx, projectID, existing)
+	files, m, err := e.generate(ctx, projectID, worktree, existing)
 	if err != nil {
 		return res, m, err
 	}
@@ -218,6 +249,12 @@ func (e *Engine) Write(ctx context.Context, projectID, worktree string) (WriteRe
 		res.Written = append(res.Written, name)
 		_ = e.recordGenerated(ctx, projectID, name, files[name])
 	}
+	extras, skipped, err := e.writeExtras(ctx, projectID, worktree, &m)
+	if err != nil {
+		return res, m, err
+	}
+	res.Written = append(res.Written, extras...) // extras are app-owned too: the caller keeps them out of git
+	res.Extras, res.SkippedExtras = extras, skipped
 	return res, m, nil
 }
 
