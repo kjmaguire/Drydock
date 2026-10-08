@@ -398,3 +398,192 @@ export interface PRState {
   reviews: GitHubReview[] | null;
   run?: RunInfo;
 }
+
+// --- connections (internal/connections, internal/core/connections.go) ---
+
+export interface Prereq {
+  tool: string;
+  min?: string;
+  found: boolean;
+  path?: string;
+  version?: string;
+  ok: boolean;
+  /** Plain-language guidance, never a command to run. */
+  guide?: string;
+}
+
+export interface GateStatus {
+  id: string;
+  text: string;
+  acked: boolean;
+}
+
+/** connections.Connection embeds agents.Detection, so the Detection fields are at the top level. */
+export interface Connection extends Detection {
+  reason?: string;
+  warnings?: string[];
+  gates?: GateStatus[];
+  usable: boolean;
+  prereqs?: Prereq[];
+  transport?: string;
+  compatClass?: string;
+  platform: string;
+}
+
+export interface TestStep {
+  id: string;
+  name: string;
+  status: string; // pass | fail | skipped
+  reason?: string;
+  detail?: string;
+}
+
+export interface MatrixCell {
+  value: unknown;
+  provenance: 'observed' | 'declared' | 'unknown' | string;
+}
+
+export interface ConnectionReport {
+  adapter: string;
+  cliVersion?: string;
+  bridge?: string;
+  platform: string;
+  transport: string;
+  form: string;
+  steps: TestStep[] | null;
+  capabilities: Capabilities;
+  matrix: Record<string, MatrixCell> | null;
+  agentMatrix?: string[];
+  degraded?: string[];
+  summary: string;
+  /** Measured from the agent's own report; 0 when none was reported. */
+  tokensUsed: number;
+  ok: boolean;
+  /** time.Duration in nanoseconds. */
+  elapsed: number;
+}
+
+// --- providers (internal/providers) ---
+
+export type ProviderKind = 'aggregator' | 'direct' | 'host';
+export type DataClass = 'private' | 'trainable';
+export type PriceTier = 'premium' | 'cheap' | 'free';
+
+export interface Provider {
+  id: string;
+  name: string;
+  kind: ProviderKind | string;
+  baseUrl: string;
+  keyRef: string;
+  dataClass: DataClass | string;
+  tier: PriceTier | string;
+  flavor: string;
+  enabled: boolean;
+  maxConcurrent: number;
+  hourlyCost: number;
+  tlsMode: string;
+  tlsFingerprint?: string;
+  lanUnencrypted: boolean;
+  attestations?: Record<string, boolean> | null;
+  wireApis: string[] | null;
+  status: string;
+  lastSeen?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** providers.NewProvider has no JSON tags: the core decodes the exported Go field names (case-insensitively). */
+export interface NewProvider {
+  Name: string;
+  Kind: ProviderKind;
+  BaseURL: string;
+  APIKey?: string;
+  DataClass: DataClass;
+  Tier: PriceTier;
+  Flavor?: string;
+  MaxConcurrent?: number;
+  HourlyCost?: number;
+  TLSFingerprint?: string;
+  Attestations?: Record<string, boolean>;
+  WireAPIs?: string[];
+}
+
+export interface ProviderModel {
+  providerId: string;
+  id: string;
+  contextLength: number;
+  maxOutput: number;
+  supportsTools: boolean;
+  supportsReasoning: boolean;
+  dataClass: string;
+  tier: string;
+  isFree: boolean;
+  inputPerM: number;
+  outputPerM: number;
+  cacheReadPerM: number;
+  cacheWritePerM: number;
+  priceSource: 'catalog' | 'builtin' | 'user' | string;
+  priceUpdatedAt?: string;
+  source: string;
+  probeStatus?: string;
+}
+
+/** providers.ProbeResult has no JSON tags either, so the keys are the Go names. */
+export interface ProbeResult {
+  ProviderID: string;
+  OK: boolean;
+  AuthFailed: boolean;
+  /** time.Duration in nanoseconds. */
+  Latency: number;
+  Flavor: string;
+  Models: ProviderModel[] | null;
+  ServerInfo: Record<string, unknown> | null;
+  Warnings: string[] | null;
+  Error: string;
+}
+
+// --- usage and the agent inspector (internal/core/ops.go) ---
+
+export interface UsageRow {
+  ts: number;
+  taskId: string;
+  agentId: string;
+  provider: string;
+  model: string;
+  tier: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  costUsd: number;
+  source: 'reported' | 'estimated' | string;
+  cacheHit: boolean;
+}
+
+export interface AgentRun {
+  id: string;
+  taskId: string;
+  pid: number;
+  cwd: string;
+  status: string;
+  startedAt: number;
+  endedAt: number;
+  error?: string;
+}
+
+export interface AgentDetail {
+  agent: Agent;
+  runs: AgentRun[] | null;
+  usage: UsageRow[] | null;
+}
+
+export interface RoomMember {
+  roomId: string;
+  member: Author;
+  role?: string;
+  state: string;
+  addedBy?: string;
+  addedAt: string;
+  lastReadSeq: number;
+}

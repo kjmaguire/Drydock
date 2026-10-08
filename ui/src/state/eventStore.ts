@@ -131,6 +131,33 @@ export class EventStore {
     return true;
   }
 
+  /**
+   * Add older events (for the Activity view) without telling event listeners: they are history, not news, and must not
+   * trigger re-reads. Duplicates are ignored. Does not move lastSeq backwards.
+   */
+  backfill(older: readonly DrydockEvent[]): number {
+    let added = 0;
+    for (const e of older) {
+      if (!Number.isInteger(e.seq) || e.seq <= this.floor || this.seen.has(e.seq)) continue;
+      this.seen.add(e.seq);
+      let i = this.events.length - 1;
+      while (i >= 0 && this.events[i]!.seq > e.seq) i--;
+      this.events.splice(i + 1, 0, e);
+      added++;
+    }
+    if (added > 0) {
+      if (this.events.length > this.maxEvents) {
+        const drop = this.events.splice(0, this.events.length - this.maxEvents);
+        for (const d of drop) {
+          this.seen.delete(d.seq);
+          if (d.seq > this.floor) this.floor = d.seq;
+        }
+      }
+      this.publish(true);
+    }
+    return added;
+  }
+
   // --- connection ---
 
   private open(status: ConnectionState): void {

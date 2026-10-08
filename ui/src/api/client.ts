@@ -5,6 +5,15 @@ import type { Transport } from './transport';
 import type {
   AdapterInfo,
   Agent,
+  AgentDetail,
+  Connection,
+  ConnectionReport,
+  NewProvider,
+  ProbeResult,
+  Provider,
+  ProviderModel,
+  RoomMember,
+  UsageRow,
   AgentSpec,
   AppInfo,
   DrydockEvent,
@@ -48,7 +57,25 @@ export interface Client {
   taskCancel(id: string): Promise<void>;
   /** Answer a pending request of a run as the human. Bound to ids, never to message text. */
   runRespond(runId: string, requestId: string, decision: string, data?: unknown): Promise<void>;
-  roomList(projectId: string): Promise<Room[]>;
+  roomList(projectId: string, includeArchived?: boolean): Promise<Room[]>;
+  roomGet(id: string): Promise<Room>;
+  /** The thread root and its replies, in order. */
+  roomThread(rootId: string): Promise<Message[]>;
+  roomCreateDM(projectId: string, agentId: string): Promise<Room>;
+  roomMembers(roomId: string): Promise<RoomMember[]>;
+  /** The newest persisted event seq (0 if none). */
+  eventsHead(): Promise<number>;
+  usageList(filter: { taskId?: string; agentId?: string; limit?: number }): Promise<UsageRow[]>;
+  agentGet(id: string): Promise<AgentDetail>;
+  connectionList(): Promise<Connection[]>;
+  connectionAcknowledge(gateId: string): Promise<void>;
+  connectionTest(adapter: string): Promise<ConnectionReport>;
+  providerList(): Promise<Provider[]>;
+  providerCreate(p: NewProvider): Promise<Provider>;
+  providerDelete(id: string): Promise<void>;
+  providerSetEnabled(id: string, enabled: boolean): Promise<void>;
+  providerTest(id: string): Promise<ProbeResult>;
+  providerModels(id: string): Promise<ProviderModel[]>;
   roomMessages(roomId: string, afterSeq?: number, limit?: number): Promise<Message[]>;
   roomPost(roomId: string, body: string, threadRoot?: string): Promise<Posted>;
   roomMarkRead(roomId: string, seq: number): Promise<boolean>;
@@ -86,7 +113,38 @@ export function createClient(t: Transport): Client {
     runRespond: async (runId, requestId, decision, data) => {
       await t.call('run.respond', { runId, requestId, decision, data: data ?? {} });
     },
-    roomList: async (projectId) => arr(await t.call<Room[] | null>('room.list', { projectId })),
+    roomList: async (projectId, includeArchived = false) => arr(await t.call<Room[] | null>('room.list', { projectId, includeArchived })),
+    roomGet: (id) => t.call('room.get', { id }),
+    roomThread: async (rootId) => arr(await t.call<Message[] | null>('room.thread', { rootId })),
+    roomCreateDM: (projectId, agentId) => t.call('room.createDM', { projectId, agentId }),
+    roomMembers: async (roomId) => arr(await t.call<RoomMember[] | null>('room.members', { roomId })),
+    eventsHead: async () => Number(await t.call<number | null>('events.head')) || 0,
+    usageList: async ({ taskId = '', agentId = '', limit = 0 }) => arr(await t.call<UsageRow[] | null>('usage.list', { taskId, agentId, limit })),
+    agentGet: async (id) => {
+      const d = await t.call<AgentDetail>('agent.get', { id });
+      return { ...d, runs: arr(d.runs), usage: arr(d.usage) };
+    },
+    connectionList: async () => arr(await t.call<Connection[] | null>('connection.list')),
+    connectionAcknowledge: async (gateId) => {
+      await t.call('connection.acknowledge', { gateId });
+    },
+    connectionTest: async (adapter) => {
+      const r = await t.call<ConnectionReport>('connection.test', { adapter });
+      return { ...r, steps: arr(r.steps), matrix: r.matrix ?? {} };
+    },
+    providerList: async () => arr(await t.call<Provider[] | null>('provider.list')),
+    providerCreate: (p) => t.call('provider.create', p),
+    providerDelete: async (id) => {
+      await t.call('provider.delete', { id });
+    },
+    providerSetEnabled: async (id, enabled) => {
+      await t.call('provider.setEnabled', { id, enabled });
+    },
+    providerTest: async (id) => {
+      const r = await t.call<ProbeResult>('provider.test', { id });
+      return { ...r, Models: arr(r.Models), Warnings: arr(r.Warnings) };
+    },
+    providerModels: async (id) => arr(await t.call<ProviderModel[] | null>('provider.models', { id })),
     roomMessages: async (roomId, afterSeq = 0, limit = 200) => arr(await t.call<Message[] | null>('room.messages', { roomId, afterSeq, limit })),
     roomPost: (roomId, body, threadRoot = '') => t.call('room.post', { roomId, body, threadRoot }),
     roomMarkRead: async (roomId, seq) => Boolean(await t.call('room.markRead', { roomId, seq })),
