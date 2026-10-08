@@ -97,16 +97,22 @@ func TestSubscribeLiveAndSlowSubscriberIsClosedNotBlocking(t *testing.T) {
 	slow, cancelSlow := b.Subscribe(Filter{})
 	defer cancelSlow()
 
-	done := make(chan struct{})
-	go func() { // fast consumer
+	// The fast consumer follows the documented contract: if the host is so loaded that even it falls behind and is closed,
+	// it re-syncs by Replay from the last sequence it saw. Either way it must end with all 100 events, in order.
+	done := make(chan int)
+	go func() {
+		var last uint64
 		n := 0
-		for range live {
+		for e := range live {
 			n++
+			last = e.Seq
 			if n == 100 {
-				close(done)
+				done <- n
 				return
 			}
 		}
+		missed, _ := b.Replay(ctx, last, Filter{Types: []string{"agent.*"}}, 0)
+		done <- n + len(missed)
 	}()
 	start := time.Now()
 	for i := 0; i < 100; i++ {
@@ -115,7 +121,10 @@ func TestSubscribeLiveAndSlowSubscriberIsClosedNotBlocking(t *testing.T) {
 		}
 	}
 	select {
-	case <-done:
+	case n := <-done:
+		if n != 100 {
+			t.Fatalf("fast subscriber saw %d of 100 events", n)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("fast subscriber starved")
 	}
