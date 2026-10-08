@@ -766,4 +766,3 @@ func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (
 	}
 	return map[string]any{"blocked": false, "decision": d, "explain": e.dry.Explain(d), "budget": req.Budget, "recorded": false}, nil
 }
-
