@@ -144,7 +144,7 @@ type graphBuilder struct {
 	g  *workflow.Graph
 }
 
-func (b graphBuilder) tail(afterWork string, extraBeforeApprove []workflow.NodeID) {
+func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 	td, g, n := b.td, b.g, b.td.loops()
 	g.Add(
 		workflow.AgentTask("work", td.implement()).With("agent", "work"),
@@ -233,7 +233,7 @@ func (td TemplateDeps) FeatureGraph() *workflow.Graph {
 	b := graphBuilder{td, g}
 	b.specGate("tests")
 	b.testFirst("tests", false)
-	b.tail("work", nil)
+	b.tail(nil)
 	return g.Start("prepare")
 }
 
@@ -243,7 +243,7 @@ func (td TemplateDeps) BugGraph() *workflow.Graph {
 	b := graphBuilder{td, g}
 	b.testFirst("repro", true)
 	g.Edge("prepare", "repro")
-	b.tail("work", nil)
+	b.tail(nil)
 	return g.Start("prepare")
 }
 
@@ -260,7 +260,7 @@ func (td TemplateDeps) SaaSGraph() *workflow.Graph {
 		workflow.Check("secscan", td.scanNode("secscan", false)),
 		workflow.Route("preview", td.previewNode()),
 	)
-	b.tail("work", []workflow.NodeID{"secscan"})
+	b.tail([]workflow.NodeID{"secscan"})
 	g.EdgeWhen("secscan", "preview", "pass").
 		Loop("secscan", "work", "fail", td.loops(), "limit").
 		Edge("preview", "approve")
