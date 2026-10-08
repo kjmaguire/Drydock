@@ -345,23 +345,16 @@ func (t *Tracker) apply(e events.Event) {
 		return
 	}
 	t.st[id] = next
-	changed := !prev.sameView(next)
-	if changed {
+	if !prev.sameView(next) {
 		t.dirt[id] = true
-	}
-	var subs []chan PresenceState
-	if changed {
-		for c := range t.subs {
-			subs = append(subs, c)
+		for c := range t.subs { // non-blocking, and under the lock so a cancelled Watch cannot be sent to after close
+			select {
+			case c <- next:
+			default: // a slow watcher misses an intermediate state; Get always has the latest
+			}
 		}
 	}
 	t.mu.Unlock()
-	for _, c := range subs {
-		select {
-		case c <- next:
-		default: // a slow watcher misses an intermediate state; Get always has the latest
-		}
-	}
 }
 
 // Get returns one agent's presence.

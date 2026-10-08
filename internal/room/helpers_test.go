@@ -2,6 +2,8 @@ package room
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -25,6 +27,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	t.Parallel() // each test owns its database file
 	ctx := context.Background()
 	db, err := storage.OpenTemp(ctx, t.TempDir())
 	if err != nil {
@@ -128,3 +131,8 @@ func eventually(t *testing.T, d time.Duration, f func() bool) {
 }
 
 func evTask(typ, taskID string) events.Event { return events.Event{Type: typ, TaskID: taskID} }
+
+func sha256hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
