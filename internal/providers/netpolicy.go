@@ -3,8 +3,8 @@ package providers
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"net"

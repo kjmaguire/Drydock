@@ -71,7 +71,7 @@ func copyDir(t *testing.T, src, dst string) {
 }
 
 // setup builds a real git repo from the gocalc fixture, a real database, and the pipeline deps. mk configures the agent.
-func setup(t *testing.T, mkCfg func(e *env) rt.Config, adapter agents.Adapter) *env {
+func setup(t *testing.T, mkCfg func(e *env, role string) rt.Config, adapter agents.Adapter) *env {
 	t.Helper()
 	ctx := context.Background()
 	e := &env{dir: t.TempDir()}
@@ -98,7 +98,7 @@ func setup(t *testing.T, mkCfg func(e *env) rt.Config, adapter agents.Adapter) *
 		Tasks: e.tasks, Runtime: runtime, PM: proc.New(), Bus: e.bus,
 		Repo:         func(context.Context, string) (*git.Repo, error) { return repo, nil },
 		WorktreeRoot: filepath.Join(e.dir, "worktrees"), DataDir: filepath.Join(e.dir, "data"),
-		AgentConfig: func(tk tasks.Task, role string) rt.Config { return mkCfg(e) },
+		AgentConfig: func(tk tasks.Task, role string) rt.Config { return mkCfg(e, role) },
 	}
 	e.eng = workflow.New(workflow.Config{DB: db, Bus: e.bus, DataDir: filepath.Join(e.dir, "data"), LeaseTTL: 3 * time.Second, SafePoint: pipeline.SafePointHook(e.deps)})
 	task, err := e.tasks.Create(ctx, tasks.CreateReq{ProjectID: "p1", Title: "Implement Subtract",
@@ -145,7 +145,7 @@ func (e *env) run(t *testing.T, maxLoops int, want ...workflow.RunStatus) (workf
 	return id, info
 }
 
-func fakeEnv(t *testing.T, s fakeagent.Script) (agents.Adapter, func(e *env) rt.Config) {
+func fakeEnv(t *testing.T, s fakeagent.Script) (agents.Adapter, func(e *env, role string) rt.Config) {
 	t.Helper()
 	b, _ := json.Marshal(s)
 	sp := filepath.Join(t.TempDir(), "script.json")
@@ -155,7 +155,7 @@ func fakeEnv(t *testing.T, s fakeagent.Script) (agents.Adapter, func(e *env) rt.
 	pl := filepath.Join(t.TempDir(), "prompts.log")
 	t.Setenv("DRYDOCK_FAKE_PROMPT_LOG", pl)
 	t.Setenv("DRYDOCK_FAKE_PROMPT_LOG_PATH", pl)
-	return &claude.Adapter{Exe: os.Args[0]}, func(e *env) rt.Config {
+	return &claude.Adapter{Exe: os.Args[0]}, func(e *env, role string) rt.Config {
 		return rt.Config{AgentID: "a1", Adapter: "claude", Provider: "fake", Tier: "premium", Spec: agents.RunSpec{AgentID: "a1", Model: "fake-1"}}
 	}
 }
@@ -302,7 +302,7 @@ func TestRealClaudeImplementsTheFixtureTask(t *testing.T) {
 	if d.Status != agents.StatusReady {
 		t.Skipf("real claude not usable here: %s %v", d.Status, d.Problems)
 	}
-	e := setup(t, func(e *env) rt.Config {
+	e := setup(t, func(e *env, role string) rt.Config {
 		return rt.Config{AgentID: "a1", Adapter: "claude", Provider: "anthropic", Tier: "premium",
 			Spec: agents.RunSpec{AgentID: "a1", Model: "haiku", PermissionMode: "acceptEdits",
 				AllowedTools: []string{"Read", "Edit", "Write", "Glob", "Grep"}, ExtraArgs: []string{"--no-session-persistence"}}}
@@ -339,3 +339,5 @@ func TestRealClaudeImplementsTheFixtureTask(t *testing.T) {
 	}
 	t.Logf("real claude finished the task: cost $%.4f, %d evidence items", task.CostUSD, len(ev))
 }
+
+func eventsFilter(taskID string) events.Filter { return events.Filter{TaskID: taskID} }

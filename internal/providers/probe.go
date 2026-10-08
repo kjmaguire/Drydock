@@ -268,6 +268,13 @@ func (pr *Prober) probeHost(ctx context.Context, p Provider, key string, res *Pr
 			}
 		}
 	}
+	if res.Flavor != FlavorOllama { // Ollama has no /health; its liveness is /api/version, answered above
+		if st, _, _, err := pr.httpGet(ctx, p, "", o+"/health"); err != nil {
+			res.Warnings = append(res.Warnings, "GET /health failed: "+err.Error())
+		} else if st < 200 || st > 299 {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("GET /health returned HTTP %d", st))
+		}
+	}
 	if len(info) > 0 {
 		res.ServerInfo = info
 	}

@@ -53,10 +53,10 @@ const (
 type TLSMode string
 
 const (
-	TLSSystem      TLSMode = "system"            // https, system roots
+	TLSSystem      TLSMode = "system"             // https, system roots
 	TLSPinned      TLSMode = "pinned_fingerprint" // https, self-signed leaf pinned by SHA-256
-	TLSNoneLoop    TLSMode = "none_loopback"     // plain http on loopback
-	TLSNonePrivate TLSMode = "none_private"      // plain http on a private or link-local address
+	TLSNoneLoop    TLSMode = "none_loopback"      // plain http on loopback
+	TLSNonePrivate TLSMode = "none_private"       // plain http on a private or link-local address
 )
 
 // Attestation keys users may set on a provider.

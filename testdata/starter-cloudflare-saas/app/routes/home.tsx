@@ -47,14 +47,14 @@ export default function Home({ loaderData, actionData }: Route.ComponentProps) {
     <>
       <header>
         <h1>Items</h1>
-        <span>
+        <div className="who">
           <span className="muted" data-testid="user-email">
             {user.email}
-          </span>{" "}
+          </span>
           <Form method="post" action="/logout" className="inline">
             <button type="submit">Sign out</button>
           </Form>
-        </span>
+        </div>
       </header>
       <main>
         <Form method="post" className="row" key={items.length}>

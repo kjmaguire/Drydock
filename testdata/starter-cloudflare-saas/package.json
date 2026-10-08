@@ -8,13 +8,13 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "install:deps": "npm install",
-    "types": "wrangler types",
+    "types": "wrangler types --strict-vars=false",
     "build": "react-router build",
-    "test": "vitest run",
+    "test": "vitest run --reporter=default --reporter=json --outputFile.json=test-results/vitest.json",
     "lint": "biome lint --reporter=github .",
     "lint:json": "biome lint --reporter=json .",
-    "typecheck": "react-router typegen && wrangler types --check && tsc --noEmit",
+    "format": "biome format --write .",
+    "typecheck": "react-router typegen && wrangler types --strict-vars=false --check && tsc --noEmit --pretty false",
     "e2e": "playwright test",
     "dev": "node scripts/dev.mjs",
     "preview": "node scripts/preview.mjs",

@@ -6,9 +6,10 @@
 // PORT / INSPECTOR_PORT unset => a free port is allocated by the OS.
 // WRANGLER_STATE_DIR (default .wrangler/state) selects the local D1/KV/R2 state;
 // it is per directory, so each worktree gets its own database automatically.
+// RESET_STATE=1 wipes the state dir first (used by the e2e web server for a clean DB).
 // Flags: --build  always rebuild first (default: only when no build exists).
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,6 +65,7 @@ if (!existsSync(join(root, ".dev.vars"))) {
 if (process.argv.includes("--build") || !existsSync(join(root, "build", "server", "wrangler.json"))) {
   runSync(reactRouterBin, ["build"]);
 }
+if (process.env.RESET_STATE === "1") rmSync(join(root, stateDir), { recursive: true, force: true });
 runSync(wranglerBin, ["d1", "migrations", "apply", "DB", "--local", "--persist-to", stateDir]);
 
 console.log(`DRYDOCK_DEV_URL=http://localhost:${port}`);
