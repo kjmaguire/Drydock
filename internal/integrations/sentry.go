@@ -79,7 +79,7 @@ func (sentryAdapter) Page(ctx context.Context, cl *Client, after string, limit i
 		users, _ := num(pick(m, "userCount", "user_count"))
 		level := strings.ToLower(str(m["level"]))
 		last := str(pick(m, "lastSeen", "last_seen"))
-		proj := str(m["project"])
+		proj := slugOf(m["project"])
 		meta := map[string]any{"level": level, "events": events, "users": users, "project": proj, "culprit": str(m["culprit"]),
 			"environment": str(m["environment"]), "firstSeen": str(pick(m, "firstSeen", "first_seen")), "lastSeen": last}
 		short := str(pick(m, "shortId", "short_id"))
@@ -167,4 +167,14 @@ func (sentryAdapter) Build(op, target string, _ map[string]string, cfg map[strin
 		args["organizationSlug"] = o
 	}
 	return OutCall{Role: "update", Args: args, Preview: fmt.Sprintf("Set Sentry issue %s to %s", target, status)}, nil
+}
+
+// slugOf renders a project reference: its slug when it is an object, else the string itself.
+func slugOf(v any) string {
+	if m := asMap(v); m != nil {
+		if s := str(m["slug"]); s != "" {
+			return s
+		}
+	}
+	return str(v)
 }

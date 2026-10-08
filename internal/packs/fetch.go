@@ -31,13 +31,13 @@ var (
 
 // FetchPolicy bounds one crawl. Every limit is enforced in the fetcher, not left to callers.
 type FetchPolicy struct {
-	AllowedHosts []string
-	DenyPaths    []string
+	AllowedHosts  []string
+	DenyPaths     []string
 	RequireSignal string // "" | "ai-input" | "ai-train" | "search"
-	RPS          float64
-	MaxBytes     int64
-	Timeout      time.Duration
-	MaxRedirects int // default 3
+	RPS           float64
+	MaxBytes      int64
+	Timeout       time.Duration
+	MaxRedirects  int // default 3
 	// AllowLoopback permits http:// and loopback addresses for the allowed hosts. Used by tests and by a deliberately local
 	// mirror; the product's crawler leaves it false. Private ranges, link-local and metadata addresses stay blocked.
 	AllowLoopback bool

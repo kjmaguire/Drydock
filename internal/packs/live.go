@@ -89,14 +89,10 @@ func (g *GatewayLive) Search(ctx context.Context, ls LiveSpec, query string, k i
 	}
 	ctx, cancel := context.WithTimeout(ctx, to)
 	defer cancel()
-	class := mcp.DataClassPrivate
-	if spec.DataClass == mcp.ContentPublicDocs {
-		class = mcp.DataClassPrivate // the run itself is ours (no provider); "private" keeps every server usable
-	}
 	runID := ids.New("plive")
 	ep, err := g.GW.StartRun(mcp.RunConfig{
 		Info:      mcp.RunInfo{RunID: runID, AgentID: "packs", Role: "packs"},
-		DataClass: class,
+		DataClass: mcp.DataClassPrivate, // the run is ours (no model provider is involved), so every server stays usable
 		Policy:    mcp.RunPolicy{Allow: map[string][]string{spec.ID: {ls.Tool}}},
 		Servers:   []mcp.ServerSpec{spec},
 	})

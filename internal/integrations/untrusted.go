@@ -183,10 +183,7 @@ func Quote(text string) string {
 	}
 	lines := strings.Split(text, "\n")
 	for i, l := range lines {
-		lines[i] = strings.TrimRight("> "+l, " ")
-		if lines[i] == ">" {
-			lines[i] = ">"
-		}
+		lines[i] = strings.TrimRight("> "+l, " ") // a blank line becomes ">" and stays inside the quote
 	}
 	return strings.Join(lines, "\n")
 }

@@ -191,9 +191,13 @@ func discoverLlms(ctx context.Context, src Source, m *Manifest, f *Fetcher) ([]P
 }
 
 type sitemapDoc struct {
-	XMLName  xml.Name
-	URLs     []struct{ Loc string `xml:"loc"` } `xml:"url"`
-	Sitemaps []struct{ Loc string `xml:"loc"` } `xml:"sitemap"`
+	XMLName xml.Name
+	URLs    []struct {
+		Loc string `xml:"loc"`
+	} `xml:"url"`
+	Sitemaps []struct {
+		Loc string `xml:"loc"`
+	} `xml:"sitemap"`
 }
 
 func discoverSitemap(ctx context.Context, src Source, m *Manifest, f *Fetcher) ([]Page, int, error) {

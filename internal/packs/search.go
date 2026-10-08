@@ -31,7 +31,7 @@ type Hit struct {
 	// Score is higher-is-better (the negated BM25 rank); live hits carry the server's similarity or 0.
 	Score float64 `json:"score"`
 	// AllTerms is true when the chunk matched every query term (the AND pass), false for partial (OR pass) matches.
-	AllTerms bool `json:"allTerms"`
+	AllTerms bool   `json:"allTerms"`
 	Origin   string `json:"origin"`
 }
 
@@ -59,7 +59,9 @@ type SearchResult struct {
 	// Attributions are the license attribution lines to append to exports, once each.
 	Attributions []string `json:"attributions,omitempty"`
 	Terms        []string `json:"terms,omitempty"`
-	Confidence   string   `json:"confidence"`
+	// SuspiciousDropped counts live results withheld because the injection scan scored them at or above the quarantine threshold.
+	SuspiciousDropped int    `json:"suspiciousDropped,omitempty"`
+	Confidence        string `json:"confidence"`
 	// SourceAgeDays is the age of the best indexed hit (-1 when there is none: live results have no known age).
 	SourceAgeDays int `json:"sourceAgeDays"`
 }
@@ -166,7 +168,12 @@ func (s *Store) Search(ctx context.Context, req SearchRequest) (SearchResult, er
 				continue
 			}
 			for _, lh := range hs {
-				text := lh.Text
+				sc := ScanChunk(lh.Text)
+				if sc.Quarantined {
+					res.SuspiciousDropped++
+					continue
+				}
+				text := sc.Text
 				liveHits[id] = append(liveHits[id], Hit{
 					Origin: "live", Text: text, Score: lh.Score, AllTerms: false,
 					Citation: Citation{Pack: id, Version: "live", URL: lh.URL, HeadingPath: lh.Title, FetchedAt: now, ContentHash: HashHex(lh.URL, lh.Title, text), Origin: "live"},

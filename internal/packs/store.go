@@ -69,8 +69,8 @@ type Options struct {
 
 // Store is the Expert Pack service.
 type Store struct {
-	o     Options
-	locks sync.Map // pack id -> *sync.Mutex
+	o         Options
+	locks     sync.Map // pack id -> *sync.Mutex
 	staleSeen sync.Map
 }
 
@@ -131,17 +131,17 @@ type Pack struct {
 	// Freshness is "fresh", "warn" or "stale" from the manifest's thresholds ("" for live packs).
 	Freshness string `json:"freshness,omitempty"`
 	// Offline is true when the pack answers without any network (an indexed pack with content).
-	Offline         bool      `json:"offline"`
-	ManifestDrift   bool      `json:"manifestDrift,omitempty"` // pack.yaml on disk differs from the installed manifest
-	NextRefreshAt   time.Time `json:"nextRefreshAt,omitempty"`
-	Manifest        *Manifest `json:"manifest"`
-	Attribution     string    `json:"attribution,omitempty"`
+	Offline       bool      `json:"offline"`
+	ManifestDrift bool      `json:"manifestDrift,omitempty"` // pack.yaml on disk differs from the installed manifest
+	NextRefreshAt time.Time `json:"nextRefreshAt,omitempty"`
+	Manifest      *Manifest `json:"manifest"`
+	Attribution   string    `json:"attribution,omitempty"`
 }
 
 type packRow struct {
 	id, title, kind, vis, version, manifest, manifestHash, status, lastErr string
-	seq                                                                int64
-	lastRefresh, lastOK                                               int64
+	seq                                                                    int64
+	lastRefresh, lastOK                                                    int64
 }
 
 const packCols = `id,title,kind,visibility,version,version_seq,manifest,manifest_hash,status,last_refresh_at,last_success_at,last_error`

@@ -99,21 +99,21 @@ func FormatDur(d time.Duration) string {
 
 // Manifest is packs/<id>/pack.yaml.
 type Manifest struct {
-	Schema     int       `yaml:"schema" json:"schema"`
-	ID         string    `yaml:"id" json:"id"`
-	Title      string    `yaml:"title" json:"title"`
-	Kind       string    `yaml:"kind" json:"kind"`
-	Visibility string    `yaml:"visibility" json:"visibility"`
-	License    License   `yaml:"license" json:"license"`
-	Sources    []Source  `yaml:"sources,omitempty" json:"sources,omitempty"`
-	Crawl      Crawl     `yaml:"crawl,omitempty" json:"crawl"`
-	Chunking   Chunking  `yaml:"chunking,omitempty" json:"chunking"`
-	Refresh    Refresh   `yaml:"refresh,omitempty" json:"refresh"`
-	Freshness  Freshness `yaml:"freshness,omitempty" json:"freshness"`
-	Live       *Live     `yaml:"live,omitempty" json:"live,omitempty"`
-	Attach     Attach    `yaml:"attach,omitempty" json:"attach"`
-	Consult    Consult   `yaml:"consult,omitempty" json:"consult"`
-	Offline    *bool     `yaml:"offline,omitempty" json:"offline,omitempty"`
+	Schema     int           `yaml:"schema" json:"schema"`
+	ID         string        `yaml:"id" json:"id"`
+	Title      string        `yaml:"title" json:"title"`
+	Kind       string        `yaml:"kind" json:"kind"`
+	Visibility string        `yaml:"visibility" json:"visibility"`
+	License    License       `yaml:"license" json:"license"`
+	Sources    []Source      `yaml:"sources,omitempty" json:"sources,omitempty"`
+	Crawl      Crawl         `yaml:"crawl,omitempty" json:"crawl"`
+	Chunking   Chunking      `yaml:"chunking,omitempty" json:"chunking"`
+	Refresh    Refresh       `yaml:"refresh,omitempty" json:"refresh"`
+	Freshness  Freshness     `yaml:"freshness,omitempty" json:"freshness"`
+	Live       *Live         `yaml:"live,omitempty" json:"live,omitempty"`
+	Attach     Attach        `yaml:"attach,omitempty" json:"attach"`
+	Consult    ConsultConfig `yaml:"consult,omitempty" json:"consult"`
+	Offline    *bool         `yaml:"offline,omitempty" json:"offline,omitempty"`
 }
 
 // License records the content license and the attribution line rendered in citations and exports.
@@ -146,7 +146,7 @@ type Crawl struct {
 	Redirects            string   `yaml:"redirects,omitempty" json:"redirects,omitempty"`
 	// Extensions (documented in the "As built" section): bounds for one refresh.
 	MaxPages int `yaml:"max_pages,omitempty" json:"maxPages,omitempty"`
-	Timeout  Dur `yaml:"timeout,omitempty" json:"timeout,omitempty"`        // per request
+	Timeout  Dur `yaml:"timeout,omitempty" json:"timeout,omitempty"`              // per request
 	Budget   Dur `yaml:"refresh_budget,omitempty" json:"refreshBudget,omitempty"` // whole refresh
 }
 
@@ -160,8 +160,8 @@ type Chunking struct {
 
 // Refresh schedules re-ingestion.
 type Refresh struct {
-	Mode     string `yaml:"mode,omitempty" json:"mode,omitempty"` // scheduled | manual
-	Interval Dur    `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Mode     string       `yaml:"mode,omitempty" json:"mode,omitempty"` // scheduled | manual
+	Interval Dur          `yaml:"interval,omitempty" json:"interval,omitempty"`
 	Digest   DigestConfig `yaml:"digest,omitempty" json:"digest"`
 }
 
@@ -193,8 +193,8 @@ type Attach struct {
 	Roles        []string `yaml:"roles,omitempty" json:"roles,omitempty"`
 }
 
-// Consult configures CONSULT.
-type Consult struct {
+// ConsultConfig configures CONSULT.
+type ConsultConfig struct {
 	MaxChunks int    `yaml:"max_chunks,omitempty" json:"maxChunks,omitempty"`
 	Route     string `yaml:"route,omitempty" json:"route,omitempty"`
 }

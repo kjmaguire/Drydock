@@ -22,20 +22,20 @@ type RefreshOptions struct {
 
 // RefreshResult summarizes a refresh.
 type RefreshResult struct {
-	PackID     string         `json:"packId"`
-	Version    string         `json:"version"`
-	NewVersion bool           `json:"newVersion"`
-	Pages      int            `json:"pages"`
-	Added      int            `json:"added"`
-	Changed    int            `json:"changed"`
-	Removed    int            `json:"removed"`
-	Unchanged  int            `json:"unchanged"`
-	Skipped    int            `json:"skipped"`
-	Failed     int            `json:"failed"`
-	Reasons    map[string]int `json:"reasons,omitempty"` // why pages were skipped or failed
-	Quarantined int           `json:"quarantined"`
-	Redactions int            `json:"redactions"`
-	Digest     *Digest        `json:"digest,omitempty"`
+	PackID      string         `json:"packId"`
+	Version     string         `json:"version"`
+	NewVersion  bool           `json:"newVersion"`
+	Pages       int            `json:"pages"`
+	Added       int            `json:"added"`
+	Changed     int            `json:"changed"`
+	Removed     int            `json:"removed"`
+	Unchanged   int            `json:"unchanged"`
+	Skipped     int            `json:"skipped"`
+	Failed      int            `json:"failed"`
+	Reasons     map[string]int `json:"reasons,omitempty"` // why pages were skipped or failed
+	Quarantined int            `json:"quarantined"`
+	Redactions  int            `json:"redactions"`
+	Digest      *Digest        `json:"digest,omitempty"`
 }
 
 // Digest is the changed-pages digest of one refresh. It is built from the page diffs without any model; Summary is filled
@@ -66,9 +66,9 @@ type Summarizer interface {
 }
 
 type existingPage struct {
-	id                        int64
-	hash, etag, lastModified  string
-	rawRef, status, firstVer  string
+	id                       int64
+	hash, etag, lastModified string
+	rawRef, status, firstVer string
 }
 
 type pageResult struct {
@@ -676,4 +676,3 @@ func changedHeadings(old string, r pageResult, co ChunkOptions) []string {
 	}
 	return out
 }
-
