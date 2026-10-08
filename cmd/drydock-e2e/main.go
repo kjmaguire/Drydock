@@ -39,6 +39,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
 )
@@ -57,6 +58,10 @@ const (
 )
 
 func main() {
+	// an agent CLI starts `<this binary> mcp-shim` as its MCP server; it must not start the harness
+	if code, ok := mcp.MaybeRunShim(os.Args); ok {
+		os.Exit(code)
+	}
 	// Re-exec as the scripted agent: the claude adapter runs this same binary with DRYDOCK_FAKE_AGENT=1.
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
