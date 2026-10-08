@@ -161,7 +161,7 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
         ) : null}
         {d.roomId ? <a href={`#/room/${encodeURIComponent(d.roomId)}`}>Open task channel</a> : null}
       </div>
-      {t.blockedReason ? <p className="error-note">Blocked: {t.blockedReason}</p> : null}
+      {t.blockedReason ? <BlockedNote task={t} onChanged={detail.reload} /> : null}
 
       <ReviewPanel detail={d} onChanged={detail.reload} />
       <TeamBar detail={d} projectId={t.projectId} onChanged={detail.reload} />
@@ -191,6 +191,32 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
       <h2>Diff</h2>
       <DiffView taskId={t.id} hasDiff={d.evidence.some((e) => e.kind === 'diff')} />
     </Page>
+  );
+}
+
+/** A BLOCKED task says why. When it is waiting for an earlier task, the human can let it go on (the merge is still checked and approved). */
+function BlockedNote({ task, onChanged }: { task: Task; onChanged: () => void }) {
+  const client = useClient();
+  const act = useAction();
+  const waiting = task.status === 'BLOCKED' && task.blockedReason?.startsWith('waiting for');
+  return (
+    <div className="error-note" data-testid="blocked-note">
+      <p>Blocked: {task.blockedReason}</p>
+      {waiting ? (
+        <>
+          <p className="muted">It continues by itself when that task is merged. Its changes are then brought up to date and checked again before anything reaches the main branch.</p>
+          <ErrorNote error={act.error} what="Could not release the task" />
+          <button
+            disabled={act.busy !== ''}
+            onClick={async () => {
+              if (await act.run('release', () => client.taskGuardRelease(task.id))) onChanged();
+            }}
+          >
+            Let it go on now
+          </button>
+        </>
+      ) : null}
+    </div>
   );
 }
 

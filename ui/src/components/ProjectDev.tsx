@@ -91,6 +91,9 @@ export function DevSettingsPanel({ projectId }: { projectId: string }) {
           <input type="checkbox" checked={s.autoSchedule} onChange={(e) => patch({ autoSchedule: e.target.checked })} /> Start ready tasks automatically (scheduler)
         </label>
         <label className="inline">
+          <input type="checkbox" checked={s.collisionGuard !== false} onChange={(e) => patch({ collisionGuard: e.target.checked })} /> Make a task wait while an earlier task is changing the same code
+        </label>
+        <label className="inline">
           <input type="checkbox" checked={s.respond} onChange={(e) => patch({ respond: e.target.checked })} /> Agents answer in channels and direct messages
         </label>
         <fieldset>

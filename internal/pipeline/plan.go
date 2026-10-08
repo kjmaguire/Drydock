@@ -36,6 +36,7 @@ const (
 	maxTitleRunes   = 120
 	maxDescBytes    = 4000
 	maxAcceptances  = 12
+	maxPlanFiles    = 20
 	maxAcceptBytes  = 600
 	maxNotesBytes   = 2000
 	maxGoalBytes    = 4000
@@ -52,6 +53,9 @@ type ProposedTask struct {
 	Acceptance  []string `json:"acceptance"`
 	Template    string   `json:"template,omitempty"`
 	Priority    int      `json:"priority,omitempty"`
+	// Files are the files or folders the task will change, relative to the repository (optional). The scheduler does not start
+	// a task whose files overlap a running task's (docs/parallel-work.md).
+	Files []string `json:"files,omitempty"`
 }
 
 // Proposal is the planner's validated reply.
@@ -203,6 +207,16 @@ func ParseProposal(text string) (Proposal, []string) {
 			}
 			deps[d] = true
 		}
+		if len(t.Files) > maxPlanFiles {
+			add("%s: names %d files; the limit is %d", where, len(t.Files), maxPlanFiles)
+		}
+		for j, f := range t.Files {
+			f = strings.TrimSpace(f)
+			t.Files[j] = f
+			if f == "" || len(f) > 200 || strings.HasPrefix(f, "/") || strings.HasPrefix(f, "\\") || strings.Contains(f, "..") || strings.ContainsAny(f, "\x00\r\n") || (len(f) > 1 && f[1] == ':') {
+				add("%s: file %d %q is not a path inside the repository", where, j+1, truncate(f, 80))
+			}
+		}
 		if len(t.Acceptance) == 0 {
 			add("%s: needs at least one acceptance criterion", where)
 		}
@@ -340,7 +354,7 @@ func PlanPrompt(goal, requirements string, team []TeamMember, feedback string) s
 	}
 	fmt.Fprintf(&b, `
 Answer with exactly one JSON object and nothing else (no prose, no code fence needed):
-{"tasks":[{"key":"short-id","title":"one line","description":"what and why","role":"backend","dependsOn":["other-key"],"acceptance":["Given <state>, when <action>, then <observable result>"],"template":"feature","priority":0}],"notes":"optional remarks for the human"}
+{"tasks":[{"key":"short-id","title":"one line","description":"what and why","role":"backend","dependsOn":["other-key"],"acceptance":["Given <state>, when <action>, then <observable result>"],"template":"feature","priority":0,"files":["internal/auth/"]}],"notes":"optional remarks for the human"}
 
 Rules:
 - key: lower case letters, digits, "-" or "_", unique, at most 32 characters. dependsOn lists keys of tasks in this plan that must be COMPLETED first; no cycles.
@@ -348,8 +362,8 @@ Rules:
 - Every task has 1 to %d acceptance criteria, each one complete sentence containing Given, when and then.
 - template is optional: one of %s. Use "feature" for new behaviour, "bug" for defects, "security" for security work.
 - priority 0 to 9 (higher first), optional. At most %d tasks. Prefer fewer, larger-than-trivial tasks over many tiny ones.
-- Tasks that can run at the same time must change different files. If two tasks need the same file, make the later one depend on the earlier one (dependsOn). Name the files or folders a task will touch in its description.
-Nothing is created until a human reviews your plan.`, strings.Join(PlanRoles, ", "), maxAcceptances, strings.Join(templates, ", "), maxPlanTasks)
+- Tasks that can run at the same time must change different files. If two tasks need the same file, make the later one depend on the earlier one (dependsOn). List the files or folders a task will touch in "files" (relative to the repository, at most %d); the scheduler holds back a task whose files overlap one that is running.
+Nothing is created until a human reviews your plan.`, strings.Join(PlanRoles, ", "), maxAcceptances, strings.Join(templates, ", "), maxPlanTasks, maxPlanFiles)
 	return b.String()
 }
 
@@ -583,6 +597,9 @@ func (pd PlanDeps) planCreate() workflow.NodeHandler {
 					if len(e.Acceptance) > 0 {
 						t.Acceptance = e.Acceptance
 					}
+					if len(e.Files) > 0 {
+						t.Files = e.Files
+					}
 					p.Tasks[i] = t
 				}
 			}
@@ -648,7 +665,7 @@ func (pd PlanDeps) planCreate() workflow.NodeHandler {
 				desc = t.Title
 			}
 			nt, err := pd.Tasks.Create(ctx, tasks.CreateReq{ProjectID: pi.ProjectID, Title: t.Title, Description: desc + "\n\n(planned from the goal: " + truncate(pi.Goal, 200) + ")",
-				Priority: t.Priority, Template: t.Template, Acceptance: t.Acceptance, DependsOn: deps})
+				Priority: t.Priority, Template: t.Template, Acceptance: t.Acceptance, Files: t.Files, DependsOn: deps})
 			if err != nil {
 				pd.setPlan(ctx, pi.PlanID, "PROPOSED", nil, res.Created, "creating "+k+": "+err.Error(), "")
 				return workflow.NodeOutput{}, fmt.Errorf("create %s: %w", k, err)

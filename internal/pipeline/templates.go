@@ -148,6 +148,7 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 	td, g, n := b.td, b.g, b.td.loops()
 	g.Add(
 		workflow.AgentTask("work", td.implement()).With("agent", "work"),
+		workflow.Route("guard", Guard(td.Deps, td.projectFn())),
 		workflow.Check("verify", td.verifyTDD()),
 		workflow.Route("finalize", Finalize(td.Deps)),
 		workflow.Route("sync", Sync(td.Deps, td.projectFn())),
@@ -158,7 +159,8 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 		workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
 		workflow.Route("abort", td.abort()),
 	)
-	g.Edge("work", "verify").
+	g.Edge("work", "guard").
+		Edge("guard", "verify").
 		EdgeWhen("verify", "finalize", "pass").
 		Loop("verify", "work", "fail", n, "limit").
 		Edge("finalize", "sync").
@@ -280,6 +282,7 @@ func (td TemplateDeps) SecurityGraph() *workflow.Graph {
 		workflow.Route("prepare", Prepare(td.Deps)),
 		workflow.Check("scan", td.scanNode("scan", true)),
 		workflow.AgentTask("work", td.implement()).With("agent", "work"),
+		workflow.Route("guard", Guard(td.Deps, td.projectFn())),
 		workflow.Check("verify", Verify(td.Deps)),
 		workflow.Check("gate", td.scanNode("gate", false)),
 		workflow.Route("finalize", Finalize(td.Deps)),
@@ -293,7 +296,8 @@ func (td TemplateDeps) SecurityGraph() *workflow.Graph {
 	)
 	g.Edge("prepare", "scan").
 		Edge("scan", "work").
-		Edge("work", "verify").
+		Edge("work", "guard").
+		Edge("guard", "verify").
 		EdgeWhen("verify", "gate", "pass").
 		Loop("verify", "work", "fail", n, "limit").
 		EdgeWhen("gate", "finalize", "pass").

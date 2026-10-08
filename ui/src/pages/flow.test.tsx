@@ -153,6 +153,22 @@ describe('Task view: templates, spec gate, budget pause, evidence', () => {
     expect(taskStart).not.toHaveBeenCalled();
     await screen.findByText('pm: Priya');
   });
+  it('a task waiting for an earlier one says why and can be let go on', async () => {
+    const taskGuardRelease = vi.fn(async () => ({ released: true }));
+    const d = detail({ task: { ...detail().task, status: 'BLOCKED', blockedReason: 'waiting for "Variant A" (both change calc.go) to finish' } });
+    withServices(<TaskDetailView taskId="t1" agents={[]} />, { ...base, taskGet: async () => d, taskGuardRelease });
+    const note = await screen.findByTestId('blocked-note');
+    expect(note.textContent).toContain('Variant A');
+    expect(note.textContent).toContain('calc.go');
+    fireEvent.click(screen.getByRole('button', { name: 'Let it go on now' }));
+    await waitFor(() => expect(taskGuardRelease).toHaveBeenCalledWith('t1'));
+  });
+  it('a blocked task that is not waiting for another task has no release button', async () => {
+    const d = detail({ task: { ...detail().task, status: 'BLOCKED', blockedReason: 'the build server is down' } });
+    withServices(<TaskDetailView taskId="t1" agents={[]} />, { ...base, taskGet: async () => d });
+    expect((await screen.findByTestId('blocked-note')).textContent).toContain('build server');
+    expect(screen.queryByRole('button', { name: 'Let it go on now' })).toBeNull();
+  });
   it('Start without a template uses the default workflow', async () => {
     const taskStart = vi.fn(async () => 'run0');
     withServices(<TaskDetailView taskId="t1" agents={[]} />, { ...base, taskGet: async () => detail(), taskStart, taskStartTemplate: vi.fn() });

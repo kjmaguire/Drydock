@@ -369,6 +369,7 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 		Add(
 			workflow.Route("prepare", Prepare(d)),
 			workflow.AgentTask("work", Work(d)).With("agent", "work"),
+			workflow.Route("guard", Guard(d, project)),
 			workflow.Check("verify", Verify(d)),
 			workflow.Route("finalize", Finalize(d)),
 			workflow.Route("sync", Sync(d, project)),
@@ -379,7 +380,8 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 			workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
 		).
 		Edge("prepare", "work").
-		Edge("work", "verify").
+		Edge("work", "guard").
+		Edge("guard", "verify").
 		EdgeWhen("verify", "finalize", "pass").
 		Loop("verify", "work", "fail", maxLoops, "limit").
 		Edge("finalize", "sync").

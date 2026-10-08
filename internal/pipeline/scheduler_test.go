@@ -262,11 +262,13 @@ func TestLimiterBoundsConcurrencyAndHonoursCancellation(t *testing.T) {
 	other()
 }
 
-// Three real tasks and one that conflicts, started by the scheduler with a limit of 2, each in its own worktree. Agent turns
-// overlap but never exceed the limit; every task stops at a human approval; the merges are human actions, and the
-// conflicting one is parked as a question instead of being merged.
+// Three real tasks and one that collides with another, started by the scheduler with a limit of 2, each in its own worktree.
+// Agent turns overlap but never exceed the limit; every task stops at a human approval; the merges are human actions. The
+// fourth task changes the same file as the third: it waits (BLOCKED, with the reason) until the third is merged, then its branch
+// is brought up to date, the conflict is handed to its worker, and it comes back for the human's approval again.
 func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *testing.T) {
 	nap := fakeagent.Step{SleepMS: 500}
+	slow := fakeagent.Step{SleepMS: 1800}
 	file := func(path, body string) []fakeagent.Step {
 		return []fakeagent.Step{nap, writeStep(path, body), say("done")}
 	}
@@ -277,11 +279,12 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 			{Match: "Task: Add Multiply", Steps: file("multiply.go", "package gocalc\n\nfunc Multiply(a, b int) int { return a * b }\n")},
 			{Match: "Task: Add Divide", Steps: file("divide.go", "package gocalc\n\nfunc Divide(a, b int) int { return a / b }\n")},
 			{Match: "Task: Variant A", Steps: file("calc.go", addA)},
-			{Match: "Task: Variant B", Steps: file("calc.go", addB)},
+			{Match: "Task: Variant B", Steps: []fakeagent.Step{slow, writeStep("calc.go", addB), say("done")}},
 		}},
 		aReview: shipReviewer(),
 	}, tplOpts{title: "Harness task"})
 	e.dropHarnessTask()
+	e.td.Deps.GuardPoll = 100 * time.Millisecond
 	if err := e.eng.Register(pipeline.IterateUntilVerified(e.td.Deps, projectInfo, 3)); err != nil {
 		t.Fatal(err)
 	}
@@ -300,34 +303,41 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 	for _, title := range []string{"Add Multiply", "Add Divide", "Variant A", "Variant B"} {
 		all = append(all, e.assign(e.newTask(title, 0)))
 	}
+	parkedAt := func(tk tasks.Task) bool {
+		cur, _ := e.tasks.Get(context.Background(), tk.ID)
+		if cur.RunID == "" {
+			return false
+		}
+		p, _ := e.eng.Pending(context.Background(), workflow.RunID(cur.RunID))
+		return len(p) == 1 && p[0].NodeID == "approve"
+	}
 
+	// the first three park at their approval; the fourth waits for the third
 	deadline := time.Now().Add(3 * time.Minute)
 	for time.Now().Before(deadline) {
 		if _, err := s.Tick(context.Background(), "p1"); err != nil {
 			t.Fatal(err)
 		}
-		parked := 0
-		for _, tk := range all {
-			cur, _ := e.tasks.Get(context.Background(), tk.ID)
-			if cur.RunID == "" {
-				continue
-			}
-			if p, _ := e.eng.Pending(context.Background(), workflow.RunID(cur.RunID)); len(p) == 1 && p[0].NodeID == "approve" {
-				parked++
-			}
-		}
-		if parked == len(all) {
+		b, _ := e.tasks.Get(context.Background(), all[3].ID)
+		if parkedAt(all[0]) && parkedAt(all[1]) && parkedAt(all[2]) && b.Status == tasks.Blocked {
 			break
 		}
 		time.Sleep(150 * time.Millisecond)
+	}
+	b, _ := e.tasks.Get(context.Background(), all[3].ID)
+	if b.Status != tasks.Blocked || !strings.Contains(b.BlockedReason, "Variant A") || !strings.Contains(b.BlockedReason, "calc.go") {
+		t.Fatalf("Variant B should wait for Variant A: %s %q", b.Status, b.BlockedReason)
 	}
 
 	// separate worktrees, one branch each
 	paths, branches := map[string]bool{}, map[string]bool{}
 	for _, tk := range all {
 		cur, _ := e.tasks.Get(context.Background(), tk.ID)
-		if cur.Worktree == "" || cur.Status != tasks.Verification {
-			t.Fatalf("task %s: %s worktree %q", cur.Title, cur.Status, cur.Worktree)
+		if cur.Worktree == "" {
+			t.Fatalf("task %s: %s has no worktree", cur.Title, cur.Status)
+		}
+		if cur.Title != "Variant B" && cur.Status != tasks.Verification {
+			t.Fatalf("task %s: %s", cur.Title, cur.Status)
 		}
 		paths[cur.Worktree], branches[cur.Branch] = true, true
 	}
@@ -348,10 +358,8 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 	if _, err := os.Stat(filepath.Join(e.repo.Root, "multiply.go")); err == nil {
 		t.Fatal("nothing may reach main before the human merges")
 	}
-	// the human merges them one by one; the second change to calc.go conflicts and is parked, not forced
-	merged := 0
-	var conflicted workflow.RunID
-	for _, tk := range all {
+	// the human merges the three; each one is a completed run on main
+	approve := func(tk tasks.Task) workflow.RunInfo {
 		cur, _ := e.tasks.Get(context.Background(), tk.ID)
 		rid := workflow.RunID(cur.RunID)
 		p, _ := e.eng.Pending(context.Background(), rid)
@@ -359,38 +367,47 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 			t.Fatal(err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
 		info, err := e.eng.Await(ctx, rid, func(r workflow.RunInfo) bool {
 			return r.Status == workflow.StatusCompleted || r.Status == workflow.StatusWaitingHuman || r.Status.Terminal()
 		})
-		cancel()
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("%s -> %s %s", cur.Title, info.Status, info.FailedReason)
-		if info.Status == workflow.StatusCompleted {
-			merged++
-		} else if info.Status == workflow.StatusWaitingHuman {
-			conflicted = rid
+		return info
+	}
+	for _, tk := range all[:3] {
+		if info := approve(tk); info.Status != workflow.StatusCompleted {
+			t.Fatalf("%s: %s %s", tk.Title, info.Status, info.FailedReason)
 		}
-	}
-	if merged != 3 || conflicted == "" {
-		t.Fatalf("merged %d conflicted %q", merged, conflicted)
-	}
-	// The conflicting task was not forced into main and was not parked as a dead end: the base was merged into its branch,
-	// the worker was told what collided, and the result came back for the human to approve again.
-	time.Sleep(60 * time.Millisecond)
-	p, _ := e.eng.Pending(context.Background(), conflicted)
-	if len(p) != 1 || p[0].NodeID != "approve" {
-		t.Fatalf("pending %+v", p)
-	}
-	if wp := e.prompts(aWork); !hasPrompt(wp, "Another task was merged into main") {
-		t.Fatalf("the worker was never told about the collision: %q", wp)
 	}
 	for _, f := range []string{"multiply.go", "divide.go"} {
 		if _, err := os.Stat(filepath.Join(e.repo.Root, f)); err != nil {
 			t.Fatalf("%s should be merged: %v", f, err)
 		}
 	}
+	// With Variant A merged, Variant B is released, its branch gets main, the collision goes to its worker, and the result
+	// comes back for the human: it is never forced into main.
+	deadline = time.Now().Add(time.Minute)
+	for time.Now().Before(deadline) && !parkedAt(all[3]) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !parkedAt(all[3]) {
+		cur, _ := e.tasks.Get(context.Background(), all[3].ID)
+		t.Fatalf("Variant B never came back for approval: %s %q", cur.Status, cur.BlockedReason)
+	}
+	if wp := e.prompts(aWork); !hasPrompt(wp, "Another task was merged into main") {
+		t.Fatalf("the worker was never told about the collision: %q", wp)
+	}
+}
+
+func hasPrompt(ps []string, sub string) bool {
+	for _, p := range ps {
+		if strings.Contains(p, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // maxOverlap is the highest number of agent processes alive at once, from the agent_runs table.
@@ -429,13 +446,4 @@ func maxOverlap(e *tpl) int {
 		}
 	}
 	return max
-}
-
-func hasPrompt(ps []string, sub string) bool {
-	for _, p := range ps {
-		if strings.Contains(p, sub) {
-			return true
-		}
-	}
-	return false
 }

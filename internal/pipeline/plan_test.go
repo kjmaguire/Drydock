@@ -19,7 +19,7 @@ const ac = `Given 3 and 4, when Multiply is called, then it returns 12`
 
 func planJSON(mut func(p *pipeline.Proposal)) string {
 	p := pipeline.Proposal{Tasks: []pipeline.ProposedTask{
-		{Key: "mul", Title: "Add Multiply", Description: "Add Multiply to gocalc", Role: "Backend", Acceptance: []string{ac}, Template: "feature", Priority: 2},
+		{Key: "mul", Title: "Add Multiply", Description: "Add Multiply to gocalc", Role: "Backend", Acceptance: []string{ac}, Template: "feature", Priority: 2, Files: []string{"multiply.go"}},
 		{Key: "div", Title: "Add Divide", Description: "Add Divide to gocalc", Role: "backend", DependsOn: []string{"mul"}, Acceptance: []string{"Given 8 and 2, when Divide is called, then it returns 4"}},
 		{Key: "docs", Title: "Document the API", Role: "pm", DependsOn: []string{"mul", "div"}, Acceptance: []string{"Given the README, when a reader looks for Multiply, then it is described"}},
 	}, Notes: "mul first"}
@@ -63,6 +63,14 @@ func TestParseProposalIsStrict(t *testing.T) {
 		"multiline title":    planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Title = "a\nb" }),
 		"priority":           planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Priority = 12 }),
 		"too many tasks":     planJSON(func(p *pipeline.Proposal) { p.Tasks = append(p.Tasks, make([]pipeline.ProposedTask, 40)...) }),
+		"file escapes":       planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Files = []string{"../secrets.txt"} }),
+		"absolute file":      planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Files = []string{"/etc/passwd"} }),
+		"windows drive file": planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Files = []string{"C:\\Users\\x"} }),
+		"too many files": planJSON(func(p *pipeline.Proposal) {
+			for i := 0; i < 30; i++ {
+				p.Tasks[0].Files = append(p.Tasks[0].Files, fmt.Sprintf("f%d.go", i))
+			}
+		}),
 		"wrong type":         `{"tasks":"many"}`,
 		"unclosed fence":     "```json\n" + good,
 		"description length": planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Description = strings.Repeat("x", 5000) }),
@@ -194,6 +202,9 @@ func TestPlanTeamAcceptCreatesBacklogTasksWithDependencies(t *testing.T) {
 	if mul.Status != tasks.Backlog || div.Status != tasks.Backlog || len(div.DependsOn) != 1 || div.DependsOn[0] != mul.ID || mul.Template != "feature" || div.Priority != 5 {
 		t.Fatalf("mul %+v div %+v", mul, div)
 	}
+	if len(mul.Files) != 1 || mul.Files[0] != "multiply.go" || len(div.Files) != 0 {
+		t.Fatalf("planned files were not carried to the task: mul %v div %v", mul.Files, div.Files)
+	}
 	if len(mul.Acceptance) != 1 || mul.Assignee != aWork || mul.Reviewer != aReview {
 		t.Fatalf("role assignment: %+v", mul)
 	}
@@ -268,5 +279,16 @@ func TestNewPlanValidatesInput(t *testing.T) {
 		if _, err := pipeline.NewPlan(context.Background(), pe.db, "p1", c[0], c[1], ""); err == nil {
 			t.Errorf("%s must be refused", name)
 		}
+	}
+}
+
+// Planned files are carried to the task, where the scheduler uses them to keep colliding tasks apart.
+func TestProposedFilesAreValidatedAndKept(t *testing.T) {
+	p, problems := pipeline.ParseProposal(planJSON(func(p *pipeline.Proposal) { p.Tasks[0].Files = []string{" internal/auth/ ", "calc.go"} }))
+	if len(problems) != 0 {
+		t.Fatalf("problems: %v", problems)
+	}
+	if got := p.Tasks[0].Files; len(got) != 2 || got[0] != "internal/auth/" || got[1] != "calc.go" {
+		t.Fatalf("files = %q", got)
 	}
 }

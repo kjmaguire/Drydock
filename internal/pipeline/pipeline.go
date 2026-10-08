@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
@@ -54,6 +55,8 @@ type Deps struct {
 	// manifest can list it as included or excluded with the reason. The wiring itself is rt.Runtime.MCP, which sees every
 	// session; this is only the read side for the manifest. Nil: the manifest says MCP is not wired in this build.
 	MCPStatus func(ctx context.Context, t tasks.Task, agentID, phase string) MCPStatus
+	// GuardPoll is how often a task waiting for an earlier task looks again (default 2 seconds).
+	GuardPoll time.Duration
 }
 
 // MCPStatus is the manifest view of one turn's MCP attachment.

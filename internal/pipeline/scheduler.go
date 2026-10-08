@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,6 +105,17 @@ func (s *Scheduler) Tick(ctx context.Context, projectID string) (TickResult, err
 	})
 	free := res.Capacity
 	usedProvider := map[string]int{}
+	var underway []tasks.Task
+	if dev.GuardOn() {
+		underway, _ = s.d.Tasks.List(ctx, tasks.Filter{ProjectID: projectID, Statuses: activeStatuses})
+		// a task whose run has just been started is still READY until its prepare step has run: it is under way too
+		for _, t := range ready {
+			if _, ok := s.runActive(ctx, t.RunID); ok && t.RunID != "" {
+				t.Started = 1
+				underway = append(underway, t)
+			}
+		}
+	}
 	for _, t := range ready {
 		skip := func(why string) {
 			res.Skipped = append(res.Skipped, Skip{t.ID, why})
@@ -117,6 +129,10 @@ func (s *Scheduler) Tick(ctx context.Context, projectID string) (TickResult, err
 				skip("already has an active run (" + string(info) + ")")
 				continue
 			}
+		}
+		if c := declaredCollision(t, underway); c != nil {
+			skip(fmt.Sprintf("waits for %q, which changes the same code (%s)", c.Task.Title, strings.Join(c.Files, ", ")))
+			continue
 		}
 		if free <= 0 {
 			skip(fmt.Sprintf("the project is at its limit of %d parallel agents", dev.MaxParallel))
@@ -142,6 +158,8 @@ func (s *Scheduler) Tick(ctx context.Context, projectID string) (TickResult, err
 			continue
 		}
 		free--
+		t.Started = 1
+		underway = append(underway, t)
 		res.Started = append(res.Started, t.ID)
 		s.emit(ctx, "scheduler.started", t, map[string]any{"taskId": t.ID, "runId": run, "active": res.Active + len(res.Started), "max": dev.MaxParallel})
 	}

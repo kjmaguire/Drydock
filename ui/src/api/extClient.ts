@@ -166,6 +166,8 @@ export interface ExtClient {
   planReject(planId: string): Promise<unknown>;
   schedulerStatus(projectId: string): Promise<SchedulerStatus>;
   schedulerTick(projectId: string): Promise<TickResult>;
+  /** Let a task that waits for an earlier one go on anyway (task.guard.release). */
+  taskGuardRelease(taskId: string): Promise<{ released: boolean }>;
   previewStart(taskId: string): Promise<unknown>;
   previewStop(taskId: string): Promise<{ stopped: boolean }>;
   previewList(): Promise<PreviewInfo[]>;
@@ -307,6 +309,7 @@ export function createExtClient(t: Transport): ExtClient {
     planReject: (planId) => call('plan.reject', { planId }),
     schedulerStatus: (projectId) => call('scheduler.status', { projectId }),
     schedulerTick: (projectId) => call('scheduler.tick', { projectId }),
+    taskGuardRelease: (taskId) => call('task.guard.release', { id: taskId }),
     previewStart: (taskId) => call('preview.start', { id: taskId }),
     previewStop: (taskId) => call('preview.stop', { id: taskId }),
     previewList: async () => arr(await call<PreviewInfo[] | null>('preview.list')),

@@ -17,6 +17,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/license"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -86,6 +87,10 @@ func TestExpiryStopsRunningWorkflowsAndTheyResumeAfterRenewal(t *testing.T) {
 	}
 
 	p := gitProject(t, a, "gocalc")
+	// Both tasks make the same change to the same file. This test is about the license, not about collisions, so the guard that
+	// would make A wait for B (docs/parallel-work.md) is switched off.
+	off := false
+	a.call("projectdev.set", map[string]any{"projectId": p.ID, "settings": pipeline.DevSettings{MaxParallel: 2, Respond: true, CollisionGuard: &off}}, nil)
 	var w, r core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "W", Adapter: "claude", Role: "backend"}, &w)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "R", Adapter: "claude", Role: "reviewer"}, &r)

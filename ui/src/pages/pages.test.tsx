@@ -225,6 +225,18 @@ describe('Telemetry and project development settings', () => {
     expect(projectdevSet.mock.calls[0]![1]).toMatchObject({ maxParallel: 3, autoSchedule: true, respond: true, e2e: { enabled: true, command: ['npx', 'playwright', 'test'] }, preview: { enabled: false, command: [] } });
   });
 
+  it('the collision guard is on unless the human switches it off', async () => {
+    const projectdevSet = vi.fn(async (_p: string, s) => s);
+    const dev = { maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } };
+    withServices(<DevSettingsPanel projectId="prj_1" />, { projectdevGet: async () => dev, projectdevSet });
+    const box = (await screen.findByLabelText(/Make a task wait while an earlier task/)) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('button', { name: 'Save development settings' }));
+    await waitFor(() => expect(projectdevSet).toHaveBeenCalled());
+    expect(projectdevSet.mock.calls[0]![1]).toMatchObject({ collisionGuard: false });
+  });
+
   it('notes that more than five agents at once rarely pays off, and only then', async () => {
     const dev = { maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } };
     withServices(<DevSettingsPanel projectId="prj_1" />, { projectdevGet: async () => dev, projectdevSet: async (_p: string, x) => x });

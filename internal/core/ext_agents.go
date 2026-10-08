@@ -736,6 +736,13 @@ func (a *agentsDev) methods() map[string]Method {
 			_ = c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM workflow_runs WHERE project_id=? AND task_id<>'' AND status IN ('PENDING','RUNNING','RECOVERING')`, p.ProjectID).Scan(&active)
 			return map[string]any{"settings": dev, "activeRuns": active, "agentSlotsInUse": a.limiter.InUse(p.ProjectID), "peakAgentSlots": a.limiter.Peak(p.ProjectID)}, nil
 		}),
+		// a task waits for an earlier one that changes the same code (pipeline.Guard); the human can let it go on
+		"task.guard.release": bind(func(ctx context.Context, p idParam) (any, error) {
+			if err := pipeline.ReleaseGuard(ctx, c.Deps, p.ID, c.Human()); err != nil {
+				return nil, err
+			}
+			return map[string]bool{"released": true}, nil
+		}),
 		"projectdev.get": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {

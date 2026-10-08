@@ -24,7 +24,13 @@ type DevSettings struct {
 	Respond bool         `json:"respond"`
 	E2E     E2ESettings  `json:"e2e"`
 	Preview PreviewSetup `json:"preview"`
+	// CollisionGuard makes a task wait while an earlier task is changing the same code (docs/parallel-work.md). On unless
+	// the human switches it off; nil means on.
+	CollisionGuard *bool `json:"collisionGuard,omitempty"`
 }
+
+// GuardOn reports whether the collision guard is in force.
+func (s DevSettings) GuardOn() bool { return s.CollisionGuard == nil || *s.CollisionGuard }
 
 // E2ESettings gate the `e2e` check (brief section 13a).
 type E2ESettings struct {

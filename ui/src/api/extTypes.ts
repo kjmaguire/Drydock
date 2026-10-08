@@ -236,6 +236,8 @@ export interface DevSettings {
   maxParallel: number;
   autoSchedule: boolean;
   respond: boolean;
+  /** A task waits while an earlier task changes the same code. Absent means on. */
+  collisionGuard?: boolean;
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }
