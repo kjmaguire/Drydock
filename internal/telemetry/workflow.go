@@ -65,7 +65,10 @@ func (u *usageObserver) OnChunk(ctx context.Context, n workflow.NodeInfo, c work
 	if c.Decode(&uc) != nil {
 		return
 	}
-	base := map[string]any{AttrWorkflow: n.Workflow, AttrNodeKind: string(n.Kind), AttrGenAIOperation: "invoke_agent", AttrGenAIResponseModel: uc.Model}
+	base := map[string]any{AttrWorkflow: n.Workflow, AttrNodeKind: string(n.Kind), AttrGenAIOperation: "invoke_agent"}
+	if uc.Model != "" {
+		base[AttrGenAIResponseModel] = uc.Model
+	}
 	tok := func(kind string, v int64) {
 		if v <= 0 {
 			return
