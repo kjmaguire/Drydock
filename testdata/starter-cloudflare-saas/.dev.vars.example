@@ -1,0 +1,12 @@
+# Copy to .dev.vars for local development (`cp .dev.vars.example .dev.vars`).
+# .dev.vars is gitignored. NEVER put a real or production secret in here.
+
+# HMAC key for the signed session cookie. Any string of 16+ characters locally.
+SESSION_SECRET=local-development-only-change-me-0123456789
+
+# Enables the stub POST /api/auth/login (accepts any email). Local only: the
+# Worker refuses it unless this is "true" AND ENVIRONMENT is not "production".
+ALLOW_DEV_LOGIN=true
+
+# Overrides the value from wrangler.jsonc so local runs are not "production".
+ENVIRONMENT=development

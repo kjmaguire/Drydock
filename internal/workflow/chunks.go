@@ -93,3 +93,18 @@ type SessionChunk struct {
 	Model     string `json:"model,omitempty"`
 	Tools     int    `json:"tools,omitempty"`
 }
+
+// ChunkPlan is an agent's own task plan (ACP `plan` updates): PlanChunk. Informational; nothing decides on it.
+const ChunkPlan = "plan"
+
+// PlanChunk is the full current plan (each ACP plan update replaces the previous one).
+type PlanChunk struct {
+	Entries []PlanEntry `json:"entries"`
+}
+
+// PlanEntry is one step of a plan.
+type PlanEntry struct {
+	Content  string `json:"content"`
+	Status   string `json:"status,omitempty"`   // pending, in_progress, completed
+	Priority string `json:"priority,omitempty"` // high, medium, low
+}

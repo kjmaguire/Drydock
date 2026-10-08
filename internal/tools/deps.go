@@ -13,6 +13,7 @@ import (
 	_ "github.com/modelcontextprotocol/go-sdk/mcp"
 	_ "github.com/openai/openai-go/v3"
 	_ "github.com/zalando/go-keyring"
+	_ "github.com/zricethezav/gitleaks/v8/detect"
 	_ "gopkg.in/yaml.v3"
 	_ "mvdan.cc/sh/v3/syntax"
 )
