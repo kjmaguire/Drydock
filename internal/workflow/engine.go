@@ -259,6 +259,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 			}
 		}
 		st.Step = step
+		st.LastNodes = append([]NodeID(nil), ready...)
 		cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: info.ID, Workflow: g.Name, Step: step, Kind: CheckpointStep, Parent: parent, State: st, Created: storage.Now()}
 		if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusRunning, newRequests: reqs, owner: e.cfg.Owner}); err != nil {
 			if errors.Is(err, ErrLeaseHeld) {
@@ -367,10 +368,12 @@ func appendUnique(s []NodeID, v NodeID) []NodeID {
 }
 
 func (e *Engine) finish(ctx context.Context, info RunInfo, g *Graph, st *RunState, parent *CheckpointID) {
+	// The result is the outputs of the nodes of the final superstep: nothing was routed onward from them. (A node with a
+	// loop edge is not a graph sink, so sinks alone would lose the result of looping workflows.)
 	res := map[string]json.RawMessage{}
-	for _, s := range g.sinks() {
-		if v, ok := st.Shared["out/"+string(s)]; ok {
-			res[string(s)] = v
+	for _, n := range st.LastNodes {
+		if v, ok := st.Shared["out/"+string(n)]; ok {
+			res[string(n)] = v
 		}
 	}
 	raw, _ := json.Marshal(res)
@@ -485,7 +488,7 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 }
 
 func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, step, attempt int, inbox []Message, st RunState, prev *Previous, partial string) (NodeOutput, error) {
-	ni := NodeInfo{RunID: info.ID, Workflow: g.Name, NodeID: n.ID, Kind: n.Kind, Step: step, Attempt: attempt,
+	ni := NodeInfo{RunID: info.ID, ProjectID: info.ProjectID, TaskID: info.TaskID, Workflow: g.Name, NodeID: n.ID, Kind: n.Kind, Step: step, Attempt: attempt,
 		Key: fmt.Sprintf("%s/%s/%d/%d", info.ID, n.ID, step, attempt), Meta: n.Meta}
 
 	// durable chunk file

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	sql "github.com/DerekStride/tree-sitter-sql/bindings/go"
 	ts "github.com/tree-sitter/go-tree-sitter"
 	csharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
@@ -13,7 +14,6 @@ import (
 	py "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	rust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
 	tsx "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
-	sql "github.com/DerekStride/tree-sitter-sql/bindings/go"
 )
 
 func main() {
@@ -77,4 +77,3 @@ func main() {
 		fmt.Printf("capture %s = %s\n", q.CaptureNames()[c.Index], c.Node.Utf8Text(src))
 	}
 }
-

@@ -53,7 +53,7 @@ func main() {
 	fmt.Println("started pid", c.Process.Pid)
 
 	req := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
-		"protocolVersion": 1,
+		"protocolVersion":    1,
 		"clientCapabilities": map[string]any{"fs": map[string]bool{"readTextFile": true, "writeTextFile": true}, "terminal": true},
 		"clientInfo":         map[string]string{"name": "drydock-win-probe", "version": "0"},
 	}}

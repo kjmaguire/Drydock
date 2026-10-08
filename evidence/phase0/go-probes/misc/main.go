@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
 	"cel.dev/cel-go/cel"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/zricethezav/gitleaks/v8/detect"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"

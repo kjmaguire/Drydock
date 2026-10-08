@@ -2,11 +2,12 @@
 
 // jobtree proves (or disproves) that Job Objects reap whole process trees, in the ways Drydock plans to use them.
 // Modes:
-//   baseline   - plain os/exec + Process.Kill: expect orphans (documents why Job Objects are needed)
-//   joblist    - CreateProcess with PROC_THREAD_ATTRIBUTE_JOB_LIST (0x2000D), then close job handle
-//   assign     - CREATE_SUSPENDED, AssignProcessToJobObject, ResumeThread, then close job handle
-//   selfjob    - put this process in a KILL_ON_JOB_CLOSE job first, spawn with os/exec, close job handle
-//   nested     - selfjob plus a per-agent child job assigned after start (nested jobs, Windows 8+)
+//
+//	baseline   - plain os/exec + Process.Kill: expect orphans (documents why Job Objects are needed)
+//	joblist    - CreateProcess with PROC_THREAD_ATTRIBUTE_JOB_LIST (0x2000D), then close job handle
+//	assign     - CREATE_SUSPENDED, AssignProcessToJobObject, ResumeThread, then close job handle
+//	selfjob    - put this process in a KILL_ON_JOB_CLOSE job first, spawn with os/exec, close job handle
+//	nested     - selfjob plus a per-agent child job assigned after start (nested jobs, Windows 8+)
 package main
 
 import (

@@ -1,6 +1,7 @@
 // fixture is a stand-in for an agent CLI that spawns grandchildren (like a CLI running `npm test`).
 // Usage: fixture parent <pidfile>  -> spawns two `sleep` children (which each spawn one grandchild) and waits.
-//        fixture sleep [spawn]     -> sleeps 120s; with "spawn" first starts one `sleep` grandchild.
+//
+//	fixture sleep [spawn]     -> sleeps 120s; with "spawn" first starts one `sleep` grandchild.
 package main
 
 import (

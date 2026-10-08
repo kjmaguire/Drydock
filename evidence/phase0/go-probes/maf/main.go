@@ -19,18 +19,24 @@ type Done struct{}
 var aRuns, bRuns, cRuns, joinRuns atomic.Int32
 var bShouldFail atomic.Bool
 
-type starter struct{ _ workflow.AttrSendsMessage[Kick] }
+type starter struct {
+	_ workflow.AttrSendsMessage[Kick]
+}
 
 func (s *starter) Handle(ctx *workflow.Context, m string) error { return ctx.SendMessage("", Kick{}) }
 
-type nodeA struct{ _ workflow.AttrSendsMessage[Work] }
+type nodeA struct {
+	_ workflow.AttrSendsMessage[Work]
+}
 
 func (n *nodeA) Handle(ctx *workflow.Context, m Kick) error {
 	aRuns.Add(1) // side effect e.g. file write / API call / billing
 	return ctx.SendMessage("", Work{From: "A"})
 }
 
-type nodeB struct{ _ workflow.AttrSendsMessage[Work] }
+type nodeB struct {
+	_ workflow.AttrSendsMessage[Work]
+}
 
 func (n *nodeB) Handle(ctx *workflow.Context, m Kick) error {
 	bRuns.Add(1)
@@ -41,14 +47,18 @@ func (n *nodeB) Handle(ctx *workflow.Context, m Kick) error {
 	return ctx.SendMessage("", Work{From: "B"})
 }
 
-type nodeC struct{ _ workflow.AttrSendsMessage[Work] }
+type nodeC struct {
+	_ workflow.AttrSendsMessage[Work]
+}
 
 func (n *nodeC) Handle(ctx *workflow.Context, m Kick) error {
 	cRuns.Add(1)
 	return ctx.SendMessage("", Work{From: "C"})
 }
 
-type join struct{ _ workflow.AttrYieldsOutput[string] }
+type join struct {
+	_ workflow.AttrYieldsOutput[string]
+}
 
 func (j *join) Handle(ctx *workflow.Context, m Work) error {
 	n := joinRuns.Add(1)

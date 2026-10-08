@@ -120,14 +120,16 @@ func (s *TurnSlot) Get() TurnController   { s.mu.Lock(); defer s.mu.Unlock(); re
 
 // NodeInfo identifies a node execution for observers and middleware.
 type NodeInfo struct {
-	RunID    RunID
-	Workflow string
-	NodeID   NodeID
-	Kind     NodeKind
-	Step     int
-	Attempt  int
-	Key      string // idempotency key: run/node/step/attempt
-	Meta     map[string]string
+	RunID     RunID
+	ProjectID string
+	TaskID    string
+	Workflow  string
+	NodeID    NodeID
+	Kind      NodeKind
+	Step      int
+	Attempt   int
+	Key       string // idempotency key: run/node/step/attempt
+	Meta      map[string]string
 }
 
 // NodeInput is everything a handler may read. Handlers must be deterministic functions of it plus their side effects.
@@ -252,6 +254,7 @@ type RunState struct {
 	Waiting      map[NodeID]RequestID         `json:"waiting"`
 	LoopCounts   map[string]int               `json:"loopCounts"`
 	Topology     string                       `json:"topology"`
+	LastNodes    []NodeID                     `json:"lastNodes,omitempty"` // nodes executed in the latest superstep
 	Result       json.RawMessage              `json:"result,omitempty"`
 	FailedReason string                       `json:"failedReason,omitempty"`
 }
