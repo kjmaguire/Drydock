@@ -147,7 +147,10 @@ func TestVaultCiphertextIsBoundToItsReferenceAndKey(t *testing.T) {
 }
 
 func TestVaultCredentialStoreFailureIsAnError(t *testing.T) {
-	db, _ := storage.OpenTemp(context.Background(), t.TempDir())
+	db, err := storage.OpenTemp(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.Close()
 	v := NewVault(brokenCred{}, db)
 	if err := v.Put(context.Background(), "a", "b"); err == nil {
@@ -163,9 +166,9 @@ func TestVaultCredentialStoreFailureIsAnError(t *testing.T) {
 	}
 }
 
-// brokenCred is a credential store that always fails, like a locked or missing OS store.
+// brokenCred is a failure-boundary stand-in for the OS credential store: it always fails, like a locked or missing store.
 type brokenCred struct{}
 
-func (brokenCred) Set(string, string, string) error      { return errors.New("store locked") }
-func (brokenCred) Get(string, string) (string, error)    { return "", errors.New("store locked") }
-func (brokenCred) Delete(string, string) error           { return errors.New("store locked") }
+func (brokenCred) Set(string, string, string) error   { return errors.New("store locked") }
+func (brokenCred) Get(string, string) (string, error) { return "", errors.New("store locked") }
+func (brokenCred) Delete(string, string) error        { return errors.New("store locked") }

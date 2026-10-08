@@ -14,8 +14,10 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -93,9 +95,13 @@ func setup(t *testing.T, mkCfg func(e *env, role string) rt.Config, adapter agen
 	db.Writer().Exec(`INSERT INTO projects(id,name,repo_path,created_at) VALUES('p1','gocalc',?,1)`, repoDir)
 	db.Writer().Exec(`INSERT INTO agents(id,project_id,name,adapter,role,created_at) VALUES('a1','p1','Backend #1','claude','backend',1),('a2','p1','Reviewer #1','claude','reviewer',1)`)
 	e.tasks = &tasks.Service{DB: db, Bus: e.bus}
+	ms := memory.Store{DB: db}
+	ms.Add(ctx, memory.Entry{ProjectID: "p1", Kind: memory.Convention, Title: "Small diffs", Body: "Prefer the smallest change that satisfies the task."}, true)
+	ce := &ctxeng.Engine{DB: db, Memory: ms}
 	runtime := &rt.Runtime{PM: proc.New(), Bus: e.bus, DB: db, Adapters: map[string]agents.Adapter{"claude": adapter}, NudgeWait: 3 * time.Second}
 	e.deps = pipeline.Deps{
 		Tasks: e.tasks, Runtime: runtime, PM: proc.New(), Bus: e.bus,
+		Context:      ce,
 		Repo:         func(context.Context, string) (*git.Repo, error) { return repo, nil },
 		WorktreeRoot: filepath.Join(e.dir, "worktrees"), DataDir: filepath.Join(e.dir, "data"),
 		AgentConfig: func(tk tasks.Task, role string) rt.Config { return mkCfg(e, role) },

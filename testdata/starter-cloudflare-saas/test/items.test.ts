@@ -27,7 +27,7 @@ describe("items API (D1)", () => {
     const cookie = await login("crud@example.com");
 
     const created = await postJson("/api/items", { title: "  Write the spec " }, cookie);
-    expect(created.status).toBe(201);
+    expect(created.status, "POST /api/items must return 201 Created").toBe(201);
     const { item } = await json<{ item: Item }>(created);
     expect(item).toMatchObject({ title: "Write the spec", done: false, attachmentKey: null });
 

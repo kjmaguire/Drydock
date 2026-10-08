@@ -567,3 +567,57 @@ func (r *Repo) RestoreSafePoint(ctx context.Context, w Worktree, ref string, und
 	}
 	return undo, nil
 }
+
+// LocalIgnore keeps paths out of git status/commits in this checkout without touching tracked history: tracked files get
+// the skip-worktree flag (local modifications are invisible to add/commit), untracked ones are added to the repository's
+// local info/exclude. Used for Drydock-generated instruction files.
+func (r *Repo) LocalIgnore(ctx context.Context, w Worktree, paths []string) error {
+	var untracked []string
+	for _, p := range paths {
+		if _, err := r.git(ctx, w.Path, nil, "ls-files", "--error-unmatch", "--", p); err == nil {
+			if _, err := r.git(ctx, w.Path, nil, "update-index", "--skip-worktree", "--", p); err != nil {
+				return err
+			}
+		} else {
+			untracked = append(untracked, p)
+		}
+	}
+	if len(untracked) == 0 {
+		return nil
+	}
+	out, err := r.git(ctx, w.Path, nil, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return err
+	}
+	ex := strings.TrimSpace(out)
+	if !filepath.IsAbs(ex) {
+		ex = filepath.Join(w.Path, ex)
+	}
+	if err := os.MkdirAll(filepath.Dir(ex), 0o755); err != nil {
+		return err
+	}
+	cur, _ := os.ReadFile(ex)
+	have := map[string]bool{}
+	for _, l := range strings.Split(string(cur), "\n") {
+		have[strings.TrimSpace(l)] = true
+	}
+	var add strings.Builder
+	for _, p := range untracked {
+		if !have["/"+p] {
+			add.WriteString("/" + p + "\n")
+		}
+	}
+	if add.Len() == 0 {
+		return nil
+	}
+	f, err := os.OpenFile(ex, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if len(cur) > 0 && !strings.HasSuffix(string(cur), "\n") {
+		f.WriteString("\n")
+	}
+	_, err = f.WriteString(add.String())
+	return err
+}

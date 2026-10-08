@@ -16,12 +16,12 @@ import (
 // env is a real SQLite database, a real event bus and a registry over them. The secret store is the labeled
 // in-memory test store (the product store is Windows-only).
 type env struct {
-	db   *storage.DB
-	bus  *events.SQLBus
-	reg  *Registry
-	sec  *MemorySecretStore
-	pr   *Prober
-	ctx  context.Context
+	db  *storage.DB
+	bus *events.SQLBus
+	reg *Registry
+	sec *MemorySecretStore
+	pr  *Prober
+	ctx context.Context
 }
 
 func newEnv(t *testing.T) *env {

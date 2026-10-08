@@ -122,7 +122,9 @@ func TestInterruptCancelsAPendingPermissionRequest(t *testing.T) {
 		t.Fatal("the handler context was not cancelled by Interrupt")
 	}
 	cs := readUntilDone(t, s, 10*time.Second)
-	if strings.Contains(text(cs), "selected allow") || !strings.Contains(text(cs), "permission: cancelled") {
+	// the agent also cancels its own pending request when it handles session/cancel, so it may see either our
+	// "cancelled" outcome or its own request-cancelled error; what must never happen is an approval
+	if strings.Contains(text(cs), "selected allow") || !(strings.Contains(text(cs), "permission: cancelled") || strings.Contains(text(cs), "permission: error")) {
 		t.Fatalf("a late answer must be discarded: %q", text(cs))
 	}
 }

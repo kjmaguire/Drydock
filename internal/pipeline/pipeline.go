@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/proc"
@@ -40,9 +41,8 @@ type Deps struct {
 	Checks func(dir string) []checks.Spec
 	// OnCheck is called after each individual check (post the tool-member message). May be nil.
 	OnCheck func(ctx context.Context, t tasks.Task, r checks.Result)
-	// Instructions, if set, writes generated instruction files into the worktree before the agent starts and returns the
-	// manifest summary to record (docs/brief.md section 9).
-	Instructions func(ctx context.Context, t tasks.Task, worktree string) (manifest json.RawMessage, err error)
+	// Context, if set, owns the generated instruction files and the per-attempt context manifest (brief section 9).
+	Context *ctxeng.Engine
 }
 
 // Input is the run input of pipeline workflows.
@@ -106,16 +106,19 @@ func Prepare(d Deps) workflow.NodeHandler {
 				}
 			}
 		}
-		if d.Instructions != nil {
-			m, err := d.Instructions(ctx, t, w.Path)
+		var instructionFiles []string
+		if d.Context != nil {
+			res, _, err := d.Context.Write(ctx, t.ProjectID, w.Path)
 			if err != nil {
 				return workflow.NodeOutput{}, fmt.Errorf("instruction files: %w", err)
 			}
-			if len(m) > 0 {
-				in.Emit(workflow.NewChunk(workflow.ChunkLog, map[string]any{"contextManifest": json.RawMessage(m)}))
+			// generated files belong to Drydock: keep them out of status, diffs and commits
+			if err := repo.LocalIgnore(ctx, w, append(append([]string(nil), res.Written...), res.Edited...)); err != nil {
+				return workflow.NodeOutput{}, fmt.Errorf("ignore generated files: %w", err)
 			}
+			instructionFiles = res.Written
 		}
-		b, _ := json.Marshal(map[string]any{"taskId": t.ID, "worktree": w.Path, "branch": w.Branch, "base": w.Base})
+		b, _ := json.Marshal(map[string]any{"taskId": t.ID, "worktree": w.Path, "branch": w.Branch, "base": w.Base, "instructionFiles": instructionFiles})
 		return workflow.NodeOutput{Value: b}, nil
 	}
 }
@@ -145,7 +148,9 @@ func Work(d Deps) workflow.NodeHandler {
 		cfg := d.AgentConfig(t, "work")
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
-		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(in workflow.NodeInput) string { return WorkPrompt(t, in) }})
+		prompt := WorkPrompt(t, in)
+		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "work")
+		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
 		out, err := h(ctx, in)
 		if err != nil {
 			return out, err
@@ -160,6 +165,25 @@ func Work(d Deps) workflow.NodeHandler {
 		}
 		return out, nil
 	}
+}
+
+// saveManifest records what this attempt was given and what was deliberately left out.
+func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string) {
+	if d.Context == nil {
+		return
+	}
+	var m ctxeng.Manifest
+	m.Add("prompt ("+role+")", true, len(prompt), "task spec on the first pass; only the latest failure or feedback on later passes (token rule 16)", 1)
+	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md"} {
+		if st, err := os.Stat(filepath.Join(t.Worktree, name)); err == nil {
+			m.Add("file:"+name, true, int(st.Size()), "generated instruction file read natively by the CLI (cache-stable prefix)", 5)
+		}
+	}
+	m.Add("repo map", false, 0, "not built: tree-sitter is gated until the Windows CGO job is green (decision D5)", 9)
+	m.Add("project memory", false, 0, "retrieved on demand (search_memory), not preloaded; accepted memory is already in AGENTS.md", 8)
+	m.Add("room history", false, 0, "no messages selected for this task channel", 7)
+	m.Add("previous session transcript", false, 0, "fresh session per attempt; handoff artifacts only (token rules 5 and 16)", 6)
+	_ = d.Context.SaveManifest(ctx, string(in.RunID), string(in.NodeID), in.Attempt, t.ID, agentID, m)
 }
 
 // WorkPrompt builds the turn prompt. It contains only what the agent needs now.

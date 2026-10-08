@@ -178,6 +178,31 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 	if _, err := os.Stat(task.Worktree); err == nil {
 		t.Fatal("clean worktree should be removed after merge")
 	}
+	// Drydock's generated instruction files never reach the repository
+	for _, f := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md"} {
+		if _, err := os.Stat(filepath.Join(e.repo.Root, f)); err == nil {
+			t.Fatalf("%s leaked into the main working tree", f)
+		}
+	}
+	if log := gitLog(t, e.repo.Root); strings.Contains(log, "AGENTS") {
+		t.Fatal("instruction files committed")
+	}
+	// the manifest of the first work attempt explains what the agent was given
+	mf, err := e.deps.Context.LoadManifest(context.Background(), string(id), "work", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inc, exc := map[string]bool{}, map[string]string{}
+	for _, it := range mf.Items {
+		if it.Included {
+			inc[it.Source] = true
+		} else {
+			exc[it.Source] = it.Reason
+		}
+	}
+	if !inc["file:AGENTS.md"] || !inc["prompt (work)"] || !strings.Contains(exc["repo map"], "D5") || exc["previous session transcript"] == "" {
+		t.Fatalf("manifest %+v", mf.Items)
+	}
 	if log := gitLog(t, e.repo.Root); !strings.Contains(log, "Merge Implement Subtract") {
 		t.Fatalf("no merge commit:\n%s", log)
 	}
