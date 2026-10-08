@@ -322,20 +322,20 @@ func (s *Service) afterRefused(ctx context.Context, o Outbox, cause error) (Outb
 	switch {
 	case errors.Is(cause, security.ErrHashMismatch):
 		set(OutFailed, "the action changed after it was approved; nothing was sent")
-		err = fmt.Errorf("%w: %v", ErrPayloadChanged, cause)
+		err = fmt.Errorf("%w: %w", ErrPayloadChanged, cause)
 		s.emit(ctx, EventOutboundFailed, o.ProjectID, o.TaskID, map[string]any{"outboxId": o.ID, "integrationId": o.IntegrationID, "code": "payload_changed"})
 	case errors.Is(cause, security.ErrNotApproved):
 		set(OutAwaiting, "") // still waiting for a human; it can be executed after approval
-		err = fmt.Errorf("%w: %v", ErrNotApproved, cause)
+		err = fmt.Errorf("%w: %w", ErrNotApproved, cause)
 	case errors.Is(cause, security.ErrRejected), errors.Is(cause, security.ErrCancelled):
 		set(OutRejected, "the approval was rejected or cancelled")
-		err = fmt.Errorf("%w: %v", ErrNotApproved, cause)
+		err = fmt.Errorf("%w: %w", ErrNotApproved, cause)
 	case errors.Is(cause, security.ErrApprovalExpired):
 		set(OutExpired, "the approval expired; propose the action again")
-		err = fmt.Errorf("%w: %v", ErrNotApproved, cause)
+		err = fmt.Errorf("%w: %w", ErrNotApproved, cause)
 	case errors.Is(cause, security.ErrConsumed):
 		set(OutFailed, "the approval was already used")
-		err = fmt.Errorf("%w: %v", ErrNotApproved, cause)
+		err = fmt.Errorf("%w: %w", ErrNotApproved, cause)
 	default:
 		set(OutAwaiting, "")
 		err = cause

@@ -19,7 +19,7 @@ import (
 // startGateway runs a real internal/mcp gateway whose Workspace has the packs provider.
 func startGateway(t *testing.T, e *env, ws mcp.Workspace) *mcp.Gateway {
 	t.Helper()
-	g, err := mcp.New(mcp.Options{DataDir: filepath.Join(e.dir, "gw"), DB: e.db, Bus: e.bus, Workspace: ws, Scanner: mcp.BasicScanner{}, CallTimeout: 10 * time.Second})
+	g, err := mcp.New(mcp.Options{DataDir: filepath.Join(e.dir, "gw"), DB: e.db, Bus: e.bus, Workspace: ws, Scanner: mcp.BasicScanner{}, CallTimeout: 10 * time.Second, BreakerOpen: 100 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +211,7 @@ func TestLivePackThroughTheGatewayHybridMergeAndOffline(t *testing.T) {
 	}
 	// refreshing the local index invalidates the gateway's cache for the live server
 	down.Store(false)
+	time.Sleep(250 * time.Millisecond) // the gateway's circuit breaker (opened by the outage) closes again
 	e.search("wrangler versions upload", "cfh")
 	before = calls.Load()
 	writeFiles(t, dir, map[string]string{"w.md": "# Workers\n\nWorkers run JavaScript at the edge. Wrangler is the CLI. Updated.\n"})
