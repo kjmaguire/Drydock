@@ -1,0 +1,200 @@
+name: windows-probes
+
+# Phase 0 section 7 checks that need a real Windows host. Probes live in evidence/phase0/.
+# Each probe step uses `if: always()` so one failure does not hide the others; read the logs.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "evidence/phase0/windows-probes/**"
+      - "evidence/phase0/go-probes/sq/**"
+      - "evidence/phase0/go-probes/ts/**"
+      - ".github/workflows/windows-probes.yml"
+
+env:
+  GOFLAGS: -mod=mod
+
+jobs:
+  process-trees:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: evidence/phase0/windows-probes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+      - name: build fixture and jobtree
+        run: |
+          go build -o bin/fixture.exe ./fixture
+          go build -o bin/jobtree.exe ./jobtree
+          Get-ChildItem bin
+      - name: baseline (os/exec Kill, expect orphans)
+        if: always()
+        run: ./bin/jobtree.exe baseline "$PWD/bin/fixture.exe"
+      - name: joblist (PROC_THREAD_ATTRIBUTE_JOB_LIST)
+        if: always()
+        run: ./bin/jobtree.exe joblist "$PWD/bin/fixture.exe"
+      - name: assign (CREATE_SUSPENDED + AssignProcessToJobObject)
+        if: always()
+        run: ./bin/jobtree.exe assign "$PWD/bin/fixture.exe"
+      - name: selfjob (app in KILL_ON_JOB_CLOSE job, children inherit)
+        if: always()
+        run: ./bin/jobtree.exe selfjob "$PWD/bin/fixture.exe"
+      - name: nested (per-agent job inside the app job)
+        if: always()
+        run: ./bin/jobtree.exe nested "$PWD/bin/fixture.exe"
+
+  credentials-pty-sqlite:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: evidence/phase0/windows-probes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+      - name: wincred (go-keyring on Credential Manager)
+        if: always()
+        run: go run ./wincred
+      - name: conpty (go-pty + x/ansi)
+        if: always()
+        run: go run ./conpty
+      - name: sqlite on NTFS (modernc, WAL, concurrency, batch inserts)
+        if: always()
+        working-directory: evidence/phase0/go-probes/sq
+        run: go run .
+
+  treesitter:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: evidence/phase0/go-probes/ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+      - name: toolchain facts
+        run: |
+          where.exe gcc
+          gcc --version
+          go env CC CGO_ENABLED GOOS GOARCH
+      - name: build with CGO (MinGW gcc)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          go build -trimpath -ldflags "-s -w" -o ts.exe .
+          "build seconds: " + $sw.Elapsed.TotalSeconds
+          "size MB: " + [math]::Round((Get-Item ts.exe).Length / 1MB, 1)
+      - name: run (parse ten languages)
+        run: ./ts.exe
+      - name: Defender custom scan of the CGO exe
+        if: always()
+        run: |
+          Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AntivirusSignatureVersion | Format-List
+          $mp = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
+          & $mp -Scan -ScanType 3 -File (Resolve-Path ts.exe).Path -DisableRemediation
+          "MpCmdRun exit code: $LASTEXITCODE (0 = no threats found)"
+          Get-MpThreatDetection | Select-Object -First 5 | Format-List
+
+  clis-and-acp:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: evidence/phase0/windows-probes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: install CLIs from npm
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.293 @openai/codex@0.161.0 @google/gemini-cli@0.63.0 opencode-ai@1.18.35 @aaif/goose-acp@1.53.0
+          npm prefix -g
+          Get-ChildItem (npm prefix -g) | Select-Object -First 40 Name
+      - name: where and versions
+        if: always()
+        run: |
+          foreach ($c in "claude","codex","gemini","opencode","goose","node","npx") {
+            "== $c"
+            where.exe $c
+            try { & $c --version } catch { "version failed: $_" }
+          }
+      - name: build acpspawn
+        run: go build -o bin/acpspawn.exe ./acpspawn
+      - name: ACP initialize - gemini --acp
+        if: always()
+        run: ./bin/acpspawn.exe 60 gemini --acp
+      - name: ACP initialize - opencode acp
+        if: always()
+        run: ./bin/acpspawn.exe 60 opencode acp
+      - name: ACP initialize - goose acp
+        if: always()
+        run: ./bin/acpspawn.exe 60 goose acp
+      - name: ACP initialize - codex-acp via npx.cmd
+        if: always()
+        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/codex-acp@2.1.1
+      - name: ACP initialize - claude-agent-acp via npx.cmd
+        if: always()
+        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/claude-agent-acp@0.87.0
+      - name: orphan check after probes
+        if: always()
+        run: |
+          Get-Process node, cmd, codex, opencode, gemini, goose -ErrorAction SilentlyContinue | Select-Object Name, Id, StartTime | Format-Table
+
+  wails:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: install wails3 CLI
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28
+          wails3 version
+          wails3 doctor
+      - name: scaffold and build hello app
+        if: always()
+        run: |
+          wails3 init -n hello -d $env:RUNNER_TEMP/hello
+          Set-Location $env:RUNNER_TEMP/hello
+          Get-ChildItem -Recurse -Depth 2 | Select-Object -First 80 FullName
+          $env:CGO_ENABLED = "0"
+          wails3 build
+          Get-ChildItem bin
+      - name: run the GUI exe for 15 seconds (WebView2 on a runner)
+        if: always()
+        run: |
+          Set-Location $env:RUNNER_TEMP/hello
+          $exe = Get-ChildItem bin -Filter *.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 15
+          "HasExited after 15s: " + $p.HasExited
+          if (-not $p.HasExited) { "MainWindowTitle: " + $p.MainWindowTitle; $p.Kill() } else { "ExitCode: " + $p.ExitCode }
+      - name: NSIS installer (user scope) via wails3 package
+        if: always()
+        run: |
+          choco install nsis -y --no-progress
+          $env:PATH += ";C:\Program Files (x86)\NSIS"
+          Set-Location $env:RUNNER_TEMP/hello
+          wails3 package
+          Get-ChildItem -Recurse bin | Where-Object { $_.Extension -in ".exe",".msix" } | Select-Object FullName, Length
