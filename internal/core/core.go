@@ -487,7 +487,18 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 		spec.PermissionMode = "plan" // the reviewer reads; it never edits (the prompt also says so)
 		spec.Role = "reviewer"
 	}
-	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: spec, Provider: providerLabel(a), Tier: "premium"}
+	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: spec, Provider: providerLabel(a), Tier: c.agentTier(a)}
+}
+
+// agentTier is the cost tier of an agent's usage rows: the registered provider's tier when the agent runs on one (so a
+// cheap OpenRouter model is counted as cheap), premium for a subscription CLI that has no provider.
+func (c *Core) agentTier(a Agent) string {
+	if a.ProviderID != "" && c.Providers != nil {
+		if p, err := c.Providers.Get(context.Background(), a.ProviderID); err == nil && p.Tier != "" {
+			return string(p.Tier)
+		}
+	}
+	return "premium"
 }
 
 func providerLabel(a Agent) string {

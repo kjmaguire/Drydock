@@ -223,3 +223,8 @@ func (e *env) useFixture(g *ghFixture) {
 
 const sha1 = "1111111111111111111111111111111111111111"
 const sha2 = "2222222222222222222222222222222222222222"
+
+func readFile(p string) (string, error) {
+	b, err := os.ReadFile(p)
+	return string(b), err
+}

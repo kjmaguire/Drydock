@@ -30,6 +30,7 @@ type Target struct {
 	TaskID    string
 	AgentID   string
 	Role      string
+	Worktree  string
 	// Adapter is the agent adapter id (claude, codex, gemini, opencode, goose, antigravity). Empty means unknown, which is
 	// treated as Claude: rules for a CLI that is not used are harmless files.
 	Adapter string
