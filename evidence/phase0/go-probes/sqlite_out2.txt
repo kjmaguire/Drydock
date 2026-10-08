@@ -1,0 +1,4 @@
+c2 write: <nil>
+c1 read-then-write upgrade after other writer committed: database is locked (517)
+c2 write while c1 holds BEGIN IMMEDIATE (waits busy_timeout=2s then): database is locked (5) (SQLITE_BUSY)
+begin with _txlock=immediate: <nil>
