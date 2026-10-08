@@ -780,6 +780,15 @@ func (s *Store) GetOutbox(ctx context.Context, id string) (Outbox, error) {
 	return o, err
 }
 
+// OutboxByApproval finds the proposal an approval belongs to.
+func (s *Store) OutboxByApproval(ctx context.Context, approvalID string) (Outbox, error) {
+	o, err := scanOutbox(s.DB.Reader().QueryRowContext(ctx, `SELECT `+outCols+` FROM integration_outbox WHERE approval_id=? ORDER BY created_at DESC LIMIT 1`, approvalID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return o, fmt.Errorf("%w: no outbound action for approval %s", ErrNotFound, approvalID)
+	}
+	return o, err
+}
+
 // ListOutbox returns proposals newest first.
 func (s *Store) ListOutbox(ctx context.Context, integrationID, status string, limit int) ([]Outbox, error) {
 	q, args := `SELECT `+outCols+` FROM integration_outbox WHERE 1=1`, []any{}
