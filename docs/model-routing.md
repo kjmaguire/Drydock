@@ -287,3 +287,14 @@ Unit: rule compilation and type errors; priority and override order; data-class 
 - Codex `exec` interrupt behavior, Gemini/Goose/OpenCode headless interrupt behavior, and real usage streams are unverified (phase0 s7 item 8); the cache-switch cost estimate assumes the per-model cache statements in MP G, where OpenAI's statement is secondary evidence only.
 - GPU throughput for `max_concurrent` on vLLM/SGLang/Ollama is not measured (MP E procedure); until then Ollama defaults to 1.
 - Brief §22 says Iterate Until Verified runs five iterations by default while brief §6 escalates after three cheap iterations without passing checks; here escalation is evaluated per iteration so the two compose (escalate at iteration 3, continue to 5 on premium), which should be confirmed by the owner.
+
+
+## As built (2026-10-08, Linux sandbox)
+
+`internal/providers` (registry, model catalog, transport rule, `Vault` over a `CredentialStore`, prober, 30 s health monitor, quota ledger), `internal/llm` (`Client`, the `Wrapper` with the data_class guard, scanner, quota, retry, cache and usage rows; OpenAI-compatible and Anthropic backends) and `internal/router` (`StaticRouter`, CEL `RuleRouter` with stored rules, deterministic `Explain`; it does not import `llm`) are built, with migration `00010_providers_llm.sql`. Vet (also `GOOS=windows`) and tests pass; `-race` passed on the worker's run. The core exposes `provider.*` methods for the Providers page.
+
+Differences from the text above: `Reserve(ctx, provider, model) (ok, retryAt, err)` and `Record(...)` instead of a `Reservation` object (so `RoutingDecision.Reservation` is always empty; the router only calls `Check` and the Wrapper reserves at call time); quota column `limit_value` and sources `configured|headers|api`; health events are `provider.up|down|degraded`; `RouteRequest` and `RoutingDecision` gained fields the CEL variables need (`Facts`, ambiguity, files touched, checks passing); `Next` reloads the original request from `routing_decisions`, so it needs the recorder.
+
+Attestations (decision P9): a private-class provider on plain http to a private (non-loopback) address is refused at registration unless `lan_attested` is set, and a private Gemini route needs `billing_enabled`.
+
+Not built: the startup tool-call probe and automatic cheap-model selection (only the `probe_status` columns and `SetProbeStatus` exist), the LLM tiebreak, `routing_outcomes`, agent-native candidates (an `Extra` hook exists), router handling of the Anthropic retention error (classified only). The Anthropic backend drops replayed reasoning (thinking replay needs signatures). Unverified: real wire shapes for OpenRouter usage through `openai-go`, Gemini compat `/models`, SGLang/vLLM/Ollama endpoints, live provider calls (two live tests skip without keys), and Windows `go-keyring`.

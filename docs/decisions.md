@@ -53,6 +53,8 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 - **P7. Review text on PRs is untrusted.** Only OWNER, MEMBER and COLLABORATOR authors can start an automatic rework, and their text reaches the agent quoted as data. Everything else is shown to the human in the approval and is never acted on by an agent. Drydock's own comments carry a marker and are never read back. Merging is a `human:` action and is guarded by the reviewed head SHA, so a push after review cannot be merged unseen.
 - **P8. OpenRouter `data_class`.** The `private` filter can be enforced on requests Drydock makes itself (router/LLM client) but cannot be injected into requests that an agent CLI makes; CLIs pointed at OpenRouter rely on the account-level privacy setting, which the Providers page tells the user to verify (refines D4).
 
+- **P9. Provider attestations.** Private routes over plain http to a private-network host and private Gemini routes require an explicit user attestation (`lan_attested`, `billing_enabled`) recorded on the provider; without it registration is refused. Owner may change the attestation model.
+
 ## 4. Locked versus open
 
 Locked: everything in section 1 except D5 and D7 proof, and the stack rows in section 2.
