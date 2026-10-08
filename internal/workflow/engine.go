@@ -244,12 +244,20 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		// Apply: consume inboxes, record outputs, route.
 		var reqs []approvalInsert
 		for _, r := range results {
+			consumed := st.Inboxes[r.node]
 			delete(st.Inboxes, r.node)
 			delete(st.Barriers, r.node)
 			if r.out.Request != nil {
 				rid := RequestID(ids.New("req"))
 				spec := *r.out.Request
-				st.Pending[rid] = PendingRequest{ID: rid, NodeID: r.node, Step: step, Spec: spec}
+				pr := PendingRequest{ID: rid, NodeID: r.node, Step: step, Spec: spec}
+				if spec.Retry {
+					pr.Inbox = append([]Message(nil), consumed...)
+					if len(pr.Inbox) == 0 {
+						pr.Inbox = []Message{{From: r.node}}
+					}
+				}
+				st.Pending[rid] = pr
 				st.Waiting[r.node] = rid
 				reqs = append(reqs, approvalInsert{id: rid, nodeID: r.node, spec: spec, projectID: info.ProjectID, taskID: info.TaskID})
 				continue
@@ -771,9 +779,17 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	out := NodeOutput{Route: decision}
 	body, _ := json.Marshal(map[string]any{"decision": decision, "data": resp.Data, "by": resp.By, "request": resp.RequestID})
 	out.Value = body
-	st.Shared["out/"+string(pr.NodeID)] = body
-	if err := route(g, &st, pr.NodeID, out); err != nil {
-		return err
+	if pr.Spec.Retry {
+		// the node is still owed: it runs again with the inbox it had, and reads the human's decision from the approvals row
+		st.Inboxes[pr.NodeID] = pr.Inbox
+		if n := g.Nodes[pr.NodeID]; n != nil && len(n.FanIn) > 0 {
+			st.Barriers[pr.NodeID] = append([]NodeID(nil), n.FanIn...)
+		}
+	} else {
+		st.Shared["out/"+string(pr.NodeID)] = body
+		if err := route(g, &st, pr.NodeID, out); err != nil {
+			return err
+		}
 	}
 	st.Status = StatusRunning
 	newCP := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: run, Workflow: g.Name, Step: st.Step, Kind: CheckpointResponseEntry, Parent: cp.ID, State: st, Created: storage.Now()}

@@ -87,6 +87,11 @@ type RequestSpec struct {
 	Title      string          `json:"title"`
 	Payload    json.RawMessage `json:"payload,omitempty"`
 	ActionHash string          `json:"actionHash,omitempty"` // approvals are bound to the exact action
+	// Retry makes the node run again after the human answers, instead of completing with the answer as its output. The
+	// node's original inbox is restored, so the second execution sees what the first saw. A gate in front of an agent
+	// turn (the budget gate) uses it: the turn is still owed once the human has decided. Whatever the decision, the node
+	// runs again and reads the decision itself (the approvals row), so a rejection is the node's to act on.
+	Retry bool `json:"retry,omitempty"`
 }
 
 // NodeOutput is what a handler returns: a complete value, optionally a routing label, or a request.
@@ -225,6 +230,8 @@ type PendingRequest struct {
 	NodeID NodeID      `json:"nodeId"`
 	Step   int         `json:"step"`
 	Spec   RequestSpec `json:"spec"`
+	// Inbox is the parked node's inbox, kept only for Spec.Retry requests.
+	Inbox []Message `json:"inbox,omitempty"`
 }
 
 // EdgeKey identifies an edge for loop counting.

@@ -35,7 +35,14 @@ type Spec struct {
 	LogDir  string        // where the full log is written; empty = a temp dir
 	// MaxContext bounds the output kept in the result (default 6000 bytes: head 1000 + tail).
 	MaxContext int
+	// InProcess, when set, runs the check inside Drydock instead of as a command (the secrets check scans the diff with
+	// the gitleaks scanner; the deps check drives an external tool and parses its JSON). Argv is then informational.
+	InProcess InProcessFunc
 }
+
+// InProcessFunc runs an in-process check. It returns the result (Output is what the log file receives) or an error when the
+// check could not be run at all. A tool that is missing is a skipped Result, never an error and never a pass.
+type InProcessFunc func(ctx context.Context, pm proc.Manager, s Spec) (Result, error)
 
 // Result extends workflow.CheckResult with run metadata.
 type Result struct {
@@ -44,13 +51,25 @@ type Result struct {
 	LogRef   string        `json:"logRef"`
 	Argv     []string      `json:"argv"`
 	TimedOut bool          `json:"timedOut,omitempty"`
+	// Skipped means the check could not be evaluated honestly (a tool is not installed, nothing to scan): it is neither a
+	// pass nor a failure, and the loop does not send it back to an agent. SkipReason says why. Errored is the same for a
+	// tool that ran and broke (offline database missing, crash): visible, never a pass, not for an agent to fix.
+	Skipped    bool   `json:"skipped,omitempty"`
+	SkipReason string `json:"skipReason,omitempty"`
+	Errored    bool   `json:"errored,omitempty"`
 }
+
+// Inconclusive reports a result that is neither a pass nor a failure of the work.
+func (r Result) Inconclusive() bool { return r.Skipped || r.Errored }
 
 // Run executes the check and returns its result. A failing check is a Result with Passed=false, not an error; an error
 // means the check could not be run at all (missing executable, cannot create the log).
 func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (Result, error) {
 	res := Result{Argv: spec.Argv}
 	res.Name = spec.Name
+	if spec.InProcess != nil {
+		return runInProcess(ctx, pm, spec, onLine)
+	}
 	if len(spec.Argv) == 0 {
 		return res, fmt.Errorf("checks: %s has no command", spec.Name)
 	}

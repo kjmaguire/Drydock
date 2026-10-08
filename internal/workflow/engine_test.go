@@ -712,3 +712,55 @@ func TestGraphValidation(t *testing.T) {
 		}
 	}
 }
+
+// A request with Retry parks the node; the human's answer makes the node run AGAIN with the inbox it had (the owed work is
+// not skipped), exactly once, and its successor runs once. Without Retry the answer would have been the node's output.
+func TestRetryRequestRerunsTheNodeAfterTheAnswer(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	var calls atomic.Int32
+	var sawInbox atomic.Value
+	gate := func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+		n := calls.Add(1)
+		var v string
+		if len(in.Inbox) > 0 {
+			_ = json.Unmarshal(in.Inbox[0].Value, &v)
+		}
+		sawInbox.Store(fmt.Sprintf("%d:%s", n, v))
+		if n == 1 {
+			return wf.NodeOutput{Request: &wf.RequestSpec{Kind: "approval", Title: "gate", Retry: true}}, nil
+		}
+		effect(dir, "turn")
+		return wf.NodeOutput{Value: val("turn done"), Route: "done"}, nil
+	}
+	g := wf.NewGraph("retry-req").
+		Add(wf.Route("start", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+			return wf.NodeOutput{Value: val("payload")}, nil
+		}), wf.AgentTask("turn", gate), wf.Route("after", eff(dir, "after", ""))).
+		Edge("start", "turn").EdgeWhen("turn", "after", "done").Start("start")
+	e.eng.Register(g)
+	run, _ := e.eng.Start(context.Background(), "retry-req", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run, wf.StatusWaitingHuman)
+	pend, _ := e.eng.Pending(context.Background(), run)
+	if len(pend) != 1 || !pend[0].Spec.Retry || len(pend[0].Inbox) != 1 {
+		t.Fatalf("pending %+v", pend)
+	}
+	if got := effects(dir); got["turn"] != 0 || got["after"] != 0 {
+		t.Fatalf("nothing downstream may run while parked: %v", got)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: "approved", By: "human:test"}); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, e.eng, run, wf.StatusCompleted)
+	got := effects(dir)
+	if got["turn"] != 1 || got["after"] != 1 || calls.Load() != 2 {
+		t.Fatalf("effects %v calls %d", got, calls.Load())
+	}
+	if s := sawInbox.Load().(string); s != "2:payload" {
+		t.Fatalf("the rerun must see the original inbox, saw %q", s)
+	}
+	if err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: "approved"}); err == nil {
+		t.Fatal("a second answer to the same request must be refused")
+	}
+}
