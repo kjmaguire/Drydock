@@ -249,7 +249,7 @@ func (l *Linear) build() {
 			}
 			out = append(out, map[string]any{"id": i.ID, "identifier": i.Identifier, "title": i.Title, "description": i.Description, "url": i.URL,
 				"priority": map[string]any{"value": i.Priority, "name": [...]string{"No priority", "Urgent", "High", "Medium", "Low"}[i.Priority]},
-				"state": map[string]any{"name": i.State}, "assignee": map[string]any{"name": i.Assignee}, "labels": labels,
+				"state":    map[string]any{"name": i.State}, "assignee": map[string]any{"name": i.Assignee}, "labels": labels,
 				"createdAt": i.Created.UTC().Format(time.RFC3339Nano), "updatedAt": i.Updated.UTC().Format(time.RFC3339Nano), "team": map[string]any{"key": i.Team}, "parent": i.Parent})
 		}
 		return jsonResult(map[string]any{"issues": out, "nextCursor": next, "hasNextPage": next != ""})

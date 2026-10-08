@@ -2,7 +2,6 @@ package packs
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
@@ -105,4 +104,3 @@ func (s *Store) Start(ctx context.Context, every time.Duration) (stop func()) {
 	return func() { cancel(); <-done }
 }
 
-var _ = sql.ErrNoRows
