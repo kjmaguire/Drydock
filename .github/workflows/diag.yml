@@ -1,0 +1,14 @@
+name: diag
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/diag-*"]
+jobs:
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello-ubuntu
+  windows:
+    runs-on: windows-latest
+    steps:
+      - run: echo hello-windows
