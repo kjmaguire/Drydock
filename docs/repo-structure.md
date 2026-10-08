@@ -5,8 +5,11 @@ Scope: where things live and the dependency rules between packages. `internal/` 
 ```
 /go.mod                  module github.com/kjmaguire/drydock (go 1.26.0)
 /main.go, /app/          Wails v3 shell and services — the only place that imports Wails    [not built]
-/ui/                     React + TypeScript (Vite)                                           [not built]
-/Taskfile.yml            go-task: build, test, lint, generate, package                       [not built]
+/ui/                     React + TypeScript (Vite): HTTP/SSE dev transport, screens for what the core has [built; tested in Chromium on Linux against the Go core, never run in WebView2]
+/Taskfile.yml            go-task: ui:install, ui:build, ui:test, ui:e2e, go:test, build:dev  [written; go-task itself not run here; lint, generate, package tasks not built]
+/cmd/
+  drydock-dev/           core + HTTP/SSE dev transport serving ui/dist (development tool)
+  drydock-e2e/           TEST HARNESS for ui/e2e: real core + scripted fakeagent as the claude adapter (never shipped)
 /internal/
   ids/                   prefixed random ids
   storage/               SQLite (modernc), writer/reader pools, embedded goose migrations
@@ -46,5 +49,5 @@ Dependency direction (arrows = "may import"): `app → everything`; `pipeline �
 
 ## Open questions / unverified
 
-- The `app/` and `ui/` layout is specified in [`ui.md`](ui.md); nothing exists yet.
+- `ui/` status: built against the development HTTP/SSE transport. 62 vitest tests (event store, Markdown sanitization, client error handling, review panel, PR view) and Playwright e2e against the real Go core with the scripted fake agent pass on Linux/Chromium. Nothing has run in WebView2 or on Windows; `ui/src/api/wails.ts` is written against `app/bridge_windows.go` but is exercised only with fakes and is not selected by `main.tsx`. Monaco, xterm, React Flow, cmdk and TanStack Virtual are not used. The layout of `app/` is specified in [`ui.md`](ui.md) section 11.
 - Whether the Wails module (beta) should live in the root module or its own is undecided; the root module is assumed.
