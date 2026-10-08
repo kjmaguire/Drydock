@@ -15,11 +15,11 @@ func TestUnreadAndMentionCounts(t *testing.T) {
 	e.join(r, sam, "")
 	e.join(r, Agent(a), "dev")
 
-	e.say(r, kyle, "one")                // 1: sam unread
-	e.say(r, Agent(a), "two @sam")       // 2: sam unread + mention
-	e.say(r, kyle, "three")              // 3: nobody mentioned
-	e.say(r, sam, "four (mine)")         // 4: own message never counts
-	e.say(r, kyle, "five @sam @alice")   // 5: mention for sam and alice
+	e.say(r, kyle, "one")              // 1: sam unread
+	e.say(r, Agent(a), "two @sam")     // 2: sam unread + mention
+	e.say(r, kyle, "three")            // 3: nobody mentioned
+	e.say(r, sam, "four (mine)")       // 4: own message never counts
+	e.say(r, kyle, "five @sam @alice") // 5: mention for sam and alice
 
 	get := func(who Author) Unread {
 		t.Helper()
@@ -290,19 +290,14 @@ func TestAgentMessagesNeverTouchApprovals(t *testing.T) {
 	if nApproval != 0 {
 		t.Fatalf("%d approval messages exist", nApproval)
 	}
+	open := false
 	items, _ := e.svc.NeedsYou(e.ctx, e.project)
-	if len(items) != 2 { // the approval itself, and the (non-backed-by-row? it is backed) question is covered by the row
-		for _, it := range items {
-			t.Logf("%+v", it)
-		}
-	}
 	for _, it := range items {
-		if it.Key == "approval:apr_sec" {
-			goto still
-		}
+		open = open || it.Key == "approval:apr_sec"
 	}
-	t.Fatal("approval no longer open")
-still:
+	if !open {
+		t.Fatal("approval no longer open")
+	}
 
 	// the legitimate path: the approvals service decides, then the writer records it
 	e.exec(`UPDATE approvals SET status='APPROVED', decision='approved', decided_by='human:kyle' WHERE id='apr_sec'`)

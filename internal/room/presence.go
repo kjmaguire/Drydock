@@ -323,6 +323,7 @@ func (t *Tracker) follow(ctx context.Context, ch <-chan events.Event, cancel fun
 }
 
 func (t *Tracker) apply(e events.Event) {
+	e.Time = e.Time.Truncate(time.Millisecond).UTC() // the log keeps milliseconds; live and replayed views must agree
 	t.mu.Lock()
 	if e.Seq != 0 && e.Seq <= t.last {
 		t.mu.Unlock()

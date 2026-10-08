@@ -1,0 +1,239 @@
+# Drydock MCP catalog (docs/mcp.md section 9). Embedded in the binary; users add servers through the same schema
+# (<app data>/mcp/user-servers.yaml or the per-project config) and they pass the same allowlist, cache, shaping and egress
+# pipeline. Fields marked "extension" in catalog.go are additions to the schema in docs/mcp.md.
+#
+# Evidence: docs/phase0/tooling-integrations.md sections 5 and 6. No hosted server below was contacted in Phase 0, so every
+# result size, rate limit and commercial term is UNVERIFIED and every entry is terms_status: unverified.
+# D14: Sentry's FSL server, Aikido's AGPL server and Notion's retired local server are never bundled; the stdio entries
+# are user-install templates (template: true, bundled: false) that start only when a project enables them.
+schema: 1
+servers:
+  - id: mslearn
+    display: Microsoft Learn
+    transport: http
+    # ?maxTokenBudget=N truncates search responses at the source (tooling-integrations section 6); added via shape.url_params.
+    url: https://learn.microsoft.com/api/mcp
+    auth: {kind: none}
+    trust: public_docs
+    data_class: public_docs
+    read_only_tools: [microsoft_docs_search, microsoft_docs_fetch, microsoft_code_sample_search]
+    tools:
+      - name: microsoft_docs_search
+        description: Search official Microsoft and Azure documentation; returns up to 10 concise content chunks.
+        input_schema: {type: object, required: [query], properties: {query: {type: string, description: "Short natural-language question"}}}
+      - name: microsoft_docs_fetch
+        description: Fetch one Microsoft Learn page as markdown. Use after a search when a page is needed in full.
+        input_schema: {type: object, required: [url], properties: {url: {type: string, description: "A learn.microsoft.com URL"}}}
+      - name: microsoft_code_sample_search
+        description: Search code samples in official Microsoft documentation.
+        input_schema: {type: object, required: [query], properties: {query: {type: string}, language: {type: string}}}
+    cache: {ttl: 24h, scope: global}
+    shape: {max_inline_bytes: 8192, url_params: {maxTokenBudget: 2000}}
+    egress: {max_arg_bytes: 1024, scan_secrets: true, deny_code_fences: true}
+    license:
+      server: MIT
+      content: CC-BY-4.0
+      attribution: "Content from Microsoft Learn (learn.microsoft.com), licensed CC BY 4.0."
+      bundled: false
+      notes: "Repository content CC BY 4.0, code MIT; the Microsoft Learn Terms of Use apply to the service. Commercial-use terms are unverified."
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [architect, ux, frontend, backend, database, devops, security]
+    default_enabled: true
+
+  - id: cfdocs
+    display: Cloudflare documentation
+    transport: http
+    # Stateless streamable HTTP; /sse is only an alias and legacy SSE GET returns 410 (docs/mcp.md section 9).
+    url: https://docs.mcp.cloudflare.com/mcp
+    auth: {kind: none}
+    trust: public_docs
+    data_class: public_docs
+    read_only_tools: [search_cloudflare_documentation, migrate_pages_to_workers_guide]
+    tools:
+      - name: search_cloudflare_documentation
+        description: Search the Cloudflare documentation; returns results with similarity, url, title and text.
+        input_schema: {type: object, required: [query], properties: {query: {type: string, description: "Short natural-language question"}}}
+      - name: migrate_pages_to_workers_guide
+        description: Guide for migrating a Cloudflare Pages project to Workers.
+        input_schema: {type: object, properties: {}}
+    cache: {ttl: 24h, scope: global}
+    shape: {max_inline_bytes: 8192}
+    egress: {max_arg_bytes: 1024, scan_secrets: true, deny_code_fences: true}
+    license:
+      server: Apache-2.0
+      content: CC-BY-4.0
+      attribution: "Content from the Cloudflare documentation (developers.cloudflare.com), licensed CC BY 4.0."
+      bundled: false
+      notes: "Best-effort service, no SLA found; results are cached. Code samples MIT."
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [architect, ux, frontend, backend, database, devops, security]
+    default_enabled: true
+
+  - id: gh
+    display: GitHub (hosted MCP)
+    transport: http
+    url: https://api.githubcopilot.com/mcp/
+    # OAuth is also supported by the server; the gateway uses a PAT held by Drydock. Header support in the agent CLIs is
+    # irrelevant here: the gateway, not the CLI, talks to this server.
+    auth: {kind: bearer, header: Authorization, scheme: Bearer, keyring: "mcp/gh"}
+    trust: private_data
+    data_class: private
+    # Read subset enabled by the catalog (docs/mcp.md section 9). Names other than the ones listed in
+    # tooling-integrations section 6 (search_*, issue_read) were taken from the server's public tool list and are unverified.
+    read_only_tools: [pull_request_read, actions_get, actions_list, get_job_logs, list_issues, issue_read, search_code, search_issues, search_pull_requests, search_repositories, get_file_contents, list_commits, get_commit]
+    side_effects_tools: [pull_request_review_write, create_pull_request, merge_pull_request, issue_write, add_issue_comment, add_reply_to_pull_request_comment, add_comment_to_pending_review, create_or_update_file, delete_file, push_files, create_branch, create_repository, fork_repository, update_pull_request, update_pull_request_branch, update_issue_comment, sub_issue_write, actions_run_trigger, enable_pr_auto_merge, disable_pr_auto_merge, resolve_review_thread, unresolve_review_thread, request_copilot_review]
+    tools:
+      - name: pull_request_read
+        description: Read a pull request (method get, get_diff, get_status, get_files, get_commits, get_review_comments, get_reviews, get_comments, get_check_runs).
+        input_schema:
+          type: object
+          required: [method, owner, repo, pullNumber]
+          properties:
+            method: {type: string, enum: [get, get_diff, get_status, get_files, get_commits, get_review_comments, get_reviews, get_comments, get_check_runs]}
+            owner: {type: string}
+            repo: {type: string}
+            pullNumber: {type: integer}
+            page: {type: integer}
+            perPage: {type: integer}
+            after: {type: string}
+      - name: actions_get
+        description: Get details of a GitHub Actions workflow, run, job or artifact.
+        input_schema: {type: object, additionalProperties: true}
+      - name: actions_list
+        description: List GitHub Actions workflows, runs, jobs or artifacts.
+        input_schema: {type: object, additionalProperties: true}
+      - name: get_job_logs
+        description: Get the logs of a GitHub Actions job.
+        input_schema: {type: object, additionalProperties: true}
+      - name: list_issues
+        description: List issues of a repository.
+        input_schema: {type: object, additionalProperties: true}
+      - name: pull_request_review_write
+        description: Create, submit or resolve pull request reviews and threads (approval-gated).
+        input_schema: {type: object, additionalProperties: true}
+      - name: create_pull_request
+        description: Create a pull request (approval-gated).
+        input_schema: {type: object, additionalProperties: true}
+      - name: merge_pull_request
+        description: Merge a pull request (approval-gated).
+        input_schema: {type: object, additionalProperties: true}
+    # PRs, issues and logs of the user's own repositories: private, short TTL, per project.
+    cache: {ttl: 60s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: MIT, bundled: false, notes: "Hosted by GitHub. A local Go server (github.com/github/github-mcp-server/v2, stdio, MIT) is an option, not bundled in v1."}
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [architect, devops, qa, security, reviewer]
+
+  - id: ctx7
+    display: Context7
+    transport: http
+    url: https://mcp.context7.com/mcp
+    # A free API key from context7.com/dashboard raises the rate limits; the server works without one.
+    auth: {kind: bearer, header: Authorization, scheme: Bearer, keyring: "mcp/ctx7", optional: true}
+    trust: third_party_docs
+    data_class: public_docs
+    read_only_tools: [resolve-library-id, query-docs]
+    tools:
+      - name: resolve-library-id
+        description: Resolve a library name to a Context7 library id.
+        input_schema: {type: object, required: [query, libraryName], properties: {query: {type: string}, libraryName: {type: string}}}
+      - name: query-docs
+        description: Query the documentation of a Context7 library id.
+        input_schema: {type: object, required: [libraryId, query], properties: {libraryId: {type: string}, query: {type: string}}}
+    cache: {ttl: 24h, scope: global}
+    shape: {max_inline_bytes: 8192}
+    egress: {max_arg_bytes: 1024, scan_secrets: true, deny_code_fences: true}
+    license:
+      server: MIT
+      bundled: false
+      notes: "MCP server repo is MIT; the backend, parsing and crawling engines are private. Community-submitted docs carry an accuracy and security disclaimer: results get extra marking and are never auto-attached to packs."
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [architect, ux, frontend, backend, database, devops, security]
+
+  - id: linear
+    display: Linear (hosted MCP, read-only endpoint)
+    transport: http
+    # The read-only endpoint is the default for agents (docs/mcp.md section 9). Snippet-level evidence only: UNVERIFIED.
+    url: https://mcp.linear.app/mcp/readonly
+    auth: {kind: oauth_dcr, header: Authorization, scheme: Bearer, keyring: "mcp/linear"}
+    trust: private_data
+    data_class: private
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: LicenseRef-Proprietary-Hosted, bundled: false, notes: "Hosted, not open source. OAuth 2.1 with dynamic client registration; an OAuth token or API key is also accepted as a bearer token. Terms unverified."}
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [pm, architect, ux]
+
+  - id: notion
+    display: Notion (hosted MCP)
+    transport: http
+    # /sse is the documented fallback endpoint. The local makenotion/notion-mcp-server is retired and unsupported (D14).
+    url: https://mcp.notion.com/mcp
+    auth: {kind: oauth2_pkce, header: Authorization, scheme: Bearer, keyring: "mcp/notion"}
+    trust: private_data
+    data_class: private
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: LicenseRef-Proprietary-Hosted, bundled: false, notes: "OAuth 2.0 with PKCE, interactive only. Access-token lifetime of 1 h is snippet-only. Terms unverified."}
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [pm, architect, ux]
+
+  - id: sentry
+    display: Sentry (hosted MCP)
+    transport: http
+    url: https://mcp.sentry.dev/mcp
+    # OAuth, or Authorization: Sentry-Bearer <SENTRY_ACCESS_TOKEN>.
+    auth: {kind: bearer, header: Authorization, scheme: Sentry-Bearer, keyring: "mcp/sentry"}
+    trust: private_data
+    data_class: private
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "The server is source-available (FSL), not OSI, with a competing-use restriction: use the hosted endpoint, never bundle (D14)."}
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [devops, qa, security]
+
+  # ---- user-install templates (never bundled, never started unless a project enables them) ----
+  - id: sentryx
+    display: Sentry (user-installed stdio server, template)
+    transport: stdio
+    command:
+      argv: ["npx", "-y", "@sentry/mcp-server@latest"]
+      pin: "@sentry/mcp-server@<pin an exact version before enabling>"
+      # The documented invocation passes --access-token on the command line; argv is visible to other processes, so the
+      # token goes through the environment instead. Whether the package reads SENTRY_ACCESS_TOKEN is UNVERIFIED.
+      secret_env: {SENTRY_ACCESS_TOKEN: "mcp/sentry"}
+    auth: {kind: none}
+    trust: private_data
+    data_class: private
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "Not bundled (D14). Scopes needed: org:read project:read project:write team:read team:write event:write."}
+    health: {probe: tools/list, timeout: 10s}
+    terms_status: unverified
+    recommended_roles: [devops, qa, security]
+    template: true
+
+  - id: aikido
+    display: Aikido (user-installed stdio server, template)
+    transport: stdio
+    command:
+      argv: ["npx", "-y", "@aikidosec/mcp@1.0.27"]
+      pin: "@aikidosec/mcp@1.0.27"
+      secret_env: {AIKIDO_API_KEY: "mcp/aikido"}
+    auth: {kind: none}
+    trust: private_data
+    data_class: private
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: AGPL-3.0, bundled: false, notes: "AGPL or commercial: never bundled or embedded, user-installed separate process only, legal review first (D14)."}
+    health: {probe: tools/list, timeout: 10s}
+    terms_status: unverified
+    recommended_roles: [security]
+    template: true

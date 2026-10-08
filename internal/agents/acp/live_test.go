@@ -79,6 +79,9 @@ func TestLiveACPHandshake(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			cmd, args := locate(t, c)
 			home := t.TempDir()
+			if err := os.MkdirAll(home+"/.codex", 0o755); err != nil { // codex refuses a CODEX_HOME that does not exist
+				t.Fatal(err)
+			}
 			env := append([]string{"HOME=" + home, "USERPROFILE=" + home, "XDG_CONFIG_HOME=" + home + "/.config", "XDG_DATA_HOME=" + home + "/.local/share",
 				"XDG_STATE_HOME=" + home + "/.local/state", "XDG_CACHE_HOME=" + home + "/.cache", "CODEX_HOME=" + home + "/.codex"}, c.extra...)
 			ad := acp.New(acp.Config{ID: c.name, Command: cmd, Args: args, Env: env, ScrubEnv: true, StartTimeout: 120 * time.Second})
