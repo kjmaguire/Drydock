@@ -96,7 +96,7 @@ func ReviewPrompt(t tasks.Task, evidence []tasks.Evidence, diff string) string {
 	}
 	fmt.Fprintf(&sb, "\nDiff of the change:\n```diff\n%s\n```\n", truncate(diff, 12000))
 	sb.WriteString(`
-Review for correctness against the task and acceptance criteria, missed edge cases, and unintended changes. You may read files in the working directory. Do not modify anything.
+Review for correctness against the task and acceptance criteria, missed edge cases, and unintended changes. Answer REVISE only for problems that affect correctness, the stated requirements or security; style preferences, extra abstraction and tests for cases that cannot happen are not reasons to revise. You may read files in the working directory. Do not modify anything.
 Finish with exactly one JSON object on its own line, and nothing after it:
 {"verdict":"SHIP","feedback":""}   when the change is correct and complete, or
 {"verdict":"REVISE","feedback":"specific, actionable problems"}   otherwise.`)

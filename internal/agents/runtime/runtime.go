@@ -37,7 +37,7 @@ type Runtime struct {
 	// Instructions, if set, returns the standing instructions the human wrote for an agent. Spawn adds them to the session's
 	// system prompt (cfg.Spec.SystemAppend), so every path that starts an agent (workflow turns, room replies, templates)
 	// carries the agent's purpose without each one having to remember it.
-	Instructions func(ctx context.Context, agentID string) string
+	Instructions func(ctx context.Context, agentID, role string) (text string, practicesVersion int)
 }
 
 // MCPAttachment is what the MCP hook reports for one session. It never carries the run's bearer token.
@@ -100,8 +100,9 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	}
 	runID := ids.New("arun")
 	if r.Instructions != nil && cfg.AgentID != "" {
-		if s := strings.TrimSpace(r.Instructions(ctx, cfg.AgentID)); s != "" {
-			cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + s)
+		if s, pv := r.Instructions(ctx, cfg.AgentID, cfg.Spec.Role); strings.TrimSpace(s) != "" {
+			cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + strings.TrimSpace(s))
+			cfg.Spec.PracticesVersion = pv
 		}
 	}
 	var att MCPAttachment
@@ -133,7 +134,7 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 			return err
 		})
 	}
-	r.publish(ctx, "agent.started", cfg, m.RunID, map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort, "instructions": cfg.Spec.SystemAppend != ""})
+	r.publish(ctx, "agent.started", cfg, m.RunID, map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort, "instructions": cfg.Spec.SystemAppend != "", "practices": cfg.Spec.PracticesVersion})
 	go m.watchExit()
 	return m, nil
 }

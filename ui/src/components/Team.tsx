@@ -5,6 +5,7 @@ import { useClient } from '../state/context';
 import { useAdapters, useLive } from '../state/hooks';
 import { Badge, ErrorNote, Page, PresenceDot } from './common';
 import { ReadOnlyNote, useReadOnly } from '../state/license';
+import { ClaudePracticesPanel, useClaudePractices } from './ClaudePractices';
 
 const CAP_LABEL: [keyof Capabilities, string][] = [
   ['streaming', 'Streaming'],
@@ -280,6 +281,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
   const [adapter, setAdapter] = useState('');
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
+  const [practices, setPractices] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | undefined>();
   const ro = useReadOnly();
@@ -287,13 +289,14 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
   const adapterId = chosen?.id ?? '';
   const canModel = chosen?.capabilities?.modelSelection === true;
   const canEffort = chosen?.capabilities?.effortControl === true;
+  const info = useClaudePractices(adapterId, role, model, effort, setModel, setEffort);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(undefined);
     try {
-      await client.agentCreate({ projectId, name: name.trim(), role: role.trim(), purpose: purpose.trim(), adapter: adapterId, model: canModel ? model.trim() : '', effort: canEffort ? effort.trim() : '' });
+      await client.agentCreate({ projectId, name: name.trim(), role: role.trim(), purpose: purpose.trim(), adapter: adapterId, model: canModel ? model.trim() : '', effort: canEffort ? effort.trim() : '', practices: adapterId === 'claude' ? practices : undefined });
       setName('');
       setRole('');
       setPurpose('');
@@ -338,6 +341,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
         </select>
       </label>
       <ModelEffortFields caps={chosen?.capabilities} model={model} effort={effort} setModel={setModel} setEffort={setEffort} />
+      <ClaudePracticesPanel info={info} on={practices} onChange={setPractices} />
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy || ro.readOnly || !name.trim() || !role.trim() || !adapterId} title={ro.readOnly ? ro.reason : undefined}>
           Create agent
@@ -356,10 +360,13 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
   const [purpose, setPurpose] = useState(agent.purpose ?? '');
   const [model, setModel] = useState(agent.model);
   const [effort, setEffort] = useState(agent.effort);
+  const [practices, setPractices] = useState(agent.practices !== false);
   const [busy, setBusy] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [savedAs, setSavedAs] = useState('');
   const [error, setError] = useState<Error | undefined>();
+  // an existing agent keeps its model and effort: the recommendation is shown, not applied over them
+  const info = useClaudePractices(agent.adapter, role, 'keep', 'keep', () => undefined, () => undefined);
   const run = async (what: string, f: () => Promise<unknown>) => {
     setBusy(what);
     setError(undefined);
@@ -374,7 +381,7 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
   };
   const save = (e: FormEvent) => {
     e.preventDefault();
-    return run('save', () => client.agentUpdate({ id: agent.id, name: name.trim(), role: role.trim(), purpose: purpose.trim(), model: model.trim(), effort: effort.trim() }));
+    return run('save', () => client.agentUpdate({ id: agent.id, name: name.trim(), role: role.trim(), purpose: purpose.trim(), model: model.trim(), effort: effort.trim(), practices: agent.adapter === 'claude' ? practices : undefined }));
   };
   return (
     <form className="form form-grid" onSubmit={save} aria-label={`Edit ${agent.name}`} data-testid="agent-editor">
@@ -401,6 +408,7 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
         <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={4} maxLength={4000} placeholder={PURPOSE_HELP} />
       </label>
       <ModelEffortFields caps={adapter?.capabilities} model={model} effort={effort} setModel={setModel} setEffort={setEffort} />
+      <ClaudePracticesPanel info={info} on={practices} onChange={setPractices} />
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy !== '' || ro.readOnly || !name.trim() || !role.trim()} title={ro.readOnly ? ro.reason : undefined}>
           {busy === 'save' ? 'Saving...' : 'Save changes'}

@@ -67,6 +67,11 @@ func TestAgentTemplatesAreDefinedOnceAndAppliedToProjects(t *testing.T) {
 		t.Fatalf("named copy %+v", res.Agent)
 	}
 
+	// practices default on and are carried by the template
+	if tpl.Practices == nil || !*tpl.Practices || !ag.Practices {
+		t.Fatalf("practices should default on: template %v agent %v", tpl.Practices, ag.Practices)
+	}
+
 	// no link: editing the template changes nothing that exists
 	a.call("agenttemplate.save", core.AgentTemplate{ID: tpl.ID, Name: "Payments dev", Role: "backend", Purpose: "Changed.", Adapter: "claude"}, &tpl)
 	got, err := a.c.GetAgent(context.Background(), ag.ID)

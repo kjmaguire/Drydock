@@ -46,6 +46,8 @@ export interface Agent {
   permissionMode: string;
   /** The human's standing instructions for this agent, sent with every run. */
   purpose?: string;
+  /** Whether the Claude best-practices text is added to this agent's system prompt (only for the claude adapter). */
+  practices?: boolean;
   status: string;
 }
 
@@ -59,6 +61,7 @@ export interface AgentSpec {
   providerId?: string;
   permissionMode?: string;
   purpose?: string;
+  practices?: boolean;
 }
 
 /** Only the fields that are set change. The adapter cannot change: make a new agent for a different CLI. */
@@ -70,6 +73,7 @@ export interface AgentUpdate {
   model?: string;
   effort?: string;
   permissionMode?: string;
+  practices?: boolean;
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */

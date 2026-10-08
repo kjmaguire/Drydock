@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -33,7 +34,10 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 	if w.Purpose == "" || w.Effort != "high" {
 		t.Fatalf("agent %+v", w)
 	}
-	ins := a.c.Runtime.Instructions(ctx, w.ID)
+	ins, pv := a.c.Runtime.Instructions(ctx, w.ID, "backend")
+	if !strings.Contains(ins, "Working practices for this team") || pv != claude.PracticesVersion {
+		t.Fatalf("a Claude agent gets the best-practices text by default: version %d, text %q", pv, ins)
+	}
 	if !strings.Contains(ins, "Own the payments service. Never touch the UI.") || !strings.Contains(ins, "You are Pay") || !strings.Contains(ins, "always in force") {
 		t.Fatalf("instructions = %q", ins)
 	}
@@ -41,8 +45,9 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a.c.Runtime.Instructions(ctx, r.ID); got != "" {
-		t.Fatalf("an agent without a purpose must add nothing, got %q", got)
+	rv, _ := a.c.Runtime.Instructions(ctx, r.ID, "reviewer")
+	if strings.Contains(rv, "standing instructions") || !strings.Contains(rv, "You did not write this change") {
+		t.Fatalf("an agent without a purpose gets the practices for its role and no purpose text, got %q", rv)
 	}
 
 	// values that would fail (or misbehave) when the CLI starts are refused up front
@@ -64,7 +69,8 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 		t.Fatalf("updated %+v", u)
 	}
 	got, _ := a.c.GetAgent(ctx, w.ID)
-	if got.Agent.Model != "opus" || !strings.Contains(a.c.Runtime.Instructions(ctx, w.ID), "Own billing only.") {
+	ins2, _ := a.c.Runtime.Instructions(ctx, w.ID, "backend")
+	if got.Agent.Model != "opus" || !strings.Contains(ins2, "Own billing only.") {
 		t.Fatalf("stored %+v", got.Agent)
 	}
 	for name, params := range map[string]map[string]any{
@@ -109,5 +115,67 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 	}
 	if err := a.callErr("agent.update", map[string]any{"id": w.ID, "model": "haiku"}); err == nil {
 		t.Fatal("a removed agent can still be edited")
+	}
+}
+
+func TestClaudePracticesAreOnByDefaultPerRoleAndCanBeTurnedOff(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	ctx := context.Background()
+	off := false
+	var on, no core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "On", Adapter: "claude", Role: "backend", Purpose: "Own billing."}, &on)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Off", Adapter: "claude", Role: "backend", Purpose: "Own billing.", Practices: &off}, &no)
+	if !on.Practices || no.Practices {
+		t.Fatalf("practices flags %v %v", on.Practices, no.Practices)
+	}
+
+	// the text depends on the role the session plays: a worker, the reviewer turn of the same agent, a planner
+	work, v := a.c.Runtime.Instructions(ctx, on.ID, "backend")
+	rev, _ := a.c.Runtime.Instructions(ctx, on.ID, "reviewer")
+	plan, _ := a.c.Runtime.Instructions(ctx, on.ID, "architect")
+	if v != claude.PracticesVersion || !strings.Contains(work, "Never skip, delete or weaken a test") || strings.Contains(work, "You do not modify files") {
+		t.Fatalf("worker text: %q", work)
+	}
+	if !strings.Contains(rev, "You do not modify files") || strings.Contains(rev, "Never skip, delete") {
+		t.Fatalf("reviewer text: %q", rev)
+	}
+	if !strings.Contains(plan, "do not write or change code") {
+		t.Fatalf("planner text: %q", plan)
+	}
+	for _, text := range []string{work, rev, plan} {
+		if !strings.Contains(text, "Own billing.") || strings.Index(text, "Working practices") > strings.Index(text, "Own billing.") {
+			t.Fatalf("practices come first, then the human's purpose: %q", text)
+		}
+	}
+
+	// off: only the purpose is sent, and no practices version is recorded
+	only, v2 := a.c.Runtime.Instructions(ctx, no.ID, "backend")
+	if strings.Contains(only, "Working practices") || !strings.Contains(only, "Own billing.") || v2 != 0 {
+		t.Fatalf("practices off: version %d %q", v2, only)
+	}
+	// switch it back on through an update
+	on2 := true
+	var u core.Agent
+	a.call("agent.update", map[string]any{"id": no.ID, "practices": on2}, &u)
+	again, v3 := a.c.Runtime.Instructions(ctx, no.ID, "backend")
+	if !u.Practices || !strings.Contains(again, "Working practices") || v3 == 0 {
+		t.Fatalf("after switching on: %+v %q", u, again)
+	}
+
+	// the method the UI reads: the text, the family and the suggested model and effort
+	var cp core.ClaudePractices
+	a.call("claude.practices", map[string]string{"role": "Architect"}, &cp)
+	if cp.Family != "planner" || cp.Preset.Model != "opus" || cp.Preset.Effort != "high" || cp.Text == "" {
+		t.Fatalf("practices for architect: %+v", cp)
+	}
+	a.call("claude.practices", map[string]string{"role": "backend"}, &cp)
+	if cp.Preset.Model != "sonnet" || cp.Preset.Effort != "medium" {
+		t.Fatalf("practices for backend: %+v", cp)
+	}
+	// the text stays short: every line is paid for on every run
+	if n := len(strings.Fields(work)); n > 330 {
+		t.Fatalf("the practices text grew to %d words", n)
 	}
 }

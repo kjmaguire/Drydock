@@ -46,7 +46,7 @@ describe('Team: purpose, model and effort', () => {
     expect(Array.from(effort.options).map((o) => o.value)).toEqual(['', 'low', 'medium', 'high', 'xhigh', 'max']);
     fireEvent.change(effort, { target: { value: 'max' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
-    await waitFor(() => expect(agentCreate).toHaveBeenCalledWith({ projectId: 'prj_1', name: 'Pay', role: 'backend', purpose: 'Own payments.', adapter: 'claude', model: 'opus', effort: 'max' }));
+    await waitFor(() => expect(agentCreate).toHaveBeenCalledWith({ projectId: 'prj_1', name: 'Pay', role: 'backend', purpose: 'Own payments.', adapter: 'claude', model: 'opus', effort: 'max', practices: true }));
   });
 
   it('keeps effort free text for an adapter that does not list its levels', async () => {
@@ -67,7 +67,7 @@ describe('Team: purpose, model and effort', () => {
     fireEvent.change(ed.getByLabelText('Effort'), { target: { value: 'low' } });
     fireEvent.change(ed.getByLabelText('Purpose'), { target: { value: 'Billing only.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(agentUpdate).toHaveBeenCalledWith({ id: 'agt_1', name: 'Pay', role: 'backend', purpose: 'Billing only.', model: 'haiku', effort: 'low' }));
+    await waitFor(() => expect(agentUpdate).toHaveBeenCalledWith({ id: 'agt_1', name: 'Pay', role: 'backend', purpose: 'Billing only.', model: 'haiku', effort: 'low', practices: true }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     expect(screen.queryByTestId('agent-editor')).toBeNull();
   });
@@ -168,5 +168,54 @@ describe('Agent environment and isolation', () => {
     const open = await screen.findByTestId('inspector-isolation');
     expect(open.getAttribute('data-level')).toBe('open');
     expect(open.textContent).toContain('not held in');
+  });
+});
+
+describe('Claude best practices', () => {
+  const practices = (role: string) => ({
+    version: 1,
+    role,
+    family: role === 'reviewer' ? ('reviewer' as const) : ('worker' as const),
+    text: role === 'reviewer' ? 'Working practices ... You do not modify files.' : 'Working practices ... Never skip, delete or weaken a test',
+    preset: role === 'reviewer' ? { model: 'sonnet', effort: 'high', why: 'Review is where verification matters.' } : { model: 'sonnet', effort: 'medium', why: 'Sonnet handles most coding tasks.' },
+  });
+
+  it('fills the recommended model and effort for the role until the human changes them, and shows exactly what is added', async () => {
+    const claudePractices = vi.fn(async (role: string) => practices(role));
+    const agentCreate = vi.fn(async (s: object) => ({ ...agent(), ...s }) as Agent);
+    show([], { claudePractices, agentCreate });
+    fireEvent.change(await screen.findByLabelText('Role', { exact: true }), { target: { value: 'backend' } });
+    const box = await screen.findByTestId('claude-practices');
+    await waitFor(() => expect((screen.getByLabelText('Model') as HTMLInputElement).value).toBe('sonnet'));
+    expect((screen.getByLabelText('Effort') as HTMLSelectElement).value).toBe('medium');
+    expect(box.textContent).toContain('Recommended for a backend (worker)');
+    expect(within(box).getByTestId('claude-practices-text').textContent).toContain('Never skip, delete or weaken a test');
+    // a new role moves the recommendation while the fields are still the recommended ones
+    fireEvent.change(screen.getByLabelText('Role', { exact: true }), { target: { value: 'reviewer' } });
+    await waitFor(() => expect((screen.getByLabelText('Effort') as HTMLSelectElement).value).toBe('high'));
+    // once the human picks something else, the recommendation stops overwriting it
+    fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'low' } });
+    fireEvent.change(screen.getByLabelText('Role', { exact: true }), { target: { value: 'backend' } });
+    await waitFor(() => expect(claudePractices).toHaveBeenCalledWith('backend'));
+    await new Promise((r) => setTimeout(r, 300));
+    expect((screen.getByLabelText('Effort') as HTMLSelectElement).value).toBe('low');
+    // the switch is on by default and can be turned off
+    const sw = screen.getByLabelText('Follow Claude Code best practices') as HTMLInputElement;
+    expect(sw.checked).toBe(true);
+    fireEvent.click(sw);
+    fireEvent.change(screen.getByLabelText('Agent name'), { target: { value: 'Pay' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
+    await waitFor(() => expect(agentCreate).toHaveBeenCalled());
+    expect(agentCreate.mock.calls[0]![0]).toMatchObject({ role: 'backend', model: 'sonnet', effort: 'low', practices: false });
+  });
+
+  it('shows nothing for an adapter that is not Claude Code', async () => {
+    const claudePractices = vi.fn(async (role: string) => practices(role));
+    show([], { claudePractices });
+    fireEvent.change(await screen.findByLabelText('Adapter', { exact: true }), { target: { value: 'opencode' } });
+    fireEvent.change(screen.getByLabelText('Role', { exact: true }), { target: { value: 'backend' } });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByTestId('claude-practices')).toBeNull();
+    expect(claudePractices).not.toHaveBeenCalled();
   });
 });

@@ -224,6 +224,15 @@ describe('Telemetry and project development settings', () => {
     await waitFor(() => expect(projectdevSet).toHaveBeenCalled());
     expect(projectdevSet.mock.calls[0]![1]).toMatchObject({ maxParallel: 3, autoSchedule: true, respond: true, e2e: { enabled: true, command: ['npx', 'playwright', 'test'] }, preview: { enabled: false, command: [] } });
   });
+
+  it('notes that more than five agents at once rarely pays off, and only then', async () => {
+    const dev = { maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } };
+    withServices(<DevSettingsPanel projectId="prj_1" />, { projectdevGet: async () => dev, projectdevSet: async (_p: string, x) => x });
+    const box = await screen.findByLabelText('Maximum parallel agent turns');
+    expect(screen.queryByTestId('parallel-note')).toBeNull();
+    fireEvent.change(box, { target: { value: '8' } });
+    expect((await screen.findByTestId('parallel-note')).textContent).toContain('3 to 5');
+  });
 });
 
 const pack = (over: Partial<Pack> = {}): Pack => ({ id: 'godocs', title: 'Go docs', kind: 'indexed', visibility: 'private', version: 'v1', status: 'ready', pages: 1, chunks: 3, quarantined: 1, ageDays: 2, freshness: 'fresh', offline: false, ...over });

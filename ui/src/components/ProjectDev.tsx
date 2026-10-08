@@ -82,6 +82,11 @@ export function DevSettingsPanel({ projectId }: { projectId: string }) {
           Maximum parallel agent turns
           <input aria-label="Maximum parallel agent turns" inputMode="numeric" value={String(s.maxParallel)} onChange={(e) => patch({ maxParallel: numOrUndef(e.target.value) ?? 0 })} />
         </label>
+        {s.maxParallel > 5 ? (
+          <p className="muted" data-testid="parallel-note">
+            Anthropic suggests starting with 3 to 5 agents working at once: token cost grows with every active agent, coordination gets harder, and beyond that more agents rarely finish the work faster.
+          </p>
+        ) : null}
         <label className="inline">
           <input type="checkbox" checked={s.autoSchedule} onChange={(e) => patch({ autoSchedule: e.target.checked })} /> Start ready tasks automatically (scheduler)
         </label>

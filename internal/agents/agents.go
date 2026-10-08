@@ -68,8 +68,11 @@ type RunSpec struct {
 	MCPConfigPath  string   // path of the single gateway entry (docs/mcp.md)
 	ResumeID       string   // CLI session id to resume
 	SystemAppend   string   // appended to the CLI's system prompt where supported
-	AllowedTools   []string // tools the CLI may use without asking (Claude: --allowedTools)
-	ExtraArgs      []string // adapter-specific escape hatch
+	// PracticesVersion is set by the runtime when SystemAppend carries the Claude best-practices text (0 when it does not), so the
+	// run records which wording the agent was given.
+	PracticesVersion int
+	AllowedTools     []string // tools the CLI may use without asking (Claude: --allowedTools)
+	ExtraArgs        []string // adapter-specific escape hatch
 }
 
 // Session is a running agent CLI process speaking a normalized chunk stream.

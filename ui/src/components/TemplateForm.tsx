@@ -6,6 +6,7 @@ import { useAction } from '../lib/useAction';
 import { useClient } from '../state/context';
 import { ReadOnlyNote, useReadOnly } from '../state/license';
 import { ErrorNote } from './common';
+import { ClaudePracticesPanel, useClaudePractices } from './ClaudePractices';
 import { ModelEffortFields, PURPOSE_HELP, sortAdapters } from './Team';
 
 /** Define a team member once: the CLI, model, effort, role, purpose and the library servers it should get. */
@@ -35,11 +36,13 @@ export function TemplateForm({
   const [model, setModel] = useState(initial?.model ?? '');
   const [effort, setEffort] = useState(initial?.effort ?? '');
   const [mode, setMode] = useState(initial?.permissionMode ?? '');
+  const [practices, setPractices] = useState(initial?.practices !== false);
   const [picked, setPicked] = useState<string[]>(initial?.mcpServers ?? []);
   const chosen = adapters.find((a) => a.id === adapter);
   const canModel = chosen?.capabilities?.modelSelection === true;
   const canEffort = chosen?.capabilities?.effortControl === true;
   const modes = chosen?.capabilities?.permissionModes ?? [];
+  const info = useClaudePractices(adapter, role, model, effort, setModel, setEffort);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -47,7 +50,7 @@ export function TemplateForm({
       client.agentTemplateSave({
         ...(initial ? { id: initial.id } : {}),
         name: name.trim(), role: role.trim(), purpose: purpose.trim(), adapter, model: canModel ? model.trim() : '', effort: canEffort ? effort.trim() : '',
-        permissionMode: mode, providerId: initial?.providerId ?? '', mcpServers: picked,
+        permissionMode: mode, providerId: initial?.providerId ?? '', mcpServers: picked, practices: adapter === 'claude' ? practices : undefined,
       }),
     );
     if (r) onDone(r);
@@ -90,6 +93,7 @@ export function TemplateForm({
         </select>
       </label>
       <ModelEffortFields caps={chosen?.capabilities} model={model} effort={effort} setModel={setModel} setEffort={setEffort} />
+      <ClaudePracticesPanel info={info} on={practices} onChange={setPractices} />
       {modes.length > 0 ? (
         <label>
           Permission mode

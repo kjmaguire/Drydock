@@ -11,6 +11,14 @@ test('team: create an agent with purpose, model and effort; refused values say w
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await page.getByLabel(/Purpose/).fill('Own the payments service. Never touch the UI.');
   await page.getByLabel('Adapter', { exact: true }).selectOption('claude');
+  // Claude best practices: on by default, with the recommendation for the role and the exact text that is added
+  const bp = page.getByTestId('claude-practices');
+  await expect(bp).toContainText('Recommended for a backend (worker)');
+  await expect(bp.getByLabel('Follow Claude Code best practices')).toBeChecked();
+  await expect(page.getByLabel('Model', { exact: true })).toHaveValue('sonnet');
+  await expect(page.getByLabel('Effort', { exact: true })).toHaveValue('medium');
+  await bp.getByText(/What this adds/).click();
+  await expect(bp.getByTestId('claude-practices-text')).toContainText('Never skip, delete or weaken a test');
   await page.getByLabel('Model', { exact: true }).fill('sonnet');
   await page.getByLabel('Effort', { exact: true }).selectOption('high');
   await page.getByRole('button', { name: 'Create agent' }).click();

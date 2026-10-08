@@ -3,7 +3,11 @@ package claude
 import (
 	"strings"
 	"testing"
+
+	"github.com/kjmaguire/drydock/internal/agents"
 )
+
+func agentsRunSpec() agents.RunSpec { return agents.RunSpec{AgentID: "a1", Cwd: "/x"} }
 
 func TestChildEnvIsScrubbedAndTakesNamesToPassFromTheHuman(t *testing.T) {
 	parent := []string{"PATH=/bin", "HOME=/h", "GITHUB_TOKEN=ghp_x", "AWS_PROFILE=work", "CLAUDE_CODE_OAUTH_TOKEN=t", "ANTHROPIC_BASE_URL=u"}
@@ -41,5 +45,22 @@ func TestChildEnvIsScrubbedAndTakesNamesToPassFromTheHuman(t *testing.T) {
 	env = a.childEnv(parent)
 	if !has(env, "AWS_PROFILE") || has(env, "GITHUB_TOKEN") {
 		t.Fatalf("pass-through: %v", env)
+	}
+}
+
+func TestUserSettingsOnlyAddsTheSettingSourcesFlag(t *testing.T) {
+	has := func(args []string) bool {
+		for i, a := range args {
+			if a == "--setting-sources" && i+1 < len(args) && args[i+1] == "user" {
+				return true
+			}
+		}
+		return false
+	}
+	if has((&Adapter{}).Args(agentsRunSpec())) {
+		t.Fatal("the flag must be opt-in on the adapter")
+	}
+	if !has((&Adapter{UserSettingsOnly: true}).Args(agentsRunSpec())) {
+		t.Fatal("a repository's own hooks would run in an unattended agent")
 	}
 }

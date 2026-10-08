@@ -28,12 +28,12 @@ func TestInstructionsHookAddsPurposeToTheSystemPrompt(t *testing.T) {
 	rec := &specRecorder{Adapter: h.ad}
 	h.rt.Adapters["claude"] = rec
 	var asked []string
-	h.rt.Instructions = func(_ context.Context, agentID string) string {
-		asked = append(asked, agentID)
+	h.rt.Instructions = func(_ context.Context, agentID, role string) (string, int) {
+		asked = append(asked, agentID+"/"+role)
 		if agentID == "a1" {
-			return "  Own the payments service.  "
+			return "  Own the payments service.  ", 7
 		}
-		return ""
+		return "", 0
 	}
 	cfg := h.config()
 	cfg.Spec.SystemAppend = "caller text"
@@ -46,7 +46,10 @@ func TestInstructionsHookAddsPurposeToTheSystemPrompt(t *testing.T) {
 	if !strings.HasPrefix(got, "caller text") || !strings.HasSuffix(got, "Own the payments service.") {
 		t.Fatalf("system prompt = %q", got)
 	}
-	if len(asked) != 1 || asked[0] != "a1" {
+	if rec.specs[0].PracticesVersion != 7 {
+		t.Fatalf("the version of the practices text was not recorded: %d", rec.specs[0].PracticesVersion)
+	}
+	if len(asked) != 1 || !strings.HasPrefix(asked[0], "a1/") {
 		t.Fatalf("asked %v", asked)
 	}
 

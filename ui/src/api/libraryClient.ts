@@ -16,6 +16,8 @@ export interface AgentTemplate {
   providerId: string;
   /** Library MCP server ids the new agent is granted. */
   mcpServers: string[];
+  /** Whether agents made from the template get the Claude best-practices text; omitted means yes. */
+  practices?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -27,6 +29,15 @@ export interface AppliedTemplate {
   granted: string[];
   /** A listed server that could not be granted, with the reason. */
   skipped: string[];
+}
+
+/** The working practices Drydock gives a Claude Code agent in a role, and a suggested model and effort for that role. */
+export interface ClaudePractices {
+  version: number;
+  role: string;
+  family: 'worker' | 'reviewer' | 'planner';
+  text: string;
+  preset: { model: string; effort: string; why: string };
 }
 
 export interface AgentEnv {
@@ -46,6 +57,7 @@ export interface LibraryClient {
   agentTemplateDelete(id: string): Promise<void>;
   agentTemplateFromAgent(agentId: string): Promise<AgentTemplate>;
   agentTemplateApply(templateId: string, projectId: string, name?: string): Promise<AppliedTemplate>;
+  claudePractices(role: string): Promise<ClaudePractices>;
   agentEnvGet(): Promise<AgentEnv>;
   /** Names only. A value is refused. */
   agentEnvSet(names: string[]): Promise<AgentEnv>;
@@ -63,6 +75,7 @@ export function createLibraryClient(t: Transport): LibraryClient {
       const r = await t.call<AppliedTemplate>('agenttemplate.apply', { templateId, projectId, name });
       return { ...r, granted: arr(r.granted), skipped: arr(r.skipped) };
     },
+    claudePractices: (role) => t.call('claude.practices', { role }),
     agentEnvGet: async () => {
       const r = await t.call<AgentEnv>('agentenv.get');
       return { pass: arr(r.pass), kept: arr(r.kept), prefixes: arr(r.prefixes) };

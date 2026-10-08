@@ -34,8 +34,10 @@ type AgentTemplate struct {
 	PermissionMode string   `json:"permissionMode"`
 	ProviderID     string   `json:"providerId"`
 	MCPServers     []string `json:"mcpServers"`
-	CreatedAt      int64    `json:"createdAt"`
-	UpdatedAt      int64    `json:"updatedAt"`
+	// Practices turns the Claude best-practices text on or off for agents made from the template; omitted means on.
+	Practices *bool `json:"practices"`
+	CreatedAt int64 `json:"createdAt"`
+	UpdatedAt int64 `json:"updatedAt"`
 }
 
 // AppliedTemplate is the result of dropping a template into a project.
@@ -69,14 +71,17 @@ func startAgentTemplates(ctx context.Context, c *Core) (map[string]Method, func(
 	}, nil, nil
 }
 
-const templateCols = `id,name,role,purpose,adapter,model,effort,permission_mode,provider_id,mcp_servers,created_at,updated_at`
+const templateCols = `id,name,role,purpose,adapter,model,effort,permission_mode,provider_id,mcp_servers,practices,created_at,updated_at`
 
 func scanTemplate(sc interface{ Scan(...any) error }) (AgentTemplate, error) {
 	var t AgentTemplate
 	var mj string
-	if err := sc.Scan(&t.ID, &t.Name, &t.Role, &t.Purpose, &t.Adapter, &t.Model, &t.Effort, &t.PermissionMode, &t.ProviderID, &mj, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	var pr int
+	if err := sc.Scan(&t.ID, &t.Name, &t.Role, &t.Purpose, &t.Adapter, &t.Model, &t.Effort, &t.PermissionMode, &t.ProviderID, &mj, &pr, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		return t, err
 	}
+	on := pr != 0
+	t.Practices = &on
 	_ = json.Unmarshal([]byte(mj), &t.MCPServers)
 	if t.MCPServers == nil {
 		t.MCPServers = []string{}
@@ -145,12 +150,13 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 	}
 	sort.Strings(servers)
 	mj, _ := json.Marshal(servers)
+	practices := b2i(in.Practices == nil || *in.Practices)
 	now := storage.Now()
 	if in.ID == "" {
 		in.ID = ids.New("tpl")
 		err := t.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `INSERT INTO agent_templates(`+templateCols+`,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				in.ID, in.Name, in.Role, in.Purpose, in.Adapter, in.Model, in.Effort, in.PermissionMode, in.ProviderID, string(mj), now, now, t.c.Human())
+			_, err := tx.ExecContext(ctx, `INSERT INTO agent_templates(`+templateCols+`,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				in.ID, in.Name, in.Role, in.Purpose, in.Adapter, in.Model, in.Effort, in.PermissionMode, in.ProviderID, string(mj), practices, now, now, t.c.Human())
 			return err
 		})
 		if err != nil {
@@ -161,8 +167,8 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 			return AgentTemplate{}, err
 		}
 		err := t.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `UPDATE agent_templates SET name=?,role=?,purpose=?,adapter=?,model=?,effort=?,permission_mode=?,provider_id=?,mcp_servers=?,updated_at=? WHERE id=?`,
-				in.Name, in.Role, in.Purpose, in.Adapter, in.Model, in.Effort, in.PermissionMode, in.ProviderID, string(mj), now, in.ID)
+			_, err := tx.ExecContext(ctx, `UPDATE agent_templates SET name=?,role=?,purpose=?,adapter=?,model=?,effort=?,permission_mode=?,provider_id=?,mcp_servers=?,practices=?,updated_at=? WHERE id=?`,
+				in.Name, in.Role, in.Purpose, in.Adapter, in.Model, in.Effort, in.PermissionMode, in.ProviderID, string(mj), practices, now, in.ID)
 			return err
 		})
 		if err != nil {
@@ -205,7 +211,7 @@ func (t *agentTemplates) fromAgent(ctx context.Context, agentID string) (AgentTe
 		rows.Close()
 	}
 	return t.save(ctx, AgentTemplate{Name: a.Name, Role: a.Role, Purpose: a.Purpose, Adapter: a.Adapter, Model: a.Model, Effort: a.Effort,
-		PermissionMode: a.PermissionMode, ProviderID: a.ProviderID, MCPServers: servers})
+		PermissionMode: a.PermissionMode, ProviderID: a.ProviderID, MCPServers: servers, Practices: &a.Practices})
 }
 
 // apply creates the agent in the project. name overrides the template's name; a name already used by an agent of the project
@@ -232,7 +238,7 @@ func (t *agentTemplates) apply(ctx context.Context, templateID, projectID, name 
 		final = fmt.Sprintf("%s %d", name, n)
 	}
 	ag, err := t.c.CreateAgent(ctx, AgentSpec{ProjectID: projectID, Name: final, Adapter: tpl.Adapter, Role: tpl.Role, Model: tpl.Model, Effort: tpl.Effort,
-		ProviderID: tpl.ProviderID, PermissionMode: tpl.PermissionMode, Purpose: tpl.Purpose})
+		ProviderID: tpl.ProviderID, PermissionMode: tpl.PermissionMode, Purpose: tpl.Purpose, Practices: tpl.Practices})
 	if err != nil {
 		return AppliedTemplate{}, err
 	}

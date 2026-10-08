@@ -42,6 +42,10 @@ type Adapter struct {
 	// PassEnv returns extra variable NAMES (not values) the human chose to pass on, for setups the allowlist cannot know about
 	// (a Bedrock or Vertex login, a company proxy variable). Read at every start. Nil means none.
 	PassEnv func() []string
+	// UserSettingsOnly starts claude with --setting-sources user. A repository's own .claude/settings.json can define hooks, and
+	// claude -p runs them without asking, even in a folder never trusted: with this on, commands written into a repository by
+	// someone else are not run by an unattended agent. Measured with claude 2.1.295. The user's own settings still apply.
+	UserSettingsOnly bool
 }
 
 func New() *Adapter { return &Adapter{} }
@@ -176,6 +180,9 @@ func (a *Adapter) Args(spec agents.RunSpec) []string {
 	}
 	if spec.PermissionMode != "" {
 		args = append(args, "--permission-mode", spec.PermissionMode)
+	}
+	if a.UserSettingsOnly {
+		args = append(args, "--setting-sources", "user")
 	}
 	if spec.MCPConfigPath != "" {
 		args = append(args, "--mcp-config", spec.MCPConfigPath, "--strict-mcp-config")

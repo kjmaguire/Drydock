@@ -348,6 +348,7 @@ Rules:
 - Every task has 1 to %d acceptance criteria, each one complete sentence containing Given, when and then.
 - template is optional: one of %s. Use "feature" for new behaviour, "bug" for defects, "security" for security work.
 - priority 0 to 9 (higher first), optional. At most %d tasks. Prefer fewer, larger-than-trivial tasks over many tiny ones.
+- Tasks that can run at the same time must change different files. If two tasks need the same file, make the later one depend on the earlier one (dependsOn). Name the files or folders a task will touch in its description.
 Nothing is created until a human reviews your plan.`, strings.Join(PlanRoles, ", "), maxAcceptances, strings.Join(templates, ", "), maxPlanTasks)
 	return b.String()
 }

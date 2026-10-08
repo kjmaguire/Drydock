@@ -9,6 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -21,6 +22,11 @@ func init() {
 		return map[string]Method{
 			"agent.update":  bind(func(ctx context.Context, p AgentUpdate) (any, error) { return c.UpdateAgent(ctx, p) }),
 			"agent.archive": bind(func(ctx context.Context, p idParam) (any, error) { return c.ArchiveAgent(ctx, p.ID) }),
+			"claude.practices": bind(func(ctx context.Context, p struct {
+				Role string `json:"role"`
+			}) (any, error) {
+				return claudePracticesFor(p.Role), nil
+			}),
 		}, nil, nil
 	}})
 }
@@ -37,6 +43,7 @@ type AgentUpdate struct {
 	Model          *string `json:"model"`
 	Effort         *string `json:"effort"`
 	PermissionMode *string `json:"permissionMode"`
+	Practices      *bool   `json:"practices"`
 }
 
 // validateAgentFields checks what would otherwise only fail (or misbehave) when the CLI starts: an effort the adapter does not
@@ -95,6 +102,10 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 	set("model", &a.Model, u.Model)
 	set("effort", &a.Effort, u.Effort)
 	set("permissionMode", &a.PermissionMode, u.PermissionMode)
+	if u.Practices != nil && *u.Practices != a.Practices {
+		a.Practices = *u.Practices
+		changed = append(changed, "practices")
+	}
 	if len(changed) == 0 {
 		return a, nil
 	}
@@ -121,8 +132,8 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		}
 	}
 	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE agents SET name=?, role=?, purpose=?, model=?, effort=?, permission_mode=?, version=version+1 WHERE id=? AND archived_at=0`,
-			a.Name, a.Role, a.Purpose, a.Model, a.Effort, a.PermissionMode, a.ID)
+		_, err := tx.ExecContext(ctx, `UPDATE agents SET name=?, role=?, purpose=?, model=?, effort=?, permission_mode=?, practices=?, version=version+1 WHERE id=? AND archived_at=0`,
+			a.Name, a.Role, a.Purpose, a.Model, a.Effort, a.PermissionMode, b2i(a.Practices), a.ID)
 		return err
 	})
 	if err != nil {
@@ -177,16 +188,45 @@ func (c *Core) ArchiveAgent(ctx context.Context, id string) (Agent, error) {
 	return a, nil
 }
 
-// agentInstructions is Runtime.Instructions: the human's standing instructions for the agent. The framing was chosen by measuring
-// the real CLI (Claude Code 2.1.295, haiku, low effort, a style instruction after a tool call): "do not override the task" wording
-// was followed in about 2 of 9 runs, "always in force... how you work" wording in 7 of 8. The review and approval rules do not
-// depend on this text: they are enforced by the workflow, not by the prompt. Empty when the agent has no purpose.
-func (c *Core) agentInstructions(ctx context.Context, agentID string) string {
+// agentInstructions is Runtime.Instructions: what is added to the system prompt of every session an agent starts. For a Claude Code
+// agent that is first the best-practices text for the role the session is playing (internal/agents/claude/practices.go; role is
+// "reviewer" for a review turn), then the human's own standing instructions. The second result is the version of the practices
+// text that was included, 0 when none was.
+//
+// The purpose framing was chosen by measuring the real CLI (Claude Code 2.1.295, haiku, low effort, a style instruction after a
+// tool call): "do not override the task" wording was followed in about 2 of 9 runs, "always in force... how you work" wording in 7
+// of 8. The review and approval rules do not depend on this text: they are enforced by the workflow, not by the prompt.
+func (c *Core) agentInstructions(ctx context.Context, agentID, role string) (string, int) {
 	a, err := c.agent(ctx, agentID)
-	if err != nil || strings.TrimSpace(a.Purpose) == "" {
-		return ""
+	if err != nil {
+		return "", 0
 	}
-	return fmt.Sprintf("You are %s, a member of an engineering team that works through Drydock. The person who set up this team gave you the standing instructions below. "+
-		"They are always in force: they apply to everything you do on this project, in every task and every reply, including your final answer after you have used tools. "+
-		"The task you are given each turn says what to work on; these instructions say how you work. They do not change the rule that a different agent reviews your work and a human approves it.\n\n%s", a.Name, strings.TrimSpace(a.Purpose))
+	if strings.TrimSpace(role) == "" {
+		role = a.Role
+	}
+	var parts []string
+	version := 0
+	if a.Adapter == "claude" && a.Practices {
+		parts = append(parts, claude.Practices(role))
+		version = claude.PracticesVersion
+	}
+	if strings.TrimSpace(a.Purpose) != "" {
+		parts = append(parts, fmt.Sprintf("You are %s, a member of an engineering team that works through Drydock. The person who set up this team gave you the standing instructions below. "+
+			"They are always in force: they apply to everything you do on this project, in every task and every reply, including your final answer after you have used tools. "+
+			"The task you are given each turn says what to work on; these instructions say how you work. They do not change the rule that a different agent reviews your work and a human approves it.\n\n%s", a.Name, strings.TrimSpace(a.Purpose)))
+	}
+	return strings.Join(parts, "\n\n"), version
+}
+
+// ClaudePractices is the claude.practices method: the text a Claude agent in a role is given, and a suggested model and effort.
+type ClaudePractices struct {
+	Version int           `json:"version"`
+	Role    string        `json:"role"`
+	Family  string        `json:"family"`
+	Text    string        `json:"text"`
+	Preset  claude.Preset `json:"preset"`
+}
+
+func claudePracticesFor(role string) ClaudePractices {
+	return ClaudePractices{Version: claude.PracticesVersion, Role: role, Family: claude.FamilyOf(role), Text: claude.Practices(role), Preset: claude.PresetFor(role)}
 }

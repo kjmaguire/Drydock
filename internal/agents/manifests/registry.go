@@ -184,6 +184,7 @@ func (r *Registry) buildHeadless(m *Manifest, detect func(context.Context) (agen
 		ad := claude.New()
 		ad.Exe = r.opts.ClaudeExe
 		ad.ScrubEnv, ad.PassEnv = r.opts.ScrubEnv, r.opts.PassEnv
+		ad.UserSettingsOnly = r.opts.ScrubEnv // the same "start agents from a trimmed, trusted setup" switch
 		return &detectOverride{Adapter: ad, detect: detect}, nil
 	case h.Parser == ParserAntigravity:
 		return &unimplemented{id: m.Meta.ID, caps: DeclaredCapabilities(m), hint: m.InstallHint(), detect: detect, m: m,
