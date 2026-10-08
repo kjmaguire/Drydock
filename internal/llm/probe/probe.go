@@ -93,12 +93,12 @@ func Rank(prov providers.Provider, models []providers.Model, class func(provider
 		switch {
 		case !prov.Enabled:
 			skip("provider disabled")
+		case m.IsFree || strings.HasSuffix(m.ID, ":free") || m.ID == "openrouter/free":
+			skip("free route (trainable, public-docs CONSULT only)")
 		case class(m) != providers.DataPrivate:
 			skip("not private (trainable models never carry private work)")
 		case !prov.PrivateEligible():
 			skip("provider cannot carry private context (plain http LAN host without attestation)")
-		case m.IsFree || strings.HasSuffix(m.ID, ":free") || m.ID == "openrouter/free":
-			skip("free route (trainable, public-docs CONSULT only)")
 		case !m.SupportsTools:
 			skip("tool calling not advertised")
 		case !m.PriceKnown() || (m.InputPerM <= 0 && m.OutputPerM <= 0):

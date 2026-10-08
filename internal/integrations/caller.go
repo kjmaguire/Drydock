@@ -158,6 +158,12 @@ func str(v any) string {
 
 func num(v any) (int64, bool) {
 	switch x := v.(type) {
+	case int:
+		return int64(x), true
+	case int64:
+		return x, true
+	case int32:
+		return int64(x), true
 	case json.Number:
 		if i, err := x.Int64(); err == nil {
 			return i, true
