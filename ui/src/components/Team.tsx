@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { AdapterInfo, Agent, Capabilities, PresenceState } from '../api/types';
 import { useId } from 'react';
 import { useClient } from '../state/context';
-import { useAdapters } from '../state/hooks';
+import { useAdapters, useLive } from '../state/hooks';
 import { Badge, ErrorNote, Page, PresenceDot } from './common';
 import { ReadOnlyNote, useReadOnly } from '../state/license';
 
@@ -148,6 +148,7 @@ export function TeamView({
         ))}
       </ul>
       <h2>Add an agent</h2>
+      <FromTemplate projectId={projectId} onCreated={onCreated} />
       <AgentForm projectId={projectId} adapters={sorted} onCreated={onCreated} />
       <h2>Adapters</h2>
       <ErrorNote error={adapters.error} what="Could not list adapters" />
@@ -161,11 +162,76 @@ export function TeamView({
   );
 }
 
+/** Drop a saved team member into this project: an ordinary agent is made from the template, with the MCP servers it lists. */
+function FromTemplate({ projectId, onCreated }: { projectId: string; onCreated: () => void }) {
+  const client = useClient();
+  const ro = useReadOnly();
+  const q = useLive(() => client.agentTemplateList(), [], (e) => e.type.startsWith('agenttemplate.'));
+  const [pick, setPick] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | undefined>();
+  const [note, setNote] = useState('');
+  const templates = q.data ?? [];
+  if (templates.length === 0) {
+    return (
+      <p className="muted">
+        Team members you save as templates in the <a href="#/library">Library</a> can be added here with one click.
+      </p>
+    );
+  }
+  const chosen = pick || templates[0]!.id;
+  return (
+    <section aria-label="Add an agent from a template">
+      <ErrorNote error={error} what="Agent not created" />
+      <div className="form-actions">
+        <label>
+          From a template
+          <select aria-label="Template" value={chosen} onChange={(e) => setPick(e.target.value)}>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.role}, {t.adapter})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Name (optional)
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="the template's name" />
+        </label>
+        <button
+          className="primary"
+          disabled={busy || ro.readOnly}
+          title={ro.readOnly ? ro.reason : undefined}
+          onClick={async () => {
+            setBusy(true);
+            setError(undefined);
+            setNote('');
+            try {
+              const r = await client.agentTemplateApply(chosen, projectId, name.trim() || undefined);
+              setNote(`${r.agent.name} joined the team${r.granted.length ? `, with ${r.granted.join(', ')}` : ''}${r.skipped.length ? `. Not granted: ${r.skipped.join('; ')}` : ''}.`);
+              setName('');
+              onCreated();
+            } catch (err) {
+              setError(err as Error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Add to this team
+        </button>
+      </div>
+      {note ? <p role="status">{note}</p> : null}
+    </section>
+  );
+}
+
 const ROLE_SUGGESTIONS = ['backend', 'frontend', 'reviewer', 'tester', 'architect'];
 
 /** Model and effort inputs. Effort is a list when the adapter is known to accept only certain levels (a wrong one would fail the
  *  run); model is free text with the adapter's aliases offered, because full model names are accepted too. */
-function ModelEffortFields({ caps, model, effort, setModel, setEffort }: { caps: Capabilities | undefined; model: string; effort: string; setModel: (v: string) => void; setEffort: (v: string) => void }) {
+export function ModelEffortFields({ caps, model, effort, setModel, setEffort }: { caps: Capabilities | undefined; model: string; effort: string; setModel: (v: string) => void; setEffort: (v: string) => void }) {
   const listId = useId();
   const canModel = caps?.modelSelection === true;
   const canEffort = caps?.effortControl === true;
@@ -204,7 +270,7 @@ function ModelEffortFields({ caps, model, effort, setModel, setEffort }: { caps:
   );
 }
 
-const PURPOSE_HELP = 'Standing instructions for this agent, sent with every run: what it owns, what it must not touch, how it should work. It never overrides the task, the independent review or your approval.';
+export const PURPOSE_HELP = 'Standing instructions for this agent, sent with every run: what it owns, what it must not touch, how it should work. It never overrides the task, the independent review or your approval.';
 
 function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adapters: AdapterInfo[]; onCreated: () => void }) {
   const client = useClient();
@@ -292,6 +358,7 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
   const [effort, setEffort] = useState(agent.effort);
   const [busy, setBusy] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [savedAs, setSavedAs] = useState('');
   const [error, setError] = useState<Error | undefined>();
   const run = async (what: string, f: () => Promise<unknown>) => {
     setBusy(what);
@@ -312,6 +379,11 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
   return (
     <form className="form form-grid" onSubmit={save} aria-label={`Edit ${agent.name}`} data-testid="agent-editor">
       <ErrorNote error={error} what="Agent not changed" />
+      {savedAs ? (
+        <p role="status" data-testid="saved-as-template">
+          Saved as the template {savedAs}. Find it in the <a href="#/library">Library</a>.
+        </p>
+      ) : null}
       <ReadOnlyNote />
       <p className="muted">
         Adapter <code>{agent.adapter}</code> cannot change: add a new agent to use a different CLI. Changes apply from the agent&apos;s next session.
@@ -335,6 +407,24 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
         </button>
         <button type="button" onClick={onCancel} disabled={busy !== ''}>
           Cancel
+        </button>
+        <button
+          type="button"
+          disabled={busy !== ''}
+          onClick={async () => {
+            setBusy('template');
+            setError(undefined);
+            try {
+              const t = await client.agentTemplateFromAgent(agent.id);
+              setSavedAs(t.name);
+            } catch (err) {
+              setError(err as Error);
+            } finally {
+              setBusy('');
+            }
+          }}
+        >
+          Save as a template
         </button>
         {confirmRemove ? (
           <>

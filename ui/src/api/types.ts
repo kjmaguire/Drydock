@@ -590,10 +590,18 @@ export interface AgentRun {
   error?: string;
 }
 
+/** What keeps an agent inside its project, in plain words. "open" means its permission mode lets it act without asking. */
+export interface Isolation {
+  level: 'guarded' | 'open';
+  summary: string;
+  details: string[] | null;
+}
+
 export interface AgentDetail {
   agent: Agent;
   runs: AgentRun[] | null;
   usage: UsageRow[] | null;
+  isolation?: Isolation;
 }
 
 export interface RoomMember {

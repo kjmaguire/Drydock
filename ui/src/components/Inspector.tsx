@@ -52,6 +52,21 @@ export function AgentInspector({ agentId, presence, onMessage }: { agentId: stri
         <dd>{a.effort || 'not set'}</dd>
         <dt>Permission mode</dt>
         <dd>{a.permissionMode}</dd>
+        {d.isolation ? (
+          <>
+            <dt>Isolation</dt>
+            <dd data-testid="inspector-isolation" data-level={d.isolation.level}>
+              <Badge tone={d.isolation.level === 'guarded' ? 'ok' : 'warn'}>{d.isolation.level === 'guarded' ? 'guarded' : 'not held in'}</Badge> {d.isolation.summary}
+              <ul>
+                {(d.isolation.details ?? []).map((x, i) => (
+                  <li key={i} className="muted">
+                    {x}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        ) : null}
         <dt>Presence</dt>
         <dd>
           <PresenceDot presence={p} />

@@ -35,6 +35,7 @@ const MemoryView = lazy(() => import('./pages/Memory'));
 const PlanView = lazy(() => import('./pages/Plan'));
 const IntegrationsView = lazy(() => import('./pages/Integrations'));
 const McpServersView = lazy(() => import('./pages/McpServers'));
+const LibraryView = lazy(() => import('./pages/Library'));
 const LicenseView = lazy(() => import('./pages/License'));
 const BackupsView = lazy(() => import('./pages/Backups'));
 const DataView = lazy(() => import('./pages/Data'));
@@ -72,12 +73,14 @@ export function App() {
 }
 
 /** Routes that are about the whole workspace, not one project. They open even when no project exists yet. */
-const WORKSPACE_ROUTES: Route['name'][] = ['settings', 'license', 'backups', 'data', 'support', 'connections', 'providers', 'routing'];
+const WORKSPACE_ROUTES: Route['name'][] = ['settings', 'library', 'license', 'backups', 'data', 'support', 'connections', 'providers', 'routing'];
 
 function workspaceCenter(name: Route['name'], projects: Project[], current: Project | undefined, theme: ThemeChoice, setTheme: (t: ThemeChoice) => void, info: AppInfo | undefined): React.ReactNode {
   switch (name) {
     case 'settings':
       return <SettingsView theme={theme} onTheme={setTheme} info={info} />;
+    case 'library':
+      return <LibraryView projects={projects} />;
     case 'license':
       return <LicenseView />;
     case 'backups':
@@ -215,6 +218,7 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
       case 'connections':
       case 'providers':
       case 'routing':
+      case 'library':
       case 'license':
       case 'backups':
       case 'data':

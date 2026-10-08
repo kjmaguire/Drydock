@@ -285,6 +285,8 @@ type AgentDetail struct {
 	Agent Agent      `json:"agent"`
 	Runs  []AgentRun `json:"runs"`
 	Usage []UsageRow `json:"usage"`
+	// Isolation says, in plain words, what keeps this agent inside its project. It is never a promise of a sandbox.
+	Isolation Isolation `json:"isolation"`
 }
 
 // GetAgent returns an agent with its recent runs and usage.
@@ -293,7 +295,7 @@ func (c *Core) GetAgent(ctx context.Context, id string) (AgentDetail, error) {
 	if err != nil {
 		return AgentDetail{}, fmt.Errorf("agent %s not found", id)
 	}
-	d := AgentDetail{Agent: a, Runs: []AgentRun{}}
+	d := AgentDetail{Agent: a, Runs: []AgentRun{}, Isolation: isolationOf(a)}
 	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,task_id,pid,cwd,status,started_at,ended_at,error FROM agent_runs WHERE agent_id=? ORDER BY started_at DESC LIMIT 20`, id)
 	if err != nil {
 		return d, err

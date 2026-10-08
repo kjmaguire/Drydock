@@ -17,7 +17,9 @@ import (
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
-// MCP servers the human adds to a project, and which of the project's agents may use them (docs/mcp.md, "user-added").
+// MCP servers the human connects once in the workspace library, puts into projects, and grants to agents (docs/mcp.md,
+// "User-added servers"). Connecting happens once (credentials included); a project only ever reaches a server it was put into, and
+// an agent only a server it was granted inside its own project.
 //
 // The server is the human's choice: a command that starts a stdio server, or an https URL (plain http only on loopback). The
 // gateway runs it under the process manager with a minimal environment, reaches it on behalf of the agent only when a row in
@@ -35,9 +37,8 @@ var (
 	errNoVault = errors.New("this computer has no credential store to keep a secret in; Drydock will not store it anywhere else")
 )
 
-// MCPServerInput creates or changes a server. Secrets are write-only: an empty value keeps what is stored.
+// MCPServerInput creates or changes a library server. Secrets are write-only: an empty value keeps what is stored.
 type MCPServerInput struct {
-	ProjectID string `json:"projectId"`
 	ID        string `json:"id"`
 	Display   string `json:"display"`
 	Transport string `json:"transport"` // stdio | http
@@ -55,12 +56,10 @@ type MCPServerInput struct {
 	Guard *bool `json:"guard"`
 	// ReadOnlyTools are tools the human declares read-only; every other tool needs an approval for each call.
 	ReadOnlyTools []string `json:"readOnlyTools"`
-	Enabled       *bool    `json:"enabled"`
 }
 
-// MCPServerView is what the UI shows. It never carries a secret value.
-type MCPServerView struct {
-	ProjectID     string            `json:"projectId"`
+// MCPLibraryServer is a connected server as the library shows it. It never carries a secret value.
+type MCPLibraryServer struct {
 	ID            string            `json:"id"`
 	Display       string            `json:"display"`
 	Transport     string            `json:"transport"`
@@ -74,11 +73,19 @@ type MCPServerView struct {
 	ReadOnlyTools []string          `json:"readOnlyTools"`
 	Tools         []mcp.ToolInfo    `json:"tools"`
 	DiscoveredAt  int64             `json:"discoveredAt"`
-	Enabled       bool              `json:"enabled"`
-	// Agents are the agent ids that may use the server, with the tool globs each may call.
-	Agents    []MCPAccess `json:"agents"`
-	CreatedAt int64       `json:"createdAt"`
-	UpdatedAt int64       `json:"updatedAt"`
+	// Projects are the ids of the projects that have the server.
+	Projects  []string `json:"projects"`
+	CreatedAt int64    `json:"createdAt"`
+	UpdatedAt int64    `json:"updatedAt"`
+}
+
+// MCPServerView is a library server as one project has it.
+type MCPServerView struct {
+	MCPLibraryServer
+	ProjectID string `json:"projectId"`
+	Enabled   bool   `json:"enabled"`
+	// Agents are the agents of this project that may use the server, with the tool globs each may call.
+	Agents []MCPAccess `json:"agents"`
 }
 
 // MCPAccess is one agent's grant.
@@ -87,9 +94,7 @@ type MCPAccess struct {
 	Tools   []string `json:"tools"`
 }
 
-func mcpVaultRef(project, server, kind string) string {
-	return "mcp:" + project + ":" + server + ":" + kind
-}
+func mcpVaultRef(id, kind string) string { return "mcp:" + id + ":" + kind }
 
 type mcpServers struct{ c *Core }
 
@@ -122,36 +127,60 @@ func (l lateMCP) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool, er
 	return s.Approve(ctx, req)
 }
 
+type idOnly struct {
+	ID string `json:"id"`
+}
+
+type projectServer struct {
+	ProjectID string `json:"projectId"`
+	ServerID  string `json:"serverId"`
+}
+
 func startMCPServers(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	s := &mcpServers{c: c}
 	mcpServerServices.Store(c, s)
 	// teach the scanner the exact secret values again after a restart, so tool results cannot echo them back
 	s.registerSecrets(ctx)
 	return map[string]Method{
+		// the library: connect once
+		"mcplib.list":     bind(func(ctx context.Context, _ struct{}) (any, error) { return s.libList(ctx) }),
+		"mcplib.save":     bind(func(ctx context.Context, p MCPServerInput) (any, error) { return s.save(ctx, p) }),
+		"mcplib.delete":   bind(func(ctx context.Context, p idOnly) (any, error) { return nil, s.libDelete(ctx, p.ID) }),
+		"mcplib.discover": bind(func(ctx context.Context, p idOnly) (any, error) { return s.discover(ctx, p.ID) }),
+		// a project's servers: put into the project, switch on or off, take out
 		"mcpserver.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {
 			return s.list(ctx, p.ProjectID)
 		}),
-		"mcpserver.save": bind(func(ctx context.Context, p MCPServerInput) (any, error) { return s.save(ctx, p) }),
-		"mcpserver.delete": bind(func(ctx context.Context, p struct {
-			ProjectID string `json:"projectId"`
-			ID        string `json:"id"`
-		}) (any, error) {
-			return nil, s.delete(ctx, p.ProjectID, p.ID)
+		"mcpserver.add": bind(func(ctx context.Context, p projectServer) (any, error) {
+			return s.addToProject(ctx, p.ProjectID, p.ServerID)
 		}),
-		"mcpserver.discover": bind(func(ctx context.Context, p struct {
-			ProjectID string `json:"projectId"`
-			ID        string `json:"id"`
-		}) (any, error) {
-			return s.discover(ctx, p.ProjectID, p.ID)
+		"mcpserver.remove": bind(func(ctx context.Context, p projectServer) (any, error) {
+			return nil, s.removeFromProject(ctx, p.ProjectID, p.ServerID)
 		}),
+		"mcpserver.setEnabled": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			ServerID  string `json:"serverId"`
+			Enabled   bool   `json:"enabled"`
+		}) (any, error) {
+			return s.setEnabled(ctx, p.ProjectID, p.ServerID, p.Enabled)
+		}),
+		// agents: the whole set, or one agent (granting also puts the server into the project)
 		"mcpserver.access.set": bind(func(ctx context.Context, p struct {
 			ProjectID string      `json:"projectId"`
 			ServerID  string      `json:"serverId"`
 			Agents    []MCPAccess `json:"agents"`
 		}) (any, error) {
 			return s.setAccess(ctx, p.ProjectID, p.ServerID, p.Agents)
+		}),
+		"mcpserver.grant": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			ServerID  string `json:"serverId"`
+			AgentID   string `json:"agentId"`
+			On        bool   `json:"on"`
+		}) (any, error) {
+			return s.grant(ctx, p.ProjectID, p.ServerID, p.AgentID, p.On)
 		}),
 		"mcpserver.approval.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
@@ -170,28 +199,28 @@ func startMCPServers(ctx context.Context, c *Core) (map[string]Method, func(), e
 // ---- storage ----
 
 type mcpRow struct {
-	MCPServerView
-	argvJSON, envJSON, secretJSON, roJSON, toolsJSON string
+	MCPLibraryServer
 }
 
-func (s *mcpServers) load(ctx context.Context, project, id string) (mcpRow, error) {
+func (s *mcpServers) load(ctx context.Context, id string) (mcpRow, error) {
 	var r mcpRow
-	var tok, guard, en int
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT project_id,id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,enabled,created_at,updated_at
-FROM project_mcp_servers WHERE project_id=? AND id=?`, project, id).Scan(&r.ProjectID, &r.ID, &r.Display, &r.Transport, &r.URL, &r.argvJSON, &r.Cwd, &r.envJSON, &r.secretJSON,
-		&tok, &guard, &r.roJSON, &r.toolsJSON, &r.DiscoveredAt, &en, &r.CreatedAt, &r.UpdatedAt)
+	var argvJSON, envJSON, secretJSON, roJSON, toolsJSON string
+	var tok, guard int
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_at,updated_at
+FROM mcp_library WHERE id=?`, id).Scan(&r.ID, &r.Display, &r.Transport, &r.URL, &argvJSON, &r.Cwd, &envJSON, &secretJSON,
+		&tok, &guard, &roJSON, &toolsJSON, &r.DiscoveredAt, &r.CreatedAt, &r.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return r, fmt.Errorf("there is no MCP server %q in this project", id)
+		return r, fmt.Errorf("there is no MCP server %q in the library", id)
 	}
 	if err != nil {
 		return r, err
 	}
-	r.HasToken, r.Guard, r.Enabled = tok != 0, guard != 0, en != 0
-	_ = json.Unmarshal([]byte(r.argvJSON), &r.Argv)
-	_ = json.Unmarshal([]byte(r.envJSON), &r.Env)
-	_ = json.Unmarshal([]byte(r.secretJSON), &r.SecretEnv)
-	_ = json.Unmarshal([]byte(r.roJSON), &r.ReadOnlyTools)
-	_ = json.Unmarshal([]byte(r.toolsJSON), &r.Tools)
+	r.HasToken, r.Guard = tok != 0, guard != 0
+	_ = json.Unmarshal([]byte(argvJSON), &r.Argv)
+	_ = json.Unmarshal([]byte(envJSON), &r.Env)
+	_ = json.Unmarshal([]byte(secretJSON), &r.SecretEnv)
+	_ = json.Unmarshal([]byte(roJSON), &r.ReadOnlyTools)
+	_ = json.Unmarshal([]byte(toolsJSON), &r.Tools)
 	if r.SecretEnv == nil {
 		r.SecretEnv = []string{}
 	}
@@ -201,7 +230,24 @@ FROM project_mcp_servers WHERE project_id=? AND id=?`, project, id).Scan(&r.Proj
 	if r.Tools == nil {
 		r.Tools = []mcp.ToolInfo{}
 	}
+	r.Projects = s.projectsOf(ctx, id)
 	return r, nil
+}
+
+func (s *mcpServers) projectsOf(ctx context.Context, server string) []string {
+	out := []string{}
+	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT project_id FROM project_mcp_servers WHERE server_id=? ORDER BY project_id`, server)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p string
+		if rows.Scan(&p) == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (s *mcpServers) access(ctx context.Context, project, server string) []MCPAccess {
@@ -222,8 +268,52 @@ func (s *mcpServers) access(ctx context.Context, project, server string) []MCPAc
 	return out
 }
 
+func (s *mcpServers) libList(ctx context.Context) ([]MCPLibraryServer, error) {
+	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT id FROM mcp_library ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	var idsList []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			idsList = append(idsList, id)
+		}
+	}
+	rows.Close()
+	out := []MCPLibraryServer{}
+	for _, id := range idsList {
+		r, err := s.load(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r.MCPLibraryServer)
+	}
+	return out, nil
+}
+
+// view is the library server as the project has it; the second result is false when the project does not have it.
+func (s *mcpServers) view(ctx context.Context, project, server string) (MCPServerView, bool, error) {
+	r, err := s.load(ctx, server)
+	if err != nil {
+		return MCPServerView{}, false, err
+	}
+	var en int
+	err = s.c.DB.Reader().QueryRowContext(ctx, `SELECT enabled FROM project_mcp_servers WHERE project_id=? AND server_id=?`, project, server).Scan(&en)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MCPServerView{MCPLibraryServer: r.MCPLibraryServer, ProjectID: project, Agents: []MCPAccess{}}, false, nil
+	}
+	if err != nil {
+		return MCPServerView{}, false, err
+	}
+	return MCPServerView{MCPLibraryServer: r.MCPLibraryServer, ProjectID: project, Enabled: en != 0, Agents: s.access(ctx, project, server)}, true, nil
+}
+
 func (s *mcpServers) list(ctx context.Context, project string) ([]MCPServerView, error) {
-	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT id FROM project_mcp_servers WHERE project_id=? ORDER BY id`, project)
+	if _, err := s.c.GetProject(ctx, project); err != nil {
+		return nil, err
+	}
+	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT server_id FROM project_mcp_servers WHERE project_id=? ORDER BY server_id`, project)
 	if err != nil {
 		return nil, err
 	}
@@ -237,12 +327,13 @@ func (s *mcpServers) list(ctx context.Context, project string) ([]MCPServerView,
 	rows.Close()
 	out := []MCPServerView{}
 	for _, id := range idsList {
-		r, err := s.load(ctx, project, id)
+		v, ok, err := s.view(ctx, project, id)
 		if err != nil {
 			return nil, err
 		}
-		r.Agents = s.access(ctx, project, id)
-		out = append(out, r.MCPServerView)
+		if ok {
+			out = append(out, v)
+		}
 	}
 	return out, nil
 }
@@ -264,13 +355,13 @@ func (r mcpRow) spec() mcp.ServerSpec {
 		if len(r.SecretEnv) > 0 {
 			cs.SecretEnv = map[string]string{}
 			for _, name := range r.SecretEnv {
-				cs.SecretEnv[name] = mcpVaultRef(r.ProjectID, r.ID, "env:"+name)
+				cs.SecretEnv[name] = mcpVaultRef(r.ID, "env:"+name)
 			}
 		}
 		sp.Command = cs
 	}
 	if r.HasToken {
-		sp.Auth = mcp.AuthSpec{Kind: mcp.AuthBearer, Keyring: mcpVaultRef(r.ProjectID, r.ID, "token")}
+		sp.Auth = mcp.AuthSpec{Kind: mcp.AuthBearer, Keyring: mcpVaultRef(r.ID, "token")}
 	}
 	if r.Guard {
 		sp.Egress = &mcp.EgressSpec{MaxArgBytes: 4096, ScanSecrets: true, DenyCodeFences: true}
@@ -296,25 +387,25 @@ func (s *mcpServers) registerSecrets(ctx context.Context) {
 	if s.c.secrets == nil || s.c.Scanner == nil {
 		return
 	}
-	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT project_id,id,has_token,secret_env FROM project_mcp_servers`)
+	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT id,has_token,secret_env FROM mcp_library`)
 	if err != nil {
 		return
 	}
 	type ref struct{ name, ref string }
 	var refs []ref
 	for rows.Next() {
-		var p, id, sj string
+		var id, sj string
 		var tok int
-		if rows.Scan(&p, &id, &tok, &sj) != nil {
+		if rows.Scan(&id, &tok, &sj) != nil {
 			continue
 		}
 		if tok != 0 {
-			refs = append(refs, ref{"mcp-" + id + "-token", mcpVaultRef(p, id, "token")})
+			refs = append(refs, ref{"mcp-" + id + "-token", mcpVaultRef(id, "token")})
 		}
 		var names []string
 		_ = json.Unmarshal([]byte(sj), &names)
 		for _, n := range names {
-			refs = append(refs, ref{"mcp-" + id + "-" + n, mcpVaultRef(p, id, "env:"+n)})
+			refs = append(refs, ref{"mcp-" + id + "-" + n, mcpVaultRef(id, "env:"+n)})
 		}
 	}
 	rows.Close()
@@ -325,7 +416,7 @@ func (s *mcpServers) registerSecrets(ctx context.Context) {
 	}
 }
 
-// ---- save / delete ----
+// ---- library: save / delete / discover ----
 
 func cleanList(in []string, what string) ([]string, error) {
 	out := []string{}
@@ -345,18 +436,15 @@ func cleanList(in []string, what string) ([]string, error) {
 	return out, nil
 }
 
-func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPServerView, error) {
+func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibraryServer, error) {
 	if err := s.c.RequireLicensed(ctx, "add_connection"); err != nil {
-		return MCPServerView{}, err
-	}
-	if _, err := s.c.GetProject(ctx, in.ProjectID); err != nil {
-		return MCPServerView{}, err
+		return MCPLibraryServer{}, err
 	}
 	in.ID = strings.TrimSpace(in.ID)
-	existing, err := s.load(ctx, in.ProjectID, in.ID)
+	existing, err := s.load(ctx, in.ID)
 	isNew := err != nil
 	if isNew {
-		existing = mcpRow{MCPServerView: MCPServerView{ProjectID: in.ProjectID, ID: in.ID, Guard: true, Enabled: true, SecretEnv: []string{}}}
+		existing = mcpRow{MCPLibraryServer{ID: in.ID, Guard: true, SecretEnv: []string{}}}
 	}
 	r := existing
 	r.Display, r.Transport, r.URL = strings.TrimSpace(in.Display), strings.TrimSpace(in.Transport), strings.TrimSpace(in.URL)
@@ -370,18 +458,15 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPServerView
 	for k, v := range in.Env {
 		k = strings.TrimSpace(k)
 		if !envNameRe.MatchString(k) {
-			return MCPServerView{}, fmt.Errorf("%q is not a valid environment variable name", k)
+			return MCPLibraryServer{}, fmt.Errorf("%q is not a valid environment variable name", k)
 		}
 		r.Env[k] = v
 	}
 	if in.Guard != nil {
 		r.Guard = *in.Guard
 	}
-	if in.Enabled != nil {
-		r.Enabled = *in.Enabled
-	}
 	if r.ReadOnlyTools, err = cleanList(in.ReadOnlyTools, "read-only tool"); err != nil {
-		return MCPServerView{}, err
+		return MCPLibraryServer{}, err
 	}
 	if r.Transport == mcp.TransportHTTP {
 		r.Argv, r.Cwd = nil, ""
@@ -396,10 +481,10 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPServerView
 	for name, val := range in.SecretEnv {
 		name = strings.TrimSpace(name)
 		if !envNameRe.MatchString(name) {
-			return MCPServerView{}, fmt.Errorf("%q is not a valid environment variable name", name)
+			return MCPLibraryServer{}, fmt.Errorf("%q is not a valid environment variable name", name)
 		}
 		if _, dup := r.Env[name]; dup {
-			return MCPServerView{}, fmt.Errorf("%s is both a plain and a secret environment variable", name)
+			return MCPLibraryServer{}, fmt.Errorf("%s is both a plain and a secret environment variable", name)
 		}
 		newNames = append(newNames, name)
 		known := false
@@ -407,9 +492,9 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPServerView
 			known = known || old == name
 		}
 		if val != "" {
-			putSecrets[mcpVaultRef(r.ProjectID, r.ID, "env:"+name)] = val
+			putSecrets[mcpVaultRef(r.ID, "env:"+name)] = val
 		} else if !known {
-			return MCPServerView{}, fmt.Errorf("give a value for the secret variable %s", name)
+			return MCPLibraryServer{}, fmt.Errorf("give a value for the secret variable %s", name)
 		}
 	}
 	sort.Strings(newNames)
@@ -419,43 +504,43 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPServerView
 			kept = kept || n == old
 		}
 		if !kept {
-			removeRefs = append(removeRefs, mcpVaultRef(r.ProjectID, r.ID, "env:"+old))
+			removeRefs = append(removeRefs, mcpVaultRef(r.ID, "env:"+old))
 		}
 	}
 	r.SecretEnv = newNames
 	switch {
 	case in.ClearBearer:
 		if existing.HasToken {
-			removeRefs = append(removeRefs, mcpVaultRef(r.ProjectID, r.ID, "token"))
+			removeRefs = append(removeRefs, mcpVaultRef(r.ID, "token"))
 		}
 		r.HasToken = false
 	case strings.TrimSpace(in.BearerToken) != "":
-		putSecrets[mcpVaultRef(r.ProjectID, r.ID, "token")] = strings.TrimSpace(in.BearerToken)
+		putSecrets[mcpVaultRef(r.ID, "token")] = strings.TrimSpace(in.BearerToken)
 		r.HasToken = true
 	}
 	if r.Transport != mcp.TransportHTTP && (r.HasToken || in.BearerToken != "") {
-		return MCPServerView{}, errors.New("a bearer token is for http servers; a stdio server gets secrets through environment variables")
+		return MCPLibraryServer{}, errors.New("a bearer token is for http servers; a stdio server gets secrets through environment variables")
 	}
 	if r.Transport == mcp.TransportHTTP && len(r.SecretEnv) > 0 {
-		return MCPServerView{}, errors.New("secret environment variables are for stdio servers; an http server uses a bearer token")
+		return MCPLibraryServer{}, errors.New("secret environment variables are for stdio servers; an http server uses a bearer token")
 	}
 	if len(putSecrets) > 0 && s.c.secrets == nil {
-		return MCPServerView{}, errNoVault
+		return MCPLibraryServer{}, errNoVault
 	}
 
 	// the gateway's own validation decides whether the server is acceptable (id, url, command, secrets in arguments, ...)
 	sp := r.spec()
 	if err := sp.Normalize(); err != nil {
-		return MCPServerView{}, err
+		return MCPLibraryServer{}, err
 	}
-	// a changed command or url invalidates the discovered tools and the human's read-only declarations stay as typed
+	// a changed command or url invalidates the discovered tools; the human's read-only declarations stay as typed
 	if !isNew && (existing.Transport != r.Transport || existing.URL != r.URL || strings.Join(existing.Argv, "\x00") != strings.Join(r.Argv, "\x00")) {
 		r.Tools, r.DiscoveredAt = []mcp.ToolInfo{}, 0
 	}
 
 	for ref, val := range putSecrets {
 		if err := s.c.secrets.Put(ctx, ref, val); err != nil {
-			return MCPServerView{}, fmt.Errorf("could not keep the secret: %w", err)
+			return MCPLibraryServer{}, fmt.Errorf("could not keep the secret: %w", err)
 		}
 		if s.c.Scanner != nil {
 			_ = s.c.Scanner.RegisterSecret(strings.NewReplacer(":", "-").Replace(ref), val)
@@ -468,16 +553,16 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPServerView
 	tools, _ := json.Marshal(r.Tools)
 	now := storage.Now()
 	err = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO project_mcp_servers(project_id,id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,enabled,created_by,created_at,updated_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(project_id,id) DO UPDATE SET display=excluded.display, transport=excluded.transport, url=excluded.url, argv=excluded.argv, cwd=excluded.cwd, env=excluded.env,
+		_, err := tx.ExecContext(ctx, `INSERT INTO mcp_library(id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_by,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(id) DO UPDATE SET display=excluded.display, transport=excluded.transport, url=excluded.url, argv=excluded.argv, cwd=excluded.cwd, env=excluded.env,
  secret_env=excluded.secret_env, has_token=excluded.has_token, guard=excluded.guard, read_only_tools=excluded.read_only_tools, tools=excluded.tools,
- discovered_at=excluded.discovered_at, enabled=excluded.enabled, updated_at=excluded.updated_at`,
-			r.ProjectID, r.ID, r.Display, r.Transport, r.URL, string(argv), r.Cwd, string(env), string(sec), b2i(r.HasToken), b2i(r.Guard), string(ro), string(tools), r.DiscoveredAt, b2i(r.Enabled), s.c.Human(), now, now)
+ discovered_at=excluded.discovered_at, updated_at=excluded.updated_at`,
+			r.ID, r.Display, r.Transport, r.URL, string(argv), r.Cwd, string(env), string(sec), b2i(r.HasToken), b2i(r.Guard), string(ro), string(tools), r.DiscoveredAt, s.c.Human(), now, now)
 		return err
 	})
 	if err != nil {
-		return MCPServerView{}, err
+		return MCPLibraryServer{}, err
 	}
 	for _, ref := range removeRefs {
 		if s.c.secrets != nil {
@@ -487,13 +572,9 @@ ON CONFLICT(project_id,id) DO UPDATE SET display=excluded.display, transport=exc
 	if gw := s.c.MCPGateway(); gw != nil {
 		gw.StopUpstream(r.ID) // a changed command, url or credential must take effect on the next call
 	}
-	s.c.publish(ctx, "mcp.server_saved", r.ProjectID, map[string]any{"id": r.ID, "transport": r.Transport, "new": isNew, "by": s.c.Human()})
-	out, err := s.load(ctx, r.ProjectID, r.ID)
-	if err != nil {
-		return MCPServerView{}, err
-	}
-	out.Agents = s.access(ctx, r.ProjectID, r.ID)
-	return out.MCPServerView, nil
+	s.c.publish(ctx, "mcp.server_saved", "", map[string]any{"id": r.ID, "transport": r.Transport, "new": isNew, "by": s.c.Human()})
+	out, err := s.load(ctx, r.ID)
+	return out.MCPLibraryServer, err
 }
 
 func nonNil(s []string) []string {
@@ -510,48 +591,49 @@ func b2i(b bool) int {
 	return 0
 }
 
-func (s *mcpServers) delete(ctx context.Context, project, id string) error {
-	r, err := s.load(ctx, project, id)
+// libDelete disconnects a server everywhere: every project loses it, every grant goes, and its secrets leave the credential store.
+func (s *mcpServers) libDelete(ctx context.Context, id string) error {
+	r, err := s.load(ctx, id)
 	if err != nil {
 		return err
 	}
 	err = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_mcp_access WHERE project_id=? AND server_id=?`, project, id); err != nil {
-			return err
+		// foreign keys cascade, but the deletes are explicit so the order does not depend on the pragma
+		for _, q := range []string{`DELETE FROM agent_mcp_access WHERE server_id=?`, `DELETE FROM project_mcp_servers WHERE server_id=?`, `DELETE FROM mcp_library WHERE id=?`} {
+			if _, err := tx.ExecContext(ctx, q, id); err != nil {
+				return err
+			}
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM project_mcp_servers WHERE project_id=? AND id=?`, project, id)
-		return err
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	if s.c.secrets != nil {
 		if r.HasToken {
-			_ = s.c.secrets.Delete(ctx, mcpVaultRef(project, id, "token"))
+			_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "token"))
 		}
 		for _, n := range r.SecretEnv {
-			_ = s.c.secrets.Delete(ctx, mcpVaultRef(project, id, "env:"+n))
+			_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "env:"+n))
 		}
 	}
 	if gw := s.c.MCPGateway(); gw != nil {
 		gw.StopUpstream(id)
 	}
-	s.c.publish(ctx, "mcp.server_removed", project, map[string]any{"id": id, "by": s.c.Human()})
+	s.c.publish(ctx, "mcp.server_removed", "", map[string]any{"id": id, "projects": len(r.Projects), "by": s.c.Human()})
 	return nil
 }
 
-// ---- discovery ----
-
 // discover starts the server (or connects to it), lists its tools and stores them, so agents see the tools without waiting for
 // the server to start. It is also the "test connection" of the page.
-func (s *mcpServers) discover(ctx context.Context, project, id string) (MCPServerView, error) {
+func (s *mcpServers) discover(ctx context.Context, id string) (MCPLibraryServer, error) {
 	gw := s.c.MCPGateway()
 	if gw == nil {
-		return MCPServerView{}, errors.New("the MCP gateway is not running")
+		return MCPLibraryServer{}, errors.New("the MCP gateway is not running")
 	}
-	r, err := s.load(ctx, project, id)
+	r, err := s.load(ctx, id)
 	if err != nil {
-		return MCPServerView{}, err
+		return MCPLibraryServer{}, err
 	}
 	tctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -559,29 +641,25 @@ func (s *mcpServers) discover(ctx context.Context, project, id string) (MCPServe
 	sp.Tools = nil
 	up, err := gw.AppUpstream(tctx, sp)
 	if err != nil {
-		return MCPServerView{}, fmt.Errorf("could not reach %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
+		return MCPLibraryServer{}, fmt.Errorf("could not reach %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
 	}
 	tools, err := up.ToolList(tctx)
 	if err != nil {
-		return MCPServerView{}, fmt.Errorf("could not list the tools of %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
+		return MCPLibraryServer{}, fmt.Errorf("could not list the tools of %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	tj, _ := json.Marshal(tools)
 	now := storage.Now()
 	err = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE project_mcp_servers SET tools=?, discovered_at=?, updated_at=? WHERE project_id=? AND id=?`, string(tj), now, now, project, id)
+		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET tools=?, discovered_at=?, updated_at=? WHERE id=?`, string(tj), now, now, id)
 		return err
 	})
 	if err != nil {
-		return MCPServerView{}, err
+		return MCPLibraryServer{}, err
 	}
-	s.c.publish(ctx, "mcp.server_discovered", project, map[string]any{"id": id, "tools": len(tools)})
-	out, err := s.load(ctx, project, id)
-	if err != nil {
-		return MCPServerView{}, err
-	}
-	out.Agents = s.access(ctx, project, id)
-	return out.MCPServerView, nil
+	s.c.publish(ctx, "mcp.server_discovered", "", map[string]any{"id": id, "tools": len(tools)})
+	out, err := s.load(ctx, id)
+	return out.MCPLibraryServer, err
 }
 
 func (c *Core) scrubSecrets(s string) string {
@@ -591,33 +669,103 @@ func (c *Core) scrubSecrets(s string) string {
 	return c.Scanner.Redact(s)
 }
 
-// ---- access ----
+// ---- projects and agents ----
+
+func (s *mcpServers) addToProject(ctx context.Context, project, server string) (MCPServerView, error) {
+	if _, err := s.c.GetProject(ctx, project); err != nil {
+		return MCPServerView{}, err
+	}
+	if _, err := s.load(ctx, server); err != nil {
+		return MCPServerView{}, err
+	}
+	err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO project_mcp_servers(project_id,server_id,enabled,added_by,added_at) VALUES(?,?,1,?,?) ON CONFLICT(project_id,server_id) DO NOTHING`, project, server, s.c.Human(), storage.Now())
+		return err
+	})
+	if err != nil {
+		return MCPServerView{}, err
+	}
+	s.c.publish(ctx, "mcp.server_added", project, map[string]any{"server": server, "by": s.c.Human()})
+	v, _, err := s.view(ctx, project, server)
+	return v, err
+}
+
+func (s *mcpServers) removeFromProject(ctx context.Context, project, server string) error {
+	if _, ok, err := s.view(ctx, project, server); err != nil || !ok {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("this project does not have the MCP server %q", server)
+	}
+	err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_mcp_access WHERE project_id=? AND server_id=?`, project, server); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM project_mcp_servers WHERE project_id=? AND server_id=?`, project, server)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	s.c.publish(ctx, "mcp.server_taken_out", project, map[string]any{"server": server, "by": s.c.Human()})
+	return nil
+}
+
+func (s *mcpServers) setEnabled(ctx context.Context, project, server string, on bool) (MCPServerView, error) {
+	if _, ok, err := s.view(ctx, project, server); err != nil || !ok {
+		if err != nil {
+			return MCPServerView{}, err
+		}
+		return MCPServerView{}, fmt.Errorf("this project does not have the MCP server %q", server)
+	}
+	err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE project_mcp_servers SET enabled=? WHERE project_id=? AND server_id=?`, b2i(on), project, server)
+		return err
+	})
+	if err != nil {
+		return MCPServerView{}, err
+	}
+	v, _, err := s.view(ctx, project, server)
+	return v, err
+}
+
+// grants validates and normalizes one agent's grant.
+func (s *mcpServers) checkGrant(ctx context.Context, project string, g MCPAccess) (string, error) {
+	a, err := s.c.agent(ctx, g.AgentID)
+	if err != nil || a.ProjectID != project || a.Archived {
+		return "", fmt.Errorf("agent %s is not on this project's team", g.AgentID)
+	}
+	tools, err := cleanList(g.Tools, "tool")
+	if err != nil {
+		return "", err
+	}
+	if len(tools) == 0 {
+		tools = []string{"*"}
+	}
+	tj, _ := json.Marshal(tools)
+	return string(tj), nil
+}
 
 func (s *mcpServers) setAccess(ctx context.Context, project, server string, grants []MCPAccess) (MCPServerView, error) {
-	if _, err := s.load(ctx, project, server); err != nil {
-		return MCPServerView{}, err
+	if _, ok, err := s.view(ctx, project, server); err != nil || !ok {
+		if err != nil {
+			return MCPServerView{}, err
+		}
+		return MCPServerView{}, fmt.Errorf("this project does not have the MCP server %q: put it into the project first", server)
 	}
 	seen := map[string]bool{}
 	type row struct{ agent, tools string }
 	var rows []row
 	for _, g := range grants {
-		a, err := s.c.agent(ctx, g.AgentID)
-		if err != nil || a.ProjectID != project || a.Archived {
-			return MCPServerView{}, fmt.Errorf("agent %s is not on this project's team", g.AgentID)
+		tj, err := s.checkGrant(ctx, project, g)
+		if err != nil {
+			return MCPServerView{}, err
 		}
 		if seen[g.AgentID] {
 			continue
 		}
 		seen[g.AgentID] = true
-		tools, err := cleanList(g.Tools, "tool")
-		if err != nil {
-			return MCPServerView{}, err
-		}
-		if len(tools) == 0 {
-			tools = []string{"*"}
-		}
-		tj, _ := json.Marshal(tools)
-		rows = append(rows, row{g.AgentID, string(tj)})
+		rows = append(rows, row{g.AgentID, tj})
 	}
 	now := storage.Now()
 	err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
@@ -635,23 +783,51 @@ func (s *mcpServers) setAccess(ctx context.Context, project, server string, gran
 		return MCPServerView{}, err
 	}
 	s.c.publish(ctx, "mcp.access_changed", project, map[string]any{"server": server, "agents": len(rows), "by": s.c.Human()})
-	out, err := s.load(ctx, project, server)
+	v, _, err := s.view(ctx, project, server)
+	return v, err
+}
+
+// grant gives one agent a server, or takes it away, leaving every other agent's grant as it is. Granting also puts the server
+// into the agent's project when the project did not have it yet (that is what dropping a server onto an agent means).
+func (s *mcpServers) grant(ctx context.Context, project, server, agentID string, on bool) (MCPServerView, error) {
+	if on {
+		if _, err := s.addToProject(ctx, project, server); err != nil {
+			return MCPServerView{}, err
+		}
+	}
+	cur, ok, err := s.view(ctx, project, server)
 	if err != nil {
 		return MCPServerView{}, err
 	}
-	out.Agents = s.access(ctx, project, server)
-	return out.MCPServerView, nil
+	if !ok {
+		return cur, nil // nothing to take away
+	}
+	var next []MCPAccess
+	has := false
+	for _, a := range cur.Agents {
+		if a.AgentID == agentID {
+			has = true
+			if !on {
+				continue
+			}
+		}
+		next = append(next, a)
+	}
+	if on && !has {
+		next = append(next, MCPAccess{AgentID: agentID, Tools: []string{"*"}})
+	}
+	return s.setAccess(ctx, project, server, next)
 }
 
-// forRun returns the servers an agent may use in a run and the tool globs it may call on each. Disabled servers and servers
-// without a grant are not included.
+// mcpServersForRun returns the servers an agent may use in a run and the tool globs it may call on each. A server counts only if
+// the agent's project has it and has it switched on, and the agent was granted it.
 func (c *Core) mcpServersForRun(ctx context.Context, project, agentID string) ([]mcp.ServerSpec, map[string][]string, []string) {
 	s := c.mcpServerSvc()
 	if s == nil {
 		return nil, nil, nil
 	}
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT s.id, a.tools FROM project_mcp_servers s JOIN agent_mcp_access a ON a.project_id=s.project_id AND a.server_id=s.id
-WHERE s.project_id=? AND a.agent_id=? AND s.enabled=1 ORDER BY s.id`, project, agentID)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT p.server_id, a.tools FROM project_mcp_servers p JOIN agent_mcp_access a ON a.project_id=p.project_id AND a.server_id=p.server_id
+WHERE p.project_id=? AND a.agent_id=? AND p.enabled=1 ORDER BY p.server_id`, project, agentID)
 	if err != nil {
 		return nil, nil, nil
 	}
@@ -673,7 +849,7 @@ WHERE s.project_id=? AND a.agent_id=? AND s.enabled=1 ORDER BY s.id`, project, a
 	allow := map[string][]string{}
 	var exposed []string
 	for _, x := range grants {
-		r, err := s.load(ctx, project, x.id)
+		r, err := s.load(ctx, x.id)
 		if err != nil {
 			continue
 		}

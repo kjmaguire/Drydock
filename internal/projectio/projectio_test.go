@@ -622,8 +622,8 @@ func TestOlderSchemaIsMigratedForwardOnImport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, q := range []string{`DROP TABLE agent_mcp_access`, `DROP TABLE project_mcp_servers`, `DROP TABLE integration_outbox`, `DROP TABLE integration_rule_matches`, `DROP TABLE integration_rules`, `DROP TABLE external_items`,
-			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91)`} {
+		for _, q := range []string{`DROP TABLE agent_templates`, `DROP TABLE agent_mcp_access`, `DROP TABLE project_mcp_servers`, `DROP TABLE mcp_library`, `DROP TABLE integration_outbox`, `DROP TABLE integration_rule_matches`, `DROP TABLE integration_rules`, `DROP TABLE external_items`,
+			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92)`} {
 			if _, err := raw.Exec(q); err != nil {
 				t.Fatalf("%s: %v", q, err)
 			}

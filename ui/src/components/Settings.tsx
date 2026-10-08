@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import type { AppInfo } from '../api/types';
-import { Page } from './common';
+import { useAction } from '../lib/useAction';
+import { useLive } from '../state/hooks';
+import { ErrorNote, Page } from './common';
 import { TelemetryPanel } from './Telemetry';
-import { useServices, useStoreSnapshot } from '../state/context';
+import { useClient, useServices, useStoreSnapshot } from '../state/context';
 import type { ThemeChoice } from '../lib/theme';
 
 /** docs/ui.md section 4: features that do not exist yet, with the slice that owns them. Keep in step with that table. */
@@ -19,6 +22,58 @@ export const NOT_BUILT: { feature: string; slice: string; meanwhile: string }[] 
   { feature: 'Command palette (Ctrl+K)', slice: 'Slice 1A', meanwhile: 'Not built.' },
   { feature: 'Cloud sync, accounts, team sharing', slice: 'never', meanwhile: 'Drydock has no cloud component.' },
 ];
+
+/** The environment agent programs start with: an allowlist, plus variable NAMES the human chose to pass on. Never values. */
+export function AgentEnvSection() {
+  const client = useClient();
+  const q = useLive(() => client.agentEnvGet(), [], (e) => e.type === 'agentenv.changed');
+  const act = useAction();
+  const [text, setText] = useState('');
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (q.data) setText(q.data.pass.join('\n'));
+  }, [q.data]);
+  const names = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return (
+    <section aria-label="Agents' environment" data-testid="agent-env">
+      <h2>What agents inherit</h2>
+      <p>
+        Agent programs start with a trimmed environment, not everything Drydock was started with. A token another tool left in your environment (GitHub, a cloud provider) is not
+        handed to an agent that a prompt could ask to print it. Claude Code keeps everything named <code>CLAUDE_*</code> or <code>ANTHROPIC_*</code>, so its own sign-in keeps working.
+      </p>
+      <ErrorNote error={q.error ?? act.error} what="Environment" />
+      <form
+        className="form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setSaved(false);
+          const r = await act.run('save', () => client.agentEnvSet(names));
+          if (r) {
+            setSaved(true);
+            q.reload();
+          }
+        }}
+      >
+        <label>
+          Also pass these variables to agents (names only, one per line; a value is refused)
+          <textarea value={text} onChange={(e) => { setText(e.target.value); setSaved(false); }} rows={3} spellCheck={false} placeholder={'AWS_PROFILE\nCLAUDE_CODE_USE_BEDROCK'} />
+        </label>
+        <div className="form-actions">
+          <button type="submit" className="primary" disabled={act.busy !== ''}>
+            Save
+          </button>
+          {saved ? <span role="status">Saved. Applies from the next agent start.</span> : null}
+        </div>
+      </form>
+      <details>
+        <summary>What every agent keeps</summary>
+        <p className="muted">
+          {(q.data?.kept ?? []).join(', ')}; and every variable starting with {(q.data?.prefixes ?? []).join(' or ')} for Claude Code.
+        </p>
+      </details>
+    </section>
+  );
+}
 
 /** Honest placeholder: there is nothing to click. The update flow is configured when the app is built and has never run on Windows. */
 export function UpdatesSection() {
@@ -67,6 +122,7 @@ export function SettingsView({ theme, onTheme, info }: { theme: ThemeChoice; onT
           <code>{info?.dataDir ?? 'unknown'}</code>
         </dd>
       </dl>
+      <AgentEnvSection />
       <TelemetryPanel />
       <UpdatesSection />
       <h2>Not built yet</h2>

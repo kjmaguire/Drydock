@@ -1047,3 +1047,16 @@ fieldset {
   padding: 4px 10px;
   margin: 6px 0;
 }
+
+/* drag and drop (Library page) */
+.dragitem { cursor: grab; }
+.dragitem[draggable='true']:active { cursor: grabbing; }
+.dragitem.is-dragging { opacity: 0.55; }
+.dropzone { border: 2px dashed transparent; border-radius: 8px; padding: 0.5rem; transition: border-color 0.1s, background-color 0.1s; }
+.dropzone.can-drop { border-color: var(--border, #888); }
+.dropzone.over { border-color: var(--accent, #2a6df4); background: color-mix(in srgb, var(--accent, #2a6df4) 10%, transparent); }
+.library-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+@media (max-width: 900px) { .library-cols { grid-template-columns: 1fr; } }
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.25rem 0; padding: 0; list-style: none; }
+.chip { display: inline-flex; align-items: center; gap: 0.3rem; border: 1px solid var(--border, #888); border-radius: 999px; padding: 0.05rem 0.5rem; font-size: 0.85em; }
+.chip button { border: 0; background: none; cursor: pointer; padding: 0 0.15rem; font: inherit; }

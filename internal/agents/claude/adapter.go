@@ -36,6 +36,12 @@ type Adapter struct {
 	Exe string
 	// BaseArgs are prepended to every invocation (tests use them to select the fake agent mode).
 	BaseArgs []string
+	// ScrubEnv starts claude from an allowlisted environment instead of the app's whole environment: the base list
+	// (proc.BaseEnvNames), the variables claude itself reads (CLAUDE_*, ANTHROPIC_*) and the names PassEnv returns.
+	ScrubEnv bool
+	// PassEnv returns extra variable NAMES (not values) the human chose to pass on, for setups the allowlist cannot know about
+	// (a Bedrock or Vertex login, a company proxy variable). Read at every start. Nil means none.
+	PassEnv func() []string
 }
 
 func New() *Adapter { return &Adapter{} }
@@ -192,7 +198,7 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 	if err != nil {
 		return nil, fmt.Errorf("claude: %w", err)
 	}
-	env := os.Environ()
+	env := a.childEnv(os.Environ())
 	env = append(env, spec.Env...)
 	p, err := pm.Start(ctx, proc.Spec{Path: exe, Args: a.Args(spec), Dir: spec.Cwd, Env: env, Label: "agent:" + spec.AgentID})
 	if err != nil {
@@ -318,4 +324,18 @@ func (s *session) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 	return s.proc.Kill(true)
+}
+
+// childEnv is the environment of the claude process: all of parent, or with ScrubEnv only what claude needs to run and sign in.
+// The user's own login is found through the home folder, CLAUDE_* and ANTHROPIC_* (including CLAUDE_CODE_OAUTH_TOKEN and
+// ANTHROPIC_API_KEY): Drydock passes them through untouched and never reads them.
+func (a *Adapter) childEnv(parent []string) []string {
+	if !a.ScrubEnv {
+		return append([]string(nil), parent...)
+	}
+	names := append([]string(nil), proc.BaseEnvNames...)
+	if a.PassEnv != nil {
+		names = append(names, a.PassEnv()...)
+	}
+	return proc.ScrubEnv(parent, names, []string{"CLAUDE_", "ANTHROPIC_"})
 }

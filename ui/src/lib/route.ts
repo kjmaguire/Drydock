@@ -21,6 +21,7 @@ export type Route =
   | { name: 'plan' }
   | { name: 'integrations' }
   | { name: 'mcp' }
+  | { name: 'library' }
   | { name: 'connections' }
   | { name: 'providers' }
   | { name: 'license' }
@@ -66,6 +67,7 @@ export function parseRoute(hash: string): Route {
       return { name: 'connections' };
     case 'providers':
       return { name: 'providers' };
+    case 'library':
     case 'license':
     case 'backups':
     case 'data':

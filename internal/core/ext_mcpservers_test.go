@@ -113,41 +113,50 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 
 	// refused before anything is stored
 	for name, in := range map[string]core.MCPServerInput{
-		"credentials in the command line": {ProjectID: p.ID, ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self, "--api-key=abcdefghijkl"}},
-		"plain http to a remote host":     {ProjectID: p.ID, ID: "tst", Display: "x", Transport: "http", URL: "http://example.com/mcp"},
-		"a reserved id":                   {ProjectID: p.ID, ID: "drydock", Display: "x", Transport: "stdio", Argv: []string{self}},
-		"a bearer token on a stdio one":   {ProjectID: p.ID, ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self}, BearerToken: "abc"},
-		"a secret with no value":          {ProjectID: p.ID, ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self}, SecretEnv: map[string]string{"API_KEY": ""}},
-		"a bad variable name":             {ProjectID: p.ID, ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self}, Env: map[string]string{"A B": "1"}},
+		"credentials in the command line": {ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self, "--api-key=abcdefghijkl"}},
+		"plain http to a remote host":     {ID: "tst", Display: "x", Transport: "http", URL: "http://example.com/mcp"},
+		"a reserved id":                   {ID: "drydock", Display: "x", Transport: "stdio", Argv: []string{self}},
+		"a bearer token on a stdio one":   {ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self}, BearerToken: "abc"},
+		"a secret with no value":          {ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self}, SecretEnv: map[string]string{"API_KEY": ""}},
+		"a bad variable name":             {ID: "tst", Display: "x", Transport: "stdio", Argv: []string{self}, Env: map[string]string{"A B": "1"}},
 	} {
-		if err := a.callErr("mcpserver.save", in); err == nil {
+		if err := a.callErr("mcplib.save", in); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
 	}
-	var none []core.MCPServerView
-	a.call("mcpserver.list", map[string]string{"projectId": p.ID}, &none)
+	var none []core.MCPLibraryServer
+	a.call("mcplib.list", nil, &none)
 	if len(none) != 0 {
 		t.Fatalf("a refused server was stored: %+v", none)
 	}
 
 	// add the server, find its tools, declare echo and envlen read-only, grant it to the worker only
-	var srv core.MCPServerView
-	a.call("mcpserver.save", core.MCPServerInput{ProjectID: p.ID, ID: "tst", Display: "Test server", Transport: "stdio", Argv: []string{self},
-		Env: map[string]string{testMCPEnv: "1", "NOTES_FILE": notes}, SecretEnv: map[string]string{"API_KEY": secret}, ReadOnlyTools: []string{"echo", "envlen"}}, &srv)
-	if len(srv.SecretEnv) != 1 || srv.SecretEnv[0] != "API_KEY" || !srv.Guard || !srv.Enabled {
-		t.Fatalf("saved %+v", srv)
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "tst", Display: "Test server", Transport: "stdio", Argv: []string{self},
+		Env: map[string]string{testMCPEnv: "1", "NOTES_FILE": notes}, SecretEnv: map[string]string{"API_KEY": secret}, ReadOnlyTools: []string{"echo", "envlen"}}, &lib)
+	if len(lib.SecretEnv) != 1 || lib.SecretEnv[0] != "API_KEY" || !lib.Guard || len(lib.Projects) != 0 {
+		t.Fatalf("saved %+v", lib)
 	}
-	raw, _ := json.Marshal(srv)
+	raw, _ := json.Marshal(lib)
 	if strings.Contains(string(raw), secret) {
 		t.Fatal("the view carries the secret")
 	}
-	a.call("mcpserver.discover", map[string]string{"projectId": p.ID, "id": "tst"}, &srv)
+	a.call("mcplib.discover", map[string]string{"id": "tst"}, &lib)
 	names := map[string]bool{}
-	for _, tl := range srv.Tools {
+	for _, tl := range lib.Tools {
 		names[tl.Name] = true
 	}
-	if !names["echo"] || !names["envlen"] || !names["post_note"] || srv.DiscoveredAt == 0 {
-		t.Fatalf("discovered %+v", srv.Tools)
+	if !names["echo"] || !names["envlen"] || !names["post_note"] || lib.DiscoveredAt == 0 {
+		t.Fatalf("discovered %+v", lib.Tools)
+	}
+	// a project can only grant a server it has
+	if err := a.callErr("mcpserver.access.set", map[string]any{"projectId": p.ID, "serverId": "tst", "agents": []core.MCPAccess{{AgentID: worker.ID}}}); err == nil {
+		t.Fatal("a grant for a server the project does not have was accepted")
+	}
+	var srv core.MCPServerView
+	a.call("mcpserver.add", map[string]string{"projectId": p.ID, "serverId": "tst"}, &srv)
+	if !srv.Enabled || srv.ProjectID != p.ID {
+		t.Fatalf("added %+v", srv)
 	}
 	a.call("mcpserver.access.set", map[string]any{"projectId": p.ID, "serverId": "tst", "agents": []core.MCPAccess{{AgentID: worker.ID}}}, &srv)
 	if len(srv.Agents) != 1 || srv.Agents[0].AgentID != worker.ID || strings.Join(srv.Agents[0].Tools, ",") != "*" {
@@ -277,10 +286,12 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 	}
 
 	// removal: the server and its grants are gone and the secret is deleted from the store
-	a.call("mcpserver.delete", map[string]string{"projectId": p.ID, "id": "tst"}, nil)
-	a.call("mcpserver.list", map[string]string{"projectId": p.ID}, &none)
-	if len(none) != 0 {
-		t.Fatalf("not deleted: %+v", none)
+	a.call("mcplib.delete", map[string]string{"id": "tst"}, nil)
+	a.call("mcplib.list", nil, &none)
+	var inProject []core.MCPServerView
+	a.call("mcpserver.list", map[string]string{"projectId": p.ID}, &inProject)
+	if len(none) != 0 || len(inProject) != 0 {
+		t.Fatalf("not deleted: library %+v project %+v", none, inProject)
 	}
 }
 
@@ -308,9 +319,11 @@ func TestRealClaudeUsesAUserAddedServerAndReceivesThePurpose(t *testing.T) {
 	var ag core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Haiku", Adapter: "claude", Role: "backend", Model: "haiku", Effort: "low", PermissionMode: "acceptEdits",
 		Purpose: "Begin every final reply with the single word PINEAPPLE."}, &ag)
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "tst", Display: "Test", Transport: "stdio", Argv: []string{self}, Env: map[string]string{testMCPEnv: "1"}, ReadOnlyTools: []string{"echo"}}, &lib)
 	var srv core.MCPServerView
-	a.call("mcpserver.save", core.MCPServerInput{ProjectID: p.ID, ID: "tst", Display: "Test", Transport: "stdio", Argv: []string{self}, Env: map[string]string{testMCPEnv: "1"}, ReadOnlyTools: []string{"echo"}}, &srv)
-	a.call("mcpserver.access.set", map[string]any{"projectId": p.ID, "serverId": "tst", "agents": []core.MCPAccess{{AgentID: ag.ID}}}, &srv)
+	// dropping the server onto the agent is one call: it puts the server into the project and grants it
+	a.call("mcpserver.grant", map[string]any{"projectId": p.ID, "serverId": "tst", "agentId": ag.ID, "on": true}, &srv)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 170*time.Second)
 	defer cancel()
@@ -352,4 +365,78 @@ func TestRealClaudeUsesAUserAddedServerAndReceivesThePurpose(t *testing.T) {
 	// Whether the MODEL obeys a soft standing instruction is its choice and varies from run to run, so it is reported, not asserted.
 	// What is asserted above is deterministic: the purpose was sent (agent.started "instructions") and the tool call arrived.
 	t.Logf("model followed the purpose (reply starts with PINEAPPLE): %v", strings.HasPrefix(strings.ToUpper(strings.TrimSpace(res.Text)), "PINEAPPLE"))
+}
+
+// Connect once, use in several projects: membership and grants are per project, a project never reaches a server it was not put
+// into, an agent is granted only inside its own project, and disconnecting removes the server everywhere.
+func TestMCPLibraryIsSharedButProjectsAndGrantsAreSeparate(t *testing.T) {
+	self, _ := os.Executable()
+	a := openMCPApp(t, &claude.Adapter{Exe: os.Args[0]})
+	p1, _ := a.setup("one")
+	p2, _ := a.setup("two")
+	var a1, a2 core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p1.ID, Name: "A1", Adapter: "claude", Role: "backend"}, &a1)
+	a.call("agent.create", core.AgentSpec{ProjectID: p2.ID, Name: "A2", Adapter: "claude", Role: "backend"}, &a2)
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "shared", Display: "Shared", Transport: "stdio", Argv: []string{self}, Env: map[string]string{testMCPEnv: "1"}}, &lib)
+
+	list := func(p string) []core.MCPServerView {
+		var out []core.MCPServerView
+		a.call("mcpserver.list", map[string]string{"projectId": p}, &out)
+		return out
+	}
+	if len(list(p1.ID)) != 0 || len(list(p2.ID)) != 0 {
+		t.Fatal("a connected server must not be in any project until it is put there")
+	}
+
+	// dropping the server on an agent puts it into that agent's project only
+	var v core.MCPServerView
+	a.call("mcpserver.grant", map[string]any{"projectId": p1.ID, "serverId": "shared", "agentId": a1.ID, "on": true}, &v)
+	if !v.Enabled || len(v.Agents) != 1 || v.Agents[0].AgentID != a1.ID {
+		t.Fatalf("grant %+v", v)
+	}
+	if len(list(p1.ID)) != 1 || len(list(p2.ID)) != 0 {
+		t.Fatalf("membership leaked across projects: %d / %d", len(list(p1.ID)), len(list(p2.ID)))
+	}
+	// an agent of another project cannot be granted through this project
+	if err := a.callErr("mcpserver.grant", map[string]any{"projectId": p1.ID, "serverId": "shared", "agentId": a2.ID, "on": true}); err == nil {
+		t.Fatal("an agent of project two was granted a server through project one")
+	}
+
+	// a second project puts the same connected server in, with its own grants
+	a.call("mcpserver.add", map[string]string{"projectId": p2.ID, "serverId": "shared"}, &v)
+	if len(v.Agents) != 0 {
+		t.Fatalf("grants carried over to a new project: %+v", v.Agents)
+	}
+	a.call("mcpserver.grant", map[string]any{"projectId": p2.ID, "serverId": "shared", "agentId": a2.ID, "on": true}, &v)
+	a.call("mcplib.list", nil, &[]core.MCPLibraryServer{})
+	var libs []core.MCPLibraryServer
+	a.call("mcplib.list", nil, &libs)
+	if len(libs) != 1 || strings.Join(libs[0].Projects, ",") != p1.ID+","+p2.ID && strings.Join(libs[0].Projects, ",") != p2.ID+","+p1.ID {
+		t.Fatalf("library %+v", libs)
+	}
+
+	// switching it off in one project and taking it out of the other
+	a.call("mcpserver.setEnabled", map[string]any{"projectId": p1.ID, "serverId": "shared", "enabled": false}, &v)
+	if v.Enabled {
+		t.Fatal("still enabled")
+	}
+	a.call("mcpserver.remove", map[string]string{"projectId": p1.ID, "serverId": "shared"}, nil)
+	if len(list(p1.ID)) != 0 || len(list(p2.ID)) != 1 || len(list(p2.ID)[0].Agents) != 1 {
+		t.Fatalf("taking it out of project one touched project two: %+v", list(p2.ID))
+	}
+	a.call("mcplib.list", nil, &libs)
+	if len(libs) != 1 {
+		t.Fatal("taking a server out of a project must keep it in the library")
+	}
+
+	// disconnecting removes it everywhere
+	a.call("mcplib.delete", map[string]string{"id": "shared"}, nil)
+	if len(list(p2.ID)) != 0 {
+		t.Fatal("a disconnected server is still in a project")
+	}
+	var n int
+	if err := a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM agent_mcp_access`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("grants left behind: %d %v", n, err)
+	}
 }

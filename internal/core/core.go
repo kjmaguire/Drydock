@@ -119,7 +119,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// Adapters come from the embedded manifests (Claude headless; Codex, Gemini, OpenCode and Goose over ACP; Antigravity is
 	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
 	c.Connections, err = connections.NewService(connections.Config{
-		Manifests: manifests.Options{ScrubEnv: true},
+		Manifests: manifests.Options{ScrubEnv: true, PassEnv: func() []string { return passEnvNames(context.Background(), db) }},
 		Detection: connections.Options{PM: cfg.Procs, Acked: acked},
 	})
 	if err != nil {

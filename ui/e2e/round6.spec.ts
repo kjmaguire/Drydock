@@ -1,30 +1,30 @@
 import { expect, test } from '@playwright/test';
 import { createAgent, createProject } from './helpers';
 
-// Round 6: MCP servers the human adds to a project, against the real Go core. The server is a real stdio MCP server (the e2e
-// binary re-executed with DRYDOCK_E2E_MCP_SERVER=1, a test fixture). What an agent does with it is covered by the Go tests.
+// Round 6: the Library, against the real Go core. An MCP server is connected once, then dragged into projects and onto agents; a team
+// member is defined once as a template and dragged into a project. The server is a real stdio MCP server (the e2e binary re-executed
+// with DRYDOCK_E2E_MCP_SERVER=1, a test fixture). What an agent does with it is covered by the Go tests.
 
-test('MCP servers: refused values say why; add a real server, find its tools, mark one read-only, grant it to one agent; secrets are never shown again', async ({ page }) => {
-  await createProject(page, 'mcp-servers');
+test('Library: connect an MCP server once, drag it onto a project and an agent, drag a template into another project; projects stay separate', async ({ page }) => {
+  // tall, so a drag never has to scroll the page between pressing the mouse and dropping
+  await page.setViewportSize({ width: 1500, height: 3200 });
+  await createProject(page, 'lib-a');
   await createAgent(page, 'Pay', 'backend');
   await createAgent(page, 'Rev', 'reviewer');
-  await page.getByTestId('nav-mcp').click();
-  await expect(page.getByRole('heading', { name: 'MCP servers' })).toBeVisible();
-  await expect(page.getByText('No MCP servers on this project yet.')).toBeVisible();
+  await createProject(page, 'lib-b'); // now the current project
+  await page.getByTestId('nav-library').click();
+  await expect(page.getByRole('heading', { name: 'Library' })).toBeVisible();
 
+  // connect once: a refused address says why, then a real server with a secret
   const exe = process.env.DRYDOCK_E2E_EXE!;
-  await page.getByRole('button', { name: 'Add an MCP server' }).click();
+  await page.getByRole('button', { name: 'Connect an MCP server' }).click();
   const form = page.getByTestId('mcp-form');
-
-  // a plain-http address to a remote host is refused by the core
   await form.getByLabel('Short id', { exact: false }).fill('web');
   await form.getByLabel('Name', { exact: true }).fill('Remote');
   await form.getByLabel('Kind').selectOption('http');
   await form.getByLabel('Address', { exact: false }).fill('http://example.com/mcp');
-  await form.getByRole('button', { name: 'Add server' }).click();
+  await form.getByRole('button', { name: 'Connect server' }).click();
   await expect(form.getByRole('alert')).toContainText('plain http');
-
-  // a real stdio server with a secret
   await form.getByLabel('Kind').selectOption('stdio');
   await form.getByLabel('Short id', { exact: false }).fill('tst');
   await form.getByLabel('Name', { exact: true }).fill('Test server');
@@ -33,42 +33,68 @@ test('MCP servers: refused values say why; add a real server, find its tools, ma
   await form.getByRole('button', { name: 'Add a secret' }).click();
   await form.getByLabel('Secret name 1').fill('API_KEY');
   await form.getByLabel('Secret value 1').fill('sekret-e2e-value-123456');
-  await form.getByRole('button', { name: 'Add server' }).click();
+  await form.getByRole('button', { name: 'Connect server' }).click();
 
-  const card = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
+  const card = page.getByTestId('lib-mcp').filter({ hasText: 'Test server' });
   await expect(card).toBeVisible();
   await expect(card.getByTestId('mcp-secrets')).toContainText('API_KEY');
   await expect(page.locator('body')).not.toContainText('sekret-e2e-value-123456');
+  await expect(card.getByTestId('lib-mcp-projects')).toContainText('Not in any project yet');
 
-  // find the tools by really starting it
+  // find its tools by really starting it; the human decides which tool only reads
   await card.getByRole('button', { name: 'Find tools' }).click();
   await expect(card.getByTestId('mcp-tool')).toHaveCount(3);
-  await expect(card.getByTestId('mcp-tool').filter({ hasText: 'echo' })).toContainText('the server says it only reads');
+  await card.getByLabel('echo only reads').click();
+  await expect(card.getByLabel('echo only reads')).toBeChecked();
 
-  // the human, not the server, decides what only reads
-  const echo = card.getByLabel('echo only reads');
-  await expect(echo).not.toBeChecked();
-  await echo.click(); // the box follows the stored value, which changes after the core answers
-  await expect(echo).toBeChecked();
+  // drag the server onto project lib-a
+  const projA = page.getByTestId('lib-project').filter({ hasText: 'lib-a' });
+  const projB = page.getByTestId('lib-project').filter({ hasText: 'lib-b' });
+  await card.locator('h3').dragTo(projA);
+  await expect(page.getByTestId('library-note')).toContainText('Test server is now in lib-a.');
+  await expect(projA.getByTestId('proj-server')).toHaveCount(1);
+  await expect(projB.getByTestId('proj-server')).toHaveCount(0);
+  await expect(card.getByTestId('lib-mcp-projects')).toContainText('lib-a');
 
-  // deny by default: grant it to one agent
-  const pay = card.getByLabel('Pay may use Test server');
-  await expect(pay).not.toBeChecked();
-  await pay.click();
-  await expect(pay).toBeChecked();
-  await expect(card.getByLabel('Rev may use Test server')).not.toBeChecked();
+  // drag it onto the agent Pay: only Pay may use it
+  await card.locator('h3').dragTo(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }));
+  await expect(page.getByTestId('library-note')).toContainText('Pay can now use Test server.');
+  await expect(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }).getByTestId('agent-server')).toHaveCount(1);
+  await expect(projA.getByTestId('lib-agent').filter({ hasText: 'Rev' }).getByTestId('agent-server')).toHaveCount(0);
 
-  // it all survives a reload, and the secret is still not on the page
-  await page.reload();
+  // a template: defined once, dragged into the other project
+  await page.getByRole('button', { name: 'New agent template' }).click();
+  const tf = page.getByTestId('template-form');
+  await tf.getByLabel('Template name').fill('Payments dev');
+  await tf.getByLabel('Role').fill('backend');
+  await tf.getByRole('textbox', { name: /^Purpose/ }).fill('Own the payments service.');
+  await tf.getByLabel('Model', { exact: true }).fill('sonnet');
+  await tf.getByLabel('Effort', { exact: true }).selectOption('high');
+  await tf.getByLabel('Template gets Test server').check();
+  await tf.getByRole('button', { name: 'Create template' }).click();
+  const tpl = page.getByTestId('lib-template').filter({ hasText: 'Payments dev' });
+  await expect(tpl).toBeVisible();
+  await tpl.locator('h3').dragTo(projB);
+  await expect(page.getByTestId('library-note')).toContainText('Payments dev joined lib-b, with Test server');
+  const newAgent = projB.getByTestId('lib-agent').filter({ hasText: 'Payments dev' });
+  await expect(newAgent).toBeVisible();
+  await expect(newAgent.getByTestId('agent-server')).toHaveCount(1);
+  await expect(projB.getByTestId('proj-server')).toHaveCount(1); // granting also put the server into lib-b
+
+  // the project's own page agrees (lib-b is current), and the agent kept the template's settings
   await page.getByTestId('nav-mcp').click();
-  const again = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
-  await expect(again.getByLabel('echo only reads')).toBeChecked();
-  await expect(again.getByLabel('Pay may use Test server')).toBeChecked();
-  await expect(again.getByLabel('Rev may use Test server')).not.toBeChecked();
-  await expect(page.locator('body')).not.toContainText('sekret-e2e-value-123456');
+  const onB = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
+  await expect(onB.getByLabel('Payments dev may use Test server')).toBeChecked();
+  await expect(onB.getByText('reads only')).toHaveCount(1);
+  await page.getByTestId('nav-team').click();
+  await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toContainText('effort high');
 
-  // removal needs a confirmation
-  await again.getByRole('button', { name: 'Remove', exact: true }).click();
-  await again.getByRole('button', { name: 'Yes, remove' }).click();
-  await expect(page.getByText('No MCP servers on this project yet.')).toBeVisible();
+  // disconnecting removes it from every project
+  await page.getByTestId('nav-library').click();
+  const again = page.getByTestId('lib-mcp').filter({ hasText: 'Test server' });
+  await again.getByRole('button', { name: 'Disconnect' }).click();
+  await again.getByRole('button', { name: 'Yes, disconnect' }).click();
+  await expect(page.getByTestId('lib-mcp')).toHaveCount(0);
+  await expect(projA.getByTestId('proj-server')).toHaveCount(0);
+  await expect(projB.getByTestId('proj-server')).toHaveCount(0);
 });

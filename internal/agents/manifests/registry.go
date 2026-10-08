@@ -36,8 +36,10 @@ type Options struct {
 	Permission acp.PermissionHandler
 	// Terminal enables the client-side terminal for ACP adapters (off by default).
 	Terminal bool
-	// ScrubEnv starts ACP agents from an allowlisted environment.
+	// ScrubEnv starts agents (ACP agents and Claude Code) from an allowlisted environment.
 	ScrubEnv bool
+	// PassEnv returns extra variable names the human chose to pass to agents on top of the allowlist (read at every start).
+	PassEnv func() []string
 	// ClaudeExe overrides claude discovery (the "custom path" Connection setting; tests).
 	ClaudeExe string
 }
@@ -171,7 +173,7 @@ func (r *Registry) buildACP(m *Manifest, detect func(context.Context) (agents.De
 	return acp.New(acp.Config{
 		ID: m.Meta.ID, Command: a.Argv[0], Args: append([]string(nil), a.Argv[1:]...), Env: env,
 		Declared: DeclaredCapabilities(m), InstallHint: m.InstallHint(), Detector: detect,
-		Permission: r.opts.Permission, Terminal: r.opts.Terminal, ScrubEnv: r.opts.ScrubEnv,
+		Permission: r.opts.Permission, Terminal: r.opts.Terminal, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
 	}), nil
 }
 
@@ -181,6 +183,7 @@ func (r *Registry) buildHeadless(m *Manifest, detect func(context.Context) (agen
 	case h.Parser == ParserClaude:
 		ad := claude.New()
 		ad.Exe = r.opts.ClaudeExe
+		ad.ScrubEnv, ad.PassEnv = r.opts.ScrubEnv, r.opts.PassEnv
 		return &detectOverride{Adapter: ad, detect: detect}, nil
 	case h.Parser == ParserAntigravity:
 		return &unimplemented{id: m.Meta.ID, caps: DeclaredCapabilities(m), hint: m.InstallHint(), detect: detect, m: m,

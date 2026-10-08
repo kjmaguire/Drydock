@@ -4,7 +4,10 @@ import type { Client } from '../api/client';
 import type { AdapterInfo, Agent } from '../api/types';
 import { AppServicesProvider } from '../state/context';
 import { services } from '../test/fakes';
+import { AgentInspector } from './Inspector';
+import { AgentEnvSection } from './Settings';
 import { TeamView } from './Team';
+import type { AgentTemplate } from '../api/libraryClient';
 
 const claude: AdapterInfo = {
   id: 'claude',
@@ -91,5 +94,79 @@ describe('Team: purpose, model and effort', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }));
     await waitFor(() => expect(agentArchive).toHaveBeenCalledWith('agt_1'));
     expect((await screen.findByRole('alert')).textContent).toContain('unfinished tasks');
+  });
+});
+
+const template: AgentTemplate = { id: 'tpl_1', name: 'Payments dev', role: 'backend', purpose: 'Own payments.', adapter: 'claude', model: 'sonnet', effort: 'high', permissionMode: '', providerId: '', mcpServers: ['docs'], createdAt: 1, updatedAt: 1 };
+
+describe('Team: templates', () => {
+  it('adds an agent from a template and says what it was granted', async () => {
+    const agentTemplateApply = vi.fn(async () => ({ agent: agent({ name: 'Payments dev' }), granted: ['docs'], skipped: [] }));
+    const onCreated = show([], { agentTemplateList: async () => [template], agentTemplateApply });
+    fireEvent.change(await screen.findByLabelText('Name (optional)'), { target: { value: ' Billing ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this team' }));
+    await waitFor(() => expect(agentTemplateApply).toHaveBeenCalledWith('tpl_1', 'prj_1', 'Billing'));
+    expect((await screen.findByRole('status')).textContent).toContain('Payments dev joined the team, with docs');
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+  });
+
+  it('saves an existing agent as a template and points to the Library', async () => {
+    const agentTemplateFromAgent = vi.fn(async () => template);
+    show([agent()], { agentTemplateFromAgent });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Pay' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save as a template' }));
+    await waitFor(() => expect(agentTemplateFromAgent).toHaveBeenCalledWith('agt_1'));
+    expect((await screen.findByTestId('saved-as-template')).textContent).toContain('Payments dev');
+  });
+});
+
+describe('Agent environment and isolation', () => {
+  it('shows what agents keep, saves names only and shows the core refusal of a value', async () => {
+    let fail = false;
+    const agentEnvSet = vi.fn(async (names: string[]) => {
+      if (fail) throw new Error('"AWS_PROFILE=work" is not an environment variable name (give names only, never values)');
+      return { pass: names, kept: ['PATH'], prefixes: ['CLAUDE_'] };
+    });
+    render(
+      <AppServicesProvider services={services({ agentEnvGet: async () => ({ pass: ['AWS_PROFILE'], kept: ['PATH', 'HOME'], prefixes: ['CLAUDE_', 'ANTHROPIC_'] }), agentEnvSet })}>
+        <AgentEnvSection />
+      </AppServicesProvider>,
+    );
+    const box = (await screen.findByLabelText(/Also pass these variables/)) as HTMLTextAreaElement;
+    await waitFor(() => expect(box.value).toBe('AWS_PROFILE'));
+    fireEvent.change(box, { target: { value: 'AWS_PROFILE\n\n CLAUDE_CODE_USE_BEDROCK ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(agentEnvSet).toHaveBeenCalledWith(['AWS_PROFILE', 'CLAUDE_CODE_USE_BEDROCK']));
+    expect((await screen.findByRole('status')).textContent).toContain('Saved');
+    fail = true;
+    fireEvent.change(box, { target: { value: 'AWS_PROFILE=work' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('names only');
+  });
+
+  it('the inspector states the isolation in plain words, and warns when the permission mode lets the agent act freely', async () => {
+    const detail = (level: 'guarded' | 'open') => ({
+      agent: agent(),
+      runs: [],
+      usage: [],
+      isolation: { level, summary: level === 'guarded' ? 'Claude Code checks keep it to its folder. This is not an operating-system sandbox.' : 'Its permission mode lets it act without asking.', details: ['Its own worktree.'] },
+    });
+    const { unmount } = render(
+      <AppServicesProvider services={services({ agentGet: async () => detail('guarded') })}>
+        <AgentInspector agentId="agt_1" presence={[]} />
+      </AppServicesProvider>,
+    );
+    const box = await screen.findByTestId('inspector-isolation');
+    expect(box.getAttribute('data-level')).toBe('guarded');
+    expect(box.textContent).toContain('not an operating-system sandbox');
+    unmount();
+    render(
+      <AppServicesProvider services={services({ agentGet: async () => detail('open') })}>
+        <AgentInspector agentId="agt_1" presence={[]} />
+      </AppServicesProvider>,
+    );
+    const open = await screen.findByTestId('inspector-isolation');
+    expect(open.getAttribute('data-level')).toBe('open');
+    expect(open.textContent).toContain('not held in');
   });
 });

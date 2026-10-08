@@ -215,6 +215,11 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
             </NavLink>
           </li>
           <li>
+            <NavLink href="#/library" current={route.name === 'library'} testId="nav-library">
+              Library
+            </NavLink>
+          </li>
+          <li>
             <NavLink href="#/connections" current={route.name === 'connections'} testId="nav-connections">
               Connections
             </NavLink>

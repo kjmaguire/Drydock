@@ -45,7 +45,9 @@ type Config struct {
 	// NoFS stops advertising fs/read_text_file and fs/write_text_file. By default both are served and confined to the cwd.
 	NoFS bool
 	// ScrubEnv starts the child from a small allowlist of the process environment instead of inheriting all of it.
-	ScrubEnv     bool
+	ScrubEnv bool
+	// PassEnv returns extra variable names to keep when ScrubEnv is on (read at every start).
+	PassEnv      func() []string
 	StartTimeout time.Duration
 	// Logger receives connection diagnostics; nil discards them (they can contain protocol payloads).
 	Logger *slog.Logger
@@ -181,7 +183,11 @@ func (a *Adapter) launch(ctx context.Context, pm proc.Manager, spec agents.RunSp
 	if err != nil {
 		return nil, err
 	}
-	env := buildEnv(os.Environ(), a.cfg.ScrubEnv, a.cfg.Env, spec.Env)
+	var pass []string
+	if a.cfg.ScrubEnv && a.cfg.PassEnv != nil {
+		pass = proc.ScrubEnv(os.Environ(), a.cfg.PassEnv(), nil)
+	}
+	env := buildEnv(os.Environ(), a.cfg.ScrubEnv, pass, a.cfg.Env, spec.Env)
 	p, err := pm.Start(ctx, proc.Spec{Path: a.cfg.Command, Args: a.cfg.Args, Dir: spec.Cwd, Env: env, Label: "agent:" + spec.AgentID})
 	if err != nil {
 		g.close()
