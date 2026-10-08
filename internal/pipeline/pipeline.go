@@ -41,6 +41,8 @@ type Deps struct {
 	Checks func(dir string) []checks.Spec
 	// OnCheck is called after each individual check (post the tool-member message). May be nil.
 	OnCheck func(ctx context.Context, t tasks.Task, r checks.Result)
+	// OnTurn is called with an agent's final text after each work or review turn (the room posts it in the task channel).
+	OnTurn func(ctx context.Context, t tasks.Task, agentID, role, text string)
 	// Context, if set, owns the generated instruction files and the per-attempt context manifest (brief section 9).
 	Context *ctxeng.Engine
 }
@@ -162,6 +164,9 @@ func Work(d Deps) workflow.NodeHandler {
 				cost += u.CostUSD
 			}
 			_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: cost})
+			if d.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
+				d.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
+			}
 		}
 		return out, nil
 	}

@@ -147,6 +147,13 @@ func Review(d Deps) workflow.NodeHandler {
 		}
 		_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: cost})
 		v := ParseVerdict(res.Text)
+		if d.OnTurn != nil {
+			summary := v.Verdict
+			if v.Feedback != "" {
+				summary += ": " + v.Feedback
+			}
+			d.OnTurn(ctx, t, cfg.AgentID, "review", summary)
+		}
 		if _, err := d.Tasks.AddReview(ctx, t.ID, tasks.ReviewRecord{Attempt: t.Iteration, Reviewer: cfg.AgentID, Verdict: v.Verdict, Feedback: v.Feedback, Model: cfg.Spec.Model}); err != nil {
 			return workflow.NodeOutput{}, err
 		}

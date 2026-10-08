@@ -1,0 +1,136 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/tasks"
+)
+
+// Method is one callable operation. Both transports (the Wails bridge and the development HTTP server) dispatch through the
+// same registry, so the UI sees identical behavior in the app and under test.
+type Method func(ctx context.Context, params json.RawMessage) (any, error)
+
+func bind[T any](f func(ctx context.Context, p T) (any, error)) Method {
+	return func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var p T
+		if len(raw) > 0 && string(raw) != "null" {
+			if err := json.Unmarshal(raw, &p); err != nil {
+				return nil, fmt.Errorf("invalid parameters: %w", err)
+			}
+		}
+		return f(ctx, p)
+	}
+}
+
+type idParam struct {
+	ID string `json:"id"`
+}
+
+// Methods returns the registry of UI-callable operations.
+func (c *Core) Methods() map[string]Method {
+	return map[string]Method{
+		"app.info": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir}, nil
+		}),
+		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
+			return c.CreateProject(ctx, p.Name, p.RepoPath)
+		}),
+		"project.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Projects(ctx) }),
+		"project.get":  bind(func(ctx context.Context, p idParam) (any, error) { return c.GetProject(ctx, p.ID) }),
+
+		"adapter.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.DescribeAdapters(ctx), nil }),
+		"agent.create": bind(func(ctx context.Context, p AgentSpec) (any, error) { return c.CreateAgent(ctx, p) }),
+		"agent.list": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return c.Agents(ctx, p.ProjectID)
+		}),
+
+		"task.create": bind(func(ctx context.Context, p tasks.CreateReq) (any, error) { return c.CreateTask(ctx, p) }),
+		"task.list": bind(func(ctx context.Context, p struct {
+			ProjectID string   `json:"projectId"`
+			Statuses  []string `json:"statuses"`
+		}) (any, error) {
+			f := tasks.Filter{ProjectID: p.ProjectID, Limit: 500}
+			for _, s := range p.Statuses {
+				f.Statuses = append(f.Statuses, tasks.Status(s))
+			}
+			return c.Tasks.List(ctx, f)
+		}),
+		"task.get":  bind(func(ctx context.Context, p idParam) (any, error) { return c.GetTask(ctx, p.ID) }),
+		"task.diff": bind(func(ctx context.Context, p idParam) (any, error) { return c.TaskDiff(ctx, p.ID) }),
+		"task.assign": bind(func(ctx context.Context, p struct{ ID, Assignee, Reviewer string }) (any, error) {
+			return c.AssignTask(ctx, p.ID, p.Assignee, p.Reviewer)
+		}),
+		"task.start":  bind(func(ctx context.Context, p idParam) (any, error) { return c.StartTask(ctx, p.ID) }),
+		"task.cancel": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.CancelTask(ctx, p.ID) }),
+
+		"run.respond": bind(func(ctx context.Context, p struct {
+			RunID, RequestID, Decision string
+			Data                       json.RawMessage
+		}) (any, error) {
+			return nil, c.Respond(ctx, p.RunID, p.RequestID, p.Decision, p.Data)
+		}),
+
+		"room.list": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return c.Room.ListRooms(ctx, p.ProjectID, false)
+		}),
+		"room.messages": bind(func(ctx context.Context, p struct {
+			RoomID   string `json:"roomId"`
+			AfterSeq int64  `json:"afterSeq"`
+			Limit    int    `json:"limit"`
+		}) (any, error) {
+			return c.Room.Messages(ctx, p.RoomID, p.AfterSeq, p.Limit)
+		}),
+		"room.post": bind(func(ctx context.Context, p struct {
+			RoomID, Body, ThreadRoot string
+		}) (any, error) {
+			return c.PostMessage(ctx, p.RoomID, p.Body, p.ThreadRoot)
+		}),
+		"room.markRead": bind(func(ctx context.Context, p struct {
+			RoomID string `json:"roomId"`
+			Seq    int64  `json:"seq"`
+		}) (any, error) {
+			return c.Room.MarkRead(ctx, p.RoomID, room.Human(c.cfg.User), p.Seq)
+		}),
+		"room.unread": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return c.Room.UnreadCounts(ctx, room.Human(c.cfg.User), p.ProjectID)
+		}),
+		"needsyou.list": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return c.Room.NeedsYou(ctx, p.ProjectID)
+		}),
+		"presence.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Presence.Snapshot(), nil }),
+
+		"events.replay": bind(func(ctx context.Context, p struct {
+			After uint64   `json:"after"`
+			Types []string `json:"types"`
+			Task  string   `json:"taskId"`
+			Limit int      `json:"limit"`
+		}) (any, error) {
+			return c.Replay(ctx, p.After, events.Filter{Types: p.Types, TaskID: p.Task}, p.Limit)
+		}),
+	}
+}
+
+// Call dispatches one method by name.
+func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
+	m, ok := c.Methods()[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown method %q", name)
+	}
+	v, err := m(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(v)
+}
