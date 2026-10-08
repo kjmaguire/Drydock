@@ -42,9 +42,16 @@ func (r *run) cmdTokens(text string) ([]cmdTok, bool) {
 	var cur strings.Builder
 	var curTok cmdTok
 	inWord := false
+	groupDepth := 0
+	stmtHead := ""
+	prevWord := ""
 	flush := func() {
 		if inWord {
 			curTok.kind, curTok.text = 'w', cur.String()
+			if stmtHead == "" {
+				stmtHead = strings.ToLower(curTok.text)
+			}
+			prevWord = strings.ToLower(curTok.text)
 			toks = append(toks, curTok)
 		}
 		cur.Reset()
@@ -58,6 +65,7 @@ func (r *run) cmdTokens(text string) ([]cmdTok, bool) {
 		case c == '\n' || c == '\r':
 			flush()
 			toks = append(toks, cmdTok{kind: 'o', text: "&"})
+			stmtHead, prevWord = "", ""
 		case c == ' ' || c == '\t':
 			flush()
 		case c == '"':
@@ -92,6 +100,7 @@ func (r *run) cmdTokens(text string) ([]cmdTok, bool) {
 			cur.WriteRune(rs[i])
 		case c == '&':
 			flush()
+			stmtHead, prevWord = "", ""
 			if i+1 < len(rs) && rs[i+1] == '&' {
 				toks = append(toks, cmdTok{kind: 'o', text: "&&"})
 				i++
@@ -100,16 +109,24 @@ func (r *run) cmdTokens(text string) ([]cmdTok, bool) {
 			}
 		case c == '|':
 			flush()
+			stmtHead, prevWord = "", ""
 			if i+1 < len(rs) && rs[i+1] == '|' {
 				toks = append(toks, cmdTok{kind: 'o', text: "||"})
 				i++
 			} else {
 				toks = append(toks, cmdTok{kind: 'o', text: "|"})
 			}
-		case c == '(' && !inWord:
+		case c == '(' && !inWord && (stmtHead == "" || stmtHead == "if" || prevWord == "else" || prevWord == "do"):
+			// a group: at the start of a command, or the command part of if/else/for
 			toks = append(toks, cmdTok{kind: '('})
-		case c == ')' && !inWord:
+			groupDepth++
+			stmtHead, prevWord = "", ""
+		case c == ')' && groupDepth > 0:
+			// inside a group an unquoted ) always closes it, even directly after a word
+			flush()
 			toks = append(toks, cmdTok{kind: ')'})
+			groupDepth--
+			stmtHead, prevWord = "", ""
 		case c == '>' || c == '<':
 			// a lone digit directly before the operator is the file descriptor
 			fd := ""

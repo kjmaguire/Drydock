@@ -161,8 +161,10 @@ func (p *Policy) Decide(rep CommandReport) CommandDecision {
 	dangerous := false
 	for _, c := range rep.Classes {
 		if k := classKind(c); k != "" {
-			kinds[k] = true
 			dangerous = true
+			if !kindFamilyCovered(k, rep.Kinds) {
+				kinds[k] = true
+			}
 		}
 	}
 	for k := range kinds {
@@ -207,6 +209,23 @@ func (p *Policy) Decide(rep CommandReport) CommandDecision {
 		}
 	}
 	return p.restrict(rep, d)
+}
+
+var kindFamilies = map[string][]string{
+	KindDeploy:           {KindDeploy, KindInfraChange},
+	KindShellDestructive: {KindShellDestructive, KindGitForcePush, KindGitBranchDelete, KindFSDelete},
+	KindSecretsAccess:    {KindSecretsAccess},
+	KindDBMigration:      {KindDBMigration},
+}
+
+// kindFamilyCovered: a rule already named a more specific kind of the same family as the class-derived kind.
+func kindFamilyCovered(classKind string, ruleKinds []string) bool {
+	for _, k := range kindFamilies[classKind] {
+		if k != classKind && contains(ruleKinds, k) {
+			return true
+		}
+	}
+	return false
 }
 
 func orderKinds(m map[string]bool) (kinds []string, primary string) {

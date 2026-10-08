@@ -252,7 +252,7 @@ func factsFor(req RouteRequest, c Candidate, excludedTrainable int) DecisionFact
 	}
 	return DecisionFacts{Level: req.Level, RunKind: req.RunKind, TaskType: req.TaskType, DiffLines: req.DiffLines, Risk: req.Risk, Attempt: req.Attempt,
 		ContextCeiling: ceiling, Tier: c.Tier, DataClass: c.DataClass, ExcludedTrainable: excludedTrainable, QuotaRemainingPct: c.QuotaRemainingPct,
-		BudgetPctUsed: req.Budget.PctUsed, ProbePassed: c.ProbePassed}
+		BudgetPctUsed: req.Budget.PctUsed, ProbePassed: c.ProbePassed, PriceUpdatedAt: c.PriceUpdatedAt}
 }
 
 var _ ModelRouter = (*StaticRouter)(nil)

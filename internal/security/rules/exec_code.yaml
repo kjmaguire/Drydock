@@ -6,12 +6,14 @@ class: exec_code
 rules:
   - id: exec_code.interpreters
     programs: [node, nodejs, python, python3, py, ruby, perl, php, deno, bun, java, lua, tsx, ts-node, cscript, wscript, mshta, rundll32, regsvr32, msbuild, awk, gawk, nawk, osascript, jshell, groovy, rscript, julia, dotnet-script]
+    flags_none: ["--version", "-version", "-v", "-V", "--help", "-h"]
     paths: heuristic
   - id: exec_code.shell_scripts
     programs: [bash, sh, zsh, dash, ksh, fish, tcsh, csh, powershell, pwsh, cmd, wsl]
     paths: heuristic
   - id: exec_code.runners
     programs: [npm, pnpm, yarn, npx, bunx, uvx, pipx, make, cmake, ninja, gradle, gradlew, mvn, mvnw, ant, rake, just, task, tox, nox, pytest, jest, vitest, mocha, tsc, eslint, prettier, webpack, vite, esbuild, rollup, turbo, nx, sbt, bazel, ctest, msbuild, devenv, playwright, osv-scanner, gitleaks, hugo, jekyll, mkdocs, sphinx-build, bundle, composer]
+    flags_none: ["--version", "-version", "-v", "-V", "--help", "-h"]
     paths: heuristic
   - id: exec_code.go
     programs: [go]

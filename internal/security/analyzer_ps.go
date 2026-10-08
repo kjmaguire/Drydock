@@ -198,7 +198,7 @@ func (l *psLexer) command(piped bool, edge string) {
 			l.fail("unterminated static call")
 			return
 		}
-		l.r.script(inner, ShellPowerShell, l.depth)
+		l.scanSubexprs(inner)
 		return
 	case c == '(' || c == '[' || c == '{' || c == '@' || c == '<' || c == '>':
 		l.fail("expression in command position")
@@ -565,7 +565,7 @@ func (l *psLexer) args(inv *Invocation) {
 				if !ok {
 					return
 				}
-				inv.Args = append(inv.Args, Arg{Text: txt, Dynamic: dyn})
+				inv.Args = append(inv.Args, Arg{Text: txt, Dynamic: dyn, Data: !dyn})
 			default:
 				l.fail("splatting or array operator")
 				return
@@ -579,7 +579,7 @@ func (l *psLexer) args(inv *Invocation) {
 					l.fail("unterminated static call")
 					return
 				}
-				l.r.script(inner, ShellPowerShell, l.depth)
+				l.scanSubexprs(inner)
 				inv.Args = append(inv.Args, Arg{Text: "[IO.Path]::...(" + truncate(inner, 60) + ")", Dynamic: true})
 				continue
 			}

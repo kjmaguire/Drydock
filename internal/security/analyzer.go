@@ -68,6 +68,7 @@ type Arg struct {
 	Text    string `json:"text"`
 	Dynamic bool   `json:"dynamic,omitempty"`
 	Glob    bool   `json:"glob,omitempty"`
+	Data    bool   `json:"data,omitempty"` // literal data such as a here-string: never a path
 }
 
 // Redirect is a redirection of an invocation.
@@ -718,7 +719,7 @@ func (r *run) addInvocation(inv Invocation, depth int) {
 		}
 		r.classSet[ClassExecCode] = true
 	}
-	if len(cur.Classes) == 0 && !cur.Wrapper && !cur.function {
+	if len(cur.Classes) == 0 && len(res.ids) == 0 && !cur.Wrapper && !cur.function {
 		cur.Classes = []Class{ClassUnknown}
 		r.classSet[ClassUnknown] = true
 		if r.a.rules.IsKnownProgram(cur.Program) {

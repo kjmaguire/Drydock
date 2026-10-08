@@ -82,6 +82,10 @@ func (r *run) strictParams(inv *Invocation) {
 	}
 }
 
+// psValueParams take a value that is data, not a path; the argument after them is not checked as a path.
+var psValueParams = set("value", "encoding", "pattern", "message", "separator", "delimiter", "text", "count", "itemtype", "tail", "first", "last", "skip",
+	"depth", "width", "algorithm", "scope", "id", "property", "unique", "inputobject", "object", "milliseconds", "seconds", "uri", "method", "body", "headers", "contenttype")
+
 var psPathParams = set("path", "literalpath", "destination", "filepath", "outfile", "infile", "directory", "workingdirectory")
 
 var cdPrograms = set("cd", "chdir", "pushd", "popd", "set-location", "push-location", "pop-location")
@@ -213,6 +217,7 @@ func (r *run) collectPaths(inv *Invocation, pa *parsedArgs, matched []*Rule, mod
 	}
 	if mode != "none" {
 		first := true
+		prevValueParam := false
 		for _, a := range inv.Args {
 			t := a.Text
 			isFlag := !a.Dynamic && strings.HasPrefix(t, "-") && len(t) > 1 && !isNumber(t[1:])
@@ -220,6 +225,9 @@ func (r *run) collectPaths(inv *Invocation, pa *parsedArgs, matched []*Rule, mod
 				isFlag = true
 			}
 			if isFlag {
+				if inv.Shell == ShellPowerShell && !strings.ContainsAny(t, ":=") && psValueParams[strings.ToLower(strings.TrimPrefix(t, "-"))] {
+					prevValueParam = true
+				}
 				// attached value of a flag: --out=/x, -Path:/x
 				if _, v, ok := strings.Cut(t, "="); ok && looksLikePath(v) {
 					r.addPath(inv, v, false, false, "arg")
@@ -230,6 +238,13 @@ func (r *run) collectPaths(inv *Invocation, pa *parsedArgs, matched []*Rule, mod
 						r.addPath(inv, v, true, false, "arg")
 					}
 				}
+				continue
+			}
+			if a.Data {
+				continue
+			}
+			if prevValueParam {
+				prevValueParam = false
 				continue
 			}
 			if first && skip == 1 {

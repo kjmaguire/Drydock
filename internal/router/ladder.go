@@ -2,6 +2,7 @@ package router
 
 import (
 	"sort"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/providers"
 )
@@ -30,7 +31,8 @@ type Candidate struct {
 	Context            int
 	AgentNative        bool
 	PriceKnown         bool
-	BlendedPerM        float64  // USD per million tokens at the 3:1 input:output weight; meaningful when PriceKnown
+	BlendedPerM        float64 // USD per million tokens at the 3:1 input:output weight; meaningful when PriceKnown
+	PriceUpdatedAt     time.Time
 	EstCostUSD         *float64 // for this request; nil when the price is unknown
 }
 
@@ -234,8 +236,8 @@ func Rank(order []providers.Tier, global Effects, perCandidate map[string]Effect
 		if a.PriceKnown && a.BlendedPerM != b.BlendedPerM {
 			return a.BlendedPerM < b.BlendedPerM
 		}
-		if a.QuotaRemainingPct != b.QuotaRemainingPct {
-			return a.QuotaRemainingPct > b.QuotaRemainingPct
+		if qa, qb := effQuota(a.QuotaRemainingPct), effQuota(b.QuotaRemainingPct); qa != qb {
+			return qa > qb
 		}
 		if a.Provider != b.Provider {
 			return a.Provider < b.Provider
@@ -243,6 +245,14 @@ func Rank(order []providers.Tier, global Effects, perCandidate map[string]Effect
 		return a.Model < b.Model
 	})
 	return ranked, rejected
+}
+
+// effQuota treats an unknown remaining quota (-1: no limit is known) like a full one, so a known-low window ranks below it.
+func effQuota(p float64) float64 {
+	if p < 0 {
+		return 1
+	}
+	return p
 }
 
 func mergeEffects(g, c Effects) Effects {

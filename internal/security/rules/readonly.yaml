@@ -12,7 +12,7 @@ rules:
     flags_none: ["-o", "--output"]
     paths: positional
   - id: readonly.posix.nopaths
-    programs: [echo, printf, pwd, "true", "false", sleep, seq, expr, whoami, id, uname, hostname, test, "[", "[[", ":", type, command, alias, unalias, set, shift, return, exit, wait, jobs, umask, ulimit, getconf, nproc, arch, locale, tty, groups, logname, uptime]
+    programs: [echo, printf, pwd, "true", "false", sleep, seq, expr, whoami, id, uname, hostname, test, "[", "[[", ":", type, alias, unalias, set, shift, return, exit, wait, jobs, umask, ulimit, getconf, nproc, arch, locale, tty, groups, logname, uptime]
     paths: none
   - id: readonly.posix.date
     programs: [date]
@@ -66,6 +66,16 @@ rules:
     subcommands: [config]
     flags_any: ["--get", "--get-all", "--get-regexp", "--list", "-l", "--get-urlmatch"]
     flags_none: ["--unset", "--unset-all", "--add", "--replace-all", "--edit", "-e"]
+    paths: none
+  # --- toolchain version and help queries ---
+  - id: readonly.tool.versions
+    programs: [go, node, npm, python, python3, py, cargo, rustc, dotnet, java, deno, bun, pnpm, yarn, wrangler, gh, git, docker, kubectl, terraform]
+    flags_any: ["--version", "-version", "-v", "-V", "--help", "-h", "-help"]
+    flags_none: ["-e", "-c", "-r", "--eval"]
+    paths: none
+  - id: readonly.tool.version_cmd
+    programs: [go, docker, kubectl, terraform, cargo, rustc]
+    subcommands: [version]
     paths: none
   - id: readonly.go.query
     programs: [go]

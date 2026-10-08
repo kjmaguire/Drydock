@@ -82,7 +82,8 @@ func (s *RegistrySource) CandidateFor(ctx context.Context, req RouteRequest, pro
 	}
 	m, err := s.Catalog.Model(ctx, providerID, model)
 	if err != nil {
-		m = providers.Model{ProviderID: providerID, ID: model, Tier: p.Tier, DataClass: p.DataClass}
+		// Not in the catalog: a deliberate static assignment. Capabilities are assumed (tools), the price is unknown.
+		m = providers.Model{ProviderID: providerID, ID: model, Tier: p.Tier, DataClass: p.DataClass, SupportsTools: true}
 	}
 	return s.candidate(ctx, req, p, m), nil
 }
@@ -96,7 +97,7 @@ func (s *RegistrySource) candidate(ctx context.Context, req RouteRequest, p prov
 		Enabled: p.Enabled, PrivateEligible: p.PrivateEligible() || p.DataClass != providers.DataPrivate, SupportsTools: m.SupportsTools,
 		ResponsesValidated: !p.ResponsesValidatedAt.IsZero(), Healthy: true, QuotaOK: true, QuotaRemainingPct: -1,
 		MaxConcurrent: p.MaxConcurrent, ProbePassed: m.ProbeStatus == "pass", Context: m.ContextLength, PriceKnown: m.PriceKnown(),
-		BlendedPerM: blendedPerM(m)}
+		BlendedPerM: blendedPerM(m), PriceUpdatedAt: m.PriceUpdatedAt}
 	if s.Avail != nil {
 		if st, err := s.Avail.Status(ctx, p.ID); err == nil {
 			c.Healthy, c.Concurrent = st.Available, st.InUse

@@ -243,7 +243,7 @@ func (r *run) call(c *syntax.CallExpr, redirs []Redirect, depth int, edge string
 		r.opaque("command name is not a literal word: " + truncate(head.Text, 60))
 		return
 	}
-	if head.Glob {
+	if head.Glob && head.Text != "[" && head.Text != "[[" {
 		r.opaque("command name contains a glob")
 		return
 	}
