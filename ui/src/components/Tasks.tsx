@@ -1,0 +1,509 @@
+import { useState, type FormEvent } from 'react';
+import type { Agent, Evidence, PendingRequest, ReviewRecord, Task, TaskDetail } from '../api/types';
+import { Markdown } from '../lib/Markdown';
+import { agentName, formatCost, formatDateTime } from '../lib/format';
+import { useClient } from '../state/context';
+import { useAgents, useTaskDetail, useTasks } from '../state/hooks';
+import { Badge, Empty, ErrorNote, Page, SourceBadge, StatusChip } from './common';
+
+// --- list + create ---
+
+export function TaskList({ projectId, agents }: { projectId: string; agents: readonly Agent[] }) {
+  const tasks = useTasks(projectId);
+  const list = tasks.data ?? [];
+  return (
+    <Page title="Tasks" actions={<a className="btn primary" href="#/tasks/new">New task</a>}>
+      <ErrorNote error={tasks.error} what="Could not load tasks" />
+      {tasks.loading && !tasks.data ? <p className="muted">Loading tasks...</p> : null}
+      {tasks.data && list.length === 0 ? (
+        <Empty title="No tasks yet">
+          <p>A task is the unit of work. Create one, assign a worker and a different reviewer, then start it.</p>
+        </Empty>
+      ) : null}
+      {list.length > 0 ? (
+        <table className="table" aria-label="Tasks">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Title</th>
+              <th scope="col">Status</th>
+              <th scope="col">Worker</th>
+              <th scope="col">Reviewer</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((t) => (
+              <tr key={t.id} data-testid="task-row">
+                <td>{t.seq}</td>
+                <td>
+                  <a href={`#/task/${encodeURIComponent(t.id)}`}>{t.title}</a>
+                </td>
+                <td>
+                  <StatusChip status={t.status} />
+                </td>
+                <td>{agentName(t.assignee, agents) || <span className="muted">unassigned</span>}</td>
+                <td>{agentName(t.reviewer, agents) || <span className="muted">unassigned</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </Page>
+  );
+}
+
+export function TaskCreate({ projectId }: { projectId: string }) {
+  const client = useClient();
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [acceptance, setAcceptance] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | undefined>();
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(undefined);
+    try {
+      const t = await client.taskCreate({
+        projectId,
+        title: title.trim(),
+        description,
+        acceptance: acceptance
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
+      window.location.hash = `#/task/${encodeURIComponent(t.id)}`;
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Page title="New task">
+      <form className="form" onSubmit={submit}>
+        <ErrorNote error={error} what="Task not created" />
+        <label>
+          Task title
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+        </label>
+        <label>
+          Description
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} />
+        </label>
+        <label>
+          Acceptance criteria (one per line, Given / When / Then)
+          <textarea value={acceptance} onChange={(e) => setAcceptance(e.target.value)} rows={3} />
+        </label>
+        <div className="form-actions">
+          <button type="submit" className="primary" disabled={busy || !title.trim()}>
+            Create task
+          </button>
+          <a href="#/tasks">Cancel</a>
+        </div>
+      </form>
+    </Page>
+  );
+}
+
+// --- detail ---
+
+export function TaskDetailView({ taskId, agents }: { taskId: string; agents: readonly Agent[] }) {
+  const detail = useTaskDetail(taskId);
+  const d = detail.data;
+  if (!d) {
+    return (
+      <Page title="Task">
+        <ErrorNote error={detail.error} what="Could not load the task" />
+        {detail.loading ? <p className="muted">Loading task...</p> : null}
+      </Page>
+    );
+  }
+  const t = d.task;
+  return (
+    <Page title={`#${t.seq} ${t.title}`} actions={<StatusChip status={t.status} />}>
+      <ErrorNote error={detail.error} what="Refresh failed" />
+      <div className="task-meta">
+        <span>
+          Worker: <strong>{agentName(t.assignee, agents) || 'unassigned'}</strong>
+        </span>
+        <span>
+          Reviewer: <strong>{agentName(t.reviewer, agents) || 'unassigned'}</strong>
+        </span>
+        {t.branch ? (
+          <span>
+            Branch: <code>{t.branch}</code>
+          </span>
+        ) : null}
+        <span>
+          Attempt {t.iteration} of {t.maxIterations}
+        </span>
+        <span>
+          Cost: <strong data-testid="task-cost">{formatCost(t.costUsd)}</strong> {t.costUsd > 0 ? <SourceBadge source="unknown" /> : null}
+        </span>
+        {t.issueRef ? <span>Issue: {t.issueRef}</span> : null}
+        {t.prRef ? <span>PR: {t.prRef}</span> : null}
+        {t.acceptedBy ? <span>Accepted by {t.acceptedBy}</span> : null}
+        {d.run ? (
+          <span>
+            Run: <code>{d.run.status}</code>
+          </span>
+        ) : null}
+        {d.roomId ? <a href={`#/room/${encodeURIComponent(d.roomId)}`}>Open task channel</a> : null}
+      </div>
+      {t.blockedReason ? <p className="error-note">Blocked: {t.blockedReason}</p> : null}
+
+      <ReviewPanel detail={d} onChanged={detail.reload} />
+      <TeamBar detail={d} projectId={t.projectId} onChanged={detail.reload} />
+
+      <h2>Description</h2>
+      {t.description ? <Markdown source={t.description} /> : <p className="muted">No description.</p>}
+      {t.acceptance && t.acceptance.length > 0 ? (
+        <>
+          <h3>Acceptance criteria</h3>
+          <ul>
+            {t.acceptance.map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      <h2>Evidence</h2>
+      <EvidenceList evidence={d.evidence} />
+      <h2>Reviews</h2>
+      <ReviewList reviews={d.reviews} agents={agents} />
+      <h2>Diff</h2>
+      <DiffView taskId={t.id} hasDiff={d.evidence.some((e) => e.kind === 'diff')} />
+    </Page>
+  );
+}
+
+function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; projectId: string; onChanged: () => void }) {
+  const client = useClient();
+  const agents = useAgents(projectId);
+  const list = agents.data ?? [];
+  const t = detail.task;
+  const [worker, setWorker] = useState(t.assignee ?? '');
+  const [reviewer, setReviewer] = useState(t.reviewer ?? '');
+  const [busy, setBusy] = useState<'assign' | 'start' | 'cancel' | ''>('');
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [error, setError] = useState<Error | undefined>();
+  const terminal = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(t.status);
+  const runActive = !!detail.run && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(detail.run.status);
+
+  const act = async (what: 'assign' | 'start' | 'cancel', fn: () => Promise<unknown>) => {
+    setBusy(what);
+    setError(undefined);
+    try {
+      await fn();
+      onChanged();
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setBusy('');
+    }
+  };
+  if (terminal) return null;
+  return (
+    <div className="team-bar" role="group" aria-label="Assignment and control">
+      <ErrorNote error={error} />
+      {!runActive ? (
+        <>
+          <label>
+            Worker
+            <select value={worker} onChange={(e) => setWorker(e.target.value)}>
+              <option value="">Choose a worker</option>
+              {list.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.role})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Reviewer
+            <select value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
+              <option value="">Choose a reviewer</option>
+              {list.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.role})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button disabled={!worker || !reviewer || worker === reviewer || busy !== ''} onClick={() => act('assign', () => client.taskAssign(t.id, worker, reviewer))}>
+            Assign
+          </button>
+          <button
+            className="primary"
+            disabled={!t.assignee || !t.reviewer || busy !== '' || worker !== (t.assignee ?? '') || reviewer !== (t.reviewer ?? '')}
+            title={!t.assignee || !t.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
+            onClick={() => act('start', () => client.taskStart(t.id))}
+          >
+            Start
+          </button>
+        </>
+      ) : null}
+      {confirmCancel ? (
+        <>
+          <span>Cancel this task and stop its run?</span>
+          <button className="danger" disabled={busy !== ''} onClick={() => act('cancel', async () => { await client.taskCancel(t.id); setConfirmCancel(false); })}>
+            Yes, cancel task
+          </button>
+          <button onClick={() => setConfirmCancel(false)}>Keep</button>
+        </>
+      ) : (
+        <button onClick={() => setConfirmCancel(true)}>Cancel task</button>
+      )}
+    </div>
+  );
+}
+
+// --- the human review panel: buttons bound to the request id, never to message text ---
+
+function payloadOf(p: PendingRequest): { files: string[]; branch?: string; base?: string } {
+  const v = (p.spec.payload ?? {}) as { files?: unknown; branch?: unknown; base?: unknown };
+  return {
+    files: Array.isArray(v.files) ? v.files.filter((f): f is string => typeof f === 'string') : [],
+    branch: typeof v.branch === 'string' ? v.branch : undefined,
+    base: typeof v.base === 'string' ? v.base : undefined,
+  };
+}
+
+export function ReviewPanel({ detail, onChanged }: { detail: TaskDetail; onChanged: () => void }) {
+  if (detail.pending.length === 0) return null;
+  return (
+    <section className="review-panel" aria-label="Needs your decision" data-testid="review-panel">
+      <h2>Needs your decision</h2>
+      {detail.pending.map((p) => (
+        <PendingCard key={p.id} p={p} runId={detail.run?.id} onChanged={onChanged} />
+      ))}
+    </section>
+  );
+}
+
+function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string | undefined; onChanged: () => void }) {
+  const client = useClient();
+  const [mode, setMode] = useState<'idle' | 'changes'>('idle');
+  const [text, setText] = useState('');
+  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [error, setError] = useState<Error | undefined>();
+  const info = payloadOf(p);
+  const respond = async (decision: string, data?: unknown) => {
+    if (!runId) {
+      setError(new Error('This task has no run to answer.'));
+      return;
+    }
+    setState('sending');
+    setError(undefined);
+    try {
+      await client.runRespond(runId, p.id, decision, data);
+      // The answer is accepted; the request disappears when the core's events say so (it is not assumed here).
+      setState('sent');
+      onChanged();
+    } catch (err) {
+      setError(err as Error);
+      setState('idle');
+    }
+  };
+  const busy = state !== 'idle';
+  return (
+    <div className="pending" data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
+      <h3>{p.spec.title}</h3>
+      <p className="muted">
+        Request kind: <code>{p.spec.kind}</code>
+      </p>
+      {info.branch ? (
+        <p>
+          Branch <code>{info.branch}</code>
+          {info.base ? (
+            <>
+              {' '}
+              into <code>{info.base}</code>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+      {info.files.length > 0 ? (
+        <details open>
+          <summary>{info.files.length} file(s) changed</summary>
+          <ul>
+            {info.files.map((f) => (
+              <li key={f}>
+                <code>{f}</code>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      <ErrorNote error={error} what="Not sent" />
+      {state === 'sent' ? <p role="status">Answer sent. Waiting for the core to confirm...</p> : null}
+
+      {p.spec.kind === 'question' ? (
+        <div className="form">
+          <label>
+            Your answer
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} disabled={busy} />
+          </label>
+          <div className="form-actions">
+            <button className="primary" disabled={busy || !text.trim()} onClick={() => respond('answered', { text })}>
+              Send answer
+            </button>
+          </div>
+        </div>
+      ) : p.spec.kind === 'review' ? (
+        mode === 'idle' ? (
+          <div className="form-actions">
+            <button className="primary" disabled={busy} onClick={() => respond('approved')}>
+              Approve
+            </button>
+            <button disabled={busy} onClick={() => setMode('changes')}>
+              Request changes
+            </button>
+          </div>
+        ) : (
+          <div className="form">
+            <label>
+              Feedback for the worker
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} disabled={busy} />
+            </label>
+            <div className="form-actions">
+              <button className="primary" disabled={busy || !text.trim()} onClick={() => respond('rejected', { feedback: text.trim() })}>
+                Send feedback
+              </button>
+              <button disabled={busy} onClick={() => setMode('idle')}>
+                Back
+              </button>
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="form-actions">
+          <button className="primary" disabled={busy} onClick={() => respond('approved')}>
+            Approve
+          </button>
+          <button disabled={busy} onClick={() => respond('rejected')}>
+            Reject
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- evidence, reviews, diff ---
+
+export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
+  if (evidence.length === 0) return <p className="muted">No evidence yet. A task enters review only with evidence.</p>;
+  return (
+    <ul className="evidence" aria-label="Evidence">
+      {evidence.map((e) => {
+        const res = e.passed === true ? 'pass' : e.passed === false ? 'fail' : 'info';
+        return (
+          <li key={e.id} data-testid="evidence" data-kind={e.kind} data-result={res}>
+            <span className={`chip chip-${res === 'pass' ? 'ok' : res === 'fail' ? 'err' : 'muted'}`}>
+              <span aria-hidden="true">{res === 'pass' ? '✔' : res === 'fail' ? '✖' : '•'}</span> {res === 'pass' ? 'PASS' : res === 'fail' ? 'FAIL' : 'INFO'}
+            </span>{' '}
+            <strong>{e.kind}</strong> <span className="muted">attempt {e.attempt}</span>
+            <div>{e.summary}</div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export function ReviewList({ reviews, agents }: { reviews: ReviewRecord[]; agents: readonly Agent[] }) {
+  if (reviews.length === 0) return <p className="muted">No reviewer verdict yet.</p>;
+  return (
+    <ul className="reviews" aria-label="Reviews">
+      {reviews.map((r) => (
+        <li key={r.id} data-testid="review" data-verdict={r.verdict}>
+          <span className={`chip chip-${r.verdict === 'SHIP' ? 'ok' : 'warn'}`}>{r.verdict}</span> by <strong>{agentName(r.reviewer, agents)}</strong>{' '}
+          <span className="muted">attempt {r.attempt}</span>
+          {r.feedback ? <Markdown source={r.feedback} /> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const DIFF_LINE_CAP = 3000;
+
+export function classifyDiffLine(l: string): 'add' | 'del' | 'hunk' | 'meta' | 'ctx' {
+  if (l.startsWith('+++') || l.startsWith('---') || l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('new file') || l.startsWith('deleted file')) return 'meta';
+  if (l.startsWith('@@')) return 'hunk';
+  if (l.startsWith('+')) return 'add';
+  if (l.startsWith('-')) return 'del';
+  return 'ctx';
+}
+
+export function UnifiedDiff({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  const lines = text.replace(/\n$/, '').split('\n');
+  const shown = all ? lines : lines.slice(0, DIFF_LINE_CAP);
+  return (
+    <div className="diff" role="region" aria-label="Unified diff" tabIndex={0} data-testid="diff">
+      {shown.map((l, i) => (
+        <div key={i} className={`diff-line diff-${classifyDiffLine(l)}`}>
+          {l || ' '}
+        </div>
+      ))}
+      {lines.length > shown.length ? (
+        <button onClick={() => setAll(true)}>Show all {lines.length} lines</button>
+      ) : null}
+    </div>
+  );
+}
+
+function DiffView({ taskId, hasDiff }: { taskId: string; hasDiff: boolean }) {
+  const client = useClient();
+  const [text, setText] = useState<string | undefined>();
+  const [error, setError] = useState<Error | undefined>();
+  const [busy, setBusy] = useState(false);
+  if (!hasDiff && text === undefined) return <p className="muted">No diff has been recorded yet.</p>;
+  return (
+    <div>
+      {text === undefined ? (
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(undefined);
+            try {
+              setText(await client.taskDiff(taskId));
+            } catch (e) {
+              setError(e as Error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Show diff
+        </button>
+      ) : text === '' ? (
+        <p className="muted">The recorded diff is empty.</p>
+      ) : (
+        <UnifiedDiff text={text} />
+      )}
+      <ErrorNote error={error} what="Could not load the diff" />
+    </div>
+  );
+}
+
+export function TaskSummaryCard({ task }: { task: Task }) {
+  return (
+    <div className="task-card">
+      <div>
+        <a href={`#/task/${encodeURIComponent(task.id)}`}>
+          #{task.seq} {task.title}
+        </a>
+      </div>
+      <StatusChip status={task.status} />
+      <div className="muted">updated {formatDateTime(task.updated)}</div>
+      {task.acceptedBy ? <Badge tone="ok">accepted</Badge> : null}
+    </div>
+  );
+}
