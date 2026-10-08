@@ -74,6 +74,9 @@ type Core struct {
 	Connections *connections.Service
 	Deps        pipeline.Deps
 
+	extMethods map[string]Method
+	extClose   []func()
+
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
 	repos    map[string]*git.Repo
@@ -200,6 +203,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
 	}
+	if err := c.startExtensions(bg); err != nil {
+		c.logf("extensions: %v", err)
+	}
 	if n, err := c.Engine.Recover(ctx); err != nil {
 		c.logf("recover: %v", err)
 	} else if n > 0 {
@@ -211,6 +217,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 // Close stops background work. Running agent processes are killed with their job objects.
 func (c *Core) Close() {
 	c.cancel()
+	for i := len(c.extClose) - 1; i >= 0; i-- {
+		c.extClose[i]()
+	}
 	c.Health.Stop()
 	c.Engine.Close()
 	c.Bus.Close()

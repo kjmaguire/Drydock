@@ -33,7 +33,7 @@ type idParam struct {
 
 // Methods returns the registry of UI-callable operations.
 func (c *Core) Methods() map[string]Method {
-	return map[string]Method{
+	base := map[string]Method{
 		"app.info": bind(func(ctx context.Context, _ struct{}) (any, error) {
 			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir}, nil
 		}),
@@ -199,6 +199,12 @@ func (c *Core) Methods() map[string]Method {
 			return c.Replay(ctx, p.After, events.Filter{Types: p.Types, TaskID: p.Task}, p.Limit)
 		}),
 	}
+	for k, v := range c.extMethods {
+		if _, dup := base[k]; !dup {
+			base[k] = v
+		}
+	}
+	return base
 }
 
 // Call dispatches one method by name.
