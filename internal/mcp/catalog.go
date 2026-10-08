@@ -323,6 +323,13 @@ func (s *ServerSpec) applyDefaults() {
 	}
 }
 
+// Normalize fills the derived defaults and validates the entry as a project's own (not shipped) server. The core uses it to
+// check a server the human typed before anything is stored.
+func (s *ServerSpec) Normalize() error {
+	s.applyDefaults()
+	return s.Validate(false)
+}
+
 // Validate checks one entry. shipped is true for the embedded catalog, which may not bundle anything D14 forbids.
 func (s *ServerSpec) Validate(shipped bool) error {
 	var errs []error

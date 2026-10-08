@@ -34,6 +34,7 @@ const SkillsView = lazy(() => import('./pages/Skills'));
 const MemoryView = lazy(() => import('./pages/Memory'));
 const PlanView = lazy(() => import('./pages/Plan'));
 const IntegrationsView = lazy(() => import('./pages/Integrations'));
+const McpServersView = lazy(() => import('./pages/McpServers'));
 const LicenseView = lazy(() => import('./pages/License'));
 const BackupsView = lazy(() => import('./pages/Backups'));
 const DataView = lazy(() => import('./pages/Data'));
@@ -246,6 +247,9 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
         break;
       case 'integrations':
         center = <IntegrationsView projects={projectList} />;
+        break;
+      case 'mcp':
+        center = <McpServersView projectId={project.id} agents={agentList} />;
         break;
       case 'activity':
         center = <ActivityView projectId={project.id} />;

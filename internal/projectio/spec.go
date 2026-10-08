@@ -194,6 +194,8 @@ var ExcludedTables = map[string]string{
 	"integration_rules":        "rules belong to a Connection",
 	"integration_rule_matches": "rules belong to a Connection",
 	"integration_outbox":       "outbound writes to a vendor, bound to approvals on the exporting machine",
+	"project_mcp_servers":      "an MCP server is a program or URL the human chose on this machine, with credentials in the vault: an archive must never bring one in; add servers again after import",
+	"agent_mcp_access":         "grants to the servers above",
 	"memory_fts":               "full-text index, rebuilt by triggers",
 	"requirement_chunks_fts":   "full-text index, rebuilt by triggers",
 }

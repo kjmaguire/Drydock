@@ -26,6 +26,7 @@ func TestMain(m *testing.M) {
 	if code, ok := mcp.MaybeRunShim(os.Args); ok {
 		os.Exit(code)
 	}
+	serveTestMCPIfAsked() // a stdio MCP server for the user-added server tests (ext_mcpservers_test.go)
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
 	}

@@ -74,6 +74,7 @@ export default async function globalSetup() {
   });
   if (build.status !== 0) throw new Error(`go build ./cmd/drydock-e2e failed:\n${build.stdout}\n${build.stderr}`);
 
+  process.env.DRYDOCK_E2E_EXE = exe; // the binary is also a stdio MCP server when DRYDOCK_E2E_MCP_SERVER=1 (a test fixture)
   const main = await start(exe, ['-repos', String(REPOS), '-green-repos', String(GREEN)]);
   const started: ChildProcess[] = [main.child];
   const stopAll = async () => {

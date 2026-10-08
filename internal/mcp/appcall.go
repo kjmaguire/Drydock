@@ -93,6 +93,35 @@ func (a *AppUpstream) Tools(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
+// ToolInfo is one tool a server offers, as discovery reports it. ReadOnlyHint is what the server CLAIMS: Drydock never relies on
+// it for a private server (the human decides which tools are read-only), it is only shown as a suggestion.
+type ToolInfo struct {
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"inputSchema,omitempty"`
+	ReadOnlyHint bool           `json:"readOnlyHint"`
+}
+
+// ToolList is Tools with the descriptions, input schemas and the servers' read-only claims. It makes a fresh tools/list.
+func (a *AppUpstream) ToolList(ctx context.Context) ([]ToolInfo, error) {
+	if _, err := a.Tools(ctx); err != nil {
+		return nil, err
+	}
+	a.u.mu.Lock()
+	all := a.u.tools
+	a.u.mu.Unlock()
+	out := make([]ToolInfo, 0, len(all))
+	for _, t := range all {
+		ti := ToolInfo{Name: t.Name, Description: t.Description}
+		if m, ok := t.InputSchema.(map[string]any); ok && m["type"] == "object" {
+			ti.InputSchema = m
+		}
+		ti.ReadOnlyHint, _ = toolHints(t)
+		out = append(out, ti)
+	}
+	return out, nil
+}
+
 // Call calls one tool. A returned error means the server could not be reached (errors.Is(err, ErrUpstreamUnavailable)); a
 // tool-level failure comes back as a result with IsError.
 func (a *AppUpstream) Call(ctx context.Context, tool string, args any) (*AppResult, error) {

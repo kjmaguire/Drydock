@@ -20,6 +20,7 @@ export type Route =
   | { name: 'memory' }
   | { name: 'plan' }
   | { name: 'integrations' }
+  | { name: 'mcp' }
   | { name: 'connections' }
   | { name: 'providers' }
   | { name: 'license' }
@@ -59,6 +60,7 @@ export function parseRoute(hash: string): Route {
     case 'memory':
     case 'plan':
     case 'integrations':
+    case 'mcp':
       return { name: a };
     case 'connections':
       return { name: 'connections' };

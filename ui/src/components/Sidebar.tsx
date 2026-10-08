@@ -205,6 +205,11 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
             </NavLink>
           </li>
           <li>
+            <NavLink href="#/mcp" current={route.name === 'mcp'} testId="nav-mcp">
+              MCP servers
+            </NavLink>
+          </li>
+          <li>
             <NavLink href="#/integrations" current={route.name === 'integrations'} testId="nav-integrations">
               Integrations
             </NavLink>

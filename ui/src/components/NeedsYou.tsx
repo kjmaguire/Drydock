@@ -13,6 +13,8 @@ const KIND_LABEL: Record<string, string> = {
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
 export function needsTarget(it: NeedsYouItem): string {
+  // a tool call an agent wants to make: its exact arguments and the Approve button are on the MCP servers page
+  if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return '#/mcp';
   if (it.taskId) return `#/task/${encodeURIComponent(it.taskId)}`;
   if (it.roomId) return `#/room/${encodeURIComponent(it.roomId)}`;
   // an approval with no task is an outbound write to an integration: its exact text is on the Integrations page
@@ -24,6 +26,7 @@ export function needsTarget(it: NeedsYouItem): string {
 export function needsHint(it: NeedsYouItem): string {
   if (it.kind === 'approval' && /^Budget limit/i.test(it.title)) return 'A budget stopped the next agent turn. Open the task to raise the limit and resume, or stop the run.';
   if (it.kind === 'review' && /^Accept the spec/i.test(it.title)) return 'The spec gate: nothing is built until you accept the spec.';
+  if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return 'An agent wants to call a tool that is not marked read-only. Open MCP servers to see the exact call and approve or reject it.';
   if (it.kind === 'approval' && !it.taskId && !it.roomId) return 'An outbound write to a connected service. Open Integrations to read the exact text and approve or decline.';
   return '';
 }

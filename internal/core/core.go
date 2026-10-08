@@ -78,6 +78,7 @@ type Core struct {
 	extMethods map[string]Method
 	extClose   []func()
 	mcpw       atomic.Pointer[mcpWiring] // the shared MCP gateway (ext_mcp.go)
+	secrets    providers.SecretStore     // API keys and tokens (Credential Manager plus an encrypted overflow); nil when the host has no store
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
@@ -199,6 +200,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if cred != nil {
 		secrets = providers.NewVault(cred, db)
 	}
+	c.secrets = secrets
 	c.Providers = providers.NewRegistry(db, providers.RegistryOptions{Secrets: secrets, Bus: c.Bus})
 	c.Prober = providers.NewProber(c.Providers, c.Bus)
 	c.Health = providers.NewMonitor(c.Providers, c.Prober, c.Bus, providers.MonitorOptions{})

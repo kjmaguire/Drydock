@@ -50,7 +50,7 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ws = k.Workspace()
 	}
 	ws.Tasks, ws.Room, ws.Handoffs = mcpTasks{c}, mcpRoom{c}, mcpHandoffs{c}
-	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws})
+	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -119,7 +119,8 @@ type mcpPlan struct {
 	DataClass string
 	Info      mcp.RunInfo
 	Policy    mcp.RunPolicy
-	Tools     []string // exposed tool names, including fetch_range
+	Tools     []string         // exposed tool names, including fetch_range
+	Servers   []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
 // readTools are the Workspace tools every role gets: they only read. repo_map is withheld while it is gated (D5).
@@ -182,6 +183,14 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 	sort.Strings(allow)
 	pl.Policy = mcp.RunPolicy{Allow: map[string][]string{mcp.WorkspaceServerID: allow}}
 	pl.Tools = append(append([]string(nil), allow...), mcp.ToolFetchRange)
+	// servers the human added to this project and granted to this agent (deny by default: no grant, no server)
+	if specs, grants, exposed := c.mcpServersForRun(ctx, projectID, agentID); len(specs) > 0 {
+		pl.Servers = specs
+		for id, tools := range grants {
+			pl.Policy.Allow[id] = tools
+		}
+		pl.Tools = append(pl.Tools, exposed...)
+	}
 	pl.Attach = true
 	return pl
 }
@@ -197,7 +206,7 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		return rt.MCPAttachment{Reason: "the MCP gateway is not running"}, nil
 	}
 	pl.Info.RunID = runID
-	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy})
+	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers})
 	if err != nil {
 		return rt.MCPAttachment{}, err
 	}
