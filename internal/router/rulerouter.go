@@ -59,6 +59,7 @@ type mode struct {
 	deescalatedFrom *PriorRef
 	fallbackFrom    *Alternative
 	handoff         bool
+	prefer          providers.Tier // a budget downshift prefers the cheap tier
 }
 
 // Decide chooses a model for the request.
@@ -286,6 +287,10 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		per[kept[i].Key()] = e
 	}
 	// Level escalation thresholds (the shipped rules use the Balanced numbers; levels differ).
+	if m.prefer != "" && global.PreferTier == "" {
+		global.PreferTier = m.prefer
+		global.Applied = append(global.Applied, "budget-downshift")
+	}
 	if esc := ShouldEscalate(level, req.Failures, req.ChecksPassing, ""); esc.Escalate && global.EscalateTo == "" {
 		global.EscalateTo, global.Handoff = providers.TierPremium, esc.Handoff
 		global.Applied = append(global.Applied, "level:"+esc.Trigger)
@@ -326,7 +331,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	eff := top.Effects
 	d := RoutingDecision{
 		ID: ids.New("dec"), Agent: AgentRef{Adapter: "", Instance: req.AgentID}, Provider: c.Provider, Model: c.Model,
-		Effort: ResolveEffort(level, pin, eff.SetEffort), TeamSize: ResolveTeamSize(level, req.Risk, eff.SetTeamSize),
+		Effort: ResolveEffort(level, pin, eff.SetEffort), EffortApplied: !c.AgentNative, TeamSize: ResolveTeamSize(level, req.Risk, eff.SetTeamSize),
 		EstTokens: estimate(req, c), EstCostUSD: c.EstCostUSD, DecidedBy: by, Created: now, SwitchCostTokens: switchCost(req, c),
 		EscalatedFrom: m.escalatedFrom, DeescalatedFrom: m.deescalatedFrom,
 	}
@@ -381,8 +386,19 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 			alts = append(alts, a)
 		}
 	}
-	for i := 1; i < len(ranked) && i <= 2; i++ {
-		alts = append(alts, Alternative{Provider: ranked[i].Provider, Model: ranked[i].Model, Tier: ranked[i].Tier, Rejected: "ranked_lower", Detail: "valid but ranked below the choice"})
+	for i := 1; i < len(ranked); i++ {
+		s := ranked[i]
+		switch {
+		case s.Penalty > top.Penalty:
+			// demoted by a penalty rule: name it
+		case i > 2:
+			continue
+		}
+		why, detail := "ranked_lower", "valid but ranked below the choice"
+		if own := per[s.Key()]; own.Penalty > 0 && len(own.Applied) > 0 {
+			why, detail = own.Applied[0], "demoted by a penalty"
+		}
+		alts = append(alts, Alternative{Provider: s.Provider, Model: s.Model, Tier: s.Tier, Rejected: why, Detail: detail})
 	}
 	sort.SliceStable(alts, func(i, j int) bool {
 		if alts[i].Rejected != alts[j].Rejected {
@@ -411,10 +427,17 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	}
 	if c.Tier != providers.TierPremium && by != "explicit" {
 		if n := IterationsUntilEscalation(level, req.Failures); n > 0 && !req.ChecksPassing {
-			d.Facts.NextEscalation = fmt.Sprintf("escalates to premium after %d more failed iteration(s) (%d cheap iterations) with a handoff artifact", n, LevelThresholds(level).CheapIterations)
+			d.Facts.NextEscalation = fmt.Sprintf("escalates to premium after %d more failed %s (%d cheap iterations) with a handoff artifact", n, plural(n, "iteration", "iterations"), LevelThresholds(level).CheapIterations)
 		}
 	}
 	return d, nil
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func contains(s []string, v string) bool {
@@ -501,7 +524,11 @@ func (r *RuleRouter) Next(ctx context.Context, prev RoutingDecision, cause Cause
 	case "deescalate":
 		live := req.Session
 		req.Failures, req.Attempt, req.Session = FailureCounts{}, 0, nil
-		d, err := r.decide(ctx, req, mode{deescalatedFrom: pr})
+		md := mode{deescalatedFrom: pr}
+		if cause == CauseBudgetDownshift {
+			md.prefer = providers.TierCheap
+		}
+		d, err := r.decide(ctx, req, md)
 		if err != nil {
 			return RoutingDecision{}, err
 		}

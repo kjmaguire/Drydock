@@ -60,6 +60,24 @@ rules:
     subcommands: ["stash drop", "stash clear"]
     paths: none
     reason: drops stashed work
+  - id: destructive.git.discard_restore
+    programs: [git]
+    subcommands: [restore]
+    flags_none: ["--staged", "-S"]
+    paths: heuristic
+    reason: git restore discards working tree changes
+  - id: destructive.git.discard_checkout
+    programs: [git]
+    subcommands: [checkout]
+    flags_any: ["--"]
+    paths: heuristic
+    reason: git checkout -- discards working tree changes
+  - id: destructive.git.discard_checkout_dot
+    programs: [git]
+    subcommands: [checkout]
+    args_regex: ['^\.$', '^:/$']
+    paths: heuristic
+    reason: git checkout . discards working tree changes
   - id: destructive.git.force_checkout
     programs: [git]
     subcommands: [checkout, switch]

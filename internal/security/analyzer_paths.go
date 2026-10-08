@@ -9,6 +9,7 @@ import (
 var hijackVars = set("PATH", "PATHEXT", "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "BASH_ENV", "ENV", "IFS", "SHELLOPTS", "BASHOPTS",
 	"PROMPT_COMMAND", "PS4", "CDPATH", "GLOBIGNORE", "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "GIT_EXEC_PATH",
 	"GIT_PAGER", "GIT_EDITOR", "GIT_PROXY_COMMAND", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+	"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "HOME", "XDG_CONFIG_HOME",
 	"NODE_OPTIONS", "PYTHONSTARTUP", "PYTHONPATH", "PYTHONHOME", "RUBYOPT", "PERL5OPT", "PERL5LIB", "COMSPEC", "PSMODULEPATH", "EDITOR",
 	"VISUAL", "PAGER", "BROWSER", "DOTNET_STARTUP_HOOKS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "NPM_CONFIG_SCRIPT_SHELL")
 
@@ -85,6 +86,9 @@ func (r *run) strictParams(inv *Invocation) {
 // psValueParams take a value that is data, not a path; the argument after them is not checked as a path.
 var psValueParams = set("value", "encoding", "pattern", "message", "separator", "delimiter", "text", "count", "itemtype", "tail", "first", "last", "skip",
 	"depth", "width", "algorithm", "scope", "id", "property", "unique", "inputobject", "object", "milliseconds", "seconds", "uri", "method", "body", "headers", "contenttype")
+
+// psContentSinks receive pipeline input as content, not as paths.
+var psContentSinks = set("set-content", "add-content", "out-file", "tee-object", "export-csv", "export-clixml", "out-null")
 
 var psPathParams = set("path", "literalpath", "destination", "filepath", "outfile", "infile", "directory", "workingdirectory")
 
@@ -264,11 +268,13 @@ func (r *run) collectPaths(inv *Invocation, pa *parsedArgs, matched []*Rule, mod
 					if looksLikePath(t) || strings.HasPrefix(t, "$HOME") || strings.HasPrefix(t, "${HOME") || strings.HasPrefix(t, "$env:") {
 						r.addPath(inv, t, true, a.Glob, "arg")
 					}
-				case looksLikePath(t):
-					r.addPath(inv, t, false, a.Glob, "arg")
 				default:
-					if m := keyValRE.FindStringSubmatch(t); m != nil && looksLikePath(m[1]) {
-						r.addPath(inv, m[1], false, a.Glob, "arg")
+					if m := keyValRE.FindStringSubmatch(t); m != nil {
+						if looksLikePath(m[1]) {
+							r.addPath(inv, m[1], false, a.Glob, "arg")
+						}
+					} else if looksLikePath(t) {
+						r.addPath(inv, t, false, a.Glob, "arg")
 					}
 				}
 			}
@@ -280,7 +286,7 @@ func (r *run) collectPaths(inv *Invocation, pa *parsedArgs, matched []*Rule, mod
 		}
 		r.addPath(inv, rd.Target, rd.Dynamic, false, "redirect")
 	}
-	if inv.StdinArgs && mode == "positional" && (hasClass(inv.Classes, ClassWorkspaceWrite) || hasClass(inv.Classes, ClassDestructive)) {
+	if inv.StdinArgs && mode == "positional" && (hasClass(inv.Classes, ClassDestructive) || (hasClass(inv.Classes, ClassWorkspaceWrite) && !psContentSinks[inv.Program])) {
 		r.addPathRef(PathRef{Raw: "<arguments supplied at run time>", Dynamic: true, Source: "arg", Err: "arguments come from standard input"})
 	}
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Agent, PresenceState } from './api/types';
 import { ActivityView } from './components/Activity';
 import { Empty, ErrorNote, Page, PresenceDot } from './components/common';
 import { Conversation } from './components/Conversation';
@@ -186,7 +187,7 @@ export function App() {
   );
 }
 
-function RightColumn({ taskId, agents, presence }: { taskId: string | undefined; agents: ReturnType<typeof useAgents>['data'] & object; presence: ReturnType<typeof usePresence>['data'] & object }) {
+function RightColumn({ taskId, agents, presence }: { taskId: string | undefined; agents: Agent[]; presence: PresenceState[] }) {
   const [tab, setTab] = useState<'agents' | 'task'>('agents');
   const active = tab === 'task' && taskId ? 'task' : 'agents';
   return (
@@ -228,9 +229,8 @@ function RightColumn({ taskId, agents, presence }: { taskId: string | undefined;
   );
 }
 
-function TaskSummary({ taskId, agents }: { taskId: string; agents: ReturnType<typeof useAgents>['data'] & object }) {
+function TaskSummary({ taskId, agents }: { taskId: string; agents: Agent[] }) {
   const d = useTaskDetail(taskId).data;
-  void useTasks;
   if (!d) return <p className="muted">Loading...</p>;
   const passed = d.evidence.filter((e) => e.passed === true).length;
   const failed = d.evidence.filter((e) => e.passed === false).length;

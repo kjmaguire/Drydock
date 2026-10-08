@@ -12,8 +12,11 @@ func explain(d RoutingDecision) string {
 	f := d.Facts
 	var b strings.Builder
 	fmt.Fprintf(&b, "Why this model? %s via %s (%s, %s)", d.Model, d.Provider, f.Tier, f.DataClass)
-	if f.RunKind != "" {
-		fmt.Fprintf(&b, " for a %s run", f.RunKind)
+	switch {
+	case f.TaskID != "" && f.RunKind != "":
+		fmt.Fprintf(&b, " for task %s (%s run)", f.TaskID, f.RunKind)
+	case f.RunKind != "":
+		fmt.Fprintf(&b, " for a run of kind %s", f.RunKind)
 	}
 	if f.Attempt > 0 {
 		fmt.Fprintf(&b, ", attempt %d", f.Attempt)

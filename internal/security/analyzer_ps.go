@@ -590,9 +590,6 @@ func (l *psLexer) args(inv *Invocation) {
 			if !ok {
 				return
 			}
-			if l.i < len(l.s) && l.peek(0) == '@' && w.text == "" {
-				continue
-			}
 			if w.text == "" && !w.quoted && !w.dyn {
 				l.fail("unparseable argument")
 				return

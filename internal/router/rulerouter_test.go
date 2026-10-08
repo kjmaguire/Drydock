@@ -1,7 +1,6 @@
 package router
 
 import (
-	"context"
 	"errors"
 	"math"
 	"math/rand"
@@ -288,17 +287,15 @@ func TestReviewerPrefersADifferentModelAndLowQuotaIsPenalized(t *testing.T) {
 	q.RunKind, q.TaskType = RunReview, "first_pass_review"
 	q.Worker = &WorkerRef{Provider: w.id(w.or), Model: "qwen-cheap"}
 	d := mustDecide(t, r, q)
-	if d.Model != "glm-cheaper" || !contains(d.PoliciesApplied, "reviewer-differs") && !contains(d.Alternatives2(), "reviewer-differs") {
-		t.Fatalf("reviewer chose %s, policies %v", key(d), d.PoliciesApplied)
+	if d.Model != "glm-cheaper" || !hasAlt(d, "qwen-cheap", "reviewer-differs") {
+		t.Fatalf("reviewer chose %s, alternatives %+v (the demoted worker model should name the rule)", key(d), d.Alternatives)
 	}
 	// Penalty, not deny (brief section 12 "when possible"): with only one candidate it is still used.
-	w.reg.SetEnabled(w.ctx, w.ant.ID, false)
-	for _, id := range []string{"glm-cheaper"} {
-		_ = id
+	// Leave a single usable model in the catalog (real rows, removed with SQL).
+	if _, err := w.db.Writer().Exec(`DELETE FROM model_catalog WHERE model <> 'qwen-cheap'`); err != nil {
+		t.Fatal(err)
 	}
-	only := w.router(func(o *RuleOptions) {
-		o.Source = &RegistrySource{Catalog: &onlyModels{Catalog: w.reg, keep: map[string]bool{"qwen-cheap": true}}, Avail: w.mon, Quota: w.ledger}
-	})
+	only := r
 	if d := mustDecide(t, only, q); d.Model != "qwen-cheap" {
 		t.Fatalf("the penalized worker model was refused outright: %s", key(d))
 	}
@@ -331,30 +328,13 @@ func TestReviewerPrefersADifferentModelAndLowQuotaIsPenalized(t *testing.T) {
 	}
 }
 
-// Alternatives2 is a test helper listing rejection names.
-func (d RoutingDecision) Alternatives2() []string {
-	var out []string
+func hasAlt(d RoutingDecision, model, why string) bool {
 	for _, a := range d.Alternatives {
-		out = append(out, a.Rejected)
-	}
-	return out
-}
-
-// onlyModels is a Catalog view that hides catalog models, to build a one-candidate situation with the real registry.
-type onlyModels struct {
-	Catalog
-	keep map[string]bool
-}
-
-func (o *onlyModels) Models(ctx context.Context, id string) ([]providers.Model, error) {
-	ms, err := o.Catalog.Models(ctx, id)
-	var out []providers.Model
-	for _, m := range ms {
-		if o.keep[m.ID] {
-			out = append(out, m)
+		if a.Model == model && a.Rejected == why {
+			return true
 		}
 	}
-	return out, err
+	return false
 }
 
 func TestEscalationByLevelThresholdsAndRules(t *testing.T) {
@@ -438,11 +418,13 @@ func TestNextFallbackChain(t *testing.T) {
 		t.Fatalf("fallback 2: %s %s", key(d3), d3.Facts.Tier)
 	}
 	// Premium falls back to the other premium model, never down to cheap.
+	w.ledger.Penalize(w.ctx, w.ant.ID, "prem-1", w.clock.Add(time.Hour), "overloaded") // the failure is what marks it unavailable
 	d4, err := r.Next(w.ctx, d3, CauseOverloaded)
 	if err != nil || d4.Model != "prem-2" || d4.Facts.Tier != providers.TierPremium {
 		t.Fatalf("fallback 3: %v %+v", err, d4)
 	}
 	// Nothing left in the tier: BLOCKED, not a weaker model.
+	w.ledger.Penalize(w.ctx, w.ant.ID, "prem-2", w.clock.Add(time.Hour), "overloaded")
 	if _, err := r.Next(w.ctx, d4, CauseModelUnavailable); !errors.Is(err, ErrBlocked) {
 		t.Fatalf("exhausted tier: %v", err)
 	}

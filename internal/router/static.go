@@ -86,7 +86,8 @@ func (r *StaticRouter) decide(ctx context.Context, req RouteRequest, a Assignmen
 	}
 	var rejected []Alternative
 	for i, cand := range chain {
-		if from != nil && cand.Provider == ProviderID(from.Provider) && cand.Model == from.Model {
+		if from != nil && cand.Provider == from.Provider && cand.Model == from.Model {
+			rejected = append(rejected, Alternative{Provider: cand.Provider, Model: cand.Model, Tier: from.Tier, Rejected: from.Rejected, Detail: "the model that just failed"})
 			continue
 		}
 		c, err := r.src.CandidateFor(ctx, req, string(cand.Provider), cand.Model)
@@ -100,7 +101,7 @@ func (r *StaticRouter) decide(ctx context.Context, req RouteRequest, a Assignmen
 		kept, rej := HardFilter(req, []Candidate{c})
 		if len(kept) == 1 {
 			d := r.build(req, cand, c, by, rejected, from)
-			if i > 0 {
+			if i > 0 && len(rejected) > 0 {
 				d.Reason = fmt.Sprintf("assigned %s/%s unavailable (%s); using configured fallback", a.Provider, a.Model, rejected[0].Rejected)
 			}
 			if extra != nil {
@@ -138,7 +139,7 @@ func (r *StaticRouter) build(req RouteRequest, a Assignment, c Candidate, by str
 		team = 1
 	}
 	est := estimate(req, c)
-	d := RoutingDecision{ID: ids.New("dec"), Agent: a.Agent, Provider: c.Provider, Model: c.Model, Effort: effort, TeamSize: team,
+	d := RoutingDecision{ID: ids.New("dec"), Agent: a.Agent, Provider: c.Provider, Model: c.Model, Effort: effort, EffortApplied: !c.AgentNative, TeamSize: team,
 		Reason: fmt.Sprintf("configured assignment for %s", roleOrAgent(req)), Confidence: 1, EstTokens: est, EstCostUSD: c.EstCostUSD,
 		Alternatives: rejected, DecidedBy: by, Created: r.now(), SwitchCostTokens: switchCost(req, c)}
 	d.Facts = factsFor(req, c, 0)
@@ -250,7 +251,7 @@ func factsFor(req RouteRequest, c Candidate, excludedTrainable int) DecisionFact
 	if ceiling != ContextPublicDocs {
 		ceiling = ContextPrivate
 	}
-	return DecisionFacts{Level: req.Level, RunKind: req.RunKind, TaskType: req.TaskType, DiffLines: req.DiffLines, Risk: req.Risk, Attempt: req.Attempt,
+	return DecisionFacts{TaskID: req.TaskID, Level: req.Level, RunKind: req.RunKind, TaskType: req.TaskType, DiffLines: req.DiffLines, Risk: req.Risk, Attempt: req.Attempt,
 		ContextCeiling: ceiling, Tier: c.Tier, DataClass: c.DataClass, ExcludedTrainable: excludedTrainable, QuotaRemainingPct: c.QuotaRemainingPct,
 		BudgetPctUsed: req.Budget.PctUsed, ProbePassed: c.ProbePassed, PriceUpdatedAt: c.PriceUpdatedAt}
 }

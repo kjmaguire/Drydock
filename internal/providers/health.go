@@ -172,21 +172,23 @@ func (m *Monitor) check(ctx context.Context, p Provider) HealthEvent {
 		h.since = now
 	}
 	ev := HealthEvent{ProviderID: p.ID, From: from, To: to, At: now, Latency: r.Latency, Detail: h.lastErr}
+	m.mu.Unlock()
 	if to != from {
+		// Persist and publish before notifying subscribers, so a subscriber that reacts to the channel event can already
+		// replay it from the bus.
+		_ = m.reg.setStatus(ctx, p.ID, to, now, "", nil)
+		if m.bus != nil {
+			_, _ = events.Emit(ctx, m.bus, "provider."+string(to), events.Event{}, map[string]any{
+				"providerId": p.ID, "from": from, "latencyMs": r.Latency.Milliseconds(), "detail": ev.Detail})
+		}
+		m.mu.Lock()
 		for c := range m.subs {
 			select {
 			case c <- ev:
 			default: // a slow subscriber loses events rather than stalling the loop
 			}
 		}
-	}
-	m.mu.Unlock()
-	if to != from {
-		_ = m.reg.setStatus(ctx, p.ID, to, now, "", nil)
-		if m.bus != nil {
-			_, _ = events.Emit(ctx, m.bus, "provider."+string(to), events.Event{}, map[string]any{
-				"providerId": p.ID, "from": from, "latencyMs": r.Latency.Milliseconds(), "detail": ev.Detail})
-		}
+		m.mu.Unlock()
 	}
 	return ev
 }

@@ -85,38 +85,41 @@ type ActionDescriptor struct {
     V        int      // descriptor schema version
     Kind     string   // approval kind
     Project  string
+    TaskID   string
     RunID, NodeID string; Step, Attempt int // same tuple as the idempotency key (brief §4)
     AgentID, WorktreeID string
     Cwd      string   // canonical resolved path
     Tool     string   // e.g. "shell", "git", "fs.delete", "mcp:<server>/<tool>"
     Shell    string   // bash|powershell|cmd|none
-    Command  string   // exact text as executed; plus normalized argv when parsed
+    Program  string; Argv []string // normalized first program and its arguments when parsed
+    Command  string   // exact text as executed
     ArgvDigest string // digest of CommandReport invocations (s7)
-    Targets  []Target // resolved paths with volume serial + file index, or {remote, ref, oldOID, newOID}
-    EnvKeys  []string // names only, never values
+    Targets  []Target // flat struct: path + volume serial + file index, and remote + ref + oldOID + newOID; sorted before hashing
+    EnvKeys  []string // names only, never values; EnvDigest is the SHA-256 of the sorted names
 }
 // ActionHash = hex(SHA-256(canonicalJSON(descriptor))); canonicalJSON = sorted keys, UTF-8, no insignificant whitespace (own implementation).
 type Approvals interface {
-    Request(ctx, a ActionDescriptor, ttl time.Duration) (ApprovalID, error)
-    Decide(ctx, id ApprovalID, d Decision, by HumanPrincipal) error // by must be a human principal from the UI service layer
-    Consume(ctx, id ApprovalID, actual ActionDescriptor) error      // recompute hash from the real operation; constant-time compare; CAS APPROVED->CONSUMED in the same tx as the receipt
+    Request(ctx, a ActionDescriptor, reason string, opts ...RequestOption) (ApprovalID, error) // WithTTL overrides the default lifetime
+    Decide(ctx, id ApprovalID, d Decision, by string) error // by must be "human:<name>", supplied by the UI service layer; every other author is refused and audited
+    Consume(ctx, id ApprovalID, actual ActionDescriptor) error // recompute hash from the real operation; constant-time compare; CAS APPROVED->CONSUMED, single use
 }
 ```
 
 Rules: (1) The executor of the action recomputes the descriptor from what it is about to do and calls `Consume`; mismatch returns `ErrHashMismatch` and emits `approval.mismatch`. (2) Single use: `CONSUMED` is terminal; receipts are idempotent by `(scope, receipt_id)` (brief §18), so a crash between consume and effect cannot double-execute (the node idempotency key `(run_id, node_id, step, attempt)` is part of the descriptor). (3) Lineage: because the descriptor contains run, node, step and attempt, an approval granted on one checkpoint lineage cannot be consumed by a time-travel branch (brief §4); branching cancels outstanding approvals (`CANCELLED`). (4) Expiry: default 30 minutes (**design assumption**), configurable; `EXPIRED` is automatic. (5) The dialog renders the canonical action (resolved paths, exact command, refs and object ids), never the agent's description. (6) Stored allow rules ("always allow") match on the normalized form (program + argv pattern + path scope), never on raw strings, and are not offered for `git_force_push`, `deploy`, `secrets_access`, `shell_unanalyzable`. (7) Only the UI service layer can call `Decide`; the room accepts `APPROVAL` messages only from that layer (room-protocol s5); the Gateway and adapters have no code path to it.
 
+Implementation (`internal/security`, migration `00030`): the service owns approvals with `run_id ''`; it stores them in the existing `approvals` table (`kind='approval'`, security kind in `action_kind`, plus `expires_at`). Workflow-bound rows are answered by the workflow engine's `Resume` (which should call `RequireHuman` on its `By`); `Consume` works for both because the executor always proves its action. Approving restarts the lifetime so the executor has a full window; `Decide`/`Consume` enforce expiry lazily and `ExpireDue` sweeps. Events: `approval.requested|approved|rejected|consumed|expired|cancelled|mismatch|reuse_denied|decide_denied` (the engine's names `approval.approved|rejected` are kept rather than `approval.decided`). The stored payload is a display copy with secrets redacted; the hash is of the exact action. Receipt idempotency (brief §18) is not implemented here.
+
 **Binding to agent-native permission requests.** ACP `RequestPermission` returns an option choice and carries the tool call kind and `rawInput`, so hashing and binding is feasible (phase0 item 13, Partial). Flow: request arrives, analyzer runs, descriptor built from `toolCall`, approval created, human decides, we answer with the `allow_once`/`reject_once` option kinds only (the demo agent offers these, go-platform §5; real agents unverified). After `allow_once` the CLI executes by itself, so the matching `tool_call_update` is compared with the descriptor; a mismatch emits `approval.mismatch` and pauses the run. Whether agent permission modes skip the request entirely and the exact Claude `--permission-prompt-tool` input/response shape are **unverified** (need logged-in runs, phase0 s7 item 8).
 
 ## 6. Path and symlink guards
 
-Package `internal/security/pathguard`. Every Drydock-mediated file operation and every path extracted by the analyzer goes through one function.
+File `internal/security/pathguard.go`. Every Drydock-mediated file operation and every path extracted by the analyzer goes through one function.
 
 ```go
-type Guard interface {
-    Resolve(root WorktreeRoot, requested string, op Op) (Resolved, error)
-}
-type Resolved struct{ Canonical string; FileID FileID; InsideRoot bool; ViaReparse bool; Class PathClass }
+func (g Guard) Resolve(root, candidate string) (string, error) // cleaned absolute path, or *PathError wrapping ErrPathEscape, ErrSymlinkEscape, ErrPathDevice, ErrPathUNC, ...
 ```
+
+Implemented in v1: the pure-string rules (steps 1-6, 9 and Windows case-insensitive comparison) run on any host; the filesystem step resolves symlinks and junctions with `EvalSymlinks` on the deepest existing ancestor and fails closed on dangling or looping links. Handle-based resolution (`GetFinalPathNameByHandle`), file identity and the open-then-reverify step (7, 8, 10) remain the target design and are unproven (P2). 8.3 aliases are detected by pattern and compared with `GetLongPathName` (Windows build only).
 
 Algorithm (design assumption; to be proven on Windows with a fixture suite, P1/P2): (1) reject NUL, reject empty; (2) reject device namespaces and non-drive prefixes unless explicitly allowed: `\\.\`, `\\?\GLOBALROOT`, UNC paths (`\\host\share`) are denied by default (Claude docs note UNC symlink targets for instructions are not followed, agent-clis §13); (3) reject reserved device names (CON, NUL, COM1..) and trailing dot/space segments; (4) reject alternate data streams (`name:stream`) for writes; (5) join relative paths onto the worktree root, never onto the process cwd; reject drive-relative `C:foo`; (6) lexically clean `..`; (7) open the deepest existing ancestor and resolve the **final path from the open handle** (`GetFinalPathNameByHandle`), not `EvalSymlinks` on a string, so junctions, symlinks and mount points are followed exactly as the OS would; compare with the root's final path case-insensitively using Windows volume-serial + file-index identity for the root; (8) if any component is a reparse point whose target leaves the root: `ViaReparse=true, InsideRoot=false` and the operation is denied or escalated to `fs_outside_worktree`; (9) 8.3 short names are expanded by step 7; (10) for create/write, validate the parent, open with `FILE_FLAG_OPEN_REPARSE_POINT` semantics and re-verify after open to narrow TOCTOU (the residual race against a hostile concurrent process is acknowledged: this is why the guard is not a sandbox).
 
@@ -134,10 +137,12 @@ type CommandReport struct {
     Confidence Confidence
     Invocations []Invocation // program (normalized), argv, redirects, pipeline/conditional edges, nested scripts
     Classes []Class          // readonly, workspace_write, destructive, network, exec_code, deploy, secrets, db_migration, git_history_rewrite, unknown
-    Paths []Resolved         // from the path guard
+    Paths []PathRef          // from the path guard
+    Kinds []string; HardDeny []string; RuleIDs []string // rule-implied approval kinds, hard-deny reasons, matched rules
     Reasons []string
     Digest string            // goes into ActionDescriptor.ArgvDigest
 }
+// Decide(report) -> CommandDecision{Verdict allow|ask|deny, Kind, Kinds, Remember, Log}; Policy adds stored rules and CEL restrictions.
 ```
 
 Pipeline: (1) shell flavor from the adapter (tool name such as Bash vs PowerShell; ACP `execute` kind plus adapter hint); unknown flavor: try POSIX, and if it does not parse cleanly, `Opaque`. (2) Cap input (16 KiB, **design assumption**); longer is `Opaque`. (3) Flavor-specific parse. (4) Normalize the program: strip directory and `.exe/.cmd/.bat/.ps1`, case-fold, apply the alias table (PowerShell `rm, ri, del, erase, rd, rmdir -> Remove-Item`; `iex -> Invoke-Expression`; `iwr, curl, wget -> Invoke-WebRequest` when invoked in PowerShell; `saps -> Start-Process`). (5) Unwrap known wrappers up to depth 3 (`env`, `command`, `nohup`, `time`, `xargs`, `cmd /c`, `powershell/pwsh -Command`, `bash -c`, `wsl -e`, `npx`, `npm run`); beyond that or for unknown wrappers: `Opaque`. (6) Classify against data tables in `internal/security/rules/*.yaml` (reviewable, versioned, testable): destructive (`rm -rf`, `Remove-Item -Recurse -Force`, `del /s /q`, `rd /s /q`, `git clean -fdx`, `git reset --hard`, `git push --force`/`-f`/`+ref`, `git branch -D`, `format`, `diskpart`, `reg delete`), network, deploy, secrets, migrations. These examples are illustrative, not an evidence-backed complete list. (7) Resolve every path-like argument and redirect target through the path guard. (8) Combine: severity is the max, confidence is the min.
@@ -151,6 +156,8 @@ Decision table:
 | LexedConservative | readonly or workspace_write inside root | Ask unless a stored rule matches the normalized form exactly |
 | LexedConservative or ParsedExact | any path outside root | `fs_outside_worktree` |
 | Opaque | any | `shell_unanalyzable`, never auto-allowed |
+
+Implemented defaults where the table above is silent: ParsedExact `exec_code` is allowed and logged; `network`, unknown programs and every ordinary LexedConservative command ask with kind `shell_command` (stored rules may allow them); PowerShell and cmd never exceed LexedConservative until phase B; an unknown shell flavor is parsed as POSIX and capped at LexedConservative when PowerShell or cmd rules match.
 
 Hard-deny set (not approvable from an agent process): production deploy commands (D6), `Set-ExecutionPolicy`, `-EncodedCommand`/`-enc` with non-literal payload, disabling Defender or firewall, `format`/`diskpart`, reading known CLI credential files. A human can still perform the action themselves outside the agent.
 
@@ -237,7 +244,7 @@ Nothing is downloaded on the user's behalf (brief §5); install guidance only. C
 
 ## 12. Audit log
 
-Append-only table `audit_log(seq, ts, actor_kind, actor_id, action, subject, approval_id, action_hash, outcome, rule_ids, detail_ref, prev_hash, hash)`; `hash = SHA-256(prev_hash || canonicalJSON(row without hash))`. Written in the same SQLite transaction as the effect it records (single writer connection, phase0 s3.13). Records: approval request/decide/consume/mismatch, path-guard denials, analyzer verdicts with `Digest`, consent events, provider data_class refusals, secret findings (rule id and location only, never the secret), Gateway calls, hard-deny hits, credential-store access, permission-mode changes, repo-config drift. It is a security view over the append-only event bus (`approval.*`, `mcp.*`, `watchdog.*`...), retained indefinitely like events (brief §18). The hash chain detects accidental or agent-made edits; it does not stop a same-user process from rewriting the whole file (T9). An "export audit log" action writes an unsigned JSON bundle for the user.
+Append-only table `audit_log(seq, ts, actor, action, subject, detail JSON, prev_hash, hash)` (approval id, action hash, outcome and rule ids travel in `detail`; the scanner redacts `detail` before it is stored; `UPDATE`/`DELETE` are refused by triggers as defense in depth); `hash = SHA-256(prev_hash || canonicalJSON(row without hash))`. Written in the same SQLite transaction as the effect it records (single writer connection, phase0 s3.13). `Verify` detects edits, deletions and reordering; truncating the tail is detected only against a previously recorded head hash. Records: approval request/decide/consume/mismatch, path-guard denials, analyzer verdicts with `Digest`, consent events, provider data_class refusals, secret findings (rule id and location only, never the secret), Gateway calls, hard-deny hits, credential-store access, permission-mode changes, repo-config drift. It is a security view over the append-only event bus (`approval.*`, `mcp.*`, `watchdog.*`...), retained indefinitely like events (brief §18). The hash chain detects accidental or agent-made edits; it does not stop a same-user process from rewriting the whole file (T9). An "export audit log" action writes an unsigned JSON bundle for the user.
 
 ## 13. Cloudflare preview/production separation (D6)
 

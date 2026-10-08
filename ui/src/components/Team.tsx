@@ -82,8 +82,15 @@ function AdapterCard({ a }: { a: AdapterInfo }) {
   );
 }
 
+/** adapter.list comes back in map order; show ready adapters first, then by id. */
+export function sortAdapters(list: readonly AdapterInfo[]): AdapterInfo[] {
+  const rank = (a: AdapterInfo) => (a.detection.status === 'ready' ? 0 : a.detection.installed ? 1 : 2);
+  return [...list].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+}
+
 export function TeamView({ projectId, agents, presence, onCreated }: { projectId: string; agents: readonly Agent[]; presence: readonly PresenceState[]; onCreated: () => void }) {
   const adapters = useAdapters();
+  const sorted = sortAdapters(adapters.data ?? []);
   return (
     <Page title="Team">
       <h2>Agents</h2>
@@ -99,12 +106,12 @@ export function TeamView({ projectId, agents, presence, onCreated }: { projectId
         ))}
       </ul>
       <h2>Add an agent</h2>
-      <AgentForm projectId={projectId} adapters={adapters.data ?? []} onCreated={onCreated} />
+      <AgentForm projectId={projectId} adapters={sorted} onCreated={onCreated} />
       <h2>Adapters</h2>
       <ErrorNote error={adapters.error} what="Could not list adapters" />
       {adapters.loading && !adapters.data ? <p className="muted">Detecting...</p> : null}
       <div className="cards">
-        {(adapters.data ?? []).map((a) => (
+        {sorted.map((a) => (
           <AdapterCard key={a.id} a={a} />
         ))}
       </div>
@@ -166,7 +173,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
         <select value={adapterId} onChange={(e) => setAdapter(e.target.value)} required>
           {adapters.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.id} ({a.detection.status})
+              {a.id} ({a.detection.installed ? a.detection.status : 'not installed'})
             </option>
           ))}
         </select>

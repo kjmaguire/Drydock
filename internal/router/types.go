@@ -191,6 +191,7 @@ type Alternative struct {
 
 // DecisionFacts are the inputs Explain needs to render "Why this model?" from the record alone.
 type DecisionFacts struct {
+	TaskID            string
 	Level             Level
 	RunKind           RunKind
 	TaskType          string

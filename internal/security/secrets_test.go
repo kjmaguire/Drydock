@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -22,6 +23,9 @@ func TestScannerFindsAndMasks(t *testing.T) {
 		f := fs[0]
 		if f.StartLine != 2 || f.Source != "gitleaks" || f.Length == 0 {
 			t.Errorf("%s: finding %+v", name, f)
+		}
+		if f.End-f.Start != len(secret) || text[f.Start:f.End] != secret {
+			t.Errorf("%s: offsets [%d,%d) do not delimit the secret", name, f.Start, f.End)
 		}
 		for _, str := range []string{f.Mask, f.RuleID, f.Description, f.String()} {
 			if strings.Contains(str, secret) || (len(secret) > 10 && strings.Contains(str, secret[4:12])) {
@@ -119,4 +123,27 @@ func TestScannerFailsClosedOnOversize(t *testing.T) {
 
 func TestScannerSatisfiesInterface(t *testing.T) {
 	var _ SecretScanner = sharedScanner(t)
+}
+
+func TestScannerConcurrentUse(t *testing.T) {
+	s := sharedScanner(t)
+	_ = s.RegisterSecret("concurrent", "app-internal-"+"k3y-0a1b2c3d4e5f")
+	defer s.UnregisterSecret("concurrent")
+	text := "token " + fakeGitHubToken() + " and app-internal-k3y-0a1b2c3d4e5f\n"
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 5; j++ {
+				if fs, err := s.Scan(context.Background(), text); err != nil || len(fs) < 2 {
+					t.Errorf("scan: %v %v", fs, err)
+				}
+				if red := s.Redact(text); strings.Contains(red, fakeGitHubToken()) || strings.Contains(red, "k3y-0a1b2c3d4e5f") {
+					t.Errorf("redact leaked: %q", red)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }

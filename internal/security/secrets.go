@@ -23,6 +23,8 @@ type Finding struct {
 	StartColumn int    `json:"startColumn"`
 	EndColumn   int    `json:"endColumn"`
 	Length      int    `json:"length"`
+	Start       int    `json:"start"` // byte offsets of the secret in the scanned text
+	End         int    `json:"end"`
 	Mask        string `json:"mask"` // "[REDACTED:<rule>]"; no characters of the secret
 }
 
@@ -156,11 +158,12 @@ func (s *Scanner) Scan(ctx context.Context, text string) ([]Finding, error) {
 		sl, sc := lineCol(text, h.start)
 		el, ec := lineCol(text, h.end)
 		out = append(out, Finding{RuleID: "known:" + h.name, Source: "known", StartLine: sl, EndLine: el, StartColumn: sc, EndColumn: ec,
-			Length: h.end - h.start, Mask: mask("known:" + h.name)})
+			Length: h.end - h.start, Start: h.start, End: h.end, Mask: mask("known:" + h.name)})
 	}
 	for _, f := range s.det.DetectContext(ctx, detect.Fragment{Raw: text}) {
+		start, end := secretOffsets(text, f.StartLine, f.Secret)
 		out = append(out, Finding{RuleID: f.RuleID, Description: f.Description, Source: "gitleaks", StartLine: f.StartLine + 1, EndLine: f.EndLine + 1,
-			StartColumn: f.StartColumn, EndColumn: f.EndColumn, Length: len(f.Secret), Mask: mask(f.RuleID)})
+			StartColumn: f.StartColumn, EndColumn: f.EndColumn, Length: len(f.Secret), Start: start, End: end, Mask: mask(f.RuleID)})
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -174,7 +177,31 @@ func (s *Scanner) Scan(ctx context.Context, text string) ([]Finding, error) {
 	return out, nil
 }
 
-func mask(rule string) string { return "[REDACTED:" + rule + "]" }
+// secretOffsets locates secret in text, searching from the start of the 0-based line gitleaks reported. It returns
+// (0, 0) when the secret cannot be found, which callers treat as "redact the whole text".
+func secretOffsets(text string, line int, secret string) (int, int) {
+	if secret == "" {
+		return 0, 0
+	}
+	from := 0
+	for l := 0; l < line; l++ {
+		i := strings.IndexByte(text[from:], '\n')
+		if i < 0 {
+			break
+		}
+		from += i + 1
+	}
+	i := strings.Index(text[from:], secret)
+	if i < 0 {
+		if i = strings.Index(text, secret); i < 0 {
+			return 0, 0
+		}
+		return i, i + len(secret)
+	}
+	return from + i, from + i + len(secret)
+}
+
+func mask(rule string) { return "[REDACTED:" + rule + "]" }
 
 // lineCol converts a byte offset into a 1-based line and column.
 func lineCol(text string, off int) (int, int) {

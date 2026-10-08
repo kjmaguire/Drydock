@@ -24,9 +24,8 @@ import (
 
 // Client talks to one OpenAI-compatible provider.
 type Client struct {
-	c      sdk.Client
-	p      providers.Provider
-	hasKey bool
+	c sdk.Client
+	p providers.Provider
 }
 
 // New builds a Client for p. apiKey may be empty for a keyless host. hc carries the transport rule; nil uses the
@@ -44,7 +43,7 @@ func New(p providers.Provider, apiKey string, hc *http.Client) (llm.Client, erro
 	}
 	// Built by hand, not with sdk.NewClient: NewClient reads OPENAI_API_KEY, OPENAI_ORG_ID and OPENAI_PROJECT_ID from
 	// the environment and would send them to whatever provider this is.
-	return &Client{c: sdk.Client{Options: opts}, p: p, hasKey: apiKey != ""}, nil
+	return &Client{c: sdk.Client{Options: opts}, p: p}, nil
 }
 
 // Complete performs a non-streaming chat completion.

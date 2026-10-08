@@ -362,3 +362,14 @@ func TestApprovalSecretsNotStored(t *testing.T) {
 		t.Fatalf("consume with exact action: %v", err)
 	}
 }
+
+func TestRequireHuman(t *testing.T) {
+	if err := RequireHuman("human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	for _, by := range []string{"", "agent_1", "tool:tests", "human:", "system"} {
+		if err := RequireHuman(by); !errors.Is(err, ErrNotHuman) {
+			t.Errorf("RequireHuman(%q) = %v", by, err)
+		}
+	}
+}

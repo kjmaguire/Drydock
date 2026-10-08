@@ -593,3 +593,12 @@ func (a *Approvals) Get(ctx context.Context, id string) (ApprovalInfo, error) {
 	return ApprovalInfo{ID: id, Status: r.status, ActionKind: r.actionKind, ActionHash: r.hash, Title: r.title, Reason: p.Reason, Action: p.Action,
 		DecidedBy: r.decidedBy, Created: r.createdAt, Resolved: resolved, ExpiresAt: r.expiresAt, RunID: r.runID}, nil
 }
+
+// RequireHuman is the guard for every code path that answers an approval, including the workflow engine's Resume
+// (whose Response.By is otherwise unchecked): it returns ErrNotHuman unless by is a "human:<name>" principal.
+func RequireHuman(by string) error {
+	if !IsHumanPrincipal(by) {
+		return aerr("", ErrNotHuman, "")
+	}
+	return nil
+}

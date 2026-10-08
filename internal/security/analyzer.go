@@ -651,9 +651,6 @@ func (r *run) addInvocation(inv Invocation, depth int) {
 		r.strictParams(cur)
 	}
 
-	// cd and friends change the working directory for later relative paths.
-	r.trackCwd(cur, pa)
-
 	// Wrappers: analyze what they run.
 	uw := r.unwrap(cur, pa)
 	switch uw.kind {
@@ -735,6 +732,8 @@ func (r *run) addInvocation(inv Invocation, depth int) {
 		}
 	}
 	r.collectPaths(cur, pa, res.matched, res.pathMode)
+	// cd and friends change the working directory for the paths of later commands (not their own target)
+	r.trackCwd(cur, pa)
 }
 
 var scriptExts = set(".ps1", ".bat", ".cmd", ".sh", ".vbs", ".wsf", ".js", ".py")

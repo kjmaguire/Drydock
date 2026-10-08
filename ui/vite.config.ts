@@ -1,21 +1,22 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // Development proxy: `DRYDOCK_DEV_URL=http://127.0.0.1:PORT npm run dev` forwards /rpc and /events to a running
 // `cmd/drydock-dev` (the Go core with the HTTP/SSE dev transport). The Origin header is dropped because the Go server
 // accepts only same-host origins (DNS rebinding guard). The token still comes from the page URL (?token=).
 const target = process.env.DRYDOCK_DEV_URL;
-const proxy = target
+const proxy: Record<string, ProxyOptions> | undefined = target
   ? Object.fromEntries(
       ['/rpc', '/events'].map((p) => [
         p,
         {
           target,
           changeOrigin: true,
-          configure: (px: { on: (ev: string, cb: (req: { removeHeader: (n: string) => void }) => void) => void }) =>
-            px.on('proxyReq', (req) => req.removeHeader('origin')),
-        },
+          configure: (px) => {
+            px.on('proxyReq', (req) => req.removeHeader('origin'));
+          },
+        } satisfies ProxyOptions,
       ]),
     )
   : undefined;
@@ -38,5 +39,6 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
     restoreMocks: true,
+    setupFiles: ['src/test/setup.ts'],
   },
 });
