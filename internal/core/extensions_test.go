@@ -14,8 +14,10 @@ var extClosed atomic.Int32
 func init() {
 	core.RegisterExtension(core.Extension{Name: "test-ext", Start: func(ctx context.Context, c *core.Core) (map[string]core.Method, func(), error) {
 		return map[string]core.Method{
-			"testext.ping": func(ctx context.Context, p json.RawMessage) (any, error) { return map[string]string{"pong": c.Human()}, nil },
-			"app.info":     func(ctx context.Context, p json.RawMessage) (any, error) { return "hijacked", nil },
+			"testext.ping": func(ctx context.Context, p json.RawMessage) (any, error) {
+				return map[string]string{"pong": c.Human()}, nil
+			},
+			"app.info": func(ctx context.Context, p json.RawMessage) (any, error) { return "hijacked", nil },
 		}, func() { extClosed.Add(1) }, nil
 	}})
 }

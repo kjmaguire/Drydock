@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -64,6 +65,16 @@ type PageChange struct {
 type Summarizer interface {
 	Summarize(ctx context.Context, d Digest, allowTrainable bool) (string, error)
 }
+
+// maxRefreshBytes bounds the raw text one refresh holds in memory before it commits.
+var maxRefreshBytes int64 = 512 << 20
+
+type sizeBudget struct {
+	used atomic.Int64
+	max  int64
+}
+
+func (b *sizeBudget) take(n int) bool { return b.used.Add(int64(n)) <= b.max }
 
 type existingPage struct {
 	id                       int64
@@ -140,6 +151,7 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 	}
 
 	results := make([]pageResult, len(pages))
+	budget := &sizeBudget{max: maxRefreshBytes}
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, m.Crawl.Concurrency)
 	chunkOpt := m.ChunkOptions()
@@ -150,7 +162,7 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[i] = s.loadPage(ctx, f, pages[i], existing[pages[i].URL], chunkOpt, opt.Force)
+			results[i] = s.loadPage(ctx, f, pages[i], existing[pages[i].URL], chunkOpt, opt.Force, budget)
 		}()
 	}
 	wg.Wait()
@@ -401,7 +413,7 @@ func (s *Store) existingPages(ctx context.Context, packID string) (map[string]ex
 }
 
 // loadPage fetches or reads one page and prepares its chunks. It never returns an error: the outcome is in the status.
-func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPage, co ChunkOptions, force bool) pageResult {
+func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPage, co ChunkOptions, force bool, budget *sizeBudget) pageResult {
 	r := pageResult{page: p}
 	var raw, format, title string
 	if p.Local != "" {
@@ -465,6 +477,10 @@ func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPag
 				format = "markdown"
 			}
 		}
+	}
+	if !budget.take(len(raw)) {
+		r.status, r.reason = "failed", "refresh size budget exceeded"
+		return r
 	}
 	switch format {
 	case "html":

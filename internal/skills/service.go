@@ -48,6 +48,9 @@ const (
 	OriginRegistry = "registry"
 )
 
+// maxRepoSkills bounds one repository scan.
+const maxRepoSkills = 200
+
 // SkillsDir is the repository directory holding a project's own skills.
 const SkillsDir = ".aet/skills"
 
@@ -65,6 +68,11 @@ type Service struct {
 	// Fetcher reads registries. Nil: registry import is unavailable (repository skills still work).
 	Fetcher RegistryFetcher
 	Now     func() time.Time
+	// ManualAcceptRepoSkills makes a repository scan only OFFER skills, even committed ones, until a human accepts them. By
+	// default a skill that is committed and unmodified at HEAD and passes the scan is accepted automatically (the repository is
+	// the project's own, and a change reaches it through the human's merge). A project that does not want an agent-authored
+	// skill to become active through a merged diff sets this.
+	ManualAcceptRepoSkills bool
 }
 
 func (s *Service) now() time.Time {
@@ -338,6 +346,10 @@ func (s *Service) ScanRepo(ctx context.Context, projectID string) (ScanResult, e
 			default:
 				continue
 			}
+			if res.Found >= maxRepoSkills {
+				res.Errors = append(res.Errors, fmt.Sprintf("more than %d skills: the rest are ignored", maxRepoSkills))
+				break
+			}
 			res.Found++
 			k, err := s.scanOne(ctx, projectID, repo, rel, file, want, hasScripts)
 			if err != nil {
@@ -413,7 +425,7 @@ func (s *Service) scanOne(ctx context.Context, projectID, repo, rel, file, want 
 	switch {
 	case verdict.Blocked:
 		rec.status, rec.reason = StatusBlocked, verdict.Reason
-	case commit != "" && clean:
+	case commit != "" && clean && !s.ManualAcceptRepoSkills:
 		rec.status, rec.decidedBy = StatusAccepted, "system:committed"
 	default:
 		rec.status = StatusOffered

@@ -44,6 +44,10 @@ func TestLocalPackIngestSearchCitesAndVersions(t *testing.T) {
 	if res.Confidence != ConfidenceHigh || res.SourceAgeDays != 0 {
 		t.Fatalf("confidence %s age %d", res.Confidence, res.SourceAgeDays)
 	}
+	pg, err := e.s.Pages(context.Background(), "cf")
+	if err != nil || len(pg) != 3 || pg[0].URL != "local:d1/migrations.md" || pg[0].Chunks == 0 || len(pg[0].ContentHash) != 64 || pg[0].FirstSeen != "20261008.1" {
+		t.Fatalf("pages: %v %+v", err, pg)
+	}
 	// ranking: a heading hit outranks a body-only mention
 	if r := e.search("migrations", "cf"); len(r.Hits) == 0 || r.Hits[0].Citation.URL != "local:d1/migrations.md" {
 		t.Fatalf("migrations: %+v", r.Hits)

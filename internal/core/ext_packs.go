@@ -179,6 +179,14 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 	}
 	k.Requirements = &requirements.Service{DB: c.DB, Bus: c.Bus, Scanner: c.Scanner}
 	k.Skills = &skills.Service{DB: c.DB, Bus: c.Bus, Scanner: c.Scanner, Fetcher: skills.NewGitHubFetcher()}
+	// Repository skills are offered, never accepted automatically, unless the human turns that off with the setting
+	// skills.manual_accept_repo = 0 (decision P11: an agent-authored skill merged through an approved diff would otherwise become
+	// standing instructions without a separate decision).
+	k.Skills.ManualAcceptRepoSkills = true
+	var manual string
+	if err := c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key='skills.manual_accept_repo'`).Scan(&manual); err == nil && (manual == "0" || manual == "false") {
+		k.Skills.ManualAcceptRepoSkills = false
+	}
 	if err := k.Skills.EnsureRegistries(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -335,6 +343,7 @@ func (k *Knowledge) methods() map[string]Method {
 		}
 		return map[string]any{"refreshed": res, "errors": msgs}, nil
 	})
+	m["pack.pages"] = bind(func(ctx context.Context, p idParam) (any, error) { return k.Packs.Pages(ctx, p.ID) })
 	m["pack.versions"] = bind(func(ctx context.Context, p idParam) (any, error) { return k.Packs.Versions(ctx, p.ID) })
 	m["pack.search"] = bind(func(ctx context.Context, p struct {
 		PackIDs []string `json:"packIds"`
@@ -632,13 +641,13 @@ func (k *Knowledge) methods() map[string]Method {
 		Body      string `json:"body"`
 		Source    string `json:"source"`
 	}) (any, error) {
-		return k.proposeMemory(ctx, p.ProjectID, p.Kind, p.Title, p.Body, firstNonEmpty(p.Source, h()))
+		return k.ProposeMemory(ctx, p.ProjectID, p.Kind, p.Title, p.Body, firstNonEmpty(p.Source, h()))
 	})
 	m["memory.accept"] = bind(func(ctx context.Context, p idParam) (any, error) {
-		return k.decideMemory(ctx, h(), p.ID, memory.Accepted)
+		return k.DecideMemory(ctx, h(), p.ID, memory.Accepted)
 	})
 	m["memory.reject"] = bind(func(ctx context.Context, p idParam) (any, error) {
-		return k.decideMemory(ctx, h(), p.ID, memory.RejectedSt)
+		return k.DecideMemory(ctx, h(), p.ID, memory.RejectedSt)
 	})
 	m["memory.delete"] = bind(func(ctx context.Context, p idParam) (any, error) {
 		if err := security.RequireHuman(h()); err != nil {
@@ -658,9 +667,9 @@ func (k *Knowledge) methods() map[string]Method {
 	return m
 }
 
-// proposeMemory stores a proposal (never accepted by its author). Secrets are redacted: memory feeds generated instruction
+// ProposeMemory stores a proposal (never accepted by its author). Secrets are redacted: memory feeds generated instruction
 // files, which agents read.
-func (k *Knowledge) proposeMemory(ctx context.Context, projectID, kind, title, body, source string) (memory.Entry, error) {
+func (k *Knowledge) ProposeMemory(ctx context.Context, projectID, kind, title, body, source string) (memory.Entry, error) {
 	if !memory.ValidKind(kind) {
 		return memory.Entry{}, fmt.Errorf("memory: kind must be one of decision, convention, api_contract, rejected, known_issue, preference")
 	}
@@ -677,9 +686,9 @@ func (k *Knowledge) proposeMemory(ctx context.Context, projectID, kind, title, b
 	return e, nil
 }
 
-// decideMemory accepts or rejects a proposal. Only a human principal can; an accepted entry reaches the generated
+// DecideMemory accepts or rejects a proposal. Only a human principal can; an accepted entry reaches the generated
 // instruction files of every later task.
-func (k *Knowledge) decideMemory(ctx context.Context, by, id, status string) (memory.Entry, error) {
+func (k *Knowledge) DecideMemory(ctx context.Context, by, id, status string) (memory.Entry, error) {
 	if err := security.RequireHuman(by); err != nil {
 		return memory.Entry{}, err
 	}

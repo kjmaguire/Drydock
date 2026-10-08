@@ -110,3 +110,20 @@ func TestNoScannerIsRefused(t *testing.T) {
 		t.Fatalf("a missing secret scanner must fail closed, got %v", err)
 	}
 }
+
+func TestRefreshSizeBudget(t *testing.T) {
+	old := maxRefreshBytes
+	maxRefreshBytes = 200
+	defer func() { maxRefreshBytes = old }()
+	e := newEnv(t)
+	dir := filepath.Join(e.dir, "docs")
+	writeFiles(t, dir, map[string]string{"a.md": "# A\n\n" + strings.Repeat("alpha ", 40) + "\n", "b.md": "# B\n\n" + strings.Repeat("beta ", 40) + "\n", "c.md": "# C\n\ntiny\n"})
+	e.install(localManifest("bud", dir, ""))
+	r, err := e.s.Refresh(context.Background(), human, "bud", RefreshOptions{})
+	if err == nil && r.Failed == 0 {
+		t.Fatalf("pages beyond the in-memory budget must fail the refresh or be counted: %+v", r)
+	}
+	if r.Reasons["refresh size budget exceeded"] == 0 {
+		t.Fatalf("%+v %v", r, err)
+	}
+}

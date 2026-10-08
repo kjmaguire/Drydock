@@ -461,3 +461,40 @@ func (s *Store) packIDs(ctx context.Context) ([]string, error) {
 	sort.Strings(out)
 	return out, rows.Err()
 }
+
+// PageInfo is a stored page as the UI lists it.
+type PageInfo struct {
+	URL         string    `json:"url"`
+	Title       string    `json:"title"`
+	ContentHash string    `json:"contentHash"`
+	FetchedAt   time.Time `json:"fetchedAt"`
+	FirstSeen   string    `json:"firstVersion"`
+	LastChanged string    `json:"lastVersion"`
+	Status      string    `json:"status"`
+	Risk        int       `json:"risk"`
+	Chunks      int       `json:"chunks"`
+	Quarantined int       `json:"quarantined"`
+}
+
+// Pages lists a pack's active pages with their hashes and chunk counts.
+func (s *Store) Pages(ctx context.Context, packID string) ([]PageInfo, error) {
+	rows, err := s.o.DB.Reader().QueryContext(ctx, `SELECT p.url,p.title,p.content_hash,p.fetched_at,p.first_version,p.last_version,p.status,p.risk,
+		(SELECT COUNT(*) FROM pack_chunks c WHERE c.page_id=p.id AND c.seq_removed IS NULL),
+		(SELECT COUNT(*) FROM pack_chunks c WHERE c.page_id=p.id AND c.seq_removed IS NULL AND c.quarantined=1)
+		FROM pack_pages p WHERE p.pack_id=? AND p.status='active' ORDER BY p.url`, packID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PageInfo{}
+	for rows.Next() {
+		var p PageInfo
+		var ts int64
+		if err := rows.Scan(&p.URL, &p.Title, &p.ContentHash, &ts, &p.FirstSeen, &p.LastChanged, &p.Status, &p.Risk, &p.Chunks, &p.Quarantined); err != nil {
+			return nil, err
+		}
+		p.FetchedAt = time.UnixMilli(ts).UTC()
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

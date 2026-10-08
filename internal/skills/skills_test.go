@@ -493,3 +493,23 @@ func TestGitHubFetcherOnlyTalksToItsHosts(t *testing.T) {
 		t.Fatal("the host allowlist must hold")
 	}
 }
+
+func TestManualAcceptRepoSkillsSwitch(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, map[string]string{".aet/skills/rule-one/SKILL.md": skillMD("rule-one", "d", "", "Rule one.")})
+	e.s.ManualAcceptRepoSkills = true
+	res, err := e.s.ScanRepo(ctx, "p1")
+	if err != nil || res.Accepted != 0 || res.Offered != 1 {
+		t.Fatalf("%v %+v", err, res)
+	}
+	if el, _ := e.s.Eligible(ctx, "p1", "Backend"); len(el) != 0 {
+		t.Fatal("with manual acceptance a committed repo skill is only offered")
+	}
+	if _, err := e.s.Accept(ctx, human, "p1", "rule-one"); err != nil {
+		t.Fatal(err)
+	}
+	e.s.ScanRepo(ctx, "p1") // the human decision survives the rescan
+	if el, _ := e.s.Eligible(ctx, "p1", "Backend"); len(el) != 1 {
+		t.Fatal("accepted stays accepted for identical content")
+	}
+}

@@ -166,4 +166,3 @@ func (p *SearchProvider) Search(ctx context.Context, run mcp.RunInfo, query, doc
 	}
 	return out, nil
 }
-

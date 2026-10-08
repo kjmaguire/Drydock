@@ -3,7 +3,11 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +16,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -484,10 +489,10 @@ func TestPlanAcceptSchedulerAndHumanMergesThroughTheUIMethods(t *testing.T) {
 		t.Fatalf("a proposal creates no tasks: %d -> %d", len(listBefore), len(mid))
 	}
 	var needs []room.NeedsYouItem
-	a.call("needsyou.list", map[string]string{"projectId": p.ID}, &needs)
-	if len(needs) == 0 {
-		t.Fatal("the plan review must be in Needs you")
-	}
+	a.waitFor("the plan review in Needs you", func() bool {
+		a.call("needsyou.list", map[string]string{"projectId": p.ID}, &needs)
+		return len(needs) > 0
+	})
 	a.call("plan.accept", map[string]any{"planId": planID}, &plan)
 	if plan.Status != "ACCEPTED" || len(plan.Created) != 2 || plan.DecidedBy != "human:kyle" {
 		t.Fatalf("plan %+v", plan)
@@ -612,5 +617,167 @@ func TestRealClaudePlansATinyGoal(t *testing.T) {
 	a.call("task.list", map[string]any{"projectId": p.ID}, &after)
 	if plan.Status != "REJECTED" || len(before) != 0 || len(after) != 0 {
 		t.Fatalf("%s tasks %d/%d", plan.Status, len(before), len(after))
+	}
+}
+
+const e2eRunner = `
+const fs = require('fs');
+fs.mkdirSync('test-results', {recursive: true});
+fs.writeFileSync('test-results/home.png', 'png');
+fs.writeFileSync('test-results/e2e-report.json', JSON.stringify({suites: [{title: 'app', specs: [
+  {title: 'home loads', file: 'app.spec.ts', tests: [{status: 'expected', results: [{attachments: [{name: 'screenshot', contentType: 'image/png', path: process.cwd() + '/test-results/home.png'}]}]}]}
+], suites: []}]}));
+console.log('1 passed');
+`
+
+const previewScript = `
+const http = require('http');
+http.createServer((req, res) => { res.statusCode = 200; res.end('preview'); }).listen(Number(process.argv[2]), '127.0.0.1');
+`
+
+func httpUp(url string) bool {
+	c := &http.Client{Timeout: time.Second}
+	resp, err := c.Get(url)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
+}
+
+// e2e and preview are gated by the project's settings, are external tools, and report skipped honestly. The preview is
+// stopped before the merge removes the worktree it serves from.
+func TestE2EAndPreviewChecksThroughTheUIMethods(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed on this machine")
+	}
+	a, _ := openDev(t, devScript())
+	repo := filepath.Join(t.TempDir(), "gocalc")
+	os.MkdirAll(repo, 0o755)
+	copyTree(t, filepath.Join("..", "..", "testdata", "fixtures", "gocalc"), repo)
+	for name, body := range map[string]string{"calc.go": greenCalc, ".gitignore": "test-results/\n", "e2e-run.js": e2eRunner, "preview-server.js": previewScript} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := git.Init(context.Background(), repo, "main"); err != nil {
+		t.Fatal(err)
+	}
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	alice := a.agent(p.ID, "Alice", "backend")
+	bob := a.agent(p.ID, "Bob", "reviewer")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Nothing much", Description: "Ends at the approval."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": alice.ID, "reviewer": bob.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	d := a.waitPending(task.ID, "approve")
+
+	toolMessages := func() []room.Message {
+		var ms []room.Message
+		a.call("room.messages", map[string]any{"roomId": d.RoomID, "limit": 300}, &ms)
+		var out []room.Message
+		for _, m := range ms {
+			if m.Author.Kind == room.AuthorTool {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+
+	// off by default: skipped, said so in the room, recorded as evidence without a verdict
+	var res checks.E2EResult
+	a.call("check.e2e", map[string]string{"id": task.ID}, &res)
+	if !res.Skipped || res.Passed || !strings.Contains(res.SkipReason, "switched off") {
+		t.Fatalf("%+v", res)
+	}
+	skippedPosted := false
+	for _, m := range toolMessages() {
+		skippedPosted = skippedPosted || (m.Author.ID == "tests" && m.PayloadString("check_kind") == "e2e" && m.PayloadString("check_status") == "skipped")
+	}
+	if !skippedPosted {
+		t.Fatal("the Tests member must say e2e was skipped")
+	}
+	var pv checks.PreviewResult
+	a.call("preview.start", map[string]string{"id": task.ID}, &pv)
+	if !pv.Skipped || !strings.Contains(pv.SkipReason, "switched off") {
+		t.Fatalf("%+v", pv)
+	}
+
+	// the human switches them on
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	url := fmt.Sprintf("http://127.0.0.1:%d/", port)
+	dev := pipeline.DefaultDevSettings()
+	dev.E2E = pipeline.E2ESettings{Enabled: true, Command: []string{"node", "e2e-run.js"}}
+	dev.Preview = pipeline.PreviewSetup{Enabled: true, Command: []string{"node", "preview-server.js", fmt.Sprint(port)}, URL: url, TimeoutSec: 30}
+	a.call("projectdev.set", map[string]any{"projectId": p.ID, "settings": dev}, nil)
+	res = checks.E2EResult{}
+	a.call("check.e2e", map[string]string{"id": task.ID}, &res)
+	if res.Skipped || !res.Passed || res.Summary == nil || res.Summary.Expected != 1 || len(res.Screenshots) != 1 {
+		t.Fatalf("%+v", res)
+	}
+	d = a.detail(task.ID)
+	e2eEv, shots := 0, 0
+	for _, e := range d.Evidence {
+		if e.Kind == "e2e" && e.Passed != nil && *e.Passed {
+			e2eEv++
+		}
+		if e.Kind == "screenshot" {
+			shots++
+		}
+	}
+	if e2eEv != 1 || shots != 1 {
+		t.Fatalf("evidence e2e=%d screenshots=%d", e2eEv, shots)
+	}
+
+	pv = checks.PreviewResult{}
+	a.call("preview.start", map[string]string{"id": task.ID}, &pv)
+	if !pv.Passed || pv.URL != url || !httpUp(url) {
+		t.Fatalf("%+v", pv)
+	}
+	var list []map[string]any
+	a.call("preview.list", nil, &list)
+	if len(list) != 1 || list[0]["url"] != url {
+		t.Fatalf("%+v", list)
+	}
+	urlPosted := false
+	for _, m := range toolMessages() {
+		urlPosted = urlPosted || (m.Author.ID == "preview" && strings.Contains(m.Body, url))
+	}
+	if !urlPosted {
+		t.Fatal("the Preview member must post the URL")
+	}
+	// the human approves: the preview is stopped before the merge removes its worktree
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": d.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
+	a.waitFor("completion", func() bool { return a.detail(task.ID).Task.Status == tasks.Completed })
+	if httpUp(url) {
+		t.Fatal("the preview must be stopped when the task is merged")
+	}
+	a.call("preview.list", nil, &list)
+	if len(list) != 0 {
+		t.Fatalf("%+v", list)
+	}
+}
+
+func TestProjectDevSettingsAreHumanOnlyAndValidated(t *testing.T) {
+	a, _ := openDev(t, devScript())
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newGreenRepo(t)}, &p)
+	var dev pipeline.DevSettings
+	a.call("projectdev.get", map[string]string{"projectId": p.ID}, &dev)
+	if dev.MaxParallel != 2 || dev.AutoSchedule || !dev.Respond || dev.E2E.Enabled || dev.Preview.Enabled {
+		t.Fatalf("defaults must be conservative (nothing automatic, e2e and preview off): %+v", dev)
+	}
+	if _, err := a.c.Call(context.Background(), "projectdev.set", mustJSON(map[string]any{"projectId": p.ID, "settings": pipeline.DevSettings{MaxParallel: 99}})); err == nil {
+		t.Fatal("maxParallel above 16 is refused")
+	}
+	if err := pipeline.SaveDevSettings(context.Background(), a.c.DB, p.ID, pipeline.DevSettings{MaxParallel: 3}, "agt_x"); err == nil {
+		t.Fatal("an agent identity must not change project settings")
+	}
+	if _, err := a.c.Call(context.Background(), "projectdev.set", mustJSON(map[string]any{"projectId": "nope", "settings": pipeline.DevSettings{}})); err == nil {
+		t.Fatal("unknown project")
 	}
 }

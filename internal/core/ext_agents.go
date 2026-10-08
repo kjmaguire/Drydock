@@ -493,25 +493,37 @@ func (a *agentsDev) answerPlan(ctx context.Context, planID, decision string, dat
 	if p.RunID == "" {
 		return p, errors.New("the plan has no run")
 	}
-	pend, err := a.c.Engine.Pending(ctx, workflow.RunID(p.RunID))
-	if err != nil {
-		return p, err
-	}
+	// the proposal is stored a moment before the run commits the review request: wait for the request rather than refuse
 	var req workflow.RequestID
-	for _, pr := range pend {
-		if pr.NodeID == "planreview" {
-			req = pr.ID
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		pend, err := a.c.Engine.Pending(ctx, workflow.RunID(p.RunID))
+		if err != nil {
+			return p, err
 		}
+		for _, pr := range pend {
+			if pr.NodeID == "planreview" {
+				req = pr.ID
+			}
+		}
+		if req != "" || time.Now().After(deadline) || ctx.Err() != nil {
+			break
+		}
+		if info, err := a.c.Engine.Status(ctx, workflow.RunID(p.RunID)); err == nil && info.Status.Terminal() {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 	if req == "" {
-		return p, fmt.Errorf("the plan is %s and is not waiting for a review", p.Status)
+		cur, _ := pipeline.GetPlan(ctx, a.c.DB, planID)
+		return cur, fmt.Errorf("the plan is %s and is not waiting for a review", cur.Status)
 	}
 	raw, _ := json.Marshal(data)
 	if err := a.c.Respond(ctx, p.RunID, string(req), decision, raw); err != nil {
 		return p, err
 	}
 	// the create step runs in the background; wait for it so the caller sees the tasks
-	deadline := time.Now().Add(30 * time.Second)
+	deadline = time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		cur, err := pipeline.GetPlan(ctx, a.c.DB, planID)
 		if err != nil {

@@ -107,12 +107,12 @@ func allowedSyncer(by string) error {
 }
 
 type prepared struct {
-	text        string
-	hash        string
-	chunks      []packs.Chunk
-	scans       []packs.Scanned
-	redactions  int
-	title       string
+	text       string
+	hash       string
+	chunks     []packs.Chunk
+	scans      []packs.Scanned
+	redactions int
+	title      string
 }
 
 func (s *Service) prepare(format, title, text string) (prepared, error) {
