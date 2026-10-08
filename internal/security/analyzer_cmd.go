@@ -279,7 +279,7 @@ func (p *cmdParser) command(group int, edge string, piped bool) {
 }
 
 func (p *cmdParser) skipToEnd() {
-	for p.more() && !(p.toks[p.i].kind == 'o' && p.toks[p.i].text != "|") && p.toks[p.i].kind != ')' {
+	for p.more() && p.toks[p.i].kind != 'o' && p.toks[p.i].kind != ')' {
 		p.i++
 	}
 }

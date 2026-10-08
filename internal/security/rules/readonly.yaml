@@ -12,7 +12,7 @@ rules:
     flags_none: ["-o", "--output"]
     paths: positional
   - id: readonly.posix.nopaths
-    programs: [echo, printf, pwd, "true", "false", sleep, seq, expr, whoami, id, uname, hostname, test, "[", "[[", ":", type, alias, unalias, set, shift, return, exit, wait, jobs, umask, ulimit, getconf, nproc, arch, locale, tty, groups, logname, uptime]
+    programs: [echo, printf, pwd, "true", "false", sleep, seq, expr, whoami, id, uname, hostname, env, printenv, test, "[", "[[", ":", type, alias, unalias, set, shift, return, exit, wait, jobs, umask, ulimit, getconf, nproc, arch, locale, tty, groups, logname, uptime]
     paths: none
   - id: readonly.posix.date
     programs: [date]
@@ -25,16 +25,17 @@ rules:
     skip_unless_flags: ["-e", "-f", "--regexp", "--file"]
   - id: readonly.posix.rg
     programs: [rg]
-    flags_none: ["--pre", "--pre-glob"]
+    flags_none: ["--pre", "--pre-glob", "--hostname-bin"]
     paths: positional
     skip_first_positional: true
     skip_unless_flags: ["-e", "-f", "--regexp", "--file"]
+  # sed scripts can write files (w) and run commands (e), so only simple print/delete/substitute scripts are readonly.
   - id: readonly.posix.sed
     programs: [sed]
-    flags_none: ["-i", "--in-place", "-I"]
+    flags_none: ["-i", "--in-place", "-I", "-e", "-f", "--expression", "--file", "-s", "--separate", "-z"]
+    args_regex: ['^([0-9]+|\$)?(,([0-9]+|\$))?[pPdq=]$', '^s/[^/]*/[^/]*/[gIp0-9]*$', '^y/[^/]*/[^/]*/$']
     paths: positional
     skip_first_positional: true
-    skip_unless_flags: ["-e", "-f", "--expression", "--file"]
   - id: readonly.posix.find
     programs: [find]
     flags_none: ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls"]
@@ -43,7 +44,7 @@ rules:
   - id: readonly.git.read
     programs: [git]
     subcommands: [status, log, diff, show, rev-parse, rev-list, ls-files, ls-tree, blame, describe, shortlog, cat-file, grep, name-rev, merge-base, for-each-ref, show-ref, version, help, "stash list", "stash show", "worktree list", "submodule status", "remote show"]
-    flags_none: ["--output", "--ext-diff", "--textconv"]
+    flags_none: ["--output", "--ext-diff", "--textconv", "-O", "--open-files-in-pager", "--exec", "--upload-pack"]
     paths: heuristic
   - id: readonly.git.bare
     programs: [git]

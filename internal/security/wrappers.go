@@ -421,6 +421,9 @@ func (r *run) unwrapPowerShell(inv *Invocation) unwrapResult {
 		if a.Dynamic {
 			return opaqueWrap("powershell argument is not literal")
 		}
+		if t == "-" {
+			return opaqueWrap("powershell reads the command from stdin")
+		}
 		if !(strings.HasPrefix(t, "-") || strings.HasPrefix(t, "/")) || len(t) < 2 {
 			// first non-parameter argument starts the command text
 			return r.psPayload(inv, args[i:], note)

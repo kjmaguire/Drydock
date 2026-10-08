@@ -687,7 +687,13 @@ func (r *run) addInvocation(inv Invocation, depth int) {
 		return
 	}
 
-	res := r.classify(cur, pa)
+	var res classResult
+	if _, launcher := wrapperSpecs[inv.Program]; launcher && uw.kind == uwArgv {
+		// a transparent launcher (env, nohup, timeout, xargs, ...): what it runs is classified, not the launcher
+		res.pathMode = "none"
+	} else {
+		res = r.classify(cur, pa)
+	}
 	cur.Classes = res.classes
 	cur.Rules = res.ids
 	for _, c := range res.classes {

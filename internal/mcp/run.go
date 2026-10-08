@@ -382,6 +382,13 @@ func (r *Run) callUpstream(ctx context.Context, c *callRec, t target, args json.
 		}
 		return g.cache.enabled() && ttl > 0 && !t.sideEffect && spec.isKnownReadOnly(t.tool, ro && spec.Trust != TrustPrivateData)
 	}
+	if g.cache.enabled() && ttl > 0 && !t.sideEffect && u.currentVersion() == "" {
+		// The server version is part of the cache key. On the very first call (no version persisted from an earlier
+		// process) it is only known after connecting; connecting first keeps the key stable for the whole call.
+		if _, err := u.ensure(ctx); err != nil {
+			return r.unavailable(ctx, c, spec, err)
+		}
+	}
 	cacheable := cacheableNow()
 	var fl *flight
 	if cacheable {
