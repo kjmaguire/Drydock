@@ -132,6 +132,9 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 			if err != nil {
 				return responder.Agent{}, err
 			}
+			if ag.Archived {
+				return responder.Agent{}, errors.New("this agent was removed from the team")
+			}
 			return responder.Agent{ID: ag.ID, ProjectID: ag.ProjectID, Name: ag.Name, Adapter: ag.Adapter, Role: ag.Role, Model: ag.Model, Effort: ag.Effort, ProviderID: ag.ProviderID}, nil
 		},
 		Cwd: a.replyCwd,

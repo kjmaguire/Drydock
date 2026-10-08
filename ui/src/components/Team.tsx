@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { AdapterInfo, Agent, Capabilities, PresenceState } from '../api/types';
+import { useId } from 'react';
 import { useClient } from '../state/context';
 import { useAdapters } from '../state/hooks';
 import { Badge, ErrorNote, Page, PresenceDot } from './common';
@@ -106,6 +107,7 @@ export function TeamView({
 }) {
   const adapters = useAdapters();
   const sorted = sortAdapters(adapters.data ?? []);
+  const [editing, setEditing] = useState('');
   return (
     <Page title="Team">
       <h2>Agents</h2>
@@ -127,6 +129,21 @@ export function TeamView({
                 Message
               </button>
             ) : null}
+            <button className="link-button" onClick={() => setEditing(editing === a.id ? '' : a.id)} aria-expanded={editing === a.id} aria-label={`Edit ${a.name}`}>
+              Edit
+            </button>
+            {a.purpose ? <div className="muted" data-testid="agent-purpose">Purpose: {a.purpose.length > 160 ? `${a.purpose.slice(0, 160)}...` : a.purpose}</div> : null}
+            {editing === a.id ? (
+              <AgentEditor
+                agent={a}
+                adapter={sorted.find((x) => x.id === a.adapter)}
+                onDone={() => {
+                  setEditing('');
+                  onCreated();
+                }}
+                onCancel={() => setEditing('')}
+              />
+            ) : null}
           </li>
         ))}
       </ul>
@@ -146,10 +163,54 @@ export function TeamView({
 
 const ROLE_SUGGESTIONS = ['backend', 'frontend', 'reviewer', 'tester', 'architect'];
 
+/** Model and effort inputs. Effort is a list when the adapter is known to accept only certain levels (a wrong one would fail the
+ *  run); model is free text with the adapter's aliases offered, because full model names are accepted too. */
+function ModelEffortFields({ caps, model, effort, setModel, setEffort }: { caps: Capabilities | undefined; model: string; effort: string; setModel: (v: string) => void; setEffort: (v: string) => void }) {
+  const listId = useId();
+  const canModel = caps?.modelSelection === true;
+  const canEffort = caps?.effortControl === true;
+  const efforts = caps?.efforts ?? [];
+  const models = caps?.models ?? [];
+  return (
+    <>
+      <label>
+        Model
+        <input value={model} onChange={(e) => setModel(e.target.value)} disabled={!canModel} list={models.length > 0 ? listId : undefined} spellCheck={false} placeholder={canModel ? 'adapter default' : 'model selection not verified for this adapter'} />
+        {models.length > 0 ? (
+          <datalist id={listId}>
+            {models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        ) : null}
+      </label>
+      <label>
+        Effort
+        {efforts.length > 0 ? (
+          <select aria-label="Effort" value={effort} onChange={(e) => setEffort(e.target.value)} disabled={!canEffort}>
+            <option value="">adapter default</option>
+            {efforts.map((x) => (
+              <option key={x} value={x}>
+                {x}
+              </option>
+            ))}
+            {effort && !efforts.includes(effort) ? <option value={effort}>{effort} (not accepted)</option> : null}
+          </select>
+        ) : (
+          <input aria-label="Effort" value={effort} onChange={(e) => setEffort(e.target.value)} disabled={!canEffort} spellCheck={false} placeholder={canEffort ? 'adapter default' : 'effort control not verified for this adapter'} />
+        )}
+      </label>
+    </>
+  );
+}
+
+const PURPOSE_HELP = 'Standing instructions for this agent, sent with every run: what it owns, what it must not touch, how it should work. It never overrides the task, the independent review or your approval.';
+
 function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adapters: AdapterInfo[]; onCreated: () => void }) {
   const client = useClient();
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [adapter, setAdapter] = useState('');
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
@@ -166,9 +227,10 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
     setBusy(true);
     setError(undefined);
     try {
-      await client.agentCreate({ projectId, name: name.trim(), role: role.trim(), adapter: adapterId, model: canModel ? model.trim() : '', effort: canEffort ? effort.trim() : '' });
+      await client.agentCreate({ projectId, name: name.trim(), role: role.trim(), purpose: purpose.trim(), adapter: adapterId, model: canModel ? model.trim() : '', effort: canEffort ? effort.trim() : '' });
       setName('');
       setRole('');
+      setPurpose('');
       setModel('');
       setEffort('');
       onCreated();
@@ -196,8 +258,12 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
         </datalist>
       </label>
       <label>
+        Purpose (optional)
+        <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={3} maxLength={4000} placeholder={PURPOSE_HELP} />
+      </label>
+      <label>
         Adapter
-        <select aria-label="Adapter" value={adapterId} onChange={(e) => setAdapter(e.target.value)} required>
+        <select aria-label="Adapter" value={adapterId} onChange={(e) => { setAdapter(e.target.value); setModel(''); setEffort(''); }} required>
           {adapters.map((a) => (
             <option key={a.id} value={a.id}>
               {a.id} ({a.detection.installed ? a.detection.status : 'not installed'})
@@ -205,18 +271,86 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
           ))}
         </select>
       </label>
-      <label>
-        Model
-        <input value={model} onChange={(e) => setModel(e.target.value)} disabled={!canModel} placeholder={canModel ? 'adapter default' : 'model selection not verified for this adapter'} />
-      </label>
-      <label>
-        Effort
-        <input value={effort} onChange={(e) => setEffort(e.target.value)} disabled={!canEffort} placeholder={canEffort ? 'adapter default' : 'effort control not verified for this adapter'} />
-      </label>
+      <ModelEffortFields caps={chosen?.capabilities} model={model} effort={effort} setModel={setModel} setEffort={setEffort} />
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy || ro.readOnly || !name.trim() || !role.trim() || !adapterId} title={ro.readOnly ? ro.reason : undefined}>
           Create agent
         </button>
+      </div>
+    </form>
+  );
+}
+
+/** Edit an agent in place. The adapter is fixed; a changed model, effort or purpose applies to the agent's next session. */
+function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapter: AdapterInfo | undefined; onDone: () => void; onCancel: () => void }) {
+  const client = useClient();
+  const ro = useReadOnly();
+  const [name, setName] = useState(agent.name);
+  const [role, setRole] = useState(agent.role);
+  const [purpose, setPurpose] = useState(agent.purpose ?? '');
+  const [model, setModel] = useState(agent.model);
+  const [effort, setEffort] = useState(agent.effort);
+  const [busy, setBusy] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [error, setError] = useState<Error | undefined>();
+  const run = async (what: string, f: () => Promise<unknown>) => {
+    setBusy(what);
+    setError(undefined);
+    try {
+      await f();
+      onDone();
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setBusy('');
+    }
+  };
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    return run('save', () => client.agentUpdate({ id: agent.id, name: name.trim(), role: role.trim(), purpose: purpose.trim(), model: model.trim(), effort: effort.trim() }));
+  };
+  return (
+    <form className="form form-grid" onSubmit={save} aria-label={`Edit ${agent.name}`} data-testid="agent-editor">
+      <ErrorNote error={error} what="Agent not changed" />
+      <ReadOnlyNote />
+      <p className="muted">
+        Adapter <code>{agent.adapter}</code> cannot change: add a new agent to use a different CLI. Changes apply from the agent&apos;s next session.
+      </p>
+      <label>
+        Agent name
+        <input value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+      <label>
+        Role
+        <input value={role} onChange={(e) => setRole(e.target.value)} list="role-suggestions" required />
+      </label>
+      <label>
+        Purpose
+        <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={4} maxLength={4000} placeholder={PURPOSE_HELP} />
+      </label>
+      <ModelEffortFields caps={adapter?.capabilities} model={model} effort={effort} setModel={setModel} setEffort={setEffort} />
+      <div className="form-actions">
+        <button type="submit" className="primary" disabled={busy !== '' || ro.readOnly || !name.trim() || !role.trim()} title={ro.readOnly ? ro.reason : undefined}>
+          {busy === 'save' ? 'Saving...' : 'Save changes'}
+        </button>
+        <button type="button" onClick={onCancel} disabled={busy !== ''}>
+          Cancel
+        </button>
+        {confirmRemove ? (
+          <>
+            <span>Remove {agent.name} from the team? Its history stays.</span>
+            <button type="button" className="danger" disabled={busy !== ''} onClick={() => run('remove', () => client.agentArchive(agent.id))}>
+              {busy === 'remove' ? 'Removing...' : 'Yes, remove'}
+            </button>
+            <button type="button" onClick={() => setConfirmRemove(false)} disabled={busy !== ''}>
+              Keep
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => setConfirmRemove(true)} disabled={busy !== ''}>
+            Remove from team
+          </button>
+        )}
       </div>
     </form>
   );

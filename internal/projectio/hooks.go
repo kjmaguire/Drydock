@@ -37,6 +37,8 @@ type Stats struct {
 	RunsCancelled      int            `json:"runsNotResumed"`
 	TasksBlocked       int            `json:"tasksBlocked"`
 	ApprovalsCancelled int            `json:"approvalsCancelled"`
+	AgentPurposes      int            `json:"agentPurposesCleared"`
+	AgentModesLowered  int            `json:"agentPermissionModesLowered"`
 	Providers          []ProviderNote `json:"providersNeedingKeys"`
 }
 
@@ -188,6 +190,21 @@ func importSkill(r Row, im *ImportEnv) {
 		im.Stats.SkillsPending++
 	case "offered":
 		im.Stats.SkillsPending++
+	}
+}
+
+// importAgent keeps an imported team member from carrying an archive's words into a system prompt or its permissions into
+// this machine: the purpose text is dropped (it is instructions written by whoever made the file) and a permission mode that
+// skips approvals is lowered to the default for headless agents. The human can set both again.
+func importAgent(r Row, im *ImportEnv) {
+	if str(r, "purpose") != "" {
+		r["purpose"] = ""
+		im.Stats.AgentPurposes++
+	}
+	switch str(r, "permission_mode") {
+	case "bypassPermissions", "auto", "dontAsk":
+		r["permission_mode"] = "acceptEdits"
+		im.Stats.AgentModesLowered++
 	}
 }
 

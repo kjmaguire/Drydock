@@ -48,7 +48,7 @@ func (c *Core) AssignTask(ctx context.Context, taskID, assignee, reviewer string
 	}
 	for _, id := range []string{assignee, reviewer} {
 		a, err := c.agent(ctx, id)
-		if err != nil || a.ProjectID != t.ProjectID {
+		if err != nil || a.ProjectID != t.ProjectID || a.Archived {
 			return t, fmt.Errorf("agent %s is not on this project's team", id)
 		}
 	}

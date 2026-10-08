@@ -52,6 +52,7 @@ type Session struct {
 	sinfo      SessionInfo
 	sid        acp.SessionId
 	model      string
+	introSent  bool // spec.SystemAppend has been put in front of a prompt (ACP has no system prompt channel)
 	dead       bool // the connection ended; no new turns
 	turnActive bool
 	cancelReq  bool
@@ -391,6 +392,11 @@ func (s *Session) Send(ctx context.Context, msg string) error {
 	if s.dead || s.sid == "" {
 		s.mu.Unlock()
 		return errors.New("acp: session is not running")
+	}
+	// ACP has no system-prompt channel, so the standing instructions go in front of the first prompt of the session
+	if !s.introSent && strings.TrimSpace(s.spec.SystemAppend) != "" {
+		s.introSent = true
+		msg = strings.TrimSpace(s.spec.SystemAppend) + "\n\n---\n\n" + msg
 	}
 	if s.turnActive {
 		s.queue = append(s.queue, msg)

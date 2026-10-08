@@ -49,6 +49,9 @@ func (a *Adapter) Capabilities() agents.Capabilities {
 		ToolCallVisibility: true,
 		PermissionModes:    []string{"default", "acceptEdits", "plan", "dontAsk", "auto", "bypassPermissions"},
 		RunModes:           []string{"native"},
+		// from `claude --help` (2.1.294): --effort <low, medium, high, xhigh, max>; --model takes an alias or a full name
+		Efforts: []string{"low", "medium", "high", "xhigh", "max"},
+		Models:  []string{"fable", "opus", "sonnet", "haiku"},
 	}
 }
 

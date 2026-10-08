@@ -44,6 +44,8 @@ export interface Agent {
   effort: string;
   providerId: string;
   permissionMode: string;
+  /** The human's standing instructions for this agent, sent with every run. */
+  purpose?: string;
   status: string;
 }
 
@@ -55,6 +57,18 @@ export interface AgentSpec {
   model?: string;
   effort?: string;
   providerId?: string;
+  permissionMode?: string;
+  purpose?: string;
+}
+
+/** Only the fields that are set change. The adapter cannot change: make a new agent for a different CLI. */
+export interface AgentUpdate {
+  id: string;
+  name?: string;
+  role?: string;
+  purpose?: string;
+  model?: string;
+  effort?: string;
   permissionMode?: string;
 }
 
@@ -74,6 +88,9 @@ export interface Capabilities {
   toolCallVisibility: boolean;
   permissionModes?: string[];
   runModes?: string[];
+  /** Values the adapter is known to accept; empty means the CLI reports its own choices when it starts. */
+  efforts?: string[];
+  models?: string[];
 }
 
 export type ConnectionStatus = 'not_installed' | 'unsupported_version' | 'unauthenticated' | 'ready' | 'degraded';

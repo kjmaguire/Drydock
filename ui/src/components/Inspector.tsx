@@ -44,6 +44,8 @@ export function AgentInspector({ agentId, presence, onMessage }: { agentId: stri
         <dd>{a.adapter}</dd>
         <dt>Role</dt>
         <dd>{a.role}</dd>
+        <dt>Purpose</dt>
+        <dd data-testid="inspector-purpose" style={{ whiteSpace: 'pre-wrap' }}>{a.purpose || 'none set'}</dd>
         <dt>Model</dt>
         <dd>{a.model || 'adapter default (not set)'}</dd>
         <dt>Effort</dt>

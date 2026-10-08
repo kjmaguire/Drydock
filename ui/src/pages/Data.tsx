@@ -194,6 +194,8 @@ export function PendingList({ p }: { p: ImportStats }) {
     ['Runs not resumed (cancelled)', p.runsNotResumed, 'work that was in progress is not restarted'],
     ['Tasks blocked', p.tasksBlocked, 'blocked until you decide'],
     ['Approvals cancelled', p.approvalsCancelled, 'open approvals from the source are not carried over'],
+    ['Agent purposes cleared', p.agentPurposesCleared ?? 0, 'instructions written in the archive are not sent to your agents; write them again if you want them'],
+    ['Agent permission modes lowered', p.agentPermissionModesLowered ?? 0, 'a mode that skips approvals is set back to acceptEdits'],
   ];
   const providers = p.providersNeedingKeys ?? [];
   return (

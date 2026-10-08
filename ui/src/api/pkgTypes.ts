@@ -125,6 +125,8 @@ export interface ImportStats {
   runsNotResumed: number;
   tasksBlocked: number;
   approvalsCancelled: number;
+  agentPurposesCleared?: number;
+  agentPermissionModesLowered?: number;
   providersNeedingKeys: { id: string; name: string; baseUrl: string }[] | null;
 }
 export interface ImportPreview {

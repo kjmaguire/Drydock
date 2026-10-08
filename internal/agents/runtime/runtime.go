@@ -34,6 +34,10 @@ type Runtime struct {
 	// room replies, the planner), so this one hook covers all of them. A hook error does not stop the turn: the session runs
 	// without MCP and the reason is published as agent.mcp. Nil means no MCP (tests of other packages).
 	MCP func(ctx context.Context, cfg *Config, runID string) (MCPAttachment, error)
+	// Instructions, if set, returns the standing instructions the human wrote for an agent. Spawn adds them to the session's
+	// system prompt (cfg.Spec.SystemAppend), so every path that starts an agent (workflow turns, room replies, templates)
+	// carries the agent's purpose without each one having to remember it.
+	Instructions func(ctx context.Context, agentID string) string
 }
 
 // MCPAttachment is what the MCP hook reports for one session. It never carries the run's bearer token.
@@ -95,6 +99,11 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
 	}
 	runID := ids.New("arun")
+	if r.Instructions != nil && cfg.AgentID != "" {
+		if s := strings.TrimSpace(r.Instructions(ctx, cfg.AgentID)); s != "" {
+			cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + s)
+		}
+	}
 	var att MCPAttachment
 	if r.MCP != nil && cfg.Spec.MCPConfigPath == "" {
 		var merr error
@@ -124,7 +133,7 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 			return err
 		})
 	}
-	r.publish(ctx, "agent.started", cfg, m.RunID, map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort})
+	r.publish(ctx, "agent.started", cfg, m.RunID, map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort, "instructions": cfg.Spec.SystemAppend != ""})
 	go m.watchExit()
 	return m, nil
 }

@@ -25,6 +25,11 @@ type Capabilities struct {
 	ToolCallVisibility bool     `json:"toolCallVisibility"`
 	PermissionModes    []string `json:"permissionModes,omitempty"`
 	RunModes           []string `json:"runModes,omitempty"` // native, wsl
+	// Efforts and Models are the values the adapter is known to accept. Efforts is enforced when set (a wrong value would fail
+	// the run); Models only suggests (full model names are free text). Empty means the CLI reports its own choices when a
+	// session starts, so nothing is checked or offered ahead of time.
+	Efforts []string `json:"efforts,omitempty"`
+	Models  []string `json:"models,omitempty"`
 }
 
 // ConnectionStatus is the Connections page status (brief section 5).

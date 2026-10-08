@@ -536,7 +536,7 @@ func resolveMentions(ctx context.Context, tx *sql.Tx, room Room, members []Membe
 
 func knownAgents(ctx context.Context, tx *sql.Tx, projectID string, handles []string) []string {
 	var out []string
-	rows, err := tx.QueryContext(ctx, `SELECT id,name FROM agents WHERE project_id=?`, projectID)
+	rows, err := tx.QueryContext(ctx, `SELECT id,name FROM agents WHERE project_id=? AND archived_at=0`, projectID)
 	if err != nil {
 		return nil
 	}

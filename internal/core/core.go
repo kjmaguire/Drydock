@@ -157,7 +157,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}}
-	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach}
+	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,
@@ -393,7 +393,9 @@ type Agent struct {
 	Effort         string `json:"effort"`
 	ProviderID     string `json:"providerId"`
 	PermissionMode string `json:"permissionMode"`
+	Purpose        string `json:"purpose"`
 	Status         string `json:"status"`
+	Archived       bool   `json:"archived,omitempty"`
 }
 
 // AgentSpec creates an agent.
@@ -406,6 +408,7 @@ type AgentSpec struct {
 	Effort         string `json:"effort"`
 	ProviderID     string `json:"providerId"`
 	PermissionMode string `json:"permissionMode"`
+	Purpose        string `json:"purpose"`
 }
 
 // CreateAgent adds an agent to the team. The adapter must be one Drydock knows.
@@ -433,13 +436,17 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if strings.TrimSpace(s.Name) == "" || strings.TrimSpace(s.Role) == "" {
 		return Agent{}, errors.New("an agent needs a name and a role")
 	}
+	if err := c.validateAgentFields(s.Adapter, s.Model, s.Effort, s.Purpose); err != nil {
+		return Agent{}, err
+	}
+	s.Model, s.Effort, s.Purpose = strings.TrimSpace(s.Model), strings.TrimSpace(s.Effort), strings.TrimSpace(s.Purpose)
 	if s.PermissionMode == "" {
 		s.PermissionMode = "acceptEdits" // headless agents cannot answer prompts; edits inside the worktree are the job
 	}
-	a := Agent{ID: ids.New("agt"), ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Status: "STOPPED"}
+	a := Agent{ID: ids.New("agt"), ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Status: "STOPPED"}
 	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO agents(id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			a.ID, a.ProjectID, a.Name, a.Adapter, a.Role, a.Model, a.Effort, a.ProviderID, a.PermissionMode, storage.Now())
+		_, err := tx.ExecContext(ctx, `INSERT INTO agents(id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			a.ID, a.ProjectID, a.Name, a.Adapter, a.Role, a.Model, a.Effort, a.ProviderID, a.PermissionMode, a.Purpose, storage.Now())
 		return err
 	})
 	if err != nil {
@@ -461,7 +468,7 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 
 // Agents lists a project's team.
 func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,status FROM agents WHERE project_id=? ORDER BY created_at, id`, projectID)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,status,archived_at FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -469,9 +476,11 @@ func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
 	out := []Agent{}
 	for rows.Next() {
 		var a Agent
-		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Status); err != nil {
+		var archived int64
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &a.Status, &archived); err != nil {
 			return nil, err
 		}
+		a.Archived = archived != 0
 		out = append(out, a)
 	}
 	return out, rows.Err()
@@ -479,8 +488,10 @@ func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
 
 func (c *Core) agent(ctx context.Context, id string) (Agent, error) {
 	var a Agent
-	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,status FROM agents WHERE id=?`, id).
-		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Status)
+	var archived int64
+	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,status,archived_at FROM agents WHERE id=?`, id).
+		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &a.Status, &archived)
+	a.Archived = archived != 0
 	return a, err
 }
 

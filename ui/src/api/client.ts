@@ -17,6 +17,7 @@ import type {
   RoomMember,
   UsageRow,
   AgentSpec,
+  AgentUpdate,
   AppInfo,
   DrydockEvent,
   GitHubIssue,
@@ -48,6 +49,9 @@ export interface Client extends ExtClient, PkgClient {
   githubPullRequest(taskId: string): Promise<PRState>;
   adapterList(): Promise<AdapterInfo[]>;
   agentCreate(spec: AgentSpec): Promise<Agent>;
+  agentUpdate(u: AgentUpdate): Promise<Agent>;
+  /** Removes an agent from the team; its history stays. Refused while it owns unfinished tasks. */
+  agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;
   taskCreate(req: TaskCreateReq): Promise<Task>;
   taskList(projectId: string, statuses?: string[]): Promise<Task[]>;
@@ -101,6 +105,8 @@ export function createClient(t: Transport): Client {
     githubPullRequest: (taskId) => t.call('github.pullRequest', { taskId }),
     adapterList: async () => arr(await t.call<AdapterInfo[] | null>('adapter.list')),
     agentCreate: (spec) => t.call('agent.create', spec),
+    agentUpdate: (u) => t.call('agent.update', u),
+    agentArchive: (id) => t.call('agent.archive', { id }),
     agentList: async (projectId) => arr(await t.call<Agent[] | null>('agent.list', { projectId })),
     taskCreate: (req) => t.call('task.create', req),
     taskList: async (projectId, statuses = []) => arr(await t.call<Task[] | null>('task.list', { projectId, statuses })),
