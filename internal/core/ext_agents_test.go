@@ -20,6 +20,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -779,5 +780,131 @@ func TestProjectDevSettingsAreHumanOnlyAndValidated(t *testing.T) {
 	}
 	if _, err := a.c.Call(context.Background(), "projectdev.set", mustJSON(map[string]any{"projectId": "nope", "settings": pipeline.DevSettings{}})); err == nil {
 		t.Fatal("unknown project")
+	}
+}
+
+// The provider's max_concurrent holds across workflow runs: two agents on a provider with max_concurrent 1 never run at the
+// same time, even though the project allows four and both tasks were started together. (The limit is taken through
+// providers.Monitor.Acquire around each agent turn.)
+func TestProviderMaxConcurrentSerializesAgentsOnThatProvider(t *testing.T) {
+	nap := fakeagent.Step{SleepMS: 600}
+	script := fakeagent.Script{Rules: []fakeagent.Rule{
+		{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
+		{Match: "Task: Add Multiply", Steps: []fakeagent.Step{nap, {Write: &fakeagent.WriteSpec{Path: "multiply.go", Content: "package gocalc\n\nfunc Multiply(a, b int) int { return a * b }\n"}}, {Say: "done"}}},
+		{Match: "Task: Add Divide", Steps: []fakeagent.Step{nap, {Write: &fakeagent.WriteSpec{Path: "divide.go", Content: "package gocalc\n\nfunc Divide(a, b int) int { return a / b }\n"}}, {Say: "done"}}},
+	}, Default: []fakeagent.Step{{Say: "ok"}}}
+	dir := t.TempDir()
+	b, _ := json.Marshal(script)
+	sp := filepath.Join(dir, "script.json")
+	os.WriteFile(sp, b, 0o644)
+	t.Setenv("DRYDOCK_FAKE_AGENT", "1")
+	t.Setenv("DRYDOCK_FAKE_SCRIPT", sp)
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		Credentials: providers.NewMemoryCredentialStoreForTests(),
+		Adapters:    map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newGreenRepo(t)}, &p)
+	var prov providers.Provider
+	a.call("provider.create", map[string]any{"Name": "local-gpu", "Kind": "host", "BaseURL": "http://127.0.0.1:9/v1", "DataClass": "private", "Tier": "cheap", "MaxConcurrent": 1}, &prov)
+	if prov.MaxConcurrent != 1 {
+		t.Fatalf("provider %+v", prov)
+	}
+	a.call("projectdev.set", map[string]any{"projectId": p.ID, "settings": pipeline.DevSettings{MaxParallel: 4, Respond: true}}, nil)
+	var w1, w2, rev core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "W1", Adapter: "claude", Role: "backend", Model: "fake-1", ProviderID: prov.ID}, &w1)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "W2", Adapter: "claude", Role: "backend", Model: "fake-1", ProviderID: prov.ID}, &w2)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Rev", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &rev)
+	var t1, t2 tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Add Multiply", Description: "multiply"}, &t1)
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Add Divide", Description: "divide"}, &t2)
+	a.call("task.assign", map[string]string{"id": t1.ID, "assignee": w1.ID, "reviewer": rev.ID}, &t1)
+	a.call("task.assign", map[string]string{"id": t2.ID, "assignee": w2.ID, "reviewer": rev.ID}, &t2)
+	var r1, r2 string
+	a.call("task.start", map[string]string{"id": t1.ID}, &r1)
+	a.call("task.start", map[string]string{"id": t2.ID}, &r2)
+	a.waitPending(t1.ID, "approve")
+	a.waitPending(t2.ID, "approve")
+
+	rows, err := c.DB.Reader().Query(`SELECT agent_id, started_at, ended_at FROM agent_runs WHERE agent_id IN (?,?) ORDER BY started_at`, w1.ID, w2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type span struct {
+		agent      string
+		start, end int64
+	}
+	var spans []span
+	for rows.Next() {
+		var s span
+		rows.Scan(&s.agent, &s.start, &s.end)
+		spans = append(spans, s)
+	}
+	if len(spans) != 2 || spans[0].agent == spans[1].agent {
+		t.Fatalf("both workers must have run once: %+v", spans)
+	}
+	if spans[1].start < spans[0].end {
+		t.Fatalf("the two agents on a max_concurrent=1 provider overlapped: %+v", spans)
+	}
+	var st map[string]any
+	a.call("scheduler.status", map[string]string{"projectId": p.ID}, &st)
+	if st["peakAgentSlots"].(float64) < 1 {
+		t.Fatalf("%+v", st)
+	}
+}
+
+func TestStartTemplateRefusalsAreClearAndOverridesWork(t *testing.T) {
+	a, _ := openDev(t, devScript())
+	var p core.Project
+	repo := newGreenRepo(t)
+	if out, err := exec.Command("git", "-C", repo, "remote", "add", "origin", "https://github.com/example/gocalc.git").CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	dev := a.agent(p.ID, "Dana", "backend")
+	rev := a.agent(p.ID, "Rex", "reviewer")
+	other := a.agent(p.ID, "Otto", "frontend")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Add Multiply", Description: "multiply"}, &task)
+	call := func(params map[string]any) error {
+		_, err := a.c.Call(context.Background(), "task.startTemplate", mustJSON(params))
+		return err
+	}
+	if err := call(map[string]any{"taskId": task.ID, "template": "feature"}); err == nil || !strings.Contains(err.Error(), "assign a worker and a reviewer") {
+		t.Fatalf("an unassigned task: %v", err)
+	}
+	// overrides may assign the worker and the reviewer in the same call; the feature template still needs a PM
+	if err := call(map[string]any{"taskId": task.ID, "template": "feature", "agents": map[string]string{"work": dev.ID, "review": rev.ID}}); err == nil || !strings.Contains(err.Error(), "role pm") {
+		t.Fatalf("a team without a PM must be told so: %v", err)
+	}
+	if got := a.detail(task.ID).Task; got.Assignee != dev.ID || got.Reviewer != rev.ID {
+		t.Fatalf("the work/review overrides assign the task: %+v", got)
+	}
+	// an override names the PM ("defaults, not locks"): the frontend agent writes the spec
+	var res core.StartTemplateResult
+	a.call("task.startTemplate", map[string]any{"taskId": task.ID, "template": "feature", "agents": map[string]string{"pm": other.ID}}, &res)
+	if res.Roles["pm"] != other.ID || res.Roles["tests"] != dev.ID || len(res.Notes) == 0 {
+		t.Fatalf("%+v", res)
+	}
+	a.waitPending(task.ID, "specreview")
+	// the pull request variant of the templates is not built, and the refusal says so
+	var t2 tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Another", Description: "x"}, &t2)
+	a.call("task.assign", map[string]string{"id": t2.ID, "assignee": dev.ID, "reviewer": rev.ID}, &t2)
+	a.call("project.update", map[string]any{"id": p.ID, "mode": "pr_flow"}, nil)
+	if err := call(map[string]any{"taskId": t2.ID, "template": "bug"}); err == nil || !strings.Contains(err.Error(), "pull request variant") {
+		t.Fatalf("pr_flow: %v", err)
+	}
+	// the default template still goes through the base workflow selection
+	a.call("project.update", map[string]any{"id": p.ID, "mode": "local_merge"}, nil)
+	var rr core.StartTemplateResult
+	a.call("task.startTemplate", map[string]any{"taskId": t2.ID, "template": "iterate-until-verified"}, &rr)
+	if rr.Workflow != pipeline.WorkflowIUV || rr.RunID == "" {
+		t.Fatalf("%+v", rr)
 	}
 }

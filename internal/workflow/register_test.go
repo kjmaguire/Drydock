@@ -115,3 +115,38 @@ func TestRegisterNewConcurrentWithStart(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUseOutermostWrapsEveryEarlierMiddleware(t *testing.T) {
+	e := openEnv(t, t.TempDir())
+	var mu sync.Mutex
+	var order []string
+	mk := func(name string) wf.Middleware {
+		return func(next wf.NodeHandler) wf.NodeHandler {
+			return func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+				mu.Lock()
+				order = append(order, name)
+				mu.Unlock()
+				return next(ctx, in)
+			}
+		}
+	}
+	e.eng.Use(wf.KindRoute, mk("first-registered"))
+	e.eng.Use(wf.KindRoute, mk("second-registered"))
+	e.eng.UseOutermost(wf.KindRoute, mk("outermost"))
+	g := wf.NewGraph("mw").Add(wf.Route("only", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+		mu.Lock()
+		order = append(order, "handler")
+		mu.Unlock()
+		return wf.NodeOutput{Value: val("x")}, nil
+	})).Start("only")
+	if err := e.eng.RegisterNew(g); err != nil {
+		t.Fatal(err)
+	}
+	run, _ := e.eng.Start(context.Background(), "mw", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run, wf.StatusCompleted)
+	mu.Lock()
+	defer mu.Unlock()
+	if got := fmt.Sprint(order); got != "[outermost first-registered second-registered handler]" {
+		t.Fatalf("order %s", got)
+	}
+}

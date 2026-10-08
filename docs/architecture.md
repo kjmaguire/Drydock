@@ -82,7 +82,7 @@ Built first, in this order (each with tests): storage, events, process manager, 
 
 ## 5. Explicitly not built yet
 
-The Wails shell and every UI screen; the repo map (gated, D5); Expert Packs, Requirements and Skills sync (Slice 3); routing of agent turns through the Model Router (the router, probe and budgets are built and exposed, but `core.agentConfig` still assigns each agent's configured model), the OTLP exporter (the local telemetry sink is built, D12), pre-call budget reservation and wall-time ceilings (Slice 2); spec gate, `e2e`/`preview` checks, multi-agent templates, `PlanTeam`, Claude Design (Slice 4); Linear/Notion/Sentry/Aikido (Slice 5); the Pull Requests view and issue import UI (the host and the pr_flow nodes are built); installer, updater, licensing.
+The Wails shell and every UI screen; the repo map (gated, D5); Expert Packs, Requirements and Skills sync (Slice 3); routing of agent turns through the Model Router (the router, probe and budgets are built and exposed, but `core.agentConfig` still assigns each agent's configured model), the OTLP exporter (the local telemetry sink is built, D12), pre-call budget reservation and wall-time ceilings (Slice 2); Claude Design (Slice 4; the spec gate, templates, `PlanTeam`, the scheduler, agents in the room and the `e2e`/`preview` checks are built, see workflow-engine.md section 12 and room-protocol.md section 15, with no UI yet); Linear/Notion/Sentry/Aikido (Slice 5); the Pull Requests view and issue import UI (the host and the pr_flow nodes are built); installer, updater, licensing.
 
 ## 6. Locked decisions
 

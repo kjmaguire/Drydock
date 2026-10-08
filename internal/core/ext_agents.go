@@ -50,7 +50,8 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 			return pipeline.LoadDevSettings(ctx, c.DB, projectID).MaxParallel
 		},
 		func(ctx context.Context, providerID string) (func(), error) { return c.Health.Acquire(ctx, providerID) })
-	c.Engine.Use(workflow.KindAgentTask, a.limiter.Middleware(a.providerOfNode))
+	// outermost: the wait for a slot must not count against the watchdog's per-turn wall clock, which starts inside it
+	c.Engine.UseOutermost(workflow.KindAgentTask, a.limiter.Middleware(a.providerOfNode))
 	// a preview serves from the task worktree; it must be gone before the merge removes that worktree
 	c.Engine.Use(workflow.KindRoute, func(next workflow.NodeHandler) workflow.NodeHandler {
 		return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {

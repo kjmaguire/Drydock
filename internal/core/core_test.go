@@ -439,3 +439,24 @@ func TestProviderRoomAndUsageMethodsForThePages(t *testing.T) {
 		}
 	}
 }
+
+// A task created with a template starts through it, so task.start cannot skip the spec gate.
+func TestTaskStartHonoursTheTasksTemplate(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var w, r core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "W", Adapter: "claude", Role: "backend"}, &w)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "R", Adapter: "claude", Role: "reviewer"}, &r)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "PM", Adapter: "claude", Role: "pm"}, nil)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Add Multiply", Description: "multiply two ints", Template: "feature"}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": w.ID, "reviewer": r.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	var d core.TaskDetail
+	a.call("task.get", map[string]string{"id": task.ID}, &d)
+	if d.Run == nil || d.Run.Workflow != "feature" {
+		t.Fatalf("a feature task must run the feature workflow (spec gate), got %+v", d.Run)
+	}
+}

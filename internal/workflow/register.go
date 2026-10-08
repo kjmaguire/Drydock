@@ -42,3 +42,13 @@ func (e *Engine) Registered(name string) bool {
 	_, ok := e.graphs[name]
 	return ok
 }
+
+// UseOutermost prepends middleware for nodes of a kind, so it wraps every middleware registered before it. Use appends
+// (inner); this is for a wrapper that must run before the others start their clocks: the agent-slot limiter waits for a
+// free slot here, so the time a turn spends queued does not count against the watchdog's per-turn wall-clock cap, which
+// starts when the watchdog middleware is entered.
+func (e *Engine) UseOutermost(kind NodeKind, mw ...Middleware) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.mw[kind] = append(append([]Middleware(nil), mw...), e.mw[kind]...)
+}

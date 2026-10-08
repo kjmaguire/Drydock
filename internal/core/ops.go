@@ -80,6 +80,17 @@ func (c *Core) StartTask(ctx context.Context, taskID string) (workflow.RunID, er
 			return "", fmt.Errorf("task already has an active run (%s)", info.Status)
 		}
 	}
+	// a task created with a template (spec-gated feature, bug, security...) starts through it: starting it any other way
+	// would skip the spec gate
+	if t.Template != "" && t.Template != "iterate-until-verified" {
+		if _, known := pipeline.TemplateByName(t.Template); known {
+			res, err := c.StartTemplate(ctx, StartTemplateReq{TaskID: t.ID, Template: t.Template})
+			if err != nil {
+				return "", err
+			}
+			return res.RunID, nil
+		}
+	}
 	p, err := c.GetProject(ctx, t.ProjectID)
 	if err != nil {
 		return "", err

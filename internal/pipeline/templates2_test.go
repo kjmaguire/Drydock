@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -249,5 +250,32 @@ func TestSaaSE2EAndPreviewAreSkippedHonestlyWhenOff(t *testing.T) {
 	}
 	if len(ev["design"]) != 0 {
 		t.Fatal("no architect on the team: the design step is skipped")
+	}
+}
+
+// Scans are pluggable by name: a scan registered on the template's registry runs like the built-in ones, and its result is
+// evidence under its own name.
+func TestSecurityTemplateRunsAPluggedInScanByName(t *testing.T) {
+	sc := map[string]fakeagent.Script{aWork: {Default: []fakeagent.Step{say("nothing to change")}}, aSec: shipReviewerStep(), aReview: shipReviewer()}
+	e := newTpl(t, sc, tplOpts{title: "Audit", desc: "Audit."})
+	reg := pipeline.NewScanRegistry()
+	reg.Register("govet", func(ctx context.Context, td pipeline.TemplateDeps, tk tasks.Task) (checks.Spec, error) {
+		return checks.Spec{Name: "govet", Argv: []string{"go", "vet", "./..."}, Dir: tk.Worktree, Parser: "go"}, nil
+	})
+	e.td.Scans = reg
+	if err := pipeline.RegisterTemplates(e.eng, e.td); err != nil {
+		t.Fatal(err)
+	}
+	id := e.start(pipeline.WorkflowSecurity, map[string]string{pipeline.RoleSecurity: aSec}, "govet")
+	e.await(id, workflow.StatusWaitingHuman)
+	ev := e.evidence()
+	if len(ev["govet"]) != 2 || ev["govet"][0].Passed == nil || !*ev["govet"][0].Passed || ev["govet"][1].Passed == nil || !*ev["govet"][1].Passed {
+		t.Fatalf("the plugged-in scan runs at the first scan and at the gate: %+v", ev["govet"])
+	}
+	if len(ev["secrets"])+len(ev["deps"]) > 0 {
+		// Verify's own secrets check may add "secrets"; the template's default scans must not have run
+		for _, x := range ev["deps"] {
+			t.Fatalf("the default deps scan must not run when the run names its scans: %+v", x)
+		}
 	}
 }
