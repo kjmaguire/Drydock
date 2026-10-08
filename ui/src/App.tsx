@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Agent, PresenceState, Room } from './api/types';
+import type { Agent, AppInfo, PresenceState, Project, Room } from './api/types';
 import { ActivityView } from './components/Activity';
 import { AgentInspector } from './components/Inspector';
 import { ThreadPanel } from './components/Thread';
@@ -13,6 +13,7 @@ import { SettingsView } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { TaskCreate, TaskDetailView, TaskList } from './components/Tasks';
 import { TeamView } from './components/Team';
+import { LicenseBanner, LicenseProvider } from './state/license';
 import { applyTheme, loadTheme, type ThemeChoice } from './lib/theme';
 import { parseRoute, type Route } from './lib/route';
 import { agentName, formatCost, presenceFor } from './lib/format';
@@ -33,6 +34,10 @@ const SkillsView = lazy(() => import('./pages/Skills'));
 const MemoryView = lazy(() => import('./pages/Memory'));
 const PlanView = lazy(() => import('./pages/Plan'));
 const IntegrationsView = lazy(() => import('./pages/Integrations'));
+const LicenseView = lazy(() => import('./pages/License'));
+const BackupsView = lazy(() => import('./pages/Backups'));
+const DataView = lazy(() => import('./pages/Data'));
+const SupportView = lazy(() => import('./pages/Support'));
 
 const PROJECT_KEY = 'drydock.project';
 const readProject = (): string | undefined => {
@@ -58,9 +63,37 @@ export function App() {
   const reveal = useCallback(() => setRightOpen(true), []);
   return (
     <UiProvider onReveal={reveal}>
-      <AppShell rightOpen={rightOpen} setRightOpen={setRightOpen} />
+      <LicenseProvider>
+        <AppShell rightOpen={rightOpen} setRightOpen={setRightOpen} />
+      </LicenseProvider>
     </UiProvider>
   );
+}
+
+/** Routes that are about the whole workspace, not one project. They open even when no project exists yet. */
+const WORKSPACE_ROUTES: Route['name'][] = ['settings', 'license', 'backups', 'data', 'support', 'connections', 'providers', 'routing'];
+
+function workspaceCenter(name: Route['name'], projects: Project[], current: Project | undefined, theme: ThemeChoice, setTheme: (t: ThemeChoice) => void, info: AppInfo | undefined): React.ReactNode {
+  switch (name) {
+    case 'settings':
+      return <SettingsView theme={theme} onTheme={setTheme} info={info} />;
+    case 'license':
+      return <LicenseView />;
+    case 'backups':
+      return <BackupsView />;
+    case 'data':
+      return <DataView projects={projects} current={current} />;
+    case 'support':
+      return <SupportView />;
+    case 'connections':
+      return <ConnectionsView />;
+    case 'providers':
+      return <ProvidersView />;
+    case 'routing':
+      return <RoutingView />;
+    default:
+      return null;
+  }
 }
 
 function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpen: (f: (v: boolean) => boolean) => void }) {
@@ -133,6 +166,9 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
         <p>The page needs the core's address and token (open the link the core printed, which ends in ?token=...).</p>
       </Page>
     );
+  } else if (!project && WORKSPACE_ROUTES.includes(route.name)) {
+    // pages that do not need a project must open without one: a read-only install has to reach License and Backups
+    center = workspaceCenter(route.name, projectList, undefined, theme, setTheme, info.data);
   } else if (!project || route.name === 'project-new') {
     center = (
       <ProjectCreate
@@ -176,19 +212,19 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
         );
         break;
       case 'connections':
-        center = <ConnectionsView />;
-        break;
       case 'providers':
-        center = <ProvidersView />;
+      case 'routing':
+      case 'license':
+      case 'backups':
+      case 'data':
+      case 'support':
+        center = workspaceCenter(route.name, projectList, project, theme, setTheme, info.data);
         break;
       case 'budgets':
         center = <BudgetsView projectId={project.id} />;
         break;
       case 'evals':
         center = <EvalsView projectId={project.id} />;
-        break;
-      case 'routing':
-        center = <RoutingView />;
         break;
       case 'packs':
         center = <PacksView projectId={project.id} />;
@@ -218,18 +254,19 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
         center = <ProjectSettings project={project} onChanged={projects.reload} key={`${project.id}:${project.mode}:${project.mergeStrategy}`} />;
         break;
       case 'settings':
-        center = <SettingsView theme={theme} onTheme={setTheme} info={info.data} />;
+        center = workspaceCenter('settings', projectList, project, theme, setTheme, info.data);
         break;
       default:
         center = <p className="muted pad">Opening the project channel...</p>;
     }
   }
-  if (route.name === 'settings' && !project) center = <SettingsView theme={theme} onTheme={setTheme} info={info.data} />;
 
   const taskContext =
     route.name === 'task' ? route.id : route.name === 'room' ? roomList.find((r) => r.id === route.id)?.taskId : undefined;
 
   return (
+    <div className="app-root">
+    <LicenseBanner />
     <div className={rightOpen ? 'app' : 'app right-closed'}>
       <a className="skip-link" href="#main">
         Skip to content
@@ -260,6 +297,7 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
           </div>
         ) : null}
       </aside>
+    </div>
     </div>
   );
 }

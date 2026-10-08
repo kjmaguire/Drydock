@@ -12,6 +12,7 @@ import { safeHref } from '../lib/Markdown';
 import { useAction } from '../lib/useAction';
 import { SchedulerPanel } from './Scheduler';
 import { Badge, Empty, ErrorNote, Page, SourceBadge, StatusChip } from './common';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 // --- list + create ---
 
@@ -210,6 +211,7 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
   const terminal = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(t.status);
   const runActive = !!detail.run && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(detail.run.status);
 
+  const ro = useReadOnly();
   const act = async (what: 'assign' | 'start' | 'cancel', fn: () => Promise<unknown>) => {
     setBusy(what);
     setError(undefined);
@@ -226,6 +228,7 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
   return (
     <div className="team-bar" role="group" aria-label="Assignment and control">
       <ErrorNote error={error} />
+      <ReadOnlyNote />
       {notes.length > 0 ? (
         <div role="status" className="muted">
           {notes.join(' ')}
@@ -260,8 +263,8 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
           </button>
           <button
             className="primary"
-            disabled={!t.assignee || !t.reviewer || busy !== '' || worker !== (t.assignee ?? '') || reviewer !== (t.reviewer ?? '')}
-            title={!t.assignee || !t.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
+            disabled={ro.readOnly || !t.assignee || !t.reviewer || busy !== '' || worker !== (t.assignee ?? '') || reviewer !== (t.reviewer ?? '')}
+            title={ro.readOnly ? ro.reason : !t.assignee || !t.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
             onClick={() =>
               act('start', async () => {
                 if (!template) return client.taskStart(t.id);
@@ -464,7 +467,8 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
       setState('idle');
     }
   };
-  const busy = state !== 'idle';
+  const ro = useReadOnly();
+  const busy = state !== 'idle' || ro.readOnly;
   return (
     <div className="pending" data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
       <h3>{p.spec.title}</h3>
@@ -495,6 +499,7 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
         </details>
       ) : null}
       <ErrorNote error={error} what="Not sent" />
+      <ReadOnlyNote />
       {state === 'sent' ? <p role="status">Answer sent. Waiting for the core to confirm...</p> : null}
 
       {budgetPause ? (
@@ -695,6 +700,7 @@ export function PreviewControls({ taskId, hasWorktree }: { taskId: string; hasWo
   const client = useClient();
   const act = useAction();
   const q = useLive(() => client.previewList(), [taskId], (e) => e.type.startsWith('preview.') || e.type.startsWith('task.'));
+  const ro = useReadOnly();
   const mine = (q.data ?? []).find((p) => p.taskId === taskId);
   const href = mine ? safeHref(mine.url) : undefined;
   if (!hasWorktree && !mine) return null;
@@ -722,7 +728,7 @@ export function PreviewControls({ taskId, hasWorktree }: { taskId: string; hasWo
             Stop preview
           </button>
         ) : (
-          <button disabled={act.busy !== ''} onClick={async () => { await act.run('start', () => client.previewStart(taskId)); q.reload(); }}>
+          <button disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { await act.run('start', () => client.previewStart(taskId)); q.reload(); }}>
             Start preview
           </button>
         )}

@@ -9,7 +9,7 @@ Scope: where things live and the dependency rules between packages. `internal/` 
 /Taskfile.yml            go-task: ui:install, ui:build, ui:test, ui:e2e, go:test, build:dev  [written; go-task itself not run here; lint, generate, package tasks not built]
 /cmd/
   drydock-dev/           core + HTTP/SSE dev transport serving ui/dist (development tool)
-  drydock-e2e/           TEST HARNESS for ui/e2e: real core + scripted fakeagent as the claude adapter (never shipped)
+  drydock-e2e/           TEST HARNESS for ui/e2e: real core + scripted fakeagent as the claude adapter; `-licensed` embeds a throwaway license key (never shipped)
 /internal/
   ids/                   prefixed random ids
   storage/               SQLite (modernc), writer/reader pools, embedded goose migrations
@@ -49,5 +49,5 @@ Dependency direction (arrows = "may import"): `app â†’ everything`; `pipeline â†
 
 ## Open questions / unverified
 
-- `ui/` status: built against the development HTTP/SSE transport and a Wails transport written from the Wails v3.0.0-beta.28 source. Screens cover Slices 1 to 5 as far as the core exposes them. 130 vitest tests and 16 Playwright e2e tests against the real Go core (scripted fake agent and in-memory credential store as the only test doubles) pass on Linux/Chromium. Nothing has run in WebView2 or on Windows. Monaco, xterm, React Flow, cmdk and TanStack Virtual are not used. The layout of `app/` is specified in [`ui.md`](ui.md) section 11.
+- `ui/` status: built against the development HTTP/SSE transport and a Wails transport written from the Wails v3.0.0-beta.28 source. Screens cover Slices 1 to 5 and the packaging features (license and read-only banner, backups with staged restore, project export/import, support bundle, an honest Updates note) as far as the core exposes them. 162 vitest tests and 22 Playwright e2e tests against the real Go core (scripted fake agent and in-memory credential store as the only test doubles) pass on Linux/Chromium. Nothing has run in WebView2 or on Windows. Monaco, xterm, React Flow, cmdk and TanStack Virtual are not used. The layout of `app/` is specified in [`ui.md`](ui.md) section 11.
 - Whether the Wails module (beta) should live in the root module or its own is undecided; the root module is assumed.

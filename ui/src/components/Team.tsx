@@ -3,6 +3,7 @@ import type { AdapterInfo, Agent, Capabilities, PresenceState } from '../api/typ
 import { useClient } from '../state/context';
 import { useAdapters } from '../state/hooks';
 import { Badge, ErrorNote, Page, PresenceDot } from './common';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 const CAP_LABEL: [keyof Capabilities, string][] = [
   ['streaming', 'Streaming'],
@@ -154,6 +155,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
   const [effort, setEffort] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | undefined>();
+  const ro = useReadOnly();
   const chosen = adapters.find((a) => a.id === (adapter || adapters[0]?.id));
   const adapterId = chosen?.id ?? '';
   const canModel = chosen?.capabilities?.modelSelection === true;
@@ -179,6 +181,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
   return (
     <form className="form form-grid" onSubmit={submit}>
       <ErrorNote error={error} what="Agent not created" />
+      <ReadOnlyNote />
       <label>
         Agent name
         <input value={name} onChange={(e) => setName(e.target.value)} required />
@@ -211,7 +214,7 @@ function AgentForm({ projectId, adapters, onCreated }: { projectId: string; adap
         <input value={effort} onChange={(e) => setEffort(e.target.value)} disabled={!canEffort} placeholder={canEffort ? 'adapter default' : 'effort control not verified for this adapter'} />
       </label>
       <div className="form-actions">
-        <button type="submit" className="primary" disabled={busy || !name.trim() || !role.trim() || !adapterId}>
+        <button type="submit" className="primary" disabled={busy || ro.readOnly || !name.trim() || !role.trim() || !adapterId} title={ro.readOnly ? ro.reason : undefined}>
           Create agent
         </button>
       </div>

@@ -20,6 +20,24 @@ export const NOT_BUILT: { feature: string; slice: string; meanwhile: string }[] 
   { feature: 'Cloud sync, accounts, team sharing', slice: 'never', meanwhile: 'Drydock has no cloud component.' },
 ];
 
+/** Honest placeholder: there is nothing to click. The update flow is configured when the app is built and has never run on Windows. */
+export function UpdatesSection() {
+  return (
+    <section aria-label="Updates" data-testid="updates-section">
+      <h2>Updates</h2>
+      <p>
+        <strong>Updates are configured when Drydock is built, not in this screen.</strong> This page cannot check for, download or install an update, and there is no
+        setting here to change that.
+      </p>
+      <p className="muted">
+        The planned flow uses the Wails updater plus Drydock&apos;s own policy: a backup before every update, and a rollback if the new version does not start. That
+        flow has <strong>not been run on Windows</strong>, so treat any update as untested until it has. Your license decides which update channels you may use; see the{' '}
+        <a href="#/license">License</a> page. You can make a backup yourself at any time on the <a href="#/backups">Backups</a> page.
+      </p>
+    </section>
+  );
+}
+
 export function SettingsView({ theme, onTheme, info }: { theme: ThemeChoice; onTheme: (t: ThemeChoice) => void; info: AppInfo | undefined }) {
   const { transportName } = useServices();
   const snap = useStoreSnapshot();
@@ -50,6 +68,7 @@ export function SettingsView({ theme, onTheme, info }: { theme: ThemeChoice; onT
         </dd>
       </dl>
       <TelemetryPanel />
+      <UpdatesSection />
       <h2>Not built yet</h2>
       <p className="muted">
         These features are not implemented. They are listed here instead of shown as disabled screens or sample data.

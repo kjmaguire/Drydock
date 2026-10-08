@@ -3,6 +3,7 @@ import type { BudgetPausePayload } from '../api/extTypes';
 import { useAction, numOrUndef } from '../lib/useAction';
 import { useClient } from '../state/context';
 import { ErrorNote } from './common';
+import { useReadOnly } from '../state/license';
 
 export const pctText = (p: number | null | undefined) => (p === null || p === undefined ? 'n/a' : `${Math.round(p * 100)}%`);
 
@@ -10,6 +11,7 @@ export const pctText = (p: number | null | undefined) => (p === null || p === un
 export function BudgetPausePanel({ payload, runId, requestId, onDone }: { payload: BudgetPausePayload; runId: string | undefined; requestId: string; onDone: () => void }) {
   const client = useClient();
   const act = useAction();
+  const ro = useReadOnly();
   const [usd, setUsd] = useState('');
   const [tokens, setTokens] = useState('');
   const [turns, setTurns] = useState('');
@@ -58,10 +60,10 @@ export function BudgetPausePanel({ payload, runId, requestId, onDone }: { payloa
         </div>
       </fieldset>
       <div className="form-actions">
-        <button className="primary" disabled={act.busy !== '' || !runId} onClick={() => resume('approved')}>
+        <button className="primary" disabled={act.busy !== '' || !runId || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={() => resume('approved')}>
           Resume
         </button>
-        <button disabled={act.busy !== '' || !runId} onClick={() => resume('rejected')}>
+        <button disabled={act.busy !== '' || !runId || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={() => resume('rejected')}>
           Stop the run
         </button>
       </div>

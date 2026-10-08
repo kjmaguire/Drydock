@@ -4,6 +4,7 @@ import { useAction } from '../lib/useAction';
 import { useClient } from '../state/context';
 import { useLive } from '../state/hooks';
 import { Badge, ErrorNote } from './common';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 /** The scheduler starts READY tasks within the parallelism limits. It is automatic only when the project opts in. */
 export function SchedulerPanel({ projectId }: { projectId: string }) {
@@ -11,6 +12,7 @@ export function SchedulerPanel({ projectId }: { projectId: string }) {
   const q = useLive(() => client.schedulerStatus(projectId), [projectId], (e) => e.type.startsWith('task.') || e.type.startsWith('scheduler.') || e.type.startsWith('workflow.'), true, 300);
   const act = useAction();
   const [tick, setTick] = useState<TickResult | undefined>();
+  const ro = useReadOnly();
   const st = q.data;
   return (
     <section aria-label="Scheduler" data-testid="scheduler">
@@ -22,7 +24,8 @@ export function SchedulerPanel({ projectId }: { projectId: string }) {
           executing, {st.agentSlotsInUse} agent slot(s) in use (peak {st.peakAgentSlots}). Change these under Project settings.
         </p>
       ) : null}
-      <button disabled={act.busy !== ''} onClick={async () => { const r = await act.run('tick', () => client.schedulerTick(projectId)); if (r) { setTick(r); q.reload(); } }}>
+      <ReadOnlyNote />
+      <button disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { const r = await act.run('tick', () => client.schedulerTick(projectId)); if (r) { setTick(r); q.reload(); } }}>
         Start ready tasks now
       </button>
       {tick ? (

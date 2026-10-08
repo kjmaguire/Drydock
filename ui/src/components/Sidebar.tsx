@@ -220,6 +220,26 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
             </NavLink>
           </li>
           <li>
+            <NavLink href="#/license" current={route.name === 'license'} testId="nav-license">
+              License
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/backups" current={route.name === 'backups'} testId="nav-backups">
+              Backups
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/data" current={route.name === 'data'} testId="nav-data">
+              Export and import
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/support" current={route.name === 'support'} testId="nav-support">
+              Support bundle
+            </NavLink>
+          </li>
+          <li>
             <NavLink href="#/settings" current={route.name === 'settings'}>
               Settings and About
             </NavLink>

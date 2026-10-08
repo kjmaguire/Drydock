@@ -7,6 +7,7 @@ import { useAction, numOrUndef } from '../lib/useAction';
 import { useClient } from '../state/context';
 import { useLive } from '../state/hooks';
 import { Badge, ErrorNote, Page } from '../components/common';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 const KINDS: { kind: string; label: string; config: { key: string; label: string }[] }[] = [
   { kind: 'linear', label: 'Linear', config: [{ key: 'team', label: 'Team key (optional)' }] },
@@ -90,6 +91,7 @@ function ItemRow({ it, projects, onChanged }: { it: ExternalItem; projects: Proj
 function Outbound({ conn, projects }: { conn: IntegrationView; projects: Project[] }) {
   const client = useClient();
   const act = useAction();
+  const ro = useReadOnly();
   const q = useLive(() => client.integrationOutboundList({ integrationId: conn.id, limit: 50 }), [conn.id], (e) => e.type.startsWith('integration.') || e.type.startsWith('approval.'));
   const ops = conn.tools.ops ?? [];
   const [op, setOp] = useState(ops[0]?.op ?? '');
@@ -147,12 +149,12 @@ function Outbound({ conn, projects }: { conn: IntegrationView; projects: Project
           <div className="form-actions">
             {o.status === 'awaiting_approval' ? (
               <>
-                <button className="primary" disabled={act.busy !== ''} onClick={async () => { await act.run('approve', () => client.integrationOutboundDecide({ id: o.id, approve: true })); q.reload(); }}>Approve this exact text</button>
-                <button disabled={act.busy !== ''} onClick={async () => { await act.run('decline', () => client.integrationOutboundDecide({ id: o.id, approve: false })); q.reload(); }}>Decline</button>
+                <button className="primary" disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { await act.run('approve', () => client.integrationOutboundDecide({ id: o.id, approve: true })); q.reload(); }}>Approve this exact text</button>
+                <button disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { await act.run('decline', () => client.integrationOutboundDecide({ id: o.id, approve: false })); q.reload(); }}>Decline</button>
               </>
             ) : null}
             {o.status === 'approved' ? (
-              <button className="primary" disabled={act.busy !== ''} onClick={async () => { await act.run('execute', () => client.integrationOutboundExecute(o.id)); q.reload(); }}>Send now</button>
+              <button className="primary" disabled={act.busy !== '' || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { await act.run('execute', () => client.integrationOutboundExecute(o.id)); q.reload(); }}>Send now</button>
             ) : null}
           </div>
         </div>
@@ -300,6 +302,7 @@ function ConnectionCard({ c, projects, onChanged }: { c: IntegrationView; projec
 function ConnectForm({ projects, onConnected }: { projects: Project[]; onConnected: () => void }) {
   const client = useClient();
   const act = useAction();
+  const ro = useReadOnly();
   const tokenRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState('linear');
   const [name, setName] = useState('');
@@ -358,8 +361,9 @@ function ConnectForm({ projects, onConnected }: { projects: Project[]; onConnect
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} spellCheck={false} />
         </label>
       </details>
+      <ReadOnlyNote />
       <div className="form-actions">
-        <button className="primary" type="submit" disabled={act.busy !== '' || !project}>Connect</button>
+        <button className="primary" type="submit" disabled={act.busy !== '' || ro.readOnly || !project} title={ro.readOnly ? ro.reason : undefined}>Connect</button>
       </div>
       {result ? <ReportView r={result} /> : null}
     </form>

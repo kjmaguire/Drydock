@@ -6,6 +6,7 @@ import { useAction } from '../lib/useAction';
 import { useClient } from '../state/context';
 import { useLive } from '../state/hooks';
 import { Badge, ErrorNote, Page } from '../components/common';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 /** Everything a task depends on, transitively, plus the task itself. */
 export function closure(keys: Iterable<string>, tasks: readonly ProposedTask[]): Set<string> {
@@ -74,6 +75,7 @@ function TaskEditor({ t, onSave, onCancel }: { t: ProposedTask; onSave: (t: Prop
 export function PlanReview({ plan, onDone }: { plan: Plan; onDone: () => void }) {
   const client = useClient();
   const act = useAction();
+  const ro = useReadOnly();
   const tasks = plan.proposal?.tasks ?? [];
   const [selected, setSelected] = useState<Set<string>>(() => new Set(tasks.map((t) => t.key)));
   const [edits, setEdits] = useState<Record<string, ProposedTask>>({});
@@ -137,11 +139,12 @@ export function PlanReview({ plan, onDone }: { plan: Plan; onDone: () => void })
       </table>
       {proposed ? (
         <>
+          <ReadOnlyNote />
           <p className="muted">A task that depends on another cannot be created without it: selecting one selects what it needs, and clearing one clears what needs it.</p>
           <div className="form-actions">
             <button
               className="primary"
-              disabled={act.busy !== '' || selected.size === 0}
+              disabled={act.busy !== '' || ro.readOnly || selected.size === 0} title={ro.readOnly ? ro.reason : undefined}
               onClick={async () => {
                 const used = Object.fromEntries(Object.entries(edits).filter(([k]) => selected.has(k)));
                 const r = await act.run('accept', () => client.planAccept(plan.id, [...selected], used));
@@ -164,6 +167,7 @@ export default function PlanView({ projectId, agents }: { projectId: string; age
   const client = useClient();
   const q = useLive(() => client.planList(projectId), [projectId], (e) => e.type.startsWith('workflow.') || e.type.startsWith('task.') || e.type.startsWith('plan.'), true, 300);
   const act = useAction();
+  const ro = useReadOnly();
   const [goal, setGoal] = useState('');
   const [reqs, setReqs] = useState('');
   const [planner, setPlanner] = useState('');
@@ -198,7 +202,7 @@ export default function PlanView({ projectId, agents }: { projectId: string; age
           </select>
         </label>
         <div className="form-actions">
-          <button className="primary" disabled={act.busy !== '' || !goal.trim()} onClick={async () => { const r = await act.run('propose', () => client.planPropose(projectId, goal.trim(), reqs, planner)); if (r) { setGoal(''); setReqs(''); setSel(r.planId); q.reload(); } }}>
+          <button className="primary" disabled={act.busy !== '' || ro.readOnly || !goal.trim()} title={ro.readOnly ? ro.reason : undefined} onClick={async () => { const r = await act.run('propose', () => client.planPropose(projectId, goal.trim(), reqs, planner)); if (r) { setGoal(''); setReqs(''); setSel(r.planId); q.reload(); } }}>
             {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
           </button>
         </div>

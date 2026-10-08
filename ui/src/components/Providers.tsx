@@ -4,6 +4,7 @@ import { formatDateTime } from '../lib/format';
 import { useClient } from '../state/context';
 import { useLive } from '../state/hooks';
 import { Badge, ErrorNote, Page } from './common';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 const isZeroTime = (s: string | undefined) => !s || s.startsWith('0001-');
 
@@ -198,6 +199,7 @@ function ProviderForm({ onCreated }: { onCreated: () => void }) {
   const [att, setAtt] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | undefined>();
+  const ro = useReadOnly();
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -236,6 +238,7 @@ function ProviderForm({ onCreated }: { onCreated: () => void }) {
   return (
     <form className="form form-grid" onSubmit={submit} autoComplete="off">
       <ErrorNote error={error} what="Provider not created" />
+      <ReadOnlyNote />
       <label>
         Provider name
         <input value={name} onChange={(e) => setName(e.target.value)} required />
@@ -308,7 +311,7 @@ function ProviderForm({ onCreated }: { onCreated: () => void }) {
         </div>
       </details>
       <div className="form-actions">
-        <button type="submit" className="primary" disabled={busy || !name.trim() || !baseUrl.trim()}>
+        <button type="submit" className="primary" disabled={busy || ro.readOnly || !name.trim() || !baseUrl.trim()} title={ro.readOnly ? ro.reason : undefined}>
           Add provider
         </button>
       </div>

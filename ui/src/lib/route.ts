@@ -22,6 +22,10 @@ export type Route =
   | { name: 'integrations' }
   | { name: 'connections' }
   | { name: 'providers' }
+  | { name: 'license' }
+  | { name: 'backups' }
+  | { name: 'data' }
+  | { name: 'support' }
   | { name: 'settings' };
 
 /** Parse location.hash. Unknown hashes fall back to home so a stale link never shows a blank page. */
@@ -60,6 +64,11 @@ export function parseRoute(hash: string): Route {
       return { name: 'connections' };
     case 'providers':
       return { name: 'providers' };
+    case 'license':
+    case 'backups':
+    case 'data':
+    case 'support':
+      return { name: a };
     case 'settings':
       return { name: 'settings' };
     default:

@@ -13,7 +13,14 @@
 //	DRYDOCK_E2E_REPO <path>              a fresh git repository copied from testdata/fixtures/gocalc (repeated -repos times)
 //	DRYDOCK_E2E_GREEN_REPO <path>        (-green-repos N) baseline tests pass, and a repository skill is committed
 //	DRYDOCK_E2E_DOCS <path>              a folder with one Markdown page, for an expert pack of type local_dir
+//	DRYDOCK_E2E_LICENSE_ACTIVE <token>   (-licensed only) a license signed by this run's throwaway key, valid for 30 days
+//	DRYDOCK_E2E_LICENSE_EXPIRED <token>  (-licensed only) a license signed by the same key that expired 30 days ago
 //	DRYDOCK_E2E http://127.0.0.1:PORT/?token=TOKEN
+//
+// -licensed is a TEST HARNESS MODE, not a product feature. It generates a throwaway Ed25519 key pair for this process only
+// and sets the build-time variable core.LicensePublicKeys to its public half, so the real licensing code runs in a build
+// that "has keys": the app starts with NO license (read-only) until the e2e imports one of the tokens printed above. The
+// private key is never written anywhere. Without -licensed the harness is a build with no keys, which allows everything.
 //
 // The harness also installs an in-memory credential store (a test double) so provider keys can be entered in the e2e.
 // The DRYDOCK_E2E line is printed last, after the server listens.
@@ -21,7 +28,9 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -39,6 +48,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
@@ -71,14 +81,15 @@ func main() {
 	repos := flag.Int("repos", 1, "number of fresh git repositories to create and print")
 	green := flag.Int("green-repos", 0, "number of fresh repositories whose baseline tests pass and that carry a repository skill (for the test-first templates and the Skills page)")
 	port := flag.Int("port", 0, "port on 127.0.0.1 (0 = any)")
+	licensed := flag.Bool("licensed", false, "TEST HARNESS MODE: embed a throwaway license key so the app starts read-only until a printed test token is imported")
 	flag.Parse()
 
-	if err := run(*ui, *fixture, *repos, *green, *port); err != nil {
+	if err := run(*ui, *fixture, *repos, *green, *port, *licensed); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(uiDir, fixture string, nRepos, nGreen, port int) error {
+func run(uiDir, fixture string, nRepos, nGreen, port int, licensed bool) error {
 	root, err := os.MkdirTemp("", "drydock-e2e-")
 	if err != nil {
 		return err
@@ -159,6 +170,21 @@ func run(uiDir, fixture string, nRepos, nGreen, port int) error {
 		return err
 	}
 	fmt.Printf("DRYDOCK_E2E_DOCS %s\n", docs)
+
+	if licensed {
+		pub, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return err
+		}
+		core.LicensePublicKeys = "e2e=" + base64.StdEncoding.EncodeToString(pub)
+		now := time.Now()
+		mint := func(jti string, iat, exp time.Time) string {
+			return license.Sign(priv, license.Payload{KID: "e2e", JTI: jti, Kind: "paid", Sub: "e2e@example.invalid", Name: "E2E test license", Plan: "test",
+				IAT: iat.Unix(), NBF: iat.Unix(), EXP: exp.Unix()})
+		}
+		fmt.Printf("DRYDOCK_E2E_LICENSE_ACTIVE %s\n", mint("lic_e2e_active", now.Add(-time.Hour), now.Add(30*24*time.Hour)))
+		fmt.Printf("DRYDOCK_E2E_LICENSE_EXPIRED %s\n", mint("lic_e2e_expired", now.Add(-60*24*time.Hour), now.Add(-30*24*time.Hour)))
+	}
 
 	c, err := core.Open(context.Background(), core.Config{
 		DataDir:  filepath.Join(root, "data"),

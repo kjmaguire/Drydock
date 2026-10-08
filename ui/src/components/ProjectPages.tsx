@@ -3,6 +3,7 @@ import type { MergeStrategy, Project, ProjectMode } from '../api/types';
 import { useClient } from '../state/context';
 import { ErrorNote, Page } from './common';
 import { CheckSettingsPanel, DevSettingsPanel } from './ProjectDev';
+import { ReadOnlyNote, useReadOnly } from '../state/license';
 
 export function ProjectCreate({ first, onCreated }: { first: boolean; onCreated: (p: Project) => void }) {
   const client = useClient();
@@ -10,6 +11,7 @@ export function ProjectCreate({ first, onCreated }: { first: boolean; onCreated:
   const [repoPath, setRepoPath] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | undefined>();
+  const ro = useReadOnly();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -32,6 +34,7 @@ export function ProjectCreate({ first, onCreated }: { first: boolean; onCreated:
       ) : null}
       <form className="form" onSubmit={submit}>
         <ErrorNote error={error} what="Project not created" />
+        <ReadOnlyNote />
         <label>
           Repository path
           <input value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="C:\\src\\my-repo" required spellCheck={false} />
@@ -41,7 +44,7 @@ export function ProjectCreate({ first, onCreated }: { first: boolean; onCreated:
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to the folder name" />
         </label>
         <div className="form-actions">
-          <button type="submit" className="primary" disabled={busy || !repoPath.trim()}>
+          <button type="submit" className="primary" disabled={busy || ro.readOnly || !repoPath.trim()} title={ro.readOnly ? ro.reason : undefined}>
             Create project
           </button>
         </div>
