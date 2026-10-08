@@ -43,7 +43,7 @@ func (o *Outcomes) Start(ctx context.Context) error {
 	ch, unsub := o.Bus.Subscribe(events.Filter{Types: terminalTypes})
 	go func() {
 		defer close(o.done)
-		defer unsub()
+		defer func() { unsub() }()
 		last := o.cursor(cctx)
 		catchUp := func() {
 			for {
@@ -67,20 +67,13 @@ func (o *Outcomes) Start(ctx context.Context) error {
 			case <-cctx.Done():
 				return
 			case e, ok := <-ch:
-				if !ok { // fell behind: replay what was missed and resubscribe
+				if !ok { // fell behind (the bus closes slow subscribers): resubscribe first, then replay what was missed
 					ch, unsub = o.Bus.Subscribe(events.Filter{Types: terminalTypes})
 					catchUp()
 					continue
 				}
 				if e.Seq <= last {
 					continue
-				}
-				// a gap means an event was dropped for this subscriber: replay from the cursor to stay exact
-				if e.Seq > last+1 {
-					catchUp()
-					if e.Seq <= last {
-						continue
-					}
 				}
 				o.handle(cctx, e)
 				last = e.Seq
@@ -138,7 +131,7 @@ func (o *Outcomes) handle(ctx context.Context, e events.Event) {
 }
 
 // Record writes the outcome rows of a task that has ended: one per routing decision, or one task-level row (decision_id
-// '') when the task had none. It is idempotent: a task's outcome is recorded once. A task that has not ended records
+// ”) when the task had none. It is idempotent: a task's outcome is recorded once. A task that has not ended records
 // nothing.
 func Record(ctx context.Context, db *storage.DB, taskID string) error {
 	f, err := Facts(ctx, db, taskID)
