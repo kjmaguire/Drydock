@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -190,6 +191,7 @@ func (c *Core) DescribeAdapters(ctx context.Context) []map[string]any {
 		}
 		out = append(out, m)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
 	return out
 }
 
@@ -201,4 +203,91 @@ func (c *Core) Activity(ctx context.Context) (runs, liveAgents int, err error) {
 	}
 	err = c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_runs WHERE ended_at=0`).Scan(&liveAgents)
 	return
+}
+
+// UsageRow is one model usage record (token counts and cost with their source).
+type UsageRow struct {
+	TS         int64   `json:"ts"`
+	TaskID     string  `json:"taskId"`
+	AgentID    string  `json:"agentId"`
+	Provider   string  `json:"provider"`
+	Model      string  `json:"model"`
+	Tier       string  `json:"tier"`
+	Input      int     `json:"inputTokens"`
+	Output     int     `json:"outputTokens"`
+	Cached     int     `json:"cachedTokens"`
+	CacheWrite int     `json:"cacheWriteTokens"`
+	Reasoning  int     `json:"reasoningTokens"`
+	CostUSD    float64 `json:"costUsd"`
+	Source     string  `json:"source"` // reported | estimated
+	CacheHit   bool    `json:"cacheHit"`
+}
+
+// Usage lists usage rows for a task or an agent (newest first). Cost and token numbers carry their source so the UI never
+// presents an estimate as a reported value (brief 7).
+func (c *Core) Usage(ctx context.Context, taskID, agentID string, limit int) ([]UsageRow, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT ts,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source,cache_hit
+		FROM model_usage WHERE (?='' OR task_id=?) AND (?='' OR agent_id=?) ORDER BY id DESC LIMIT ?`, taskID, taskID, agentID, agentID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []UsageRow{}
+	for rows.Next() {
+		var u UsageRow
+		var hit int
+		if err := rows.Scan(&u.TS, &u.TaskID, &u.AgentID, &u.Provider, &u.Model, &u.Tier, &u.Input, &u.Output, &u.Cached, &u.CacheWrite, &u.Reasoning, &u.CostUSD, &u.Source, &hit); err != nil {
+			return nil, err
+		}
+		u.CacheHit = hit != 0
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// AgentRun is one process lifetime of an agent (for the Agent Inspector).
+type AgentRun struct {
+	ID      string `json:"id"`
+	TaskID  string `json:"taskId"`
+	PID     int    `json:"pid"`
+	Cwd     string `json:"cwd"`
+	Status  string `json:"status"`
+	Started int64  `json:"startedAt"`
+	Ended   int64  `json:"endedAt"`
+	Error   string `json:"error,omitempty"`
+}
+
+// AgentDetail is what the Agent Inspector shows.
+type AgentDetail struct {
+	Agent Agent      `json:"agent"`
+	Runs  []AgentRun `json:"runs"`
+	Usage []UsageRow `json:"usage"`
+}
+
+// GetAgent returns an agent with its recent runs and usage.
+func (c *Core) GetAgent(ctx context.Context, id string) (AgentDetail, error) {
+	a, err := c.agent(ctx, id)
+	if err != nil {
+		return AgentDetail{}, fmt.Errorf("agent %s not found", id)
+	}
+	d := AgentDetail{Agent: a, Runs: []AgentRun{}}
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,task_id,pid,cwd,status,started_at,ended_at,error FROM agent_runs WHERE agent_id=? ORDER BY started_at DESC LIMIT 20`, id)
+	if err != nil {
+		return d, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r AgentRun
+		if err := rows.Scan(&r.ID, &r.TaskID, &r.PID, &r.Cwd, &r.Status, &r.Started, &r.Ended, &r.Error); err != nil {
+			return d, err
+		}
+		d.Runs = append(d.Runs, r)
+	}
+	if d.Usage, err = c.Usage(ctx, "", id, 50); err != nil {
+		return d, err
+	}
+	return d, rows.Err()
 }

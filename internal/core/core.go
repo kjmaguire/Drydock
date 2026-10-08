@@ -27,6 +27,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -47,6 +48,9 @@ type Config struct {
 	Procs proc.Manager
 	// GitHub resolves the GitHub client for a project in pr_flow mode (default: the user's `gh`).
 	GitHub func(ctx context.Context, p Project) (pipeline.PRConfig, error)
+	// Credentials stores provider API keys. Default: the Windows Credential Manager; on other development hosts there is none
+	// and providers that need a key cannot be created (tests inject providers.NewMemoryCredentialStoreForTests).
+	Credentials providers.CredentialStore
 	// LeaseTTL for workflow runs (default 30s).
 	LeaseTTL time.Duration
 }
@@ -64,6 +68,9 @@ type Core struct {
 	Context     *ctxeng.Engine
 	Presence    *room.Tracker
 	Scanner     *security.Scanner
+	Providers   *providers.Registry
+	Prober      *providers.Prober
+	Health      *providers.Monitor
 	Connections *connections.Service
 	Deps        pipeline.Deps
 
@@ -173,6 +180,22 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if err := c.Presence.Start(bg); err != nil {
 		c.logf("presence: %v", err)
 	}
+	var secrets providers.SecretStore
+	cred := cfg.Credentials
+	if cred == nil {
+		if cs, cerr := providers.NewCredentialStore(); cerr == nil {
+			cred = cs
+		} else {
+			c.logf("provider keys: %v", cerr)
+		}
+	}
+	if cred != nil {
+		secrets = providers.NewVault(cred, db)
+	}
+	c.Providers = providers.NewRegistry(db, providers.RegistryOptions{Secrets: secrets, Bus: c.Bus})
+	c.Prober = providers.NewProber(c.Providers, c.Bus)
+	c.Health = providers.NewMonitor(c.Providers, c.Prober, c.Bus, providers.MonitorOptions{})
+	c.Health.Start(bg)
 	go func() { _ = c.Room.WatchTasks(bg) }()
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
@@ -188,6 +211,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 // Close stops background work. Running agent processes are killed with their job objects.
 func (c *Core) Close() {
 	c.cancel()
+	c.Health.Stop()
 	c.Engine.Close()
 	c.Bus.Close()
 	c.DB.Close()

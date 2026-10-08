@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -353,5 +354,88 @@ func TestSecretsPastedIntoTheRoomAreRedactedBeforeStorage(t *testing.T) {
 	a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM events WHERE data LIKE '%' || ? || '%'`, secret).Scan(&n)
 	if n != 0 {
 		t.Fatalf("the secret reached %d event(s)", n)
+	}
+}
+
+func TestProviderRoomAndUsageMethodsForThePages(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DRYDOCK_FAKE_AGENT", "1")
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second,
+		Credentials: providers.NewMemoryCredentialStoreForTests(),
+		Adapters:    map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	a := &app{t: t, c: c}
+
+	// Providers page: create (key goes to the credential store, never into the row), list, disable, delete
+	var prov providers.Provider
+	a.call("provider.create", map[string]any{"Name": "OpenRouter", "Kind": "aggregator", "BaseURL": "https://openrouter.ai/api/v1", "APIKey": "sk-or-test-key-1234567890",
+		"DataClass": "private", "Tier": "cheap"}, &prov)
+	if prov.ID == "" || prov.KeyRef == "" || prov.DataClass != providers.DataPrivate {
+		t.Fatalf("provider %+v", prov)
+	}
+	raw, _ := json.Marshal(prov)
+	if strings.Contains(string(raw), "sk-or-test-key") {
+		t.Fatal("the API key must never be part of a provider row or API answer")
+	}
+	var stored string
+	c.DB.Reader().QueryRow(`SELECT COALESCE(group_concat(key_ref),'') FROM providers`).Scan(&stored)
+	if strings.Contains(stored, "sk-or-test") {
+		t.Fatal("the API key was stored in the providers table")
+	}
+	var list []providers.Provider
+	a.call("provider.list", nil, &list)
+	if len(list) != 1 || list[0].ID != prov.ID {
+		t.Fatalf("list %+v", list)
+	}
+	a.call("provider.setEnabled", map[string]any{"id": prov.ID, "enabled": false}, nil)
+	a.call("provider.list", nil, &list)
+	if list[0].Enabled {
+		t.Fatal("provider still enabled")
+	}
+	// a private-class provider on plain http to a public host is refused at registration
+	if _, err := c.Call(context.Background(), "provider.create", mustJSON(map[string]any{"Name": "bad", "Kind": "direct", "BaseURL": "http://example.com/v1", "DataClass": "private", "Tier": "cheap"})); err == nil {
+		t.Fatal("plain http to a public host must be refused")
+	}
+	a.call("provider.delete", map[string]any{"id": prov.ID}, nil)
+
+	// room pages: archived channels stay reachable, DMs can be created, usage and the agent inspector read real rows
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var w core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "W", Adapter: "claude", Role: "backend"}, &w)
+	var dm room.Room
+	a.call("room.createDM", map[string]any{"projectId": p.ID, "agentId": w.ID}, &dm)
+	if dm.Kind != room.KindDM {
+		t.Fatalf("dm %+v", dm)
+	}
+	var got room.Room
+	a.call("room.get", map[string]any{"id": dm.ID}, &got)
+	if got.ID != dm.ID {
+		t.Fatal("room.get")
+	}
+	var head uint64
+	a.call("events.head", nil, &head)
+	if head == 0 {
+		t.Fatal("events.head must report the newest sequence")
+	}
+	var det core.AgentDetail
+	a.call("agent.get", map[string]any{"id": w.ID}, &det)
+	if det.Agent.ID != w.ID || det.Runs == nil || det.Usage == nil {
+		t.Fatalf("agent detail %+v", det)
+	}
+	var usage []core.UsageRow
+	a.call("usage.list", map[string]any{"agentId": w.ID}, &usage)
+	if usage == nil {
+		t.Fatal("usage.list must return a list")
+	}
+	var adapters []map[string]any
+	a.call("adapter.list", nil, &adapters)
+	for i := 1; i < len(adapters); i++ {
+		if adapters[i-1]["id"].(string) > adapters[i]["id"].(string) {
+			t.Fatal("adapter.list must be sorted")
+		}
 	}
 }

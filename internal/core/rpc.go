@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -113,9 +114,27 @@ func (c *Core) Methods() map[string]Method {
 		}),
 
 		"room.list": bind(func(ctx context.Context, p struct {
-			ProjectID string `json:"projectId"`
+			ProjectID       string `json:"projectId"`
+			IncludeArchived bool   `json:"includeArchived"`
 		}) (any, error) {
-			return c.Room.ListRooms(ctx, p.ProjectID, false)
+			return c.Room.ListRooms(ctx, p.ProjectID, p.IncludeArchived)
+		}),
+		"room.get": bind(func(ctx context.Context, p idParam) (any, error) { return c.Room.GetRoom(ctx, p.ID) }),
+		"room.thread": bind(func(ctx context.Context, p struct {
+			RootID string `json:"rootId"`
+		}) (any, error) {
+			return c.Room.Thread(ctx, p.RootID)
+		}),
+		"room.createDM": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			AgentID   string `json:"agentId"`
+		}) (any, error) {
+			return c.Room.CreateDM(ctx, p.ProjectID, room.Human(c.cfg.User), room.Agent(p.AgentID))
+		}),
+		"room.members": bind(func(ctx context.Context, p struct {
+			RoomID string `json:"roomId"`
+		}) (any, error) {
+			return c.Room.Members(ctx, p.RoomID)
 		}),
 		"room.messages": bind(func(ctx context.Context, p struct {
 			RoomID   string `json:"roomId"`
@@ -146,6 +165,30 @@ func (c *Core) Methods() map[string]Method {
 			return c.Room.NeedsYou(ctx, p.ProjectID)
 		}),
 		"presence.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Presence.Snapshot(), nil }),
+
+		"events.head": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Bus.LastSeq(ctx) }),
+		"usage.list": bind(func(ctx context.Context, p struct {
+			TaskID  string `json:"taskId"`
+			AgentID string `json:"agentId"`
+			Limit   int    `json:"limit"`
+		}) (any, error) {
+			return c.Usage(ctx, p.TaskID, p.AgentID, p.Limit)
+		}),
+		"agent.get": bind(func(ctx context.Context, p idParam) (any, error) { return c.GetAgent(ctx, p.ID) }),
+
+		"provider.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Providers.List(ctx) }),
+		"provider.create": bind(func(ctx context.Context, p providers.NewProvider) (any, error) {
+			return c.Providers.Create(ctx, p)
+		}),
+		"provider.delete": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.Providers.Delete(ctx, p.ID) }),
+		"provider.setEnabled": bind(func(ctx context.Context, p struct {
+			ID      string `json:"id"`
+			Enabled bool   `json:"enabled"`
+		}) (any, error) {
+			return nil, c.Providers.SetEnabled(ctx, p.ID, p.Enabled)
+		}),
+		"provider.test":   bind(func(ctx context.Context, p idParam) (any, error) { return c.Prober.Probe(ctx, p.ID) }),
+		"provider.models": bind(func(ctx context.Context, p idParam) (any, error) { return c.Providers.Models(ctx, p.ID) }),
 
 		"events.replay": bind(func(ctx context.Context, p struct {
 			After uint64   `json:"after"`

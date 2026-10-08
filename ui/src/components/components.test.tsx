@@ -281,3 +281,21 @@ describe('small pure pieces', () => {
     expect(sortAdapters([mk('gemini', 'not_installed', false), mk('claude', 'ready', true), mk('codex', 'not_installed', false)]).map((a) => a.id)).toEqual(['claude', 'codex', 'gemini']);
   });
 });
+
+describe('Project settings', () => {
+  const project = { id: 'p1', name: 'x', repoPath: '/r', defaultBranch: 'main', mergeStrategy: 'merge', mode: 'local_merge', created: 0 };
+  it('saves mode and strategy through project.update and shows the core refusal', async () => {
+    const { ProjectSettings } = await import('./ProjectPages');
+    const projectUpdate = vi.fn(async () => {
+      throw new Error('pr_flow is not available for this project: origin is not a github.com remote');
+    });
+    withServices(<ProjectSettings project={project} onChanged={() => undefined} />, { projectUpdate });
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Mode'), { target: { value: 'pr_flow' } });
+    fireEvent.change(screen.getByLabelText('Merge strategy'), { target: { value: 'squash' } });
+    fireEvent.click(save);
+    await screen.findByText(/pr_flow is not available/);
+    expect(projectUpdate).toHaveBeenCalledWith('p1', 'pr_flow', 'squash');
+  });
+});
