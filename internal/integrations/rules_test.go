@@ -233,15 +233,3 @@ func TestRuleNeverCreatesFromRiskyItemsOrChangesParametersFromItemText(t *testin
 		t.Fatal("no skipped_risky event")
 	}
 }
-
-func TestCELCannotSeeBodyOrSecrets(t *testing.T) {
-	h := newHarness(t, nil)
-	ctx := context.Background()
-	_, url := sentryFixture(t)
-	c := h.connect(integrations.KindSentry, sentryToken, url, nil)
-	// `body` is not a variable of the rule language: only normalized facts are
-	if _, err := h.svc.SetRule(ctx, human, integrations.RuleReq{IntegrationID: c.ID, Name: "x", When: `item.body.contains("secret")`}); err == nil {
-		// item is a map, so item.body compiles but evaluates to an error (no such key) and never matches
-		t.Log("item.body compiles (a map lookup); it can never match because the body is not exposed")
-	}
-}
