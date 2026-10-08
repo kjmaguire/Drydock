@@ -225,3 +225,13 @@ Built in `internal/evals` (2026-10-08, Slice 2). It reads the real database and 
 8. The `eval_accept` proxy versus a real human accept: how closely hidden checks track human acceptance is unknown.
 9. GPU-host throughput for local cheap-tier hosts (1, 2, 4 concurrent agents) is unmeasured and affects `max_concurrent_agents` defaults.
 10. Column names, the `purpose` field and watchdog label storage are now the real ones (section 11); the `tier` stamped on agent-runtime usage rows is wrong for agents on a registered cheap provider and is corrected at read time (11.3), not at write time.
+
+## 12. First measured data point (2026-10-08, n=1: an observation, not a statistic)
+
+Measured with `DRYDOCK_REAL_CLAUDE=1 go test ./internal/core -run TestRealClaudeLoopThroughTheCoreAndTheEvalReport` on the Linux development sandbox: the product loop through the same UI methods the app uses, with real Claude Code 2.1.294 (model `haiku`, the owner's login) as worker and as independent reviewer on `testdata/fixtures/gocalc` ("implement Subtract"), a human approval, and the merge. Numbers come from `evals.report` over the real database:
+
+| Accepted tasks | Premium turns per accepted task | Cost per accepted task (CLI-reported) | Tokens (in / out / cached / cache-write) | Iterations to SHIP | First test run passed |
+|---|---|---|---|---|---|
+| 1 | 2 (one worker turn, one review turn) | $0.0983 | 2,993 / 1,076 / 178,049 / 36,926 | 1 | yes |
+
+What this does and does not say: it is one task of trivial size on one model, so it is not a baseline and supports no claim about savings. Most of the cost is Claude Code's own context overhead (the cached and cache-write tokens), which is why a two-turn task costs about ten cents even though the code change is one line. The cheap-tier share is 0/1 because both agents ran a subscription CLI (premium); no cheap-tier model was used, so none of the routing economics (cheap-first, escalation) has been measured yet. The routing-quality section measures configured assignments (decisions are `static`) until agent turns are routed through the router. The B0/B1 baseline arms are not built. Nothing was measured on Windows.
