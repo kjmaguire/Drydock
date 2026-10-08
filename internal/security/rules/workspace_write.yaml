@@ -1,0 +1,34 @@
+# Command class: workspace_write. Programs that create or modify files; safe when every path stays inside the worktree.
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7).
+class: workspace_write
+rules:
+  - id: workspace_write.posix.files
+    programs: [touch, mkdir, cp, mv, ln, install, tee, truncate, chmod, patch, unzip, zip, tar, gzip, gunzip, bzip2, xz, dos2unix, unix2dos, ranlib]
+    paths: positional
+  - id: workspace_write.posix.sed_inplace
+    programs: [sed]
+    flags_any: ["-i", "--in-place", "-I"]
+    paths: positional
+    skip_first_positional: true
+    skip_unless_flags: ["-e", "-f", "--expression", "--file"]
+  - id: workspace_write.posix.sort_output
+    programs: [sort]
+    flags_any: ["-o", "--output"]
+    paths: positional
+  - id: workspace_write.go.fmt
+    programs: [gofmt, goimports]
+    paths: positional
+  - id: workspace_write.git.local
+    programs: [git]
+    subcommands: [add, commit, checkout, switch, restore, stash, merge, cherry-pick, revert, mv, tag, branch, init, apply, am, "worktree add", "worktree move", "submodule add", config, rebase, remote, reflog, notes]
+    paths: heuristic
+  - id: workspace_write.ps.files
+    programs: [set-content, add-content, out-file, new-item, copy-item, move-item, rename-item, set-itemproperty, tee-object, expand-archive, compress-archive, new-itemproperty, export-csv, export-clixml]
+    ci: true
+    shells: [powershell]
+    paths: positional
+  - id: workspace_write.cmd.files
+    programs: [copy, xcopy, move, ren, rename, mkdir, md, mklink, attrib, robocopy]
+    ci: true
+    shells: [cmd]
+    paths: positional

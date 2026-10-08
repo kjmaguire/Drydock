@@ -185,7 +185,8 @@ type Response struct {
 	ModelUsed       string // the model that served the call (may differ from the request on routers)
 	Provider        string // provider id that served the call
 	CacheHit        bool
-	Fallback        bool // served by a router-approved alternative, not the primary target
+	EstSavedUSD     float64 // cache hits: the cost avoided, estimated from the fill (labeled estimated, never reported)
+	Fallback        bool    // served by a router-approved alternative, not the primary target
 	EffortApplied   bool
 	Latency         time.Duration
 	Header          http.Header `json:"-"` // response headers (rate limits)

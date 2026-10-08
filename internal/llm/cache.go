@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/providers"
-	"github.com/kjmaguire/drydock/internal/storage"
 )
 
 // cacheSchema versions the canonical request layout; bump it to invalidate every entry.
@@ -29,22 +28,22 @@ var DefaultCacheTTLs = map[string]time.Duration{
 
 // cacheDoc is the canonical request hashed into the cache key. Excluded: API key, request ids, timestamps.
 type cacheDoc struct {
-	V           int              `json:"v"`
-	Provider    string           `json:"provider"`
-	BaseURL     string           `json:"baseUrl"`
-	Model       string           `json:"model"`
-	Effort      Effort           `json:"effort"`
-	MaxTokens   int              `json:"maxTokens"`
-	Temperature *float64         `json:"temperature"`
-	TopP        *float64         `json:"topP"`
-	System      []Block          `json:"system"`
-	Messages    []Message        `json:"messages"`
-	Tools       []ToolDef        `json:"tools"`
-	ToolChoice  string           `json:"toolChoice"`
-	Routing     json.RawMessage  `json:"providerRouting"`
+	V           int                 `json:"v"`
+	Provider    string              `json:"provider"`
+	BaseURL     string              `json:"baseUrl"`
+	Model       string              `json:"model"`
+	Effort      Effort              `json:"effort"`
+	MaxTokens   int                 `json:"maxTokens"`
+	Temperature *float64            `json:"temperature"`
+	TopP        *float64            `json:"topP"`
+	System      []Block             `json:"system"`
+	Messages    []Message           `json:"messages"`
+	Tools       []ToolDef           `json:"tools"`
+	ToolChoice  string              `json:"toolChoice"`
+	Routing     json.RawMessage     `json:"providerRouting"`
 	DataClass   providers.DataClass `json:"dataClass"`
-	PackVersion string           `json:"packVersion"`
-	ProjectID   string           `json:"projectId"`
+	PackVersion string              `json:"packVersion"`
+	ProjectID   string              `json:"projectId"`
 }
 
 func normText(s string) string {
@@ -153,5 +152,3 @@ func (w *Wrapper) PurgeProjectCache(ctx context.Context, projectID string) error
 }
 
 func ms(t time.Time) int64 { return t.UnixMilli() }
-
-var _ = storage.Now

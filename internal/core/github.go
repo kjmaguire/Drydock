@@ -118,3 +118,7 @@ func (c *Core) PullRequest(ctx context.Context, taskID string) (PRState, error) 
 	}
 	return st, nil
 }
+
+// ChannelAllowed reports whether the installed license entitles the user to an update channel. Until the license screen is
+// wired (internal/license is built and tested) only the stable channel is allowed.
+func (c *Core) ChannelAllowed(ch string) bool { return ch == "stable" }

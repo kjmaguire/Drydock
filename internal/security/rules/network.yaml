@@ -1,0 +1,47 @@
+# Command class: network. Talks to a remote host. Decision: allowed when parsed exactly and the CLI mode permits,
+# logged; combined with other classes it follows those.
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7).
+class: network
+rules:
+  - id: network.posix.clients
+    programs: [curl, wget, ssh, scp, sftp, nc, ncat, netcat, nmap, telnet, ftp, tftp, ping, nslookup, dig, host, traceroute, tracert, rsync, aria2c, http, https, xh]
+    paths: heuristic
+  - id: network.git.remote
+    programs: [git]
+    subcommands: [clone, fetch, pull, push, ls-remote, "remote update", "submodule update", "submodule add"]
+    paths: heuristic
+  - id: network.git.push
+    programs: [git]
+    subcommands: [push]
+    kind: git_push
+    paths: heuristic
+    reason: pushes commits to a remote
+  - id: network.pkg.install
+    programs: [npm, pnpm, yarn, bun]
+    subcommands: [install, i, add, ci, update, up, upgrade, publish, dlx, audit, outdated, view, info]
+    paths: none
+  - id: network.pkg.pip
+    programs: [pip, pip3, pipx, uv, poetry, pipenv]
+    subcommands: [install, download, add, sync, lock, update]
+    paths: none
+  - id: network.pkg.misc
+    programs: [cargo, dotnet, go, gem, bundle, composer, apt, apt-get, yum, dnf, brew, choco, winget, scoop, nuget, mvn, gradle]
+    subcommands: [install, fetch, update, get, add, restore, "mod download", download, upgrade, pull, search]
+    paths: none
+  - id: network.docker
+    programs: [docker, podman]
+    subcommands: [pull, push, login, search, "buildx build"]
+    paths: none
+  - id: network.gh
+    programs: [gh]
+    paths: none
+  - id: network.ps.web
+    programs: [invoke-webrequest, invoke-restmethod, test-netconnection, resolve-dnsname, start-bitstransfer, send-mailmessage]
+    ci: true
+    shells: [powershell]
+    paths: positional
+  - id: network.cmd.tools
+    programs: [bitsadmin, certutil, ftp, nslookup, ping, tracert, netstat, curl]
+    ci: true
+    shells: [cmd]
+    paths: heuristic

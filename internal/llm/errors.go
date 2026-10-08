@@ -13,9 +13,9 @@ import (
 
 // Sentinels for errors.Is.
 var (
-	ErrDataClass         = errors.New("llm: data_class violation")
-	ErrQuota             = errors.New("llm: quota exhausted")
-	ErrSecretBlocked     = errors.New("llm: outbound prompt contains a secret")
+	ErrDataClass           = errors.New("llm: data_class violation")
+	ErrQuota               = errors.New("llm: quota exhausted")
+	ErrSecretBlocked       = errors.New("llm: outbound prompt contains a secret")
 	ErrProviderUnavailable = errors.New("llm: provider unavailable")
 )
 
@@ -89,15 +89,15 @@ func (e *UnavailableError) Is(t error) bool { return t == ErrProviderUnavailable
 type ErrorKind string
 
 const (
-	KindRateLimit  ErrorKind = "rate_limit"        // temporary 429; wait and retry
-	KindQuota      ErrorKind = "quota"             // credits, spend cap or daily quota: retrying will not help
-	KindOverloaded ErrorKind = "overloaded"        // 529, 503
-	KindServer     ErrorKind = "server"            // 5xx, timeouts
-	KindNetwork    ErrorKind = "network"           // transport failure
-	KindAuth       ErrorKind = "auth"              // key rejected
-	KindInvalid    ErrorKind = "invalid"           // the request itself is wrong
-	KindNoEndpoint ErrorKind = "no_endpoint"       // OpenRouter: no endpoint satisfies the data policy (fail closed)
-	KindRetention  ErrorKind = "retention_needed"  // Anthropic Covered Models need data retention enabled
+	KindRateLimit  ErrorKind = "rate_limit"         // temporary 429; wait and retry
+	KindQuota      ErrorKind = "quota"              // credits, spend cap or daily quota: retrying will not help
+	KindOverloaded ErrorKind = "overloaded"         // 529, 503
+	KindServer     ErrorKind = "server"             // 5xx, timeouts
+	KindNetwork    ErrorKind = "network"            // transport failure
+	KindAuth       ErrorKind = "auth"               // key rejected
+	KindInvalid    ErrorKind = "invalid"            // the request itself is wrong
+	KindNoEndpoint ErrorKind = "no_endpoint"        // OpenRouter: no endpoint satisfies the data policy (fail closed)
+	KindRetention  ErrorKind = "retention_needed"   // Anthropic Covered Models need data retention enabled
 	KindStream     ErrorKind = "stream_interrupted" // failed after output was delivered
 )
 
@@ -267,3 +267,12 @@ func geminiDetails(d any) (quotaID string, delay time.Duration) {
 	}
 	return quotaID, delay
 }
+
+// StreamInterruptedError means a streamed call failed after output was already delivered to the caller, so it was
+// neither retried nor sent to a fallback (that would duplicate output).
+type StreamInterruptedError struct{ Cause error }
+
+func (e *StreamInterruptedError) Error() string {
+	return "llm: stream interrupted after output was delivered: " + e.Cause.Error()
+}
+func (e *StreamInterruptedError) Unwrap() error { return e.Cause }

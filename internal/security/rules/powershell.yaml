@@ -1,0 +1,123 @@
+# PowerShell phase A tables (docs/security.md s7): alias normalization, the cmdlets whose parameters must be spelled in
+# full (an unrecognized or abbreviated parameter on them is Opaque), the cmdlets that are Opaque outright, and the
+# cmdlets that may receive pipeline input. ILLUSTRATIVE, NOT EXHAUSTIVE.
+class: powershell
+aliases:
+  rm: remove-item
+  ri: remove-item
+  del: remove-item
+  erase: remove-item
+  rd: remove-item
+  rmdir: remove-item
+  iex: invoke-expression
+  iwr: invoke-webrequest
+  curl: invoke-webrequest
+  wget: invoke-webrequest
+  irm: invoke-restmethod
+  saps: start-process
+  start: start-process
+  icm: invoke-command
+  sajb: start-job
+  ls: get-childitem
+  dir: get-childitem
+  gci: get-childitem
+  cat: get-content
+  gc: get-content
+  type: get-content
+  gi: get-item
+  gp: get-itemproperty
+  cp: copy-item
+  copy: copy-item
+  cpi: copy-item
+  mv: move-item
+  move: move-item
+  mi: move-item
+  ren: rename-item
+  rni: rename-item
+  ni: new-item
+  md: mkdir
+  sc: set-content
+  ac: add-content
+  clc: clear-content
+  cli: clear-item
+  echo: write-output
+  write: write-output
+  cd: set-location
+  sl: set-location
+  chdir: set-location
+  pwd: get-location
+  gl: get-location
+  pushd: push-location
+  popd: pop-location
+  sls: select-string
+  where: where-object
+  "?": where-object
+  foreach: foreach-object
+  "%": foreach-object
+  sort: sort-object
+  select: select-object
+  measure: measure-object
+  group: group-object
+  gps: get-process
+  ps: get-process
+  kill: stop-process
+  spps: stop-process
+  gm: get-member
+  gcm: get-command
+  gal: get-alias
+  gv: get-variable
+  rv: remove-variable
+  sv: set-variable
+  set: set-variable
+  si: set-item
+  ft: format-table
+  fl: format-list
+  fw: format-wide
+  oh: out-host
+  cls: clear-host
+  clear: clear-host
+  diff: compare-object
+  compare: compare-object
+  tee: tee-object
+  sleep: start-sleep
+  gdr: get-psdrive
+  gsv: get-service
+  sasv: start-service
+  spsv: stop-service
+  ipmo: import-module
+  ii: invoke-item
+  nal: new-alias
+  sal: set-alias
+  epcsv: export-csv
+  ipcsv: import-csv
+  icim: invoke-cimmethod
+  iwmi: invoke-wmimethod
+  gwmi: get-wmiobject
+  cvpa: convert-path
+  rvpa: resolve-path
+  r: invoke-history
+  h: get-history
+  history: get-history
+  man: get-help
+  help: get-help
+  cpp: copy-itemproperty
+  mp: move-itemproperty
+  rp: remove-itemproperty
+  sp: set-itemproperty
+  rnp: rename-itemproperty
+# Parameters spelled in full are required for these cmdlets; names are matched case-insensitively. The common
+# parameters (and their aliases) are always accepted.
+strict_params:
+  remove-item: [path, literalpath, filter, include, exclude, recurse, force, credential, stream]
+  clear-content: [path, literalpath, filter, include, exclude, force, credential, stream]
+  remove-itemproperty: [path, literalpath, name, filter, include, exclude, force, credential]
+  clear-item: [path, literalpath, filter, include, exclude, force, credential]
+  stop-process: [id, name, inputobject, passthru, force]
+  format-volume: [driveletter, filesystem, newfilesystemlabel, full, force]
+  move-item: [path, literalpath, destination, filter, include, exclude, force, passthru, credential]
+  set-executionpolicy: [executionpolicy, scope, force]
+common_params: [verbose, debug, erroraction, errorvariable, warningaction, warningvariable, informationaction, informationvariable, outvariable, outbuffer, pipelinevariable, whatif, confirm, progressaction, vb, db, ea, ev, wa, wv, ia, iv, ov, ob, pv, wi, cf]
+# Cmdlets that are never analyzable: they execute dynamic text, load code, spawn processes or change what names mean.
+opaque_cmdlets: [invoke-expression, start-process, invoke-command, start-job, start-threadjob, add-type, invoke-wmimethod, invoke-cimmethod, new-alias, set-alias, set-item, invoke-history, register-objectevent, register-engineevent, register-wmievent, register-scheduledjob, enter-pssession, new-pssession, import-powershelldatafile, set-psdebug, new-module, invoke-dscresource, register-argumentcompleter, update-typedata, update-formatdata]
+# Cmdlets and tools that may sit after a pipe. Any other target is Opaque ("any pipe into an unknown cmdlet").
+pipeline_cmdlets: [select-string, where-object, foreach-object, sort-object, select-object, measure-object, group-object, out-string, out-null, out-host, out-file, format-table, format-list, format-wide, convertto-json, convertfrom-json, convertto-csv, convertfrom-csv, convertto-html, export-csv, tee-object, get-unique, compare-object, set-content, add-content, remove-item, copy-item, move-item, get-item, get-content, get-childitem, write-output, write-host, select-xml, findstr, more, sort, find, clip, wc, grep, head, tail, rg, jq]

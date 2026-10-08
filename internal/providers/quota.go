@@ -706,3 +706,25 @@ func (l *QuotaLedger) persistLocked(ctx context.Context, ws ...*win) error {
 		return nil
 	})
 }
+
+// RemainingPct is the smallest remaining fraction (0..1) over the windows that apply to (provider, model), or -1 when
+// no window with a limit applies (unknown).
+func (l *QuotaLedger) RemainingPct(ctx context.Context, provider, model string) float64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.loadLocked(ctx, provider) != nil {
+		return -1
+	}
+	now := l.now()
+	best := -1.0
+	for _, w := range l.applicableLocked(provider, model) {
+		l.rollLocked(w, now)
+		if w.Limit <= 0 {
+			continue
+		}
+		if f := w.Remaining() / w.Limit; best < 0 || f < best {
+			best = f
+		}
+	}
+	return best
+}

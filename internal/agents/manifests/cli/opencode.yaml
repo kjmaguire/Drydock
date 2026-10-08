@@ -1,0 +1,21 @@
+# OpenCode over `opencode acp` (decision D11: headless `run` cannot answer permissions and drops deltas). Default cheap-tier agent (D3).
+meta: {schema: 1, id: opencode, display_name: OpenCode, kind: agent_cli, license: MIT, tier: cheap, run_modes: [native, wsl]}
+binaries: {native: [opencode.exe, opencode.cmd], wsl: [opencode]}
+install:
+  - {shell: cmd, command: 'scoop install opencode'}
+  - {shell: cmd, command: 'choco install opencode'}
+  - {shell: cmd, command: 'npm i -g opencode-ai@latest', requires: [{tool: node, min: "22"}]}
+detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
+versions: {min: "1.18.35", recommended: "1.18.35"}
+auth:
+  login: {argv: [providers, login], terminal: true}
+  probe: {argv: [providers, list], parse: text_providers, ready_when: 'exit == 0', unverified: true}
+transports:
+  primary: acp
+  acp: {argv: [opencode, acp]}
+  headless: none
+provider_config: {writer: opencode_inline_json, env: OPENCODE_CONFIG_CONTENT, template: {provider: {"<id>": {npm: "@ai-sdk/openai-compatible", name: "<name>", options: {baseURL: "<url>"}, models: {}}}}}
+mcp: {inject: acp_session_new, transports: [stdio, http, sse]}
+capabilities_declared: {streaming: true, model_selection: true, effort_control: true, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: true, headless: true, permission_modes: true, image_input: true, tool_call_visibility: true}
+instructions: {primary: AGENTS.md}
+terms: {notice: open-source-provider-terms-v1}

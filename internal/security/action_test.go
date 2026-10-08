@@ -37,7 +37,6 @@ func baseAction() ActionDescriptor {
 	}
 }
 
-
 func TestActionCanonicalGolden(t *testing.T) {
 	a := baseAction()
 	b, err := a.Canonical()

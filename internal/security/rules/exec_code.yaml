@@ -1,0 +1,54 @@
+# Command class: exec_code. Interpreters, package-script runners and build tools execute arbitrary code that no command
+# analysis can see into (docs/security.md s7). Expected inside check nodes; as agent-composed commands they are allowed
+# only when the CLI's own mode permits and are logged. Command analysis is not a security boundary against a hostile agent.
+# ILLUSTRATIVE, NOT EXHAUSTIVE.
+class: exec_code
+rules:
+  - id: exec_code.interpreters
+    programs: [node, nodejs, python, python3, py, ruby, perl, php, deno, bun, java, lua, tsx, ts-node, cscript, wscript, mshta, rundll32, regsvr32, msbuild, awk, gawk, nawk, osascript, jshell, groovy, rscript, julia, dotnet-script]
+    paths: heuristic
+  - id: exec_code.shell_scripts
+    programs: [bash, sh, zsh, dash, ksh, fish, tcsh, csh, powershell, pwsh, cmd, wsl]
+    paths: heuristic
+  - id: exec_code.runners
+    programs: [npm, pnpm, yarn, npx, bunx, uvx, pipx, make, cmake, ninja, gradle, gradlew, mvn, mvnw, ant, rake, just, task, tox, nox, pytest, jest, vitest, mocha, tsc, eslint, prettier, webpack, vite, esbuild, rollup, turbo, nx, sbt, bazel, ctest, msbuild, devenv, playwright, osv-scanner, gitleaks, hugo, jekyll, mkdocs, sphinx-build, bundle, composer]
+    paths: heuristic
+  - id: exec_code.go
+    programs: [go]
+    subcommands: [run, test, build, generate, vet, install, tool, "mod tidy", get, work]
+    paths: heuristic
+  - id: exec_code.cargo
+    programs: [cargo, rustc, rustup]
+    paths: heuristic
+  - id: exec_code.dotnet
+    programs: [dotnet]
+    subcommands: [run, test, build, publish, exec, watch, tool, new, pack]
+    paths: heuristic
+  - id: exec_code.containers
+    programs: [docker, podman]
+    subcommands: [run, exec, build, compose, "buildx build", "compose up"]
+    paths: heuristic
+  - id: exec_code.wrangler_dev
+    programs: [wrangler, cf]
+    subcommands: [dev, preview, types, "d1 migrations list", "d1 list", whoami, tail]
+    paths: heuristic
+  - id: exec_code.wrangler_d1_local
+    programs: [wrangler, cf]
+    subcommands: ["d1 migrations apply", "d1 execute", "d1 migrations list"]
+    flags_any: ["--local", "--persist-to"]
+    flags_none: ["--remote"]
+    paths: heuristic
+    reason: local D1 state in the worktree
+  - id: exec_code.ps.exec
+    programs: [invoke-item, import-module, invoke-build, invoke-pester, new-object, register-scheduledtask]
+    ci: true
+    shells: [powershell]
+    paths: heuristic
+  - id: exec_code.cmd.exec
+    programs: [call, start, schtasks, sc, wmic, powershell, pwsh, cscript, wscript, mshta, rundll32, regsvr32]
+    ci: true
+    shells: [cmd]
+    paths: heuristic
+# Programs that run another command whose argv this analyzer cannot unwrap. A command that uses one is Opaque
+# (docs/security.md s7 step 5: "unknown wrappers: Opaque"). Known wrappers are unwrapped in Go (wrappers.go).
+opaque_wrappers: [watch, parallel, ssh, su, runas, at, batch, script, flock, chroot, unshare, nsenter, busybox, strace, ltrace, gdb, lldb, valgrind, screen, tmux, entr, nodemon, concurrently, npm-run-all, run-p, run-s, start-process, schtasks, psexec, winrs, ssh-keyscan-exec, setpriv, systemd-run, chpst, runuser, sg, newgrp, proot, firejail, bwrap, fakeroot, unbuffer, expect, rlwrap, cronjob, crontab, apply, perf, taskset, numactl, cpulimit, daemonize, disown, coproc]

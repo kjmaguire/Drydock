@@ -1,0 +1,37 @@
+# Command class: db_migration. Remote or production schema/data migrations. Local-state migrations in the worktree
+# do not need an approval (docs/security.md s5); the remote D1 forms are a hard deny for agent processes (s13).
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7).
+class: db_migration
+rules:
+  - id: db_migration.d1_remote
+    programs: [wrangler, cf]
+    subcommands: ["d1 migrations apply", "d1 execute", "d1 export", "d1 import", "d1 delete", "d1 create", "d1 time-travel restore", "d1 migrations create"]
+    flags_any: ["--remote"]
+    kind: db_migration
+    hard_deny: true
+    paths: none
+    reason: remote D1 operations are denied for agent processes (security.md s13)
+  - id: db_migration.orm
+    programs: [prisma, knex, sequelize, sequelize-cli, typeorm, drizzle-kit, alembic, flyway, liquibase, goose, dbmate, sqlx, migrate, atlas, supabase, rails, rake, diesel, sea-orm-cli, mikro-orm, kysely-ctl, db-migrate, umzug, phinx, artisan, django-admin, manage.py, yoyo]
+    args_regex: ['^(migrate|migrate:.*|db:migrate.*|db:drop|db:reset|db:schema:load|db:rollback|upgrade|downgrade|up|down|reset|push|deploy|update|apply|clean|migration:run|migration:revert|migrations|rollback|redo|status-apply)$']
+    kind: db_migration
+    paths: none
+    reason: runs database migrations
+  - id: db_migration.prisma
+    programs: [prisma]
+    subcommands: ["migrate deploy", "migrate dev", "migrate reset", "db push", "db execute", "migrate resolve"]
+    kind: db_migration
+    paths: none
+    reason: prisma migration
+  - id: db_migration.dotnet_ef
+    programs: [dotnet]
+    subcommands: ["ef database update", "ef database drop", "ef migrations remove"]
+    kind: db_migration
+    paths: none
+    reason: EF Core migration
+  - id: db_migration.supabase
+    programs: [supabase]
+    subcommands: ["db push", "db reset", "migration up", "db remote commit"]
+    kind: db_migration
+    paths: none
+    reason: Supabase migration

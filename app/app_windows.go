@@ -65,6 +65,9 @@ func Run(assets fs.FS) error {
 		},
 	})
 	bridge.app = wa
+	if err := bridge.configureUpdater(wa, "stable", false); err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: updates: %v\n", err)
+	}
 	window = wa.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "Drydock",

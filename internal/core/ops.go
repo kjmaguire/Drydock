@@ -192,3 +192,13 @@ func (c *Core) DescribeAdapters(ctx context.Context) []map[string]any {
 	}
 	return out
 }
+
+// Activity counts what an update or shutdown would interrupt: workflow runs that are executing (a run waiting for the human
+// survives a restart, so it does not count) and agent processes that are alive.
+func (c *Core) Activity(ctx context.Context) (runs, liveAgents int, err error) {
+	if err = c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM workflow_runs WHERE status IN ('RUNNING','RECOVERING','PENDING')`).Scan(&runs); err != nil {
+		return
+	}
+	err = c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_runs WHERE ended_at=0`).Scan(&liveAgents)
+	return
+}

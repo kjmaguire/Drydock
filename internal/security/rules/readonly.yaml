@@ -1,0 +1,99 @@
+# Command class: readonly. Programs that read state and change no files, network or processes.
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7): reviewable data, not an evidence-backed complete list.
+# A program missing here classifies as unknown, which asks a human; it never allows.
+class: readonly
+rules:
+  # --- POSIX / Git Bash ---
+  - id: readonly.posix.files
+    programs: [ls, cat, head, tail, wc, stat, file, du, df, tree, diff, cmp, cut, tr, nl, od, hexdump, xxd, strings, md5sum, sha1sum, sha256sum, sha512sum, cksum, less, more, column, fold, rev, tac, comm, join, paste, realpath, readlink, basename, dirname, which, jq, cd, pushd, popd]
+    paths: positional
+  - id: readonly.posix.sort
+    programs: [sort]
+    flags_none: ["-o", "--output"]
+    paths: positional
+  - id: readonly.posix.nopaths
+    programs: [echo, printf, pwd, "true", "false", sleep, seq, expr, whoami, id, uname, hostname, test, "[", "[[", ":", type, command, alias, unalias, set, shift, return, exit, wait, jobs, umask, ulimit, getconf, nproc, arch, locale, tty, groups, logname, uptime]
+    paths: none
+  - id: readonly.posix.date
+    programs: [date]
+    flags_none: ["-s", "--set"]
+    paths: none
+  - id: readonly.posix.grep
+    programs: [grep, egrep, fgrep, ag, ack]
+    paths: positional
+    skip_first_positional: true
+    skip_unless_flags: ["-e", "-f", "--regexp", "--file"]
+  - id: readonly.posix.rg
+    programs: [rg]
+    flags_none: ["--pre", "--pre-glob"]
+    paths: positional
+    skip_first_positional: true
+    skip_unless_flags: ["-e", "-f", "--regexp", "--file"]
+  - id: readonly.posix.sed
+    programs: [sed]
+    flags_none: ["-i", "--in-place", "-I"]
+    paths: positional
+    skip_first_positional: true
+    skip_unless_flags: ["-e", "-f", "--expression", "--file"]
+  - id: readonly.posix.find
+    programs: [find]
+    flags_none: ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls"]
+    paths: positional
+  # --- Git (read-only forms) ---
+  - id: readonly.git.read
+    programs: [git]
+    subcommands: [status, log, diff, show, rev-parse, rev-list, ls-files, ls-tree, blame, describe, shortlog, cat-file, grep, name-rev, merge-base, for-each-ref, show-ref, version, help, "stash list", "stash show", "worktree list", "submodule status", "remote show"]
+    flags_none: ["--output", "--ext-diff", "--textconv"]
+    paths: heuristic
+  - id: readonly.git.bare
+    programs: [git]
+    subcommands: [branch, tag, remote, reflog]
+    bare: true
+    paths: none
+  - id: readonly.git.branch_flags
+    programs: [git]
+    subcommands: [branch, tag]
+    flags_any: ["-a", "-r", "-v", "-vv", "--list", "-l", "--show-current", "--contains", "--merged", "--no-merged"]
+    flags_none: ["-d", "-D", "--delete", "-m", "-M", "-c", "-C", "-f", "--force", "--set-upstream-to", "--unset-upstream", "-u"]
+    paths: none
+  - id: readonly.git.remote_v
+    programs: [git]
+    subcommands: [remote]
+    flags_any: ["-v", "--verbose"]
+    paths: none
+  - id: readonly.git.config_get
+    programs: [git]
+    subcommands: [config]
+    flags_any: ["--get", "--get-all", "--get-regexp", "--list", "-l", "--get-urlmatch"]
+    flags_none: ["--unset", "--unset-all", "--add", "--replace-all", "--edit", "-e"]
+    paths: none
+  - id: readonly.go.query
+    programs: [go]
+    subcommands: [env, version, "mod graph", "mod why", "mod verify"]
+    paths: none
+  # --- PowerShell (cmdlets and their aliases are normalized before matching) ---
+  - id: readonly.ps.files
+    programs: [get-childitem, get-content, get-item, get-itemproperty, select-string, test-path, resolve-path, get-filehash, split-path, convert-path, get-acl, set-location, push-location, pop-location, get-psdrive]
+    ci: true
+    shells: [powershell]
+    paths: positional
+  - id: readonly.ps.nopaths
+    programs: [get-location, write-output, write-host, write-verbose, write-warning, write-error, write-debug, join-path, get-date, get-process, get-command, get-help, get-alias, get-variable, get-host, get-service, get-member, get-module, get-random, get-uptime, get-culture, measure-object, sort-object, select-object, where-object, foreach-object, group-object, compare-object, get-unique, format-table, format-list, format-wide, out-string, out-null, convertto-json, convertfrom-json, convertto-csv, convertfrom-csv, convertto-html, get-computerinfo, get-hotfix, clear-host, start-sleep, new-timespan, get-timezone, out-host]
+    ci: true
+    shells: [powershell]
+    paths: none
+  # --- cmd.exe builtins and inbox tools ---
+  - id: readonly.cmd.files
+    programs: [dir, type, where, findstr, find, tree, more, cd, chdir, pushd, popd, fc, comp]
+    ci: true
+    shells: [cmd]
+    paths: positional
+  - id: readonly.cmd.if_exist
+    programs: [if-exist]
+    shells: [cmd]
+    paths: positional
+  - id: readonly.cmd.nopaths
+    programs: [echo, ver, whoami, hostname, systeminfo, title, color, pause, cls, setlocal, endlocal, rem, prompt, exit, vol, path]
+    ci: true
+    shells: [cmd]
+    paths: none
