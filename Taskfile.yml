@@ -1,0 +1,39 @@
+# go-task (https://taskfile.dev). Not installed by this repository; run `task <name>` where go-task is available.
+version: '3'
+
+tasks:
+  ui:install:
+    desc: Install the UI dependencies from the lockfile
+    dir: ui
+    cmds:
+      - npm ci
+
+  ui:build:
+    desc: Type-check and build the UI into ui/dist
+    dir: ui
+    cmds:
+      - npm run build
+
+  ui:test:
+    desc: UI unit and component tests (vitest, jsdom)
+    dir: ui
+    cmds:
+      - npm test
+
+  ui:e2e:
+    desc: Browser end-to-end tests against the real Go core with the scripted fake agent (needs a Chromium for Playwright)
+    deps: [ui:build]
+    dir: ui
+    cmds:
+      - npm run e2e
+
+  go:test:
+    desc: Go tests
+    cmds:
+      - go test ./...
+
+  build:dev:
+    desc: Build the UI and the development server (cmd/drydock-dev serves ui/dist over HTTP + SSE)
+    deps: [ui:build]
+    cmds:
+      - go build -o bin/drydock-dev ./cmd/drydock-dev

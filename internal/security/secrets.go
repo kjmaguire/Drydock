@@ -201,7 +201,7 @@ func secretOffsets(text string, line int, secret string) (int, int) {
 	return from + i, from + i + len(secret)
 }
 
-func mask(rule string) { return "[REDACTED:" + rule + "]" }
+func mask(rule string) string { return "[REDACTED:" + rule + "]" }
 
 // lineCol converts a byte offset into a 1-based line and column.
 func lineCol(text string, off int) (int, int) {
