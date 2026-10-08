@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"sort"
-	"strings"
-	"time"
 
 	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -715,6 +713,3 @@ func (r *Report) computeRouting(ctx context.Context, db *storage.DB, o Options, 
 	g.Note = "A decision is good when its task was accepted by a human and never escalated (no routing.escalated event, no second watchdog trip); it is bad when the task failed, was cancelled or escalated. Decisions of tasks that have not ended are pending. Until the app routes agent turns through the router, the decisions are 'static' (the agent's own configured assignment), and this section then measures the configured assignments, not router choices."
 	return nil
 }
-
-var _ = time.Now
-var _ = strings.TrimSpace

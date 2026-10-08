@@ -123,7 +123,7 @@ func TestRestartKeepsCursorAndResumesInterruptedSweep(t *testing.T) {
 	}
 }
 
-func TestSchedulerRespectsIntervalAndBackoff(t *testing.T) {
+func TestSchedulerRespectsTheIntervalAndTheConfiguredOverride(t *testing.T) {
 	h := newHarness(t, nil)
 	_, url := linearFixture(t, 3)
 	c := h.connect(integrations.KindLinear, linearToken, url, nil)
@@ -138,12 +138,16 @@ func TestSchedulerRespectsIntervalAndBackoff(t *testing.T) {
 	if ran := h.svc.Tick(ctx); len(ran) != 1 || ran[0] != c.ID {
 		t.Fatalf("tick after the interval %v", ran)
 	}
-	// a disabled connection is never polled
+	// the user lowers the interval to 60 s: 70 s later the connection is due again, 30 s later it is not
 	cv, _ := h.svc.Get(ctx, c.ID)
 	if _, err := h.svc.Connect(ctx, human, integrations.ConnectReq{ID: c.ID, Name: cv.Name, ProjectID: "prj1", BaseURL: url, PollIntervalS: 60}); err != nil {
 		t.Fatal(err)
 	}
-	h.clk.Advance(3 * time.Minute)
+	h.clk.Advance(30 * time.Second)
+	if ran := h.svc.Tick(ctx); len(ran) != 0 {
+		t.Fatalf("%v", ran)
+	}
+	h.clk.Advance(45 * time.Second)
 	if ran := h.svc.Tick(ctx); len(ran) != 1 {
 		t.Fatalf("%v", ran)
 	}
