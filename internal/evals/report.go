@@ -126,11 +126,15 @@ type ReviseSection struct {
 
 // QualitySection: completion, test success, iterations to SHIP (docs/evals.md s3.7).
 type QualitySection struct {
-	Started, Accepted, Failed, Cancelled, Active int
-	Completion                                   Ratio `json:"completion"`         // accepted / started
-	FirstCheckTestPass                           Ratio `json:"firstCheckTestPass"` // tasks whose first test evidence passed / tasks with test evidence
-	FinalTestPass                                Ratio `json:"finalTestPass"`      // accepted tasks whose last test evidence passed / accepted with test evidence
-	IterationsToShip                             Dist  `json:"iterationsToShip"`   // accepted tasks that an agent reviewer shipped
+	Started            int   `json:"started"`
+	Accepted           int   `json:"accepted"`
+	Failed             int   `json:"failed"`
+	Cancelled          int   `json:"cancelled"`
+	Active             int   `json:"active"`
+	Completion         Ratio `json:"completion"`         // accepted / started
+	FirstCheckTestPass Ratio `json:"firstCheckTestPass"` // tasks whose first test evidence passed / tasks with test evidence
+	FinalTestPass      Ratio `json:"finalTestPass"`      // accepted tasks whose last test evidence passed / accepted with test evidence
+	IterationsToShip   Dist  `json:"iterationsToShip"`   // accepted tasks that an agent reviewer shipped
 }
 
 // ResumeSection: runs recovered after a restart versus failed (docs/evals.md s3.6).
@@ -159,12 +163,15 @@ type WatchdogSection struct {
 
 // RoutingGroup is one (decided_by, tier, model) slice of decisions with an outcome.
 type RoutingGroup struct {
-	DecidedBy, Tier, Provider, Model string
-	Decisions                        int
-	Accepted                         int
-	Escalated                        int
-	Failed                           int
-	MeanIterations                   *float64
+	DecidedBy      string   `json:"decidedBy"`
+	Tier           string   `json:"tier"`
+	Provider       string   `json:"provider"`
+	Model          string   `json:"model"`
+	Decisions      int      `json:"decisions"`
+	Accepted       int      `json:"accepted"`
+	Escalated      int      `json:"escalated"`
+	Failed         int      `json:"failed"`
+	MeanIterations *float64 `json:"meanIterations,omitempty"`
 }
 
 // RoutingSection: routing quality from routing_decisions against routing_outcomes (docs/evals.md s3.7).

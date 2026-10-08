@@ -55,6 +55,8 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 
 - **P9. Provider attestations.** Private routes over plain http to a private-network host and private Gemini routes require an explicit user attestation (`lan_attested`, `billing_enabled`) recorded on the provider; without it registration is refused. Owner may change the attestation model.
 
+- **P10. Slice 2 economics choices (2026-10-08).** (a) A budget at 100% parks the run on an approval request that **re-runs the held turn after the human answers** (`RequestSpec.Retry` in `internal/workflow`, a backward-compatible engine change); approving without raising the limit lets one more turn through, rejecting fails the run. The pause is at the turn boundary: a running turn completes. (b) Cost that no CLI or provider reported is **unknown, never zero**; budgets and evals share one classification (`docs/evals.md` s11.2). (c) The startup tool-call probe spends a few billed requests, so running it automatically at every start is **opt-in** (`route.probe.startup`); selecting is always available on demand. (d) Agent turns are **not** yet routed through the router: until `core.agentConfig` is changed, the extension records one `static` decision per agent turn (the agent's own assignment) so outcomes join from day one, labeled as static everywhere. (e) Evals correct the usage `tier` of CLI agents that run on a registered provider at read time, because the runtime stamps `premium` on every agent today. (f) Telemetry stores only allowlisted, identifier-shaped attributes; free text cannot be recorded.
+
 ## 4. Locked versus open
 
 Locked: everything in section 1 except D5 and D7 proof, and the stack rows in section 2.
