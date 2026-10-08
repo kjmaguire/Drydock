@@ -31,7 +31,6 @@ import (
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/router"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
-	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/telemetry"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -270,6 +269,10 @@ func (e *economics) relayInconclusiveChecks(ctx context.Context) {
 			}
 		}
 		cancel()
+		select { // the bus closed the subscription (it was slow, or it is shutting down): do not spin
+		case <-ctx.Done():
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 
@@ -764,4 +767,3 @@ func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (
 	return map[string]any{"blocked": false, "decision": d, "explain": e.dry.Explain(d), "budget": req.Budget, "recorded": false}, nil
 }
 
-var _ = storage.Now

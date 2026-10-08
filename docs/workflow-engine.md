@@ -66,6 +66,8 @@ A `request` node's handler returns a `RequestSpec{Kind(approval|question|review)
 
 An approval marked `APPROVED` is moved to `CONSUMED` when the action it authorizes actually runs.
 
+**Retry requests (added with budgets, 2026-10-08).** A `RequestSpec` with `Retry: true` parks a node whose work is still owed (the budget gate in front of an agent turn). The pending request keeps the node's inbox; `Resume` restores it instead of routing the answer as the node's output, so the node runs again in the next superstep and reads the human's decision from the `approvals` row (APPROVED is consumed by the run it allows, REJECTED is the node's to act on; the budget gate fails the run). Without `Retry` the answer is the node's output, as before (the watchdog's pauses still work that way). Test: `TestRetryRequestRerunsTheNodeAfterTheAnswer`.
+
 ## 5. Crash recovery and exactly-once effects
 
 - **Lease**: `run_leases(run_id, owner, expires_at)`; acquired with an atomic `INSERT ... ON CONFLICT DO UPDATE WHERE expires_at < now`; renewed by a heartbeat goroutine at one third of the TTL (default TTL 30 s); released on exit. Owner ids are `hostname:pid:random`.
