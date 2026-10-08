@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
@@ -76,6 +77,7 @@ type Core struct {
 
 	extMethods map[string]Method
 	extClose   []func()
+	mcpw       atomic.Pointer[mcpWiring] // the shared MCP gateway (ext_mcp.go)
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
@@ -154,7 +156,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}}
-	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second}
+	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,
@@ -162,6 +164,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		AgentConfig: c.agentConfig,
 		OnCheck:     c.postCheck,
 		OnTurn:      c.postTurn,
+		MCPStatus:   c.mcpStatus,
 	}
 	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps)})
 	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, watchdog.Hooks{Notify: c.watchdogNotify}, nil)

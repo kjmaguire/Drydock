@@ -24,11 +24,23 @@ export async function showNewProjectForm(page: Page): Promise<void> {
   await expect(field).toBeVisible();
 }
 
-/** Open the app with the token, create a project for a fresh repo, and return its name. */
-export async function createProject(page: Page, name: string): Promise<void> {
+let nextGreen = 0;
+/** A fresh repository whose baseline tests pass and that carries a repository skill (.aet/skills/go-style). */
+export function freshGreenRepo(): string {
+  const repos = JSON.parse(process.env.DRYDOCK_E2E_GREEN_REPOS ?? '[]') as string[];
+  const r = repos[nextGreen++];
+  if (!r) throw new Error('out of green repositories: raise GREEN in global-setup.ts');
+  return r;
+}
+
+/** A folder with one Markdown page, for an expert pack of type local_dir. */
+export const docsDir = (): string => process.env.DRYDOCK_E2E_DOCS ?? '';
+
+/** Open the app with the token, create a project for a fresh repo (or the one given), and return its name. */
+export async function createProject(page: Page, name: string, repo?: string): Promise<void> {
   await page.goto(appUrl());
   await showNewProjectForm(page);
-  await page.getByLabel('Repository path').fill(freshRepo());
+  await page.getByLabel('Repository path').fill(repo ?? freshRepo());
   await page.getByLabel('Project name (optional)').fill(name);
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page.getByRole('link', { name: /# general/ })).toBeVisible();
@@ -41,6 +53,20 @@ export async function createAgent(page: Page, name: string, role: string): Promi
   await page.getByLabel('Adapter', { exact: true }).selectOption('claude');
   await page.getByRole('button', { name: 'Create agent' }).click();
   await expect(page.getByTestId('agent').filter({ hasText: name })).toBeVisible();
+}
+
+/** Create a task, assign it, and stop before Start (so a test can pick a template). */
+export async function createAssignedTask(page: Page, title: string, worker: string, reviewer: string, workerRole = 'backend', reviewerRole = 'reviewer'): Promise<void> {
+  await page.getByTestId('nav-tasks').click();
+  await page.getByRole('link', { name: 'New task' }).click();
+  await page.getByLabel('Task title').fill(title);
+  await page.getByLabel('Description').fill('Add a Multiply function to the gocalc package.');
+  await page.getByRole('button', { name: 'Create task' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: new RegExp(title) })).toBeVisible();
+  await page.getByLabel('Worker', { exact: true }).selectOption({ label: `${worker} (${workerRole})` });
+  await page.getByLabel('Reviewer', { exact: true }).selectOption({ label: `${reviewer} (${reviewerRole})` });
+  await page.getByRole('button', { name: 'Assign' }).click();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
 }
 
 export async function createAndStartTask(page: Page, title: string, worker: string, reviewer: string): Promise<void> {

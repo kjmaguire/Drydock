@@ -164,7 +164,10 @@ type wsTool struct {
 	Schema      map[string]any
 	resolved    *jsonschema.Resolved
 	Budget      int // inline budget override; 0 = gateway default
-	handler     func(ctx context.Context, r *Run, a map[string]any) (string, error)
+	// ReadOnly marks tools that never change anything. It becomes the readOnlyHint annotation, which is what lets a CLI in a
+	// read-only mode (Claude's plan mode, used for reviewers and room replies) call them without a prompt it cannot answer.
+	ReadOnly bool
+	handler  func(ctx context.Context, r *Run, a map[string]any) (string, error)
 }
 
 const wsSchemas = `{
@@ -191,13 +194,13 @@ func workspaceToolDefs() []*wsTool {
 			panic("mcp: workspace schemas: " + err.Error())
 		}
 		defs := []*wsTool{
-			{Name: "search_pack", Description: "Search expert-pack documentation. Returns cited chunks, or says nothing was found.", handler: wsSearchPack},
-			{Name: "search_requirements", Description: "Search the project's requirements documents.", handler: wsSearchRequirements},
-			{Name: "search_memory", Description: "Search project or workspace memory.", handler: wsSearchMemory},
-			{Name: "repo_map", Description: "Token-budgeted map of the repository's important symbols (currently gated, decision D5).", handler: wsRepoMap},
-			{Name: "read_range", Description: "Read a line range of a file in the worktree. Paths are worktree-relative.", handler: wsReadRange, Budget: 65536},
+			{Name: "search_pack", Description: "Search expert-pack documentation. Returns cited chunks, or says nothing was found.", ReadOnly: true, handler: wsSearchPack},
+			{Name: "search_requirements", Description: "Search the project's requirements documents.", ReadOnly: true, handler: wsSearchRequirements},
+			{Name: "search_memory", Description: "Search project or workspace memory.", ReadOnly: true, handler: wsSearchMemory},
+			{Name: "repo_map", Description: "Token-budgeted map of the repository's important symbols (currently gated, decision D5).", ReadOnly: true, handler: wsRepoMap},
+			{Name: "read_range", Description: "Read a line range of a file in the worktree. Paths are worktree-relative.", ReadOnly: true, handler: wsReadRange, Budget: 65536},
 			{Name: "task", Description: "Read the current task, add a note, or propose BLOCKED, WAITING_HUMAN or REVIEW with evidence. Cannot complete or accept a task.", handler: wsTask},
-			{Name: "skills", Description: "List skills, read one by name, or get the skills that apply to paths.", handler: wsSkills},
+			{Name: "skills", Description: "List skills, read one by name, or get the skills that apply to paths.", ReadOnly: true, handler: wsSkills},
 			{Name: "room", Description: "Read or post in the engineering room thread. Posted bodies are agent output and are rate limited.", handler: wsRoom},
 			{Name: "handoff", Description: "Create or read a handoff artifact (summary, done, open items, files).", handler: wsHandoff},
 		}

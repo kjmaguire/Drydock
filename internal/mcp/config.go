@@ -68,8 +68,8 @@ type ClientConfig struct {
 	Inline string
 	// AllowedTools are CLI-side tool allow patterns in the CLI's own naming (Claude: mcp__drydock__*).
 	AllowedTools []string
-	// Verified is true only where the mechanism is confirmed by Phase 0 evidence. Even then no live run has exercised
-	// the gateway end to end in this repository's tests.
+	// Verified is true only where the mechanism is confirmed: Claude's stdio-shim route was run against the real Claude Code
+	// 2.1.294 (TestRealClaudeTransports and the core wiring test), nothing else has been.
 	Verified bool
 	Notes    []string
 }
@@ -130,12 +130,12 @@ func ConfigFor(provider string, ep Endpoint, opts ...ConfigOptions) (ClientConfi
 		cfg.AllowedTools = []string{ClaudeToolName("*")}
 		cfg.Verified = true
 		cfg.Notes = append(cfg.Notes,
-			"flags and the mcp__<server>__<tool> naming are from the Claude Code help and docs (agent-clis section 1); no live claude run has exercised the gateway yet",
+			"flags and the mcp__<server>__<tool> naming are from the Claude Code help and docs (agent-clis section 1); the stdio-shim route was exercised by the real Claude Code 2.1.294 on Linux (internal/mcp TestRealClaudeTransports, internal/core TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig); not on Windows",
 			"-p mode waits at most MCP_TIMEOUT (30 s) for servers: the gateway answers initialize and tools/list without contacting upstreams",
 			"--permission-prompt-tool mcp__drydock__permission_prompt is not provided by this package (the permission prompt tool is a workflow concern)")
 		if o.Transport == TransportDirectHTTP {
 			cfg.Verified = false
-			cfg.Notes = append(cfg.Notes, "UNVERIFIED: whether Claude sends a configured Authorization header to an http MCP server; the shim is the default for that reason")
+			cfg.Notes = append(cfg.Notes, "the http route with an Authorization header also worked once with the real Claude Code 2.1.294 on Linux (TestRealClaudeTransports), but it is one observation on one host and one process fewer is not worth it: the shim stays the default and this route stays unverified")
 		}
 	case "codex":
 		if cfg.JSON, err = file(); err != nil {

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { MergeStrategy, Project, ProjectMode } from '../api/types';
 import { useClient } from '../state/context';
 import { ErrorNote, Page } from './common';
+import { CheckSettingsPanel, DevSettingsPanel } from './ProjectDev';
 
 export function ProjectCreate({ first, onCreated }: { first: boolean; onCreated: (p: Project) => void }) {
   const client = useClient();
@@ -112,6 +113,8 @@ export function ProjectSettings({ project, onChanged }: { project: Project; onCh
           {saved ? <span role="status">Saved.</span> : null}
         </div>
       </form>
+      <CheckSettingsPanel projectId={project.id} />
+      <DevSettingsPanel projectId={project.id} />
     </Page>
   );
 }

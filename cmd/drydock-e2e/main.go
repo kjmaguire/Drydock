@@ -11,10 +11,12 @@
 // Output, one line each, on stdout (the Playwright global setup parses them):
 //
 //	DRYDOCK_E2E_REPO <path>              a fresh git repository copied from testdata/fixtures/gocalc (repeated -repos times)
+//	DRYDOCK_E2E_GREEN_REPO <path>        (-green-repos N) baseline tests pass, and a repository skill is committed
+//	DRYDOCK_E2E_DOCS <path>              a folder with one Markdown page, for an expert pack of type local_dir
 //	DRYDOCK_E2E http://127.0.0.1:PORT/?token=TOKEN
 //
 // The harness also installs an in-memory credential store (a test double) so provider keys can be entered in the e2e.
-// The second line is printed last, after the server listens.
+// The DRYDOCK_E2E line is printed last, after the server listens.
 package main
 
 import (
@@ -44,7 +46,14 @@ import (
 const (
 	// implemented Subtract, without and with a doc comment (the second is what the worker writes after human feedback)
 	implPlain = "package gocalc\n\nfunc Add(a, b int) int { return a + b }\n\nfunc Subtract(a, b int) int { return a - b }\n"
-	implDoc   = "package gocalc\n\nfunc Add(a, b int) int { return a + b }\n\n// Subtract returns a minus b.\nfunc Subtract(a, b int) int { return a - b }\n"
+	// the fixture with Subtract already implemented, so a green baseline exists for the test-first templates
+	greenCalc    = "package gocalc\n\nfunc Add(a, b int) int { return a + b }\n\n// Subtract returns a minus b.\nfunc Subtract(a, b int) int { return a - b }\n"
+	calcMul      = greenCalc + "\n// Multiply returns a times b.\nfunc Multiply(a, b int) int { return a * b }\n"
+	mulTests     = "package gocalc\n\nimport \"testing\"\n\n// AC1: Given 3 and 4, when Multiply is called, then it returns 12\nfunc TestAC1_Multiply(t *testing.T) {\n\tif got := Multiply(3, 4); got != 12 {\n\t\tt.Fatalf(\"Multiply(3,4) = %d, want 12\", got)\n\t}\n}\n\n// AC2: Given 0 and 9, when Multiply is called, then it returns 0\nfunc TestAC2_MultiplyByZero(t *testing.T) {\n\tif got := Multiply(0, 9); got != 0 {\n\t\tt.Fatalf(\"Multiply(0,9) = %d, want 0\", got)\n\t}\n}\n"
+	mulSpec      = "# Multiply\n## Problem\nCallers of the gocalc package cannot multiply two integers.\n## Scope and non-goals\nIntegers only.\n## Acceptance criteria\n- Given 3 and 4, when Multiply is called, then it returns 12\n- Given 0 and 9, when Multiply is called, then it returns 0\n## Open questions\nnone"
+	skillMD      = "---\nname: go-style\ndescription: Go style for this repository\nmetadata:\n  drydock.globs: \"**/*.go\"\n  drydock.roles: \"Backend\"\n---\nKeep functions small.\n"
+	planProposal = `{"tasks":[{"key":"mul","title":"Add Multiply","description":"Add Multiply to gocalc","role":"backend","priority":3,"dependsOn":[],"acceptance":["Given 3 and 4, when Multiply is called, then it returns 12"]},{"key":"div","title":"Add Divide","description":"Add Divide to gocalc","role":"backend","dependsOn":["mul"],"acceptance":["Given 8 and 2, when Divide is called, then it returns 4"]}],"notes":"multiply first"}`
+	implDoc      = "package gocalc\n\nfunc Add(a, b int) int { return a + b }\n\n// Subtract returns a minus b.\nfunc Subtract(a, b int) int { return a - b }\n"
 )
 
 func main() {
@@ -55,15 +64,16 @@ func main() {
 	ui := flag.String("ui", "ui/dist", "built UI to serve")
 	fixture := flag.String("fixture", "testdata/fixtures/gocalc", "fixture project copied into each fresh repository")
 	repos := flag.Int("repos", 1, "number of fresh git repositories to create and print")
+	green := flag.Int("green-repos", 0, "number of fresh repositories whose baseline tests pass and that carry a repository skill (for the test-first templates and the Skills page)")
 	port := flag.Int("port", 0, "port on 127.0.0.1 (0 = any)")
 	flag.Parse()
 
-	if err := run(*ui, *fixture, *repos, *port); err != nil {
+	if err := run(*ui, *fixture, *repos, *green, *port); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(uiDir, fixture string, nRepos, port int) error {
+func run(uiDir, fixture string, nRepos, nGreen, port int) error {
 	root, err := os.MkdirTemp("", "drydock-e2e-")
 	if err != nil {
 		return err
@@ -80,6 +90,11 @@ func run(uiDir, fixture string, nRepos, port int) error {
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
 			// after a human "request changes" the worker's prompt carries "Reviewer feedback:"
 			{Match: "Reviewer feedback", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implDoc}}, {Say: "addressed the feedback: added the doc comment"}}},
+			// the Feature template (spec gate, tests first) and PlanTeam: each Drydock prompt starts with a phase line
+			{Match: "Drydock phase: plan", Steps: []fakeagent.Step{{Say: planProposal}}},
+			{Match: "Drydock phase: spec", Steps: []fakeagent.Step{{Say: mulSpec}}},
+			{Match: "Drydock phase: write-tests", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "multiply_test.go", Content: mulTests}}, {Say: "wrote the tests first: done multiply_test.go"}}},
+			{Match: "currently fail", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: calcMul}}, {Say: "implemented Multiply"}}},
 		},
 		Default: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implPlain}}, {Say: "implemented Subtract"}},
 	})
@@ -107,6 +122,38 @@ func run(uiDir, fixture string, nRepos, port int) error {
 		}
 		fmt.Printf("DRYDOCK_E2E_REPO %s\n", dir)
 	}
+
+	for i := 0; i < nGreen; i++ {
+		dir := filepath.Join(root, fmt.Sprintf("green%d", i), "gocalc")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := copyTree(fixture, dir); err != nil {
+			return fmt.Errorf("copy fixture: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "calc.go"), []byte(greenCalc), 0o644); err != nil {
+			return err
+		}
+		sk := filepath.Join(dir, ".aet", "skills", "go-style")
+		if err := os.MkdirAll(sk, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(sk, "SKILL.md"), []byte(skillMD), 0o644); err != nil {
+			return err
+		}
+		if _, err := git.Init(context.Background(), dir, "main"); err != nil {
+			return fmt.Errorf("git init: %w", err)
+		}
+		fmt.Printf("DRYDOCK_E2E_GREEN_REPO %s\n", dir)
+	}
+	docs := filepath.Join(root, "docs")
+	if err := os.MkdirAll(docs, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(docs, "channels.md"), []byte("# Channels\n\nA goroutine communicates over a channel. Close a channel from the sender.\n"), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("DRYDOCK_E2E_DOCS %s\n", docs)
 
 	c, err := core.Open(context.Background(), core.Config{
 		DataDir:  filepath.Join(root, "data"),

@@ -9,6 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const uiDir = resolve(here, '..');
 const repoRoot = resolve(uiDir, '..');
 const REPOS = 12;
+const GREEN = 8;
 
 let child: ChildProcess | undefined;
 
@@ -26,8 +27,10 @@ export default async function globalSetup() {
   });
   if (build.status !== 0) throw new Error(`go build ./cmd/drydock-e2e failed:\n${build.stdout}\n${build.stderr}`);
 
-  child = spawn(exe, ['-ui', join(uiDir, 'dist'), '-repos', String(REPOS)], { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(exe, ['-ui', join(uiDir, 'dist'), '-repos', String(REPOS), '-green-repos', String(GREEN)], { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] });
   const repos: string[] = [];
+  const greens: string[] = [];
+  let docs = '';
   let url = '';
   let stderr = '';
   child.stderr!.on('data', (d) => (stderr += String(d)));
@@ -41,6 +44,8 @@ export default async function globalSetup() {
         const line = buf.slice(0, i).trim();
         buf = buf.slice(i + 1);
         if (line.startsWith('DRYDOCK_E2E_REPO ')) repos.push(line.slice('DRYDOCK_E2E_REPO '.length));
+        else if (line.startsWith('DRYDOCK_E2E_GREEN_REPO ')) greens.push(line.slice('DRYDOCK_E2E_GREEN_REPO '.length));
+        else if (line.startsWith('DRYDOCK_E2E_DOCS ')) docs = line.slice('DRYDOCK_E2E_DOCS '.length);
         else if (line.startsWith('DRYDOCK_E2E ')) {
           url = line.slice('DRYDOCK_E2E '.length);
           clearTimeout(timer);
@@ -55,6 +60,8 @@ export default async function globalSetup() {
   });
   process.env.DRYDOCK_E2E_URL = url;
   process.env.DRYDOCK_E2E_REPOS = JSON.stringify(repos);
+  process.env.DRYDOCK_E2E_GREEN_REPOS = JSON.stringify(greens);
+  process.env.DRYDOCK_E2E_DOCS = docs;
 
   return async () => {
     child?.kill('SIGTERM');

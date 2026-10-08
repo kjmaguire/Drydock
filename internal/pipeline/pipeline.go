@@ -50,6 +50,17 @@ type Deps struct {
 	Scanner security.SecretScanner
 	// DepsBinary overrides the osv-scanner executable of the `deps` check (tests; default osv-scanner on PATH).
 	DepsBinary string
+	// MCPStatus, if set, says whether (and with which tools) the agent's turn gets the MCP gateway entry, so the context
+	// manifest can list it as included or excluded with the reason. The wiring itself is rt.Runtime.MCP, which sees every
+	// session; this is only the read side for the manifest. Nil: the manifest says MCP is not wired in this build.
+	MCPStatus func(ctx context.Context, t tasks.Task, agentID, phase string) MCPStatus
+}
+
+// MCPStatus is the manifest view of one turn's MCP attachment.
+type MCPStatus struct {
+	Attached bool
+	Reason   string   // why not, when not attached
+	Tools    []string // exposed tool names the run may call, when attached
 }
 
 // Input is the run input of pipeline workflows.
@@ -188,6 +199,13 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 		if st, err := os.Stat(filepath.Join(t.Worktree, name)); err == nil {
 			m.Add("file:"+name, true, int(st.Size()), "generated instruction file read natively by the CLI (cache-stable prefix)", 5)
 		}
+	}
+	if d.MCPStatus == nil {
+		m.Add("mcp:drydock", false, 0, "MCP gateway not wired in this build: the agent has no search_pack, search_requirements, search_memory, skills or read_range tools", 4)
+	} else if st := d.MCPStatus(ctx, t, agentID, role); st.Attached {
+		m.Add("mcp:drydock", true, 0, "one gateway entry (loopback, per-run token): tools "+strings.Join(st.Tools, ", ")+"; results are fetched on demand, nothing is preloaded", 4)
+	} else {
+		m.Add("mcp:drydock", false, 0, "not attached: "+st.Reason, 4)
 	}
 	m.Add("repo map", false, 0, "not built: tree-sitter is gated until the Windows CGO job is green (decision D5)", 9)
 	m.Add("project memory", false, 0, "retrieved on demand (search_memory), not preloaded; accepted memory is already in AGENTS.md", 8)

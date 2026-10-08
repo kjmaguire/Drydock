@@ -10,6 +10,16 @@ export type Route =
   | { name: 'activity' }
   | { name: 'project' }
   | { name: 'project-new' }
+  | { name: 'budgets' }
+  | { name: 'evals' }
+  | { name: 'routing' }
+  | { name: 'packs' }
+  | { name: 'requirements' }
+  | { name: 'milestones' }
+  | { name: 'skills' }
+  | { name: 'memory' }
+  | { name: 'plan' }
+  | { name: 'integrations' }
   | { name: 'connections' }
   | { name: 'providers' }
   | { name: 'settings' };
@@ -35,6 +45,17 @@ export function parseRoute(hash: string): Route {
       return { name: 'activity' };
     case 'project':
       return b === 'new' ? { name: 'project-new' } : { name: 'project' };
+    case 'budgets':
+    case 'evals':
+    case 'routing':
+    case 'packs':
+    case 'requirements':
+    case 'milestones':
+    case 'skills':
+    case 'memory':
+    case 'plan':
+    case 'integrations':
+      return { name: a };
     case 'connections':
       return { name: 'connections' };
     case 'providers':

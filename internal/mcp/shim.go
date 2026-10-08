@@ -120,7 +120,7 @@ func (s *shim) middleware(next sdk.MethodHandler) sdk.MethodHandler {
 						if all == nil {
 							all = []*sdk.Tool{}
 						}
-						return &sdk.ListToolsResult{Tools: all}, nil
+						return &sdk.ListToolsResult{Cacheable: sdk.Cacheable{TTLMs: 0, CacheScope: "private"}, Tools: all}, nil // see Run.middleware
 					}
 					s.drop(sess)
 				}
@@ -143,18 +143,18 @@ func (s *shim) middleware(next sdk.MethodHandler) sdk.MethodHandler {
 				}
 			}
 			if err != nil {
-				return textResult("gateway unreachable: "+err.Error(), true), nil
+				return completeResult(cr, textResult("gateway unreachable: "+err.Error(), true)), nil
 			}
 			res, err := sess.CallTool(ctx, &sdk.CallToolParams{Name: cr.Params.Name, Arguments: cr.Params.Arguments})
 			if err == nil {
-				return res, nil
+				return completeResult(cr, res), nil
 			}
 			var je *jsonrpc.Error
 			if errors.As(err, &je) {
 				return nil, je
 			}
 			s.drop(sess)
-			return textResult("gateway unreachable: "+err.Error(), true), nil
+			return completeResult(cr, textResult("gateway unreachable: "+err.Error(), true)), nil
 		}
 		return next(ctx, method, req)
 	}

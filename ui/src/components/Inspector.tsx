@@ -4,6 +4,7 @@ import { useClient } from '../state/context';
 import { useLive } from '../state/hooks';
 import { Badge, ErrorNote, PresenceDot } from './common';
 import { UsageTable } from './Usage';
+import { TaskDecisions } from './Explain';
 
 const time = (ms: number) => (ms > 0 ? formatDateTime(ms) : '');
 
@@ -86,6 +87,12 @@ export function AgentInspector({ agentId, presence, onMessage }: { agentId: stri
       ))}
       <h4>Usage</h4>
       <UsageTable rows={usage} />
+      {runs.find((r) => r.taskId) ? (
+        <>
+          <h4>Why this model? (latest task)</h4>
+          <TaskDecisions taskId={runs.find((r) => r.taskId)!.taskId} />
+        </>
+      ) : null}
     </div>
   );
 }

@@ -29,6 +29,26 @@ type Runtime struct {
 	Adapters map[string]agents.Adapter
 	// NudgeWait is how long a turn waits for a watchdog nudge after an interrupt (default 15s).
 	NudgeWait time.Duration
+	// MCP, if set, is called by Spawn before the agent process starts to give the session its MCP gateway endpoint (docs/mcp.md).
+	// It may set cfg.Spec.MCPConfigPath and extend cfg.Spec.AllowedTools. Every session goes through Spawn (workflow turns,
+	// room replies, the planner), so this one hook covers all of them. A hook error does not stop the turn: the session runs
+	// without MCP and the reason is published as agent.mcp. Nil means no MCP (tests of other packages).
+	MCP func(ctx context.Context, cfg *Config, runID string) (MCPAttachment, error)
+}
+
+// MCPAttachment is what the MCP hook reports for one session. It never carries the run's bearer token.
+type MCPAttachment struct {
+	// Attached is true when cfg.Spec.MCPConfigPath was set.
+	Attached bool
+	// Reason says why MCP was not attached (empty when it was).
+	Reason string
+	// Transport is the transport of the single gateway entry ("stdio-shim" or "http").
+	Transport string
+	// Tools are the exposed tool names the run may call.
+	Tools []string
+	// Release ends the gateway run and removes the config file. Spawn calls it exactly once, when the session ends (Stop,
+	// process exit, crash) or when the process could not be started.
+	Release func()
 }
 
 // Config describes one agent session to start.
@@ -54,6 +74,18 @@ type Managed struct {
 	timer   *time.Timer
 	usage   []workflow.UsageChunk
 	stopped atomic.Bool
+
+	releaseMCP func()
+	mcpOnce    sync.Once
+}
+
+// releaseMCPRun ends the session's gateway run (idempotent).
+func (m *Managed) releaseMCPRun() {
+	m.mcpOnce.Do(func() {
+		if m.releaseMCP != nil {
+			m.releaseMCP()
+		}
+	})
 }
 
 // Spawn starts the agent process and records the run.
@@ -62,12 +94,29 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	if !ok {
 		return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
 	}
+	runID := ids.New("arun")
+	var att MCPAttachment
+	if r.MCP != nil && cfg.Spec.MCPConfigPath == "" {
+		var merr error
+		if att, merr = r.MCP(ctx, &cfg, runID); merr != nil {
+			att = MCPAttachment{Reason: "attaching the gateway failed: " + merr.Error()}
+			cfg.Spec.MCPConfigPath = ""
+		}
+		info := map[string]any{"attached": att.Attached, "reason": att.Reason, "transport": att.Transport, "tools": att.Tools}
+		if att.Tools == nil {
+			info["tools"] = []string{}
+		}
+		r.publish(ctx, "agent.mcp", cfg, runID, info)
+	}
 	sess, err := ad.Start(ctx, r.PM, cfg.Spec)
 	if err != nil {
+		if att.Release != nil {
+			att.Release()
+		}
 		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
 		return nil, err
 	}
-	m := &Managed{rt: r, cfg: cfg, RunID: ids.New("arun"), Sess: sess}
+	m := &Managed{rt: r, cfg: cfg, RunID: runID, Sess: sess, releaseMCP: att.Release}
 	if r.DB != nil {
 		_ = r.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `INSERT INTO agent_runs(id,agent_id,task_id,session_id,pid,cwd,status,started_at) VALUES(?,?,?,?,?,?,?,?)`,
@@ -93,6 +142,7 @@ func (r *Runtime) publish(ctx context.Context, typ string, cfg Config, runID str
 
 func (m *Managed) watchExit() {
 	ei := <-m.Sess.Wait()
+	defer m.releaseMCPRun() // the process is gone (clean exit, crash or kill): its gateway run and token die with it
 	status := "STOPPED"
 	var errMsg string
 	if !m.stopped.Load() && (ei.Err != nil || ei.Code != 0) {
@@ -118,7 +168,9 @@ func (m *Managed) watchExit() {
 func (m *Managed) Stop(ctx context.Context) error {
 	m.stopped.Store(true)
 	m.flushDelta()
-	return m.Sess.Stop(ctx)
+	err := m.Sess.Stop(ctx)
+	m.releaseMCPRun()
+	return err
 }
 
 // observe records a chunk: events (text deltas coalesced), usage rows, session id.

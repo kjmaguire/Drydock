@@ -203,6 +203,10 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 	if !inc["file:AGENTS.md"] || !inc["prompt (work)"] || !strings.Contains(exc["repo map"], "D5") || exc["previous session transcript"] == "" {
 		t.Fatalf("manifest %+v", mf.Items)
 	}
+	// without the MCP wiring (this harness sets none) the manifest says so instead of staying silent
+	if !strings.Contains(exc["mcp:drydock"], "not wired") {
+		t.Fatalf("manifest must list the MCP entry as excluded: %+v", mf.Items)
+	}
 	if log := gitLog(t, e.repo.Root); !strings.Contains(log, "Merge Implement Subtract") {
 		t.Fatalf("no merge commit:\n%s", log)
 	}

@@ -10,7 +10,10 @@ import (
 // Start runs after the base services are up; the methods it returns join the registry the UI and tests call, and Close (if
 // non-nil) runs on shutdown, before the database closes.
 type Extension struct {
-	Name  string
+	Name string
+	// After names extensions that must have started before this one (their services are looked up in Start). Unknown or
+	// failed names are ignored; the declared order breaks ties.
+	After []string
 	Start func(ctx context.Context, c *Core) (methods map[string]Method, closeFn func(), err error)
 }
 
@@ -32,7 +35,7 @@ func (c *Core) startExtensions(ctx context.Context) error {
 	list := append([]Extension(nil), exts...)
 	extMu.Unlock()
 	c.extMethods = map[string]Method{}
-	for _, e := range list {
+	for _, e := range orderExtensions(list) {
 		m, closeFn, err := e.Start(ctx, c)
 		if err != nil {
 			c.logf("extension %s unavailable: %v", e.Name, err)
@@ -50,4 +53,40 @@ func (c *Core) startExtensions(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// orderExtensions returns the extensions with every After dependency started first (stable otherwise).
+func orderExtensions(list []Extension) []Extension {
+	known := map[string]bool{}
+	for _, e := range list {
+		known[e.Name] = true
+	}
+	done := map[string]bool{}
+	out := make([]Extension, 0, len(list))
+	rest := append([]Extension(nil), list...)
+	for len(rest) > 0 {
+		progressed := false
+		var next []Extension
+		for _, e := range rest {
+			ready := true
+			for _, a := range e.After {
+				if known[a] && !done[a] {
+					ready = false
+				}
+			}
+			if ready {
+				out = append(out, e)
+				done[e.Name] = true
+				progressed = true
+			} else {
+				next = append(next, e)
+			}
+		}
+		if !progressed { // a cycle: start the rest in declared order rather than never
+			out = append(out, next...)
+			break
+		}
+		rest = next
+	}
+	return out
 }

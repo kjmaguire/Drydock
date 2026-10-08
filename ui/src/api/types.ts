@@ -222,6 +222,7 @@ export interface Room {
   name: string;
   topic?: string;
   mode: string;
+  modeParams?: { order?: string[]; moderator?: string; max_rounds?: number; max_parallel?: number };
   taskId?: string;
   archived: boolean;
   createdBy?: string;

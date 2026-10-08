@@ -27,6 +27,10 @@ import (
 const modeEnv = "DRYDOCK_MCP_TEST_MODE"
 
 func TestMain(m *testing.M) {
+	// the real Claude Code starts the shim as "<this binary> mcp-shim" (see TestRealClaudeTransports)
+	if code, ok := MaybeRunShim(os.Args); ok {
+		os.Exit(code)
+	}
 	switch os.Getenv(modeEnv) {
 	case "server":
 		if os.Getenv("DRYDOCK_MCP_TEST_FAIL_START") != "" {

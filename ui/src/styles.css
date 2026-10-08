@@ -927,3 +927,66 @@ fieldset {
 .right .table {
   font-size: 12px;
 }
+
+/* round 3 additions */
+.meter {
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+.meter-fill {
+  height: 100%;
+  background: var(--info);
+}
+.meter-ok {
+  background: var(--ok);
+}
+.meter-warning {
+  background: var(--warn);
+}
+.meter-exceeded {
+  background: var(--err);
+}
+.cards.single {
+  grid-template-columns: 1fr;
+}
+.template-info,
+.spec-gate,
+.budget-pause {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: var(--bg-0);
+  flex-basis: 100%;
+}
+.budget-pause {
+  border-color: var(--err);
+}
+.quoted {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+}
+.rule-list {
+  list-style: none;
+  padding: 0;
+}
+.rule-list li {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+.room-agents {
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.hits {
+  padding-left: 20px;
+}
+.citation {
+  font-size: 12px;
+}

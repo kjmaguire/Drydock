@@ -15,12 +15,17 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
 func TestMain(m *testing.M) {
+	// a real agent CLI starts the gateway's stdio shim as <this binary> mcp-shim; it must never fall through to running the tests
+	if code, ok := mcp.MaybeRunShim(os.Args); ok {
+		os.Exit(code)
+	}
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
 	}

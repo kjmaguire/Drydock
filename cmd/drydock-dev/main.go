@@ -13,10 +13,14 @@ import (
 	"os/signal"
 
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
 )
 
 func main() {
+	if code, ok := mcp.MaybeRunShim(os.Args); ok { // the gateway's stdio shim is this same executable (docs/mcp.md)
+		os.Exit(code)
+	}
 	data := flag.String("data", "", "data directory (default: a new temp directory)")
 	ui := flag.String("ui", "ui/dist", "built UI to serve")
 	port := flag.Int("port", 0, "port on 127.0.0.1 (0 = any)")

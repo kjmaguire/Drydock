@@ -111,7 +111,7 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await createProject(page, 'gocalc-pr');
   await page.getByRole('link', { name: 'Project settings' }).click();
   await page.getByLabel('Mode', { exact: true }).selectOption('pr_flow');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
   await page.getByRole('link', { name: 'Pull Requests' }).click();
   await expect(page.getByText('No task has a pull request')).toBeVisible();

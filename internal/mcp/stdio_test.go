@@ -270,6 +270,9 @@ func TestStdioShimThroughRealSubprocess(t *testing.T) {
 	if strings.Join(names, ",") != "fetch_range,srv__big,srv__echo" {
 		t.Fatalf("tools through the shim: %v", names)
 	}
+	if lr, err := cs.ListTools(t.Context(), nil); err != nil || lr.CacheScope != "private" {
+		t.Fatalf("the shim's tools/list must carry cacheScope (Claude Code rejects it otherwise): %v %+v", err, lr)
+	}
 	res := callTool(t, cs, "srv__echo", map[string]any{"text": "via shim"})
 	if body, _ := ExtractBody(textOf(res)); body != "echo: via shim" {
 		t.Fatalf("shim result: %q", textOf(res))
@@ -337,5 +340,41 @@ func TestShimRefusesToSendTheTokenAnywhereButLoopback(t *testing.T) {
 	}
 	if err := checkShimTarget(fmt.Sprintf("http://[::1]:%d/mcp/r", 80), "t"); err != nil {
 		t.Error(err)
+	}
+}
+
+// A client on the 2026-07-28 protocol (Claude Code 2.1.294) talks to the shim: list results carry cacheScope and call results carry
+// resultType, otherwise the CLI discards them. Found by running the real Claude Code against the generated config.
+func TestStdioShimServesNewProtocolClients(t *testing.T) {
+	ts, _ := startHTTPUpstream(t, "", nil)
+	self, _ := os.Executable()
+	e := newEnv(t, func(o *Options) { o.ShimCommand = []string{self, "mcp-shim"} })
+	ep := e.startRun(RunConfig{Info: RunInfo{RunID: "r-shim3", ProjectID: "p"}, Servers: []ServerSpec{httpSpec("srv", ts.URL, nil)}, Policy: allow(map[string][]string{"srv": {"echo"}})})
+	cfg, err := ConfigFor("claude", *ep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := shimCommandFromConfig(t, cfg)
+	client := sdk.NewClient(&sdk.Implementation{Name: "cli", Version: "1"}, nil)
+	cs, err := client.Connect(t.Context(), &sdk.CommandTransport{Command: cmd}, &sdk.ClientSessionOptions{ProtocolVersion: protocolNew})
+	if err != nil {
+		t.Fatalf("connect through the shim: %v", err)
+	}
+	defer cs.Close()
+	if v := cs.InitializeResult().ProtocolVersion; v != protocolNew {
+		t.Fatalf("negotiated %q", v)
+	}
+	lr, err := cs.ListTools(t.Context(), nil)
+	if err != nil || lr.CacheScope != "private" || len(lr.Tools) == 0 {
+		t.Fatalf("tools/list through the shim: %v %+v", err, lr)
+	}
+	for _, c := range []struct {
+		tool string
+		args map[string]any
+	}{{"srv__echo", map[string]any{"text": "x"}}, {"srv__counter", map[string]any{}} /* refused by the allowlist */} {
+		raw, _ := json.Marshal(callTool(t, cs, c.tool, c.args))
+		if !strings.Contains(string(raw), `"resultType":"complete"`) {
+			t.Fatalf("%s through the shim lacks resultType: %s", c.tool, raw)
+		}
 	}
 }

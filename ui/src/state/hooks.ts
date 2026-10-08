@@ -41,7 +41,9 @@ export function useLive<T>(
 
   const run = useCallback(() => {
     const my = ++gen.current;
-    fetchRef.current().then(
+    Promise.resolve()
+      .then(() => fetchRef.current())
+      .then(
       (data) => {
         if (mounted.current && my === gen.current) setState({ data, error: undefined, loading: false });
       },

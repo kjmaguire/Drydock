@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -19,6 +20,40 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 )
+
+// Claude Code 2.1.294 negotiates the 2026-07-28 protocol, in which a list result must carry cacheScope ("public" or "private"):
+// an empty one makes the CLI discard every tool. The gateway replaces the SDK's tools/list handler, so it sets the field itself.
+func TestToolsListCarriesCacheControlFields(t *testing.T) {
+	e := newEnv(t, nil)
+	ep := e.startRun(RunConfig{Info: RunInfo{RunID: "r-cache", ProjectID: "p"}, Policy: allow(map[string][]string{WorkspaceServerID: {"read_range"}})})
+	cs := e.connect(ep)
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CacheScope != "private" || res.TTLMs != 0 || len(res.Tools) == 0 {
+		t.Fatalf("tools/list cache fields: scope=%q ttl=%d tools=%d", res.CacheScope, res.TTLMs, len(res.Tools))
+	}
+}
+
+// completeResult marks tools/call results for the new protocol and leaves older revisions alone.
+func TestCompleteResultOnlyForTheNewProtocol(t *testing.T) {
+	res := textResult("hello", false)
+	res.Meta = sdk.Meta{"drydock": map[string]any{"handle": "res_1"}}
+	newReq := &sdk.CallToolRequest{Params: &sdk.CallToolParamsRaw{Meta: sdk.Meta{sdk.MetaKeyProtocolVersion: protocolNew}}}
+	raw, _ := json.Marshal(completeResult(newReq, res))
+	if !strings.Contains(string(raw), `"resultType":"complete"`) || !strings.Contains(string(raw), `"handle":"res_1"`) || !strings.Contains(string(raw), `"text":"hello"`) {
+		t.Fatalf("new protocol: %s", raw)
+	}
+	oldReq := &sdk.CallToolRequest{Params: &sdk.CallToolParamsRaw{}}
+	if raw, _ := json.Marshal(completeResult(oldReq, res)); strings.Contains(string(raw), "resultType") {
+		t.Fatalf("older protocol must be left unchanged: %s", raw)
+	}
+	errRes := textResult("denied", true)
+	if raw, _ := json.Marshal(completeResult(newReq, errRes)); !strings.Contains(string(raw), `"isError":true`) || !strings.Contains(string(raw), `"resultType":"complete"`) {
+		t.Fatalf("error result: %s", raw)
+	}
+}
 
 func TestAllowlistFiltersListAndDeniesCall(t *testing.T) {
 	ts, st := startHTTPUpstream(t, "", nil)
@@ -1049,5 +1084,30 @@ func TestPurgeAndInvalidateCache(t *testing.T) {
 	callTool(t, cs, "srv__echo", map[string]any{"text": "fresh"})
 	if st.count("echo") != before+1 {
 		t.Fatal("invalidated entry must miss")
+	}
+}
+
+// Read-only Workspace tools carry readOnlyHint so a CLI in a read-only mode (Claude's plan mode, used for reviewers and room
+// replies) may call them; the tools that change state do not. Found with the real Claude Code, which refused search_pack in
+// plan mode before the annotation existed.
+func TestWorkspaceToolsAreAnnotatedReadOnlyOnlyWhenTheyAre(t *testing.T) {
+	e := newEnv(t, nil)
+	ep := e.startRun(RunConfig{Info: RunInfo{RunID: "r-ro", ProjectID: "p"}, Policy: allow(map[string][]string{WorkspaceServerID: {"*"}})})
+	cs := e.connect(ep)
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly := map[string]bool{"search_pack": true, "search_requirements": true, "search_memory": true, "repo_map": true, "read_range": true, "skills": true, "fetch_range": true}
+	seen := 0
+	for _, tl := range res.Tools {
+		got := tl.Annotations != nil && tl.Annotations.ReadOnlyHint
+		if got != readOnly[tl.Name] {
+			t.Errorf("%s: readOnlyHint=%v, want %v", tl.Name, got, readOnly[tl.Name])
+		}
+		seen++
+	}
+	if seen != 10 {
+		t.Fatalf("expected the nine workspace tools and fetch_range, got %d", seen)
 	}
 }

@@ -15,7 +15,17 @@ const KIND_LABEL: Record<string, string> = {
 export function needsTarget(it: NeedsYouItem): string {
   if (it.taskId) return `#/task/${encodeURIComponent(it.taskId)}`;
   if (it.roomId) return `#/room/${encodeURIComponent(it.roomId)}`;
+  // an approval with no task is an outbound write to an integration: its exact text is on the Integrations page
+  if (it.kind === 'approval') return '#/integrations';
   return '#/needs-you';
+}
+
+/** A plain-language hint for the kinds of item that need more than a click. Derived from the title; the title is outside text, so it only selects a fixed hint. */
+export function needsHint(it: NeedsYouItem): string {
+  if (it.kind === 'approval' && /^Budget limit/i.test(it.title)) return 'A budget stopped the next agent turn. Open the task to raise the limit and resume, or stop the run.';
+  if (it.kind === 'review' && /^Accept the spec/i.test(it.title)) return 'The spec gate: nothing is built until you accept the spec.';
+  if (it.kind === 'approval' && !it.taskId && !it.roomId) return 'An outbound write to a connected service. Open Integrations to read the exact text and approve or decline.';
+  return '';
 }
 
 export function NeedsYouView({ projectId, agents }: { projectId: string; agents: readonly Agent[] }) {
@@ -41,6 +51,7 @@ export function NeedsYouView({ projectId, agents }: { projectId: string; agents:
               {formatDateTime(it.createdAt)}
             </div>
             {it.detail ? <div className="muted">{it.detail}</div> : null}
+            {needsHint(it) ? <div className="muted" data-testid="needs-hint">{needsHint(it)}</div> : null}
           </li>
         ))}
       </ul>

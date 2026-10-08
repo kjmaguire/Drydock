@@ -116,6 +116,16 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
               </NavLink>
             </li>
             <li>
+              <NavLink href="#/plan" current={route.name === 'plan'} testId="nav-plan">
+                Plan
+              </NavLink>
+            </li>
+            <li>
+              <NavLink href="#/milestones" current={route.name === 'milestones'} testId="nav-milestones">
+                Milestones
+              </NavLink>
+            </li>
+            <li>
               <NavLink href="#/pulls" current={route.name === 'pulls'}>
                 Pull Requests
               </NavLink>
@@ -133,6 +143,29 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
             <li>
               <NavLink href="#/project" current={route.name === 'project'}>
                 Project settings
+              </NavLink>
+            </li>
+          </ul>
+          <h2 className="nav-h">Knowledge</h2>
+          <ul className="nav-list">
+            <li>
+              <NavLink href="#/packs" current={route.name === 'packs'} testId="nav-packs">
+                Expert packs
+              </NavLink>
+            </li>
+            <li>
+              <NavLink href="#/requirements" current={route.name === 'requirements'} testId="nav-requirements">
+                Requirements
+              </NavLink>
+            </li>
+            <li>
+              <NavLink href="#/skills" current={route.name === 'skills'} testId="nav-skills">
+                Skills
+              </NavLink>
+            </li>
+            <li>
+              <NavLink href="#/memory" current={route.name === 'memory'} testId="nav-memory">
+                Memory
               </NavLink>
             </li>
           </ul>
@@ -154,7 +187,28 @@ export function Sidebar({ projects, project, onProject, route, rooms, unread, ne
         </>
       ) : null}
       <div className="sidebar-foot">
+        <h2 className="nav-h">Workspace</h2>
         <ul className="nav-list">
+          <li>
+            <NavLink href="#/budgets" current={route.name === 'budgets'} testId="nav-budgets">
+              Budgets
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/evals" current={route.name === 'evals'} testId="nav-evals">
+              Evals report
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/routing" current={route.name === 'routing'} testId="nav-routing">
+              Routing
+            </NavLink>
+          </li>
+          <li>
+            <NavLink href="#/integrations" current={route.name === 'integrations'} testId="nav-integrations">
+              Integrations
+            </NavLink>
+          </li>
           <li>
             <NavLink href="#/connections" current={route.name === 'connections'} testId="nav-connections">
               Connections

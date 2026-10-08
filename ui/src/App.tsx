@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Agent, PresenceState, Room } from './api/types';
 import { ActivityView } from './components/Activity';
-import { ConnectionsView } from './components/Connections';
 import { AgentInspector } from './components/Inspector';
-import { ProvidersView } from './components/Providers';
 import { ThreadPanel } from './components/Thread';
 import { UiProvider, useUi } from './state/ui';
 import { Empty, ErrorNote, Page, PresenceDot } from './components/common';
@@ -21,6 +19,20 @@ import { agentName, formatCost, presenceFor } from './lib/format';
 import { useClient, useStoreSnapshot } from './state/context';
 import { useAgents, useLive, useNeedsYou, usePresence, useProjects, useRooms, useTaskDetail, useTasks, useUnread } from './state/hooks';
 import { StatusChip } from './components/common';
+
+// Pages that are not on the first screen load on demand, so the first paint stays small.
+const ConnectionsView = lazy(() => import('./components/Connections').then((m) => ({ default: m.ConnectionsView })));
+const ProvidersView = lazy(() => import('./components/Providers').then((m) => ({ default: m.ProvidersView })));
+const BudgetsView = lazy(() => import('./pages/Budgets'));
+const EvalsView = lazy(() => import('./pages/Evals'));
+const RoutingView = lazy(() => import('./pages/Routing'));
+const PacksView = lazy(() => import('./pages/Packs'));
+const RequirementsView = lazy(() => import('./pages/Requirements'));
+const MilestonesView = lazy(() => import('./pages/Milestones'));
+const SkillsView = lazy(() => import('./pages/Skills'));
+const MemoryView = lazy(() => import('./pages/Memory'));
+const PlanView = lazy(() => import('./pages/Plan'));
+const IntegrationsView = lazy(() => import('./pages/Integrations'));
 
 const PROJECT_KEY = 'drydock.project';
 const readProject = (): string | undefined => {
@@ -169,6 +181,36 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
       case 'providers':
         center = <ProvidersView />;
         break;
+      case 'budgets':
+        center = <BudgetsView projectId={project.id} />;
+        break;
+      case 'evals':
+        center = <EvalsView projectId={project.id} />;
+        break;
+      case 'routing':
+        center = <RoutingView />;
+        break;
+      case 'packs':
+        center = <PacksView projectId={project.id} />;
+        break;
+      case 'requirements':
+        center = <RequirementsView projectId={project.id} />;
+        break;
+      case 'milestones':
+        center = <MilestonesView projectId={project.id} />;
+        break;
+      case 'skills':
+        center = <SkillsView projectId={project.id} />;
+        break;
+      case 'memory':
+        center = <MemoryView projectId={project.id} />;
+        break;
+      case 'plan':
+        center = <PlanView projectId={project.id} agents={agentList} />;
+        break;
+      case 'integrations':
+        center = <IntegrationsView projects={projectList} />;
+        break;
       case 'activity':
         center = <ActivityView projectId={project.id} />;
         break;
@@ -206,7 +248,7 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
       />
       <main id="main" className="center" tabIndex={-1}>
         <ErrorNote error={dmError} what="Could not open the direct message" />
-        {center}
+        <Suspense fallback={<p className="muted pad">Loading...</p>}>{center}</Suspense>
       </main>
       <aside className="right" aria-label="Details">
         <button className="right-toggle" onClick={() => setRightOpen((v) => !v)} aria-expanded={rightOpen} aria-controls="right-body">

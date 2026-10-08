@@ -6,6 +6,7 @@ import { useClient } from '../state/context';
 import { useLive, useMessages } from '../state/hooks';
 import { useUi } from '../state/ui';
 import { Badge, ErrorNote } from './common';
+import { RoomAgentsPanel } from './RoomAgents';
 
 const MARKERS = new Set(['DECISION', 'TODO', 'STATUS', 'RESULT']);
 
@@ -193,6 +194,9 @@ export function Conversation({ room, agents }: { room: Room; agents: readonly Ag
           </details>
         ) : null}
       </header>
+      {!room.archived ? (
+        <RoomAgentsPanel room={room} agents={agents} members={members.data ?? []} lastHumanMessageId={[...messages].reverse().find((m) => m.author.kind === 'human')?.id} />
+      ) : null}
       <ErrorNote error={error} what="Could not load messages" />
       <div
         ref={logRef}

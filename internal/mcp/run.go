@@ -49,13 +49,16 @@ func (r *Run) middleware(next sdk.MethodHandler) sdk.MethodHandler {
 	return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
 		switch method {
 		case "tools/list":
-			return &sdk.ListToolsResult{Tools: r.listTools(ctx)}, nil
+			// The SDK fills in the cache fields only for results its own handlers build. This result replaces them, and a client that
+			// negotiated the 2026-07-28 protocol (Claude Code 2.1.294 does) rejects a tools/list whose cacheScope is empty. The
+			// list depends on the run's policy, so it is private and not cacheable.
+			return &sdk.ListToolsResult{Cacheable: sdk.Cacheable{TTLMs: 0, CacheScope: "private"}, Tools: r.listTools(ctx)}, nil
 		case "tools/call":
 			cr, ok := req.(*sdk.CallToolRequest)
 			if !ok {
 				return nil, fmt.Errorf("unexpected request type %T", req)
 			}
-			return r.callTool(ctx, cr), nil
+			return completeResult(cr, r.callTool(ctx, cr)), nil
 		}
 		return next(ctx, method, req)
 	}
@@ -106,7 +109,11 @@ func (r *Run) listTools(ctx context.Context) []*sdk.Tool {
 	if r.workspaceUsable() {
 		for _, t := range workspaceToolDefs() {
 			if r.workspaceToolAllowed(t.Name) {
-				out = append(out, &sdk.Tool{Name: t.Name, Description: t.Description, InputSchema: t.Schema})
+				wt := &sdk.Tool{Name: t.Name, Description: t.Description, InputSchema: t.Schema}
+				if t.ReadOnly {
+					wt.Annotations = &sdk.ToolAnnotations{ReadOnlyHint: true}
+				}
+				out = append(out, wt)
 			}
 		}
 	}

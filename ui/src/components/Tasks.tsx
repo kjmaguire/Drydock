@@ -5,6 +5,12 @@ import { agentName, formatCost, formatDateTime } from '../lib/format';
 import { useClient } from '../state/context';
 import { useAgents, useLive, useTaskDetail, useTasks } from '../state/hooks';
 import { distinctSources, SourceTag, UsageTable } from './Usage';
+import { BudgetPausePanel } from './BudgetPause';
+import { TaskDecisions } from './Explain';
+import type { BudgetPausePayload, Criterion, SpecReviewPayload, WorkflowTemplate } from '../api/extTypes';
+import { safeHref } from '../lib/Markdown';
+import { useAction } from '../lib/useAction';
+import { SchedulerPanel } from './Scheduler';
 import { Badge, Empty, ErrorNote, Page, SourceBadge, StatusChip } from './common';
 
 // --- list + create ---
@@ -49,6 +55,7 @@ export function TaskList({ projectId, agents }: { projectId: string; agents: rea
           </tbody>
         </table>
       ) : null}
+      <SchedulerPanel projectId={projectId} />
     </Page>
   );
 }
@@ -177,6 +184,9 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
       <ReviewList reviews={d.reviews} agents={agents} />
       <h2>Usage</h2>
       <TaskUsage taskId={t.id} />
+      <h2>Why these models?</h2>
+      <TaskDecisions taskId={t.id} />
+      <PreviewControls taskId={t.id} hasWorktree={!!t.worktree} />
       <h2>Diff</h2>
       <DiffView taskId={t.id} hasDiff={d.evidence.some((e) => e.kind === 'diff')} />
     </Page>
@@ -191,6 +201,10 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
   const [worker, setWorker] = useState(t.assignee ?? '');
   const [reviewer, setReviewer] = useState(t.reviewer ?? '');
   const [busy, setBusy] = useState<'assign' | 'start' | 'cancel' | ''>('');
+  const templates = useLive(() => client.templateList(), [], () => false);
+  const [template, setTemplate] = useState(t.template ?? '');
+  const [notes, setNotes] = useState<string[]>([]);
+  const chosen: WorkflowTemplate | undefined = (templates.data ?? []).find((x) => x.name === template);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<Error | undefined>();
   const terminal = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(t.status);
@@ -212,6 +226,11 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
   return (
     <div className="team-bar" role="group" aria-label="Assignment and control">
       <ErrorNote error={error} />
+      {notes.length > 0 ? (
+        <div role="status" className="muted">
+          {notes.join(' ')}
+        </div>
+      ) : null}
       {!runActive ? (
         <>
           <label>
@@ -243,11 +262,45 @@ function TeamBar({ detail, projectId, onChanged }: { detail: TaskDetail; project
             className="primary"
             disabled={!t.assignee || !t.reviewer || busy !== '' || worker !== (t.assignee ?? '') || reviewer !== (t.reviewer ?? '')}
             title={!t.assignee || !t.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
-            onClick={() => act('start', () => client.taskStart(t.id))}
+            onClick={() =>
+              act('start', async () => {
+                if (!template) return client.taskStart(t.id);
+                const r = await client.taskStartTemplate({ taskId: t.id, template });
+                setNotes(r.notes ?? []);
+                return r;
+              })
+            }
           >
             Start
           </button>
+          <label>
+            Template
+            <select aria-label="Template" value={template} onChange={(e) => setTemplate(e.target.value)}>
+              <option value="">Default (worker, checks, review, your approval)</option>
+              {(templates.data ?? []).map((x) => (
+                <option key={x.name} value={x.name}>
+                  {x.title}
+                </option>
+              ))}
+            </select>
+          </label>
         </>
+      ) : null}
+      {chosen && !runActive ? (
+        <div className="template-info span-all" data-testid="template-info">
+          <p>{chosen.description}</p>
+          <p className="muted">Steps: {(chosen.steps ?? []).join(' > ')}</p>
+          {(chosen.roles ?? []).length > 0 ? (
+            <ul>
+              {(chosen.roles ?? []).map((r) => (
+                <li key={r.role}>
+                  Needs an agent with role <code>{r.role}</code> ({r.required ? 'required' : 'optional'}): {r.purpose}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {chosen.specGate ? <p className="muted">You will be asked to accept the spec before anything is built.</p> : null}
+        </div>
       ) : null}
       {confirmCancel ? (
         <>
@@ -315,6 +368,76 @@ export function ReviewPanel({ detail, onChanged }: { detail: TaskDetail; onChang
   );
 }
 
+function specPayload(p: PendingRequest): SpecReviewPayload | undefined {
+  const v = p.spec.payload as Partial<SpecReviewPayload> | undefined;
+  return v && v.phase === 'spec' && p.spec.kind === 'review' ? (v as SpecReviewPayload) : undefined;
+}
+
+function budgetPayload(p: PendingRequest): BudgetPausePayload | undefined {
+  const v = p.spec.payload as Partial<BudgetPausePayload> | undefined;
+  return v && v.gate === 'budget' ? (v as BudgetPausePayload) : undefined;
+}
+
+export const criterionLine = (c: Criterion) => `Given ${c.given}, when ${c.when}, then ${c.then}`;
+
+/**
+ * The spec gate: the PM agent's spec and its Given/When/Then criteria. Nothing is built until you accept. The spec is agent
+ * output (untrusted) and is shown inert. You can edit the criteria before accepting (sent as data.criteria) or send the spec
+ * back with feedback. The buttons answer this request id; no text in the spec can answer it.
+ */
+export function SpecGate({ payload, busy, onRespond }: { payload: SpecReviewPayload; busy: boolean; onRespond: (decision: string, data?: unknown) => Promise<void> }) {
+  const original = (payload.criteria ?? []).map(criterionLine);
+  const [lines, setLines] = useState(original.join('\n'));
+  const [rejecting, setRejecting] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const edited = lines.trim() !== original.join('\n').trim();
+  return (
+    <div className="spec-gate" data-testid="spec-gate">
+      <h4>Spec: {payload.title}</h4>
+      <p className="muted">Written by the PM agent, so treat it as a proposal. Accepting it fixes the acceptance criteria that tests are written against.</p>
+      <details open>
+        <summary>Spec text</summary>
+        <Markdown source={payload.spec} maxChars={40000} />
+      </details>
+      <h4>Acceptance criteria (Given / When / Then)</h4>
+      <ol data-testid="spec-criteria">
+        {(payload.criteria ?? []).map((c) => (
+          <li key={c.id}>
+            <strong>{c.id}</strong> Given {c.given}; when {c.when}; then {c.then}
+          </li>
+        ))}
+      </ol>
+      <label>
+        Edit the criteria before accepting (one per line)
+        <textarea aria-label="Edit criteria" value={lines} onChange={(e) => setLines(e.target.value)} rows={Math.max(3, original.length + 1)} spellCheck={false} />
+      </label>
+      {rejecting ? (
+        <div className="form">
+          <label>
+            Feedback for the PM agent
+            <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={3} />
+          </label>
+          <div className="form-actions">
+            <button className="primary" disabled={busy || !feedback.trim()} onClick={() => onRespond('rejected', { feedback: feedback.trim() })}>
+              Send spec back
+            </button>
+            <button onClick={() => setRejecting(false)}>Back</button>
+          </div>
+        </div>
+      ) : (
+        <div className="form-actions">
+          <button className="primary" disabled={busy} onClick={() => onRespond('approved', edited ? { criteria: lines.split('\n').map((l) => l.trim()).filter(Boolean) } : undefined)}>
+            {edited ? 'Accept spec with my edited criteria' : 'Accept spec'}
+          </button>
+          <button disabled={busy} onClick={() => setRejecting(true)}>
+            Reject with feedback
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string | undefined; onChanged: () => void }) {
   const client = useClient();
   const [mode, setMode] = useState<'idle' | 'changes'>('idle');
@@ -322,6 +445,8 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [error, setError] = useState<Error | undefined>();
   const info = payloadOf(p);
+  const spec = specPayload(p);
+  const budgetPause = budgetPayload(p);
   const respond = async (decision: string, data?: unknown) => {
     if (!runId) {
       setError(new Error('This task has no run to answer.'));
@@ -372,7 +497,11 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
       <ErrorNote error={error} what="Not sent" />
       {state === 'sent' ? <p role="status">Answer sent. Waiting for the core to confirm...</p> : null}
 
-      {p.spec.kind === 'question' ? (
+      {budgetPause ? (
+        <BudgetPausePanel payload={budgetPause} runId={runId} requestId={p.id} onDone={onChanged} />
+      ) : spec ? (
+        <SpecGate payload={spec} busy={busy} onRespond={respond} />
+      ) : p.spec.kind === 'question' ? (
         <div className="form">
           <label>
             Your answer
@@ -426,19 +555,40 @@ function PendingCard({ p, runId, onChanged }: { p: PendingRequest; runId: string
 
 // --- evidence, reviews, diff ---
 
+export const EVIDENCE_LABEL: Record<string, string> = {
+  spec: 'Spec written',
+  spec_accept: 'Spec accepted',
+  red_test: 'Test written first (red)',
+  green_test: 'Tests now pass (green)',
+  design: 'Design notes',
+  e2e: 'End-to-end check',
+  screenshot: 'Screenshot',
+  preview: 'Preview',
+  test: 'Tests',
+  diff: 'Diff',
+  commit: 'Commit',
+};
+
 export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
   if (evidence.length === 0) return <p className="muted">No evidence yet. A task enters review only with evidence.</p>;
   return (
     <ul className="evidence" aria-label="Evidence">
       {evidence.map((e) => {
-        const res = e.passed === true ? 'pass' : e.passed === false ? 'fail' : 'info';
+        const skippable = e.kind === 'e2e' || e.kind === 'preview';
+        const res = e.passed === true ? 'pass' : e.passed === false ? 'fail' : skippable ? 'skipped' : 'info';
+        const link = e.kind === 'preview' && e.ref ? safeHref(e.ref) : undefined;
         return (
           <li key={e.id} data-testid="evidence" data-kind={e.kind} data-result={res}>
             <span className={`chip chip-${res === 'pass' ? 'ok' : res === 'fail' ? 'err' : 'muted'}`}>
-              <span aria-hidden="true">{res === 'pass' ? '✔' : res === 'fail' ? '✖' : '•'}</span> {res === 'pass' ? 'PASS' : res === 'fail' ? 'FAIL' : 'INFO'}
+              <span aria-hidden="true">{res === 'pass' ? '✔' : res === 'fail' ? '✖' : '•'}</span> {res === 'pass' ? 'PASS' : res === 'fail' ? 'FAIL' : res === 'skipped' ? 'SKIPPED' : 'INFO'}
             </span>{' '}
-            <strong>{e.kind}</strong> <span className="muted">attempt {e.attempt}</span>
+            <strong>{EVIDENCE_LABEL[e.kind] ?? e.kind}</strong> <span className="muted">{e.kind} attempt {e.attempt}</span>
             <div>{e.summary}</div>
+            {link ? (
+              <a href={link} target="_blank" rel="noopener noreferrer" title={link}>
+                {link}
+              </a>
+            ) : null}
           </li>
         );
       })}
@@ -536,5 +686,47 @@ export function TaskSummaryCard({ task }: { task: Task }) {
       <div className="muted">updated {formatDateTime(task.updated)}</div>
       {task.acceptedBy ? <Badge tone="ok">accepted</Badge> : null}
     </div>
+  );
+}
+
+
+/** Start or stop the project's preview of the task result. Starting runs the project's preview command in the task worktree. */
+export function PreviewControls({ taskId, hasWorktree }: { taskId: string; hasWorktree: boolean }) {
+  const client = useClient();
+  const act = useAction();
+  const q = useLive(() => client.previewList(), [taskId], (e) => e.type.startsWith('preview.') || e.type.startsWith('task.'));
+  const mine = (q.data ?? []).find((p) => p.taskId === taskId);
+  const href = mine ? safeHref(mine.url) : undefined;
+  if (!hasWorktree && !mine) return null;
+  return (
+    <section aria-label="Preview">
+      <h2>Preview</h2>
+      <ErrorNote error={act.error ?? q.error} what="Preview" />
+      {mine ? (
+        <p data-testid="preview-running">
+          Running (pid {mine.pid}):{' '}
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" title={href}>
+              {href}
+            </a>
+          ) : (
+            mine.url
+          )}
+        </p>
+      ) : (
+        <p className="muted">No preview is running. Starting one runs the project&apos;s preview command in this task&apos;s worktree (set it under Project settings).</p>
+      )}
+      <div className="form-actions">
+        {mine ? (
+          <button disabled={act.busy !== ''} onClick={async () => { await act.run('stop', () => client.previewStop(taskId)); q.reload(); }}>
+            Stop preview
+          </button>
+        ) : (
+          <button disabled={act.busy !== ''} onClick={async () => { await act.run('start', () => client.previewStart(taskId)); q.reload(); }}>
+            Start preview
+          </button>
+        )}
+      </div>
+    </section>
   );
 }

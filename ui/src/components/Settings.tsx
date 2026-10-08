@@ -1,25 +1,23 @@
 import type { AppInfo } from '../api/types';
 import { Page } from './common';
+import { TelemetryPanel } from './Telemetry';
 import { useServices, useStoreSnapshot } from '../state/context';
 import type { ThemeChoice } from '../lib/theme';
 
 /** docs/ui.md section 4: features that do not exist yet, with the slice that owns them. Keep in step with that table. */
 export const NOT_BUILT: { feature: string; slice: string; meanwhile: string }[] = [
-  { feature: 'Model Router, "Why this model?", routing decisions, escalation records', slice: 'Slice 2', meanwhile: 'Not routed. The model is whatever team setup chose.' },
-  { feature: 'Budgets (warn at 80%, pause at 100%) and per-run ceilings', slice: 'Slice 2 (proposal)', meanwhile: 'Usage is shown; no limit controls exist.' },
-  { feature: 'Secrets check (gitleaks)', slice: 'Slice 2', meanwhile: 'The Secrets tool member does not post.' },
-  { feature: 'deps, e2e and preview checks', slice: 'unassigned', meanwhile: 'Absent.' },
-  { feature: 'Expert Packs, Requirements, Skills, Memory UI', slice: 'Slice 3', meanwhile: 'Absent.' },
-  { feature: 'Autonomous multi-agent development, moderator and auto room modes, group chats', slice: 'Slice 4 (proposal)', meanwhile: 'Absent.' },
-  { feature: 'Linear, Notion, Sentry and Aikido integrations', slice: 'Slice 5', meanwhile: 'Absent.' },
-  { feature: 'Milestones; Markdown minutes and ADR-candidate export', slice: 'unassigned', meanwhile: 'Absent.' },
+  { feature: 'Markdown minutes and ADR-candidate export', slice: 'unassigned', meanwhile: 'Absent.' },
   { feature: 'Repo map view', slice: 'gated by decision D5', meanwhile: 'Absent until the Windows CI job is green.' },
-  { feature: 'Workflow graph and checkpoint timeline', slice: 'Slice 1C', meanwhile: 'The task view shows status, evidence and reviews only.' },
+  { feature: 'Workflow graph and checkpoint timeline', slice: 'Slice 1C', meanwhile: 'The task view shows status, evidence, reviews, usage and routing decisions only.' },
   { feature: 'Monaco diff, terminal and logs dock', slice: 'Slice 1B', meanwhile: 'A plain unified diff is shown in the task view; there is no terminal.' },
-  { feature: 'Agent Inspector, context manifest viewer, run explanation', slice: 'Slices 1A / 1D', meanwhile: 'Presence and the Team page only.' },
-  { feature: 'Connections page with Log in, Test connection and conformance history; Providers settings', slice: 'Slice 1A', meanwhile: 'The Team page lists detected adapters and their verified capabilities; nothing else about connections.' },
-  { feature: 'Threads, direct messages with an agent, mentions autocomplete, slash commands, attachments', slice: 'Slice 1A', meanwhile: 'The composer posts plain messages to the channel.' },
+  { feature: 'Context manifest viewer and run explanation', slice: 'Slice 1D', meanwhile: 'The Agent Inspector shows runs and usage; there is no manifest view.' },
+  { feature: 'Agent turns chosen by the model router', slice: 'Slice 2 (partly)', meanwhile: 'The router records a decision for every turn, but agents still run with their configured model; the explanation says "static" when it was not routed.' },
+  { feature: 'Provider detail panels (quota ledger, OpenRouter key limits), editing a provider, editing prices', slice: 'Slice 1A', meanwhile: 'Providers can be added, tested, enabled, disabled and deleted; the model catalog is read-only.' },
+  { feature: 'OAuth sign-in for integrations; live vendor verification', slice: 'Slice 5', meanwhile: 'Integrations use a pasted token and were never run against a live vendor account.' },
+  { feature: 'Pull request variants of the workflow templates', slice: 'Slice 4', meanwhile: 'Templates end in a local merge; a project in pull request mode uses the default workflow.' },
+  { feature: 'Mentions autocomplete, slash commands, attachments', slice: 'Slice 1A', meanwhile: 'The composer posts plain messages.' },
   { feature: 'Command palette (Ctrl+K)', slice: 'Slice 1A', meanwhile: 'Not built.' },
+  { feature: 'Cloud sync, accounts, team sharing', slice: 'never', meanwhile: 'Drydock has no cloud component.' },
 ];
 
 export function SettingsView({ theme, onTheme, info }: { theme: ThemeChoice; onTheme: (t: ThemeChoice) => void; info: AppInfo | undefined }) {
@@ -51,6 +49,7 @@ export function SettingsView({ theme, onTheme, info }: { theme: ThemeChoice; onT
           <code>{info?.dataDir ?? 'unknown'}</code>
         </dd>
       </dl>
+      <TelemetryPanel />
       <h2>Not built yet</h2>
       <p className="muted">
         These features are not implemented. They are listed here instead of shown as disabled screens or sample data.

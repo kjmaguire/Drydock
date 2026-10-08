@@ -1,0 +1,844 @@
+// Types for the Slice 2-5 methods (internal/core/ext_*.go). Field names come from the Go struct tags. Structs without JSON
+// tags in Go (router.RoutingDecision, probe results) arrive with their Go field names and are typed that way here.
+
+// --- budgets (internal/budget) ---
+export type BudgetScope = 'project' | 'task' | 'run' | 'agent';
+export interface Budget {
+  id: string;
+  scope: BudgetScope | string;
+  /** A concrete id, or "*" for a ceiling that applies to every task, run or agent (each judged on its own). */
+  scopeId: string;
+  projectId?: string;
+  limitUsd?: number | null;
+  limitTokens?: number | null;
+  limitTurns?: number | null;
+  warnPct: number;
+  enabled: boolean;
+  note?: string;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  updatedBy: string;
+}
+export interface BudgetSpend {
+  rows: number;
+  reportedUsd: number;
+  estimatedUsd: number;
+  /** Rows with no reported cost and no price: counted, never priced at zero. */
+  unknownCostRows: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  turns: number;
+}
+export interface BudgetStatus {
+  budget: Budget;
+  instanceId: string;
+  spend: BudgetSpend;
+  pctUsd?: number | null;
+  pctTokens?: number | null;
+  pctTurns?: number | null;
+  pct: number;
+  binding?: string;
+  state: 'ok' | 'warning' | 'exceeded' | string;
+  /** False when a dollar limit is set and some rows have unknown cost: the dollar percentage is a lower bound. */
+  costComplete: boolean;
+  costLabel: string;
+  message: string;
+}
+export interface BudgetRow {
+  budget: Budget;
+  status?: BudgetStatus;
+}
+export interface BudgetSet {
+  id?: string;
+  scope: BudgetScope | string;
+  scopeId: string;
+  projectId?: string;
+  limitUsd?: number | null;
+  limitTokens?: number | null;
+  limitTurns?: number | null;
+  warnPct?: number;
+  enabled?: boolean;
+  note?: string;
+  version?: number;
+}
+export interface BudgetResumeReq {
+  runId: string;
+  requestId?: string;
+  decision?: 'approved' | 'rejected';
+  limitUsd?: number;
+  limitTokens?: number;
+  limitTurns?: number;
+}
+export interface BudgetResumed {
+  runId: string;
+  requestId: string;
+  decision: string;
+  raised: string[];
+  by: string;
+}
+/** The payload of the approval request a budget pause raises (internal/budget/gate.go). */
+export interface BudgetPausePayload {
+  gate: 'budget';
+  message: string;
+  exceeded: BudgetStatus[];
+  resume?: string;
+  node?: string;
+  taskId?: string;
+}
+
+// --- evals (internal/evals) ---
+export interface EvalsOptions {
+  projectId?: string;
+  sinceMs?: number;
+  untilMs?: number;
+  minN?: number;
+}
+export interface Ratio {
+  num: number;
+  den: number;
+  rate?: number | null;
+}
+export interface EvalsReport {
+  generatedAt?: number;
+  quality?: {
+    started: number;
+    accepted: number;
+    failed: number;
+    cancelled: number;
+    active: number;
+    completion: Ratio;
+    firstCheckTestPass: Ratio;
+    finalTestPass: Ratio;
+  };
+  cheap?: { cheapWorker: Ratio; strictCheapOnly: Ratio; unclassified: number };
+  revise?: { premiumReviseVerdicts: Ratio; tasksWithPremiumRevise: Ratio; escalated: Ratio };
+  resume?: { reliability: Ratio };
+  watchdog?: { trips: number; falseRate: Ratio };
+  routing?: { decisions: number; withOutcome: number; good: Ratio };
+  rows?: unknown[];
+  [k: string]: unknown;
+}
+export interface EvalsReportResult {
+  markdown: string;
+  report: EvalsReport;
+}
+export interface EvalsExportResult {
+  path: string;
+  bytes: number;
+  sha256: string;
+  tasks: number;
+  accepted: number;
+}
+
+// --- routing (internal/router, internal/llm/probe) ---
+export interface RouteAction {
+  prefer_tier?: string;
+  require_tier?: string;
+  require_capability?: string[];
+  deny?: boolean;
+  escalate_to?: string;
+  handoff?: boolean;
+  set_effort?: string;
+  set_team_size?: number;
+  penalty?: number;
+}
+export interface RouteRule {
+  id: string;
+  scope: string;
+  priority: number;
+  when: string;
+  then: RouteAction;
+  enabled: boolean;
+  version: number;
+}
+export interface RoutingOutcome {
+  outcome: string;
+  accepted: boolean;
+  escalated: boolean;
+  iterations: number;
+  costUsd: number;
+  costSource: string;
+}
+export interface DecisionRow {
+  id: string;
+  ts: number;
+  runId?: string;
+  nodeId?: string;
+  attempt: number;
+  runKind: string;
+  level: string;
+  agent: string;
+  provider: string;
+  model: string;
+  effort: string;
+  decidedBy: string;
+  /** null = price unknown, never zero */
+  estCostUsd: number | null;
+  escalatedFrom?: string;
+  outcome?: RoutingOutcome;
+}
+export interface RouteAlternative {
+  Provider: string;
+  Model: string;
+  Tier: string;
+  Rejected: string;
+  Detail: string;
+}
+/** router.RoutingDecision has no JSON tags. */
+export interface RoutingDecision {
+  ID: string;
+  Agent?: { Adapter: string; Instance: string };
+  Provider: string;
+  Model: string;
+  Effort: string;
+  EffortApplied?: boolean;
+  TeamSize?: number;
+  Reason: string;
+  Confidence: number;
+  EstCostUSD: number | null;
+  PoliciesApplied?: string[] | null;
+  Alternatives?: RouteAlternative[] | null;
+  DecidedBy: string;
+  Facts?: { Tier?: string; DataClass?: string; QuotaRemainingPct?: number; BudgetPctUsed?: number; BudgetDownshift?: boolean; NextEscalation?: string };
+}
+export interface RouteExplain {
+  text: string;
+  decision: RoutingDecision;
+}
+export interface RoutePreview {
+  blocked: boolean;
+  reason?: string;
+  alternatives?: RouteAlternative[] | null;
+  decision?: RoutingDecision;
+  explain?: string;
+  budget?: unknown;
+  recorded?: boolean;
+}
+export interface CheapSelection {
+  providerId: string;
+  default?: string;
+  fallback?: string;
+  probed?: { Model?: string; model?: string; [k: string]: unknown }[] | null;
+  skipped?: unknown[] | null;
+  at?: string;
+  message: string;
+}
+
+// --- checks, project development settings, telemetry ---
+export interface CheckSettings {
+  secrets: boolean;
+  deps: boolean;
+  depsOffline: boolean;
+}
+export interface DevSettings {
+  maxParallel: number;
+  autoSchedule: boolean;
+  respond: boolean;
+  e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
+  preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
+}
+export interface TelemetryStatus {
+  enabled: boolean;
+  enabledBy?: string;
+  enabledAt?: number;
+  spans: number;
+  metrics: number;
+  pending: number;
+  droppedAttributeKeys: Record<string, number> | null;
+  destination: string;
+  networkExporter: boolean;
+}
+export interface TelemetryDocument {
+  schema: string;
+  exportedAt: number;
+  resource: Record<string, unknown>;
+  spans: unknown[] | null;
+  metrics: unknown[] | null;
+  allowlist?: string[] | null;
+  note?: string;
+}
+export interface TelemetryExport {
+  path: string;
+  spans: number;
+  metrics: number;
+  document: TelemetryDocument;
+}
+
+// --- expert packs (internal/packs) ---
+export interface Pack {
+  id: string;
+  title: string;
+  kind: string;
+  visibility: string;
+  version: string;
+  status: string;
+  lastRefreshAt?: string;
+  lastSuccessAt?: string;
+  lastError?: string;
+  pages: number;
+  chunks: number;
+  quarantined: number;
+  ageDays: number;
+  freshness?: string;
+  offline: boolean;
+  manifestDrift?: boolean;
+  nextRefreshAt?: string;
+  attribution?: string;
+  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string }[] } | null;
+}
+export interface PackCitation {
+  pack: string;
+  version: string;
+  url: string;
+  headingPath: string;
+  chunkId?: number;
+  fetchedAt?: string;
+  contentHash: string;
+  origin: string;
+}
+export interface PackHit {
+  citation: PackCitation;
+  text: string;
+  snippet?: string;
+  score: number;
+  allTerms: boolean;
+  origin: string;
+}
+export interface PackSearchResult {
+  found: boolean;
+  hits: PackHit[] | null;
+  searched: string[] | null;
+  unavailable?: Record<string, string>;
+  warn?: string[];
+  attributions?: string[];
+  suspiciousDropped?: number;
+  confidence: string;
+  sourceAgeDays: number;
+}
+export interface PackConsult {
+  found: boolean;
+  answer: string;
+  citations: PackCitation[] | null;
+  sources: { n: number; citation: PackCitation; excerpt: string }[] | null;
+  confidence: string;
+  sourceAgeDays: number;
+  route: string;
+  model?: string;
+  usage: { inputTokens: number; outputTokens: number; cachedTokens?: number; costUsd: number };
+  degraded?: string;
+  warn?: string[];
+  unavailable?: Record<string, string>;
+}
+export interface PackRefreshResult {
+  packId: string;
+  version: string;
+  newVersion: boolean;
+  pages: number;
+  added: number;
+  changed: number;
+  removed: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  reasons?: Record<string, number>;
+  quarantined: number;
+  redactions: number;
+}
+export interface QuarantinedChunk {
+  chunkId: number;
+  url?: string;
+  version?: number;
+  headingPath: string;
+  body: string;
+  risk: number;
+  flags: string[] | null;
+}
+export interface PackAttachment {
+  projectId: string;
+  packId: string;
+  agentId?: string;
+  role?: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+// --- requirements and milestones (internal/requirements) ---
+export interface Requirement {
+  id: string;
+  projectId: string;
+  title: string;
+  source: string;
+  sourceRef?: string;
+  version: number;
+  contentHash: string;
+  archived: boolean;
+  createdBy?: string;
+  created: string;
+  updated: string;
+  chunks: number;
+  quarantined: number;
+  links: number;
+  staleLinks: number;
+}
+export interface RequirementVersion {
+  version: number;
+  contentHash: string;
+  chunks: number;
+  redactions: number;
+  createdBy?: string;
+  created: string;
+}
+export interface RequirementHit {
+  citation: string;
+  docId: string;
+  title: string;
+  version: number;
+  headingPath: string;
+  chunkId: number;
+  text: string;
+  score: number;
+  allTerms: boolean;
+}
+export interface RequirementLink {
+  id: number;
+  requirementId: string;
+  version: number;
+  taskId: string;
+  criterion: string;
+  createdBy?: string;
+  created: string;
+  stale: boolean;
+}
+export interface TraceEvidence {
+  id: number;
+  kind: string;
+  passed?: boolean | null;
+  summary: string;
+  ref?: string;
+  attempt: number;
+  created: string;
+}
+export interface TraceTask {
+  taskId: string;
+  title: string;
+  status: string;
+  linkedVersion: number;
+  stale: boolean;
+  criteria: string[] | null;
+  evidence: TraceEvidence[] | null;
+  testsPassing: boolean;
+  hasTests: boolean;
+}
+export interface RequirementTrace {
+  requirement: Requirement;
+  tasks: TraceTask[] | null;
+  criteria: number;
+  tasksCompleted: number;
+  tasksStale: number;
+  verified: boolean;
+}
+export interface Milestone {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string;
+  dueAt?: string;
+  status: string;
+  created: string;
+  updated: string;
+  closed?: string;
+  taskIds: string[] | null;
+  progress: { total: number; completed: number; inProgress: number; blocked: number; open: number; cancelled: number; failed: number; percent: number };
+  overdue: boolean;
+}
+
+// --- skills (internal/skills) ---
+export interface Skill {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  license?: string;
+  globs: string[] | null;
+  roles: string[] | null;
+  origin: string;
+  registryId?: string;
+  sourcePath?: string;
+  pinnedCommit?: string;
+  contentHash: string;
+  hasScripts?: boolean;
+  allowedToolsIgnored?: boolean;
+  status: 'offered' | 'accepted' | 'rejected' | 'blocked' | string;
+  risk?: number;
+  flags?: string[] | null;
+  blockReason?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  created: string;
+  updated: string;
+  body?: string;
+}
+export interface SkillScan {
+  found: number;
+  accepted: number;
+  offered: number;
+  blocked: number;
+  removed: number;
+  errors: string[] | null;
+}
+export interface SkillRegistry {
+  id: string;
+  repo: string;
+  root?: string;
+  license?: string;
+  licenseScope?: string;
+  trust: string;
+  importMode?: string;
+  notes?: string;
+  also?: string;
+  enabled: boolean;
+  curated: boolean;
+  addedBy?: string;
+}
+export interface SkillCandidate {
+  name: string;
+  dir: string;
+  description?: string;
+  hasScripts?: boolean;
+  valid: boolean;
+  problem?: string;
+}
+export interface SkillDelivery {
+  ts: number;
+  taskId: string;
+  agentId: string;
+  runId?: string;
+  skill: string;
+  contentHash?: string;
+  method: string;
+  fidelity: string;
+  path?: string;
+}
+export interface SkillCoverage {
+  files: number;
+  tool: number;
+}
+
+// --- memory (internal/memory) ---
+export interface MemoryEntry {
+  id: string;
+  projectId: string;
+  kind: string;
+  title: string;
+  body: string;
+  status: 'proposed' | 'accepted' | 'rejected' | string;
+  source?: string;
+  created: number;
+  updated: number;
+}
+
+// --- templates, PlanTeam, scheduler, room agents (internal/pipeline, internal/agents/responder) ---
+export interface WorkflowTemplate {
+  name: string;
+  title: string;
+  description: string;
+  workflow: string;
+  specGate: boolean;
+  testFirst: boolean;
+  steps: string[] | null;
+  roles: { role: string; required: boolean; purpose: string }[] | null;
+}
+export interface StartTemplateReq {
+  taskId: string;
+  template: string;
+  agents?: Record<string, string>;
+  scans?: string[];
+}
+export interface StartTemplateResult {
+  runId: string;
+  template: string;
+  workflow: string;
+  roles: Record<string, string> | null;
+  notes?: string[] | null;
+}
+export interface Criterion {
+  id: string;
+  given: string;
+  when: string;
+  then: string;
+}
+/** The payload of the pending request at the spec gate (internal/pipeline/tdnodes.go). Untrusted: the spec is agent output. */
+export interface SpecReviewPayload {
+  phase: 'spec';
+  taskId: string;
+  title: string;
+  spec: string;
+  criteria: Criterion[] | null;
+  sha?: string;
+  ref?: string;
+  note?: string;
+}
+export interface ProposedTask {
+  key: string;
+  title: string;
+  description: string;
+  role: string;
+  dependsOn: string[] | null;
+  acceptance: string[] | null;
+  template?: string;
+  priority?: number;
+}
+export interface Plan {
+  id: string;
+  projectId: string;
+  runId: string;
+  goal: string;
+  status: string;
+  plannerAgent: string;
+  proposal?: { tasks: ProposedTask[] | null; notes?: string } | null;
+  createdTasks?: Record<string, string> | null;
+  error?: string;
+  createdAt: number;
+  decidedAt?: number;
+  decidedBy?: string;
+}
+export interface SchedulerStatus {
+  settings: DevSettings;
+  activeRuns: number;
+  agentSlotsInUse: number;
+  peakAgentSlots: number;
+}
+export interface TickResult {
+  promoted: string[] | null;
+  started: string[] | null;
+  skipped: { taskId: string; reason: string }[] | null;
+  active: number;
+  capacity: number;
+  max: number;
+}
+export interface RoomTurn {
+  turnId: string;
+  roomId: string;
+  triggerId: string;
+  agentId: string;
+  round: number;
+  reason: string;
+  mode: string;
+  status: string;
+  messageId?: string;
+  contextMessages: number;
+  contextTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  error?: string;
+  startedAt: number;
+  endedAt: number;
+}
+export interface PreviewInfo {
+  taskId: string;
+  url: string;
+  pid: number;
+}
+
+// --- integrations (internal/integrations) ---
+export interface OpInfo {
+  op: string;
+  label: string;
+  params: string[] | null;
+  neverAuto: boolean;
+  description: string;
+}
+export interface SyncStatus {
+  state: string;
+  lastSuccessAt: number;
+  lastAttemptAt: number;
+  lastError?: string;
+  lastErrorCode?: string;
+  itemsSeen: number;
+  itemsLastSync: number;
+  consecutiveFailures: number;
+  nextAttemptAt?: number;
+  resuming: boolean;
+}
+export interface IntegrationView {
+  id: string;
+  kind: string;
+  name: string;
+  projectId: string;
+  status: string;
+  statusDetail: string;
+  authKind: string;
+  baseUrl?: string;
+  config: Record<string, string> | null;
+  pollIntervalS: number;
+  enabled: boolean;
+  created: number;
+  updated: number;
+  version: number;
+  hasCredential: boolean;
+  sync: SyncStatus;
+  tools: { syncTools: string[] | null; ops: OpInfo[] | null };
+}
+export interface ConnectIntegrationReq {
+  id?: string;
+  kind: string;
+  name: string;
+  projectId: string;
+  /** Sent once and never kept: the page reads it from an uncontrolled password input. */
+  token?: string;
+  baseUrl?: string;
+  config?: Record<string, string>;
+  pollIntervalS?: number;
+  skipTest?: boolean;
+}
+export interface IntegrationTestStep {
+  id: string;
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+export interface IntegrationTestReport {
+  integrationId: string;
+  ok: boolean;
+  steps: IntegrationTestStep[] | null;
+  toolsFound: string[] | null;
+  toolsMissing: string[] | null;
+  writesMissing: string[] | null;
+  summary: string;
+  at: number;
+}
+export interface ExternalItem {
+  id: string;
+  integrationId: string;
+  source: string;
+  projectId: string;
+  externalId: string;
+  kind: string;
+  issueRef: string;
+  url: string;
+  title: string;
+  excerpt: string;
+  state: string;
+  labels: string[] | null;
+  assignee: string;
+  priority: string;
+  meta: Record<string, unknown> | null;
+  externalUpdatedAt: number;
+  fetchedAt: number;
+  risk: number;
+  riskFlags: string[] | null;
+  redactions: number;
+  truncated: boolean;
+  untrusted: boolean;
+  taskId?: string;
+  importedBy?: string;
+  importedAt?: number;
+  gone: boolean;
+  warnings?: string[] | null;
+}
+export interface ExternalItemDetail extends ExternalItem {
+  body: string;
+  /** The same text as it appears inside a task description (a quoted, labelled block). */
+  quoted: string;
+}
+export interface IntegrationRule {
+  id: string;
+  integrationId: string;
+  projectId: string;
+  name: string;
+  when: string;
+  action: string;
+  params: Record<string, unknown> | null;
+  maxPerDay: number;
+  dryRun: boolean;
+  enabled: boolean;
+  createdBy: string;
+  updatedBy: string;
+  created: number;
+  updated: number;
+  version: number;
+  matches?: { [k: string]: unknown }[] | null;
+  createdLast24h?: number;
+}
+export interface RuleReq {
+  id?: string;
+  version?: number;
+  integrationId: string;
+  projectId: string;
+  name: string;
+  when: string;
+  action: string;
+  params?: Record<string, unknown>;
+  maxPerDay?: number;
+  dryRun?: boolean;
+  enabled?: boolean;
+  delete?: boolean;
+}
+export interface Outbox {
+  id: string;
+  integrationId: string;
+  projectId: string;
+  taskId?: string;
+  op: string;
+  target: string;
+  tool: string;
+  payload: Record<string, unknown> | null;
+  payloadHash: string;
+  /** The exact text that would be sent, for the human to read before approving. */
+  preview: string;
+  approvalId: string;
+  status: string;
+  idempotencyKey: string;
+  createdBy: string;
+  created: number;
+  decidedBy?: string;
+  sentAt?: number;
+  receipt?: string;
+  error?: string;
+  version: number;
+}
+export interface ProposeReq {
+  integrationId: string;
+  op: string;
+  target: string;
+  taskId?: string;
+  projectId: string;
+  params: Record<string, string>;
+}
+export interface ImportedItem {
+  itemId: string;
+  taskId: string;
+  issueRef: string;
+  existing: boolean;
+  requirements?: boolean;
+  warnings?: string[] | null;
+}
+export interface NotionPageText {
+  itemId: string;
+  projectId: string;
+  externalId: string;
+  sourceRef: string;
+  title: string;
+  url: string;
+  text: string;
+  contentHash: string;
+  untrusted: boolean;
+  risk: number;
+  riskFlags: string[] | null;
+  truncated: boolean;
+}
+export interface IntegrationSyncResult {
+  integrationId: string;
+  pages: number;
+  seen: number;
+  new: number;
+  changed: number;
+  unchanged: number;
+  gone: number;
+  complete: boolean;
+  skipped?: string;
+  ruleResults?: { ruleId: string; itemId: string; outcome: string; taskId?: string }[] | null;
+}
