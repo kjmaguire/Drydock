@@ -243,6 +243,7 @@ func (f *Failure) Unwrap() error { return f.Cause }
 var (
 	reUnauthorized = regexp.MustCompile(`(?i)\b(401|403)\b|unauthori[sz]ed|forbidden|invalid[ _-]?(api[ _-]?key|token|credentials?)|token (is )?(expired|revoked|invalid)|authentication (failed|required)|not authenticated|access denied|permission denied`)
 	reRateLimited  = regexp.MustCompile(`(?i)\b429\b|rate[ _-]?limit|too many requests|throttl|quota exceeded|slow down`)
+	reProxy        = regexp.MustCompile(`(?i)proxy|tunnel`)
 	reRetryAfter   = regexp.MustCompile(`(?i)retry[ _-]?after\D{0,12}(\d+)\s*(ms|milliseconds|seconds|sec|s|minutes|min|m)?\b`)
 	reRetryInSecs  = regexp.MustCompile(`(?i)(?:try again|retry|wait)\D{0,20}(\d+)\s*(ms|milliseconds|seconds|sec|s|minutes|min|m)\b`)
 )
@@ -284,6 +285,10 @@ func Classify(kind string, err error, toolText string) *Failure {
 	}
 	f := &Failure{Cause: err}
 	switch {
+	case err != nil && reProxy.MatchString(text):
+		// A refusal by a corporate or sandbox proxy is not the vendor rejecting the token (a CONNECT 403 looks like one).
+		f.Code = CodeUnreachable
+		f.Message = "A proxy between Drydock and " + v + " refused the connection (" + strings.TrimSpace(firstLine(text)) + "). This is a network or proxy setting, not a problem with your token."
 	case reRateLimited.MatchString(text) && !reUnauthorized.MatchString(text):
 		f.Code = CodeRateLimited
 		f.RetryAfter = parseRetryAfter(text)
@@ -310,4 +315,14 @@ func Classify(kind string, err error, toolText string) *Failure {
 func isNetErr(err error) bool {
 	var ne net.Error
 	return errors.As(err, &ne)
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 160 {
+		s = s[:160]
+	}
+	return s
 }
