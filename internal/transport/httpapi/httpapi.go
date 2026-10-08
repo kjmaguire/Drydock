@@ -135,6 +135,11 @@ func (s *Server) sse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	if id := r.Header.Get("Last-Event-ID"); id != "" { // EventSource reconnects with the last id it saw
+		if n, err := strconv.ParseUint(id, 10, 64); err == nil && n > after {
+			after = n
+		}
+	}
 	var f events.Filter
 	if t := r.URL.Query().Get("types"); t != "" {
 		f.Types = strings.Split(t, ",")
@@ -145,63 +150,12 @@ func (s *Server) sse(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fl.Flush()
 	ctx := r.Context()
-	last := after
 	send := func(e events.Event) bool {
-		if e.Seq <= last {
-			return true
-		}
-		last = e.Seq
 		b, _ := json.Marshal(e)
 		_, err := fmt.Fprintf(w, "id: %d\nevent: drydock\ndata: %s\n\n", e.Seq, b)
 		return err == nil
 	}
-	keep := time.NewTicker(15 * time.Second)
-	defer keep.Stop()
-	for ctx.Err() == nil {
-		ch, cancel := s.Core.Bus.Subscribe(f)
-		for {
-			backlog, err := s.Core.Bus.Replay(ctx, last, f, 1000)
-			if err != nil {
-				cancel()
-				return
-			}
-			for _, e := range backlog {
-				if !send(e) {
-					cancel()
-					return
-				}
-			}
-			fl.Flush()
-			if len(backlog) < 1000 {
-				break
-			}
-		}
-		closed := false
-		for !closed {
-			select {
-			case <-ctx.Done():
-				cancel()
-				return
-			case e, ok := <-ch:
-				if !ok {
-					closed = true // fell behind: replay and resubscribe
-					break
-				}
-				if !send(e) {
-					cancel()
-					return
-				}
-				fl.Flush()
-			case <-keep.C:
-				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
-					cancel()
-					return
-				}
-				fl.Flush()
-			}
-		}
-		cancel()
-	}
+	s.Core.Follow(ctx, after, f, send, fl.Flush)
 }
 
 // Listen serves on 127.0.0.1:port (0 picks a free port) and returns the address and a shutdown function.
