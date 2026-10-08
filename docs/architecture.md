@@ -51,7 +51,8 @@ Ownership rules that the code enforces:
 | `internal/tasks` | state machine with guards, CAS transitions, evidence, reviews, dead letters | built |
 | `internal/git` | worktrees, status, diff, diff hash, commit, merge strategies, safe points, local ignore | built |
 | `internal/checks` | build/test/lint/typecheck runner, failing-test parsing, truncation | built |
-| `internal/pipeline` | workflow nodes + `task-pipeline` and `iterate-until-verified` graphs | built; real two-agent loop passes |
+| `internal/pipeline` | workflow nodes + `task-pipeline`, `iterate-until-verified` and `iterate-until-verified-pr` graphs | built; real two-agent loop passes; PR flow tested against a labeled GitHub protocol fixture plus a real bare remote |
+| `internal/git/host` | GitHub over the user's `gh` (REST, ETag polling): PRs, checks and logs, reviews, merge, issues, releases | built; live read-only test verified (304 to `ErrNotModified`) |
 | `internal/memory`, `internal/context` | project memory (FTS5), generated instruction files, context manifests | built |
 | `internal/room` | channels, DMs, task channels, messages, presence, turn-taking, exports | in progress |
 | `internal/providers`, `internal/llm`, `internal/router` | provider registry, quota ledger, LLM client + cache + data_class guard, static router + CEL | in progress |
@@ -80,7 +81,7 @@ Built first, in this order (each with tests): storage, events, process manager, 
 
 ## 5. Explicitly not built yet
 
-The Wails shell and every UI screen; the repo map (gated, D5); Expert Packs, Requirements and Skills sync (Slice 3); the Model Router's intelligence beyond the static router, budgets enforcement, the `deps`/`secrets` checks, the OTel exporter (Slice 2); spec gate, `e2e`/`preview` checks, multi-agent templates, `PlanTeam`, Claude Design (Slice 4); Linear/Notion/Sentry/Aikido (Slice 5); the GitHub flow through `gh` (Slice 1E, next); installer, updater, licensing.
+The Wails shell and every UI screen; the repo map (gated, D5); Expert Packs, Requirements and Skills sync (Slice 3); the Model Router's intelligence beyond the static router, budgets enforcement, the `deps`/`secrets` checks, the OTel exporter (Slice 2); spec gate, `e2e`/`preview` checks, multi-agent templates, `PlanTeam`, Claude Design (Slice 4); Linear/Notion/Sentry/Aikido (Slice 5); the Pull Requests view and issue import UI (the host and the pr_flow nodes are built); installer, updater, licensing.
 
 ## 6. Locked decisions
 

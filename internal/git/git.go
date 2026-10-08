@@ -621,3 +621,13 @@ func (r *Repo) LocalIgnore(ctx context.Context, w Worktree, paths []string) erro
 	_, err = f.WriteString(add.String())
 	return err
 }
+
+// Push publishes the task branch to remote. It never forces: a rework adds commits on top of what was pushed, and a
+// rejected (non-fast-forward) push is an error for a human to resolve.
+func (r *Repo) Push(ctx context.Context, w Worktree, remote string) error {
+	if remote == "" {
+		remote = "origin"
+	}
+	_, err := r.git(ctx, w.Path, nil, "push", "--set-upstream", remote, "refs/heads/"+w.Branch+":refs/heads/"+w.Branch)
+	return err
+}
