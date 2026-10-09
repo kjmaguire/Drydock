@@ -31,7 +31,7 @@ app/
                       models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts
   lib/                pure helpers (format, composer, route, theme, graphLayout)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, markdown
-  shell/              rail, sidebar, details panel, dock host, command palette, license banner
+  shell/              sidebar (with the project switcher), details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
   styles/app.css      design tokens (light-dark()) + base layer for native elements
   test/               labelled test doubles (fakes.ts) and render helpers (render.tsx)
@@ -88,7 +88,28 @@ export function Thing(handle: Handle<{ id: string }>) {
 
 ## Design
 
-Dense and quiet (Linear), chat-first (Discord, Slack). Use the kit before writing CSS:
+Dense and quiet (Linear), chat-first. The shell is one sidebar, the page or conversation, and the details panel:
+
+- **Sidebar** (`shell/sidebar.tsx`): at the top a monochrome Drydock mark, a slash, and the **project switcher**
+  (`shell/project-switcher.tsx`: neutral monogram square + project name + chevron, accessible name "Switch project"). It
+  opens the kit `Menu` with the projects as `menuitemradio` (the current one checked), then "New project…" and "App
+  settings"; Enter, Space or the arrow keys open it. With no project it reads "No project" and still offers New project.
+  Then search (Ctrl+K), the project's screens, channels, task channels, direct messages, the Project, Knowledge and
+  **Workspace** groups (Library, Integrations, Connections, Providers, Routing, License, Backups, Data, Support,
+  Settings: always present, also in the Ctrl+K palette), agents, and the stream status. There is no project rail.
+- **Rooms are named without "#"**: a small lucide icon at reduced opacity (`roomIcon(kind)` in `ui/icon.tsx`:
+  message-square for channels, git-branch for task channels), then the name. A link's accessible name starts with the
+  room name (an unread count adds ", 3 unread").
+- **Counts are quiet**: the unread count is a plain muted number; "Needs you" keeps red, but as a soft tint
+  (`dangerSoft` with `danger` text), never a bright pill.
+- **Avatars** (`Avatar` in `ui/data.tsx`): initials on a neutral surface tinted by a low-chroma per-id hue, readable in
+  both themes. People are round; agents, projects and tools are rounded squares (6px radius at 24-28px), and an agent at
+  24px or more carries a small bot badge unless a presence dot takes that corner.
+- **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: a 28px avatar, one author line (name,
+  a quiet outlined role label, time), consecutive messages from the same author grouped under it with the time in the
+  gutter on hover, a faint hover tint. Author names are not colored. Day dividers and the "New" line are thin rules.
+
+Use the kit before writing CSS:
 
 - `Page` (header bar with title, icon, subtitle, actions; scrolling body), `Section`, `card`, `listCard`, `tableCard`,
   `row`, `stack`, `cardGrid` (layout.tsx).

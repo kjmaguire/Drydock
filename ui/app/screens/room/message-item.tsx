@@ -1,14 +1,15 @@
-// One message in the list, drawn the Discord/Slack way: avatar and author line at the head of a group, continuations
-// indented under it with the time in the gutter on hover, a hover toolbar (reply in thread, copy), markers as chips,
-// mentions of a human highlighted, check results and approval records as cards, attachments as file cards. Message text
-// is inert (ui/markdown.tsx): it never becomes an element or an action.
+// One message in the list, drawn like a compact comment thread (Linear, Slack compact): a 28px avatar and one author
+// line (name, role, time) at the head of a group, continuations indented under it with the time in the gutter on hover,
+// a hover toolbar (reply in thread, copy), markers as chips, mentions of a human highlighted, check results and approval
+// records as cards, attachments as file cards. Message text is inert (ui/markdown.tsx): it never becomes an element or an
+// action.
 
 import { css, on, type Handle } from 'remix/component';
 import { Check, CircleCheck, CircleSlash, CircleX, Copy, CornerDownRight, Info, MessageSquareReply, ShieldAlert } from 'lucide';
 import type { Message } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
-import { Avatar, Badge, hueFor } from '../../ui/data.tsx';
+import { Avatar, Badge } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
@@ -18,21 +19,21 @@ import { checkOf, isQuiet, isRecord, markersOf, mentionsHuman, repliesText, shor
 const rowCss = css({
   position: 'relative',
   display: 'grid',
-  gridTemplateColumns: '40px minmax(0, 1fr)',
-  columnGap: t.s3,
-  padding: `2px ${t.s6} 2px ${t.s4}`,
+  gridTemplateColumns: '28px minmax(0, 1fr)',
+  columnGap: '10px',
+  padding: `1px ${t.s6} 1px ${t.s5}`,
   transition: `background-color ${t.fast} ${t.ease}`,
-  '&:hover': { background: t.bgHover },
+  '&:hover': { background: `color-mix(in srgb, ${t.bgHover} 60%, transparent)` },
 });
-const headCss = css({ marginTop: t.s3, paddingTop: '4px' });
+const headCss = css({ marginTop: '10px', paddingTop: '3px' });
 const mentionCss = css({ background: t.mentionBg, boxShadow: `inset 2px 0 0 ${t.mentionBorder}`, '&:hover': { background: t.mentionBg } });
 const errorCss = css({ background: `color-mix(in srgb, ${t.dangerSoft} 55%, transparent)`, boxShadow: `inset 2px 0 0 ${t.danger}`, '&:hover': { background: t.dangerSoft } });
 const quietCss = css({ color: t.textMuted, fontSize: t.textSm });
 
-const gutterCss = css({ display: 'flex', justifyContent: 'center', paddingTop: '2px' });
+const gutterCss = css({ display: 'flex', justifyContent: 'center', paddingTop: '1px' });
 const gutterTime = css({
-  paddingTop: '3px',
-  fontSize: t.textXs,
+  paddingTop: '2px',
+  fontSize: '10px',
   color: t.textFaint,
   opacity: '0',
   whiteSpace: 'nowrap',
@@ -41,21 +42,23 @@ const gutterTime = css({
   // each css() is its own cascade layer, so the row's hover is matched from here (an ancestor selector)
   ':is(.msg:hover) &': { opacity: '1' },
 });
-const quietIcon = css({ display: 'grid', placeItems: 'center', width: '28px', height: '22px', color: t.textFaint });
+const quietIcon = css({ display: 'grid', placeItems: 'center', width: '28px', height: '20px', color: t.textFaint });
 
 const contentCss = css({ minWidth: '0' });
-const metaCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: '0', lineHeight: '22px' });
+const metaCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: '0', lineHeight: '20px' });
 const nameCss = css({ fontWeight: '600', fontSize: t.textMd, color: t.text });
+// the author's role (or kind): a quiet outlined label, not a colored tag
 const tagCss = css({
   display: 'inline-flex',
   alignItems: 'center',
   height: '16px',
   padding: '0 5px',
+  border: `1px solid ${t.border}`,
   borderRadius: t.rSm,
-  fontSize: '10px',
-  fontWeight: '600',
-  letterSpacing: '0.04em',
-  textTransform: 'uppercase',
+  color: t.textMuted,
+  fontSize: t.textXs,
+  fontWeight: '500',
+  lineHeight: '1',
 });
 const timeCss = css({ fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' });
 const inThreadCss = css({
@@ -77,7 +80,7 @@ const bodyCss = css({
   minWidth: '0',
   overflowWrap: 'anywhere',
   color: t.text,
-  lineHeight: '1.5',
+  lineHeight: '1.45',
   '& p': { margin: '0' },
   '& p + p, & ul, & ol, & pre, & blockquote, & table': { marginTop: '6px' },
 });
@@ -85,7 +88,7 @@ const quietBodyCss = css({ color: t.textMuted, fontSize: t.textSm });
 
 const toolsCss = css({
   position: 'absolute',
-  top: '-14px',
+  top: '-12px',
   right: t.s5,
   zIndex: '2',
   display: 'flex',
@@ -102,8 +105,8 @@ const toolsCss = css({
 const toolBtn = css({
   display: 'grid',
   placeItems: 'center',
-  width: '28px',
-  height: '26px',
+  width: '26px',
+  height: '24px',
   minHeight: '0',
   padding: '0',
   border: '0',
@@ -133,30 +136,24 @@ const repliesBtn = css({
 
 const MARKER_TONE: Record<string, Tone> = { DECISION: 'accent', TODO: 'warn', STATUS: 'info', RESULT: 'ok' };
 
-/** The author's name color: the agent's own hue mixed toward the text color so it reads in both themes. */
+/** The author's name color: plain text (names are not colored by author); system notes are muted. */
 function nameColor(m: Message): string {
-  switch (m.author.kind) {
-    case 'agent':
-      return `color-mix(in oklab, hsl(${hueFor(m.author.id)} 70% 52%) 72%, ${t.text})`;
-    case 'tool':
-      return t.info;
-    case 'system':
-      return t.textMuted;
-    default:
-      return t.text;
-  }
+  return m.author.kind === 'system' ? t.textMuted : t.text;
 }
 
-const KIND_TAG: Record<string, { label: string; tone: Tone }> = {
-  agent: { label: 'agent', tone: 'accent' },
-  tool: { label: 'tool', tone: 'info' },
-  system: { label: 'system', tone: 'muted' },
-};
+/** The label after the name: an agent's role when known, else the author kind (people get none). */
+function authorTag(m: Message, role: string | undefined): string | undefined {
+  if (m.author.kind === 'human') return undefined;
+  if (m.author.kind === 'agent') return role || 'agent';
+  return m.author.kind;
+}
 
 export interface MessageItemProps {
   m: Message;
   /** The author's display name (authorName). */
   name: string;
+  /** The agent author's role, shown after the name. */
+  role?: string;
   /** First message of a group: avatar and author line. */
   head: boolean;
   replies: number;
@@ -186,12 +183,12 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
   };
 
   return () => {
-    const { m, name, head, replies, onReply, onOpenRoot } = handle.props;
+    const { m, name, role, head, replies, onReply, onOpenRoot } = handle.props;
     const check = checkOf(m);
     const quiet = isQuiet(m);
     const markers = markersOf(m);
     const canReply = !!onReply && !m.thread_root_id && m.type !== 'SYSTEM';
-    const tag = KIND_TAG[m.author.kind];
+    const tag = authorTag(m, role);
     const classes = ['msg', `msg-${m.author.kind}`, `msg-type-${m.type.toLowerCase()}`, m.type === 'ERROR' ? 'msg-error' : '', quiet ? 'msg-quiet' : ''].filter(Boolean).join(' ');
     const showHead = head || quiet;
     const mention = mentionsHuman(m);
@@ -212,7 +209,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
               <Icon icon={Info} size={15} />
             </span>
           ) : showHead ? (
-            <Avatar id={m.author.id} name={name} size={36} kind={m.author.kind === 'agent' ? 'agent' : m.author.kind === 'human' ? 'human' : 'system'} />
+            <Avatar id={m.author.id} name={name} size={28} kind={m.author.kind === 'agent' ? 'agent' : m.author.kind === 'human' ? 'human' : 'system'} />
           ) : (
             <time class="msg-gutter-time" mix={gutterTime} dateTime={m.created_at} title={formatDateTime(m.created_at)}>
               {shortTime(m.created_at)}
@@ -226,8 +223,8 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
                 {name}
               </strong>
               {tag ? (
-                <span mix={tagCss} style={{ color: tone[tag.tone].fg, background: tone[tag.tone].bg }}>
-                  {tag.label}
+                <span class="msg-role" mix={tagCss}>
+                  {tag}
                 </span>
               ) : null}
               {m.type !== 'CHAT' ? <Badge tone={m.type === 'ERROR' ? 'err' : 'info'}>{m.type}</Badge> : null}

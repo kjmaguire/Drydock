@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, showNewProjectForm } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -150,10 +150,10 @@ test('export a project, preview what is in it, import it into a second project; 
   await expect(page.getByTestId('import-result')).toContainText('It came in untrusted');
 
   // the second project exists, is separate, and opens
-  // projects are tiles in the rail (the Discord-style server list)
-  await page.getByRole('radiogroup', { name: 'Projects' }).getByRole('radio', { name: 'pkg-export-copy', exact: true }).click();
-  await expect(page.getByRole('link', { name: '# general' })).toBeVisible();
-  await page.getByRole('link', { name: '# general' }).click();
+  // projects are chosen in the switcher at the top of the sidebar (a menu of radio items)
+  await switchProject(page, 'pkg-export-copy');
+  await expect(roomLink(page, 'general')).toBeVisible();
+  await roomLink(page, 'general').click();
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();
   await expect(page.getByTestId('message').filter({ hasText: 'Nothing from the file is trusted yet' })).toBeVisible();
 
@@ -166,7 +166,7 @@ test('export a project, preview what is in it, import it into a second project; 
 
 test('support bundle: preview lists files and the scrub report, a planted secret never appears, create writes a local file that does not contain it', async ({ page }) => {
   await createProject(page, 'pkg-support');
-  await page.getByRole('link', { name: '# general' }).click();
+  await roomLink(page, 'general').click();
   await page.getByLabel('Message to #general').fill(`my token is ${PLANTED} please do not leak it`);
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('[data-testid=message][data-author-kind=human]').filter({ hasText: 'please do not leak it' })).toBeVisible();
@@ -265,7 +265,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.getByLabel('Project name (optional)').fill('pkg-licensed');
   await expect(page.getByRole('button', { name: 'Create project' })).toBeEnabled();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByRole('link', { name: /# general/ })).toBeVisible();
+  await expect(roomLink(page, 'general')).toBeVisible();
   await createAgent(page, 'lic-worker', 'backend');
 
   // an older token cannot replace the installed license: the core says so and the page shows its words

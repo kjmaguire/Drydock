@@ -1,5 +1,5 @@
 // The application shell. The SPA router renders every route's content inside it (render transform in router.tsx), and
-// the same Shell instance stays mounted across navigations, so the rail, the sidebar, the dock (and a running terminal)
+// the same Shell instance stays mounted across navigations, so the sidebar (with the project switcher), the dock (and a running terminal)
 // and the details panel keep their state while the center changes.
 
 import { css, navigate, type Handle, type RemixNode } from 'remix/component';
@@ -14,7 +14,6 @@ import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
 import { LicenseBanner } from './license-banner.tsx';
 import { CommandPalette } from './palette.tsx';
-import { Rail } from './rail.tsx';
 import { Sidebar } from './sidebar.tsx';
 
 const rootCss = css({ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' });
@@ -105,7 +104,6 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
           <a href="#main" mix={skipCss} data-rmx-document>
             Skip to content
           </a>
-          <Rail route={route} />
           <Sidebar route={route} />
           <div mix={centerCss}>
             {dmError ? (

@@ -28,11 +28,11 @@ const headCss = css({
 const logCss = css({ display: 'grid', gap: '2px', minWidth: '0' });
 const msgCss = css({
   display: 'grid',
-  gridTemplateColumns: '32px minmax(0, 1fr)',
+  gridTemplateColumns: '24px minmax(0, 1fr)',
   columnGap: t.s2,
   padding: `6px ${t.s2}`,
   borderRadius: t.rMd,
-  '&:hover': { background: t.bgHover },
+  '&:hover': { background: `color-mix(in srgb, ${t.bgHover} 60%, transparent)` },
   '& .meta': { display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap', lineHeight: '20px' },
   '& .meta strong': { fontSize: t.textMd, fontWeight: '600' },
   '& .meta time': { color: t.textFaint, fontSize: t.textXs },
@@ -89,7 +89,7 @@ export function ThreadPanel(handle: Handle<{ roomId: string; rootId: string; onC
     const name = authorName(m.author, agents);
     return (
       <article key={m.id} mix={[msgCss, root ? rootCss : undefined]} data-testid="thread-message" data-author-kind={m.author.kind} aria-label={`${m.author.kind} ${name}`}>
-        <Avatar id={m.author.id} name={name} size={32} kind={m.author.kind === 'agent' ? 'agent' : m.author.kind === 'human' ? 'human' : 'system'} />
+        <Avatar id={m.author.id} name={name} size={24} kind={m.author.kind === 'agent' ? 'agent' : m.author.kind === 'human' ? 'human' : 'system'} />
         <div style={{ minWidth: '0' }}>
           <header class="meta">
             <strong>{name}</strong>

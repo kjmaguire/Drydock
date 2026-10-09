@@ -391,7 +391,7 @@ function ImportSection(handle: Handle) {
             <p>
               Imported <strong data-testid="import-result-name">{result.name}</strong> as a new project ({result.idsRemapped} ids remapped, {result.runFilesRestored} run
               file(s) restored
-              {result.migratedForward ? ', migrated forward' : ''}). Choose it in the projects rail on the left.
+              {result.migratedForward ? ', migrated forward' : ''}). Choose it in the project switcher at the top of the sidebar.
             </p>
             <p>It came in untrusted:</p>
             <PendingList p={result.pending} />

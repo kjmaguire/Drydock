@@ -3,8 +3,8 @@
  * this file owns the tokens (custom properties), the reset and the few global rules every screen shares. Layer order:
  * base loses to generated component styles, app overrides them deliberately.
  *
- * The look: a dense, quiet workspace (Linear) with a chat-first shell (Discord, Slack): a dark rail of projects, a
- * sidebar of channels and screens, a conversation or page in the middle, details on the right.
+ * The look: a dense, quiet workspace (Linear) that is chat-first: one sidebar (project switcher, screens, channels), a
+ * conversation or page in the middle, details on the right.
  */
 @layer base, rmx, app;
 
@@ -35,7 +35,6 @@
     --radius-xl: 14px;
     --radius-full: 999px;
 
-    --rail-width: 64px;
     --sidebar-width: 248px;
     --details-width: 320px;
     --header-height: 48px;
@@ -45,7 +44,6 @@
     --duration-med: 200ms;
 
     /* colors: light-dark(light, dark); the scheme comes from data-theme or the system preference */
-    --bg-rail: light-dark(#e9eaee, #08090b);
     --bg-sidebar: light-dark(#f3f4f7, #0f1013);
     --bg-app: light-dark(#fbfbfc, #131418);
     --bg-surface: light-dark(#ffffff, #18191e);

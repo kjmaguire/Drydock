@@ -1,10 +1,11 @@
-// The sidebar (Slack's channel list with Linear's density): the project header, quick links (Needs you, Tasks, ...),
-// channels, task channels, direct messages, then collapsible project, knowledge and workspace sections, and the event
-// stream status. Arrow keys move between items (docs/ui.md section 14).
+// The sidebar (Linear's single sidebar): the Drydock mark and the project switcher, search, quick links (Needs you,
+// Tasks, ...), channels, task channels, direct messages, then collapsible project, knowledge and workspace sections, and
+// the event stream status. Arrow keys move between items (docs/ui.md section 14).
 
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import {
   Activity,
+  Anchor,
   BookOpen,
   Brain,
   ChevronDown,
@@ -40,8 +41,9 @@ import type { Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
 import { Avatar, presenceColor } from '../ui/data.tsx';
-import { Icon, type IconNode } from '../ui/icon.tsx';
+import { Icon, roomIcon, type IconNode } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
+import { ProjectSwitcher } from './project-switcher.tsx';
 
 const sideCss = css({
   display: 'flex',
@@ -55,13 +57,16 @@ const sideCss = css({
 const headCss = css({
   display: 'flex',
   alignItems: 'center',
-  gap: t.s2,
+  gap: '2px',
   height: 'var(--header-height)',
-  padding: `0 ${t.s3}`,
+  padding: `0 ${t.s2} 0 ${t.s3}`,
   borderBottom: `1px solid ${t.border}`,
   flex: 'none',
-  '& strong': { flex: '1', minWidth: '0', fontSize: t.textLg, fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
 });
+
+// the brand: a monochrome mark, then a slash, then the switcher (a breadcrumb: Drydock / project)
+const brandCss = css({ display: 'inline-flex', alignItems: 'center', flex: 'none', color: t.text, opacity: '0.85' });
+const slashCss = css({ flex: 'none', padding: '0 2px 0 4px', color: t.textFaint, fontSize: t.textLg, fontWeight: '300', userSelect: 'none' });
 
 const searchBtn = css({
   display: 'flex',
@@ -99,28 +104,29 @@ const itemCss = css({
   minWidth: '0',
   '& > .label': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& svg': { flex: 'none', opacity: '0.8' },
+  '& > .room-icon': { display: 'inline-flex', width: '16px', justifyContent: 'center', flex: 'none', color: t.textFaint, opacity: '0.85' },
+  '&[aria-current="page"] > .room-icon, &:hover > .room-icon': { color: t.textMuted },
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
   '&[aria-current="page"]': { background: t.bgActive, color: t.text },
   '&[data-unread="true"]': { color: t.text, fontWeight: '600' },
   '&:focus-visible': { boxShadow: `inset ${t.focus}` },
 });
 
-const hashCss = css({ width: '16px', textAlign: 'center', color: t.textFaint, fontWeight: '500', flex: 'none' });
-
+// counts are quiet numbers, not pills: the unread count in the muted text color, "needs you" in a soft red tint
 const countCss = css({
-  minWidth: '18px',
-  height: '18px',
-  padding: '0 5px',
-  borderRadius: t.rFull,
-  background: t.danger,
-  color: '#fff',
+  minWidth: '16px',
+  height: '16px',
+  padding: '0 4px',
+  borderRadius: t.rSm,
+  color: t.textMuted,
   fontSize: t.textXs,
-  fontWeight: '600',
-  lineHeight: '18px',
+  fontWeight: '500',
+  lineHeight: '16px',
   textAlign: 'center',
+  fontVariantNumeric: 'tabular-nums',
 });
-const countMuted = css({ background: t.bgActive, color: t.textMuted });
-const unreadDot = css({ minWidth: '18px', background: t.accent });
+const countNeeds = css({ background: t.dangerSoft, color: t.danger, fontWeight: '600' });
+const countZero = css({ color: t.textFaint, fontWeight: '400' });
 
 const groupHead = css({
   display: 'flex',
@@ -224,6 +230,8 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
   // roving focus: arrow keys move between sidebar links
   const onKey = (e: KeyboardEvent) => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) || !nav) return;
+    // only between the links (the project switcher's menu has its own arrow keys)
+    if (!(e.target instanceof Node) || !nav.contains(e.target)) return;
     const items = Array.from(nav.querySelectorAll<HTMLElement>('[data-nav]'));
     if (items.length === 0) return;
     const i = items.indexOf(document.activeElement as HTMLElement);
@@ -258,13 +266,22 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
           unread={n > 0}
           lead={
             r.kind === 'dm' ? (
-              <Avatar id={agentId} name={label} size={18} status={presenceColor(p.presence.data?.find((x) => x.agentId === agentId))} />
+              <Avatar id={agentId} name={label} size={18} kind="agent" status={presenceColor(p.presence.data?.find((x) => x.agentId === agentId))} />
             ) : (
-              <span mix={hashCss}>#</span>
+              <span class="room-icon">
+                <Icon icon={roomIcon(r.kind)} size={14} />
+              </span>
             )
           }
-          label={r.kind === 'dm' ? label : ` ${label}`}
-          badge={n > 0 ? <span mix={[countCss, unreadDot]} title={`${n} unread`}>{n}</span> : null}
+          label={label}
+          badge={
+            n > 0 ? (
+              <span mix={countCss} title={`${n} unread`} data-testid="unread-count">
+                <span aria-hidden="true">{n}</span>
+                <span class="sr-only">, {n} unread</span>
+              </span>
+            ) : null
+          }
         />
       );
     };
@@ -275,7 +292,13 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     return (
       <nav mix={[sideCss, on<HTMLElement, 'keydown'>('keydown', onKey)]} aria-label="Main">
         <div mix={headCss}>
-          <strong title={project?.name}>{project?.name ?? 'Drydock'}</strong>
+          <span mix={brandCss} title="Drydock">
+            <Icon icon={Anchor} size={16} strokeWidth={2} label="Drydock" />
+          </span>
+          <span mix={slashCss} aria-hidden="true">
+            /
+          </span>
+          <ProjectSwitcher />
         </div>
         <button type="button" mix={[searchBtn, on('click', () => s.ui.setPalette(true))]} aria-label="Search and jump (Ctrl+K)">
           <Icon icon={Search} size={14} />
@@ -299,7 +322,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                   icon={Inbox}
                   label="Needs you"
                   badge={
-                    <span mix={[countCss, needs > 0 ? undefined : countMuted]}>
+                    <span mix={[countCss, needs > 0 ? countNeeds : countZero]}>
                       <span data-testid="needs-count" aria-label={`${needs} items need you`}>
                         {needs}
                       </span>
@@ -369,7 +392,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                         aria-label={`Inspect ${a.name}`}
                         title={pr?.activity ?? pr?.presence ?? ''}
                       >
-                        <Avatar id={a.id} name={a.name} size={18} status={presenceColor(pr)} />
+                        <Avatar id={a.id} name={a.name} size={18} kind="agent" status={presenceColor(pr)} />
                         <span class="label">{a.name}</span>
                         <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{a.role}</span>
                       </button>
