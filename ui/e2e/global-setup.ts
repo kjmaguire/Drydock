@@ -6,8 +6,8 @@
 //   2. `-licensed`: a TEST HARNESS MODE with a throwaway license key, which starts with no license (read-only) and prints
 //      two signed test tokens (one active, one expired). It is only used by e2e/round4.spec.ts.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { mkdirSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,8 +26,32 @@ interface Started {
   extra: Record<string, string>;
 }
 
+/**
+ * The PATH the harness runs with: the same, except that the GitHub CLI is not on it. The harness has no GitHub account, so
+ * the suite is the same on a developer machine that has gh signed in as on CI without it (the wizard's GitHub choice then
+ * explains that gh is missing). A folder that holds gh is replaced by a folder of links to everything else in it.
+ */
+function pathWithoutGh(outDir: string): string {
+  const dirs = (process.env.PATH ?? '').split(delimiter);
+  if (process.platform === 'win32') return dirs.join(delimiter);
+  const shimRoot = join(outDir, 'path-without-gh');
+  rmSync(shimRoot, { recursive: true, force: true });
+  return dirs
+    .map((d, i) => {
+      if (!d || !existsSync(join(d, 'gh'))) return d;
+      const shim = join(shimRoot, String(i));
+      mkdirSync(shim, { recursive: true });
+      for (const f of readdirSync(d)) if (f !== 'gh') symlinkSync(join(d, f), join(shim, f));
+      return shim;
+    })
+    .join(delimiter);
+}
+
+let harnessPath: string | undefined;
+
 async function start(exe: string, args: string[]): Promise<Started> {
-  const child = spawn(exe, ['-ui', join(uiDir, 'dist'), ...args], { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+  const env = harnessPath ? { ...process.env, PATH: harnessPath } : process.env;
+  const child = spawn(exe, ['-ui', join(uiDir, 'dist'), ...args], { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] });
   const out: Started = { child, url: '', repos: [], greens: [], docs: '', extra: {} };
   let stderr = '';
   child.stderr!.on('data', (d) => (stderr += String(d)));
@@ -75,6 +99,7 @@ export default async function globalSetup() {
   });
   if (build.status !== 0) throw new Error(`go build ./cmd/drydock-e2e failed:\n${build.stdout}\n${build.stderr}`);
 
+  harnessPath = pathWithoutGh(outDir);
   process.env.DRYDOCK_E2E_EXE = exe; // the binary is also a stdio MCP server when DRYDOCK_E2E_MCP_SERVER=1 (a test fixture)
   const main = await start(exe, ['-repos', String(REPOS), '-green-repos', String(GREEN)]);
   const started: ChildProcess[] = [main.child];

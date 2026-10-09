@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -222,8 +222,8 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await expect(banner).toHaveAttribute('data-configured', 'true');
   await expect(banner).toContainText('No valid license');
   await showNewProjectForm(page);
-  await page.getByLabel('Repository path').fill(licensedRepo());
   await expect(page.getByTestId('readonly-note')).toContainText('read-only');
+  await wizardToReview(page, { repo: licensedRepo() });
   const create = page.getByRole('button', { name: 'Create project' });
   await expect(create).toBeDisabled();
   await expect(create).toHaveAttribute('title', /No valid license/);
@@ -261,10 +261,9 @@ test('licensed test harness: no license is read-only and says why; expired is re
 
   await page.goto(url);
   await showNewProjectForm(page);
-  await page.getByLabel('Repository path').fill(licensedRepo());
-  await page.getByLabel('Project name (optional)').fill('pkg-licensed');
+  await wizardToReview(page, { name: 'pkg-licensed', repo: licensedRepo() });
   await expect(page.getByRole('button', { name: 'Create project' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Create project' }).click();
+  await wizardCreate(page);
   await expect(roomLink(page, 'general')).toBeVisible();
   await createAgent(page, 'lic-worker', 'backend');
 

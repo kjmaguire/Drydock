@@ -80,4 +80,20 @@ export class Workspace extends Model {
   get license(): LicenseInfo {
     return licenseInfo(this.licenseLive.data);
   }
+
+  #setupOpen = false;
+
+  /**
+   * True while the new-project wizard shows the result of a setup (its warnings) and the person has not opened the
+   * project yet. On the first run the shell keeps the wizard on screen meanwhile, although a project now exists.
+   */
+  get setupOpen(): boolean {
+    return this.#setupOpen;
+  }
+
+  setSetupOpen(v: boolean): void {
+    if (this.#setupOpen === v) return;
+    this.#setupOpen = v;
+    this.changed();
+  }
 }

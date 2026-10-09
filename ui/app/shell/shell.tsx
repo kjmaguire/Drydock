@@ -87,8 +87,9 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
           <p>The page needs the core's address and token (open the link the core printed, which ends in ?token=...).</p>
         </Page>
       );
-    } else if (!project && !isWorkspaceRoute(route) && route.name !== 'project-new') {
-      // pages that do not need a project open without one: a read-only install has to reach License and Backups
+    } else if ((!project || ws.setupOpen) && !isWorkspaceRoute(route) && route.name !== 'project-new') {
+      // pages that do not need a project open without one: a read-only install has to reach License and Backups. The
+      // first-run wizard stays while it shows what the setup did, until the person opens the new project.
       center = <ProjectCreateScreen first />;
     } else {
       center = children;

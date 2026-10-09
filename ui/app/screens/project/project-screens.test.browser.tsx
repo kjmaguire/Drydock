@@ -2,96 +2,16 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { CheckSettings, DevSettings } from '../../api/extTypes.ts';
-import type { LicenseView } from '../../api/pkgTypes.ts';
 import type { Project } from '../../api/types.ts';
-import { expiredLicense, lic, unconfiguredLicense } from '../../test/fixtures.ts';
+import { lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
-import { ProjectCreateScreen } from './project-create-screen.tsx';
 import { ProjectSettingsScreen } from './project-settings-screen.tsx';
+import { repo } from './wizard-fixtures.ts';
 
 afterEach(cleanup);
 
 const project: Project = { id: 'p1', name: 'gocalc', repoPath: '/r', defaultBranch: 'main', mergeStrategy: 'merge', mode: 'local_merge', created: 0 };
-
-function services(view: LicenseView, client: Partial<Client> = {}) {
-  const s = testServices({ projectList: async () => [], licenseStatus: async () => view, appInfo: async () => ({}) as never, ...client });
-  s.workspace.start();
-  return s;
-}
-
-describe('Project create: license and the core refusal', () => {
-  it('disables nothing when licensing is not configured', async () => {
-    const r = mount(<ProjectCreateScreen />, services(unconfiguredLicense));
-    await waitFor(() => expect(r.services.workspace.license.view).toBeTruthy(), r);
-    type(byLabel(r.container, 'Repository path'), 'C:\\r');
-    r.root.flush();
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create project').disabled).toBe(false);
-    expect(r.container.querySelector('[data-testid="readonly-note"]')).toBe(null);
-    expect(r.$('h1')!.textContent).toContain('New project');
-  });
-
-  it('is turned off when expired, with the core reason as the title and a way to License', async () => {
-    const r = mount(<ProjectCreateScreen />, services(expiredLicense));
-    const note = await waitFor(() => {
-      const n = r.container.querySelector('[data-testid="readonly-note"]');
-      if (!n) throw new Error('no note');
-      return n;
-    }, r);
-    type(byLabel(r.container, 'Repository path'), 'C:\\r');
-    r.root.flush();
-    const btn = byText<HTMLButtonElement>(r.container, 'button', 'Create project');
-    expect(btn.disabled).toBe(true);
-    expect(btn.title).toBe(expiredLicense.banner!);
-    expect(note.textContent).toContain('Open License');
-  });
-
-  it('a grace period disables nothing', async () => {
-    const r = mount(<ProjectCreateScreen />, services(lic({ state: 'grace', daysLeft: 3, banner: 'License expired; full functionality for 3 more grace day(s).' })));
-    await waitFor(() => expect(r.services.workspace.license.view).toBeTruthy(), r);
-    type(byLabel(r.container, 'Repository path'), 'C:\\r');
-    r.root.flush();
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create project').disabled).toBe(false);
-  });
-
-  it('shows the core refusal text verbatim when a mutating call is still refused', async () => {
-    const refusal = 'Your license has expired, so Drydock is read-only: creating projects is turned off.';
-    const r = mount(
-      <ProjectCreateScreen />,
-      services(lic(), {
-        projectCreate: async () => {
-          throw new Error(refusal);
-        },
-      }),
-    );
-    type(byLabel(r.container, 'Repository path'), 'C:\\r');
-    r.root.flush();
-    await r.act(() => byText(r.container, 'button', 'Create project').click());
-    await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain(refusal), r);
-  });
-
-  it('creates the project from the trimmed path and name, selects it, re-reads the projects and goes home', async () => {
-    const calls: [string, string][] = [];
-    let lists = 0;
-    const navigated: string[] = [];
-    const s = services(lic(), {
-      projectCreate: async (name, repo) => (calls.push([name, repo]), { ...project, id: 'p9', name: 'mine' }),
-      projectList: async () => (lists++, lists > 1 ? [project, { ...project, id: 'p9', name: 'mine' }] : []),
-    });
-    const r = mount(<ProjectCreateScreen first onNavigate={(h) => navigated.push(h)} />, s);
-    expect(r.$('h1')!.textContent).toContain('Welcome to Drydock');
-    expect(r.container.textContent).toContain('merges only after you approve');
-    const create = byText<HTMLButtonElement>(r.container, 'button', 'Create project');
-    expect(create.disabled).toBe(true); // a path is required
-    type(byLabel(r.container, 'Repository path'), '  C:\\src\\repo ');
-    type(byLabel(r.container, 'Project name (optional)'), ' mine ');
-    r.root.flush();
-    await r.act(() => create.click());
-    await waitFor(() => expect(navigated).toEqual(['/']), r);
-    expect(calls).toEqual([['mine', 'C:\\src\\repo']]);
-    await waitFor(() => expect(s.workspace.projectId).toBe('p9'), r);
-  });
-});
 
 describe('Project settings', () => {
   function settings(client: Partial<Client> = {}) {
@@ -127,6 +47,65 @@ describe('Project settings', () => {
     await r.act(() => save.click());
     await waitFor(() => expect(r.container.textContent).toMatch(/pr_flow is not available/), r);
     expect(calls).toEqual([['p1', 'pr_flow', 'squash']]);
+  });
+
+  it('a project without a repository: says so, turns delivery off, and attaches a local folder once', async () => {
+    const attached: [string, string][] = [];
+    let lists = 0;
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => (lists++, lists > 1 ? [{ ...project, hasRepo: true }] : [bare]),
+      projectAttachRepo: async (id, path) => (attached.push([id, path]), { ...project, hasRepo: true }),
+    });
+    await waitFor(() => expect(r.container.querySelector('[data-testid="no-repo"]')!.textContent).toBe('No repository yet'), r);
+    expect(byLabel<HTMLSelectElement>(r.container, 'Mode').disabled).toBe(true);
+    expect(r.container.textContent).toContain('Attach a repository first');
+    const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
+    expect(attach.disabled).toBe(true);
+    type(byLabel(r.container, 'Repository path'), ' /src/pay ');
+    r.root.flush();
+    await r.act(() => attach.click());
+    await waitFor(() => expect(attached).toEqual([['p1', '/src/pay']]), r);
+    // the projects are read again: the repository is there and the attach form is gone
+    await waitFor(() => expect(r.container.querySelector('[data-testid="attach-repo"]')).toBeNull(), r);
+    expect(r.container.querySelector('[data-testid="no-repo"]')).toBeNull();
+  });
+
+  it('attaches a GitHub repository by cloning it with gh first', async () => {
+    const calls: unknown[][] = [];
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => [bare],
+      githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }),
+      githubOwners: async () => ['kyle'],
+      githubRepos: async () => [repo('kyle/pay')],
+      githubCloneDir: async () => '/home/kyle/src',
+      githubClone: async (rp, dir) => (calls.push(['clone', rp, dir]), { path: '/home/kyle/src/pay', defaultBranch: 'main' }),
+      projectAttachRepo: async (id, path) => (calls.push(['attach', id, path]), { ...project, hasRepo: true }),
+    });
+    await waitFor(() => expect(r.container.querySelector('[data-testid="attach-repo"] [role="radiogroup"]')).not.toBeNull(), r);
+    const gh = Array.from(r.container.querySelectorAll<HTMLLabelElement>('[data-testid="attach-repo"] [role="radiogroup"] label')).find((l) => l.textContent!.trim() === 'GitHub')!;
+    await r.act(() => gh.querySelector('input')!.click());
+    const pick = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'kyle/pay'), r);
+    await r.act(() => pick.click());
+    await waitFor(() => expect(r.container.querySelector('[data-testid="clone-target"]')!.textContent).toBe('/home/kyle/src/pay'), r);
+    await r.act(() => byText(r.container, 'button', 'Clone and attach').click());
+    await waitFor(() => expect(calls).toEqual([['clone', 'kyle/pay', '/home/kyle/src'], ['attach', 'p1', '/home/kyle/src/pay']]), r);
+  });
+
+  it('edits the brief with a character count and saves it through project.setBrief', async () => {
+    const saved: [string, string][] = [];
+    const r = settings({ projectList: async () => [{ ...project, brief: 'Old brief.' }], projectSetBrief: async (id, b) => (saved.push([id, b]), { ...project, brief: b }) });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Project brief'), r);
+    await waitFor(() => expect(box.value).toBe('Old brief.'), r);
+    const save = byText<HTMLButtonElement>(r.container, 'button', 'Save brief');
+    expect(save.disabled).toBe(true);
+    type(box, 'Keep changes small.');
+    r.root.flush();
+    expect(r.container.querySelector('[data-testid="brief-count"]')!.textContent).toContain('19 / 8000');
+    await r.act(() => save.click());
+    await waitFor(() => expect(saved).toEqual([['p1', 'Keep changes small.']]), r);
+    await waitFor(() => expect(Array.from(r.container.querySelectorAll('[role="status"]')).some((e) => e.textContent === 'Saved.')).toBe(true), r);
   });
 
   it('shows the stored strategy, and says Saved after the core accepts', async () => {
