@@ -26,6 +26,8 @@ export const routes = route({
   budgets: get('/budgets'),
   evals: get('/evals'),
   // workspace screens: they open without a project
+  chats: get('/chats'),
+  chat: get('/chats/:id'),
   library: get('/library'),
   integrations: get('/integrations'),
   connections: get('/connections'),

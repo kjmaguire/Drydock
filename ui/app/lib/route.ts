@@ -10,6 +10,8 @@ export type Route =
   | { name: 'run'; taskId: string; runId?: string }
   | { name: 'project' }
   | { name: 'project-new' }
+  | { name: 'chats' }
+  | { name: 'chat'; id: string }
   | {
       name:
         | 'pulls'
@@ -36,7 +38,8 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = ['library', 'inte
 const SIMPLE = new Set<string>(['pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', ...WORKSPACE_ROUTES]);
 
 export function isWorkspaceRoute(r: Route): boolean {
-  return (WORKSPACE_ROUTES as readonly string[]).includes(r.name);
+  // chats open without a project too (a chat may have none)
+  return (WORKSPACE_ROUTES as readonly string[]).includes(r.name) || r.name === 'chats' || r.name === 'chat';
 }
 
 /** Parse a pathname. Unknown paths are 'not-found'. */
@@ -61,6 +64,9 @@ export function parseRoute(pathname: string): Route {
     case 'task':
       if (b && c === 'run' && parts.length <= 4) return d ? { name: 'run', taskId: b, runId: d } : { name: 'run', taskId: b };
       return b && parts.length === 2 ? { name: 'task', id: b } : { name: 'not-found' };
+    case 'chats':
+      if (parts.length === 1) return { name: 'chats' };
+      return b && parts.length === 2 ? { name: 'chat', id: b } : { name: 'not-found' };
     case 'project':
       if (parts.length === 1) return { name: 'project' };
       return b === 'new' && parts.length === 2 ? { name: 'project-new' } : { name: 'not-found' };

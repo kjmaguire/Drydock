@@ -10,6 +10,7 @@ import { createDockClient, type DockClient } from './dockClient.ts';
 import { createRunClient, type RunClient } from './runClient.ts';
 import { createAttachClient, type AttachClient } from './attachClient.ts';
 import { createProviderClient, type ProviderClient } from './providerClient.ts';
+import { createChatClient, type ChatClient } from './chatClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -44,7 +45,7 @@ import type {
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, ChatClient {
   appInfo(): Promise<AppInfo>;
   projectCreate(name: string, repoPath: string): Promise<Project>;
   projectList(): Promise<Project[]>;
@@ -107,6 +108,7 @@ export function createClient(t: Transport): Client {
     ...createRunClient(t),
     ...createAttachClient(t),
     ...createProviderClient(t),
+    ...createChatClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath) => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
