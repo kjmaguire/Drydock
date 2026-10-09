@@ -210,13 +210,13 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
 
   const group = (id: string, title: string, body: RemixNode, action?: RemixNode) => (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <h2 style={{ display: 'flex', alignItems: 'center', margin: '0', fontSize: 'inherit' }}>
         <button type="button" mix={[groupHead, on('click', () => toggle(id))]} aria-expanded={!collapsed[id]}>
           <Icon icon={ChevronDown} size={12} />
           <span>{title}</span>
         </button>
         {action}
-      </div>
+      </h2>
       {collapsed[id] ? null : <ul mix={listCss}>{body}</ul>}
     </div>
   );

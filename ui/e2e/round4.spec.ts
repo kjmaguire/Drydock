@@ -151,7 +151,7 @@ test('export a project, preview what is in it, import it into a second project; 
 
   // the second project exists, is separate, and opens
   // projects are tiles in the rail (the Discord-style server list)
-  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: 'pkg-export-copy', exact: true }).click();
+  await page.getByRole('radiogroup', { name: 'Projects' }).getByRole('radio', { name: 'pkg-export-copy', exact: true }).click();
   await expect(page.getByRole('link', { name: '# general' })).toBeVisible();
   await page.getByRole('link', { name: '# general' }).click();
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();

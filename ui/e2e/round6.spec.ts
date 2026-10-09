@@ -50,7 +50,8 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   // drag the server onto project lib-a
   const projA = page.getByTestId('lib-project').filter({ hasText: 'lib-a' });
   const projB = page.getByTestId('lib-project').filter({ hasText: 'lib-b' });
-  await card.locator('h3').dragTo(projA);
+  // drop on the project itself (its heading), not on an agent inside its card
+  await card.locator('h3').dragTo(projA.getByRole('heading', { name: 'lib-a', exact: true }));
   await expect(page.getByTestId('library-note')).toContainText('Test server is now in lib-a.');
   await expect(projA.getByTestId('proj-server')).toHaveCount(1);
   await expect(projB.getByTestId('proj-server')).toHaveCount(0);
@@ -74,7 +75,7 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await tf.getByRole('button', { name: 'Create template' }).click();
   const tpl = page.getByTestId('lib-template').filter({ hasText: 'Payments dev' });
   await expect(tpl).toBeVisible();
-  await tpl.locator('h3').dragTo(projB);
+  await tpl.locator('h3').dragTo(projB.getByRole('heading', { name: 'lib-b', exact: true }));
   await expect(page.getByTestId('library-note')).toContainText('Payments dev joined lib-b, with Test server');
   const newAgent = projB.getByTestId('lib-agent').filter({ hasText: 'Payments dev' });
   await expect(newAgent).toBeVisible();

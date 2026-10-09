@@ -2,7 +2,7 @@
 // project", and the workspace shortcuts at the bottom.
 
 import { css, on, type Handle } from 'remix/component';
-import { Anchor, Library, Plus, Settings } from 'lucide';
+import { Anchor, Plus, Settings } from 'lucide';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
 import { Avatar } from '../ui/data.tsx';
@@ -102,6 +102,17 @@ function RailLink(handle: Handle<{ href: string; label: string; icon: IconNode; 
 export function Rail(handle: Handle<{ route: Route }>) {
   const s = services(handle);
   watch(handle, s.workspace);
+  // a project is chosen like a radio button: arrow keys move between the tiles and select
+  const onKey = (e: KeyboardEvent) => {
+    if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft'].includes(e.key)) return;
+    const list = s.workspace.projectList;
+    if (list.length === 0) return;
+    e.preventDefault();
+    const i = Math.max(0, list.findIndex((p) => p.id === s.workspace.projectId));
+    const next = list[(i + (e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : list.length - 1)) % list.length]!;
+    s.workspace.selectProject(next.id);
+    handle.queueTask(() => (document.querySelector(`[data-testid="project-tile"][data-project="${CSS.escape(next.id)}"]`) as HTMLElement | null)?.focus());
+  };
   return () => {
     const { route } = handle.props;
     const current = s.workspace.project;
@@ -111,27 +122,31 @@ export function Rail(handle: Handle<{ route: Route }>) {
           <Icon icon={Anchor} size={20} label="Drydock" />
         </span>
         <span mix={sep} aria-hidden="true" />
-        {s.workspace.projectList.map((p) => {
-          const sel = p.id === current?.id;
-          return (
-            <div key={p.id} mix={tileWrap} data-current={String(sel)}>
-              <button
-                type="button"
-                mix={[tileCss, on('click', () => s.workspace.selectProject(p.id))]}
-                aria-label={p.name}
-                aria-pressed={sel}
-                title={p.name}
-                data-testid="project-tile"
-              >
-                <Avatar id={p.id} name={p.name} size={40} square />
-              </button>
-            </div>
-          );
-        })}
+        <div role="radiogroup" aria-label="Projects" style={{ display: 'contents' }} mix={on<HTMLDivElement, 'keydown'>('keydown', onKey)}>
+          {s.workspace.projectList.map((p) => {
+            const sel = p.id === current?.id;
+            return (
+              <div key={p.id} mix={tileWrap} data-current={String(sel)}>
+                <button
+                  type="button"
+                  role="radio"
+                  mix={[tileCss, on('click', () => s.workspace.selectProject(p.id))]}
+                  aria-label={p.name}
+                  aria-checked={sel}
+                  tabIndex={sel ? 0 : -1}
+                  title={p.name}
+                  data-testid="project-tile"
+                  data-project={p.id}
+                >
+                  <Avatar id={p.id} name={p.name} size={40} square />
+                </button>
+              </div>
+            );
+          })}
+        </div>
         <RailLink href={routes.projectNew.href()} label="+ New project" icon={Plus} current={route.name === 'project-new'} tone="add" />
         <span mix={grow} />
-        <RailLink href={routes.library.href()} label="Library" icon={Library} current={route.name === 'library'} />
-        <RailLink href={routes.settings.href()} label="Settings and About" icon={Settings} current={route.name === 'settings'} />
+        <RailLink href={routes.settings.href()} label="App settings" icon={Settings} current={route.name === 'settings'} />
       </nav>
     );
   };
