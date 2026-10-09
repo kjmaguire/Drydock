@@ -434,6 +434,20 @@ describe('Conversation', () => {
     await waitFor(() => expect($(r, '[data-testid="chip-mode"]')!.getAttribute('data-warn')).toBe('true'), r);
   });
 
+  it('a header popover takes the focus when it opens and Escape closes it', async () => {
+    const { r } = conv(chat(), []);
+    const btn = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'Chat settings'), r);
+    await r.act(() => btn.click());
+    const model = await waitFor(() => {
+      const el = must$(r, '[data-testid="chat-settings"]').querySelector('input');
+      if (!el || document.activeElement !== el) throw new Error('not focused yet');
+      return el;
+    }, r);
+    await r.act(() => model.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    await waitFor(() => expect(must$(r, '[data-testid="chat-settings"]').querySelector('form')).toBeNull(), r);
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('attaches other chats as removable chips and sends their ids', async () => {
     const sent: unknown[] = [];
     const others = [item({ id: 'chat_a' }), item({ id: 'c2', title: 'Overflow edge cases' }), item({ id: 'c3', title: 'Commit message' })];

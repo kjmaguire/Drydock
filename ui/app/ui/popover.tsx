@@ -1,4 +1,4 @@
-import { css, on, type Handle, type MixInput, type RemixNode } from 'remix/component';
+import { css, on, ref, type Handle, type MixInput, type RemixNode } from 'remix/component';
 import * as popover from '@remix-run/ui/popover';
 import { t } from './tokens.ts';
 
@@ -36,12 +36,33 @@ export function Popover(
     stopOutsideClick?: boolean;
   }>,
 ) {
+  let surface: HTMLElement | undefined;
+  let wasOpen = false;
+  // keyboard: on open, focus the first control inside (so Escape reaches the surface); Escape on the opener closes too
+  const focusFirst = () => surface?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])')?.focus();
   return () => {
     const { open, onOpen, onClose, label, trigger, placement = 'bottom-start', children, testId, stopOutsideClick = true } = handle.props;
+    if (open && !wasOpen) handle.queueTask(() => requestAnimationFrame(focusFirst)); // after the surface is shown
+    wasOpen = open;
     return (
       <popover.Context>
-        {trigger([popover.anchor({ placement, offset: 4 }), popover.focusOnHide(), on('click', () => (open ? onClose() : onOpen()))])}
-        <div role="dialog" aria-label={label} data-testid={testId} mix={[popoverSurface, popover.surface({ open, onHide: () => onClose(), stopOutsideClickPropagation: stopOutsideClick })]}>
+        {trigger([
+          popover.anchor({ placement, offset: 4 }),
+          popover.focusOnHide(),
+          on('click', () => (open ? onClose() : onOpen())),
+          on('keydown', (e) => {
+            if (open && (e as KeyboardEvent).key === 'Escape') {
+              e.preventDefault();
+              onClose();
+            }
+          }),
+        ])}
+        <div
+          role="dialog"
+          aria-label={label}
+          data-testid={testId}
+          mix={[popoverSurface, ref((n) => (surface = n as HTMLElement)), popover.surface({ open, onHide: () => onClose(), stopOutsideClickPropagation: stopOutsideClick })]}
+        >
           {open ? children : null}
         </div>
       </popover.Context>
