@@ -53,6 +53,21 @@ var liveCases = []liveCase{
 				t.Errorf("goose capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)
 			}
 		}},
+	// Cline: apps/cli/src/acp/acpAgent.ts at 3.0.70 advertises loadSession and image prompts only (no resume, fork, list, or MCP
+	// transports beyond stdio). Its initialize does not need a sign-in; session/new does.
+	{name: "cline", env: "CLINE", bin: "cline", args: []string{"--acp"}, version: "3.0.70",
+		check: func(t *testing.T, i acp.AgentInfo) {
+			if !i.LoadSession || i.Resume || i.Fork || i.List || i.MCPHTTP || i.MCPSSE || !i.Image {
+				t.Errorf("cline capabilities differ from its 3.0.70 source (apps/cli/src/acp/acpAgent.ts): %+v", i)
+			}
+			var ids []string
+			for _, m := range i.AuthMethods {
+				ids = append(ids, m.ID)
+			}
+			if strings.Join(ids, ",") != "cline,cline-pass,openai-codex" {
+				t.Errorf("cline auth methods %v", ids)
+			}
+		}},
 	{name: "codex-acp", env: "CODEX_ACP", bin: "codex-acp", version: "",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || !i.Resume || !i.Fork || !i.List || !i.Close || !i.Delete || !i.MCPHTTP || i.MCPSSE || i.MCPACP {

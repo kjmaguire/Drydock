@@ -189,6 +189,11 @@ func ConfigFor(provider string, ep Endpoint, opts ...ConfigOptions) (ClientConfi
 		cfg.Args = []string{"--with-extension", strings.Join(ep.ShimCommand, " ")}
 		cfg.Env = []string{EnvMCPURL + "=" + ep.URL, EnvMCPToken + "=" + ep.Token}
 		cfg.Notes = append(cfg.Notes, "UNVERIFIED: no live Goose run; Goose's HTTP flag header support is unverified, so the stdio shim is used; whether the extension inherits these env vars is unverified; the ACP session/new route (JSON file) is preferred; a shim path containing spaces needs adapter-side quoting")
+	case "cline":
+		if cfg.JSON, err = file(); err != nil {
+			return cfg, err
+		}
+		cfg.Notes = append(cfg.Notes, "UNVERIFIED: no live Cline run with a sign-in; the only mechanism is ACP session/new.mcpServers (JSON file), and Cline 3.0.70 stores that list without reading it back anywhere in apps/cli (decisions P29), so the tools are most likely not offered to the model")
 	case "custom":
 		if cfg.JSON, err = file(); err != nil {
 			return cfg, err

@@ -76,7 +76,7 @@ func TestConfigForClaude(t *testing.T) {
 
 func TestConfigForOthersAreMarkedUnverified(t *testing.T) {
 	ep := testEndpoint()
-	for _, p := range []string{"codex", "gemini", "opencode", "goose", "custom"} {
+	for _, p := range []string{"codex", "gemini", "opencode", "goose", "cline", "custom"} {
 		cfg, err := ConfigFor(p, ep, ConfigOptions{Tools: []string{"read_range"}})
 		if err != nil {
 			t.Fatalf("%s: %v", p, err)

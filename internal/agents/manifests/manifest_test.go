@@ -30,7 +30,7 @@ func get(t *testing.T, id string) *manifests.Manifest {
 
 func TestEmbeddedManifestsLoadAndValidate(t *testing.T) {
 	s := embeddedSet(t)
-	want := []string{"antigravity", "claude", "codex", "custom", "gemini", "goose", "opencode"}
+	want := []string{"antigravity", "claude", "cline", "codex", "custom", "gemini", "goose", "opencode"}
 	if !reflect.DeepEqual(s.IDs(), want) {
 		t.Fatalf("ids %v, want %v", s.IDs(), want)
 	}

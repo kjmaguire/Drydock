@@ -49,6 +49,7 @@ Principle (D1, brief section 5): Drydock never reads, copies, refreshes, transmi
 | Gemini CLI | `gemini` interactive, or API key / Vertex via env (`GEMINI_API_KEY`, ADC, `GOOGLE_APPLICATION_CREDENTIALS`) | none (no `gemini auth status`); ACP `authMethods` lists `oauth-personal, gemini-api-key, vertex-ai, gateway` [cli §3] | `~/.gemini/oauth_creds.json` (`GEMINI_CLI_HOME`), presumed Windows path unverified |
 | OpenCode | `opencode providers login [url]` (alias `auth`) | `opencode providers list` (non-interactive; output needs parsing) | `~/.local/share/opencode/auth.json` (Windows mapping unverified) [cli §4] |
 | Goose | `goose configure` (provider keys; some providers browser OAuth) | none; `goose doctor` exists but its output is unverified | OS keyring or `secrets.yaml` [cli §5] |
+| Cline | `cline auth` (Cline account, ClinePass, ChatGPT subscription, or `--provider <id> --apikey ...`) | none; ACP `session/new` answers `-32000 Authentication required` without a sign-in (observed, 3.0.70); ACP `authMethods`: `cline, cline-pass, openai-codex` | `~/.cline` (its own files; Windows path unverified) |
 | Antigravity | start `agy` interactively: it "authenticates via the system keyring, falling back to Google Sign-In"; `/logout` signs out | candidate: `agy -p "/usage"` (non-interactive, prints quota); unverified as an auth probe | system keyring [cli §8] |
 
 Claude-specific rules (D1): never run `claude` with `--bare` (it disables OAuth and keychain use, so it breaks subscription users [cli §1]); warn on the Connection when `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` is set in the environment, because the API key switches Claude Code to API billing (support-article paraphrase, **unverified verbatim** [cli §9.1]); never inject either variable ourselves unless the user chose an "API key" Claude Connection.
@@ -253,7 +254,7 @@ Brief section 16: provider terms for driving users' CLIs are recorded and warnin
 | Codex | Sign-in uses your ChatGPT plan or an API key. OpenAI's position on third-party orchestration could not be read. | notice only | [cli §9.3], **unverified** |
 | Gemini CLI | Consumer sign-in (AI Pro/Ultra and free individual) was reported retired on 2026-06-18 (re-verify). Use an AI Studio or Vertex API key. Google's repo terms call routing Gemini CLI OAuth through third-party tools a violation. | warning banner; `oauth-personal` blocked | D2, [cli §9.2] |
 | Antigravity | Research found no Google statement permitting third-party orchestration and a clause barring third-party tools from accessing the service, with enforcement history (account suspensions reported Feb 2026). Drydock drives only the official `agy` you installed and logged into and never touches credentials. An AI Studio or Vertex key is recommended where available. | **acknowledgement required** before `usable` | D2, [cli §8] (snippet-level) |
-| OpenCode, Goose | Open-source licenses; the terms of whatever provider you configure apply. Using Claude or Google subscriptions through them is governed by those vendors' terms. | notice only | [cli §9.4] |
+| OpenCode, Goose, Cline | Open-source licenses; the terms of whatever provider you configure apply. Using Claude or Google subscriptions through them is governed by those vendors' terms. | notice only | [cli §9.4] |
 | Claude ACP bridge | Disabled. Enabling needs a recorded written confirmation from Anthropic or counsel. | hard gate | D1 |
 
 ## 12. Drift detection
@@ -304,3 +305,22 @@ Ownership: each generated file starts with `<!-- drydock:generated sha256=<hash 
 - **Resolved by running the real CLIs:** `claude -p --output-format stream-json` requires `--verbose` (in the manifest). `codex-acp@2.1.1` runs its own bundled codex (0.159.3), not the installed one. `opencode providers list` printing "0 credentials" does not mean unusable (free models exist), so auth is reported as unknown. `session/new` without credentials fails with "authentication required" (gemini, codex-acp) or "provider not configured" (goose). Live ACP `initialize` of gemini 0.63.0, opencode 1.18.35, goose 1.53.0 and codex-acp 2.1.1 matches the capability matrix (run with `DRYDOCK_ACP_<NAME>` env vars; otherwise skipped with the reason). Real claude 2.1.294 passes conformance and Test Connection T1 to T5.
 - **Added:** compat class `verified_linux` (between `inspected` and `verified_short`) for a real Linux turn that is not a Windows proof.
 - **Not built / unverified:** no real prompt turn for any ACP CLI (no model credentials here), so real tool names, args and whether `inputTokens` includes cached tokens are unknown; Antigravity `Start` and the `custom` declarative dialect return "not implemented" (no captured fixtures); the codex headless fallback is declared, not built; everything on Windows (`.cmd` shims, tree kill, the logged-out `claude auth status` exit code); whether the Codex bridge honours `CODEX_PATH`.
+
+## 17. Cline (added 2026-10-09, decisions P29)
+
+Cline (Apache-2.0, github.com/cline/cline) is the eighth manifest, `internal/agents/manifests/cli/cline.yaml`, driven by the generic ACP client like OpenCode and Goose. It is listed on the Connections page (`connection.list`), and an agent or a chat can be created with adapter `cline`.
+
+| Item | Value | Evidence |
+|---|---|---|
+| Install (shown, never run) | `npm i -g cline`, Node 22+ | README; the package's `bin/cline` is a Node launcher (`#!/usr/bin/env node`) for the bundled platform binary, so Node is needed at run time too (D9) |
+| Detection | `cline --version` prints `3.0.70`; binaries `cline.cmd`, `cline.exe` | observed on Linux (npm package in a scratch folder) |
+| Pin | min and recommended `3.0.70`, compat class `inspected` | `TestLiveACPHandshake/cline`, `TestLiveACPConnections/cline`, `TestLiveACPHandshakes/cline` with `DRYDOCK_ACP_CLINE=<path>` |
+| Transport | `cline --acp`; no `--auto-approve`/`--yolo`, so every tool call reaches Drydock as `session/request_permission`, which Drydock refuses unless a human answers | `apps/cli/src/acp/permissions.ts` (options allow once, allow always, reject) |
+| Capabilities from `initialize` (D10) | `loadSession: true`, image prompts; no resume, fork, list, close; no MCP http or sse | observed; matches `apps/cli/src/acp/acpAgent.ts` |
+| Session | modes `plan` and `act` (default act); model is a `session/set_config_option` (`model`, category model; a `provider` option shares the category and comes first, so Drydock's last-wins reading picks `model`); no effort option; an `auto_approve` boolean option Drydock never sets | source |
+| Usage and cost | none over ACP (the agent's usage events are dropped in `session-updates.ts`): cost is unknown, never zero | source |
+| Auth | `cline auth` in the embedded terminal; no status probe; `session/new` fails with `-32000 Authentication required` until signed in (or `CLINE_API_KEY` is set) | observed |
+| MCP | only through ACP `session/new.mcpServers`, and only if the human allows it (`mcp.try.set`, P20). Cline 3.0.70 stores that list on the session but nothing in `apps/cli` reads it back, so the gateway's tools are most likely not offered to the model: marked unverified | source reading |
+| Instructions | reads the workspace `AGENTS.md` (and its own `.clinerules`) | `sdk/packages/core/src/extensions/config/user-instruction-config-loader.ts` |
+
+Not verified: a real prompt turn (no sign-in here), tool names and arguments as Cline reports them, `session/load` of a real stored session, anything on Windows (the npm `.cmd` shim, tree kill of node plus the Bun-based binary).

@@ -29,7 +29,7 @@ func TestRegistryBuildsEveryManifest(t *testing.T) {
 	if len(errs) != 0 {
 		t.Fatalf("errors: %v", errs)
 	}
-	if len(all) != 7 {
+	if len(all) != 8 {
 		t.Fatalf("built %d adapters", len(all))
 	}
 	for id, ad := range all {
@@ -46,6 +46,7 @@ func TestRegistryBuildsEveryManifest(t *testing.T) {
 		"gemini":   {"gemini", []string{"--acp"}},
 		"opencode": {"opencode", []string{"acp"}},
 		"goose":    {"goose", []string{"acp"}},
+		"cline":    {"cline", []string{"--acp"}},
 	} {
 		a, ok := all[id].(*acp.Adapter)
 		if !ok {

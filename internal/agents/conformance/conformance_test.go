@@ -208,6 +208,7 @@ func TestLiveACPHandshakes(t *testing.T) {
 		{"opencode", "OPENCODE", "opencode", []string{"acp"}, nil},
 		{"goose", "GOOSE", "goose", []string{"acp"}, []string{"GOOSE_MODE=approve"}},
 		{"codex-acp", "CODEX_ACP", "codex-acp", nil, nil},
+		{"cline", "CLINE", "cline", []string{"--acp"}, nil},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
 			ad := liveACP(t, tc.id, tc.env, tc.bin, tc.args, tc.extra...)
