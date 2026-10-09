@@ -16,6 +16,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/uiassets"
 )
 
 // DataDir is %LOCALAPPDATA%\Drydock.
@@ -54,7 +55,7 @@ func Run(assets fs.FS) error {
 		Name:        "Drydock",
 		Description: "A team of AI coding agents you can watch and approve.",
 		Services:    []application.Service{application.NewService(bridge)},
-		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		Assets:      application.AssetOptions{Handler: uiassets.Fallback(assets, application.AssetFileServerFS(assets))},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.drydock.app",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {

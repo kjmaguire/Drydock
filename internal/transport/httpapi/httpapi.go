@@ -13,12 +13,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/uiassets"
 )
 
 // Server serves the API and, if StaticDir is set, the built UI.
@@ -41,8 +43,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /rpc/{method}", s.guard(s.rpc))
 	mux.HandleFunc("GET /events", s.guard(s.sse))
 	if s.StaticDir != "" {
-		fs := http.FileServer(http.Dir(s.StaticDir))
-		mux.Handle("/", fs)
+		mux.Handle("/", uiassets.Handler(os.DirFS(s.StaticDir)))
 	}
 	return mux
 }
