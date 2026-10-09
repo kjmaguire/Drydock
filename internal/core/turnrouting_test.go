@@ -138,3 +138,61 @@ func firstProject(t *testing.T, a *app) string {
 	}
 	return ps[0].ID
 }
+
+// A human who approves one more turn over a budget at its hard limit gets that turn routed as usual (the cheap model), not
+// run on the agent's configured, premium model because the router saw the limit and gave up.
+func TestTheTurnAHumanApprovesOverABudgetIsStillRouted(t *testing.T) {
+	capt := &captureAdapter{Adapter: &claude.Adapter{Exe: os.Args[0]}}
+	a := openScripted(t, map[string]agents.Adapter{"claude": capt}, fakeagent.Script{
+		Rules:   []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
+		Default: wrongStep("a - b"),
+	})
+	p, _ := a.setup("gocalc")
+	var w, r core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "sonnet"}, &w)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "sonnet"}, &r)
+	a.call("agent.update", map[string]any{"id": w.ID, "routeModels": []core.RouteModel{{Model: "haiku", Tier: "cheap"}, {Model: "opus", Tier: "premium"}}}, &w)
+	// the project has already spent more than its budget
+	if _, err := a.c.DB.Writer().Exec(`INSERT INTO model_usage(ts,task_id,agent_id,provider,model,tier,cost_usd,source,cost_source) VALUES(1, '', ?, 'anthropic','claude-haiku-5-5','premium',0.50,'reported','reported')`, w.ID); err != nil {
+		t.Fatal(err)
+	}
+	a.call("budget.set", map[string]any{"scope": "project", "scopeId": p.ID, "limitUsd": 0.10}, nil)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "make Subtract return a - b"}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": w.ID, "reviewer": r.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	a.waitFor("the budget pause", func() bool {
+		var d core.TaskDetail
+		a.call("task.get", map[string]string{"id": task.ID}, &d)
+		for _, p := range d.Pending {
+			if strings.Contains(string(p.Spec.Payload), `"gate":"budget"`) {
+				return true
+			}
+		}
+		return false
+	})
+	for _, s := range capt.all() {
+		if s.Spec.AgentID == w.ID {
+			t.Fatalf("a work turn started over the budget: %+v", s.Spec)
+		}
+	}
+	// one more turn, without raising the limit
+	a.call("budget.resume", map[string]any{"runId": runID}, nil)
+	a.waitFor("the approved work turn", func() bool {
+		for _, s := range capt.all() {
+			if s.Spec.AgentID == w.ID {
+				return true
+			}
+		}
+		return false
+	})
+	for _, s := range capt.all() {
+		if s.Spec.AgentID == w.ID {
+			if s.Spec.Model != "haiku" {
+				t.Fatalf("the approved turn ran on %q, want the routed cheap model", s.Spec.Model)
+			}
+			break
+		}
+	}
+}

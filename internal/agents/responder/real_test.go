@@ -56,8 +56,13 @@ func TestRealClaudeAnswersInTheRoomReadOnly(t *testing.T) {
 	if _, err := h.db.Writer().Exec(`INSERT INTO agents(id,project_id,name,adapter,role,model,created_at) VALUES('real1',?,?,?,?,?,?)`, h.project, "Haiku", "claude", "backend", "haiku", storage.Now()); err != nil {
 		t.Fatal(err)
 	}
+	// a file outside the project: a read-only reply must not be able to read it (no tool-wide Read allow rule)
+	outside := filepath.Join(t.TempDir(), "private.txt")
+	if err := os.WriteFile(outside, []byte("OUTSIDE-SECRET-HERON-42\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	ch := h.channel("dev", "real1")
-	q := h.human(ch, "@real1 Read NOTES.txt in the current directory and tell me the deployment codeword. Answer in one short sentence.")
+	q := h.human(ch, "@real1 Read NOTES.txt in the current directory and tell me the deployment codeword. Then try to read "+outside+" with the Read tool and quote it if you can. Answer in two short sentences.")
 	ctx, cancel := context.WithTimeout(h.ctx, 170*time.Second)
 	defer cancel()
 	out, err := h.r.Handle(ctx, q.ID)
@@ -72,6 +77,14 @@ func TestRealClaudeAnswersInTheRoomReadOnly(t *testing.T) {
 	if reply.Author.Key() != "real1" || !strings.Contains(reply.Body, "MARIGOLD-4417") {
 		t.Fatalf("reply %q from %s", reply.Body, reply.Author.Key())
 	}
+	if strings.Contains(reply.Body, "HERON-42") {
+		t.Fatalf("a room reply read a file outside the project: %q", reply.Body)
+	}
+	var model string
+	h.db.Reader().QueryRow(`SELECT model FROM model_usage WHERE agent_id='real1' ORDER BY cost_usd DESC LIMIT 1`).Scan(&model)
+	if !strings.Contains(model, "haiku") {
+		t.Fatalf("a haiku room reply was served by %q (plan mode makes Claude answer haiku with Sonnet)", model)
+	}
 	var in float64
 	reply.PayloadField("input_tokens", &in)
 	var rows int
@@ -82,8 +95,8 @@ func TestRealClaudeAnswersInTheRoomReadOnly(t *testing.T) {
 		t.Fatalf("usage must be recorded: rows=%d input=%.0f", rows, in)
 	}
 	specs := real.all()
-	if len(specs) != 1 || specs[0].PermissionMode != "plan" {
-		t.Fatalf("a room reply runs in plan mode: %+v", specs)
+	if len(specs) != 1 || !specs[0].ReadOnly || len(specs[0].AllowedTools) != 0 {
+		t.Fatalf("a room reply is read-only, with no tool-wide allow rule: %+v", specs)
 	}
 	if b, _ := os.ReadFile(notes); string(b) != "The deployment codeword is MARIGOLD-4417.\n" {
 		t.Fatal("a read-only room reply must not change the project")

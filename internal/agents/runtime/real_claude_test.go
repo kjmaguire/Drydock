@@ -134,3 +134,83 @@ func TestRealClaudeInterruptThenContinueSameSession(t *testing.T) {
 		t.Fatal("timed out")
 	}
 }
+
+// A read-only session (reviewer, room reply, planner, lead) with haiku stays on haiku and cannot write: Claude Code answers
+// a plan-mode haiku session with Sonnet, so read-only sessions use the default mode with the writing tools denied.
+func TestRealClaudeReadOnlySessionKeepsItsModelAndCannotWrite(t *testing.T) {
+	ad, _ := realClaude(t)
+	r, db, _, dir := realRuntime(t, ad)
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello from file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancel()
+	m, err := r.Spawn(ctx, rt.Config{AgentID: "a1", ProjectID: "p1", Adapter: "claude", Provider: "anthropic", Tier: "premium",
+		Spec: agents.RunSpec{AgentID: "a1", Cwd: dir, Model: "haiku", PermissionMode: "plan", ReadOnly: true, AllowedTools: []string{"Read", "Grep", "Glob"},
+			ExtraArgs: []string{"--no-session-persistence"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Stop(context.Background())
+	res, err := m.RunTurn(ctx, "Create a file named out.txt containing hi, then run the shell command `touch made.txt`, then read hello.txt and reply with its content.", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"out.txt", "made.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			t.Fatalf("a read-only session created %s", f)
+		}
+	}
+	if !strings.Contains(res.Text, "hello from file") {
+		t.Logf("note: the answer did not quote the file: %q", res.Text)
+	}
+	rows, err := db.Reader().Query(`SELECT model, cost_usd FROM model_usage`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var model string
+		var cost float64
+		if err := rows.Scan(&model, &cost); err != nil {
+			t.Fatal(err)
+		}
+		n++
+		if !strings.Contains(model, "haiku") {
+			t.Fatalf("a read-only haiku session was served by %s ($%.4f)", model, cost)
+		}
+		t.Logf("recorded %s, $%.4f", model, cost)
+	}
+	if n == 0 {
+		t.Fatal("no usage was recorded")
+	}
+}
+
+// Drydock starts Claude with --setting-sources user, which also skips the project's CLAUDE.md and the AGENTS.md it imports;
+// the adapter passes them in the system prompt instead, so what Drydock generates there reaches the agent.
+func TestRealClaudeGetsTheProjectInstructionsWithUserSettingsOnly(t *testing.T) {
+	ad, _ := realClaude(t)
+	ad.UserSettingsOnly = true
+	r, _, _, dir := realRuntime(t, ad)
+	for name, body := range map[string]string{"CLAUDE.md": "@AGENTS.md\n", "AGENTS.md": "# Project instructions\n\nRelease codename: PELICAN-9.\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancel()
+	m, err := r.Spawn(ctx, rt.Config{AgentID: "a1", ProjectID: "p1", Adapter: "claude", Provider: "anthropic", Tier: "premium",
+		Spec: agents.RunSpec{AgentID: "a1", Cwd: dir, Model: "haiku", ReadOnly: true, ExtraArgs: []string{"--no-session-persistence", "--tools", ""}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Stop(context.Background())
+	res, err := m.RunTurn(ctx, "Without using any tool: what is the release codename of this project? Answer with the codename only, or UNKNOWN.", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Text, "PELICAN-9") {
+		t.Fatalf("the project's instructions did not reach the agent: %q", res.Text)
+	}
+}

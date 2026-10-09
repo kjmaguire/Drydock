@@ -481,6 +481,34 @@ func TestGateIsAskedForASlotAndItsRefusalFailsTheTurn(t *testing.T) {
 	}
 }
 
+// A budget at its hard limit stops a room or direct-message reply before any process starts, and the room says which budget
+// and what to do, naming the agent (not its id).
+func TestABudgetAtItsLimitStopsTheReplyBeforeItStarts(t *testing.T) {
+	h := newHarness(t, responder.Options{})
+	alice := h.agent("alice", "Alice", "backend", say("hi"))
+	ch := h.channel("dev", alice)
+	var asked []string
+	h.budget = func(ctx context.Context, p, task string, a responder.Agent) error {
+		asked = append(asked, p+"/"+a.ID)
+		return errors.New("the project p1 budget at 307%: $0.3070 of $0.1000 (reported), so agents do not answer until it is raised on the Budgets page")
+	}
+	out, err := h.r.Handle(h.ctx, h.human(ch, "@alice are you there?").ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Turns) != 1 || out.Turns[0].Status != responder.StatusFailed || len(h.prompts(alice)) != 0 {
+		t.Fatalf("a reply over budget must not start: %+v (prompts %d)", out, len(h.prompts(alice)))
+	}
+	if len(asked) != 1 || asked[0] != h.project+"/"+alice {
+		t.Fatalf("budget asked %v", asked)
+	}
+	ms := h.messages(ch)
+	last := ms[len(ms)-1]
+	if !strings.HasPrefix(last.Body, "Alice could not answer: budget: the project") || !strings.Contains(last.Body, "Budgets page") {
+		t.Fatalf("posted %q", last.Body)
+	}
+}
+
 func TestHardCapAndDisabledProject(t *testing.T) {
 	h := newHarness(t, responder.Options{HardTurnCap: 2})
 	alice := h.agent("alice", "Alice", "backend", say("A"))
@@ -526,6 +554,16 @@ func TestInterruptedTurnsAreMarkedOnStartAndNeverRerun(t *testing.T) {
 	ts, _ := h.r.Turns(h.ctx, ch.ID, 10)
 	if len(ts) != 1 || ts[0].Status != responder.StatusInterrupted || ts[0].Error == "" {
 		t.Fatalf("%+v", ts)
+	}
+	// the human is told, under their message, and by the agent's name
+	note := false
+	for _, m := range h.messages(ch) {
+		if m.Type == room.TypeSystem && m.ReplyToID == q.ID && strings.HasPrefix(m.Body, "Alice was answering when Drydock stopped") {
+			note = true
+		}
+	}
+	if !note {
+		t.Fatalf("no note about the interrupted turn: %+v", h.messages(ch))
 	}
 	out, _ := h.r.Handle(h.ctx, q.ID)
 	if len(out.Turns) != 0 {

@@ -166,10 +166,16 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
   const toggle = (list: string[], id: string, on: boolean) => (on ? [...list.filter((x) => x !== id), id] : list.filter((x) => x !== id));
 
   const create = async () => {
-    const r = await act.run('create', () => s.client.projectSetup(buildSetup(st)));
-    if (!r) return;
-    result = r;
+    // before the setup starts: it creates the project first, and the shell must keep this wizard (not swap in the new
+    // project's pages) until it has shown what the setup did
     s.workspace.setSetupOpen(true);
+    const r = await act.run('create', () => s.client.projectSetup(buildSetup(st)));
+    if (handle.signal.aborted) return; // the person left for another page meanwhile
+    if (!r) {
+      s.workspace.setSetupOpen(false);
+      return;
+    }
+    result = r;
     s.workspace.projects.reload();
     update();
   };

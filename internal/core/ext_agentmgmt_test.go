@@ -116,6 +116,16 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 	if err := a.callErr("agent.update", map[string]any{"id": w.ID, "model": "haiku"}); err == nil {
 		t.Fatal("a removed agent can still be edited")
 	}
+	// it left every room: not offered for mentions, not listed to the other agents
+	var left int
+	if err := a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM room_members WHERE member_id=?`, w.ID).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("a removed agent is still a member of %d room(s) (%v)", left, err)
+	}
+	var stays int
+	a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM room_members WHERE member_id=?`, r.ID).Scan(&stays)
+	if stays == 0 {
+		t.Fatal("the other agent left the rooms too")
+	}
 }
 
 func TestClaudePracticesAreOnByDefaultPerRoleAndCanBeTurnedOff(t *testing.T) {

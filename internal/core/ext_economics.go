@@ -89,6 +89,29 @@ func EconomicsRouter(c *Core) router.ModelRouter {
 	return nil
 }
 
+// EconomicsBudgetBlock reports why an agent turn outside a workflow (a room or direct-message reply) must not start: a budget
+// that applies to it (the project's, the agent's, the task's) is at its hard limit. It returns nil when the turn may start,
+// or when the economics extension did not start. Workflow turns are gated by the budget middleware instead, where a human
+// can resume one turn.
+func EconomicsBudgetBlock(ctx context.Context, c *Core, projectID, taskID, agentID string) error {
+	econMu.Lock()
+	e := econByCore[c]
+	econMu.Unlock()
+	if e == nil || e.budgets == nil {
+		return nil
+	}
+	sts, err := e.budgets.StatusFor(ctx, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+	if err != nil {
+		return fmt.Errorf("budgets could not be read, so the turn does not start: %w", err) // fail closed, as the middleware does
+	}
+	for _, st := range sts {
+		if st.State == budget.StateExceeded {
+			return fmt.Errorf("the %s, so agents do not answer until it is raised on the Budgets page", st.Message)
+		}
+	}
+	return nil
+}
+
 type budgetRouter struct{ e *economics }
 
 func (b budgetRouter) Decide(ctx context.Context, req router.RouteRequest) (router.RoutingDecision, error) {

@@ -47,7 +47,7 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 	cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 	cfg.Spec.Cwd = t.Worktree
 	if o.ReadOnly {
-		cfg.Spec.PermissionMode = "plan"
+		cfg.Spec.PermissionMode, cfg.Spec.ReadOnly = "plan", true
 	}
 	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase)
 	prompt := o.Prompt

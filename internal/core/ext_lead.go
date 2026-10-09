@@ -229,7 +229,7 @@ func (c *Core) leadConfig(ctx context.Context, agentID string) (rt.Config, error
 	if err != nil || a.Archived {
 		return rt.Config{}, fmt.Errorf("the team lead %s is not on the team", agentID)
 	}
-	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: agents.RunSpec{AgentID: a.ID, Role: pipeline.RoleLead, Model: a.Model, Effort: a.Effort, PermissionMode: "plan"},
+	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: agents.RunSpec{AgentID: a.ID, Role: pipeline.RoleLead, Model: a.Model, Effort: a.Effort, PermissionMode: "plan", ReadOnly: true},
 		Provider: providerLabel(a), Tier: c.agentTier(a)}, nil
 }
 

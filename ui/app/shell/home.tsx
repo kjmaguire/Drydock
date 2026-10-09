@@ -1,4 +1,4 @@
-// "/": open the selected project's first channel as soon as the rooms are known.
+// "/": open the selected project's #general (else its first channel) as soon as the rooms are known.
 
 import { navigate, type Handle } from 'remix/component';
 import { routes } from '../routes.ts';
@@ -10,7 +10,8 @@ export function HomeScreen(handle: Handle) {
   watch(handle, s.project);
   let sent = false;
   return () => {
-    const first = s.project.roomList.find((r) => r.kind === 'channel');
+    const channels = s.project.roomList.filter((r) => r.kind === 'channel' && !r.archived);
+    const first = channels.find((r) => r.name === 'general') ?? channels[0];
     if (first && !sent) {
       sent = true;
       handle.queueTask(() => void navigate(routes.room.href({ id: first.id }), { history: 'replace' }));

@@ -62,6 +62,43 @@ describe('the project switcher', () => {
     await waitFor(() => expect(shown(r)).toBe(false), r);
   });
 
+  it("leaves the previous project's page (its room, a task) for the new project's home; workspace pages stay", async () => {
+    const was = window.location.pathname + window.location.search + window.location.hash;
+    try {
+      for (const [path, expected] of [
+        ['/room/room_general_p1', ['/']],
+        ['/task/task_1', ['/']],
+        ['/library', []],
+        ['/chats/chat_a', []],
+      ] as [string, string[]][]) {
+        history.replaceState(history.state, '', path);
+        const { s, open, radios, r, navigated } = await setup();
+        await open();
+        await r.act(() => radios()[1]!.click());
+        await waitFor(() => expect(s.workspace.projectId).toBe('p2'), r);
+        expect([path, navigated]).toEqual([path, expected]);
+        cleanup();
+      }
+    } finally {
+      history.replaceState(history.state, '', was);
+    }
+  });
+
+  it('choosing the project that is already open goes nowhere', async () => {
+    const was = window.location.pathname + window.location.search + window.location.hash;
+    history.replaceState(history.state, '', '/room/room_general_p1');
+    try {
+      const { s, open, radios, r, navigated } = await setup();
+      await open();
+      await r.act(() => radios()[0]!.click());
+      await new Promise((res) => setTimeout(res, 50));
+      expect(s.workspace.projectId).toBe('p1');
+      expect(navigated).toEqual([]);
+    } finally {
+      history.replaceState(history.state, '', was);
+    }
+  });
+
   it('works from the keyboard: arrow down opens at the first item, arrows move, Enter selects', async () => {
     const { s, trigger, r } = await setup();
     trigger.focus();

@@ -267,8 +267,9 @@ export function BudgetsScreen(handle: Handle) {
         }
       >
         <p mix={introCss}>
-          A budget warns at its warning percentage (80% by default). At 100% the next agent turn does not start: the run waits for you in Needs you, and you can raise
-          the limit there or approve one more turn. Only you can change a budget. Costs are reported, estimated or unknown and are never merged: calls with an unknown
+          A budget warns at its warning percentage (80% by default). At 100% no new agent turn starts: a task's run waits for you in Needs you, where you can raise the
+          limit or approve one more turn, and agents stop answering in the room and in direct messages until the limit is raised. Your own chats are not counted.
+          Only you can change a budget. Costs are reported, estimated or unknown and are never merged: calls with an unknown
           cost are counted, not priced at zero.
         </p>
         {!projectId ? (

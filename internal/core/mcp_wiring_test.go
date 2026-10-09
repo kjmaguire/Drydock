@@ -1036,10 +1036,12 @@ func TestRoomReplyTurnGetsTheGatewayEntryToo(t *testing.T) {
 		t.Fatalf("the reply turn has no MCP entry: %q %s", s.Spec.MCPConfigPath, s.ProbeErr)
 	}
 	parseSingleEntry(t, s.Cfg)
-	if s.Spec.PermissionMode != "plan" || s.Spec.Cwd != repo {
+	if s.Spec.PermissionMode != "plan" || !s.Spec.ReadOnly || s.Spec.Cwd != repo {
 		t.Fatalf("a reply is read-only at the project root: %+v", s.Spec)
 	}
-	if !strings.Contains(strings.Join(s.Spec.AllowedTools, ","), "Read") || !strings.Contains(strings.Join(s.Spec.AllowedTools, ","), "mcp__drydock__*") {
+	// the workspace tools are allowed; Read is not allowed tool-wide (that would reach files outside the project): inside
+	// its working folder Claude reads without a rule
+	if allowed := strings.Join(s.Spec.AllowedTools, ","); allowed != "mcp__drydock__*" {
 		t.Fatalf("allowed tools %v", s.Spec.AllowedTools)
 	}
 	if !sameSet(s.Tools, "fetch_range", "read_range", "search_memory", "search_requirements", "skills") {

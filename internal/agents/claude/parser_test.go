@@ -205,3 +205,25 @@ func TestMissingResumeSessionReportsTheCLIReason(t *testing.T) {
 		t.Fatalf("error %q (kinds %v)", msg, kinds(cs))
 	}
 }
+
+// A turn served by two models (claude 2.1.296 answering a plan-mode `--model haiku` session with Sonnet; the shape is that
+// run's result line with the numbers kept) is labeled with the model that cost the most, whatever Go's map order is.
+func TestAResultWithTwoModelsIsLabeledWithTheCostliest(t *testing.T) {
+	line := `{"type":"result","subtype":"success","is_error":false,"result":"OK","stop_reason":"end_turn","total_cost_usd":0.1639,` +
+		`"modelUsage":{"claude-haiku-5-5":{"inputTokens":9,"outputTokens":0,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"costUSD":0.00001,"contextWindow":200000},` +
+		`"claude-sonnet-5-5":{"inputTokens":3,"outputTokens":5,"cacheReadInputTokens":0,"cacheCreationInputTokens":43000,"costUSD":0.1639,"contextWindow":1000000}}}`
+	for i := 0; i < 20; i++ { // map iteration order varies from run to run
+		cs, _ := NewParser().Parse([]byte(line))
+		var u workflow.UsageChunk
+		for _, c := range cs {
+			if c.Kind == workflow.ChunkUsage {
+				if err := c.Decode(&u); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if u.Model != "claude-sonnet-5-5" || u.InputTokens != 12 || u.OutputTokens != 5 || u.CacheWriteTokens != 43000 {
+			t.Fatalf("usage %+v", u)
+		}
+	}
+}

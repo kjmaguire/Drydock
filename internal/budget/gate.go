@@ -57,7 +57,9 @@ func (e *Enforcer) Middleware() workflow.Middleware {
 			if err != nil {
 				return workflow.NodeOutput{}, err
 			}
-			if !bypass {
+			if bypass {
+				ctx = context.WithValue(ctx, approvedTurnKey{}, true)
+			} else {
 				sts, err := e.Store.StatusFor(ctx, ids)
 				if err != nil {
 					return workflow.NodeOutput{}, fmt.Errorf("budget: cannot evaluate budgets, agent turn not started: %w", err) // fail closed
@@ -77,6 +79,16 @@ func (e *Enforcer) Middleware() workflow.Middleware {
 			return out, err
 		}
 	}
+}
+
+type approvedTurnKey struct{}
+
+// ApprovedOverLimit reports whether this turn runs because a human approved one more turn over a budget at its hard limit.
+// The model router then chooses as usual instead of treating the limit as a block (which would fall back to the agent's
+// configured, often premium, model for exactly the turn the human allowed).
+func ApprovedOverLimit(ctx context.Context) bool {
+	v, _ := ctx.Value(approvedTurnKey{}).(bool)
+	return v
 }
 
 func (e *Enforcer) scopeIDs(ctx context.Context, in workflow.NodeInput) ScopeIDs {

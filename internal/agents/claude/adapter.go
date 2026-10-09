@@ -168,6 +168,9 @@ func (a *Adapter) Detect(ctx context.Context) (agents.Detection, error) {
 	return d, nil
 }
 
+// ReadOnlyDenied are the Claude Code tools a read-only session may never use: everything that writes files or runs commands.
+var ReadOnlyDenied = []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}
+
 // Args builds the argv (after the executable) for a session, with the system prompt addition inline. Start passes it in a
 // file instead (argsWith).
 func (a *Adapter) Args(spec agents.RunSpec) []string { return a.argsWith(spec, "") }
@@ -185,7 +188,11 @@ func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 	if spec.Effort != "" {
 		args = append(args, "--effort", spec.Effort)
 	}
-	if spec.PermissionMode != "" {
+	if spec.ReadOnly {
+		// default mode refuses, in a headless session, every tool nobody approved; the deny list also beats any allow rule in
+		// the human's own settings (deny wins), so nothing in the session can write
+		args = append(args, "--permission-mode", "default", "--disallowedTools", strings.Join(ReadOnlyDenied, ","))
+	} else if spec.PermissionMode != "" {
 		args = append(args, "--permission-mode", spec.PermissionMode)
 	}
 	if a.UserSettingsOnly {
@@ -216,7 +223,13 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 	}
 	env := a.childEnv(os.Environ())
 	env = append(env, spec.Env...)
-	promptFile, err := writePromptFile(spec.SystemAppend)
+	text := spec.SystemAppend
+	if a.UserSettingsOnly {
+		if mem := projectMemory(spec.Cwd); mem != "" {
+			text = strings.TrimSpace(text + "\n\n" + mem)
+		}
+	}
+	promptFile, err := writePromptFile(text)
 	if err != nil {
 		return nil, fmt.Errorf("claude: %w", err)
 	}
@@ -376,12 +389,28 @@ func (s *session) Stop(ctx context.Context) error {
 // The user's own login is found through the home folder, CLAUDE_* and ANTHROPIC_* (including CLAUDE_CODE_OAUTH_TOKEN and
 // ANTHROPIC_API_KEY): Drydock passes them through untouched and never reads them.
 func (a *Adapter) childEnv(parent []string) []string {
+	parent = withoutEnclosingSession(parent)
 	if !a.ScrubEnv {
-		return append([]string(nil), parent...)
+		return parent
 	}
 	names := append([]string(nil), proc.BaseEnvNames...)
 	if a.PassEnv != nil {
 		names = append(names, a.PassEnv()...)
 	}
 	return proc.ScrubEnv(parent, names, []string{"CLAUDE_", "ANTHROPIC_"})
+}
+
+// enclosingSessionEnv are the variables a running Claude Code session sets for the processes it starts. When Drydock itself
+// was started from inside Claude Code they would make every agent report and append to that outer session (observed with
+// 2.1.296: each turn reported the parent's session id), so an agent never inherits them.
+var enclosingSessionEnv = map[string]bool{"CLAUDECODE": true, "CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_CHILD_SESSION": true}
+
+func withoutEnclosingSession(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); !enclosingSessionEnv[strings.ToUpper(k)] {
+			out = append(out, kv)
+		}
+	}
+	return out
 }

@@ -199,9 +199,14 @@ func (p *Parser) result(ev rawEvent) []workflow.Chunk {
 		}
 	}
 	u := workflow.UsageChunk{Source: "reported", CostUSD: ev.TotalCost, ContextUsed: p.lastContext}
-	for model, mu := range ev.ModelUsage { // a turn normally has one model; the first wins for labeling
-		if u.Model == "" || mu.InputTokens+mu.OutputTokens > 0 && u.Model == "" {
-			u.Model = model
+	// A turn can use more than one model (the CLI's own helper calls, or Sonnet answering a plan-mode haiku session): the
+	// turn is labeled with the model that cost the most, then the one with the most tokens, then by name, never by Go's
+	// random map order.
+	bestCost, bestTokens := -1.0, int64(-1)
+	for model, mu := range ev.ModelUsage {
+		tokens := mu.InputTokens + mu.OutputTokens + mu.CacheReadInputTokens + mu.CacheCreationInputTokens
+		if mu.CostUSD > bestCost || mu.CostUSD == bestCost && (tokens > bestTokens || tokens == bestTokens && model < u.Model) {
+			u.Model, bestCost, bestTokens = model, mu.CostUSD, tokens
 		}
 		u.InputTokens += mu.InputTokens
 		u.OutputTokens += mu.OutputTokens

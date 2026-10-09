@@ -268,7 +268,7 @@ func (l *Lead) turn(ctx context.Context, projectID, taskID, runID string, lead L
 		return "", err
 	}
 	cfg.ProjectID, cfg.TaskID = projectID, taskID
-	cfg.Spec.PermissionMode = "plan" // the lead reads; it never edits
+	cfg.Spec.PermissionMode, cfg.Spec.ReadOnly = "plan", true // the lead reads; it never edits
 	cfg.Spec.Role = RoleLead
 	if l.d.Cwd != nil {
 		cfg.Spec.Cwd = l.d.Cwd(ctx, projectID, taskID)

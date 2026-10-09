@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/agents/claude"
+	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -201,6 +202,23 @@ func (c *Core) ArchiveAgent(ctx context.Context, id string) (Agent, error) {
 		return Agent{}, err
 	}
 	a.Archived = true
+	// it leaves every room: no longer offered for @-mentions, listed to other agents, or eligible as a moderator; its
+	// messages stay (room-protocol s10)
+	var roomIDs []string
+	if rows, err := c.DB.Reader().QueryContext(ctx, `SELECT room_id FROM room_members WHERE member_id=? AND kind='agent'`, id); err == nil {
+		for rows.Next() {
+			var r string
+			if rows.Scan(&r) == nil {
+				roomIDs = append(roomIDs, r)
+			}
+		}
+		rows.Close()
+	}
+	for _, r := range roomIDs {
+		if err := c.Room.RemoveMember(ctx, r, room.Agent(id), room.Human(c.cfg.User)); err != nil {
+			c.logf("remove %s from room %s: %v", a.Name, r, err)
+		}
+	}
 	c.publish(ctx, "agent.archived", a.ProjectID, map[string]any{"id": a.ID, "name": a.Name, "by": c.Human()})
 	return a, nil
 }

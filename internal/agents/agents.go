@@ -72,7 +72,12 @@ type RunSpec struct {
 	// run records which wording the agent was given.
 	PracticesVersion int
 	AllowedTools     []string // tools the CLI may use without asking (Claude: --allowedTools)
-	ExtraArgs        []string // adapter-specific escape hatch
+	// ReadOnly marks a session that only reads (a reviewer, a room reply, a planner, the team lead). Such sessions also carry
+	// PermissionMode "plan" for adapters that map it; Claude runs them in its default mode with every writing tool denied
+	// instead, because Claude Code answers a plan-mode session started with --model haiku with Sonnet (since 2.0.17; measured
+	// with 2.1.296: init reports haiku, every message is Sonnet, about 10 to 50 times the cost).
+	ReadOnly  bool
+	ExtraArgs []string // adapter-specific escape hatch
 }
 
 // Session is a running agent CLI process speaking a normalized chunk stream.

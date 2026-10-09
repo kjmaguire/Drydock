@@ -5,6 +5,7 @@
 
 import { css, navigate, type Handle } from 'remix/component';
 import { ChevronsUpDown, FolderClosed, Plus, Settings } from 'lucide';
+import { isWorkspaceRoute, parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
 import { initials } from '../ui/data.tsx';
@@ -68,8 +69,14 @@ export function ProjectSwitcher(handle: Handle<{ onNavigate?: (href: string) => 
 
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href));
   const select = (name: string) => {
-    if (name.startsWith('project:')) s.workspace.selectProject(name.slice('project:'.length));
-    else if (name === 'new') go(routes.projectNew.href());
+    if (name.startsWith('project:')) {
+      const id = name.slice('project:'.length);
+      if (id === s.workspace.projectId) return;
+      s.workspace.selectProject(id);
+      // a page of the previous project (its room, a task) must not stay open under the new one: a message typed there would
+      // go to the other project's agents. Pages about the whole workspace (Library, Chats, Settings) stay.
+      if (!isWorkspaceRoute(parseRoute(window.location.pathname))) go(routes.home.href());
+    } else if (name === 'new') go(routes.projectNew.href());
     else if (name === 'settings') go(routes.settings.href());
   };
 

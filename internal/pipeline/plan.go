@@ -524,7 +524,7 @@ func (pd PlanDeps) planNode() workflow.NodeHandler {
 		}
 		cfg.ProjectID = pi.ProjectID
 		cfg.Spec.Cwd = dir
-		cfg.Spec.PermissionMode = "plan"
+		cfg.Spec.PermissionMode, cfg.Spec.ReadOnly = "plan", true
 		open, _ := pd.Tasks.List(ctx, tasks.Filter{ProjectID: pi.ProjectID, Statuses: openStatuses, Limit: maxPlanOpenTasks + 1})
 		prompt := PlanPrompt(pi.Goal, pi.Requirements, team, feedback, PlanContext{Brief: pd.brief(ctx, pi.ProjectID), Open: open})
 		out, err := pd.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)

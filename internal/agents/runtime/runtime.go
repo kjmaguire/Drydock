@@ -152,6 +152,41 @@ func (r *Runtime) publish(ctx context.Context, typ string, cfg Config, runID str
 	_, _ = r.Bus.Publish(ctx, events.Event{Type: typ, ProjectID: cfg.ProjectID, TaskID: cfg.TaskID, AgentID: cfg.AgentID, Data: b})
 }
 
+// CloseStale ends the agent runs a crash left open (ended_at 0) when the app starts, before anything is spawned: they are
+// marked FAILED with the reason and announced (agent.failed), so the agent's presence and the "is running right now" check
+// do not stay stuck. It returns how many runs it closed.
+func (r *Runtime) CloseStale(ctx context.Context) (int, error) {
+	if r.DB == nil {
+		return 0, nil
+	}
+	type stale struct{ id, agent, task, project string }
+	var runs []stale
+	rows, err := r.DB.Reader().QueryContext(ctx, `SELECT ar.id, ar.agent_id, ar.task_id, COALESCE(a.project_id,'') FROM agent_runs ar LEFT JOIN agents a ON a.id=ar.agent_id WHERE ar.ended_at=0`)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var s stale
+		if err := rows.Scan(&s.id, &s.agent, &s.task, &s.project); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		runs = append(runs, s)
+	}
+	rows.Close()
+	const reason = "the app stopped while this agent was running"
+	for _, s := range runs {
+		if err := r.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE agent_runs SET status='FAILED', ended_at=?, error=? WHERE id=? AND ended_at=0`, storage.Now(), reason, s.id)
+			return err
+		}); err != nil {
+			return 0, err
+		}
+		r.publish(ctx, "agent.failed", Config{AgentID: s.agent, ProjectID: s.project, TaskID: s.task}, s.id, map[string]any{"error": reason, "phase": "app_stopped"})
+	}
+	return len(runs), nil
+}
+
 func (m *Managed) watchExit() {
 	ei := <-m.Sess.Wait()
 	defer m.releaseMCPRun() // the process is gone (clean exit, crash or kill): its gateway run and token die with it

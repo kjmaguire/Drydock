@@ -142,6 +142,9 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 		Gate: func(ctx context.Context, projectID string, ag responder.Agent) (func(), error) {
 			return a.limiter.Acquire(ctx, projectID, ag.ProviderID)
 		},
+		Budget: func(ctx context.Context, projectID, taskID string, ag responder.Agent) error {
+			return EconomicsBudgetBlock(ctx, c, projectID, taskID, ag.ID)
+		},
 		Enabled: func(ctx context.Context, projectID string) bool {
 			// an agent reply is work started on the human's behalf: off while the license is expired (read-only)
 			return c.RequireLicensed(ctx, "room_reply") == nil && pipeline.LoadDevSettings(ctx, c.DB, projectID).Respond
@@ -292,7 +295,7 @@ func (a *agentsDev) plannerConfig(ctx context.Context, projectID, agentID string
 	if err != nil || ag.ProjectID != projectID {
 		return rt.Config{}, fmt.Errorf("the planner agent %s is not on this project's team", agentID)
 	}
-	return rt.Config{AgentID: ag.ID, Adapter: ag.Adapter, Spec: agents.RunSpec{AgentID: ag.ID, Role: ag.Role, Model: ag.Model, Effort: ag.Effort, PermissionMode: "plan"},
+	return rt.Config{AgentID: ag.ID, Adapter: ag.Adapter, Spec: agents.RunSpec{AgentID: ag.ID, Role: ag.Role, Model: ag.Model, Effort: ag.Effort, PermissionMode: "plan", ReadOnly: true},
 		Provider: providerLabel(ag), Tier: "premium"}, nil
 }
 

@@ -53,6 +53,9 @@ type Deps struct {
 	// Gate takes the concurrency slots a turn needs (the project's parallel-agent limit and the provider's max_concurrent)
 	// and returns the release function. It blocks until a slot is free or ctx ends. Nil means no limit.
 	Gate func(ctx context.Context, projectID string, a Agent) (release func(), err error)
+	// Budget refuses a turn while a budget that applies to it (the project's, the agent's, the task's in a task room) is at its
+	// hard limit, with the sentence to show; nil means no budgets. A refused turn does not start and the refusal is posted.
+	Budget func(ctx context.Context, projectID, taskID string, a Agent) error
 	// Enabled reports whether agents answer in this project (default true).
 	Enabled func(ctx context.Context, projectID string) bool
 	// OnCost receives the cost of a turn in a task room so it counts toward the task (cost per accepted task).
@@ -241,11 +244,41 @@ func (r *Responder) enqueue(ctx context.Context, roomID, messageID string) {
 }
 
 func (r *Responder) markInterrupted(ctx context.Context) error {
-	return r.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	type cut struct{ room, trigger, agent string }
+	var cuts []cut
+	rows, err := r.d.DB.Reader().QueryContext(ctx, `SELECT room_id, trigger_id, agent_id FROM room_turns WHERE status=?`, StatusRunning)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var c cut
+		if err := rows.Scan(&c.room, &c.trigger, &c.agent); err != nil {
+			rows.Close()
+			return err
+		}
+		cuts = append(cuts, c)
+	}
+	rows.Close()
+	if err := r.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `UPDATE room_turns SET status=?, error='the app stopped while this turn was running', ended_at=? WHERE status=?`,
 			StatusInterrupted, storage.Now(), StatusRunning)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+	// the human's message would otherwise just go unanswered: say what happened, under it (no re-run: that is a new, billed turn)
+	for _, c := range cuts {
+		who := c.agent
+		if a, err := r.d.LookupAgent(ctx, c.agent); err == nil && a.Name != "" {
+			who = a.Name
+		}
+		if _, err := r.d.Room.Post(ctx, room.PostParams{RoomID: c.room, Type: room.TypeSystem, Author: room.System, ReplyToID: c.trigger,
+			Body:    fmt.Sprintf("%s was answering when Drydock stopped, so there is no reply. Mention them again to ask again.", who),
+			Payload: map[string]any{"code": "agent_turn_interrupted", "agent_id": c.agent}}); err != nil {
+			r.logf("post interrupted turn: %v", err)
+		}
+	}
+	return nil
 }
 
 // Handle answers one human message synchronously and returns what happened. It is what the event loop calls, and what a
@@ -405,6 +438,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if !started {
 		return TurnInfo{}, nil
 	}
+	who := sp.Member // the agent's name once it is known; never the raw id when the name can be found
 	fail := func(reason string, e error) (TurnInfo, *room.Message) {
 		msg := reason
 		if e != nil {
@@ -416,7 +450,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			msg = msg[:600]
 		}
 		if _, perr := r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeError, Author: room.System, ReplyToID: trig.ID,
-			Body:    fmt.Sprintf("%s could not answer: %s", sp.Member, msg),
+			Body:    fmt.Sprintf("%s could not answer: %s", who, msg),
 			Payload: map[string]any{"code": "agent_turn_failed", "class": "agent", "recoverable": true, "turn_id": info.TurnID, "agent_id": sp.Member}}); perr != nil {
 			r.logf("post turn failure: %v", perr)
 		}
@@ -425,6 +459,14 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	agent, err := r.d.LookupAgent(ctx, sp.Member)
 	if err != nil {
 		return fail("unknown agent", err)
+	}
+	if agent.Name != "" {
+		who = agent.Name
+	}
+	if r.d.Budget != nil {
+		if err := r.d.Budget(ctx, rm.ProjectID, rm.TaskID, agent); err != nil {
+			return fail("budget", err)
+		}
 	}
 	sel, err := r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
 	if err != nil {
@@ -460,10 +502,11 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		return fail("working directory", err)
 	}
 	spec := agents.RunSpec{AgentID: agent.ID, Role: agent.Role, Cwd: cwd, Model: agent.Model, Effort: agent.Effort,
-		PermissionMode: "plan", AllowedTools: []string{"Read", "Grep", "Glob"}}
+		PermissionMode: "plan", ReadOnly: true} // no tool-wide Read/Grep/Glob allow rule: one would let the reply read any file on
+	// the machine (measured with claude 2.1.296); without it Claude reads inside its working folder and refuses the rest
 	if r.d.Spec != nil {
 		spec = r.d.Spec(agent, spec)
-		spec.PermissionMode = "plan" // the application may add environment and MCP, never widen what a reply may do
+		spec.PermissionMode, spec.ReadOnly = "plan", true // the application may add environment and MCP, never widen what a reply may do
 	}
 	cfg := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium"}
 	tctx, cancel := context.WithTimeoutCause(ctx, r.o.TurnTimeout, errors.New("the turn timed out"))

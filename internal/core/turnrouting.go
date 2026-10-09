@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/router"
@@ -58,6 +59,9 @@ func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) conte
 	}
 	if err := e.fillBudget(ctx, &req); err != nil {
 		e.c.logf("route turn: budget: %v", err)
+	}
+	if budget.ApprovedOverLimit(ctx) {
+		req.Budget.HardLimit = false // the human approved this one turn over the limit: route it, do not block it
 	}
 	d, err := e.agentRouter.Decide(ctx, req)
 	if err != nil {

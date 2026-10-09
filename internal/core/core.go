@@ -226,6 +226,11 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
 	}
+	if n, err := c.Runtime.CloseStale(ctx); err != nil {
+		c.logf("close stale agent runs: %v", err)
+	} else if n > 0 {
+		c.logf("closed %d agent run(s) the last stop left open", n)
+	}
 	if err := c.startExtensions(bg); err != nil {
 		c.logf("extensions: %v", err)
 	}
@@ -670,7 +675,7 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 	}
 	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
 	if role == "review" {
-		spec.PermissionMode = "plan" // the reviewer reads; it never edits (the prompt also says so)
+		spec.PermissionMode, spec.ReadOnly = "plan", true // the reviewer reads; it never edits (the prompt also says so)
 		spec.Role = "reviewer"
 	}
 	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: spec, Provider: providerLabel(a), Tier: c.agentTier(a)}

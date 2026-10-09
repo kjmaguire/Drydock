@@ -29,6 +29,19 @@ func TestChildEnvIsScrubbedAndTakesNamesToPassFromTheHuman(t *testing.T) {
 	if len(open) != len(parent) {
 		t.Fatalf("without ScrubEnv the environment is inherited whole: %v", open)
 	}
+	// started from inside a Claude Code session: the agent is never made part of it, scrubbed or not
+	inner := append(append([]string(nil), parent...), "CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=outer", "CLAUDE_CODE_ENTRYPOINT=cli")
+	for _, a := range []*Adapter{{}, {ScrubEnv: true}} {
+		env := a.childEnv(inner)
+		for _, drop := range []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT"} {
+			if has(env, drop) {
+				t.Fatalf("%s reached the agent (scrub %v)", drop, a.ScrubEnv)
+			}
+		}
+		if !has(env, "CLAUDE_CODE_OAUTH_TOKEN") {
+			t.Fatalf("the sign-in was removed with them (scrub %v)", a.ScrubEnv)
+		}
+	}
 	a := &Adapter{ScrubEnv: true}
 	env := a.childEnv(parent)
 	for _, keep := range []string{"PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL"} {
@@ -124,5 +137,24 @@ done
 	}
 	if f, err := writePromptFile("  \n"); err != nil || f != "" {
 		t.Fatalf("blank instructions made a file: %q %v", f, err)
+	}
+}
+
+// A read-only session runs in Claude's default mode with every writing tool denied, never in plan mode (where Claude Code
+// answers a haiku session with Sonnet), and keeps its model.
+func TestAReadOnlySessionIsDefaultModeWithWritingToolsDenied(t *testing.T) {
+	args := (&Adapter{}).Args(agents.RunSpec{Model: "haiku", PermissionMode: "plan", ReadOnly: true, AllowedTools: []string{"Read", "Grep", "Glob"}})
+	line := strings.Join(args, " ")
+	for _, want := range []string{"--model haiku", "--permission-mode default", "--disallowedTools Edit,Write,MultiEdit,NotebookEdit,Bash", "--allowedTools Read,Grep,Glob"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("missing %q in %v", want, args)
+		}
+	}
+	if strings.Contains(line, "plan") {
+		t.Fatalf("a read-only session must not use plan mode: %v", args)
+	}
+	// a human's own choice of plan mode (a chat) is kept
+	if line := strings.Join((&Adapter{}).Args(agents.RunSpec{PermissionMode: "plan"}), " "); !strings.Contains(line, "--permission-mode plan") || strings.Contains(line, "disallowedTools") {
+		t.Fatalf("plain plan mode: %v", line)
 	}
 }

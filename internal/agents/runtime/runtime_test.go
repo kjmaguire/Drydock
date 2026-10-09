@@ -249,3 +249,44 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// Runs a crash left open are closed when the app starts: FAILED with the reason, announced for presence, and an agent that
+// is not running any more can be removed. Runs that ended stay as they were.
+func TestCloseStaleEndsTheRunsACrashLeftOpen(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{})
+	for _, q := range []string{
+		`INSERT INTO agent_runs(id,agent_id,task_id,status,started_at,ended_at) VALUES('arun_open','a1','','WORKING',1,0)`,
+		`INSERT INTO agent_runs(id,agent_id,task_id,status,started_at,ended_at) VALUES('arun_done','a1','','STOPPED',1,2)`,
+	} {
+		if _, err := h.db.Writer().Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ch, cancel := h.bus.Subscribe(events.Filter{Types: []string{"agent.failed"}})
+	defer cancel()
+	n, err := h.rt.CloseStale(context.Background())
+	if err != nil || n != 1 {
+		t.Fatalf("closed %d %v", n, err)
+	}
+	var status, msg string
+	var ended int64
+	h.db.Reader().QueryRow(`SELECT status, error, ended_at FROM agent_runs WHERE id='arun_open'`).Scan(&status, &msg, &ended)
+	if status != "FAILED" || ended == 0 || !strings.Contains(msg, "the app stopped") {
+		t.Fatalf("open run: %s %q %d", status, msg, ended)
+	}
+	h.db.Reader().QueryRow(`SELECT status FROM agent_runs WHERE id='arun_done'`).Scan(&status)
+	if status != "STOPPED" {
+		t.Fatalf("an ended run was changed to %s", status)
+	}
+	select {
+	case e := <-ch:
+		if e.AgentID != "a1" || e.ProjectID != "p1" || !strings.Contains(string(e.Data), "the app stopped") {
+			t.Fatalf("event %+v %s", e, e.Data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no agent.failed event for presence")
+	}
+	if n, _ := h.rt.CloseStale(context.Background()); n != 0 {
+		t.Fatalf("a second start closed %d more", n)
+	}
+}

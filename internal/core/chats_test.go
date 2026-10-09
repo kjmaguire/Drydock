@@ -895,4 +895,3 @@ func TestChatListLimitIsClampedToTheMaximum(t *testing.T) {
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
-

@@ -274,7 +274,7 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 	m.Add("prompt ("+role+")", true, len(prompt), "the task (compact on later passes) and the project brief on every pass; later passes add only the latest failure, feedback or guidance (token rule 16)", 1)
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md"} {
 		if st, err := os.Stat(filepath.Join(t.Worktree, name)); err == nil {
-			m.Add("file:"+name, true, int(st.Size()), "generated instruction file read natively by the CLI (cache-stable prefix)", 5)
+			m.Add("file:"+name, true, int(st.Size()), "generated instruction file: read natively by CLIs that load it; Claude Code gets its text in the system prompt (Drydock starts it with the human's own settings only, which skips project files)", 5)
 		}
 	}
 	if d.MCPStatus == nil {
