@@ -152,7 +152,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
             <Field label="Labels (comma separated, optional)">
               {(id) => <input id={id} placeholder="bug, good first issue" value={labels} mix={on('input', (e) => ((labels = e.currentTarget.value), void handle.update()))} />}
             </Field>
-            <Button type="submit" icon={CircleDot} disabled={loadingIssues}>
+            <Button type="submit" icon={CircleDot} disabled={loadingIssues || !s.project.id}>
               Load open issues
             </Button>
           </form>

@@ -194,6 +194,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
     const tag = KIND_TAG[m.author.kind];
     const classes = ['msg', `msg-${m.author.kind}`, `msg-type-${m.type.toLowerCase()}`, m.type === 'ERROR' ? 'msg-error' : '', quiet ? 'msg-quiet' : ''].filter(Boolean).join(' ');
     const showHead = head || quiet;
+    const mention = mentionsHuman(m);
     return (
       <article
         class={classes}
@@ -201,8 +202,9 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
         data-author-kind={m.author.kind}
         data-type={m.type}
         data-head={showHead ? 'true' : undefined}
+        data-mention={mention ? 'true' : undefined}
         aria-label={`${m.author.kind} ${name}, ${m.type}`}
-        mix={[rowCss, showHead ? headCss : undefined, quiet ? quietCss : undefined, mentionsHuman(m) ? mentionCss : undefined, m.type === 'ERROR' ? errorCss : undefined]}
+        mix={[rowCss, showHead ? headCss : undefined, quiet ? quietCss : undefined, mention ? mentionCss : undefined, m.type === 'ERROR' ? errorCss : undefined]}
       >
         <div mix={gutterCss}>
           {quiet ? (

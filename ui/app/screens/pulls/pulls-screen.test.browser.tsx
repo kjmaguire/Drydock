@@ -8,6 +8,9 @@ import { PullsScreen } from './pulls-screen.tsx';
 
 afterEach(cleanup);
 
+/** The issue list can be loaded once the project is known. */
+const loadable = (r: ReturnType<typeof mount>) => waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Load open issues').disabled).toBe(false), r);
+
 const review = (over: Partial<GitHubReview>): GitHubReview => ({
   id: 1,
   kind: 'review',
@@ -129,6 +132,7 @@ describe('PullsScreen', () => {
     const r = mount(<PullsScreen />, svc({ githubIssues }));
     await waitFor(() => expect(r.container.textContent).toContain('No task has a pull request'), r);
     expect(r.$('h1')!.textContent).toContain('Pull Requests');
+    await loadable(r);
     await r.act(() => type(byLabel(r.container, 'Labels (comma separated, optional)'), ' bug '));
     await r.act(() => byText(r.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Could not list issues: the project has no GitHub origin'), r);
@@ -158,7 +162,7 @@ describe('PullsScreen', () => {
     const githubImportIssue = recorder(() => task({ id: 't9' }));
     const imported: Task[] = [];
     const r = mount(<PullsScreen onImported={(x) => imported.push(x)} />, svc({ githubIssues: async () => [issue], githubImportIssue }));
-    await waitFor(() => expect(byText(r.container, 'button', 'Load open issues')).toBeTruthy(), r);
+    await loadable(r);
     await r.act(() => byText(r.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(1), r);
     expect(r.$('[data-testid="gh-issue"]')!.textContent).toContain('by unknown');
@@ -169,13 +173,13 @@ describe('PullsScreen', () => {
 
   it('says there are no open issues, and shows an import refusal', async () => {
     const r = mount(<PullsScreen />, svc({ githubIssues: async () => [] }));
-    await waitFor(() => expect(byText(r.container, 'button', 'Load open issues')).toBeTruthy(), r);
+    await loadable(r);
     await r.act(() => byText(r.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r.container.textContent).toContain('No open issues.'), r);
 
     const issue: GitHubIssue = { number: 5, title: 'x', body: '', html_url: '', state: 'open', labels: [], author: 'a' };
     const r2 = mount(<PullsScreen onImported={() => undefined} />, svc({ githubIssues: async () => [issue], githubImportIssue: async () => Promise.reject(new Error('issue already imported')) }));
-    await waitFor(() => expect(byText(r2.container, 'button', 'Load open issues')).toBeTruthy(), r2);
+    await loadable(r2);
     await r2.act(() => byText(r2.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r2.$$('[data-testid="gh-issue"]').length).toBe(1), r2);
     await r2.act(() => byText(r2.container, 'button', 'Import issue #5 as a task').click());

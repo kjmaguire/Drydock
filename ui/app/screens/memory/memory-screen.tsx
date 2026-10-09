@@ -107,6 +107,7 @@ const segmented = css({
   background: t.bgSurface,
   '& button': {
     height: '26px',
+    minHeight: '26px',
     padding: '0 10px',
     border: '0',
     borderRadius: t.rSm,

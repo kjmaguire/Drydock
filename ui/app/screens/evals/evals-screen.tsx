@@ -8,7 +8,7 @@ import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
-import { card, Page, Section } from '../../ui/layout.tsx';
+import { Page, Section } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
@@ -41,7 +41,7 @@ const tileCss = css({
   '& dt': { color: t.textMuted, fontSize: t.textSm },
   '& dd': { margin: '0', fontSize: t.textXl, fontWeight: '600', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' },
 });
-const reportCss = css({ padding: `${t.s4} ${t.s5}` });
+const reportCss = css({ padding: `${t.s4} ${t.s5}`, border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, minWidth: '0' });
 
 export function EvalsScreen(handle: Handle) {
   const s = services(handle);
@@ -72,7 +72,7 @@ export function EvalsScreen(handle: Handle) {
       <div mix={tileCss}>
         <dt>{label}</dt>
         <dd data-testid={testId}>{ratioText(r)}</dd>
-        {rate !== undefined ? <Meter value={rate} tone={rate >= 0.5 ? 'ok' : 'warn'} label={`${label}: ${ratioText(r)}`} /> : null}
+        {rate !== undefined ? <Meter value={rate} tone="accent" label={`${label}: ${ratioText(r)}`} /> : null}
       </div>
     );
   };
@@ -172,7 +172,7 @@ export function EvalsScreen(handle: Handle) {
             {q.loading && !q.data ? <Loading label="Building the report..." /> : null}
             {q.data ? (
               <Section title="Full report" label="Full report" testId="evals-markdown">
-                <div mix={[card, reportCss]}>
+                <div mix={reportCss}>
                   <Markdown source={q.data.markdown} maxChars={200000} />
                 </div>
               </Section>

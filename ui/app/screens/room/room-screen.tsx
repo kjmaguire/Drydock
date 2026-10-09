@@ -27,7 +27,8 @@ export function RoomScreen(handle: Handle<{ id: string }>) {
   const s = services(handle);
   watch(handle, s.project);
   const inList = () => s.project.roomList.find((r) => r.id === handle.props.id);
-  const loadingRooms = () => s.project.rooms.loading && !s.project.rooms.data;
+  // the room list is still coming (or the project is not chosen yet): wait for it before asking room.get
+  const loadingRooms = () => !s.project.rooms.data && (s.project.rooms.loading || (!s.project.id && s.workspace.projects.loading));
   const fetched = query(handle, {
     load: () => s.client.roomGet(handle.props.id),
     when: (e) => starts(e, 'room.archived', 'room.created'),

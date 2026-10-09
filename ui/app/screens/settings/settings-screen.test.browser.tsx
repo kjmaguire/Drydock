@@ -11,6 +11,7 @@ import { TelemetryPanel } from './telemetry.tsx';
 afterEach(() => {
   cleanup();
   document.documentElement.removeAttribute('data-theme');
+  document.documentElement.style.removeProperty('--bg-app');
 });
 
 const tid = (root: ParentNode, id: string) => {
@@ -82,6 +83,18 @@ describe('SettingsScreen', () => {
     await r.act(() => tid(r.container, 'theme-system').click());
     expect(s.ui.theme).toBe('system');
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('draws each swatch in its own theme whatever the current one is', () => {
+    // the test page has no app stylesheet: define the one token the check reads, the way styles/app.css does
+    document.documentElement.style.setProperty('--bg-app', 'light-dark(rgb(250, 250, 250), rgb(20, 20, 24))');
+    const r = mount(<SettingsScreen />, testServices(settingsClient()));
+    const bg = (v: string, i = 0) => getComputedStyle(tid(r.container, `theme-${v}`).querySelectorAll('[aria-hidden="true"]')[i]!).backgroundColor;
+    expect(bg('dark')).toBe('rgb(20, 20, 24)');
+    expect(bg('light')).toBe('rgb(250, 250, 250)');
+    // System shows both halves: light, then dark
+    expect(bg('system', 0)).toBe(bg('light'));
+    expect(bg('system', 1)).toBe(bg('dark'));
   });
 });
 

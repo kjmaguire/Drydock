@@ -23,7 +23,15 @@ export { ProviderDetailPanel } from './provider-detail.tsx';
 
 const KIND_ICON: Record<string, IconNode> = { aggregator: Network, direct: Cloud, host: Server };
 
-const cardCss = css({ display: 'grid', gap: t.s4, padding: '0', overflow: 'hidden' });
+const cardCss = css({
+  display: 'grid',
+  gap: t.s4,
+  minWidth: '0',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rLg,
+  background: t.bgSurface,
+  overflow: 'hidden',
+});
 const headCss = css({
   display: 'flex',
   alignItems: 'center',
@@ -79,7 +87,7 @@ function ProviderCard(handle: Handle<{ p: Provider; onChanged: () => void }>) {
     const busy = act.busy !== '';
     const tn = healthTone(p.status);
     return (
-      <article mix={[card, cardCss]} data-testid="provider" data-name={p.name}>
+      <article mix={cardCss} data-testid="provider" data-name={p.name}>
         <header mix={headCss}>
           <span mix={kindTile} aria-hidden="true" style={{ background: tone[tn].bg, color: tone[tn].fg }}>
             <Icon icon={KIND_ICON[p.kind] ?? Server} size={16} />
