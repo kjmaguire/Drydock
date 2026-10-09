@@ -140,7 +140,9 @@ describe('ProvidersScreen', () => {
     type(byLabel(r.container, 'Base URL'), 'http://example.com/v1');
     const key = byLabel(r.container, /API key/);
     type(key, 'sk-secret-456');
-    await r.act(() => byText(r.container, 'button', 'Add provider').click());
+    const add = byText<HTMLButtonElement>(r.container, 'button', 'Add provider');
+    await waitFor(() => expect(add.disabled).toBe(false), r);
+    await r.act(() => add.click());
     await waitFor(() => expect(r.$$('[role="alert"]').length).toBe(1), r);
     expect(need(r, '[role="alert"]').textContent).toContain(msg);
     expect(key.value).toBe('');
