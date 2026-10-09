@@ -32,8 +32,7 @@ function saveSide(side: boolean): void {
 const STATUS_COLOR: Record<DiffFile['status'], string> = { added: t.success, deleted: t.danger, modified: t.warning, renamed: t.info };
 
 // On a page the diff gets room of its own; inside the dock it fits the dock's height.
-const viewerCss = css({ '#dock-panel &': { minHeight: '0' } });
-const bodyCss = css({ minHeight: '320px', '#dock-panel &': { minHeight: '0' } });
+const bodyCss = css({ minHeight: '320px', ':is(#dock-panel) &': { minHeight: '0' } });
 const statusCss = css({
   display: 'inline-grid',
   placeItems: 'center',
@@ -50,7 +49,7 @@ const addCss = css({ color: t.success });
 const delCss = css({ color: t.danger });
 const binCss = css({ color: t.textFaint });
 const totalsCss = css({ marginLeft: 'auto', display: 'inline-flex', gap: t.s2, alignItems: 'center', color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs });
-const hostWrap = css({ position: 'relative', flex: '1', minHeight: '300px', display: 'flex', '#dock-panel &': { minHeight: '0' } });
+const hostWrap = css({ position: 'relative', flex: '1', minHeight: '300px', display: 'flex', ':is(#dock-panel) &': { minHeight: '0' } });
 const hostCss = css({ flex: '1', minWidth: '0', minHeight: '0' });
 const hostLoading = css({ position: 'absolute', inset: '0', margin: '0', padding: t.s3, color: t.textMuted, fontSize: t.textMd, pointerEvents: 'none' });
 const hostError = css({ pointerEvents: 'auto' });
@@ -95,7 +94,7 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
     const totals = diffTotals(files);
 
     return (
-      <div mix={[panel, viewerCss]} data-testid="diff-viewer">
+      <div mix={panel} data-testid="diff-viewer">
         <div role="toolbar" aria-label="Diff" mix={toolbar}>
           <div role="group" aria-label="Which diff" mix={segmented}>
             <button type="button" aria-pressed={!live} mix={on('click', () => setLive(false))}>

@@ -111,7 +111,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
               mix={on('change', (e) => set(() => ((adapter = e.currentTarget.value), (model = ''), (effort = ''))))}
             >
               {adapters.map((x) => (
-                <option key={x.id} value={x.id}>
+                <option key={x.id} value={x.id} selected={x.id === adapterId}>
                   {adapterOption(x)}
                 </option>
               ))}
@@ -201,7 +201,7 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
             {(id) => (
               <select id={id} aria-label="Template" value={chosen} mix={on('change', (e) => ((pick = e.currentTarget.value), void handle.update()))}>
                 {templates.map((x) => (
-                  <option key={x.id} value={x.id}>
+                  <option key={x.id} value={x.id} selected={x.id === chosen}>
                     {x.name} ({x.role}, {x.adapter})
                   </option>
                 ))}

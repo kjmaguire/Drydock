@@ -191,6 +191,29 @@ describe('the diff viewer', () => {
     expect(r.$$('[data-testid="monaco-diff"]').length).toBe(1);
   });
 
+  it('takes room of its own on a page and fits the dock inside it', async () => {
+    const s = testServices({
+      taskDiffFiles: async () => files({ files: [files().files[0]!] }),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+    });
+    const r = mount(
+      <div>
+        <div data-testid="page">
+          <DiffViewer taskId="t1" />
+        </div>
+        <div id="dock-panel" style={{ height: '200px' }}>
+          <DiffViewer taskId="t1" />
+        </div>
+      </div>,
+      s,
+    );
+    await waitFor(() => expect(r.$$('[data-testid="monaco-stub"]').length).toBe(2), r);
+    const [onPage, inDock] = Array.from(r.$$('[data-testid="monaco-diff"]')) as HTMLElement[];
+    expect(getComputedStyle(onPage!.parentElement!).minHeight).toBe('300px');
+    expect(getComputedStyle(inDock!.parentElement!).minHeight).toBe('0px');
+    expect(inDock!.closest('[data-testid="diff-viewer"]')!.getBoundingClientRect().height).toBe(200);
+  });
+
   it('says so when nothing is recorded, and Live is off without a worktree', async () => {
     const r = mount(<DiffViewer taskId="t1" />, testServices({ taskDiffFiles: async () => files({ source: 'none', files: [], liveAvailable: false }) }));
     await waitFor(() => has(r.container, /No diff has been recorded yet/), r);
@@ -258,6 +281,9 @@ describe('the logs panel', () => {
     await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
     expect(reads[0]).toEqual(['nx:r|work|2|1', { tail: true, limit: 64 << 10 }]);
     has(r.container, 'failed');
+    const logList = r.$('ul[aria-label="Logs"]')!;
+    expect(logList.classList.contains('two-line')).toBe(true);
+    expect(logList.classList.length).toBeGreaterThan(1);
     expect(r.$('[data-testid="log-text"]')!.getAttribute('aria-label')).toBe('work (step 2) log');
     expect(byText(r.container, 'button', /Agent:\s*work/).getAttribute('aria-current')).toBe('true');
     await r.act(() => byText(r.container, 'button', 'Show earlier output').click());

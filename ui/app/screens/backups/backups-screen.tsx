@@ -89,7 +89,7 @@ function RestoreConfirm(handle: Handle<{ b: BackupInfo; onStaged: (r: RestoreSta
   return () => {
     const { b, onStaged, onCancel } = handle.props;
     return (
-      <div data-testid="restore-confirm" style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      <div data-testid="restore-confirm" style={{ display: 'grid', gap: t.s4 }}>
         <ul mix={confirmList}>
           <li>
             Restoring <strong>replaces everything</strong> in Drydock with the contents of this backup.

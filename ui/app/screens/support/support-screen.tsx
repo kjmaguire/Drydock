@@ -50,7 +50,7 @@ export function ScrubReport(handle: Handle<{ r: BundleReport }>) {
     const files = r.files ?? [];
     const touched = scrubbedFiles(r);
     return (
-      <div data-testid="scrub-report" style={{ display: 'grid', gap: 'var(--space-2)' }}>
+      <div data-testid="scrub-report" style={{ display: 'grid', gap: t.s2 }}>
         <h3 mix={subhead}>Scrub report</h3>
         <p style={{ margin: '0' }}>
           <strong data-testid="scrub-total">{r.totalSecretsRedacted}</strong> secret-like value(s) redacted across {files.length} file(s).

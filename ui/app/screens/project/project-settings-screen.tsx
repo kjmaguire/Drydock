@@ -62,7 +62,7 @@ function Delivery(handle: Handle<{ project: Project }>) {
           <SettingRow label="Mode" for={modeId} description="Merge in this repository, or open a pull request on GitHub.">
             <select id={modeId} aria-label="Mode" value={mode} mix={on('change', (e) => ((mode = e.currentTarget.value), (saved = false), void handle.update()))}>
               {MODES.map(([v, label]) => (
-                <option key={v} value={v}>
+                <option key={v} value={v} selected={v === mode}>
                   {label}
                 </option>
               ))}
@@ -71,7 +71,7 @@ function Delivery(handle: Handle<{ project: Project }>) {
           <SettingRow label="Merge strategy" for={stratId} description="How the task branch is combined with the default branch.">
             <select id={stratId} aria-label="Merge strategy" value={strategy} mix={on('change', (e) => ((strategy = e.currentTarget.value), (saved = false), void handle.update()))}>
               {STRATEGIES.map(([v, label]) => (
-                <option key={v} value={v}>
+                <option key={v} value={v} selected={v === strategy}>
                   {label}
                 </option>
               ))}

@@ -119,7 +119,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
               mix={on('change', (e) => set(() => ((picked = e.currentTarget.value), (model = ''), (effort = ''), (mode = ''))))}
             >
               {list.map((a) => (
-                <option key={a.id} value={a.id}>
+                <option key={a.id} value={a.id} selected={a.id === adapter}>
                   {a.id}
                 </option>
               ))}
@@ -131,9 +131,11 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
           <Field label="Permission mode">
             {(id) => (
               <select id={id} aria-label="Permission mode" value={mode} mix={on('change', (e) => set(() => (mode = e.currentTarget.value)))}>
-                <option value="">default for background agents (acceptEdits)</option>
+                <option value="" selected={mode === ''}>
+                  default for background agents (acceptEdits)
+                </option>
                 {modes.map((m) => (
-                  <option key={m} value={m}>
+                  <option key={m} value={m} selected={m === mode}>
                     {m}
                   </option>
                 ))}

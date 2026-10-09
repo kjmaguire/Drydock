@@ -90,9 +90,9 @@ export function statesAsOf(x: RunExplanation, cp: CheckpointView | undefined): M
 
 // ---------- geometry ----------
 
-export const NODE_W = 196;
+export const NODE_W = 180;
 export const NODE_H = 68;
-const COL_GAP = 84;
+const COL_GAP = 64;
 const ROW_GAP = 36;
 
 export interface NodeBox {

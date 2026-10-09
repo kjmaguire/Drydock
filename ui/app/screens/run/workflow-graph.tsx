@@ -34,6 +34,15 @@ export const KIND_ICON: Record<string, IconNode> = { agent_task: Bot, check: Lis
 
 const GRID = 20;
 
+/** A canvas tall enough for the graph at the zoom that fits its width (wide, short graphs get a shorter canvas). */
+function canvasHeight(gm: GraphGeom, width: number): number {
+  if (width <= 0) return 420;
+  const bw = Math.max(1, gm.bounds.maxX - gm.bounds.minX);
+  const bh = Math.max(1, gm.bounds.maxY - gm.bounds.minY);
+  const k = Math.max(0.2, Math.min(1.1, (width - 80) / bw));
+  return Math.round(Math.min(600, Math.max(420, bh * k + 80 + 56)));
+}
+
 const benchCss = css({
   display: 'grid',
   border: `1px solid ${t.border}`,
@@ -75,7 +84,7 @@ const splitCss = css({
 
 const canvasCss = css({
   position: 'relative',
-  height: 'clamp(320px, 52vh, 600px)',
+  height: 'var(--wf-h, 420px)',
   minWidth: '0',
   overflow: 'hidden',
   background: t.bgApp,
@@ -92,8 +101,8 @@ const sideCss = css({
   borderLeft: `1px solid ${t.border}`,
   background: t.bgSurface,
   overflow: 'auto',
-  height: 'clamp(320px, 52vh, 600px)',
-  '@media (max-width: 1100px)': { borderLeft: '0', borderTop: `1px solid ${t.border}`, height: 'auto', maxHeight: 'none' },
+  height: 'var(--wf-h, 420px)',
+  '@media (max-width: 1100px)': { borderLeft: '0', borderTop: `1px solid ${t.border}`, height: 'auto' },
 });
 
 const controlsCss = css({
@@ -332,7 +341,7 @@ export function WorkflowGraph(
             ))}
           </div>
         </div>
-        <div mix={splitCss}>
+        <div mix={splitCss} style={{ '--wf-h': `${canvasHeight(gm, size.w)}px` }}>
           <div
             mix={[
               canvasCss,
@@ -471,7 +480,7 @@ export function WorkflowGraph(
                         <Icon icon={KIND_ICON[n.def.kind] ?? Workflow} size={15} />
                       </g>
                       <text class="wf-title" x={32} y={22}>
-                        {clip(n.id, 17)}
+                        {clip(n.id, 16)}
                       </text>
                       <text class="wf-kind" x={n.w - 12} y={22} text-anchor="end">
                         {kind}
@@ -479,7 +488,7 @@ export function WorkflowGraph(
                       {s.status === 'started' ? <circle class="wf-pulse" cx={16} cy={41} r={3.5} style={{ fill: color }} /> : null}
                       <circle cx={16} cy={41} r={3.5} style={{ fill: color }} />
                       <text class="wf-status" x={26} y={45} style={{ fill: color }}>
-                        {clip(line, cost ? 20 : 28)}
+                        {clip(line, cost ? 18 : 26)}
                       </text>
                       {cost ? (
                         <text class="wf-cost" x={n.w - 12} y={45} text-anchor="end">
@@ -488,7 +497,7 @@ export function WorkflowGraph(
                       ) : null}
                       {meta ? (
                         <text class="wf-meta" x={12} y={60}>
-                          {clip(meta, 31)}
+                          {clip(meta, 28)}
                         </text>
                       ) : null}
                     </g>

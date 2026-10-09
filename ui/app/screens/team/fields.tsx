@@ -57,13 +57,15 @@ export function ModelEffortFields(
           {(id) =>
             efforts.length > 0 ? (
               <select id={id} aria-label="Effort" value={effort} disabled={!canEffort} mix={on('change', (e) => onEffort(e.currentTarget.value))}>
-                <option value="">adapter default</option>
+                <option value="" selected={effort === ''}>
+                  adapter default
+                </option>
                 {efforts.map((x) => (
-                  <option key={x} value={x}>
+                  <option key={x} value={x} selected={x === effort}>
                     {x}
                   </option>
                 ))}
-                {effort && !efforts.includes(effort) ? <option value={effort}>{effort} (not accepted)</option> : null}
+                {effort && !efforts.includes(effort) ? <option value={effort} selected>{effort} (not accepted)</option> : null}
               </select>
             ) : (
               <input
@@ -234,8 +236,12 @@ export function RouteModelsField(handle: Handle<{ routes: RouteModel[]; onRoutes
               <div key={i} mix={routeRow}>
                 <input aria-label={`Routed model ${i + 1}`} value={r.model} list={listId} spellcheck={false} autocomplete="off" mix={on('input', (e) => edit(i, { model: e.currentTarget.value }))} />
                 <select aria-label={`Tier of routed model ${i + 1}`} value={r.tier} mix={on('change', (e) => edit(i, { tier: e.currentTarget.value as RouteModel['tier'] }))}>
-                  <option value="cheap">cheap</option>
-                  <option value="premium">premium</option>
+                  <option value="cheap" selected={r.tier === 'cheap'}>
+                    cheap
+                  </option>
+                  <option value="premium" selected={r.tier === 'premium'}>
+                    premium
+                  </option>
                 </select>
                 <IconButton icon={X} label={`Remove routed model ${i + 1}`} mix={on('click', () => onRoutes(routes.filter((_, j) => j !== i)))} />
               </div>

@@ -122,7 +122,8 @@ function AdapterCard(handle: Handle<{ a: AdapterInfo }>) {
 }
 
 
-export function TeamScreen(handle: Handle) {
+/** `onNavigate` replaces the router's navigate (tests). */
+export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.project);
   watch(handle, s.workspace);
@@ -137,7 +138,9 @@ export function TeamScreen(handle: Handle) {
   const message = (agent: Agent) =>
     act.run('dm', async () => {
       const room = await s.client.roomCreateDM(agent.projectId || s.workspace.projectId || '', agent.id);
-      navigate(routes.room.href({ id: room.id }));
+      const href = routes.room.href({ id: room.id });
+      if (handle.props.onNavigate) handle.props.onNavigate(href);
+      else void navigate(href);
     });
 
   const focusAdd = () => {

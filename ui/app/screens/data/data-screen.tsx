@@ -44,7 +44,7 @@ function ScanSummary(handle: Handle<{ m: ExportManifest }>) {
     const m = handle.props.m;
     const sc = m.scan;
     return (
-      <div data-testid="export-scan" style={{ display: 'grid', gap: 'var(--space-2)' }}>
+      <div data-testid="export-scan" style={{ display: 'grid', gap: t.s2 }}>
         <h3 mix={subhead}>Secret scan</h3>
         <p style={{ margin: '0' }}>
           Project data: <strong>{sc.dbRedactions}</strong> secret-like value(s) redacted.

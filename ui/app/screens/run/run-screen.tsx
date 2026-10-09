@@ -163,7 +163,11 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                 <span>This task ran {x.runs.length} times:</span>
                 {x.runs.map((o, i) => (
                   <span key={o.id}>
-                    {i > 0 ? <span aria-hidden="true">· </span> : null}
+                    {i > 0 ? (
+                      <span aria-hidden="true" style={{ marginRight: '8px', color: t.textFaint }}>
+                        ·
+                      </span>
+                    ) : null}
                     {o.id === r.id ? <strong aria-current="page">{formatTime(o.created)}</strong> : <a href={routes.run.href({ id: taskId, runId: o.id })}>{formatTime(o.created)}</a>} ({o.status})
                   </span>
                 ))}

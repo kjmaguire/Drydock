@@ -71,6 +71,8 @@ function setup(client: Partial<Client> = {}) {
 
 type R = ReturnType<typeof mount>;
 
+const all = (r: R, sel: string): HTMLElement[] => Array.from(r.container.querySelectorAll<HTMLElement>(sel));
+
 const node = (r: R, id: string) => r.$(`[data-testid="wf-node"][data-node="${id}"]`) as SVGGElement | null;
 const tab = (r: R, name: RegExp) => byText(r.container, '[role="tab"]', name);
 const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
@@ -99,12 +101,12 @@ describe('RunScreen', () => {
     expect(r.$('a[href="/task/t1"]')!.textContent).toContain('Back to the task');
 
     await r.act(() => tab(r, /Turns/).click());
-    const work = r.$$('[data-testid="turn"]').find((li) => li.getAttribute('data-node') === 'work')!;
+    const work = all(r, '[data-testid="turn"]').find((li) => li.getAttribute('data-node') === 'work')!;
     expect(work.textContent).toContain('Worker One');
     expect(work.textContent).toContain('fake-1');
     expect(work.textContent).toContain('15 tokens');
     await r.act(() => work.querySelector('button')!.click());
-    await waitFor(() => expect(r.$$('[data-testid="manifest-item"]').map((m) => m.getAttribute('data-included'))).toEqual(['true', 'false']), r);
+    await waitFor(() => expect(all(r, '[data-testid="manifest-item"]').map((m) => m.getAttribute('data-included'))).toEqual(['true', 'false']), r);
     expect(work.textContent).toContain('team setup');
     expect(work.querySelectorAll('[data-testid="usage-row"]').length).toBe(1);
     await r.act(() => byText(work, 'button', 'Show the exact prompt').click());
@@ -113,7 +115,7 @@ describe('RunScreen', () => {
     expect(r.container.querySelector('script')).toBeNull();
 
     await r.act(() => tab(r, /Checkpoints/).click());
-    await waitFor(() => expect(r.$$('[data-testid="checkpoint"]').map((c) => c.getAttribute('data-latest'))).toEqual(['false', 'true']), r);
+    await waitFor(() => expect(all(r, '[data-testid="checkpoint"]').map((c) => c.getAttribute('data-latest'))).toEqual(['false', 'true']), r);
     await r.act(() => tab(r, /MCP calls/).click());
     await waitFor(() => expect(r.$('[data-testid="mcp-call"]')!.textContent).toContain('denied'), r);
     await r.act(() => tab(r, /Events/).click());
@@ -149,7 +151,7 @@ describe('RunScreen', () => {
     expect(node(r, 'approve')!.getAttribute('data-status')).toBe('waiting');
     expect(node(r, 'approve')!.textContent).toContain('waiting for you');
     expect(node(r, 'done')!.getAttribute('data-status')).toBe('pending');
-    const edges = r.$$('[data-testid="wf-edge"]');
+    const edges = all(r, '[data-testid="wf-edge"]');
     expect(edges.length).toBe(7);
     expect(graph.querySelectorAll('.react-flow__edge').length).toBe(7);
     expect(edges.every((e) => /^url\(#wf-arrow-/.test(e.querySelector('path')!.getAttribute('marker-end') ?? ''))).toBe(true);
@@ -166,22 +168,22 @@ describe('RunScreen', () => {
   it('shows the run as of a checkpoint and back to the latest', async () => {
     const r = mount(<RunScreen taskId="t1" />, setup());
     await ready(r);
-    const cps = r.$$('[data-testid="wf-checkpoint"]');
+    const cps = all(r, '[data-testid="wf-checkpoint"]');
     expect(cps.map((c) => c.textContent)).toEqual(['0', '2 (latest)']);
     expect(r.container.textContent).toContain('Latest state. Choose a checkpoint below');
     await r.act(() => (cps[0] as HTMLButtonElement).click());
     await waitFor(() => expect(node(r, 'work')!.getAttribute('data-status')).toBe('pending'), r);
     expect(r.$('[data-testid="workflow-graph"]')!.textContent).toMatch(/As of checkpoint at step 0 \(entry,/);
-    expect(r.$$('[data-testid="wf-checkpoint"]')[0]!.getAttribute('aria-pressed')).toBe('true');
+    expect(all(r, '[data-testid="wf-checkpoint"]')[0]!.getAttribute('aria-pressed')).toBe('true');
     await r.act(() => byText(r.$('[data-testid="workflow-graph"]')!, 'button', 'Show the latest').click());
     await waitFor(() => expect(node(r, 'work')!.getAttribute('data-status')).toBe('done'), r);
 
     // the Checkpoints tab can show a checkpoint on the graph too
     await r.act(() => tab(r, /Checkpoints/).click());
     await waitFor(() => r.$('[data-testid="checkpoint"]')!, r);
-    await r.act(() => byText(r.$$('[data-testid="checkpoint"]')[0]!, 'button', 'Show on the graph').click());
+    await r.act(() => byText(all(r, '[data-testid="checkpoint"]')[0]!, 'button', 'Show on the graph').click());
     await waitFor(() => expect(node(r, 'work')!.getAttribute('data-status')).toBe('pending'), r);
-    expect(r.$$('[data-testid="checkpoint"]')[0]!.getAttribute('aria-current')).toBe('true');
+    expect(all(r, '[data-testid="checkpoint"]')[0]!.getAttribute('aria-current')).toBe('true');
   });
 
   it('selects a node: the side panel shows what it did, why that model, its prompt and its turns', async () => {
@@ -208,7 +210,7 @@ describe('RunScreen', () => {
     expect(panel.textContent).toContain('team setup');
     expect(panel.textContent).toContain('$0.02');
     // edges touching the selection are highlighted
-    expect(r.$$('[data-testid="wf-edge"][data-active="true"]').length).toBe(4);
+    expect(all(r, '[data-testid="wf-edge"][data-active="true"]').length).toBe(4);
 
     await r.act(() => byText(panel, 'button', 'Explain why this model').click());
     await waitFor(() => expect(panel.querySelector('[data-testid="explain"]')!.textContent).toContain('assignment'), r);
@@ -234,7 +236,7 @@ describe('RunScreen', () => {
     await waitFor(() => r.$('[data-testid="node-panel"][data-node="prepare"]')!, r);
     await r.act(() => byText(r.$('[data-testid="node-panel"]')!, 'button', 'Close the node details').click());
     await waitFor(() => r.$('[data-testid="node-panel-empty"]')!, r);
-    expect(r.$$('[data-testid="wf-node"][aria-pressed="true"]').length).toBe(0);
+    expect(all(r, '[data-testid="wf-node"][aria-pressed="true"]').length).toBe(0);
   });
 
   it('says what a node that has not run is waiting for', async () => {
@@ -329,14 +331,14 @@ describe('RunScreen', () => {
     await waitFor(() => expect(tab(r, /Events/).getAttribute('aria-selected')).toBe('true'), r);
     await r.act(() => byText(r.container, 'button', 'Every turn in detail').click());
     await waitFor(() => expect(tab(r, /Turns/).getAttribute('aria-selected')).toBe('true'), r);
-    expect(r.$$('[data-testid="turn"]').length).toBe(2);
+    expect(all(r, '[data-testid="turn"]').length).toBe(2);
   });
 
   it('says why there is no graph when the workflow is not registered, and still lists the turns', async () => {
     const r = mount(<RunScreen taskId="t1" />, setup({ runExplain: async () => ({ ...explanation(), graph: undefined }) }));
     await waitFor(() => expect(r.container.textContent).toContain('The workflow "iuv" is not registered in this build'), r);
     expect(r.$('[data-testid="workflow-graph"]')).toBeNull();
-    expect(r.$$('[data-testid="turn"]').length).toBe(2);
+    expect(all(r, '[data-testid="turn"]').length).toBe(2);
   });
 
   it('links the other runs of the task', async () => {

@@ -95,7 +95,8 @@ function Run(handle: Handle<{ r: AgentRun }>) {
   };
 }
 
-export function AgentInspector(handle: Handle<{ agentId: string | undefined }>) {
+/** `onNavigate` replaces the router's navigate (tests). */
+export function AgentInspector(handle: Handle<{ agentId: string | undefined; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.project);
   const act = action(handle);
@@ -110,7 +111,9 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined }>) 
   const message = (agentId: string, projectId: string) =>
     act.run('dm', async () => {
       const room = await s.client.roomCreateDM(projectId || s.workspace.projectId || '', agentId);
-      navigate(routes.room.href({ id: room.id }));
+      const href = routes.room.href({ id: room.id });
+      if (handle.props.onNavigate) handle.props.onNavigate(href);
+      else void navigate(href);
     });
 
   return () => {

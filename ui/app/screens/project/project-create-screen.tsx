@@ -50,7 +50,8 @@ const POINTS: [IconNode, string, string][] = [
   [ShieldCheck, 'Your code stays here.', 'Drydock never uploads source code.'],
 ];
 
-export function ProjectCreateScreen(handle: Handle<{ first?: boolean }>) {
+/** `onNavigate` replaces the router's navigate (tests). */
+export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -63,7 +64,8 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean }>) {
     if (!p) return;
     s.workspace.selectProject(p.id);
     s.workspace.projects.reload();
-    navigate(routes.home.href());
+    if (handle.props.onNavigate) handle.props.onNavigate(routes.home.href());
+    else void navigate(routes.home.href());
   };
 
   return () => {

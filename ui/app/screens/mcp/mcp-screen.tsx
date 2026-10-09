@@ -10,9 +10,9 @@ import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
-import { Badge, faint, mono, muted } from '../../ui/data.tsx';
+import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
-import { Checkbox, Field } from '../../ui/form.tsx';
+import { Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section, stack } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -69,6 +69,7 @@ const agentList = css({
   listStyle: 'none',
   '& li': { padding: '6px 10px', border: `1px solid ${t.border}`, borderRadius: t.rMd },
 });
+const grantRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, cursor: 'pointer', minWidth: '0' });
 const approvalCard = css({ borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})` });
 const argsCss = css({ margin: '0', maxHeight: '240px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
 const addRow = css({ display: 'flex', alignItems: 'flex-end', gap: t.s2, flexWrap: 'wrap', '& > div': { minWidth: '260px' } });
@@ -201,16 +202,22 @@ function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent[]; onC
         <ul mix={agentList} aria-label={`Agents allowed to use ${srv.display}`}>
           {agents.map((a) => (
             <li key={a.id}>
-              <Checkbox
-                label={`${a.name} may use ${srv.display}`}
-                description={a.role}
-                checked={granted(a.id)}
-                disabled={act.busy !== ''}
-                onChange={async (c) => {
-                  await act.run('access', () => s.client.mcpServerGrant(srv.projectId, srv.id, a.id, c));
-                  onChanged();
-                }}
-              />
+              <label mix={grantRow}>
+                <input
+                  type="checkbox"
+                  aria-label={`${a.name} may use ${srv.display}`}
+                  checked={granted(a.id)}
+                  disabled={act.busy !== ''}
+                  mix={on('change', async (e) => {
+                    const c = e.currentTarget.checked;
+                    await act.run('access', () => s.client.mcpServerGrant(srv.projectId, srv.id, a.id, c));
+                    onChanged();
+                  })}
+                />
+                <Avatar id={a.id} name={a.name} size={18} />
+                <span>{a.name}</span>
+                {a.role ? <span mix={faint}>{a.role}</span> : null}
+              </label>
             </li>
           ))}
         </ul>
@@ -335,6 +342,13 @@ export function McpScreen(handle: Handle) {
   return () => {
     const projectId = s.workspace.projectId;
     const project = s.workspace.project;
+    if (!projectId && !s.workspace.projects.data) {
+      return (
+        <Page title="MCP servers" icon={Server}>
+          <Loading />
+        </Page>
+      );
+    }
     if (!projectId) {
       return (
         <Page title="MCP servers" icon={Server}>

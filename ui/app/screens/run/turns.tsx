@@ -44,6 +44,7 @@ const headCss = css({
   color: t.text,
   fontSize: t.textMd,
   textAlign: 'left',
+  justifyContent: 'flex-start',
   '&:hover': { background: t.bgHover },
   '&:focus-visible': { boxShadow: `inset ${t.focus}` },
   '& .chev': { display: 'inline-flex', color: t.textFaint, transition: `transform ${t.fast} ${t.ease}` },
@@ -63,10 +64,16 @@ const detailCss = css({
   '& section > p': { margin: '0 0 4px' },
 });
 
-const actionsCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2 });
-
-/** Wraps a PromptView: the button keeps its size, the prompt takes the full width. */
-export const promptBox = css({ display: 'grid', gap: t.s2, minWidth: '0', '& > button': { justifySelf: 'start' } });
+/** A row of actions; a PromptView's error and prompt text (when shown) take a full line under it. */
+const actionsCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: t.s2,
+  minWidth: '0',
+  '& > pre, & > [role="alert"]': { order: '1', flexBasis: '100%', minWidth: '0' },
+});
+export const promptBox = actionsCss;
 
 export const promptCss = css({
   margin: '0',
@@ -242,8 +249,9 @@ function TurnDetail(handle: Handle<{ e: ExecView; taskId: string; runId: string;
             </div>
           </section>
         ) : null}
-        {e.logId || e.safePoint ? (
+        {e.hasPrompt || e.logId || e.safePoint ? (
           <div mix={actionsCss}>
+            {e.hasPrompt ? <PromptView taskId={taskId} runId={runId} exec={e} /> : null}
             {e.logId ? (
               <Button size="sm" variant="ghost" mix={[on('click', () => openLogs())]}>
                 Open its stream in the Logs tab
@@ -254,11 +262,6 @@ function TurnDetail(handle: Handle<{ e: ExecView; taskId: string; runId: string;
                 safe point <code>{e.safePoint.slice(0, 10)}</code>
               </span>
             ) : null}
-          </div>
-        ) : null}
-        {e.hasPrompt ? (
-          <div mix={promptBox}>
-            <PromptView taskId={taskId} runId={runId} exec={e} />
           </div>
         ) : null}
         {e.usage && e.usage.length ? (

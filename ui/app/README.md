@@ -73,6 +73,10 @@ export function Thing(handle: Handle<{ id: string }>) {
   External links (`https://...`) need `target="_blank"` and `data-rmx-document`.
 - Forms: `on('submit', (e) => { e.preventDefault(); ... })`. The CSP has `form-action 'none'`: a native submission is blocked.
 - Imports use explicit extensions (`./x.ts`, `./y.tsx`), as Node ESM and the Remix repo do.
+- `css()` treats only keys starting with `&`, `@`, `:`, `[` or `.` as nested selectors. An ancestor selector must be
+  written `':is(#dock-panel) &'`; `'#dock-panel &'` is silently dropped.
+- remix test 1.0.0's browser runner breaks a relative dynamic `import('./x.ts')` (its import rewriting drops the quotes).
+  A module that browser tests load must lazy-load with `import.meta.glob('./x.ts')` instead (Vite still splits it).
 
 ## Design
 
