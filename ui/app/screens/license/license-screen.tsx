@@ -3,7 +3,7 @@
 // works with no project, so a read-only install can always reach it.
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { CircleCheck, CircleSlash, FlaskConical, KeyRound, Lock, ShieldAlert, Trash2 } from 'lucide';
+import { CircleCheck, CircleSlash, FileKey, FlaskConical, KeyRound, Lock, ShieldAlert, Trash2, TriangleAlert } from 'lucide';
 import type { LicenseView } from '../../api/pkgTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { starts } from '../../state/live.ts';
@@ -231,6 +231,7 @@ export function LicenseScreen(handle: Handle) {
           {v && v.configured ? (
             <Group
               title="Import a license"
+              icon={FileKey}
               description="Paste the license token, or give the path of a license file on this computer. The token is sent once to your local core and is never shown again or kept in this page. Importing is always allowed, including when Drydock is read-only."
             >
               <form
@@ -274,7 +275,7 @@ export function LicenseScreen(handle: Handle) {
           ) : null}
 
           {v && v.configured && v.state !== 'none' ? (
-            <Group title="Danger zone" description="Removing the license turns work off until a license is imported again. Nothing is deleted.">
+            <Group title="Danger zone" icon={TriangleAlert} description="Removing the license turns work off until a license is imported again. Nothing is deleted.">
               <DangerZone>
                 {confirmClear ? (
                   <div mix={confirmRow}>

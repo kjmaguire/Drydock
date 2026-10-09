@@ -36,6 +36,7 @@ const groupCss = css({
   '&:first-child': { paddingTop: '0', borderTop: '0' },
   '@container (max-width: 720px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
 });
+const stackedCss = css({ gridTemplateColumns: 'minmax(0, 1fr)', '& > div:first-child': { maxWidth: '720px' } });
 
 const groupHead = css({
   display: 'grid',
@@ -49,16 +50,16 @@ const groupHead = css({
 const groupBody = css({ display: 'grid', gap: t.s3, minWidth: '0' });
 
 /**
- * A settings group: title (h2) and description on the left, the controls on the right. `label` names the region for
- * assistive technology (and for the end-to-end tests).
+ * A settings group: title (h2) and description on the left, the controls on the right (`stacked` puts them under the title,
+ * for wide tables). `label` names the region for assistive technology (and for the end-to-end tests).
  */
 export function Group(
-  handle: Handle<{ title: RemixNode; icon?: IconNode; description?: RemixNode; label?: string; testId?: string; children?: RemixNode }>,
+  handle: Handle<{ title: RemixNode; icon?: IconNode; description?: RemixNode; label?: string; testId?: string; stacked?: boolean; children?: RemixNode }>,
 ) {
   return () => {
-    const { title, icon, description, label, testId, children } = handle.props;
+    const { title, icon, description, label, testId, stacked, children } = handle.props;
     return (
-      <section mix={groupCss} aria-label={label} data-testid={testId}>
+      <section mix={[groupCss, stacked ? stackedCss : undefined]} aria-label={label} data-testid={testId}>
         <div mix={groupHead}>
           <h2>
             {icon ? <Icon icon={icon} size={15} /> : null}

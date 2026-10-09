@@ -28,9 +28,21 @@ const stepperCss = css({
   padding: '0',
   listStyle: 'none',
   flexWrap: 'wrap',
-  '& li': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textMd, color: t.textMuted, fontWeight: '500' },
+  '& li': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    fontSize: t.textMd,
+    color: t.textMuted,
+    fontWeight: '500',
+  },
   '& li[aria-current="step"]': { color: t.text },
-  '& li + li::before': { content: '""', width: '28px', height: '1px', background: t.borderStrong },
+  '& li + li::before': {
+    content: '""',
+    width: '28px',
+    height: '1px',
+    background: t.borderStrong,
+  },
 });
 const stepDot = css({
   display: 'inline-grid',
@@ -68,7 +80,13 @@ const STEP_STYLE: Record<StepState, { fg: string; bg: string; border: string }> 
   todo: { fg: t.textMuted, bg: t.bgSurface, border: t.borderStrong },
 };
 
-const STEP_WORD: Record<StepState, string> = { done: 'done', current: 'current', working: 'in progress', failed: 'stopped', todo: 'not yet' };
+const STEP_WORD: Record<StepState, string> = {
+  done: 'done',
+  current: 'current',
+  working: 'in progress',
+  failed: 'stopped',
+  todo: 'not yet',
+};
 
 /** Where the plan on screen is: goal -> proposal -> review -> create. */
 function Stepper(handle: Handle<{ plan: Plan | undefined }>) {
@@ -84,8 +102,22 @@ function Stepper(handle: Handle<{ plan: Plan | undefined }>) {
             const active = st === 'current' || st === 'working' || st === 'failed';
             return (
               <li key={name} aria-current={active ? 'step' : undefined} data-state={st}>
-                <span mix={[stepDot, st === 'working' ? stepPulse : undefined]} style={{ color: c.fg, background: c.bg, borderColor: c.border }} aria-hidden="true">
-                  {st === 'done' ? <Icon icon={Check} size={12} strokeWidth={2.5} /> : st === 'failed' ? <Icon icon={X} size={12} strokeWidth={2.5} /> : String(i + 1)}
+                <span
+                  mix={[stepDot, st === 'working' ? stepPulse : undefined]}
+                  style={{
+                    color: c.fg,
+                    background: c.bg,
+                    borderColor: c.border,
+                  }}
+                  aria-hidden="true"
+                >
+                  {st === 'done' ? (
+                    <Icon icon={Check} size={12} strokeWidth={2.5} />
+                  ) : st === 'failed' ? (
+                    <Icon icon={X} size={12} strokeWidth={2.5} />
+                  ) : (
+                    String(i + 1)
+                  )}
                 </span>
                 <span>{name}</span>
                 <span class="sr-only">({STEP_WORD[st]})</span>
@@ -103,13 +135,20 @@ function Stepper(handle: Handle<{ plan: Plan | undefined }>) {
 
 // --- one proposed task's editor ---
 
-function TaskEditor(handle: Handle<{ task: ProposedTask; onSave: (t: ProposedTask) => void; onCancel: () => void }>) {
+function TaskEditor(
+  handle: Handle<{
+    task: ProposedTask;
+    onSave: (t: ProposedTask) => void;
+    onCancel: () => void;
+  }>,
+) {
   const t0 = handle.props.task;
   let title = t0.title;
   let desc = t0.description;
   let role = t0.role;
   let acc = (t0.acceptance ?? []).join('\n');
-  const input = (set: (v: string) => void) => on<HTMLInputElement | HTMLTextAreaElement, 'input'>('input', (e) => (set(e.currentTarget.value), void handle.update()));
+  const input = (set: (v: string) => void) =>
+    on<HTMLInputElement | HTMLTextAreaElement, 'input'>('input', (e) => (set(e.currentTarget.value), void handle.update()));
   return () => (
     <div mix={editorCss} data-testid="plan-task-editor">
       <div mix={formGrid}>
@@ -122,7 +161,15 @@ function TaskEditor(handle: Handle<{ task: ProposedTask; onSave: (t: ProposedTas
         <Button
           variant="primary"
           size="sm"
-          mix={on('click', () => handle.props.onSave({ ...handle.props.task, title, role, description: desc, acceptance: lines(acc) }))}
+          mix={on('click', () =>
+            handle.props.onSave({
+              ...handle.props.task,
+              title,
+              role,
+              description: desc,
+              acceptance: lines(acc),
+            }),
+          )}
         >
           Keep my edits
         </Button>
@@ -151,7 +198,13 @@ const planHead = css({
   alignItems: 'flex-start',
   gap: t.s3,
   padding: `${t.s4} ${t.s4} ${t.s3}`,
-  '& h3': { flex: '1', fontSize: t.textLg, fontWeight: '600', minWidth: '0', overflowWrap: 'anywhere' },
+  '& h3': {
+    flex: '1',
+    fontSize: t.textLg,
+    fontWeight: '600',
+    minWidth: '0',
+    overflowWrap: 'anywhere',
+  },
 });
 const planCard = css({
   border: `1px solid ${t.border}`,
@@ -160,8 +213,17 @@ const planCard = css({
   overflow: 'hidden',
   minWidth: '0',
 });
-const planBody = css({ display: 'grid', gap: t.s3, padding: `0 ${t.s4} ${t.s4}` });
-const notesCss = css({ padding: `${t.s2} ${t.s3}`, borderLeft: `2px solid ${t.borderStrong}`, color: t.textMuted, fontSize: t.textMd });
+const planBody = css({
+  display: 'grid',
+  gap: t.s3,
+  padding: `0 ${t.s4} ${t.s4}`,
+});
+const notesCss = css({
+  padding: `${t.s2} ${t.s3}`,
+  borderLeft: `2px solid ${t.borderStrong}`,
+  color: t.textMuted,
+  fontSize: t.textMd,
+});
 const tasksCss = css({
   margin: '0',
   padding: '0',
@@ -179,10 +241,23 @@ const taskCss = css({
   '&[data-selected="false"]': { opacity: '0.55' },
   '&:hover': { background: t.bgHover },
   '& .pick': { paddingTop: '2px' },
-  '& .title': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0' },
+  '& .title': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+    minWidth: '0',
+  },
   '& .title strong': { fontWeight: '600', overflowWrap: 'anywhere' },
   '& .desc': { color: t.textMuted, fontSize: t.textMd },
-  '& .deps': { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: t.textMuted, fontSize: t.textSm },
+  '& .deps': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap',
+    color: t.textMuted,
+    fontSize: t.textSm,
+  },
   '& .meta': { display: 'flex', alignItems: 'center', gap: t.s2 },
   '& .body': { display: 'grid', gap: t.s2, minWidth: '0' },
 });
@@ -201,9 +276,20 @@ const reviewBar = css({
   gap: t.s3,
   padding: t.s4,
   background: t.bgApp,
-  '& .summary': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
+  '& .summary': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+  },
 });
-const createdLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '500' });
+const createdLink = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  fontSize: t.textSm,
+  fontWeight: '500',
+});
 
 /** A proposed plan: the task graph, a dependency-closed selection, edits, and Accept / Reject. All text is the planner's (untrusted). */
 export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
@@ -231,7 +317,13 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
     return (
       <article mix={planCard} data-testid="plan" data-status={plan.status} aria-label={`Plan: ${plan.goal}`}>
         <header mix={planHead}>
-          <span style={{ display: 'inline-flex', color: 'var(--text-muted)', marginTop: '3px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              color: 'var(--text-muted)',
+              marginTop: '3px',
+            }}
+          >
             <Icon icon={Target} size={16} />
           </span>
           <h3>{plan.goal}</h3>
@@ -357,7 +449,8 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
             <div class="summary">
               <Icon icon={ListChecks} size={16} />
               <strong>
-                {selected.size} of {tasks.length} task{tasks.length === 1 ? '' : 's'} selected
+                {selected.size} of {tasks.length} task
+                {tasks.length === 1 ? '' : 's'} selected
               </strong>
               {editedCount > 0 ? <Badge tone="info">{editedCount} edited</Badge> : null}
             </div>
@@ -470,8 +563,8 @@ export function PlanScreen(handle: Handle) {
         }
       >
         <p mix={muted}>
-          Describe a goal and an agent with the pm or architect role proposes a graph of tasks. Nothing is created until you accept: choose the tasks you want, edit them if you
-          like, and the rest are dropped. The planner&apos;s text is outside text and is shown inert.
+          Describe a goal and an agent with the pm or architect role proposes a graph of tasks. Nothing is created until you accept: choose the tasks you want,
+          edit them if you like, and the rest are dropped. The planner&apos;s text is outside text and is shown inert.
         </p>
         <ErrorNote error={q.error ?? act.error} what="Plan" />
         <Stepper plan={current} />
@@ -503,7 +596,12 @@ export function PlanScreen(handle: Handle) {
               </Field>
               <Field label="Planner agent">
                 {(id) => (
-                  <select id={id} aria-label="Planner agent" value={planner} mix={on('change', (e) => ((planner = e.currentTarget.value), void handle.update()))}>
+                  <select
+                    id={id}
+                    aria-label="Planner agent"
+                    value={planner}
+                    mix={on('change', (e) => ((planner = e.currentTarget.value), void handle.update()))}
+                  >
                     <option value="">First agent with the pm or architect role</option>
                     {agents.map((a) => (
                       <option key={a.id} value={a.id}>
@@ -515,7 +613,13 @@ export function PlanScreen(handle: Handle) {
               </Field>
             </div>
             <div mix={formActions}>
-              <Button type="submit" variant="primary" icon={Sparkles} disabled={act.busy !== '' || ro.readOnly || !goal.trim()} title={ro.readOnly ? ro.reason : undefined}>
+              <Button
+                type="submit"
+                variant="primary"
+                icon={Sparkles}
+                disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
+                title={ro.readOnly ? ro.reason : undefined}
+              >
                 {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
               </Button>
             </div>
@@ -543,4 +647,3 @@ export function PlanScreen(handle: Handle) {
     );
   };
 }
-

@@ -9,12 +9,32 @@ import { PlanReview, PlanScreen } from './plan-screen.tsx';
 
 afterEach(cleanup);
 
-const pt = (key: string, deps: string[] = []): ProposedTask => ({ key, title: `Task ${key}`, description: `Do ${key}`, role: 'backend', dependsOn: deps, acceptance: [`Given ${key}, when run, then ok`] });
+const pt = (key: string, deps: string[] = []): ProposedTask => ({
+  key,
+  title: `Task ${key}`,
+  description: `Do ${key}`,
+  role: 'backend',
+  dependsOn: deps,
+  acceptance: [`Given ${key}, when run, then ok`],
+});
 const tasks = [pt('a'), pt('b', ['a']), pt('c', ['b']), pt('d')];
-const plan = (over: Partial<Plan> = {}): Plan => ({ id: 'plan_1', projectId: 'prj_1', runId: 'run_1', goal: 'Add arithmetic', status: 'PROPOSED', plannerAgent: 'agt_pm', proposal: { tasks, notes: 'a first' }, createdAt: 1, ...over });
+const plan = (over: Partial<Plan> = {}): Plan => ({
+  id: 'plan_1',
+  projectId: 'prj_1',
+  runId: 'run_1',
+  goal: 'Add arithmetic',
+  status: 'PROPOSED',
+  plannerAgent: 'agt_pm',
+  proposal: { tasks, notes: 'a first' },
+  createdAt: 1,
+  ...over,
+});
 
 function servicesWith(client: Partial<Client>) {
-  const s = testServices({ projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never], ...client });
+  const s = testServices({
+    projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never],
+    ...client,
+  });
   s.workspace.start();
   s.project.start();
   return s;
@@ -26,8 +46,15 @@ describe('PlanReview', () => {
   it('accepting sends exactly the selected, dependency-closed tasks and only the edits to them', async () => {
     const calls: [string, string[], Record<string, ProposedTask>][] = [];
     let done = 0;
-    const s = testServices({ planAccept: async (id, accept, edits) => (calls.push([id, accept ?? [], edits ?? {}]), {}) });
-    const p = plan({ proposal: { tasks: [...tasks.slice(0, 2), { ...pt('x'), description: '<script>window.__xss=1</script>' }], notes: '' } });
+    const s = testServices({
+      planAccept: async (id, accept, edits) => (calls.push([id, accept ?? [], edits ?? {}]), {}),
+    });
+    const p = plan({
+      proposal: {
+        tasks: [...tasks.slice(0, 2), { ...pt('x'), description: '<script>window.__xss=1</script>' }],
+        notes: '',
+      },
+    });
     const r = mount(<PlanReview plan={p} onDone={() => done++} />, s);
     r.root.flush();
     expect(r.container.querySelector('script')).toBe(null);
@@ -78,7 +105,17 @@ describe('PlanReview', () => {
   });
 
   it('a planner failure is shown as the core wrote it', () => {
-    const r = mount(<PlanReview plan={plan({ status: 'FAILED', error: 'the planner did not produce a valid plan: not JSON', proposal: null })} onDone={() => undefined} />, testServices());
+    const r = mount(
+      <PlanReview
+        plan={plan({
+          status: 'FAILED',
+          error: 'the planner did not produce a valid plan: not JSON',
+          proposal: null,
+        })}
+        onDone={() => undefined}
+      />,
+      testServices(),
+    );
     r.root.flush();
     expect(r.container.textContent).toContain('did not produce a valid plan');
   });
@@ -112,7 +149,18 @@ describe('PlanReview', () => {
 });
 
 describe('PlanScreen', () => {
-  const agent: Agent = { id: 'agt_pm', projectId: 'prj_1', name: 'Priya', adapter: 'claude', role: 'pm', model: '', effort: '', providerId: '', permissionMode: '', status: '' } as Agent;
+  const agent: Agent = {
+    id: 'agt_pm',
+    projectId: 'prj_1',
+    name: 'Priya',
+    adapter: 'claude',
+    role: 'pm',
+    model: '',
+    effort: '',
+    providerId: '',
+    permissionMode: '',
+    status: '',
+  } as Agent;
 
   it('proposing asks the planner and shows it working, then the proposal', async () => {
     const proposed: unknown[][] = [];
@@ -120,7 +168,16 @@ describe('PlanScreen', () => {
     const s = servicesWith({
       agentList: async () => [agent],
       planPropose: async (...args) => (proposed.push(args), (status = 'PLANNING'), { planId: 'plan_2', runId: 'run_2', plannerAgentId: 'agt_pm' }),
-      planList: async () => (status === 'NONE' ? [] : [plan({ id: 'plan_2', status, proposal: status === 'PLANNING' ? null : plan().proposal })]),
+      planList: async () =>
+        status === 'NONE'
+          ? []
+          : [
+              plan({
+                id: 'plan_2',
+                status,
+                proposal: status === 'PLANNING' ? null : plan().proposal,
+              }),
+            ],
     });
     const r = mount(<PlanScreen />, s);
     await waitFor(() => byText(r.container, 'h2', 'No plans yet.'), r);
@@ -160,7 +217,13 @@ describe('PlanScreen', () => {
   });
 
   it('read-only turns Propose off', async () => {
-    const r = mount(<PlanScreen />, servicesWith({ licenseStatus: async () => expiredLicense, planList: async () => [] }));
+    const r = mount(
+      <PlanScreen />,
+      servicesWith({
+        licenseStatus: async () => expiredLicense,
+        planList: async () => [],
+      }),
+    );
     type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'x');
     await waitFor(() => {
       const b = byText<HTMLButtonElement>(r.container, 'button', 'Propose a plan');

@@ -4,8 +4,26 @@ import { coverageText, listOr, scanText, skillTone } from './skills.ts';
 
 describe('Skills helpers', () => {
   it('reports a scan with counts and the problems verbatim', () => {
-    expect(scanText({ found: 2, accepted: 0, offered: 1, blocked: 1, removed: 0, errors: null })).toBe('Found 2: 1 offered, 0 accepted, 1 blocked, 0 removed.');
-    expect(scanText({ found: 0, accepted: 0, offered: 0, blocked: 0, removed: 0, errors: ['bad yaml', 'too big'] })).toContain('Problems: bad yaml; too big');
+    expect(
+      scanText({
+        found: 2,
+        accepted: 0,
+        offered: 1,
+        blocked: 1,
+        removed: 0,
+        errors: null,
+      }),
+    ).toBe('Found 2: 1 offered, 0 accepted, 1 blocked, 0 removed.');
+    expect(
+      scanText({
+        found: 0,
+        accepted: 0,
+        offered: 0,
+        blocked: 0,
+        removed: 0,
+        errors: ['bad yaml', 'too big'],
+      }),
+    ).toContain('Problems: bad yaml; too big');
   });
 
   it('tones, coverage and lists', () => {

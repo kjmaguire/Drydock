@@ -16,7 +16,11 @@ import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { dueISO, progressText, segments, zeroTime } from './milestones.ts';
 
-const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: t.s3 });
+const gridCss = css({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+  gap: t.s3,
+});
 const cardCss = css({
   display: 'grid',
   gap: t.s3,
@@ -26,11 +30,34 @@ const cardCss = css({
   borderRadius: t.rLg,
   background: t.bgSurface,
   minWidth: '0',
-  '& header': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
-  '& h3': { fontSize: t.textLg, fontWeight: '600', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  '& .pct': { marginLeft: 'auto', fontSize: t.textLg, fontWeight: '600', fontVariantNumeric: 'tabular-nums' },
+  '& header': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    minWidth: '0',
+  },
+  '& h3': {
+    fontSize: t.textLg,
+    fontWeight: '600',
+    minWidth: '0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  '& .pct': {
+    marginLeft: 'auto',
+    fontSize: t.textLg,
+    fontWeight: '600',
+    fontVariantNumeric: 'tabular-nums',
+  },
   '& .desc': { color: t.text, fontSize: t.textMd, overflowWrap: 'anywhere' },
-  '& .due': { display: 'flex', alignItems: 'center', gap: '6px', color: t.textMuted, fontSize: t.textSm },
+  '& .due': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    color: t.textMuted,
+    fontSize: t.textSm,
+  },
   '& .summary': { color: t.textMuted, fontSize: t.textSm },
   '&[data-status="closed"]': { background: t.bgApp },
 });
@@ -42,7 +69,12 @@ const barCss = css({
   overflow: 'hidden',
   '& span': { height: '100%', transition: `width ${t.med} ${t.ease}` },
 });
-const SEGMENT_COLOR = { completed: t.success, inProgress: t.accent, blocked: t.warning, failed: t.danger };
+const SEGMENT_COLOR = {
+  completed: t.success,
+  inProgress: t.accent,
+  blocked: t.warning,
+  failed: t.danger,
+};
 const taskList = css({
   margin: '0',
   padding: '0',
@@ -50,12 +82,39 @@ const taskList = css({
   border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
   overflow: 'hidden',
-  '& li': { display: 'flex', alignItems: 'center', gap: t.s2, padding: `6px ${t.s3}`, borderTop: `1px solid ${t.border}`, fontSize: t.textMd, minWidth: '0' },
+  '& li': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    padding: `6px ${t.s3}`,
+    borderTop: `1px solid ${t.border}`,
+    fontSize: t.textMd,
+    minWidth: '0',
+  },
   '& li:first-child': { borderTop: '0' },
-  '& li a': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: t.text },
+  '& li a': {
+    flex: '1',
+    minWidth: '0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: t.text,
+  },
 });
-const addRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, '& select': { flex: '1', minWidth: '0' } });
-const footer = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', paddingTop: t.s3, borderTop: `1px solid ${t.border}` });
+const addRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  '& select': { flex: '1', minWidth: '0' },
+});
+const footer = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  paddingTop: t.s3,
+  borderTop: `1px solid ${t.border}`,
+});
 
 function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: () => void }>) {
   const s = services(handle);
@@ -74,7 +133,12 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
     return (
       <article mix={cardCss} data-testid="milestone" data-title={m.title} data-status={m.status}>
         <header>
-          <span style={{ display: 'inline-flex', color: m.overdue ? 'var(--danger)' : 'var(--text-muted)' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              color: m.overdue ? 'var(--danger)' : 'var(--text-muted)',
+            }}
+          >
             <Icon icon={Flag} size={16} />
           </span>
           <h3 title={m.title}>{m.title}</h3>
@@ -103,7 +167,12 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
                 <li key={id}>
                   <a href={routes.task.href({ id })}>{tk ? `#${tk.seq} ${tk.title}` : id}</a>
                   {tk ? <StatusChip status={tk.status} /> : null}
-                  <Button variant="link" size="sm" disabled={act.busy !== ''} mix={on('click', () => void run('remove', () => s.client.milestoneSetTasks(m.id, [], [id])))}>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    disabled={act.busy !== ''}
+                    mix={on('click', () => void run('remove', () => s.client.milestoneSetTasks(m.id, [], [id])))}
+                  >
                     Remove
                   </Button>
                 </li>
@@ -142,7 +211,11 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
           </Button>
         </div>
         <div mix={footer}>
-          <Button size="sm" disabled={act.busy !== ''} mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, m.status === 'open' ? 'closed' : 'open', false)))}>
+          <Button
+            size="sm"
+            disabled={act.busy !== ''}
+            mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, m.status === 'open' ? 'closed' : 'open', false)))}
+          >
             {m.status === 'open' ? 'Close milestone' : 'Reopen'}
           </Button>
           <span mix={spacer} />
@@ -247,8 +320,12 @@ export function MilestonesScreen(handle: Handle) {
             ]}
           >
             <div mix={formGrid}>
-              <Field label="Title">{(id) => <input id={id} value={title} mix={on('input', (e) => ((title = e.currentTarget.value), void handle.update()))} />}</Field>
-              <Field label="Description">{(id) => <input id={id} value={desc} mix={on('input', (e) => ((desc = e.currentTarget.value), void handle.update()))} />}</Field>
+              <Field label="Title">
+                {(id) => <input id={id} value={title} mix={on('input', (e) => ((title = e.currentTarget.value), void handle.update()))} />}
+              </Field>
+              <Field label="Description">
+                {(id) => <input id={id} value={desc} mix={on('input', (e) => ((desc = e.currentTarget.value), void handle.update()))} />}
+              </Field>
               <Field label="Due date (optional)">
                 {(id) => <input id={id} type="date" value={due} mix={on('input', (e) => ((due = e.currentTarget.value), void handle.update()))} />}
               </Field>

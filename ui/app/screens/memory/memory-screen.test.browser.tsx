@@ -8,12 +8,26 @@ import { MemoryScreen } from './memory-screen.tsx';
 afterEach(cleanup);
 
 function servicesWith(client: Partial<Client>) {
-  const s = testServices({ projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never], ...client });
+  const s = testServices({
+    projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never],
+    ...client,
+  });
   s.workspace.start();
   return s;
 }
 
-const mem = (over: Partial<MemoryEntry>): MemoryEntry => ({ id: 'm1', projectId: 'prj_1', kind: 'convention', title: 'Use gofmt', body: 'Run gofmt <b>always</b>', status: 'proposed', source: 'agt_1', created: 1, updated: 1, ...over });
+const mem = (over: Partial<MemoryEntry>): MemoryEntry => ({
+  id: 'm1',
+  projectId: 'prj_1',
+  kind: 'convention',
+  title: 'Use gofmt',
+  body: 'Run gofmt <b>always</b>',
+  status: 'proposed',
+  source: 'agt_1',
+  created: 1,
+  updated: 1,
+  ...over,
+});
 
 const cards = async (r: ReturnType<typeof mount>, n: number) =>
   waitFor(() => {
@@ -79,7 +93,16 @@ describe('MemoryScreen', () => {
     const r = mount(
       <MemoryScreen />,
       servicesWith({
-        memoryList: async (_p, status) => (listed.push(status ?? ''), [mem({ id: 'm1', status: 'accepted', title: `Listed ${status || 'all'}` })]),
+        memoryList: async (_p, status) => (
+          listed.push(status ?? ''),
+          [
+            mem({
+              id: 'm1',
+              status: 'accepted',
+              title: `Listed ${status || 'all'}`,
+            }),
+          ]
+        ),
         memorySearch: async (...args) => (searched.push(args), [mem({ id: 'm9', title: 'Found one', status: 'accepted' })]),
       }),
     );
@@ -99,7 +122,13 @@ describe('MemoryScreen', () => {
   });
 
   it('says when a search matches nothing', async () => {
-    const r = mount(<MemoryScreen />, servicesWith({ memoryList: async () => [mem({})], memorySearch: async () => [] }));
+    const r = mount(
+      <MemoryScreen />,
+      servicesWith({
+        memoryList: async () => [mem({})],
+        memorySearch: async () => [],
+      }),
+    );
     await cards(r, 1);
     type(byLabel(r.container, 'Search memory'), 'zzz');
     r.root.flush();

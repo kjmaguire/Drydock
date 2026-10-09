@@ -19,7 +19,10 @@ export const criteriaLines = (s: string): string[] =>
     .filter(Boolean);
 
 /** Evidence outcome: PASS and FAIL only when the core recorded one; otherwise INFO. */
-export function evidenceOutcome(e: Pick<TraceEvidence, 'passed'>): { label: 'PASS' | 'FAIL' | 'INFO'; tone: Tone } {
+export function evidenceOutcome(e: Pick<TraceEvidence, 'passed'>): {
+  label: 'PASS' | 'FAIL' | 'INFO';
+  tone: Tone;
+} {
   if (e.passed === true) return { label: 'PASS', tone: 'ok' };
   if (e.passed === false) return { label: 'FAIL', tone: 'err' };
   return { label: 'INFO', tone: 'muted' };

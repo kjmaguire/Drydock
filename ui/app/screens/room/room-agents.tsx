@@ -150,9 +150,15 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                       }),
                     ]}
                   >
-                    <option value="auto">auto</option>
-                    <option value="sequential">sequential</option>
-                    <option value="moderator">moderator</option>
+                    <option value="auto" selected={mode === 'auto'}>
+                      auto
+                    </option>
+                    <option value="sequential" selected={mode === 'sequential'}>
+                      sequential
+                    </option>
+                    <option value="moderator" selected={mode === 'moderator'}>
+                      moderator
+                    </option>
                   </select>
                 )}
               </Field>
@@ -213,9 +219,11 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                             }),
                           ]}
                         >
-                          <option value="">Choose a moderator</option>
+                          <option value="" selected={moderator === ''}>
+                            Choose a moderator
+                          </option>
                           {memberKeys.map((k) => (
-                            <option key={k} value={k}>
+                            <option key={k} value={k} selected={moderator === k}>
                               {name(k)}
                             </option>
                           ))}
@@ -282,9 +290,11 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                     }),
                   ]}
                 >
-                  <option value="">Invite an agent...</option>
+                  <option value="" selected={invite === ''}>
+                    Invite an agent...
+                  </option>
                   {invitable.map((a) => (
-                    <option key={a.id} value={a.id}>
+                    <option key={a.id} value={a.id} selected={invite === a.id}>
                       {a.name} ({a.role})
                     </option>
                   ))}

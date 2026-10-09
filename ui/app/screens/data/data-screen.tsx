@@ -206,11 +206,9 @@ function ExportSection(handle: Handle) {
         {preview && m ? (
           <div mix={previewCss} data-testid="export-preview" data-fresh={String(fresh)}>
             {!fresh ? <Warn>This preview is for different choices. Preview again before exporting.</Warn> : null}
-            <p mix={statLine}>
-              <strong>{m.projectName}</strong>
-              <span>
-                : {(m.files ?? []).length} file(s), {formatBytes(preview.totalBytes)}, made by Drydock {m.appVersion} (schema {m.schemaVersion}).
-              </span>
+            <p>
+              <strong>{m.projectName}</strong>: {(m.files ?? []).length} file(s), {formatBytes(preview.totalBytes)}, made by Drydock {m.appVersion} (schema{' '}
+              {m.schemaVersion}).
             </p>
             {preview.warning ? <Warn testId="export-runs-warning">{preview.warning}</Warn> : null}
             <ScanSummary m={m} />

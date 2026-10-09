@@ -13,14 +13,51 @@ const need = <T,>(x: T | null): T => {
   return x;
 };
 
-const task = (id: string, seq: number): Task => ({ id, projectId: 'prj_1', seq, title: `Task ${seq}`, description: '', status: 'BACKLOG', priority: 0, iteration: 0, maxIterations: 5, costUsd: 0, created: 0, updated: 0, version: 1 }) as Task;
+const task = (id: string, seq: number): Task =>
+  ({
+    id,
+    projectId: 'prj_1',
+    seq,
+    title: `Task ${seq}`,
+    description: '',
+    status: 'BACKLOG',
+    priority: 0,
+    iteration: 0,
+    maxIterations: 5,
+    costUsd: 0,
+    created: 0,
+    updated: 0,
+    version: 1,
+  }) as Task;
 const ms = (over: Partial<Milestone> = {}): Milestone => ({
-  id: 'ms_1', projectId: 'prj_1', title: 'Beta', status: 'open', created: '', updated: '', taskIds: ['t1'], overdue: true, dueAt: '2020-01-01T00:00:00Z',
-  progress: { total: 2, completed: 1, inProgress: 1, blocked: 0, open: 0, cancelled: 0, failed: 0, percent: 50 }, ...over,
+  id: 'ms_1',
+  projectId: 'prj_1',
+  title: 'Beta',
+  status: 'open',
+  created: '',
+  updated: '',
+  taskIds: ['t1'],
+  overdue: true,
+  dueAt: '2020-01-01T00:00:00Z',
+  progress: {
+    total: 2,
+    completed: 1,
+    inProgress: 1,
+    blocked: 0,
+    open: 0,
+    cancelled: 0,
+    failed: 0,
+    percent: 50,
+  },
+  ...over,
 });
 
 function servicesWith(client: Partial<Client>) {
-  const s = testServices({ projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never], taskList: async () => [task('t1', 1), task('t2', 2)], ...client });
+  const s = testServices({
+    projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never],
+    taskList: async () => [task('t1', 1), task('t2', 2)],
+    ...client,
+  });
   s.workspace.start();
   s.project.start();
   return s;
@@ -32,7 +69,11 @@ describe('MilestonesScreen', () => {
     const set: unknown[][] = [];
     const r = mount(
       <MilestonesScreen />,
-      servicesWith({ milestoneList: async () => [ms()], milestoneCreate: async (...a) => (created.push(a), ms()), milestoneSetTasks: async (...a) => (set.push(a), ms()) }),
+      servicesWith({
+        milestoneList: async () => [ms()],
+        milestoneCreate: async (...a) => (created.push(a), ms()),
+        milestoneSetTasks: async (...a) => (set.push(a), ms()),
+      }),
     );
     const card = await waitFor(() => need(r.$('[data-testid="milestone"]')), r);
     expect(card.getAttribute('data-title')).toBe('Beta');

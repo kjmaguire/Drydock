@@ -25,7 +25,12 @@ const citeCss = css({
   gap: '6px',
   flexWrap: 'wrap',
   fontSize: t.textSm,
-  '& a': { display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: '500' },
+  '& a': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    fontWeight: '500',
+  },
 });
 
 /** A citation as the pack search returned it. The URL is outside text: linked only when it is http or https. */
@@ -62,9 +67,23 @@ const hitsCss = css({
   margin: '0',
   padding: '0',
   listStyle: 'none',
-  '& > li': { display: 'grid', gap: t.s2, padding: `${t.s3} ${t.s4}`, border: `1px solid ${t.border}`, borderRadius: t.rMd, background: t.bgSurface, minWidth: '0' },
+  '& > li': {
+    display: 'grid',
+    gap: t.s2,
+    padding: `${t.s3} ${t.s4}`,
+    border: `1px solid ${t.border}`,
+    borderRadius: t.rMd,
+    background: t.bgSurface,
+    minWidth: '0',
+  },
 });
-const headlineCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', fontSize: t.textMd });
+const headlineCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  fontSize: t.textMd,
+});
 
 export function SearchResultView(handle: Handle<{ r: PackSearchResult }>) {
   return () => {
@@ -87,7 +106,9 @@ export function SearchResultView(handle: Handle<{ r: PackSearchResult }>) {
             {w}
           </Notice>
         ))}
-        {(r.suspiciousDropped ?? 0) > 0 ? <Notice tone="warn">{r.suspiciousDropped} result(s) were dropped because they looked like instructions to an agent.</Notice> : null}
+        {(r.suspiciousDropped ?? 0) > 0 ? (
+          <Notice tone="warn">{r.suspiciousDropped} result(s) were dropped because they looked like instructions to an agent.</Notice>
+        ) : null}
         {hits.length > 0 ? (
           <ol mix={hitsCss}>
             {hits.map((h, i) => (
@@ -104,8 +125,19 @@ export function SearchResultView(handle: Handle<{ r: PackSearchResult }>) {
   };
 }
 
-const answerCss = css({ padding: t.s4, border: `1px solid ${t.border}`, borderRadius: t.rMd, background: t.bgSurface });
-const sourcesCss = css({ display: 'grid', gap: t.s2, margin: '0', paddingLeft: '20px', '& li': { display: 'grid', gap: '2px' } });
+const answerCss = css({
+  padding: t.s4,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: t.bgSurface,
+});
+const sourcesCss = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: '0',
+  paddingLeft: '20px',
+  '& li': { display: 'grid', gap: '2px' },
+});
 
 export function ConsultView(handle: Handle<{ r: PackConsult }>) {
   return () => {
@@ -133,8 +165,8 @@ export function ConsultView(handle: Handle<{ r: PackConsult }>) {
           ))}
         </ol>
         <p mix={faint}>
-          Cost of this question: {formatCost(r.usage.costUsd)} ({r.usage.inputTokens} in / {r.usage.outputTokens} out tokens). The answer is generated from the cited text;
-          check the citations.
+          Cost of this question: {formatCost(r.usage.costUsd)} ({r.usage.inputTokens} in / {r.usage.outputTokens} out tokens). The answer is generated from the
+          cited text; check the citations.
         </p>
       </div>
     );
@@ -158,7 +190,13 @@ const chunkCss = css({
   borderRadius: t.rMd,
   border: `1px solid color-mix(in srgb, ${t.warning} 35%, ${t.border})`,
   background: t.bgSurface,
-  '& .head': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', fontSize: t.textSm },
+  '& .head': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+    fontSize: t.textSm,
+  },
 });
 
 function QuarantineList(handle: Handle<{ packId: string; onChanged: () => void }>) {
@@ -215,7 +253,13 @@ const packCss = css({
   borderRadius: t.rLg,
   background: t.bgSurface,
   minWidth: '0',
-  '& header': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0' },
+  '& header': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+    minWidth: '0',
+  },
   '& h3': { fontSize: t.textLg, fontWeight: '600', overflowWrap: 'anywhere' },
   '& .attached': { fontSize: t.textMd },
 });
@@ -228,13 +272,40 @@ const statsCss = css({
   borderRadius: t.rMd,
   background: t.bgApp,
   '& div': { display: 'grid', gap: '2px', minWidth: '0' },
-  '& dt': { color: t.textMuted, fontSize: t.textXs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.04em' },
+  '& dt': {
+    color: t.textMuted,
+    fontSize: t.textXs,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
   '& dd': { margin: '0', fontSize: t.textMd, overflowWrap: 'anywhere' },
 });
-const actionsCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& input': { width: '150px' } });
-const packIcon = css({ display: 'inline-grid', placeItems: 'center', width: '28px', height: '28px', borderRadius: t.rMd, background: t.accentSoft, color: t.accentText });
+const actionsCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  '& input': { width: '150px' },
+});
+const packIcon = css({
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: '28px',
+  height: '28px',
+  borderRadius: t.rMd,
+  background: t.accentSoft,
+  color: t.accentText,
+});
 
-function PackCard(handle: Handle<{ p: Pack; projectId: string; attached: PackAttachment[]; onChanged: () => void }>) {
+function PackCard(
+  handle: Handle<{
+    p: Pack;
+    projectId: string;
+    attached: PackAttachment[];
+    onChanged: () => void;
+  }>,
+) {
   const s = services(handle);
   const act = action(handle);
   let role = '';
@@ -378,7 +449,12 @@ const inlineForm = css({
   flexWrap: 'wrap',
   '& > div': { flex: '1', minWidth: '240px' },
 });
-const choiceCss = css({ display: 'flex', flexWrap: 'wrap', gap: `${t.s2} ${t.s4}`, '& label': { margin: '0' } });
+const choiceCss = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: `${t.s2} ${t.s4}`,
+  '& label': { margin: '0' },
+});
 const yamlCss = css({ fontFamily: t.mono, fontSize: t.textSm });
 
 export function PacksScreen(handle: Handle) {
@@ -386,7 +462,10 @@ export function PacksScreen(handle: Handle) {
   watch(handle, s.workspace);
   const act = action(handle);
   const pid = () => s.workspace.projectId;
-  const packs = query(handle, { load: () => s.client.packList(), when: (e) => e.type.startsWith('pack.') });
+  const packs = query(handle, {
+    load: () => s.client.packList(),
+    when: (e) => e.type.startsWith('pack.'),
+  });
   const attachments = query(handle, {
     load: () => s.client.packAttachments(pid()!),
     when: (e) => e.type.startsWith('pack.'),
@@ -416,8 +495,8 @@ export function PacksScreen(handle: Handle) {
     return (
       <Page title="Expert packs" icon={BookOpen} subtitle={packs.data ? `${list.length} installed` : undefined}>
         <p mix={muted}>
-          A pack is a body of reference text (documentation, standards) that agents search and cite. Everything inside a pack is outside text: it is shown here as inert text,
-          passages that look like instructions are quarantined, and nothing in a pack can grant a permission or make a decision.
+          A pack is a body of reference text (documentation, standards) that agents search and cite. Everything inside a pack is outside text: it is shown here
+          as inert text, passages that look like instructions are quarantined, and nothing in a pack can grant a permission or make a decision.
         </p>
         <ErrorNote error={packs.error ?? act.error} what="Packs" />
         {packs.loading && !packs.data ? <Loading /> : null}
@@ -465,7 +544,9 @@ export function PacksScreen(handle: Handle) {
               ]}
             >
               <Field label="Search">
-                {(id) => <input id={id} type="search" aria-label="Search packs" value={search} mix={on('input', (e) => set(() => (search = e.currentTarget.value)))} />}
+                {(id) => (
+                  <input id={id} type="search" aria-label="Search packs" value={search} mix={on('input', (e) => set(() => (search = e.currentTarget.value)))} />
+                )}
               </Field>
               <Button type="submit" icon={Search} disabled={busy || !search.trim() || ids.length === 0}>
                 Search

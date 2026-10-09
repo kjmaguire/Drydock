@@ -189,6 +189,7 @@ function NotBuilt(_handle: Handle) {
       title="Not built yet"
       icon={Construction}
       label="Not built yet"
+      stacked
       description="These features are not implemented. They are listed here instead of shown as disabled screens or sample data."
     >
       <div mix={tableWrap}>

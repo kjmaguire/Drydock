@@ -3,7 +3,14 @@ import { describe, it } from 'remix/test';
 import type { Plan, ProposedTask } from '../../api/extTypes.ts';
 import { closure, deselect, editsFor, lines, newestFirst, stepStates, toggle } from './plan.ts';
 
-const pt = (key: string, deps: string[] = []): ProposedTask => ({ key, title: `Task ${key}`, description: `Do ${key}`, role: 'backend', dependsOn: deps, acceptance: [] });
+const pt = (key: string, deps: string[] = []): ProposedTask => ({
+  key,
+  title: `Task ${key}`,
+  description: `Do ${key}`,
+  role: 'backend',
+  dependsOn: deps,
+  acceptance: [],
+});
 const tasks = [pt('a'), pt('b', ['a']), pt('c', ['b']), pt('d')];
 
 describe('PlanTeam selection', () => {
@@ -21,7 +28,10 @@ describe('PlanTeam selection', () => {
   });
 
   it('sends only the edits to selected tasks', () => {
-    const edits = { a: { ...pt('a'), title: 'A2' }, d: { ...pt('d'), title: 'D2' } };
+    const edits = {
+      a: { ...pt('a'), title: 'A2' },
+      d: { ...pt('d'), title: 'D2' },
+    };
     expect(Object.keys(editsFor(new Set(['a', 'b']), edits))).toEqual(['a']);
   });
 
@@ -31,7 +41,15 @@ describe('PlanTeam selection', () => {
 });
 
 describe('PlanTeam flow', () => {
-  const plan = (status: string, createdAt = 1): Plan => ({ id: `p${createdAt}`, projectId: 'prj_1', runId: 'r', goal: 'g', status, plannerAgent: '', createdAt });
+  const plan = (status: string, createdAt = 1): Plan => ({
+    id: `p${createdAt}`,
+    projectId: 'prj_1',
+    runId: 'r',
+    goal: 'g',
+    status,
+    plannerAgent: '',
+    createdAt,
+  });
   it('maps each plan status to the goal, proposal, review, create steps', () => {
     expect(stepStates(undefined)).toEqual(['current', 'todo', 'todo', 'todo']);
     expect(stepStates(plan('PLANNING'))).toEqual(['done', 'working', 'todo', 'todo']);

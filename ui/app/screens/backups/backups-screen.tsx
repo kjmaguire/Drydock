@@ -325,7 +325,8 @@ export function BackupsScreen(handle: Handle) {
           <Group
             title="Backups"
             icon={ShieldCheck}
-            description="Restore is enabled only after you verify the backup in this page. A restore is staged and applied the next time Drydock starts."
+            stacked
+            description="Every backup in the folder. Verify one before restoring it; a restore is staged and applied the next time Drydock starts."
           >
             {l && backups.length === 0 ? (
               <Empty title="No backups in this folder yet" icon={DatabaseBackup}>

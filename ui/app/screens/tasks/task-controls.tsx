@@ -27,7 +27,7 @@ const boxCss = css({
   '& .confirm': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, marginLeft: 'auto', fontSize: t.textMd },
   '& .info': { display: 'grid', gap: t.s1, padding: `${t.s2} ${t.s3}`, borderRadius: t.rMd, background: t.bgApp, fontSize: t.textSm },
   '& .info ul': { margin: '0', paddingLeft: '18px' },
-  '& .running': { color: t.textMuted, fontSize: t.textMd },
+  '& .running': { flex: '1', minWidth: '200px', margin: '0', color: t.textMuted, fontSize: t.textMd },
 });
 
 const option = (a: Agent, selected: string) => (
@@ -122,11 +122,7 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
               )}
             </Field>
           </div>
-        ) : (
-          <p class="running">
-            A run is in progress (<code>{detail.run?.status}</code>). Answer its requests above, or cancel the task.
-          </p>
-        )}
+        ) : null}
         {chosen && !runActive ? (
           <div class="info" data-testid="template-info">
             <p>{chosen.description}</p>
@@ -169,7 +165,11 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
               </Button>
               {w && r && w === r ? <span mix={muted}>The reviewer must be a different agent from the worker.</span> : null}
             </>
-          ) : null}
+          ) : (
+            <p class="running">
+              A run is in progress (<code>{detail.run?.status}</code>). Answer its requests above, or cancel the task.
+            </p>
+          )}
           <div class="confirm">
             {confirmCancel ? (
               <>

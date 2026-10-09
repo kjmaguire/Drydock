@@ -31,17 +31,36 @@ const entryCss = css({
   padding: `${t.s3} ${t.s4}`,
   borderTop: `1px solid ${t.border}`,
   '&:first-child': { borderTop: '0' },
-  '& header': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0' },
+  '& header': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+    minWidth: '0',
+  },
   '& h3': { fontSize: t.textMd, fontWeight: '600', overflowWrap: 'anywhere' },
   '& .meta': { color: t.textMuted, fontSize: t.textSm },
   '& .body': { fontSize: t.textMd },
-  '& .actions': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
+  '& .actions': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+  },
   '&[data-status="proposed"]': { boxShadow: `inset 2px 0 0 ${t.warning}` },
   '&[data-status="rejected"] .body': { color: t.textMuted },
 });
 
 /** One memory entry with its decision buttons. Delete asks first. */
-function MemoryCard(handle: Handle<{ e: MemoryEntry; busy: boolean; onAccept: () => void; onReject: () => void; onDelete: () => void }>) {
+function MemoryCard(
+  handle: Handle<{
+    e: MemoryEntry;
+    busy: boolean;
+    onAccept: () => void;
+    onReject: () => void;
+    onDelete: () => void;
+  }>,
+) {
   let confirm = false;
   const setConfirm = (v: boolean) => {
     confirm = v;
@@ -97,7 +116,12 @@ function MemoryCard(handle: Handle<{ e: MemoryEntry; busy: boolean; onAccept: ()
   };
 }
 
-const toolbar = css({ display: 'flex', alignItems: 'center', gap: t.s3, flexWrap: 'wrap' });
+const toolbar = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s3,
+  flexWrap: 'wrap',
+});
 const segmented = css({
   display: 'inline-flex',
   padding: '2px',
@@ -127,7 +151,14 @@ const searchForm = css({
   flex: '1',
   minWidth: '260px',
   '& .box': { position: 'relative', flex: '1', minWidth: '0' },
-  '& .box svg': { position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: t.textFaint, pointerEvents: 'none' },
+  '& .box svg': {
+    position: 'absolute',
+    left: '9px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    color: t.textFaint,
+    pointerEvents: 'none',
+  },
   '& .box input': { paddingLeft: '30px' },
 });
 const formCss = css({ display: 'grid', gap: t.s4 });
@@ -183,8 +214,8 @@ export function MemoryScreen(handle: Handle) {
     return (
       <Page title="Memory" icon={Brain} subtitle={found ? `${found.length} found` : counted}>
         <p mix={muted}>
-          Project memory: decisions, conventions and known issues agents read. Agents (and you) can propose entries; only an entry you accept reaches agents. Secrets are
-          redacted before anything is stored.
+          Project memory: decisions, conventions and known issues agents read. Agents (and you) can propose entries; only an entry you accept reaches agents.
+          Secrets are redacted before anything is stored.
         </p>
         <div mix={toolbar}>
           <div mix={segmented} role="group" aria-label="Show">
@@ -285,9 +316,13 @@ export function MemoryScreen(handle: Handle) {
                   </select>
                 )}
               </Field>
-              <Field label="Title">{(id) => <input id={id} value={title} mix={on('input', (e) => ((title = e.currentTarget.value), void handle.update()))} />}</Field>
+              <Field label="Title">
+                {(id) => <input id={id} value={title} mix={on('input', (e) => ((title = e.currentTarget.value), void handle.update()))} />}
+              </Field>
             </div>
-            <Field label="Body">{(id) => <textarea id={id} rows={4} value={body} mix={on('input', (e) => ((body = e.currentTarget.value), void handle.update()))} />}</Field>
+            <Field label="Body">
+              {(id) => <textarea id={id} rows={4} value={body} mix={on('input', (e) => ((body = e.currentTarget.value), void handle.update()))} />}
+            </Field>
             <div mix={formActions}>
               <Button type="submit" variant="primary" disabled={act.busy !== '' || !title.trim() || !body.trim()}>
                 Propose

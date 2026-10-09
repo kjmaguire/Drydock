@@ -70,7 +70,7 @@ export function TelemetryPanel(handle: Handle) {
               }
               description={st.enabled && st.enabledBy ? <span mix={muted}>turned on by {st.enabledBy}</span> : 'Only you can turn it on, here.'}
             >
-              <Button variant={st.enabled ? 'secondary' : 'primary'} disabled={busy} mix={on('click', () => void toggle(!st.enabled))}>
+              <Button disabled={busy} mix={on('click', () => void toggle(!st.enabled))}>
                 {st.enabled ? 'Turn telemetry off' : 'Turn telemetry on'}
               </Button>
             </Row>

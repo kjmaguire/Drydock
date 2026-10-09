@@ -18,7 +18,12 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { coverageText, listOr, scanText, skillTone } from './skills.ts';
 
-const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: t.s3, alignItems: 'start' });
+const gridCss = css({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+  gap: t.s3,
+  alignItems: 'start',
+});
 const skillCss = css({
   display: 'grid',
   gap: t.s3,
@@ -27,20 +32,51 @@ const skillCss = css({
   borderRadius: t.rLg,
   background: t.bgSurface,
   minWidth: '0',
-  '& header': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0' },
-  '& h3': { fontSize: t.textMd, fontWeight: '600', fontFamily: t.mono, overflowWrap: 'anywhere' },
+  '& header': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+    minWidth: '0',
+  },
+  '& h3': {
+    fontSize: t.textMd,
+    fontWeight: '600',
+    fontFamily: t.mono,
+    overflowWrap: 'anywhere',
+  },
   '& .desc': { fontSize: t.textMd },
   '& .note': { fontSize: t.textSm, color: t.textMuted },
   '& .actions': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
   '& details': { fontSize: t.textMd },
   '& details > summary': { fontSize: t.textSm, marginBottom: t.s2 },
-  '&[data-status="offered"]': { borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})` },
-  '&[data-status="blocked"]': { borderColor: `color-mix(in srgb, ${t.danger} 45%, ${t.border})` },
+  '&[data-status="offered"]': {
+    borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})`,
+  },
+  '&[data-status="blocked"]': {
+    borderColor: `color-mix(in srgb, ${t.danger} 45%, ${t.border})`,
+  },
 });
-const iconWrap = css({ display: 'inline-grid', placeItems: 'center', width: '24px', height: '24px', borderRadius: t.rMd, background: t.bgActive, color: t.textMuted });
+const iconWrap = css({
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: '24px',
+  height: '24px',
+  borderRadius: t.rMd,
+  background: t.bgActive,
+  color: t.textMuted,
+});
 
 /** A skill from outside is offered, never applied: the human accepts or rejects each one. */
-export function SkillCard(handle: Handle<{ s: Skill; onAccept: () => void; onReject: () => void; onRelease: () => void; busy: boolean }>) {
+export function SkillCard(
+  handle: Handle<{
+    s: Skill;
+    onAccept: () => void;
+    onReject: () => void;
+    onRelease: () => void;
+    busy: boolean;
+  }>,
+) {
   return () => {
     const { s, onAccept, onReject, onRelease, busy } = handle.props;
     return (
@@ -82,47 +118,49 @@ export function SkillCard(handle: Handle<{ s: Skill; onAccept: () => void; onRej
         </dl>
         {(s.flags ?? []).length > 0 ? <Notice tone="warn">Flags: {(s.flags ?? []).join(', ')}</Notice> : null}
         {s.blockReason ? <ErrorNote error={s.blockReason} /> : null}
-        {s.allowedToolsIgnored ? <p class="note">This skill asks for tool permissions. They are recorded and ignored: a skill cannot widen permissions.</p> : null}
+        {s.allowedToolsIgnored ? (
+          <p class="note">This skill asks for tool permissions. They are recorded and ignored: a skill cannot widen permissions.</p>
+        ) : null}
         {s.body ? (
           <details>
             <summary>Skill text (outside text, inert)</summary>
             <Markdown source={s.body} maxChars={20000} />
           </details>
         ) : null}
-          <div class="actions">
-            {s.status === 'offered' ? (
-              <>
-                <Button variant="primary" size="sm" icon={ShieldCheck} disabled={busy} mix={on('click', onAccept)}>
-                  Accept {s.name}
-                </Button>
-                <Button size="sm" disabled={busy} mix={on('click', onReject)}>
-                  Reject {s.name}
-                </Button>
-              </>
-            ) : null}
-            {s.status === 'accepted' ? (
-              <Button size="sm" disabled={busy} mix={on('click', onReject)}>
-                Withdraw (reject) {s.name}
-              </Button>
-            ) : null}
-            {s.status === 'rejected' ? (
-              <Button size="sm" disabled={busy} mix={on('click', onAccept)}>
+        <div class="actions">
+          {s.status === 'offered' ? (
+            <>
+              <Button variant="primary" size="sm" icon={ShieldCheck} disabled={busy} mix={on('click', onAccept)}>
                 Accept {s.name}
               </Button>
-            ) : null}
-            {s.status === 'blocked' ? (
-              <Button
-                size="sm"
-                variant="danger"
-                icon={ShieldAlert}
-                disabled={busy}
-                title="Override the block after reading the reason. Recorded in the audit log."
-                mix={on('click', onRelease)}
-              >
-                Release {s.name} anyway
+              <Button size="sm" disabled={busy} mix={on('click', onReject)}>
+                Reject {s.name}
               </Button>
-            ) : null}
-          </div>
+            </>
+          ) : null}
+          {s.status === 'accepted' ? (
+            <Button size="sm" disabled={busy} mix={on('click', onReject)}>
+              Withdraw (reject) {s.name}
+            </Button>
+          ) : null}
+          {s.status === 'rejected' ? (
+            <Button size="sm" disabled={busy} mix={on('click', onAccept)}>
+              Accept {s.name}
+            </Button>
+          ) : null}
+          {s.status === 'blocked' ? (
+            <Button
+              size="sm"
+              variant="danger"
+              icon={ShieldAlert}
+              disabled={busy}
+              title="Override the block after reading the reason. Recorded in the audit log."
+              mix={on('click', onRelease)}
+            >
+              Release {s.name} anyway
+            </Button>
+          ) : null}
+        </div>
       </article>
     );
   };
@@ -136,9 +174,20 @@ const regList = css({
   borderRadius: t.rLg,
   background: t.bgSurface,
   overflow: 'hidden',
-  '& > li': { display: 'grid', gap: t.s2, padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}`, minWidth: '0' },
+  '& > li': {
+    display: 'grid',
+    gap: t.s2,
+    padding: `${t.s3} ${t.s4}`,
+    borderTop: `1px solid ${t.border}`,
+    minWidth: '0',
+  },
   '& > li:first-child': { borderTop: '0' },
-  '& .head': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
+  '& .head': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    flexWrap: 'wrap',
+  },
   '& .meta': { color: t.textMuted, fontSize: t.textSm },
   '& .actions': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
 });
@@ -179,7 +228,17 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
     void handle.update();
   };
   const add = async () => {
-    const r = await act.run('add', () => s.client.skillRegistryAdd({ id: rid.trim(), repo: repo.trim(), license: license.trim() || undefined, trust: 'user' }, ack));
+    const r = await act.run('add', () =>
+      s.client.skillRegistryAdd(
+        {
+          id: rid.trim(),
+          repo: repo.trim(),
+          license: license.trim() || undefined,
+          trust: 'user',
+        },
+        ack,
+      ),
+    );
     if (r) {
       adding = false;
       q.reload();
@@ -296,7 +355,9 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
               <Field label="GitHub repository (owner/name)">
                 {(id) => <input id={id} value={repo} placeholder="owner/name" mix={on('input', (e) => set(() => (repo = e.currentTarget.value)))} />}
               </Field>
-              <Field label="License (SPDX id, if known)">{(id) => <input id={id} value={license} mix={on('input', (e) => set(() => (license = e.currentTarget.value)))} />}</Field>
+              <Field label="License (SPDX id, if known)">
+                {(id) => <input id={id} value={license} mix={on('input', (e) => set(() => (license = e.currentTarget.value)))} />}
+              </Field>
             </div>
             <Checkbox
               label="I understand skills from this repository are third-party text that agents will read if I accept them"
@@ -324,9 +385,21 @@ export function SkillsScreen(handle: Handle) {
   const act = action(handle);
   const pid = () => s.workspace.projectId;
   const on_ = { key: pid, enabled: () => !!pid() };
-  const q = query(handle, { load: () => s.client.skillList(pid()!), when: (e) => e.type.startsWith('skill.'), ...on_ });
-  const del = query(handle, { load: () => s.client.skillDeliveries(pid()!), when: (e) => e.type.startsWith('skill.') || e.type === 'task.completed', ...on_ });
-  const cov = query(handle, { load: () => s.client.skillCoverage(pid()!), when: (e) => e.type.startsWith('skill.'), ...on_ });
+  const q = query(handle, {
+    load: () => s.client.skillList(pid()!),
+    when: (e) => e.type.startsWith('skill.'),
+    ...on_,
+  });
+  const del = query(handle, {
+    load: () => s.client.skillDeliveries(pid()!),
+    when: (e) => e.type.startsWith('skill.') || e.type === 'task.completed',
+    ...on_,
+  });
+  const cov = query(handle, {
+    load: () => s.client.skillCoverage(pid()!),
+    when: (e) => e.type.startsWith('skill.'),
+    ...on_,
+  });
   let scan: SkillScan | undefined;
 
   const decide = (fn: (p: string, n: string) => Promise<Skill>, name: string) => async () => {
@@ -361,8 +434,8 @@ export function SkillsScreen(handle: Handle) {
         }
       >
         <p mix={muted}>
-          Skills are instructions agents read. Skills found in the repository or imported from a registry are offered to you; nothing is applied until you accept it.
-          Accepted skills are delivered to agents as path-scoped rule files that stay out of the diff.
+          Skills are instructions agents read. Skills found in the repository or imported from a registry are offered to you; nothing is applied until you
+          accept it. Accepted skills are delivered to agents as path-scoped rule files that stay out of the diff.
         </p>
         <ErrorNote error={q.error ?? act.error} what="Skills" />
         {scan ? (

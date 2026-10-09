@@ -7,7 +7,21 @@ import { SkillsScreen } from './skills-screen.tsx';
 
 afterEach(cleanup);
 
-const skill = (over: Partial<Skill>): Skill => ({ id: 's', projectId: 'prj_1', name: 'go-style', description: 'Go style', globs: ['**/*.go'], roles: ['Backend'], origin: 'repository', contentHash: 'h', status: 'offered', created: '', updated: '', body: 'Keep functions small. <script>window.__xss=1</script>', ...over });
+const skill = (over: Partial<Skill>): Skill => ({
+  id: 's',
+  projectId: 'prj_1',
+  name: 'go-style',
+  description: 'Go style',
+  globs: ['**/*.go'],
+  roles: ['Backend'],
+  origin: 'repository',
+  contentHash: 'h',
+  status: 'offered',
+  created: '',
+  updated: '',
+  body: 'Keep functions small. <script>window.__xss=1</script>',
+  ...over,
+});
 
 function servicesWith(client: Partial<Client>) {
   const s = testServices({
@@ -30,8 +44,24 @@ describe('SkillsScreen', () => {
     const r = mount(
       <SkillsScreen />,
       servicesWith({
-        skillList: async () => [skill({}), skill({ id: 'b', name: 'danger', status: 'blocked', blockReason: 'contains a secret', hasScripts: true })],
-        skillScan: async () => ({ found: 2, accepted: 0, offered: 1, blocked: 1, removed: 0, errors: null }),
+        skillList: async () => [
+          skill({}),
+          skill({
+            id: 'b',
+            name: 'danger',
+            status: 'blocked',
+            blockReason: 'contains a secret',
+            hasScripts: true,
+          }),
+        ],
+        skillScan: async () => ({
+          found: 2,
+          accepted: 0,
+          offered: 1,
+          blocked: 1,
+          removed: 0,
+          errors: null,
+        }),
         skillAccept: async (...a) => (accepted.push(a), skill({ status: 'accepted' })),
         skillReject: async (...a) => (rejected.push(a), skill({ status: 'rejected' })),
         skillRelease: async () => skill({}),
@@ -54,7 +84,12 @@ describe('SkillsScreen', () => {
   });
 
   it('accepted skills can be withdrawn and rejected ones accepted again', async () => {
-    const r = mount(<SkillsScreen />, servicesWith({ skillList: async () => [skill({ status: 'accepted' }), skill({ id: 'c', name: 'old', status: 'rejected' })] }));
+    const r = mount(
+      <SkillsScreen />,
+      servicesWith({
+        skillList: async () => [skill({ status: 'accepted' }), skill({ id: 'c', name: 'old', status: 'rejected' })],
+      }),
+    );
     await waitFor(() => byText(r.container, 'button', 'Withdraw (reject) go-style'), r);
     byText(r.container, 'button', 'Accept old');
     expect(exists(r.container, 'button', 'Accept go-style')).toBe(false);
@@ -63,17 +98,40 @@ describe('SkillsScreen', () => {
   it('a registry is added only with the acknowledgement, and its skills are imported to be offered', async () => {
     const added: unknown[][] = [];
     const imported: unknown[][] = [];
-    let regs: SkillRegistry[] = [{ id: 'anthropic', repo: 'anthropics/skills', trust: 'curated', enabled: true, curated: true }];
+    let regs: SkillRegistry[] = [
+      {
+        id: 'anthropic',
+        repo: 'anthropics/skills',
+        trust: 'curated',
+        enabled: true,
+        curated: true,
+      },
+    ];
     const r = mount(
       <SkillsScreen />,
       servicesWith({
         skillList: async () => [],
         skillRegistries: async () => regs,
-        skillCandidates: async () => ({ commit: 'abc', skills: [{ name: 'pdf', dir: 'pdf', description: 'PDF tools', valid: true }, { name: 'bad', dir: 'bad', valid: false, problem: 'no SKILL.md' }] }),
+        skillCandidates: async () => ({
+          commit: 'abc',
+          skills: [
+            { name: 'pdf', dir: 'pdf', description: 'PDF tools', valid: true },
+            { name: 'bad', dir: 'bad', valid: false, problem: 'no SKILL.md' },
+          ],
+        }),
         skillImport: async (...a) => (imported.push(a), skill({ name: 'pdf' })),
         skillRegistryAdd: async (...a) => {
           added.push(a);
-          regs = [...regs, { id: 'mine', repo: 'me/skills', trust: 'user', enabled: true, curated: false }];
+          regs = [
+            ...regs,
+            {
+              id: 'mine',
+              repo: 'me/skills',
+              trust: 'user',
+              enabled: true,
+              curated: false,
+            },
+          ];
           return regs[1]!;
         },
       }),
@@ -96,7 +154,21 @@ describe('SkillsScreen', () => {
     await r.act(() => byLabel(r.container, /I understand skills from this repository/).click());
     expect(add.disabled).toBe(false);
     await r.act(() => add.click());
-    await waitFor(() => expect(added).toEqual([[{ id: 'mine', repo: 'me/skills', license: undefined, trust: 'user' }, true]]), r);
+    await waitFor(
+      () =>
+        expect(added).toEqual([
+          [
+            {
+              id: 'mine',
+              repo: 'me/skills',
+              license: undefined,
+              trust: 'user',
+            },
+            true,
+          ],
+        ]),
+      r,
+    );
     await waitFor(() => expect(r.$$('[data-testid="registry"]').length).toBe(2), r);
   });
 
@@ -106,7 +178,16 @@ describe('SkillsScreen', () => {
       servicesWith({
         skillList: async () => [],
         skillCoverage: async () => ({ files: 2, tool: 1 }),
-        skillDeliveries: async () => [{ ts: 1_700_000_000_000, taskId: 't1', agentId: 'a1', skill: 'go-style', method: 'rule_file', fidelity: 'full' }],
+        skillDeliveries: async () => [
+          {
+            ts: 1_700_000_000_000,
+            taskId: 't1',
+            agentId: 'a1',
+            skill: 'go-style',
+            method: 'rule_file',
+            fidelity: 'full',
+          },
+        ],
       }),
     );
     await waitFor(() => expect(r.$('[data-testid="skill-coverage"]')!.textContent).toBe('2 delivered as rule files, 1 through a tool.'), r);

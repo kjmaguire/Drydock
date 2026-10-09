@@ -65,7 +65,7 @@ const sideCss = css({
   '& dt': { color: t.textMuted, fontSize: t.textSm },
   '& dd': { margin: '0', minWidth: '0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', overflowWrap: 'anywhere' },
   '& hr': { border: '0', borderTop: `1px solid ${t.border}`, margin: '0' },
-  '& code': { fontSize: t.textSm },
+  '& dd code': { minWidth: '0', padding: '0', background: 'transparent', fontSize: t.textSm, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
 });
 
 const blockedCss = css({
@@ -235,12 +235,12 @@ function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[
             <Person id={task.reviewer} agents={agents} />
           </dd>
           <dt>Template</dt>
-          <dd>{task.template ? <code>{task.template}</code> : <span mix={faint}>default</span>}</dd>
+          <dd>{task.template ? <code title={task.template}>{task.template}</code> : <span mix={faint}>default</span>}</dd>
           {task.branch ? (
             <>
               <dt>Branch</dt>
               <dd>
-                <code>{task.branch}</code>
+                <code title={task.branch}>{task.branch}</code>
               </dd>
             </>
           ) : null}

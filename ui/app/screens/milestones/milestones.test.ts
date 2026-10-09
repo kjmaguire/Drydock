@@ -2,7 +2,16 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { dueISO, progressText, segments, zeroTime } from './milestones.ts';
 
-const p = { total: 4, completed: 2, inProgress: 1, blocked: 0, open: 1, cancelled: 0, failed: 0, percent: 50 };
+const p = {
+  total: 4,
+  completed: 2,
+  inProgress: 1,
+  blocked: 0,
+  open: 1,
+  cancelled: 0,
+  failed: 0,
+  percent: 50,
+};
 
 describe('Milestone helpers', () => {
   it('describes progress in words', () => {
