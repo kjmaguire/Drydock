@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/agents/acp/fakeacp"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
@@ -27,6 +28,10 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 	serveTestMCPIfAsked() // a stdio MCP server for the user-added server tests (ext_mcpservers_test.go)
+	// the scripted ACP agent (a Codex stand-in) is told apart by the variables its adapter adds, so it is checked first
+	if os.Getenv("DRYDOCK_FAKE_ACP") == "1" {
+		os.Exit(fakeacp.Run(os.Args[1:], os.Stdin, os.Stdout))
+	}
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
 	}

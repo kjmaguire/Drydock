@@ -3,6 +3,7 @@ import type { AgentTemplate } from '../api/libraryClient';
 import type { McpLibraryServer, McpServer } from '../api/mcpClient';
 import type { Agent, Project } from '../api/types';
 import { DropZone } from '../components/DropZone';
+import { CliGateway } from '../components/CliGateway';
 import { McpServerForm, inputOf } from '../components/McpServerForm';
 import { TemplateForm } from '../components/TemplateForm';
 import { Badge, ErrorNote, Page } from '../components/common';
@@ -505,6 +506,8 @@ export default function LibraryPage({ projects }: { projects: readonly Project[]
               </button>
             </div>
           )}
+
+          <CliGateway />
 
           <h2>Agent templates</h2>
           {!templates.loading && tpls.length === 0 ? <p className="muted">No templates yet. Make one here, or save an agent as a template on the Team page.</p> : null}

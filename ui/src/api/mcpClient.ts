@@ -72,6 +72,24 @@ export interface McpApproval {
   projectId: string;
 }
 
+/** One agent CLI as the gateway sees it (mcp.status). */
+export interface McpAdapterRow {
+  adapter: string;
+  /** The gateway is attached to this CLI's sessions (proven, or allowed by the human). */
+  attached: boolean;
+  reason?: string;
+  /** The mechanism is not proven by a real run yet, but the human may allow it. */
+  canTry: boolean;
+  /** The human allowed it. */
+  trying: boolean;
+}
+
+export interface McpStatus {
+  running: boolean;
+  address: string;
+  adapters: McpAdapterRow[];
+}
+
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const lib = <T extends McpLibraryServer>(s: T): T => ({ ...s, secretEnv: arr(s.secretEnv), readOnlyTools: arr(s.readOnlyTools), tools: arr(s.tools), projects: arr(s.projects) });
 const server = (s: McpServer): McpServer => ({ ...lib(s), agents: arr(s.agents).map((a) => ({ ...a, tools: arr(a.tools) })) });
@@ -92,6 +110,10 @@ export interface McpClient {
   mcpServerAccessSet(projectId: string, serverId: string, agents: McpAccess[]): Promise<McpServer>;
   /** Grants or revokes one agent. Granting also puts the server into the agent's project. */
   mcpServerGrant(projectId: string, serverId: string, agentId: string, on: boolean): Promise<McpServer>;
+  /** Whether the gateway runs and which agent CLIs it can be given to. */
+  mcpStatus(): Promise<McpStatus>;
+  /** Allows or stops the gateway for a CLI whose per-run MCP mechanism no real run has proven yet. */
+  mcpTrySet(adapter: string, enabled: boolean): Promise<McpStatus>;
   mcpApprovalList(projectId: string): Promise<McpApproval[]>;
   mcpApprovalDecide(approvalId: string, approve: boolean): Promise<void>;
 }
@@ -112,6 +134,14 @@ export function createMcpClient(t: Transport): McpClient {
     mcpServerSetEnabled: async (projectId, serverId, enabled) => server(await t.call<McpServer>('mcpserver.setEnabled', { projectId, serverId, enabled })),
     mcpServerAccessSet: async (projectId, serverId, agents) => server(await t.call<McpServer>('mcpserver.access.set', { projectId, serverId, agents })),
     mcpServerGrant: async (projectId, serverId, agentId, on) => server(await t.call<McpServer>('mcpserver.grant', { projectId, serverId, agentId, on })),
+    mcpStatus: async () => {
+      const s = await t.call<McpStatus>('mcp.status');
+      return { ...s, adapters: arr(s.adapters) };
+    },
+    mcpTrySet: async (adapter, enabled) => {
+      const s = await t.call<McpStatus>('mcp.try.set', { adapter, enabled });
+      return { ...s, adapters: arr(s.adapters) };
+    },
     mcpApprovalList: async (projectId) => arr(await t.call<McpApproval[] | null>('mcpserver.approval.list', { projectId })),
     mcpApprovalDecide: async (approvalId, approve) => {
       await t.call('mcpserver.approval.decide', { approvalId, approve });

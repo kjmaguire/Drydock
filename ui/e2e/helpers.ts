@@ -49,8 +49,12 @@ export async function createProject(page: Page, name: string, repo?: string): Pr
 }
 
 export async function createAgent(page: Page, name: string, role: string): Promise<void> {
-  await page.getByTestId('nav-team').click();
-  await page.getByLabel('Agent name').fill(name);
+  // The form can be replaced while the page is still settling after a project change (seen once: the field detached and the
+  // test waited out its whole timeout), so open the page and fill the name as one step that is retried as a whole.
+  await expect(async () => {
+    await page.getByTestId('nav-team').click();
+    await page.getByLabel('Agent name').fill(name, { timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
   await page.getByLabel('Role', { exact: true }).fill(role);
   await page.getByLabel('Adapter', { exact: true }).selectOption('claude');
   await page.getByRole('button', { name: 'Create agent' }).click();

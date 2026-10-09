@@ -148,7 +148,8 @@ func ConfigFor(provider string, ep Endpoint, opts ...ConfigOptions) (ClientConfi
 			b, _ := json.Marshal(o.Tools)
 			cfg.Args = append(cfg.Args, "-c", "mcp_servers.drydock.enabled_tools="+string(b))
 		}
-		cfg.Transport = TransportDirectHTTP // the -c route is direct HTTP; the JSON file keeps the requested transport
+		// Transport stays what the JSON file uses (the shim by default): that file is the route Drydock applies, through ACP
+		// session/new. The Args/Env route below is direct streamable HTTP and is not applied by the core.
 		cfg.Notes = append(cfg.Notes, "the Args/Env route is direct streamable HTTP (bearer_token_env_var); the JSON file uses the requested transport")
 	case "gemini":
 		if cfg.JSON, err = file(); err != nil {

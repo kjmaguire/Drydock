@@ -36,6 +36,7 @@ const show = (client: Partial<Client> = {}) =>
       services={services({
         licenseStatus: async () => ({ configured: false, devMode: true, state: 'none', readOnly: false, message: '' }) as never,
         adapterList: async () => [claude],
+        mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [] }),
         mcpLibList: async () => [libServer({ projects: [] })],
         agentTemplateList: async () => [tpl()],
         mcpServerList: async (p: string) => (p === 'prj_1' ? [projServer({ agents: [{ agentId: 'agt_2', tools: ['*'] }] })] : []),
@@ -193,5 +194,38 @@ describe('Library page', () => {
     fireEvent.click(f.getByRole('button', { name: 'Create template' }));
     await waitFor(() => expect(agentTemplateSave).toHaveBeenCalled());
     expect((agentTemplateSave.mock.calls[0] as unknown[])[0]).toMatchObject({ name: 'Payments dev', role: 'backend', purpose: 'Own payments.', adapter: 'claude', effort: 'high', mcpServers: ['tst'] });
+  });
+
+  it('agent CLIs: Claude is verified, an unproven CLI is off until the human allows it, one with no mechanism cannot be allowed', async () => {
+    const mcpTrySet = vi.fn(async (_adapter: string, enabled: boolean) => ({
+      running: true,
+      address: '',
+      adapters: [
+        { adapter: 'claude', attached: true, canTry: false, trying: false },
+        { adapter: 'codex', attached: enabled, canTry: true, trying: enabled, reason: 'codex: unverified' },
+        { adapter: 'antigravity', attached: false, canTry: false, trying: false, reason: 'antigravity: unproven' },
+      ],
+    }));
+    show({
+      mcpStatus: async () => ({
+        running: true,
+        address: '',
+        adapters: [
+          { adapter: 'claude', attached: true, canTry: false, trying: false },
+          { adapter: 'codex', attached: false, canTry: true, trying: false, reason: 'codex: unverified' },
+          { adapter: 'antigravity', attached: false, canTry: false, trying: false, reason: 'antigravity: unproven' },
+        ],
+      }),
+      mcpTrySet,
+    });
+    const list = await screen.findByTestId('cli-gateway');
+    await waitFor(() => expect(within(list).getByText('verified')).toBeTruthy());
+    expect(within(list).queryByLabelText('Let claude use the gateway')).toBeNull();
+    expect(within(list).queryByLabelText('Let antigravity use the gateway')).toBeNull();
+    expect(list.textContent).toContain('antigravity: unproven');
+    const box = within(list).getByLabelText('Let codex use the gateway') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await waitFor(() => expect(mcpTrySet).toHaveBeenCalledWith('codex', true));
   });
 });

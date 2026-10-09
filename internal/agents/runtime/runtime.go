@@ -46,6 +46,8 @@ type MCPAttachment struct {
 	Attached bool
 	// Reason says why MCP was not attached (empty when it was).
 	Reason string
+	// Unverified is true when the human attached the gateway to a CLI whose MCP mechanism no real run has proven yet.
+	Unverified bool
 	// Transport is the transport of the single gateway entry ("stdio-shim" or "http").
 	Transport string
 	// Tools are the exposed tool names the run may call.
@@ -112,7 +114,7 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 			att = MCPAttachment{Reason: "attaching the gateway failed: " + merr.Error()}
 			cfg.Spec.MCPConfigPath = ""
 		}
-		info := map[string]any{"attached": att.Attached, "reason": att.Reason, "transport": att.Transport, "tools": att.Tools}
+		info := map[string]any{"attached": att.Attached, "reason": att.Reason, "transport": att.Transport, "tools": att.Tools, "unverified": att.Unverified}
 		if att.Tools == nil {
 			info["tools"] = []string{}
 		}

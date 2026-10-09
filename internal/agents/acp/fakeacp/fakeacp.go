@@ -76,21 +76,24 @@ type QuotaModel struct {
 
 // Step is one scripted action; exactly one field group is used.
 type Step struct {
-	Say          string         `json:"say,omitempty"`
-	Think        string         `json:"think,omitempty"`
-	Tool         *Tool          `json:"tool,omitempty"`
-	Plan         []string       `json:"plan,omitempty"`
-	UsageUpdate  *UsageUpdate   `json:"usageUpdate,omitempty"`
-	Perm         *Perm          `json:"perm,omitempty"`
-	FSRead       *FSOp          `json:"fsRead,omitempty"`
-	FSWrite      *FSOp          `json:"fsWrite,omitempty"`
-	Term         *TermOp        `json:"term,omitempty"`
-	SleepMS      int            `json:"sleepMs,omitempty"`
-	Block        bool           `json:"block,omitempty"` // wait for session/cancel
-	Exit         int            `json:"exit,omitempty"`  // exit the process mid-turn
-	ReportConfig bool           `json:"reportConfig,omitempty"`
-	ErrorPrompt  string         `json:"errorPrompt,omitempty"` // fail the prompt request with this message
-	Rate         map[string]any `json:"rate,omitempty"`        // _meta["_claude/rateLimit"] on the next usage update
+	Say          string       `json:"say,omitempty"`
+	Think        string       `json:"think,omitempty"`
+	Tool         *Tool        `json:"tool,omitempty"`
+	Plan         []string     `json:"plan,omitempty"`
+	UsageUpdate  *UsageUpdate `json:"usageUpdate,omitempty"`
+	Perm         *Perm        `json:"perm,omitempty"`
+	FSRead       *FSOp        `json:"fsRead,omitempty"`
+	FSWrite      *FSOp        `json:"fsWrite,omitempty"`
+	Term         *TermOp      `json:"term,omitempty"`
+	SleepMS      int          `json:"sleepMs,omitempty"`
+	Block        bool         `json:"block,omitempty"` // wait for session/cancel
+	Exit         int          `json:"exit,omitempty"`  // exit the process mid-turn
+	ReportConfig bool         `json:"reportConfig,omitempty"`
+	// MCPCall connects to an MCP server the client attached in session/new (the way a real ACP agent would) and calls a tool,
+	// or lists the tools when Tool is empty. The outcome is reported as an agent message.
+	MCPCall     *MCPCall       `json:"mcpCall,omitempty"`
+	ErrorPrompt string         `json:"errorPrompt,omitempty"` // fail the prompt request with this message
+	Rate        map[string]any `json:"rate,omitempty"`        // _meta["_claude/rateLimit"] on the next usage update
 }
 
 // Tool is a tool call: tool_call, then tool_call_update to completed (or failed).
@@ -183,6 +186,7 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 type sess struct {
 	cwd     string
 	mcp     []string
+	servers []acp.McpServer
 	model   string
 	mode    string
 	effort  string
@@ -288,7 +292,7 @@ func (a *agent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.NewS
 	a.mu.Lock()
 	a.seq++
 	id := fmt.Sprintf("fake-sess-%d", a.seq)
-	s := &sess{cwd: p.Cwd, mcp: mcpNames(p.McpServers)}
+	s := &sess{cwd: p.Cwd, mcp: mcpNames(p.McpServers), servers: p.McpServers}
 	a.sessions[id] = s
 	a.mu.Unlock()
 	return a.newSessionResponse(id, s), nil
@@ -474,6 +478,11 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 		case st.Exit != 0:
 			a.exit() <- st.Exit
 			<-ctx.Done()
+		case st.MCPCall != nil:
+			a.mu.Lock()
+			servers := s.servers
+			a.mu.Unlock()
+			say(callMCP(ctx, servers, st.MCPCall))
 		case st.ReportConfig:
 			a.mu.Lock()
 			say(fmt.Sprintf("config model=%s mode=%s effort=%s mcp=%s cwd=%s resumed=%s", s.model, s.mode, s.effort, strings.Join(s.mcp, ","), s.cwd, s.resumed))

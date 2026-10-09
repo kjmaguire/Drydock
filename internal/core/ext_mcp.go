@@ -73,6 +73,31 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	}
 	m := map[string]Method{
 		"mcp.status": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.mcpStatusReport(ctx), nil }),
+		// The human allows the gateway for a CLI whose per-run MCP mechanism no real run has proven yet (Codex, Gemini, OpenCode,
+		// Goose). Off by default. It reaches the CLI through ACP session/new.mcpServers only, as the stdio shim.
+		"mcp.try.set": bind(func(ctx context.Context, p struct {
+			Adapter string `json:"adapter"`
+			Enabled bool   `json:"enabled"`
+		}) (any, error) {
+			c.mu.Lock()
+			_, known := c.adapters[p.Adapter]
+			c.mu.Unlock()
+			if !known {
+				return nil, fmt.Errorf("unknown adapter %q", p.Adapter)
+			}
+			if _, canTry, why := adapterMCPKind(p.Adapter); !canTry {
+				return nil, fmt.Errorf("%s", why)
+			}
+			v := "0"
+			if p.Enabled {
+				v = "1"
+			}
+			if err := c.setSetting(ctx, settingMCPTry+p.Adapter, v); err != nil {
+				return nil, err
+			}
+			c.publish(ctx, "mcp.try_changed", "", map[string]any{"adapter": p.Adapter, "enabled": p.Enabled, "by": c.Human()})
+			return c.mcpStatusReport(ctx), nil
+		}),
 		"mcp.actTools.get": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {
@@ -114,13 +139,14 @@ func (c *Core) actToolsEnabled(ctx context.Context, projectID string) bool {
 
 // mcpPlan is the decision for one session: attach or not, and with which policy.
 type mcpPlan struct {
-	Attach    bool
-	Reason    string
-	DataClass string
-	Info      mcp.RunInfo
-	Policy    mcp.RunPolicy
-	Tools     []string         // exposed tool names, including fetch_range
-	Servers   []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
+	Attach     bool
+	Unverified bool // attached because the human allowed an unproven mechanism for this CLI (mcp.try.set)
+	Reason     string
+	DataClass  string
+	Info       mcp.RunInfo
+	Policy     mcp.RunPolicy
+	Tools      []string         // exposed tool names, including fetch_range
+	Servers    []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
 // readTools are the Workspace tools every role gets: they only read. repo_map is withheld while it is gated (D5).
@@ -129,17 +155,35 @@ var readTools = []string{"read_range", "search_memory", "search_requirements", "
 // adapterMCP reports whether the generated configuration of an adapter is verified, and why not when it is not. Only a
 // verified mechanism is ever used: for the rest the CLI gets no MCP at all and the manifest says so.
 func adapterMCP(adapter string) (bool, string) {
+	ok, _, why := adapterMCPKind(adapter)
+	return ok, why
+}
+
+// adapterMCPKind is adapterMCP plus canTry: the configuration can be generated but no real run has proven it, so the human may
+// choose to attach the gateway anyway (mcp.try.set). A CLI with no known mechanism (Antigravity) can never be tried.
+func adapterMCPKind(adapter string) (verified, canTry bool, why string) {
 	probe := mcp.Endpoint{RunID: "probe", URL: "http://127.0.0.1:1/mcp/probe", Token: "probe", ShimCommand: []string{"drydock", "mcp-shim"}}
 	cfg, err := mcp.ConfigFor(adapter, probe)
 	switch {
 	case errors.Is(err, mcp.ErrMCPUnknown):
-		return false, adapter + ": per-run MCP configuration is unproven for this CLI (docs/mcp.md section 10)"
+		return false, false, adapter + ": per-run MCP configuration is unproven for this CLI (docs/mcp.md section 10)"
 	case err != nil:
-		return false, adapter + ": " + err.Error()
+		return false, false, adapter + ": " + err.Error()
 	case !cfg.Verified:
-		return false, adapter + ": the generated MCP configuration is unverified (no live run has used it)"
+		return false, true, adapter + ": the generated MCP configuration is unverified (no live run has used it)"
 	}
-	return true, ""
+	return true, false, ""
+}
+
+const settingMCPTry = "mcp.try."
+
+// mcpTryAllowed reports whether the human allowed the gateway for a CLI whose mechanism is not proven yet.
+func (c *Core) mcpTryAllowed(ctx context.Context, adapter string) bool {
+	var v string
+	if err := c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingMCPTry+adapter).Scan(&v); err != nil {
+		return false
+	}
+	return v == "1"
 }
 
 // planMCP decides what a session of an agent gets. role is the role the policy table is keyed by ("reviewer" for a review turn).
@@ -149,8 +193,11 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 	if c.MCPGateway() == nil {
 		return no("the MCP gateway is not running")
 	}
-	if ok, why := adapterMCP(adapter); !ok {
-		return no("%s", why)
+	if ok, canTry, why := adapterMCPKind(adapter); !ok {
+		if !canTry || !c.mcpTryAllowed(ctx, adapter) {
+			return no("%s", why)
+		}
+		pl.Unverified = true
 	}
 	ag, err := c.agent(ctx, agentID)
 	if err != nil {
@@ -224,7 +271,7 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 	}
 	cfg.Spec.MCPConfigPath = ep.ConfigPath
 	cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), cc.AllowedTools...)
-	return rt.MCPAttachment{Attached: true, Transport: cc.Transport, Tools: pl.Tools, Release: release}, nil
+	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release}, nil
 }
 
 // scrubPath keeps an OS error short: it names the path and the failure, never file content.
@@ -259,6 +306,9 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 		Adapter  string `json:"adapter"`
 		Attached bool   `json:"attached"`
 		Reason   string `json:"reason,omitempty"`
+		// CanTry: the mechanism is unproven but the human may allow it; Trying: they did.
+		CanTry bool `json:"canTry"`
+		Trying bool `json:"trying"`
 	}
 	c.mu.Lock()
 	names := make([]string, 0, len(c.adapters))
@@ -269,8 +319,9 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 	sort.Strings(names)
 	rows := make([]adapterRow, 0, len(names))
 	for _, id := range names {
-		ok, why := adapterMCP(id)
-		rows = append(rows, adapterRow{Adapter: id, Attached: ok, Reason: why})
+		ok, canTry, why := adapterMCPKind(id)
+		trying := canTry && c.mcpTryAllowed(ctx, id)
+		rows = append(rows, adapterRow{Adapter: id, Attached: ok || trying, Reason: why, CanTry: canTry, Trying: trying})
 	}
 	gw := c.MCPGateway()
 	addr := ""
