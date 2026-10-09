@@ -21,6 +21,12 @@ type Script struct {
 	Rules   []Rule   `json:"rules,omitempty"` // first rule whose Match is a substring of the prompt wins
 	Turns   [][]Step `json:"turns"`
 	Default []Step   `json:"default,omitempty"`
+	// SessionID is the session id a new session reports (default fake-session-0001). With --resume <id> the agent reports <id>,
+	// as claude does when it continues a stored session.
+	SessionID string `json:"sessionId,omitempty"`
+	// MissingSessions are session ids this agent does not have: --resume of one of them prints the error result claude 2.1.295
+	// prints for an unknown session (no init event, the reason in "errors") and exits 1 without reading a prompt.
+	MissingSessions []string `json:"missingSessions,omitempty"`
 }
 
 // Rule selects steps by prompt content.
@@ -46,6 +52,10 @@ type Step struct {
 	Exit     int    `json:"exit,omitempty"` // exit the process with this code (non-zero) mid-turn
 	// Write makes the agent really write a file (relative to its working directory) and report it as a Write tool call.
 	Write *WriteSpec `json:"write,omitempty"`
+	// Ask marks a Tool step that needs permission: unless an --allowedTools rule covers it (the tool name, "Tool(<exact
+	// command>)" or a "Tool(<prefix>:*)" rule for a Bash command), the call is refused the way headless claude refuses it
+	// (an error tool result, and the call listed in the result's permission_denials).
+	Ask bool `json:"ask,omitempty"`
 }
 
 // WriteSpec is a scripted file write.
@@ -68,7 +78,8 @@ func LoadScript() (Script, error) {
 	return sc, json.Unmarshal(b, &sc)
 }
 
-// Run emulates `claude` for the given args. It returns the process exit code.
+// Run emulates `claude` for the given args. It returns the process exit code. When DRYDOCK_FAKE_ARGS_LOG names a file, every
+// session start appends its argv there as one JSON line, so a test can see the flags the adapter passed.
 func Run(args []string, in io.Reader, out io.Writer) int {
 	for _, a := range args {
 		if a == "--version" || a == "-v" {
@@ -85,8 +96,93 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 		fmt.Fprintln(os.Stderr, "fakeagent: bad script:", err)
 		return 2
 	}
-	a := &agent{out: out, script: sc, session: "fake-session-0001", interrupt: make(chan struct{}, 1)}
+	if path := os.Getenv("DRYDOCK_FAKE_ARGS_LOG"); path != "" {
+		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			b, _ := json.Marshal(args)
+			fmt.Fprintf(f, "%s\n", b)
+			f.Close()
+		}
+	}
+	session := sc.SessionID
+	if session == "" {
+		session = "fake-session-0001"
+	}
+	if resume := flagValue(args, "--resume"); resume != "" {
+		for _, m := range sc.MissingSessions {
+			if m == resume {
+				b, _ := json.Marshal(map[string]any{"type": "result", "subtype": "error_during_execution", "duration_ms": 0, "is_error": true, "num_turns": 0,
+					"stop_reason": nil, "session_id": resume, "total_cost_usd": 0, "usage": map[string]any{"input_tokens": 0, "output_tokens": 0},
+					"modelUsage": map[string]any{}, "permission_denials": []any{}, "errors": []string{"No conversation found with session ID: " + resume}})
+				fmt.Fprintf(out, "%s\n", b)
+				fmt.Fprintln(os.Stderr, "No conversation found with session ID: "+resume)
+				return 1
+			}
+		}
+		session = resume
+	}
+	a := &agent{out: out, script: sc, session: session, allowed: splitRules(flagValue(args, "--allowedTools")), interrupt: make(chan struct{}, 1)}
 	return a.loop(in)
+}
+
+// flagValue returns the value after flag in args ("" when absent).
+func flagValue(args []string, flag string) string {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == flag {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// splitRules splits an --allowedTools value on the commas between rules (not inside parentheses).
+func splitRules(v string) []string {
+	var out []string
+	depth, start := 0, 0
+	for i, r := range v {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				if s := strings.TrimSpace(v[start:i]); s != "" {
+					out = append(out, s)
+				}
+				start = i + 1
+			}
+		}
+	}
+	if s := strings.TrimSpace(v[start:]); s != "" {
+		out = append(out, s)
+	}
+	return out
+}
+
+// permits reports whether one of the allow rules covers a call of tool with input.
+func (a *agent) permits(tool string, input json.RawMessage) bool {
+	var in struct {
+		Command string `json:"command"`
+	}
+	_ = json.Unmarshal(input, &in)
+	for _, r := range a.allowed {
+		if r == tool {
+			return true
+		}
+		spec, ok := strings.CutPrefix(r, tool+"(")
+		if !ok || !strings.HasSuffix(spec, ")") {
+			continue
+		}
+		spec = strings.TrimSuffix(spec, ")")
+		if prefix, ok := strings.CutSuffix(spec, ":*"); ok {
+			if in.Command == prefix || strings.HasPrefix(in.Command, prefix+" ") {
+				return true
+			}
+		} else if in.Command == spec {
+			return true
+		}
+	}
+	return false
 }
 
 type agent struct {
@@ -94,6 +190,7 @@ type agent struct {
 	out       io.Writer
 	script    Script
 	session   string
+	allowed   []string
 	turn      int
 	toolSeq   int
 	interrupt chan struct{}
@@ -204,6 +301,7 @@ func (a *agent) runTurn(prompt string) {
 	a.emit(map[string]any{"type": "system", "subtype": "init", "session_id": a.session, "model": "fake-1", "tools": []string{"Read", "Bash", "Edit"}, "cwd": mustGetwd()})
 	interrupted := false
 	var lastText string
+	denials := []any{}
 loop:
 	for _, st := range steps {
 		n := st.Repeat
@@ -292,8 +390,13 @@ loop:
 				}
 				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
 					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": st.Tool, "input": in}}, "usage": a.usage()}})
+				result, isErr := st.Result, st.IsError
+				if st.Ask && !a.permits(st.Tool, in) {
+					result, isErr = "Claude requested permissions to use "+st.Tool+", but you haven't granted it yet.", true
+					denials = append(denials, map[string]any{"tool_name": st.Tool, "tool_use_id": id, "tool_input": in})
+				}
 				a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user",
-					"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": st.Result, "is_error": st.IsError}}}})
+					"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": result, "is_error": isErr}}}})
 			}
 		}
 	}
@@ -302,7 +405,7 @@ loop:
 		a.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": a.session, "total_cost_usd": 0.0001, "usage": map[string]any{"input_tokens": 5, "output_tokens": 2}})
 	} else {
 		a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": lastText, "stop_reason": "end_turn", "session_id": a.session,
-			"total_cost_usd": 0.0002, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
+			"permission_denials": denials, "total_cost_usd": 0.0002, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
 			"modelUsage": map[string]any{"fake-1": map[string]any{"inputTokens": 10, "outputTokens": 5, "cacheReadInputTokens": 100, "cacheCreationInputTokens": 0, "costUSD": 0.0002, "contextWindow": 200000}}})
 	}
 	a.mu.Lock()

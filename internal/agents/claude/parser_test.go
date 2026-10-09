@@ -3,6 +3,7 @@ package claude
 import (
 	"bufio"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -148,5 +149,59 @@ func TestVersionParsing(t *testing.T) {
 	}
 	if !Less([3]int{2, 1, 204}, MinVersion) || Less([3]int{2, 1, 205}, MinVersion) {
 		t.Fatal("min version comparison")
+	}
+}
+
+// permission_denied.jsonl is real output of claude 2.1.295 (haiku, --permission-mode default) asked to run `touch` through Bash,
+// captured 2026-10-09 with paths and the session id replaced: headless claude refuses the call without asking and lists it in
+// the result's permission_denials.
+func TestPermissionDenialsAreReportedBeforeUsageAndDone(t *testing.T) {
+	cs, p := parseFile(t, "testdata/permission_denied.jsonl")
+	if p.SessionID() != "SESSION" {
+		t.Fatalf("session %q", p.SessionID())
+	}
+	var den []workflow.PermissionDenial
+	at := -1
+	for i, c := range cs {
+		if c.Kind == workflow.ChunkPermissionDenied {
+			var d workflow.PermissionDenial
+			if err := c.Decode(&d); err != nil {
+				t.Fatal(err)
+			}
+			den = append(den, d)
+			at = i
+		}
+	}
+	if len(den) != 1 || den[0].ToolName != "Bash" || den[0].ToolUseID == "" || !strings.Contains(string(den[0].Input), `"touch probe_file.txt"`) {
+		t.Fatalf("denials %+v", den)
+	}
+	k := kinds(cs)
+	if at < 0 || at+2 >= len(k) || k[at+1] != workflow.ChunkUsage || k[len(k)-1] != workflow.ChunkDone {
+		t.Fatalf("order %v", k)
+	}
+	for _, c := range cs {
+		if c.Kind == workflow.ChunkError {
+			t.Fatalf("a denial is not an error of the turn: %s", c.Data)
+		}
+	}
+}
+
+// resume_missing.jsonl is the only line claude 2.1.295 prints for --resume of a session id it does not have (it then exits 1):
+// an error result with the reason in "errors" and no init event.
+func TestMissingResumeSessionReportsTheCLIReason(t *testing.T) {
+	cs, p := parseFile(t, "testdata/resume_missing.jsonl")
+	if p.SessionID() != "" {
+		t.Fatalf("no init was printed, session must stay unknown: %q", p.SessionID())
+	}
+	var msg string
+	for _, c := range cs {
+		if c.Kind == workflow.ChunkError {
+			var e workflow.ErrorChunk
+			_ = c.Decode(&e)
+			msg = e.Message
+		}
+	}
+	if !strings.Contains(msg, "No conversation found with session ID: MISSING-SESSION") {
+		t.Fatalf("error %q (kinds %v)", msg, kinds(cs))
 	}
 }

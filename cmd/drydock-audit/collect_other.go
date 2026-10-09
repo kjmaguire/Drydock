@@ -123,7 +123,7 @@ var (
 	recommR  = regexp.MustCompile(`versions:\s*\{min:\s*"([^"]+)",\s*recommended:\s*"([^"]+)"\}`)
 	cliNames = map[string]string{
 		"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "gemini": "@google/gemini-cli",
-		"goose": "@aaif/goose-acp", "opencode": "opencode-ai",
+		"goose": "@aaif/goose-acp", "opencode": "opencode-ai", "cline": "cline",
 	}
 )
 

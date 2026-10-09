@@ -128,6 +128,10 @@
       "role": "OpenCode: an open-source agent that can use many providers.",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
     },
+    "cli:cline": {
+      "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
+      "note": "Pinned at 3.0.70 (min and recommended), the newest release on 2026-10-09: version and ACP initialize checked live on Linux; no prompt turn was run (no sign-in here). You install it yourself with npm i -g cline (Node 22+; its launcher is a Node script). Decisions P29."
+    },
     "bridge:@agentclientprotocol/claude-agent-acp": {
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today."
     },

@@ -139,6 +139,7 @@ func TestLiveACPConnections(t *testing.T) {
 		{"gemini", "GEMINI", connections.StepFail},
 		{"opencode", "OPENCODE", connections.StepPass},
 		{"goose", "GOOSE", connections.StepFail},
+		{"cline", "CLINE", connections.StepFail}, // session/new: "Authentication required" without a sign-in
 	} {
 		t.Run(tc.id, func(t *testing.T) {
 			liveCLI(t, tc.id, tc.env)

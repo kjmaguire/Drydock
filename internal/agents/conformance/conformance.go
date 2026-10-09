@@ -79,6 +79,7 @@ var knownKinds = map[string]bool{
 	workflow.ChunkText: true, workflow.ChunkThinking: true, workflow.ChunkMessageEnd: true, workflow.ChunkToolCall: true,
 	workflow.ChunkToolResult: true, workflow.ChunkUsage: true, workflow.ChunkPermission: true, workflow.ChunkDone: true,
 	workflow.ChunkError: true, workflow.ChunkLog: true, workflow.ChunkSession: true, workflow.ChunkRateLimit: true, workflow.ChunkPlan: true,
+	workflow.ChunkPermissionDenied: true,
 }
 
 type suite struct {

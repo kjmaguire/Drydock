@@ -1098,7 +1098,7 @@ func TestWorkspaceToolsAreAnnotatedReadOnlyOnlyWhenTheyAre(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readOnly := map[string]bool{"search_pack": true, "search_requirements": true, "search_memory": true, "repo_map": true, "read_range": true, "skills": true, "fetch_range": true}
+	readOnly := map[string]bool{"search_pack": true, "search_requirements": true, "search_memory": true, "repo_map": true, "read_range": true, "skills": true, "chats": true, "fetch_range": true}
 	seen := 0
 	for _, tl := range res.Tools {
 		got := tl.Annotations != nil && tl.Annotations.ReadOnlyHint
@@ -1107,7 +1107,7 @@ func TestWorkspaceToolsAreAnnotatedReadOnlyOnlyWhenTheyAre(t *testing.T) {
 		}
 		seen++
 	}
-	if seen != 10 {
-		t.Fatalf("expected the nine workspace tools and fetch_range, got %d", seen)
+	if seen != 11 {
+		t.Fatalf("expected the ten workspace tools and fetch_range, got %d", seen)
 	}
 }

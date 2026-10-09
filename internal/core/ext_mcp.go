@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/providers"
@@ -50,6 +51,7 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ws = k.Workspace()
 	}
 	ws.Tasks, ws.Room, ws.Handoffs = mcpTasks{c}, mcpRoom{c}, mcpHandoffs{c}
+	ws.Chats = mcpChats{c} // ext_chats.go; allowed only to chat sessions that read history (planChatMCP)
 	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}})
 	if err != nil {
 		return nil, nil, err
@@ -244,7 +246,12 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 
 // mcpAttach is Runtime.MCP: it starts the session's gateway run, writes the single-entry config file and points the CLI at it.
 func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.MCPAttachment, error) {
-	pl := c.planMCP(ctx, cfg.AgentID, cfg.ProjectID, cfg.TaskID, cfg.Adapter, cfg.Spec.Role, cfg.Spec.Model, cfg.Spec.Cwd)
+	var pl mcpPlan
+	if strings.HasPrefix(cfg.AgentID, chats.AgentPrefix) {
+		pl = c.planChatMCP(ctx, cfg) // a chat session: only the chats tool (ext_chats.go)
+	} else {
+		pl = c.planMCP(ctx, cfg.AgentID, cfg.ProjectID, cfg.TaskID, cfg.Adapter, cfg.Spec.Role, cfg.Spec.Model, cfg.Spec.Cwd)
+	}
 	if !pl.Attach {
 		return rt.MCPAttachment{Reason: pl.Reason}, nil
 	}

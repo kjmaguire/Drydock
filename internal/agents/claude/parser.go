@@ -52,6 +52,16 @@ type rawEvent struct {
 		CostUSD                  float64 `json:"costUSD"`
 		ContextWindow            int64   `json:"contextWindow"`
 	} `json:"modelUsage"`
+	// Errors is what a result reports when the CLI failed before or outside a model turn, for example "No conversation found
+	// with session ID: ..." for a --resume of a session that does not exist (observed with claude 2.1.295).
+	Errors []string `json:"errors"`
+	// PermissionDenials are the tool uses the CLI refused in this turn because the permission mode and allow rules did not
+	// cover them (headless claude never asks; observed with claude 2.1.295 in --permission-mode default).
+	PermissionDenials []struct {
+		ToolName  string          `json:"tool_name"`
+		ToolUseID string          `json:"tool_use_id"`
+		ToolInput json.RawMessage `json:"tool_input"`
+	} `json:"permission_denials"`
 	// control
 	Response json.RawMessage `json:"response"`
 }
@@ -183,6 +193,11 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 
 func (p *Parser) result(ev rawEvent) []workflow.Chunk {
 	var out []workflow.Chunk
+	for _, d := range ev.PermissionDenials {
+		if d.ToolName != "" {
+			out = append(out, workflow.NewChunk(workflow.ChunkPermissionDenied, workflow.PermissionDenial{ToolName: d.ToolName, ToolUseID: d.ToolUseID, Input: d.ToolInput}))
+		}
+	}
 	u := workflow.UsageChunk{Source: "reported", CostUSD: ev.TotalCost, ContextUsed: p.lastContext}
 	for model, mu := range ev.ModelUsage { // a turn normally has one model; the first wins for labeling
 		if u.Model == "" || mu.InputTokens+mu.OutputTokens > 0 && u.Model == "" {
@@ -215,6 +230,9 @@ func (p *Parser) result(ev rawEvent) []workflow.Chunk {
 			}
 			var msg string
 			_ = json.Unmarshal(ev.Result, &msg)
+			if msg == "" && len(ev.Errors) > 0 {
+				msg = strings.Join(ev.Errors, "; ")
+			}
 			if msg == "" {
 				msg = ev.Subtype
 			}
