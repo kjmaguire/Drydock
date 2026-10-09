@@ -246,6 +246,48 @@ describe('round 2 client methods', () => {
   });
 });
 
+describe('project setup client methods', () => {
+  it('sends the parameter names the core decodes and normalizes nulls', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.endsWith('project.setup')) return json({ result: { project: { id: 'p1' }, agents: null, warnings: null } });
+      if (url.endsWith('agentcatalog.list')) return json({ result: [{ id: 'team-lead', alternatives: null, mcp: null, skills: null, tags: null, availability: { adapters: null, mcp: null, skills: null } }] });
+      if (url.endsWith('agentcatalog.apply')) return json({ result: { id: 'team-lead', agent: { id: 'a1' }, mcp: { granted: null, skipped: null }, skills: { assigned: null }, notes: null } });
+      if (url.endsWith('mcplib.catalog')) return json({ result: [{ id: 'cf', readOnlyTools: null, recommendedRoles: null }] });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    const req = { name: 'x', brief: '', repo: { kind: 'none' as const }, mode: 'local_merge' as const, libraryServers: [], catalogServers: ['cf'], agents: [{ prebuilt: 'team-lead' }], installSkills: true };
+    expect(await c.projectSetup(req)).toEqual({ project: { id: 'p1' } as never, agents: [], warnings: [] });
+    expect(await c.githubOwners()).toEqual([]);
+    expect(await c.githubRepos()).toEqual([]);
+    expect(await c.githubCloneDir()).toBe('');
+    expect((await c.agentCatalogList('p1'))[0]).toMatchObject({ alternatives: [], mcp: [], skills: [], tags: [], availability: { adapters: [], preferredUsable: false, mcp: [], skills: [] } });
+    expect(await c.agentCatalogApply({ id: 'team-lead', projectId: 'p1', installSkills: true, connectMcp: true })).toMatchObject({
+      mcp: { granted: [], skipped: [] },
+      skills: { assigned: [], shared: [], pending: [], failed: [] },
+      notes: [],
+    });
+    expect((await c.mcpCatalog())[0]).toMatchObject({ readOnlyTools: [], recommendedRoles: [] });
+    await c.projectCreate('later');
+    await c.projectAttachRepo('p1', '/r');
+    await c.projectSetBrief('p1', 'b');
+    await c.githubRepos('acme', 'pay');
+    await c.githubClone('acme/pay', '/src');
+    await c.mcpAddFromCatalog('cf');
+    const sent = f.mock.calls.map((c) => c.arguments).map((x) => [(x as unknown as [string])[0].replace('/rpc/', ''), JSON.parse((x as unknown as [string, RequestInit])[1].body as string)]);
+    const all = (m: string) => sent.filter((x) => x[0] === m).map((x) => x[1]);
+    expect(all('project.setup')).toEqual([req]);
+    expect(all('project.create')).toEqual([{ name: 'later', repoPath: '' }]);
+    expect(all('project.attachRepo')).toEqual([{ id: 'p1', repoPath: '/r' }]);
+    expect(all('project.setBrief')).toEqual([{ id: 'p1', brief: 'b' }]);
+    expect(all('github.repos')).toEqual([{ owner: '', query: '' }, { owner: 'acme', query: 'pay' }]);
+    expect(all('github.clone')).toEqual([{ repo: 'acme/pay', dir: '/src' }]);
+    expect(all('agentcatalog.list')).toEqual([{ projectId: 'p1' }]);
+    expect(all('agentcatalog.apply')).toEqual([{ id: 'team-lead', projectId: 'p1', installSkills: true, connectMcp: true }]);
+    expect(all('mcplib.addFromCatalog')).toEqual([{ catalogId: 'cf' }]);
+  });
+});
+
 describe('Wails runtime wiring (against a fake runtime module; never run in WebView2)', () => {
   it('addresses the bridge by its fully qualified name and passes arguments in order', async () => {
     const ByName = mock.fn(async (name: string) => (name.endsWith('.Call') ? '{"ok":true}' : null));
