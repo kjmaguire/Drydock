@@ -22,7 +22,7 @@ func (p *Provider) eligible(ctx context.Context, run mcp.RunInfo) ([]Skill, erro
 	if run.ProjectID == "" {
 		return nil, errors.New("this run has no project")
 	}
-	return p.S.Eligible(ctx, run.ProjectID, run.Role)
+	return p.S.Eligible(ctx, run.ProjectID, run.AgentID, run.Role)
 }
 
 func toMCP(k Skill, withBody bool) mcp.Skill {

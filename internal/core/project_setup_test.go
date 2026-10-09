@@ -74,6 +74,33 @@ func TestProjectSetupMakesTheWholeProject(t *testing.T) {
 		t.Fatalf("Wren must be granted docs: %+v", servers[0].Agents)
 	}
 
+	// prebuilt agents and built-in catalog connectors (no network: nothing is contacted when a server is added)
+	var pre core.SetupResult
+	a.call("project.setup", core.SetupRequest{
+		Name: "Docs helpers", CatalogServers: []string{"mslearn"},
+		Agents: []core.SetupAgent{{Prebuilt: "team-lead"}, {Prebuilt: "microsoft-engineer", Name: "Azure"}, {Prebuilt: "no-such-agent"}},
+	}, &pre)
+	if len(pre.Agents) != 2 || pre.Agents[0].Role != "lead" || pre.Agents[1].Name != "Azure" {
+		t.Fatalf("prebuilt agents %+v warnings %v", pre.Agents, pre.Warnings)
+	}
+	if !strings.Contains(strings.Join(pre.Warnings, "\n"), "no-such-agent") {
+		t.Fatalf("an unknown prebuilt agent must be a warning: %v", pre.Warnings)
+	}
+	var preServers []core.MCPServerView
+	a.call("mcpserver.list", map[string]string{"projectId": pre.Project.ID}, &preServers)
+	foundLearn, azureGranted := false, false
+	for _, sv := range preServers {
+		if strings.Contains(sv.ID, "mslearn") {
+			foundLearn = true
+			for _, g := range sv.Agents {
+				azureGranted = azureGranted || g.AgentID == pre.Agents[1].ID
+			}
+		}
+	}
+	if !foundLearn || !azureGranted {
+		t.Fatalf("Microsoft Learn must be in the project and granted to the Microsoft engineer: %+v", preServers)
+	}
+
 	// no repository: just a name
 	var bare core.SetupResult
 	a.call("project.setup", core.SetupRequest{Name: "Someday"}, &bare)

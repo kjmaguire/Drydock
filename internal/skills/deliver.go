@@ -79,7 +79,7 @@ func family(adapter string) string {
 // roles match the agent's role. Nothing is written here; the context engine writes the files.
 func (s *Service) Plan(ctx context.Context, t Target) (Plan, error) {
 	var p Plan
-	eligible, err := s.Eligible(ctx, t.ProjectID, t.Role)
+	eligible, err := s.Eligible(ctx, t.ProjectID, t.AgentID, t.Role)
 	if err != nil {
 		return p, err
 	}

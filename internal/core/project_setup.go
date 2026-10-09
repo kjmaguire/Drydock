@@ -142,14 +142,20 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		if lid, ok := libraryID[id]; ok {
 			return lid, nil
 		}
-		var srv struct {
-			ID string `json:"id"`
+		var out struct {
+			Server struct {
+				ID string `json:"id"`
+			} `json:"server"`
+			Next string `json:"next"`
 		}
-		if err := call("mcplib.addFromCatalog", map[string]string{"catalogId": id}, &srv); err != nil {
+		if err := call("mcplib.addFromCatalog", map[string]string{"catalogId": id}, &out); err != nil {
 			return "", err
 		}
-		libraryID[id] = srv.ID
-		return srv.ID, nil
+		if out.Next != "" {
+			warn("connector %s: %s", id, out.Next)
+		}
+		libraryID[id] = out.Server.ID
+		return out.Server.ID, nil
 	}
 	for _, id := range r.CatalogServers {
 		lid, err := addCatalog(id)

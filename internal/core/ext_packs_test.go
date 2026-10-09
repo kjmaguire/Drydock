@@ -291,6 +291,28 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 	var worker, reviewer core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	// go-style is assigned to the reviewer only: the worker (whose role it names) no longer receives it
+	var assigned skills.Skill
+	a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "go-style", "agentId": reviewer.ID, "on": true}, &assigned)
+	if strings.Join(assigned.Agents, ",") != reviewer.ID {
+		t.Fatalf("%+v", assigned)
+	}
+	var listed []skills.Skill
+	a.call("skill.list", map[string]string{"projectId": p.ID}, &listed)
+	if len(listed) != 2 || strings.Join(listed[1].Agents, ",") != reviewer.ID || listed[0].Agents == nil || len(listed[0].Agents) != 0 {
+		t.Fatalf("skill.list carries the agents: %+v", listed)
+	}
+	var plan skills.Plan
+	a.call("skill.plan", skills.Target{ProjectID: p.ID, AgentID: worker.ID, Role: "backend", Adapter: "claude"}, &plan)
+	if len(plan.Files) != 0 {
+		t.Fatalf("the worker still receives a skill assigned to the reviewer: %+v", plan.Files)
+	}
+	// and then to the worker as well, which still gets it; frontend-only goes to the worker by assignment despite its role
+	a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "go-style", "agentId": worker.ID, "on": true}, &assigned)
+	a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "frontend-only", "agentId": worker.ID, "on": true}, &assigned)
+	if err := a.callErr("skill.assign", map[string]any{"projectId": p.ID, "name": "nope", "agentId": worker.ID, "on": true}); err == nil {
+		t.Fatal("an unknown skill was assigned")
+	}
 	var task tasks.Task
 	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
 	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
@@ -306,8 +328,8 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(rule), "---\npaths:\n") || !strings.Contains(string(rule), "**/*.go") || !strings.Contains(string(rule), "Keep functions small.") {
 		t.Fatalf("path-scoped rule: %v\n%s", err, rule)
 	}
-	if _, err := os.Stat(filepath.Join(wt, ".claude", "rules", "frontend-only.md")); err == nil {
-		t.Fatal("a Frontend skill must not be delivered to a Backend task")
+	if _, err := os.Stat(filepath.Join(wt, ".claude", "rules", "frontend-only.md")); err != nil {
+		t.Fatal("a skill assigned to the worker is delivered whatever its roles say")
 	}
 	agents, _ := os.ReadFile(filepath.Join(wt, "AGENTS.md"))
 	if !strings.Contains(string(agents), "## Expert packs") || !strings.Contains(string(agents), "Go standard library notes.") || !strings.Contains(string(agents), `search_pack with pack_ids ["godocs"]`) {
@@ -323,7 +345,7 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 	}
 	var ds []skills.Delivery
 	a.call("skill.deliveries", map[string]string{"projectId": p.ID, "taskId": task.ID}, &ds)
-	if len(ds) != 1 || ds[0].Skill != "go-style" || ds[0].Method != skills.MethodClaudeRules || ds[0].Fidelity != skills.FidelityExact || ds[0].AgentID != worker.ID {
+	if len(ds) != 2 || ds[0].Skill == ds[1].Skill || ds[0].Method != skills.MethodClaudeRules || ds[0].Fidelity != skills.FidelityExact || ds[0].AgentID != worker.ID || ds[1].AgentID != worker.ID {
 		t.Fatalf("%+v", ds)
 	}
 	var evs []struct{ Type string }

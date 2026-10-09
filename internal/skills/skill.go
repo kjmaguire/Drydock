@@ -48,7 +48,31 @@ type ParsedSkill struct {
 	Body          string
 	// Warnings are spec guidance exceeded (long body) that do not block.
 	Warnings []string
+	// IgnoredKeys are top-level front matter keys outside the Agent Skills fields (for example Claude Code's `context` or
+	// `argument-hint`). They are recorded and ignored: Drydock never acts on them and never writes them into a worktree.
+	IgnoredKeys []string
+	// DeclaredName is the front matter name when it differs from the directory name a registry skill is stored under
+	// (ParseRegistrySkill only); empty otherwise.
+	DeclaredName string
 }
+
+// Notes are the parse findings worth showing a human next to the skill: ignored keys and a renamed skill.
+func (p *ParsedSkill) Notes() []string {
+	out := []string{}
+	if len(p.IgnoredKeys) > 0 {
+		out = append(out, "front matter keys outside the Agent Skills format were ignored: "+strings.Join(p.IgnoredKeys, ", "))
+	}
+	if p.DeclaredName != "" {
+		out = append(out, fmt.Sprintf("the front matter calls it %q; it is stored under its directory name %q", p.DeclaredName, p.Name))
+	}
+	return out
+}
+
+// knownKeys are the Agent Skills front matter fields Drydock reads.
+var knownKeys = map[string]bool{"name": true, "description": true, "license": true, "compatibility": true, "metadata": true, "allowed-tools": true}
+
+// maxIgnoredKeys bounds how many unknown keys are tolerated (a front matter of hundreds of keys is not a skill).
+const maxIgnoredKeys = 32
 
 type frontmatter struct {
 	Name          string            `yaml:"name"`
@@ -56,7 +80,8 @@ type frontmatter struct {
 	License       string            `yaml:"license"`
 	Compatibility string            `yaml:"compatibility"`
 	Metadata      map[string]string `yaml:"metadata"`
-	AllowedTools  string            `yaml:"allowed-tools"`
+	// AllowedTools is a space-separated string in the spec; Claude Code also accepts a list. Either is recorded, never used.
+	AllowedTools yaml.Node `yaml:"allowed-tools"`
 }
 
 // ValidateName applies the Agent Skills naming rules.
@@ -71,8 +96,23 @@ func ValidateName(n string) error {
 }
 
 // ParseSkill parses and validates SKILL.md text. wantName is the directory (or file) name the skill must be called; an
-// empty wantName skips that comparison. Unknown front matter keys are errors: a file that needs them is not spec-valid.
+// empty wantName skips that comparison. Top-level front matter keys outside the Agent Skills fields are ignored and recorded
+// in IgnoredKeys (agent products add their own, such as Claude Code's `context: fork`); the known fields are still checked
+// strictly (types, lengths, the name rules).
 func ParseSkill(data []byte, wantName string) (*ParsedSkill, error) {
+	return parseSkill(data, wantName, false)
+}
+
+// ParseRegistrySkill parses a skill found in the registry directory dirName. A registry skill is identified by its directory
+// (that is how it is listed, imported and pinned), so a front matter name that differs from the directory, which some
+// published registries ship (for example "vercel-react-best-practices" in react-best-practices/), is recorded in
+// DeclaredName and the skill is stored under dirName. Both names must follow the naming rules. Repository skills keep the
+// spec's rule that the two are equal (ParseSkill): the project can fix its own files.
+func ParseRegistrySkill(data []byte, dirName string) (*ParsedSkill, error) {
+	return parseSkill(data, dirName, true)
+}
+
+func parseSkill(data []byte, wantName string, renameToDir bool) (*ParsedSkill, error) {
 	if len(data) > MaxSkillBytes {
 		return nil, fmt.Errorf("SKILL.md is larger than %d KiB", MaxSkillBytes>>10)
 	}
@@ -90,19 +130,49 @@ func ParseSkill(data []byte, wantName string) (*ParsedSkill, error) {
 	}
 	fmText := text[4 : 4+end]
 	body := strings.TrimLeft(text[4+end+4:], "\n")
-	var fm frontmatter
-	dec := yaml.NewDecoder(strings.NewReader(fmText))
-	dec.KnownFields(true)
-	if err := dec.Decode(&fm); err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(fmText), &root); err != nil {
 		return nil, fmt.Errorf("front matter: %w", err)
 	}
+	if len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("front matter must be a YAML mapping")
+	}
+	m := root.Content[0]
+	var ignored []string
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		k := m.Content[i]
+		if k.Kind != yaml.ScalarNode {
+			return nil, errors.New("front matter keys must be plain names")
+		}
+		if !knownKeys[k.Value] {
+			ignored = append(ignored, k.Value)
+		}
+	}
+	if len(ignored) > maxIgnoredKeys {
+		return nil, fmt.Errorf("front matter has %d keys outside the Agent Skills format (at most %d are tolerated)", len(ignored), maxIgnoredKeys)
+	}
+	sort.Strings(ignored)
+	var fm frontmatter
+	if err := m.Decode(&fm); err != nil {
+		return nil, fmt.Errorf("front matter: %w", err)
+	}
+	allowed, err := allowedTools(fm.AllowedTools)
+	if err != nil {
+		return nil, err
+	}
 	p := &ParsedSkill{Name: fm.Name, Description: strings.TrimSpace(fm.Description), License: strings.TrimSpace(fm.License), Compatibility: fm.Compatibility,
-		Metadata: fm.Metadata, AllowedTools: strings.TrimSpace(fm.AllowedTools), Body: strings.TrimSpace(body)}
+		Metadata: fm.Metadata, AllowedTools: allowed, Body: strings.TrimSpace(body), IgnoredKeys: ignored}
 	if err := ValidateName(p.Name); err != nil {
 		return nil, err
 	}
 	if wantName != "" && p.Name != wantName {
-		return nil, fmt.Errorf("name %q must equal its directory name %q", p.Name, wantName)
+		if !renameToDir {
+			return nil, fmt.Errorf("name %q must equal its directory name %q", p.Name, wantName)
+		}
+		if err := ValidateName(wantName); err != nil {
+			return nil, fmt.Errorf("directory name: %w", err)
+		}
+		p.DeclaredName, p.Name = p.Name, wantName
 	}
 	if p.Description == "" || len(p.Description) > MaxDescriptionLen {
 		return nil, fmt.Errorf("description is required and at most %d characters", MaxDescriptionLen)
@@ -142,6 +212,28 @@ func ParseSkill(data []byte, wantName string) (*ParsedSkill, error) {
 		p.Warnings = append(p.Warnings, fmt.Sprintf("body is longer than %d lines (spec guidance)", GuidanceBodyLines))
 	}
 	return p, nil
+}
+
+// allowedTools reads allowed-tools as the spec's space-separated string or as a list of tool names.
+func allowedTools(n yaml.Node) (string, error) {
+	switch n.Kind {
+	case 0:
+		return "", nil
+	case yaml.ScalarNode:
+		return strings.TrimSpace(n.Value), nil
+	case yaml.SequenceNode:
+		var parts []string
+		for _, c := range n.Content {
+			if c.Kind != yaml.ScalarNode {
+				return "", errors.New("allowed-tools must be a string or a list of tool names")
+			}
+			if v := strings.TrimSpace(c.Value); v != "" {
+				parts = append(parts, v)
+			}
+		}
+		return strings.Join(parts, " "), nil
+	}
+	return "", errors.New("allowed-tools must be a string or a list of tool names")
 }
 
 // Verdict is the outcome of scanning a skill before use.
