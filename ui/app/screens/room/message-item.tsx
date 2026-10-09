@@ -23,8 +23,6 @@ const rowCss = css({
   padding: `2px ${t.s6} 2px ${t.s4}`,
   transition: `background-color ${t.fast} ${t.ease}`,
   '&:hover': { background: t.bgHover },
-  '&:hover .msg-tools, &:focus-within .msg-tools': { opacity: '1', pointerEvents: 'auto' },
-  '&:hover .msg-gutter-time': { opacity: '1' },
 });
 const headCss = css({ marginTop: t.s3, paddingTop: '4px' });
 const mentionCss = css({ background: t.mentionBg, boxShadow: `inset 2px 0 0 ${t.mentionBorder}`, '&:hover': { background: t.mentionBg } });
@@ -40,6 +38,8 @@ const gutterTime = css({
   whiteSpace: 'nowrap',
   fontVariantNumeric: 'tabular-nums',
   transition: `opacity ${t.fast} ${t.ease}`,
+  // each css() is its own cascade layer, so the row's hover is matched from here (an ancestor selector)
+  ':is(.msg:hover) &': { opacity: '1' },
 });
 const quietIcon = css({ display: 'grid', placeItems: 'center', width: '28px', height: '22px', color: t.textFaint });
 
@@ -98,6 +98,7 @@ const toolsCss = css({
   opacity: '0',
   pointerEvents: 'none',
   transition: `opacity ${t.fast} ${t.ease}`,
+  ':is(.msg:hover, .msg:focus-within) > &': { opacity: '1', pointerEvents: 'auto' },
 });
 const toolBtn = css({
   display: 'grid',

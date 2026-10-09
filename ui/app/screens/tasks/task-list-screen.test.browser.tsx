@@ -59,13 +59,13 @@ describe('TaskListScreen', () => {
   it('filters by status and by text', async () => {
     const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
     await listed(r, 3);
-    await r.act(() => r.$<HTMLButtonElement>('[data-testid="task-filter-waiting"]')!.click());
+    await r.act(() => (r.$('[data-testid="task-filter-waiting"]') as HTMLButtonElement).click());
     await listed(r, 1);
     expect(rows(r)[0]!.textContent).toContain('Add Multiply');
-    await r.act(() => r.$<HTMLButtonElement>('[data-testid="task-filter-done"]')!.click());
+    await r.act(() => (r.$('[data-testid="task-filter-done"]') as HTMLButtonElement).click());
     await listed(r, 1);
     expect(rows(r)[0]!.textContent).toContain('Fix rounding');
-    await r.act(() => r.$<HTMLButtonElement>('[data-testid="task-filter-all"]')!.click());
+    await r.act(() => (r.$('[data-testid="task-filter-all"]') as HTMLButtonElement).click());
     await listed(r, 3);
     await r.act(() => type(byLabel(r.container, 'Filter tasks'), 'divide'));
     await listed(r, 1);
