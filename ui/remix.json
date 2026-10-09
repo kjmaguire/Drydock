@@ -5,7 +5,7 @@
   "test": {
     "files": ["app/**/*.test{,.browser}.{ts,tsx}"],
     "browserFiles": ["app/**/*.test.browser.{ts,tsx}"],
-    "exclude": ["node_modules/**", "dist/**", "legacy/**", "e2e/**"],
+    "exclude": ["node_modules/**", "dist/**", "e2e/**"],
     "type": ["server", "browser"],
     "reporter": "spec"
   }

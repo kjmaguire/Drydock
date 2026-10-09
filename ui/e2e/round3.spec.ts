@@ -301,7 +301,7 @@ test('integrations: connecting stores the token without ever showing it; with no
   await expect(page.getByLabel('Access token')).toHaveValue('');
   expect(await page.content()).not.toContain(secret);
   // there is no Linear MCP server in this environment, so the connection cannot be verified
-  await expect(card.locator('.badge').filter({ hasText: /^ok$/ })).toHaveCount(0);
+  await expect(card.getByText(/^ok$/)).toHaveCount(0);
   await card.getByRole('button', { name: 'Test connection' }).click();
   await expect(card.getByTestId('int-report')).toHaveAttribute('data-ok', 'false');
   // items, rules and outbound are reachable and empty; a new rule says it starts disabled and in dry-run

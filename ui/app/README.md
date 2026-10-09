@@ -75,6 +75,9 @@ export function Thing(handle: Handle<{ id: string }>) {
 - Imports use explicit extensions (`./x.ts`, `./y.tsx`), as Node ESM and the Remix repo do.
 - A controlled `<select value={x}>` does not select `x` on the first render (host props are applied before the options
   exist). Also set `selected={o === x}` on each `<option>`.
+- Each `css()` rule sits in its own cascade layer and a later layer wins regardless of specificity: a parent's
+  `&:hover .child` loses to the child's own `css()`. Put the ancestor selector in the child's rule (`':is(.msg:hover) &'`).
+- The design tokens (app.css) are not loaded in browser tests: assert on attributes, not computed colors.
 - `css()` treats only keys starting with `&`, `@`, `:`, `[` or `.` as nested selectors. An ancestor selector must be
   written `':is(#dock-panel) &'`; `'#dock-panel &'` is silently dropped.
 - remix test 1.0.0's browser runner breaks a relative dynamic `import('./x.ts')` (its import rewriting drops the quotes).
