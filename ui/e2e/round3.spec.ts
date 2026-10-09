@@ -69,7 +69,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   const workerChecks = page.getByLabel(/Let Claude workers run this project's own checks/);
   await expect(workerChecks).not.toBeChecked(); // off until the human says so
   await workerChecks.check();
-  await expect(page.getByTestId('worker-checks-note')).toContainText('exact check commands');
+  await expect(page.getByTestId('worker-checks-note')).toContainText('any program with your user');
   await page.getByRole('button', { name: 'Save development settings' }).click();
   await page.reload();
   await expect(page.getByLabel('Maximum parallel agent turns')).toHaveValue('2');

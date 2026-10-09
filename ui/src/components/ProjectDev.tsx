@@ -98,7 +98,7 @@ export function DevSettingsPanel({ projectId }: { projectId: string }) {
         </label>
         {s.workerChecks ? (
           <p className="muted" data-testid="worker-checks-note">
-            Workers may run only the exact check commands Drydock detects for this project (for example go build ./..., go test ./..., go vet ./..., or npm run test --silent), in their own worktree. Nothing else: no git, installs, downloads, go run or shells. Reviewers never get this. The tests run code the agent wrote, with your user's rights, the same as Drydock's own checks after the turn.
+            Workers may type only the exact check commands (go build ./..., go test ./..., go vet ./..., npm run test --silent and the like), in their own worktree, and reviewers never get them. But these commands run the project's own code, and the worker can change that code in the same turn, so in practice a worker can run any program with your user's rights, including git, downloads and shells. There is no operating-system sandbox. Turn this on only for projects where you accept that.
           </p>
         ) : null}
         <label className="inline">

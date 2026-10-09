@@ -295,7 +295,7 @@ func (c *Core) GetAgent(ctx context.Context, id string) (AgentDetail, error) {
 	if err != nil {
 		return AgentDetail{}, fmt.Errorf("agent %s not found", id)
 	}
-	d := AgentDetail{Agent: a, Runs: []AgentRun{}, Isolation: isolationOf(a)}
+	d := AgentDetail{Agent: a, Runs: []AgentRun{}, Isolation: isolationOf(a, pipeline.LoadDevSettings(ctx, c.DB, a.ProjectID).WorkerChecks)}
 	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,task_id,pid,cwd,status,started_at,ended_at,error FROM agent_runs WHERE agent_id=? ORDER BY started_at DESC LIMIT 20`, id)
 	if err != nil {
 		return d, err

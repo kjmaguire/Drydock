@@ -7,21 +7,29 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
+	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
-// worker-commands.md, tier 1: a project can let its Claude workers run exactly the checks Drydock runs itself. Off by default.
-// The reviewer never gets them. The rules are the exact detected command lines.
+// worker-commands.md, tier 1: a project can let its Claude workers run its checks. Off by default. The reviewer never gets
+// them. The rules are exact command lines, and the worker is told which ones Drydock will run after its turn.
 
-var goCheckRules = []string{"Bash(go build ./...)", "Bash(go test ./...)", "Bash(go vet ./...)"}
+var goCheckLines = []string{"go build ./...", "go test ./...", "go vet ./..."}
 
-// runOneTask runs a task with a worker and a reviewer on a captured Claude adapter and returns what each turn was started with.
-func runOneTask(t *testing.T, workerChecks bool) (worker, reviewer []string) {
+// turn is what one captured turn was started with.
+type turn struct {
+	allowed []string
+	system  string
+}
+
+// runOneTask runs a task with a worker and a reviewer on a captured Claude adapter and returns the worker's and the
+// reviewer's turns, failing unless each ran at least once.
+func runOneTask(t *testing.T, workerChecks bool) (worker, reviewer []turn, a *app, workerID string) {
 	t.Helper()
 	capt := &captureAdapter{Adapter: &claude.Adapter{Exe: os.Args[0]}}
-	a := openWith(t, map[string]agents.Adapter{"claude": capt})
+	a = openWith(t, map[string]agents.Adapter{"claude": capt})
 	p, _ := a.setup("gocalc")
 	if workerChecks {
 		var s pipeline.DevSettings
@@ -46,39 +54,77 @@ func runOneTask(t *testing.T, workerChecks bool) (worker, reviewer []string) {
 		return len(d.Pending) == 1
 	})
 	for _, s := range capt.all() {
-		if s.Spec.Role == "reviewer" {
-			reviewer = append(reviewer, s.Spec.AllowedTools...)
-		} else if s.Spec.AgentID == w.ID {
-			worker = append(worker, s.Spec.AllowedTools...)
+		switch s.Spec.AgentID {
+		case r.ID:
+			reviewer = append(reviewer, turn{s.Spec.AllowedTools, s.Spec.SystemAppend})
+		case w.ID:
+			worker = append(worker, turn{s.Spec.AllowedTools, s.Spec.SystemAppend})
 		}
 	}
-	return worker, reviewer
+	if len(worker) == 0 || len(reviewer) == 0 {
+		t.Fatalf("turns captured: %d worker, %d reviewer; want at least one of each", len(worker), len(reviewer))
+	}
+	return worker, reviewer, a, w.ID
+}
+
+func bashRules(ts []turn) []string {
+	var out []string
+	for _, x := range ts {
+		for _, r := range x.allowed {
+			if strings.HasPrefix(r, "Bash") {
+				out = append(out, r)
+			}
+		}
+	}
+	return out
 }
 
 func TestWorkersGetNoCommandsUnlessTheProjectAllowsIt(t *testing.T) {
-	worker, reviewer := runOneTask(t, false)
-	for _, r := range append(worker, reviewer...) {
-		if strings.HasPrefix(r, "Bash") {
-			t.Fatalf("a Bash rule without the switch: %q", r)
+	worker, reviewer, a, wid := runOneTask(t, false)
+	if got := bashRules(append(worker, reviewer...)); len(got) != 0 {
+		t.Fatalf("Bash rules without the switch: %v", got)
+	}
+	for _, x := range worker {
+		if strings.Contains(x.system, "Bash tool") {
+			t.Fatalf("the worker was told about commands without the switch: %q", x.system)
 		}
+	}
+	var d core.AgentDetail
+	a.call("agent.get", map[string]string{"id": wid}, &d)
+	if !strings.Contains(d.Isolation.Summary, "hold shell commands for approval") {
+		t.Fatalf("isolation without the switch: %+v", d.Isolation)
 	}
 }
 
-func TestWorkerChecksAreTheExactDetectedCommandsAndNeverForTheReviewer(t *testing.T) {
-	worker, reviewer := runOneTask(t, true)
-	var got []string
-	for _, r := range worker {
-		if strings.HasPrefix(r, "Bash") {
-			got = append(got, r)
+func TestWorkerChecksAreExactCommandsTheWorkerIsToldAboutAndNeverForTheReviewer(t *testing.T) {
+	worker, reviewer, a, wid := runOneTask(t, true)
+	want := checks.WorkerRules()
+	for _, x := range worker {
+		var got []string
+		for _, r := range x.allowed {
+			if strings.HasPrefix(r, "Bash") {
+				got = append(got, r)
+			}
+		}
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Fatalf("worker rules %v, want %v", got, want)
+		}
+		if !strings.Contains(x.system, pipeline.WorkerChecksText(goCheckLines)) {
+			t.Fatalf("the worker was not told the commands Drydock runs: %q", x.system)
 		}
 	}
-	if strings.Join(got, "|") != strings.Join(goCheckRules, "|") {
-		t.Fatalf("worker rules %v, want %v", got, goCheckRules)
+	if got := bashRules(reviewer); len(got) != 0 {
+		t.Fatalf("the reviewer was given %v", got)
 	}
-	for _, r := range reviewer {
-		if strings.HasPrefix(r, "Bash") {
-			t.Fatalf("the reviewer was given %q", r)
+	for _, x := range reviewer {
+		if strings.Contains(x.system, "Bash tool") {
+			t.Fatalf("the reviewer was told about commands: %q", x.system)
 		}
+	}
+	var d core.AgentDetail
+	a.call("agent.get", map[string]string{"id": wid}, &d)
+	if strings.Contains(d.Isolation.Summary, "hold shell commands for approval") || !strings.Contains(d.Isolation.Summary, "any program with your rights") {
+		t.Fatalf("the isolation panel must say what the switch allows: %+v", d.Isolation)
 	}
 }
 

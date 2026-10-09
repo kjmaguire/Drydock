@@ -101,7 +101,8 @@ type Isolation struct {
 	Details []string `json:"details"`
 }
 
-func isolationOf(a Agent) Isolation {
+// isolationOf describes a's isolation. workerChecks is the agent's project letting Claude workers run its checks.
+func isolationOf(a Agent, workerChecks bool) Isolation {
 	in := Isolation{Level: "guarded", Details: []string{
 		"Its working folder is its own Git worktree for the task, so its changes are separate from every other task and project and are reviewed before they are merged.",
 		"It starts with a trimmed environment: your other tools' tokens (GitHub, cloud providers) are not handed to it. Settings > Agents lists what is kept and lets you pass named variables on.",
@@ -117,6 +118,10 @@ func isolationOf(a Agent) Isolation {
 	case "claude":
 		in.Summary = "Claude Code's own permission checks keep it to its working folder and hold shell commands for approval, which a background run cannot give. This is not an operating-system sandbox."
 		in.Details = append(in.Details, "Measured with Claude Code 2.1.295 on Linux in acceptEdits mode: reading or writing a file outside the working folder and running a shell command on one were all refused. Not measured on Windows.")
+		if workerChecks {
+			in.Summary = "Claude Code's own permission checks keep it to its working folder, but this project lets it run its checks (build, test, lint) without approval when it works on a task. Those commands run the project's code, which it can change, so through them it can run any program with your rights. This is not an operating-system sandbox."
+			in.Details = append(in.Details, "This project lets Claude workers run its checks (project settings). Reviews never get them.")
+		}
 	default:
 		in.Summary = "Drydock confines the file and terminal requests it serves for this agent to its working folder. The agent's own tools are not intercepted, and this is not an operating-system sandbox."
 	}

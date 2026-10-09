@@ -482,11 +482,7 @@ func criterionID(s string) string {
 
 // detectTest returns the project's `test` check, the same command red and green both use.
 func (td TemplateDeps) detectTest(t tasks.Task) (checks.Spec, bool) {
-	detect := td.Checks
-	if detect == nil {
-		detect = checks.Detect
-	}
-	for _, s := range detect(t.Worktree) {
+	for _, s := range td.detect()(t.Worktree) {
 		if s.Name == "test" {
 			return s, true
 		}

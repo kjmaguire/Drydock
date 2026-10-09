@@ -122,7 +122,7 @@ func populate(t testing.TB, db *storage.DB, dataDir string) {
 	x(`INSERT INTO milestones(id,project_id,title,created_at,updated_at) VALUES('ms_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','M1',?,?)`, now, now)
 	x(`INSERT INTO milestone_tasks(milestone_id,task_id) VALUES('ms_aaaaaaaaaaaa','task_aaaaaaaaaaaa')`)
 	x(`INSERT INTO skills(id,project_id,name,body,origin,content_hash,status,decided_by,decided_at,created_at,updated_at) VALUES('skl_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','style','Be nice','repo','h','accepted','human:oldname',5,?,?)`, now, now)
-	x(`INSERT INTO settings(key,value) VALUES('devloop:prj_aaaaaaaaaaaa',?)`, `{"maxParallel":3,"autoSchedule":true,"respond":true,"e2e":{"enabled":true,"command":["npm","test"]},"preview":{"enabled":true}}`)
+	x(`INSERT INTO settings(key,value) VALUES('devloop:prj_aaaaaaaaaaaa',?)`, `{"maxParallel":3,"autoSchedule":true,"workerChecks":true,"respond":true,"e2e":{"enabled":true,"command":["npm","test"]},"preview":{"enabled":true}}`)
 	x(`INSERT INTO settings(key,value) VALUES('license.token','SECRET-LICENSE-TOKEN')`)
 	x(`INSERT INTO settings(key,value) VALUES('mcp.actTools:prj_aaaaaaaaaaaa','["write"]')`)
 
@@ -451,7 +451,7 @@ func TestImportCreatesANewProjectWithRemappedIdsAndSafeDefaults(t *testing.T) {
 	}
 	var dev map[string]any
 	json.Unmarshal([]byte(one(`SELECT value FROM settings WHERE key LIKE 'devloop:%'`)), &dev)
-	if dev["autoSchedule"] != false || dev["e2e"].(map[string]any)["enabled"] != false || dev["preview"].(map[string]any)["enabled"] != false || dev["maxParallel"] != float64(3) {
+	if dev["autoSchedule"] != false || dev["workerChecks"] != false || dev["e2e"].(map[string]any)["enabled"] != false || dev["preview"].(map[string]any)["enabled"] != false || dev["maxParallel"] != float64(3) {
 		t.Errorf("dev settings %v", dev)
 	}
 	if got := one(`SELECT status||'|'||CAST(ended_at AS TEXT) FROM agent_runs`); !strings.HasPrefix(got, "interrupted|") || strings.HasSuffix(got, "|0") {

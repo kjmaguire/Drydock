@@ -101,11 +101,7 @@ func (r *ScanRegistry) resolve(ctx context.Context, td TemplateDeps, t tasks.Tas
 		}
 		return spec, nil, nil
 	}
-	detect := td.Checks
-	if detect == nil {
-		detect = checks.Detect
-	}
-	for _, s := range detect(t.Worktree) {
+	for _, s := range td.detect()(t.Worktree) {
 		if s.Name == name {
 			return s, nil, nil
 		}

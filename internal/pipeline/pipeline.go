@@ -55,9 +55,9 @@ type Deps struct {
 	// manifest can list it as included or excluded with the reason. The wiring itself is rt.Runtime.MCP, which sees every
 	// session; this is only the read side for the manifest. Nil: the manifest says MCP is not wired in this build.
 	MCPStatus func(ctx context.Context, t tasks.Task, agentID, phase string) MCPStatus
-	// WorkerTools, if set, returns extra allow rules for a worker turn on this task (the project's check commands when the
-	// project switched that on). Never consulted for a reviewer. Nil or empty: the worker gets none.
-	WorkerTools func(ctx context.Context, t tasks.Task, cfg rt.Config) []string
+	// WorkerChecks, if set, reports whether a worker turn on this task may run the project's check commands (the project
+	// switched that on and the agent's CLI honors exact allow rules). Never consulted for a reviewer. Nil: never.
+	WorkerChecks func(ctx context.Context, t tasks.Task, cfg rt.Config) bool
 	// GuardPoll is how often a task waiting for an earlier task looks again (default 2 seconds).
 	GuardPoll time.Duration
 }
@@ -195,14 +195,42 @@ func Work(d Deps) workflow.NodeHandler {
 	}
 }
 
-// addWorkerTools extends a worker turn's allowed tools with the project's check commands, when the project allows it.
+// addWorkerTools lets a worker turn run the project's check commands, when the project allows it: the exact command lines
+// of checks.WorkerRules become allow rules, and the system prompt lists the ones Drydock will run after this turn, found with
+// the same detection Verify uses, so the worker types what is allowed rather than a variant the CLI refuses.
 func (d Deps) addWorkerTools(ctx context.Context, t tasks.Task, cfg *rt.Config) {
-	if d.WorkerTools == nil {
+	if d.WorkerChecks == nil || t.Worktree == "" || !d.WorkerChecks(ctx, t, *cfg) {
 		return
 	}
-	if extra := d.WorkerTools(ctx, t, *cfg); len(extra) > 0 {
-		cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), extra...)
+	cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), checks.WorkerRules()...)
+	cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + WorkerChecksText(checks.WorkerCommands(d.detect()(t.Worktree))))
+}
+
+// detect is Deps.Checks, or checks.Detect when it is not set.
+func (d Deps) detect() func(dir string) []checks.Spec {
+	if d.Checks != nil {
+		return d.Checks
 	}
+	return checks.Detect
+}
+
+// WorkerChecksText tells a worker which commands it may run itself. now is what Drydock will run after the turn.
+func WorkerChecksText(now []string) string {
+	var b strings.Builder
+	b.WriteString("You may run this project's checks yourself with the Bash tool while you work. Type each command exactly as shown, ")
+	b.WriteString("run from the working folder, with nothing added: no other arguments, no pipes, no redirection, no cd. Any other ")
+	b.WriteString("command will be refused.\n")
+	if len(now) > 0 {
+		b.WriteString("Drydock runs these after your turn:\n")
+		for _, c := range now {
+			b.WriteString("- " + c + "\n")
+		}
+	} else {
+		b.WriteString("No checks are set up in this project yet.\n")
+	}
+	b.WriteString("If you add a go.mod, a package.json script or a Taskfile target, these forms are also allowed: go build ./..., ")
+	b.WriteString("go test ./..., go vet ./..., npm run <build|test|lint|typecheck> --silent, task <build|test|lint|typecheck>.")
+	return b.String()
 }
 
 // saveManifest records what this attempt was given and what was deliberately left out.
@@ -301,11 +329,7 @@ func Verify(d Deps) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		detect := d.Checks
-		if detect == nil {
-			detect = checks.Detect
-		}
-		specs := detect(t.Worktree)
+		specs := d.detect()(t.Worktree)
 		if len(specs) == 0 {
 			return workflow.NodeOutput{}, errors.New("no checks detected for this project: add a Taskfile with build/test targets or configure checks")
 		}

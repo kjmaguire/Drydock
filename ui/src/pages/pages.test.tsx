@@ -245,7 +245,7 @@ describe('Telemetry and project development settings', () => {
     expect(box.checked).toBe(false);
     expect(screen.queryByTestId('worker-checks-note')).toBeNull();
     fireEvent.click(box);
-    expect(screen.getByTestId('worker-checks-note').textContent).toMatch(/exact check commands/);
+    expect(screen.getByTestId('worker-checks-note').textContent).toMatch(/exact check commands[\s\S]*any program with your user's rights/);
     fireEvent.click(screen.getByRole('button', { name: 'Save development settings' }));
     await waitFor(() => expect(projectdevSet).toHaveBeenCalled());
     expect(projectdevSet.mock.calls[0]![1]).toMatchObject({ workerChecks: true });

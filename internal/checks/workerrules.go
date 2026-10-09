@@ -1,52 +1,44 @@
 package checks
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
-// WorkerRules turns detected check specs into Claude Code allow rules, one exact command line each ("Bash(go test ./...)").
-// It is the whole of what a worker may run when the project switched "let workers run this project's checks" on
-// (docs/worker-commands.md, tier 1): the commands Drydock itself runs after the turn, nothing appended, no prefixes.
+// workerCommands is every command line a worker can ever be allowed when the project switched "let workers run this
+// project's checks" on (docs/worker-commands.md, tier 1): the check commands Detect produces, nothing appended, no prefixes.
+// A worker always gets the whole list, so a go.mod, package.json script or Taskfile target it creates during the turn is
+// runnable too; one that does not apply to the project just fails.
 //
-// Only argv shapes that Detect produces are accepted, so a spec a project or a caller built differently is dropped rather than
-// turned into a rule: go build|test|vet ./..., npm run <script> --silent, task <target>. Anything else (go run, npx, a shell)
-// never becomes a rule.
-func WorkerRules(specs []Spec) []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, s := range specs {
-		if !workerSafe(s.Argv) {
-			continue
-		}
-		r := "Bash(" + strings.Join(s.Argv, " ") + ")"
-		if !seen[r] {
-			seen[r] = true
-			out = append(out, r)
-		}
+// These commands run the project's own code (tests, build scripts, package.json scripts), which the worker can edit in the
+// same turn, so they are not a boundary on what can run: they only keep the worker from typing other commands directly.
+var workerCommands = []string{
+	"go build ./...", "go test ./...", "go vet ./...",
+	"npm run build --silent", "npm run test --silent", "npm run lint --silent", "npm run typecheck --silent",
+	"task build", "task test", "task lint", "task typecheck",
+}
+
+// WorkerRules returns the Claude Code allow rules for every worker command, one exact command line each
+// ("Bash(go test ./...)").
+func WorkerRules() []string {
+	out := make([]string, len(workerCommands))
+	for i, c := range workerCommands {
+		out[i] = "Bash(" + c + ")"
 	}
 	return out
 }
 
-func workerSafe(a []string) bool {
-	for _, x := range a {
-		if x == "" || strings.ContainsAny(x, "*()\x00\r\n\t;&|<>`$\"'\\") {
-			return false
+// WorkerCommands returns the command lines of the specs that a worker may run, in order. Specs outside the list (a custom
+// check, go run, npx, a shell) are left out: Drydock still runs them after the turn, the worker cannot.
+func WorkerCommands(specs []Spec) []string {
+	var out []string
+	for _, s := range specs {
+		for _, c := range workerCommands {
+			if slices.Equal(s.Argv, strings.Fields(c)) {
+				out = append(out, c)
+				break
+			}
 		}
 	}
-	switch {
-	case len(a) == 3 && a[0] == "go" && (a[1] == "build" || a[1] == "test" || a[1] == "vet") && a[2] == "./...":
-		return true
-	case len(a) == 4 && a[0] == "npm" && a[1] == "run" && a[3] == "--silent" && scriptName(a[2]):
-		return true
-	case len(a) == 2 && a[0] == "task" && scriptName(a[1]):
-		return true
-	}
-	return false
-}
-
-// scriptName accepts the standard check names only; Detect never produces another.
-func scriptName(s string) bool {
-	switch s {
-	case "build", "test", "lint", "typecheck":
-		return true
-	}
-	return false
+	return out
 }

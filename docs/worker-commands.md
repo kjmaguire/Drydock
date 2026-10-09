@@ -38,6 +38,9 @@ Optional.
 
 ## 4. What stays refused whatever you choose
 
+These are refused as commands the worker types. They are not out of reach: the allowed checks run the project's own code, which the
+worker can edit in the same turn (section 5).
+
 - Anything that changes git history or the branch: `git commit`, `push`, `checkout`, `reset`, `rebase`, `merge`, `stash`, `clean`, `config`.
   Drydock owns git; the worker only edits files.
 - Anything that installs or fetches code: `npm install`/`ci`, `go get`/`install`, `pip`, `npx <anything>`, `curl`, `wget`, `Invoke-WebRequest`.
@@ -57,6 +60,15 @@ Proposal:
    workers only, commands generated from the detected checks.
 2. Not Tier 2 for now.
 3. Tier 3 only if you want it.
+
+What the review of the built feature added (2026-10-09): because the worker can edit the code those commands run in the same turn
+(a `package.json` script, a Taskfile target, a test or a `TestMain`), and then run the allowed command, **with the switch on a worker
+can in practice run any program with your rights**, git, downloads and shells included. The exact-command rules only stop it typing
+other commands directly. The settings note and the agent's isolation panel say so. As built:
+- every worker turn gets the same fixed list of rules (the forms above, whatever was detected), so a `go.mod`, script or target the
+  worker creates during the turn is runnable too; its system prompt names the commands Drydock will run after the turn, found with
+  the same detection Verify uses, and says to type them exactly;
+- a project import switches it off, like automatic scheduling and the e2e and preview commands.
 
 Not verified: that Claude Code's exact-command rules match `npm run test --silent` the same way on Windows (`npm` is `npm.cmd`); that
 would be checked on the first Windows run before this is turned on there.

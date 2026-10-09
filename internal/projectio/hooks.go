@@ -208,8 +208,9 @@ func importAgent(r Row, im *ImportEnv) {
 	}
 }
 
-// importSetting switches off what starts work by itself: automatic scheduling and the e2e and preview commands (the
-// commands stay visible for the human to review).
+// importSetting switches off what starts work or runs commands by itself: automatic scheduling, the e2e and preview
+// commands (the commands stay visible for the human to review) and letting workers run the project's checks. Only a human
+// on this machine switches them on again.
 func importSetting(r Row, im *ImportEnv) {
 	var m map[string]any
 	if json.Unmarshal([]byte(str(r, "value")), &m) != nil {
@@ -217,6 +218,7 @@ func importSetting(r Row, im *ImportEnv) {
 		return
 	}
 	m["autoSchedule"] = false
+	m["workerChecks"] = false
 	for _, k := range []string{"e2e", "preview"} {
 		if sub, ok := m[k].(map[string]any); ok {
 			sub["enabled"] = false
