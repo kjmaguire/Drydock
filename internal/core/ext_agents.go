@@ -70,7 +70,7 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 		Dev: func(ctx context.Context, projectID string) pipeline.DevSettings {
 			return pipeline.LoadDevSettings(ctx, c.DB, projectID)
 		},
-		OnInconclusive: a.onInconclusive, Preview: a.previews.run, MaxLoops: 5}
+		OnInconclusive: a.onInconclusive, Preview: a.previews.run, MaxLoops: 5, PR: c.prSource}
 	if err := pipeline.RegisterTemplates(c.Engine, a.td); err != nil {
 		return nil, nil, err
 	}
@@ -409,8 +409,9 @@ func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTe
 	if err != nil {
 		return StartTemplateResult{}, err
 	}
+	workflowName := tpl.Workflow
 	if p.Mode == "pr_flow" {
-		return StartTemplateResult{}, errors.New("the templates end in a local merge; the pull request variant of the templates is not built yet. Use the project's default workflow, or set the project to local_merge")
+		workflowName += pipeline.PRSuffix // push, PR, CI and the merge through GitHub instead of a local merge
 	}
 	if t.RunID != "" {
 		if info, err := c.Engine.Status(ctx, workflow.RunID(t.RunID)); err == nil && !info.Status.Terminal() {
@@ -443,13 +444,13 @@ func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTe
 			}
 		}
 	}
-	id, err := c.Engine.Start(ctx, tpl.Workflow, pipeline.TemplateInput{TaskID: t.ID, Roles: res.Roles, Scans: req.Scans}, workflow.StartOptions{ProjectID: t.ProjectID, TaskID: t.ID})
+	id, err := c.Engine.Start(ctx, workflowName, pipeline.TemplateInput{TaskID: t.ID, Roles: res.Roles, Scans: req.Scans}, workflow.StartOptions{ProjectID: t.ProjectID, TaskID: t.ID})
 	if err != nil {
 		return StartTemplateResult{}, err
 	}
 	rid := string(id)
 	_, _ = c.Tasks.Patch(ctx, t.ID, tasks.Update{RunID: &rid})
-	return StartTemplateResult{RunID: id, Template: tpl.Name, Workflow: tpl.Workflow, Roles: res.Roles, Notes: res.Notes}, nil
+	return StartTemplateResult{RunID: id, Template: tpl.Name, Workflow: workflowName, Roles: res.Roles, Notes: res.Notes}, nil
 }
 
 // ---- plans ----

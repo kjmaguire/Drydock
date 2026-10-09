@@ -167,3 +167,19 @@ Every inbound string is cleaned before it is stored: invalid UTF-8, control char
 ### Tests
 
 `go test ./internal/integrations/... ` runs 35 tests against protocol fixtures: Linear, Notion and Sentry over real loopback HTTP through the gateway (the fixtures check the `Authorization` header, so the token reaching the server is asserted), Aikido as a real stdio subprocess whose key can only arrive through `AIKIDO_API_KEY`. They cover cursors and dedupe, resume after an interrupted sweep and after restart, ETag-style skipping, unsorted listings, full sweeps, rules (dry run, enable, rate limit across a 24 h window, risky items, CAS, human-only, CEL validation), imports for each kind, untrusted-content handling (an injection payload never appears outside the quote in the prompt text and changes no approval, outbox, rule or Linear state), outbound gating (unapproved, rejected, expired, tampered payload, tampered target/tool/op, borrowed approval, secrets in text, interrupted execution), failure messages and backoff, Test connection, and a scan of the SQLite file, WAL, body files, events, logs, views, errors and outbox for the token. `go test ./internal/core -run Integrations` drives the same flow through the UI methods and a restart.
+
+
+## As built: OAuth sign-in (2026-10-09)
+
+Linear, Notion and Sentry connect with a pasted token or with an OAuth sign-in to the vendor's hosted MCP server, the same
+server the sync reads through. `integration.oauthBegin {kind, baseUrl?}` keeps one MCP library server per vendor (`linauth`,
+`notauth`, `senauth`: the catalog URL or the self-hosted base URL, OAuth on) and starts the library's OAuth flow (authorization
+code with PKCE, dynamic client registration, loopback redirect; docs/mcp.md). Once signed in, `integration.connect` with
+`oauthRef: "oauth/mcplib/<id>"` stores that reference instead of a token (`auth_kind` oauth); the gateway resolves it to the
+sign-in's current access token at call time, refreshing it with the stored refresh token. Signing out in the Library leaves the
+connection without a credential (the connection test says to sign in again). Aikido has no hosted server and stays token-only.
+Tested against the OAuth protocol fixture (`internal/mcp/oauthfake`); no live vendor sign-in has been run, so whether each
+vendor's hosted server accepts this flow as-is is unverified.
+
+Room exports (room-protocol s8) are exposed too: `room.export {kind: minutes | adr_candidates | pr_description}`, `room.exports`,
+`room.exportGet`, `room.exportVerify`, `room.adrCandidates`; the room header has an Export menu with a Markdown download.

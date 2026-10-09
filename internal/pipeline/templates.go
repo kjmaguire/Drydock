@@ -99,7 +99,14 @@ type TemplateDeps struct {
 	Preview func(ctx context.Context, t tasks.Task, dev DevSettings) (checks.PreviewResult, error)
 	// MaxLoops bounds every loop edge (default 5).
 	MaxLoops int
+	// PR is the pull request host for the templates' pr_flow variants (their names end in PRSuffix). nil: only the local
+	// merge variants are registered.
+	PR PRSource
 }
+
+// PRSuffix names a template's pull request variant: after the review the branch is pushed and a PR opened, CI failures and
+// change requests go back to the worker, a human approves, and the merge goes through GitHub.
+const PRSuffix = "-pr"
 
 func (td TemplateDeps) loops() int {
 	if td.MaxLoops <= 0 {
@@ -124,7 +131,11 @@ func (td TemplateDeps) scans() *ScanRegistry {
 
 // Graphs returns every template graph (iterate-until-verified is built by IterateUntilVerified and registered by the core).
 func (td TemplateDeps) Graphs() []*workflow.Graph {
-	return []*workflow.Graph{td.FeatureGraph(), td.BugGraph(), td.SecurityGraph(), td.SaaSGraph()}
+	gs := []*workflow.Graph{td.FeatureGraph(), td.BugGraph(), td.SecurityGraph(), td.SaaSGraph()}
+	if td.PR != nil {
+		gs = append(gs, td.featureGraph(true), td.bugGraph(true), td.securityGraph(true), td.saasGraph(true))
+	}
+	return gs
 }
 
 // RegisterTemplates adds the template graphs to a running engine. It uses RegisterNew, which refuses to replace a graph
@@ -142,9 +153,21 @@ func RegisterTemplates(e *workflow.Engine, td TemplateDeps) error {
 type graphBuilder struct {
 	td TemplateDeps
 	g  *workflow.Graph
+	pr bool
+}
+
+func graphName(name string, pr bool) string {
+	if pr {
+		return name + PRSuffix
+	}
+	return name
 }
 
 func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
+	if b.pr {
+		b.prTail(extraBeforeApprove)
+		return
+	}
 	td, g, n := b.td, b.g, b.td.loops()
 	g.Add(
 		workflow.AgentTask("work", td.implement()).With("agent", "work"),
@@ -183,6 +206,61 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 		EdgeWhen("limit", "work", "approved").
 		EdgeWhen("limit", "work", "answered").
 		EdgeWhen("limit", "abort", "rejected")
+}
+
+// prTail is the pull request variant of the tail: after the review the branch is pushed and a PR opened (push_pr), CI
+// runs (ci: a failure goes back to the worker), the PR's review comments are read (pr_feedback: a change request goes back
+// to the worker), then the template's extra steps, then the human's approval, and the merge goes through GitHub (merge).
+// The same nodes as the default workflow's pr_flow variant (IterateUntilVerifiedPR).
+func (b graphBuilder) prTail(extraBeforeApprove []workflow.NodeID) {
+	td, g, n := b.td, b.g, b.td.loops()
+	g.Add(
+		workflow.AgentTask("work", td.implement()).With("agent", "work"),
+		workflow.Route("guard", Guard(td.Deps, td.projectFn())),
+		workflow.Check("verify", td.verifyTDD()),
+		workflow.Route("finalize", Finalize(td.Deps)),
+		workflow.AgentTask("review", Review(td.Deps)).With("agent", "review"),
+		workflow.Route("push_pr", PushPR(td.Deps, td.PR)),
+		workflow.Check("ci", CI(td.Deps, td.PR)),
+		workflow.Route("pr_feedback", PRFeedback(td.Deps, td.PR)),
+		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
+		workflow.Route("changes", Changes(td.Deps)),
+		workflow.Route("merge", MergePR(td.Deps, td.PR)),
+		workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
+		workflow.Route("abort", td.abort()),
+	)
+	next := workflow.NodeID("approve")
+	if len(extraBeforeApprove) > 0 {
+		next = extraBeforeApprove[0]
+	}
+	g.Edge("work", "guard").
+		Edge("guard", "verify").
+		EdgeWhen("verify", "finalize", "pass").
+		Loop("verify", "work", "fail", n, "limit").
+		Edge("finalize", "review")
+	b.prSteps("review", next)
+	g.EdgeWhen("approve", "merge", "approved").
+		EdgeWhen("approve", "changes", "rejected").
+		Loop("changes", "work", "", n, "limit").
+		Loop("merge", "merge", "answered", 3, "limit").
+		EdgeWhen("limit", "work", "approved").
+		EdgeWhen("limit", "work", "answered").
+		EdgeWhen("limit", "abort", "rejected")
+}
+
+// prSteps wires review -> push_pr -> ci -> pr_feedback -> next, with the loops back to the worker.
+func (b graphBuilder) prSteps(review, next workflow.NodeID) {
+	g, n := b.g, b.td.loops()
+	g.EdgeWhen(review, "push_pr", "ship").
+		Loop(review, "work", "revise", n, "limit").
+		EdgeWhen(review, "limit", "limit").
+		Edge("push_pr", "ci").
+		EdgeWhen("ci", "pr_feedback", "pass").
+		Loop("ci", "work", "fail", n, "limit").
+		EdgeWhen("ci", "limit", "limit").
+		EdgeWhen("pr_feedback", next, "clean").
+		Loop("pr_feedback", "work", "revise", n, "limit").
+		EdgeWhen("pr_feedback", "limit", "limit")
 }
 
 func (td TemplateDeps) projectFn() func(ctx context.Context, projectID string) (ProjectInfo, error) {
@@ -236,9 +314,11 @@ func (b graphBuilder) testFirst(id workflow.NodeID, bug bool) {
 }
 
 // FeatureGraph is the Feature template: the spec gate, tests first, implementation, review, human approval.
-func (td TemplateDeps) FeatureGraph() *workflow.Graph {
-	g := workflow.NewGraph(WorkflowFeature).Add(workflow.Route("prepare", Prepare(td.Deps)))
-	b := graphBuilder{td, g}
+func (td TemplateDeps) FeatureGraph() *workflow.Graph { return td.featureGraph(false) }
+
+func (td TemplateDeps) featureGraph(pr bool) *workflow.Graph {
+	g := workflow.NewGraph(graphName(WorkflowFeature, pr)).Add(workflow.Route("prepare", Prepare(td.Deps)))
+	b := graphBuilder{td, g, pr}
 	b.specGate("tests")
 	b.testFirst("tests", false)
 	b.tail(nil)
@@ -246,9 +326,11 @@ func (td TemplateDeps) FeatureGraph() *workflow.Graph {
 }
 
 // BugGraph is the Bug template: reproduce with a failing test first, then fix.
-func (td TemplateDeps) BugGraph() *workflow.Graph {
-	g := workflow.NewGraph(WorkflowBug).Add(workflow.Route("prepare", Prepare(td.Deps)))
-	b := graphBuilder{td, g}
+func (td TemplateDeps) BugGraph() *workflow.Graph { return td.bugGraph(false) }
+
+func (td TemplateDeps) bugGraph(pr bool) *workflow.Graph {
+	g := workflow.NewGraph(graphName(WorkflowBug, pr)).Add(workflow.Route("prepare", Prepare(td.Deps)))
+	b := graphBuilder{td, g, pr}
 	b.testFirst("repro", true)
 	g.Edge("prepare", "repro")
 	b.tail(nil)
@@ -257,9 +339,11 @@ func (td TemplateDeps) BugGraph() *workflow.Graph {
 
 // SaaSGraph is the Full Stack SaaS template: Feature plus a design step, e2e inside verify, a security scan and a preview
 // before the human approves.
-func (td TemplateDeps) SaaSGraph() *workflow.Graph {
-	g := workflow.NewGraph(WorkflowSaaS).Add(workflow.Route("prepare", Prepare(td.Deps)))
-	b := graphBuilder{td, g}
+func (td TemplateDeps) SaaSGraph() *workflow.Graph { return td.saasGraph(false) }
+
+func (td TemplateDeps) saasGraph(pr bool) *workflow.Graph {
+	g := workflow.NewGraph(graphName(WorkflowSaaS, pr)).Add(workflow.Route("prepare", Prepare(td.Deps)))
+	b := graphBuilder{td, g, pr}
 	g.Add(workflow.AgentTask("design", td.design()).With("agent", RoleArchitect))
 	b.specGate("design")
 	g.Edge("design", "tests")
@@ -276,9 +360,11 @@ func (td TemplateDeps) SaaSGraph() *workflow.Graph {
 }
 
 // SecurityGraph is the Security template: scan, fix, verify, re-scan, security review, human approval.
-func (td TemplateDeps) SecurityGraph() *workflow.Graph {
+func (td TemplateDeps) SecurityGraph() *workflow.Graph { return td.securityGraph(false) }
+
+func (td TemplateDeps) securityGraph(pr bool) *workflow.Graph {
 	n := td.loops()
-	g := workflow.NewGraph(WorkflowSecurity).Add(
+	g := workflow.NewGraph(graphName(WorkflowSecurity, pr)).Add(
 		workflow.Route("prepare", Prepare(td.Deps)),
 		workflow.Check("scan", td.scanNode("scan", true)),
 		workflow.AgentTask("work", td.implement()).With("agent", "work"),
@@ -286,11 +372,9 @@ func (td TemplateDeps) SecurityGraph() *workflow.Graph {
 		workflow.Check("verify", Verify(td.Deps)),
 		workflow.Check("gate", td.scanNode("gate", false)),
 		workflow.Route("finalize", Finalize(td.Deps)),
-		workflow.Route("sync", Sync(td.Deps, td.projectFn())),
 		workflow.AgentTask("sreview", td.securityReview()).With("agent", RoleSecurity),
 		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
 		workflow.Route("changes", Changes(td.Deps)),
-		workflow.Route("merge", Merge(td.Deps, td.projectFn())),
 		workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
 		workflow.Route("abort", td.abort()),
 	)
@@ -301,17 +385,32 @@ func (td TemplateDeps) SecurityGraph() *workflow.Graph {
 		EdgeWhen("verify", "gate", "pass").
 		Loop("verify", "work", "fail", n, "limit").
 		EdgeWhen("gate", "finalize", "pass").
-		Loop("gate", "work", "fail", n, "limit").
-		Edge("finalize", "sync").
-		EdgeWhen("sync", "sreview", RouteCurrent).
-		EdgeWhen("sync", "merge", RouteApproved).
-		Loop("sync", "verify", RouteChanged, n, "limit").
-		Loop("sync", "work", RouteConflict, n, "limit").
-		Loop("merge", "sync", RouteStale, n, "limit").
-		EdgeWhen("sreview", "approve", "ship").
-		Loop("sreview", "work", "revise", n, "limit").
-		EdgeWhen("sreview", "limit", "limit").
-		EdgeWhen("approve", "merge", "approved").
+		Loop("gate", "work", "fail", n, "limit")
+	if pr {
+		g.Add(
+			workflow.Route("push_pr", PushPR(td.Deps, td.PR)),
+			workflow.Check("ci", CI(td.Deps, td.PR)),
+			workflow.Route("pr_feedback", PRFeedback(td.Deps, td.PR)),
+			workflow.Route("merge", MergePR(td.Deps, td.PR)),
+		)
+		g.Edge("finalize", "sreview")
+		graphBuilder{td, g, true}.prSteps("sreview", "approve")
+	} else {
+		g.Add(
+			workflow.Route("sync", Sync(td.Deps, td.projectFn())),
+			workflow.Route("merge", Merge(td.Deps, td.projectFn())),
+		)
+		g.Edge("finalize", "sync").
+			EdgeWhen("sync", "sreview", RouteCurrent).
+			EdgeWhen("sync", "merge", RouteApproved).
+			Loop("sync", "verify", RouteChanged, n, "limit").
+			Loop("sync", "work", RouteConflict, n, "limit").
+			Loop("merge", "sync", RouteStale, n, "limit").
+			EdgeWhen("sreview", "approve", "ship").
+			Loop("sreview", "work", "revise", n, "limit").
+			EdgeWhen("sreview", "limit", "limit")
+	}
+	g.EdgeWhen("approve", "merge", "approved").
 		EdgeWhen("approve", "changes", "rejected").
 		Loop("changes", "work", "", n, "limit").
 		Loop("merge", "merge", "answered", 3, "limit").

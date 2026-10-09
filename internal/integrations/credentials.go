@@ -15,15 +15,27 @@ import (
 type Credentials struct {
 	Store *Store
 	Vault providers.SecretStore
+	// OAuth resolves an OAuthRefPrefix reference to a current access token (nil: OAuth references do not resolve).
+	OAuth func(ctx context.Context, ref string) (string, error)
+}
+
+func (c Credentials) resolve(ctx context.Context, ref string) (string, error) {
+	if strings.HasPrefix(ref, OAuthRefPrefix) {
+		if c.OAuth == nil {
+			return "", fmt.Errorf("%w: OAuth is not available", ErrNoCredential)
+		}
+		return c.OAuth(ctx, ref)
+	}
+	if c.Vault == nil {
+		return "", ErrCredentialsLocked
+	}
+	return c.Vault.Get(ctx, ref)
 }
 
 // Credential implements mcp.CredentialSource.
 func (c Credentials) Credential(ctx context.Context, serverID, ref string) (string, error) {
-	if c.Vault == nil {
-		return "", ErrCredentialsLocked
-	}
-	if strings.HasPrefix(ref, "integrations/") {
-		return c.Vault.Get(ctx, ref)
+	if strings.HasPrefix(ref, "integrations/") || strings.HasPrefix(ref, OAuthRefPrefix) {
+		return c.resolve(ctx, ref)
 	}
 	if kind, ok := strings.CutPrefix(ref, "mcp/"); ok {
 		if kind == "sentryx" {
@@ -35,7 +47,7 @@ func (c Credentials) Credential(ctx context.Context, serverID, ref string) (stri
 		}
 		for _, cn := range conns {
 			if cn.Kind == kind && cn.Enabled && cn.CredentialRef != "" {
-				if tok, err := c.Vault.Get(ctx, cn.CredentialRef); err == nil {
+				if tok, err := c.resolve(ctx, cn.CredentialRef); err == nil {
 					return tok, nil
 				}
 			}

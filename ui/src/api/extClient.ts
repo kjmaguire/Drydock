@@ -174,6 +174,7 @@ export interface ExtClient {
   // integrations
   integrationList(): Promise<IntegrationView[]>;
   integrationConnect(req: ConnectIntegrationReq): Promise<{ connection: IntegrationView; test?: IntegrationTestReport }>;
+  integrationOAuthBegin(kind: string, baseUrl?: string): Promise<{ libraryId: string; oauthRef: string; status: { state: string; url?: string; error?: string; signedIn?: boolean } }>;
   integrationDisconnect(id: string): Promise<void>;
   integrationTest(id: string): Promise<IntegrationTestReport>;
   integrationSync(id: string, full?: boolean): Promise<IntegrationSyncResult>;
@@ -316,6 +317,7 @@ export function createExtClient(t: Transport): ExtClient {
 
     integrationList: async () => arr(await call<IntegrationView[] | null>('integration.list')),
     integrationConnect: (req) => call('integration.connect', req),
+    integrationOAuthBegin: (kind, baseUrl = '') => call('integration.oauthBegin', { kind, baseUrl }),
     integrationDisconnect: (id) => voidCall('integration.disconnect', { id }),
     integrationTest: (id) => call('integration.test', { id }),
     integrationSync: (id, full = false) => call('integration.sync', { id, full }),

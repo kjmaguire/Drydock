@@ -430,3 +430,47 @@ func TestTemplateCatalogAndRoleResolution(t *testing.T) {
 		t.Fatalf("%v %+v", err, res)
 	}
 }
+
+// The Bug template's pull request variant: reproduce and fix as before, then the branch is pushed and a PR opened, CI runs
+// (the first run fails and goes back to the worker with no human), the human approves, and the merge goes through GitHub.
+func TestBugTemplatePullRequestVariant(t *testing.T) {
+	sc := map[string]fakeagent.Script{
+		aQA: {Default: []fakeagent.Step{writeStep("double_test.go", reproTest), say("reproduced")}},
+		aWork: {
+			Rules:   []fakeagent.Rule{{Match: "CI job", Steps: []fakeagent.Step{writeStep("calc.go", fixedDouble+"\n// Double has a doc comment now.\n"), say("answered CI")}}},
+			Default: []fakeagent.Step{writeStep("calc.go", fixedDouble), say("fixed")},
+		},
+		aReview: shipReviewer(),
+	}
+	f := &githubFixture{failFirst: true}
+	e := newTpl(t, sc, tplOpts{files: map[string]string{"calc.go": buggyDouble}, title: "Double is off by one", desc: "Double(2) returns 5 instead of 4.", pr: f})
+	id := e.start(pipeline.WorkflowBug+pipeline.PRSuffix, map[string]string{pipeline.RoleTests: aQA})
+	e.await(id, workflow.StatusWaitingHuman)
+	if p := e.pending(id); p.NodeID != "approve" {
+		t.Fatalf("pending %+v", p)
+	}
+	f.mu.Lock()
+	opened := f.opened
+	f.mu.Unlock()
+	if opened != 1 {
+		t.Fatalf("PR opened %d times", opened)
+	}
+	ev := e.evidence()
+	if len(ev["red_test"]) != 1 || len(ev["ci"]) != 2 || len(ev["pr"]) != 1 {
+		t.Fatalf("evidence: red %d ci %d pr %d", len(ev["red_test"]), len(ev["ci"]), len(ev["pr"]))
+	}
+	if wp := e.prompts(aWork); len(wp) != 2 || !strings.Contains(wp[1], "CI") {
+		t.Fatalf("the CI failure must go back to the worker: %q", wp)
+	}
+	e.respond(id, "approved", "human:kyle", `{}`)
+	e.await(id, workflow.StatusCompleted)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.merged {
+		t.Fatal("the merge must go through GitHub")
+	}
+	// nothing was merged locally: main is unchanged
+	if m, _ := os.ReadFile(filepath.Join(e.repo.Root, "calc.go")); strings.Contains(string(m), "return a + a }") {
+		t.Fatal("a pull request variant must not merge locally")
+	}
+}

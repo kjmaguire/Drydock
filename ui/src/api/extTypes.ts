@@ -697,6 +697,8 @@ export interface ConnectIntegrationReq {
   config?: Record<string, string>;
   pollIntervalS?: number;
   skipTest?: boolean;
+  /** Connect with an OAuth sign-in (integration.oauthBegin) instead of a token: "oauth/mcplib/<library id>". */
+  oauthRef?: string;
 }
 export interface IntegrationTestStep {
   id: string;

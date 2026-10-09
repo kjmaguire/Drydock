@@ -892,18 +892,22 @@ func TestStartTemplateRefusalsAreClearAndOverridesWork(t *testing.T) {
 		t.Fatalf("%+v", res)
 	}
 	a.waitPending(task.ID, "specreview")
-	// the pull request variant of the templates is not built, and the refusal says so
-	var t2 tasks.Task
+	// a project in pull request mode runs the template's pull request variant
+	var t2, t3 tasks.Task
 	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Another", Description: "x"}, &t2)
 	a.call("task.assign", map[string]string{"id": t2.ID, "assignee": dev.ID, "reviewer": rev.ID}, &t2)
 	a.call("project.update", map[string]any{"id": p.ID, "mode": "pr_flow"}, nil)
-	if err := call(map[string]any{"taskId": t2.ID, "template": "bug"}); err == nil || !strings.Contains(err.Error(), "pull request variant") {
-		t.Fatalf("pr_flow: %v", err)
+	var pr core.StartTemplateResult
+	a.call("task.startTemplate", map[string]any{"taskId": t2.ID, "template": "bug"}, &pr)
+	if pr.Workflow != pipeline.WorkflowBug+pipeline.PRSuffix || pr.RunID == "" {
+		t.Fatalf("pr_flow: %+v", pr)
 	}
 	// the default template still goes through the base workflow selection
 	a.call("project.update", map[string]any{"id": p.ID, "mode": "local_merge"}, nil)
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Third", Description: "x"}, &t3)
+	a.call("task.assign", map[string]string{"id": t3.ID, "assignee": dev.ID, "reviewer": rev.ID}, &t3)
 	var rr core.StartTemplateResult
-	a.call("task.startTemplate", map[string]any{"taskId": t2.ID, "template": "iterate-until-verified"}, &rr)
+	a.call("task.startTemplate", map[string]any{"taskId": t3.ID, "template": "iterate-until-verified"}, &rr)
 	if rr.Workflow != pipeline.WorkflowIUV || rr.RunID == "" {
 		t.Fatalf("%+v", rr)
 	}

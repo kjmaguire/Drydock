@@ -9,6 +9,7 @@ import { Badge, ErrorNote } from './common';
 import { RoomAgentsPanel } from './RoomAgents';
 import { Composer } from './Composer';
 import { Attachments } from './Attachments';
+import { RoomExports } from './RoomExports';
 
 const MARKERS = new Set(['DECISION', 'TODO', 'STATUS', 'RESULT']);
 
@@ -135,6 +136,7 @@ export function Conversation({ room, agents }: { room: Room; agents: readonly Ag
         {room.kind === 'task' && room.taskId ? <a href={`#/task/${encodeURIComponent(room.taskId)}`}>Task details</a> : null}
         {room.archived ? <Badge tone="muted">archived</Badge> : null}
         {room.topic ? <span className="muted">{room.topic}</span> : null}
+        <RoomExports room={room} />
         {members.data && members.data.length > 0 ? (
           <details className="members">
             <summary>Members ({members.data.length})</summary>

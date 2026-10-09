@@ -113,7 +113,18 @@ export interface RunExplanation {
   eventsTruncated?: boolean;
 }
 
+export interface RoomExportView {
+  id: string;
+  roomId: string;
+  kind: string;
+  format: string;
+  content: string;
+  sha256: string;
+  createdAt: string;
+}
+
 export interface RunClient {
+  roomExport(roomId: string, kind: 'minutes' | 'adr_candidates' | 'pr_description', title?: string): Promise<RoomExportView>;
   runExplain(taskId: string, runId?: string): Promise<RunExplanation>;
   runPrompt(taskId: string, runId: string, nodeId: string, step: number, attempt: number): Promise<string>;
 }
@@ -122,6 +133,7 @@ const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
 export function createRunClient(t: Transport): RunClient {
   return {
+    roomExport: (roomId, kind, title = '') => t.call('room.export', { roomId, kind, title }),
     runExplain: async (taskId, runId = '') => {
       const r = await t.call<RunExplanation>('run.explain', { taskId, runId });
       return {

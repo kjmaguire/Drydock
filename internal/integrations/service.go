@@ -47,7 +47,9 @@ type Options struct {
 	// BodyDir is <app data>/integrations.
 	BodyDir string
 	// RegisterSecret/UnregisterSecret teach the app's scanner the exact token values so they are redacted everywhere.
-	RegisterSecret   func(name, value string)
+	RegisterSecret func(name, value string)
+	// OAuthToken resolves an OAuthRefPrefix credential reference to a current access token (core: the MCP library sign-in).
+	OAuthToken       func(ctx context.Context, ref string) (string, error)
 	UnregisterSecret func(name string)
 	// OnCredentialChange tells the MCP gateway to drop a pooled upstream so the next call uses the new credential.
 	OnCredentialChange func(serverID string)
@@ -185,7 +187,15 @@ type ConnectReq struct {
 	BaseURL       string            `json:"baseUrl"`
 	Config        map[string]string `json:"config"`
 	PollIntervalS int               `json:"pollIntervalS"`
+	// OAuthRef connects with an OAuth sign-in instead of a pasted token: "oauth/mcplib/<library server id>", the MCP library
+	// server the human signed in to (the vendor's hosted MCP server). Drydock keeps and refreshes those tokens there.
+	OAuthRef string `json:"oauthRef"`
 }
+
+// OAuthRefPrefix marks a credential reference that resolves through an OAuth sign-in (Options.OAuthToken).
+const OAuthRefPrefix = "oauth/"
+
+var oauthRefRe = regexp.MustCompile(`^oauth/mcplib/[A-Za-z0-9_.-]{1,80}$`)
 
 var (
 	tokenRe = regexp.MustCompile(`^[\x21-\x7E]{8,}$`) // printable ASCII, no spaces or newlines: a token cannot inject a header
@@ -248,8 +258,25 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 	if r.Token != "" && (len(r.Token) > 4096 || !tokenRe.MatchString(r.Token)) {
 		return ConnectionView{}, errf(ErrBadRequest, "the token must be 8 to 4096 printable characters without spaces or line breaks")
 	}
-	if existing == nil && r.Token == "" {
-		return ConnectionView{}, errf(ErrBadRequest, "paste the %s API key or access token", vendor(r.Kind))
+	if r.OAuthRef != "" {
+		if !oauthRefRe.MatchString(r.OAuthRef) {
+			return ConnectionView{}, errf(ErrBadRequest, "not an OAuth sign-in reference")
+		}
+		if r.Token != "" {
+			return ConnectionView{}, errf(ErrBadRequest, "connect with a token or with an OAuth sign-in, not both")
+		}
+		if r.Kind == KindAikido {
+			return ConnectionView{}, errf(ErrBadRequest, "Aikido has no hosted server to sign in to; paste its API key")
+		}
+		if s.o.OAuthToken == nil {
+			return ConnectionView{}, errf(ErrBadRequest, "OAuth sign-in is not available in this build")
+		}
+		if _, err := s.o.OAuthToken(ctx, r.OAuthRef); err != nil {
+			return ConnectionView{}, errf(ErrBadRequest, "sign in first: %v", err)
+		}
+	}
+	if existing == nil && r.Token == "" && r.OAuthRef == "" {
+		return ConnectionView{}, errf(ErrBadRequest, "paste the %s API key or access token, or sign in with OAuth", vendor(r.Kind))
 	}
 	if r.ProjectID != "" && s.o.ProjectExists != nil {
 		if err := s.o.ProjectExists(ctx, r.ProjectID); err != nil {
@@ -267,10 +294,19 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 		return ConnectionView{}, errf(ErrBadRequest, "the name is too long")
 	}
 	c := Connection{Kind: r.Kind, Name: name, ProjectID: r.ProjectID, AuthKind: "api_key", BaseURL: r.BaseURL, Config: cfg, PollIntervalS: r.PollIntervalS, Enabled: true, Status: StatusUntested}
+	if r.OAuthRef != "" {
+		c.AuthKind, c.CredentialRef = "oauth", r.OAuthRef
+	}
 	if existing != nil {
 		c = *existing
 		c.Name, c.ProjectID, c.BaseURL, c.Config, c.PollIntervalS = name, r.ProjectID, r.BaseURL, cfg, r.PollIntervalS
 		c.Status, c.StatusDetail, c.Enabled = StatusUntested, "", true
+		switch {
+		case r.OAuthRef != "":
+			c.AuthKind, c.CredentialRef = "oauth", r.OAuthRef
+		case r.Token != "" && strings.HasPrefix(c.CredentialRef, OAuthRefPrefix):
+			c.AuthKind, c.CredentialRef = "api_key", "integrations/"+c.ID+"/token" // back from OAuth to a pasted token
+		}
 	}
 	// validate the server spec (URL scheme, argv, command) before anything is stored
 	if cat, err := mcp.LoadBuiltin(); err == nil {
@@ -290,10 +326,12 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 		if err != nil {
 			return ConnectionView{}, err
 		}
-		saved.CredentialRef = "integrations/" + saved.ID + "/token"
-		saved, err = s.st.UpdateConnection(ctx, saved, saved.Version)
-		if err != nil {
-			return ConnectionView{}, err
+		if saved.CredentialRef == "" {
+			saved.CredentialRef = "integrations/" + saved.ID + "/token"
+			saved, err = s.st.UpdateConnection(ctx, saved, saved.Version)
+			if err != nil {
+				return ConnectionView{}, err
+			}
 		}
 	} else {
 		if saved, err = s.st.UpdateConnection(ctx, c, existing.Version); err != nil {
@@ -332,7 +370,7 @@ func (s *Service) Disconnect(ctx context.Context, by, id string) error {
 	if err != nil {
 		return err
 	}
-	if s.o.Vault != nil && c.CredentialRef != "" {
+	if s.o.Vault != nil && c.CredentialRef != "" && !strings.HasPrefix(c.CredentialRef, OAuthRefPrefix) {
 		if err := s.o.Vault.Delete(ctx, c.CredentialRef); err != nil {
 			return fmt.Errorf("integrations: could not remove the token from the credential store: %w", err)
 		}
@@ -378,10 +416,7 @@ func (s *Service) Get(ctx context.Context, id string) (ConnectionView, error) {
 
 func (s *Service) view(ctx context.Context, c Connection) (ConnectionView, error) {
 	v := ConnectionView{Connection: c}
-	if s.o.Vault != nil && c.CredentialRef != "" {
-		_, err := s.o.Vault.Get(ctx, c.CredentialRef)
-		v.HasCredential = err == nil
-	}
+	v.HasCredential = s.hasCredential(ctx, c)
 	cur, err := s.st.GetCursor(ctx, c.ID, defaultScope)
 	if err != nil {
 		return v, err
@@ -447,4 +482,23 @@ func validHTTPURL(raw string) string {
 		return ""
 	}
 	return raw
+}
+
+// hasCredential reports whether the connection's token can be read now: from the vault, or from its OAuth sign-in.
+func (s *Service) hasCredential(ctx context.Context, c Connection) bool {
+	if c.CredentialRef == "" {
+		return false
+	}
+	if strings.HasPrefix(c.CredentialRef, OAuthRefPrefix) {
+		if s.o.OAuthToken == nil {
+			return false
+		}
+		_, err := s.o.OAuthToken(ctx, c.CredentialRef)
+		return err == nil
+	}
+	if s.o.Vault == nil {
+		return false
+	}
+	_, err := s.o.Vault.Get(ctx, c.CredentialRef)
+	return err == nil
 }

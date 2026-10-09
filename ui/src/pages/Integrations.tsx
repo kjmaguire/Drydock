@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ExternalItem, ExternalItemDetail, IntegrationRule, IntegrationTestReport, IntegrationView, NotionPageText, Outbox } from '../api/extTypes';
 import type { Project } from '../api/types';
 import { Markdown, safeHref } from '../lib/Markdown';
@@ -310,14 +310,30 @@ function ConnectForm({ projects, onConnected }: { projects: Project[]; onConnect
   const [cfg, setCfg] = useState<Record<string, string>>({});
   const [baseUrl, setBaseUrl] = useState('');
   const [result, setResult] = useState<IntegrationTestReport | undefined>();
+  const [oauth, setOAuth] = useState<{ ref: string; url?: string; signedIn: boolean } | undefined>();
   const spec = KINDS.find((k) => k.kind === kind)!;
+  const canOAuth = kind !== 'aikido';
+  // while a sign-in is open, ask the core how it went
+  useEffect(() => {
+    if (!oauth || oauth.signedIn) return;
+    const id = oauth.ref.replace('oauth/mcplib/', '');
+    const timer = setInterval(async () => {
+      try {
+        const st = await client.mcpOAuthStatus(id);
+        if (st.signedIn) setOAuth((o) => (o ? { ...o, signedIn: true } : o));
+      } catch {
+        /* the next poll tries again */
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [client, oauth]);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     // The token lives only in the uncontrolled input: read once and cleared before the request leaves.
     const token = tokenRef.current?.value ?? '';
     if (tokenRef.current) tokenRef.current.value = '';
     const r = await act.run('connect', () =>
-      client.integrationConnect({ kind, name: name.trim() || spec.label, projectId: project, token: token || undefined, baseUrl: baseUrl.trim() || undefined, config: Object.fromEntries(Object.entries(cfg).filter(([, v]) => v.trim())) }),
+      client.integrationConnect({ kind, name: name.trim() || spec.label, projectId: project, token: oauth?.signedIn ? undefined : token || undefined, oauthRef: oauth?.signedIn ? oauth.ref : undefined, baseUrl: baseUrl.trim() || undefined, config: Object.fromEntries(Object.entries(cfg).filter(([, v]) => v.trim())) }),
     );
     if (r) {
       setResult(r.test);
@@ -344,10 +360,34 @@ function ConnectForm({ projects, onConnected }: { projects: Project[]; onConnect
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </label>
-      <label>
-        Access token (stored in the credential store, never shown again)
-        <input ref={tokenRef} type="password" autoComplete="new-password" spellCheck={false} name="integration-token" aria-label="Access token" />
-      </label>
+      {oauth?.signedIn ? (
+        <p data-testid="integration-oauth" className="span-all">
+          Signed in to {spec.label} with OAuth. Drydock keeps and refreshes the sign-in; no token to paste.
+        </p>
+      ) : (
+        <label>
+          Access token (stored in the credential store, never shown again)
+          <input ref={tokenRef} type="password" autoComplete="new-password" spellCheck={false} name="integration-token" aria-label="Access token" />
+        </label>
+      )}
+      {canOAuth && !oauth?.signedIn ? (
+        <p className="span-all">
+          <button
+            type="button"
+            onClick={async () => {
+              const r = await act.run('oauth', () => client.integrationOAuthBegin(kind, baseUrl.trim() || undefined));
+              if (r) setOAuth({ ref: r.oauthRef, url: r.status.url, signedIn: !!r.status.signedIn });
+            }}
+          >
+            Sign in with OAuth instead
+          </button>{' '}
+          {oauth?.url && safeHref(oauth.url) ? (
+            <a href={safeHref(oauth.url)} target="_blank" rel="noreferrer noopener">
+              Open the {spec.label} sign-in page
+            </a>
+          ) : null}
+        </p>
+      ) : null}
       {spec.config.map((f) => (
         <label key={f.key}>
           {f.label}

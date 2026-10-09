@@ -53,10 +53,10 @@ func (s *Service) Test(ctx context.Context, id string) (TestReport, error) {
 		return rep, errf(ErrBadRequest, "unknown integration %q", conn.Kind)
 	}
 	// 1. a token is stored
-	hasToken := false
-	if s.o.Vault != nil && conn.CredentialRef != "" {
-		_, gerr := s.o.Vault.Get(ctx, conn.CredentialRef)
-		hasToken = gerr == nil
+	hasToken := s.hasCredential(ctx, conn)
+	if !hasToken && strings.HasPrefix(conn.CredentialRef, OAuthRefPrefix) {
+		step("token", "Signed in", false, "The OAuth sign-in has no usable token. Sign in to "+vendor(conn.Kind)+" again.")
+		return finish(StatusUnauthenticated, "The "+vendor(conn.Kind)+" sign-in has expired or was removed.")
 	}
 	if !hasToken {
 		step("token", "Token stored", false, "No token is stored. Paste the "+vendor(conn.Kind)+" API key or access token.")

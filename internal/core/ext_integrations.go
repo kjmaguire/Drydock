@@ -2,7 +2,10 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,7 +50,7 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	// The gateway is used here as a client only (no listener): the app's own calls to the vendors' MCP servers share the pooled
 	// upstreams, credential handling and circuit breaker that agent runs use.
 	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner),
-		Credentials: integrations.Credentials{Store: store, Vault: vault}})
+		Credentials: integrations.Credentials{Store: store, Vault: vault, OAuth: c.integrationOAuthToken}})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -57,6 +60,7 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		DB: c.DB, Bus: c.Bus, Vault: vault, Callers: integrations.GatewayFactory{Gateway: gw}, Scanner: c.Scanner, Approvals: approvals,
 		BodyDir: filepath.Join(c.cfg.DataDir, "integrations"), Logf: c.logf,
 		RegisterSecret:     func(name, v string) { _ = c.Scanner.RegisterSecret(name, v) },
+		OAuthToken:         c.integrationOAuthToken,
 		UnregisterSecret:   c.Scanner.UnregisterSecret,
 		OnCredentialChange: gw.StopUpstream,
 		ProjectExists:      func(ctx context.Context, id string) error { _, err := c.GetProject(ctx, id); return err },
@@ -109,6 +113,12 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	human := func() string { return c.Human() }
 	m := map[string]Method{
 		"integration.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.List(ctx) }),
+		"integration.oauthBegin": bind(func(ctx context.Context, p struct {
+			Kind    string `json:"kind"`
+			BaseURL string `json:"baseUrl"`
+		}) (any, error) {
+			return c.integrationOAuthBegin(ctx, p.Kind, p.BaseURL)
+		}),
 		"integration.connect": bind(func(ctx context.Context, p struct {
 			integrations.ConnectReq
 			SkipTest bool `json:"skipTest"`
@@ -198,4 +208,66 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		}),
 	}
 	return m, closeFn, nil
+}
+
+// OAuth for integrations. Linear, Notion and Sentry run hosted MCP servers with OAuth (dynamic client registration), the
+// same servers the integrations sync through. Signing in to an integration is therefore an MCP library sign-in: Drydock keeps
+// one library server per vendor ("linauth", "notauth", "senauth": the catalog's URL, OAuth on), runs the library's OAuth flow for it
+// (ext_mcpoauth.go), and the connection's credential reference ("oauth/mcplib/<id>") resolves to that sign-in's access
+// token, refreshed when it expires. The tokens stay in the credential vault under the library server.
+
+// IntegrationOAuthStart is what the page needs to finish a sign-in.
+type IntegrationOAuthStart struct {
+	LibraryID string      `json:"libraryId"`
+	OAuthRef  string      `json:"oauthRef"`
+	Status    OAuthStatus `json:"status"`
+}
+
+// baseURL replaces the catalog's URL (a self-hosted Sentry), as a connection's BaseURL does.
+func (c *Core) integrationOAuthBegin(ctx context.Context, kind, baseURL string) (IntegrationOAuthStart, error) {
+	var url string
+	switch kind {
+	case integrations.KindLinear, integrations.KindNotion, integrations.KindSentry:
+		cat, err := mcp.LoadBuiltin()
+		if err != nil {
+			return IntegrationOAuthStart{}, err
+		}
+		spec, ok := cat.Get(kind)
+		if !ok || spec.URL == "" {
+			return IntegrationOAuthStart{}, fmt.Errorf("the catalog has no hosted server for %s", kind)
+		}
+		url = spec.URL
+		if strings.TrimSpace(baseURL) != "" {
+			url = strings.TrimSpace(baseURL)
+		}
+	default:
+		return IntegrationOAuthStart{}, fmt.Errorf("%s has no hosted server to sign in to; paste its API key", kind)
+	}
+	v, ok := mcpServerServices.Load(c)
+	if !ok {
+		return IntegrationOAuthStart{}, errors.New("the MCP library is not running")
+	}
+	s := v.(*mcpServers)
+	id := map[string]string{integrations.KindLinear: "linauth", integrations.KindNotion: "notauth", integrations.KindSentry: "senauth"}[kind] // library ids are short slugs
+	on := true
+	if cur, err := s.load(ctx, id); err != nil || cur.URL != url {
+		if _, err := s.save(ctx, MCPServerInput{ID: id, Display: strings.ToUpper(kind[:1]) + kind[1:] + " (integration sign-in)", Transport: "http", URL: url, OAuth: &on}); err != nil {
+			return IntegrationOAuthStart{}, err
+		}
+	}
+	st, err := s.oauthBegin(ctx, id)
+	return IntegrationOAuthStart{LibraryID: id, OAuthRef: "oauth/mcplib/" + id, Status: st}, err
+}
+
+// integrationOAuthToken resolves "oauth/mcplib/<id>" to the library sign-in's current access token.
+func (c *Core) integrationOAuthToken(ctx context.Context, ref string) (string, error) {
+	id, ok := strings.CutPrefix(ref, "oauth/mcplib/")
+	if !ok || id == "" {
+		return "", fmt.Errorf("not an OAuth reference: %q", ref)
+	}
+	v, ok := mcpServerServices.Load(c)
+	if !ok {
+		return "", errors.New("the MCP library is not running")
+	}
+	return v.(*mcpServers).oauthAccessToken(ctx, id)
 }

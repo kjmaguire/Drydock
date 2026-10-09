@@ -9,10 +9,8 @@ import type { ThemeChoice } from '../lib/theme';
 
 /** docs/ui.md section 4: features that do not exist yet, with the slice that owns them. Keep in step with that table. */
 export const NOT_BUILT: { feature: string; slice: string; meanwhile: string }[] = [
-  { feature: 'Markdown minutes and ADR-candidate export', slice: 'unassigned', meanwhile: 'Absent.' },
-  { feature: 'Repo map view', slice: 'gated by decision D5', meanwhile: 'Absent until the Windows CI job is green.' },
-  { feature: 'OAuth sign-in for integrations; live vendor verification', slice: 'Slice 5', meanwhile: 'Integrations use a pasted token and were never run against a live vendor account.' },
-  { feature: 'Pull request variants of the workflow templates', slice: 'Slice 4', meanwhile: 'Templates end in a local merge; a project in pull request mode uses the default workflow.' },
+  { feature: 'Repo map view', slice: 'gated by decision D5', meanwhile: 'Absent until the Windows CI job (tree-sitter with CGO) is green, per decision D5.' },
+  { feature: 'Live verification against vendor accounts (Linear, Notion, Sentry, Aikido)', slice: 'Slice 5', meanwhile: 'Token and OAuth sign-in are built and tested against protocol fixtures only; no live vendor account has been used.' },
   { feature: 'Cloud sync, accounts, team sharing', slice: 'never', meanwhile: 'Drydock has no cloud component.' },
 ];
 

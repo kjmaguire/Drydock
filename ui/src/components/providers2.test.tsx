@@ -46,3 +46,18 @@ describe('provider detail', () => {
     await waitFor(() => expect(providerSetQuota).toHaveBeenCalledWith('prov_1', '', 'rpm', 30));
   });
 });
+
+import { RoomExports } from './RoomExports';
+
+describe('room exports', () => {
+  it('exports minutes as a Markdown snapshot with a download', async () => {
+    globalThis.URL.createObjectURL ??= () => 'blob:x';
+    globalThis.URL.revokeObjectURL ??= () => {};
+    const roomExport = vi.fn(async () => ({ id: 'exp_1', roomId: 'r', kind: 'minutes', format: 'markdown', content: '# Minutes\n\n- Kickoff', sha256: 'abcdef1234567890', createdAt: '' }));
+    withServices(<RoomExports room={{ id: 'r', name: 'general' } as never} />, { roomExport });
+    fireEvent.click(screen.getByRole('button', { name: 'Minutes (Markdown)' }));
+    expect((await screen.findByTestId('room-export')).textContent).toContain('# Minutes');
+    expect(screen.getByRole('link', { name: 'Download' }).getAttribute('download')).toBe('general-minutes.md');
+    expect(roomExport).toHaveBeenCalledWith('r', 'minutes');
+  });
+});

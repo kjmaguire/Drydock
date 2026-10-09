@@ -89,6 +89,8 @@ type tplOpts struct {
 	accept   []string
 	template string
 	preview  bool // install the real preview runner (checks.StartPreview) and keep the handles
+	// pr registers the templates' pull request variants against this GitHub protocol fixture and a local bare remote
+	pr *githubFixture
 }
 
 const (
@@ -186,6 +188,10 @@ func newTpl(t *testing.T, scripts map[string]fakeagent.Script, o tplOpts) *tpl {
 				h.Stop()
 			}
 		})
+	}
+	if o.pr != nil {
+		pe := &env{dir: e.dir, repo: repo}
+		e.td.PR, _ = pe.prSetup(t, o.pr)
 	}
 	e.eng = workflow.New(workflow.Config{DB: db, Bus: e.bus, DataDir: filepath.Join(e.dir, "data"), LeaseTTL: 3 * time.Second, SafePoint: pipeline.SafePointHook(deps)})
 	if err := pipeline.RegisterTemplates(e.eng, e.td); err != nil {

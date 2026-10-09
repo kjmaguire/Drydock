@@ -1507,3 +1507,20 @@ code.wrap {
   padding: 12px;
   color: var(--fg-2);
 }
+
+.room-exports summary {
+  cursor: pointer;
+}
+.room-exports-body {
+  position: absolute;
+  z-index: 6;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  width: min(640px, 80vw);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.export-text {
+  max-height: 320px;
+}
