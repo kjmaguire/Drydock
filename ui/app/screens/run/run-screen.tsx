@@ -2,7 +2,7 @@
 // selected node, then every turn with what it was given (context manifest and exact prompt), what it cost, which model
 // and why, plus the checkpoints, MCP calls and events. Read-only.
 
-import { css, on, ref, type Handle } from 'remix/component';
+import { css, ref, type Handle } from 'remix/component';
 import { ArrowLeft, Workflow } from 'lucide';
 import type { RunExplanation } from '../../api/runClient.ts';
 import { formatCost, formatDateTime, formatTime } from '../../lib/format.ts';

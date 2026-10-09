@@ -152,7 +152,7 @@ describe('DataScreen', () => {
     await r.act(() => type(sel, 'prj_2'));
     await r.act(() => btn(r.container, 'Preview the export').click());
     await waitFor(() => tid(r.container, 'export-preview'), r);
-    type(byLabel(r.container, /^Save to/), ' D:\\b.zip ');
+    await r.act(() => type(byLabel(r.container, /^Save to/), ' D:\\b.zip '));
     await r.act(() => btn(r.container, 'Export').click());
     await waitFor(() => expect(calls).toEqual(['prj_2', ['prj_2', { dest: 'D:\\b.zip', includeRuns: false, acknowledgeRuns: false }]]), r);
   });
@@ -171,10 +171,10 @@ describe('DataScreen', () => {
     );
     await waitFor(() => btn(r.container, 'Preview the export'), r);
     expect(btn(r.container, 'Preview the export').disabled).toBe(true);
-    type(byLabel(r.container, /Archive path/), 'a.zip');
+    await r.act(() => type(byLabel(r.container, /Archive path/), 'a.zip'));
     await r.act(() => btn(r.container, 'Preview the import').click());
     await waitFor(() => tid(r.container, 'import-preview'), r);
-    type(byLabel(r.container, /Local repository to link/), 'C:\\r');
+    await r.act(() => type(byLabel(r.container, /Local repository to link/), 'C:\\r'));
     await r.act(() => btn(r.container, 'Import as a new project').click());
     await waitFor(() => tid(r.container, 'import-result'), r);
     // the preview and the import button are gone, so a second click cannot import the archive again
@@ -197,7 +197,7 @@ describe('DataScreen', () => {
     });
     await waitFor(() => btn(r.container, 'Preview the import'), r);
     expect(btn(r.container, 'Preview the import').disabled).toBe(true);
-    type(byLabel(r.container, /Archive path/), 'C:\\x\\a.drydock-project.zip');
+    await r.act(() => type(byLabel(r.container, /Archive path/), 'C:\\x\\a.drydock-project.zip'));
     await r.act(() => btn(r.container, 'Preview the import').click());
     const u = await waitFor(() => tid(r.container, 'import-untrusted'), r);
     expect(previews).toEqual(['C:\\x\\a.drydock-project.zip']);
@@ -210,8 +210,8 @@ describe('DataScreen', () => {
     expect(u.textContent).toContain('Runs not resumed (cancelled): 1');
     expect(u.textContent).toContain('Approvals cancelled: 2');
     expect(btn(r.container, 'Import as a new project').disabled).toBe(true);
-    type(byLabel(r.container, /Local repository to link/), 'C:\\src\\repo');
-    type(byLabel(r.container, /New project name/), 'Copy');
+    await r.act(() => type(byLabel(r.container, /Local repository to link/), 'C:\\src\\repo'));
+    await r.act(() => type(byLabel(r.container, /New project name/), 'Copy'));
     await r.act(() => btn(r.container, 'Import as a new project').click());
     expect((await waitFor(() => tid(r.container, 'import-result-name'), r)).textContent).toBe('Alpha (imported)');
     expect(imports).toEqual([{ path: 'C:\\x\\a.drydock-project.zip', repoPath: 'C:\\src\\repo', name: 'Copy' }]);
@@ -222,7 +222,10 @@ describe('DataScreen', () => {
   it('a changed archive path drops the preview', async () => {
     const preview: ImportPreview = { manifest: manifest(), appSchema: 30, needsMigration: false, counts: {}, pending: pending() };
     const r = show({ projectImportPreview: async () => preview });
-    type(await waitFor(() => byLabel(r.container, /Archive path/), r), 'a.zip');
+    {
+      const el = await waitFor(() => byLabel(r.container, /Archive path/), r);
+      await r.act(() => type(el, 'a.zip'));
+    }
     await r.act(() => btn(r.container, 'Preview the import').click());
     await waitFor(() => tid(r.container, 'import-preview'), r);
     await r.act(() => type(byLabel(r.container, /Archive path/), 'b.zip'));
@@ -235,7 +238,10 @@ describe('DataScreen', () => {
         throw new Error('not a Drydock project archive');
       },
     });
-    type(await waitFor(() => byLabel(r.container, /Archive path/), r), 'nope.zip');
+    {
+      const el = await waitFor(() => byLabel(r.container, /Archive path/), r);
+      await r.act(() => type(el, 'nope.zip'));
+    }
     await r.act(() => btn(r.container, 'Preview the import').click());
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('not a Drydock project archive'), r);
   });
@@ -248,10 +254,13 @@ describe('DataScreen', () => {
         throw new Error('C:\\nope is not a Git repository');
       },
     });
-    type(await waitFor(() => byLabel(r.container, /Archive path/), r), 'a.zip');
+    {
+      const el = await waitFor(() => byLabel(r.container, /Archive path/), r);
+      await r.act(() => type(el, 'a.zip'));
+    }
     await r.act(() => btn(r.container, 'Preview the import').click());
     await waitFor(() => tid(r.container, 'import-preview'), r);
-    type(byLabel(r.container, /Local repository to link/), 'C:\\nope');
+    await r.act(() => type(byLabel(r.container, /Local repository to link/), 'C:\\nope'));
     await r.act(() => btn(r.container, 'Import as a new project').click());
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('is not a Git repository'), r);
     // the preview stays so the path can be fixed

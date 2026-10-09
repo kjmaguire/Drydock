@@ -343,7 +343,11 @@ export function WorkflowGraph(
                 if (target.closest('[data-testid="wf-node"], button')) return;
                 const cv = current();
                 drag = { x: e.clientX, y: e.clientY, vx: cv.x, vy: cv.y, moved: false };
-                e.currentTarget.setPointerCapture?.(e.pointerId);
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  /* not an active pointer (a synthetic event): panning still follows the moves */
+                }
               }),
               on('pointermove', (e) => {
                 if (!drag) return;
@@ -430,7 +434,7 @@ export function WorkflowGraph(
                       role="button"
                       aria-pressed={isSel ? 'true' : 'false'}
                       aria-label={`${n.id} (${kind}): ${line}${meta ? `, ${meta}` : ''}${cost ? `, ${cost}` : ''}`}
-                      tabindex={n.id === tabStop ? '0' : '-1'}
+                      tabindex={n.id === tabStop ? 0 : -1}
                       transform={`translate(${n.x} ${n.y})`}
                       mix={[
                         on('click', () => {
