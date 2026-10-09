@@ -3,36 +3,34 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Drydock UI: React + TypeScript. A projection of the Go core's persisted events plus RPC reads; it holds no authority.",
+  "description": "Drydock UI: Remix 3 components + TypeScript. A projection of the Go core's persisted events plus RPC reads; it holds no authority.",
+  "engines": {
+    "node": ">=24.3.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "e2e": "playwright test"
+    "test": "node scripts/test.mjs",
+    "e2e": "playwright test",
+    "doctor": "remix doctor"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@remix-run/ui": "0.12.1",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "@xyflow/react": "12.12.0",
-    "cmdk": "1.1.1",
+    "lucide": "1.54.0",
     "marked": "18.1.0",
     "monaco-editor": "0.57.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "remix": "3.0.0"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
-    "@testing-library/dom": "10.4.2",
-    "@testing-library/react": "16.3.3",
-    "@types/node": "22.20.5",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "6.1.2",
-    "jsdom": "29.1.1",
+    "@types/node": "24.19.1",
+    "playwright": "1.64.0",
     "typescript": "7.0.2",
-    "vite": "8.3.4",
-    "vitest": "5.0.3"
+    "vite": "8.3.4"
   },
   "overrides": {
     "dompurify": "3.4.16"

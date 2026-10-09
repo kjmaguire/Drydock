@@ -1,7 +1,8 @@
-/// <reference types="vitest/config" />
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
-import react from '@vitejs/plugin-react';
 
+// JSX compiles against remix/component (tsconfig: "jsx": "react-jsx", "jsxImportSource": "remix/component"); Vite reads
+// both from tsconfig, so there is no framework plugin.
+//
 // Development proxy: `DRYDOCK_DEV_URL=http://127.0.0.1:PORT npm run dev` forwards /rpc and /events to a running
 // `cmd/drydock-dev` (the Go core with the HTTP/SSE dev transport). The Origin header is dropped because the Go server
 // accepts only same-host origins (DNS rebinding guard). The token still comes from the page URL (?token=).
@@ -23,7 +24,9 @@ const proxy: Record<string, ProxyOptions> | undefined = target
 
 // Defense in depth for the built UI: no inline script (so no injected event handler or javascript: URL can run) and no
 // remote image or other remote load. Added only for the production build because Vite's dev server injects inline scripts.
-const csp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
+// Component styles are constructable stylesheets (CSSOM), which style-src does not govern; 'unsafe-inline' stays for the
+// style attributes the editor and terminal widgets set.
+const csp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
 const cspPlugin: Plugin = {
   name: 'drydock-csp',
   apply: 'build',
@@ -31,14 +34,9 @@ const cspPlugin: Plugin = {
 };
 
 export default defineConfig({
-  plugins: [react(), cspPlugin],
-  base: './',
+  plugins: [cspPlugin],
+  // the UI routes by path (/task/<id>), so assets must resolve from the root, never relative to the current path
+  base: '/',
   server: { proxy },
-  build: { outDir: 'dist', sourcemap: false },
-  test: {
-    environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}'],
-    restoreMocks: true,
-    setupFiles: ['src/test/setup.ts'],
-  },
+  build: { outDir: 'dist', sourcemap: false, target: 'es2024' },
 });

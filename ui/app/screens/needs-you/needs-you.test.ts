@@ -1,0 +1,28 @@
+import { expect } from 'remix/assert';
+import { describe, it } from 'remix/test';
+import type { NeedsYouItem } from '../../api/types.ts';
+import { needsHint, needsTarget } from './needs-you.ts';
+
+const base: NeedsYouItem = { key: 'k', kind: 'approval', title: 't', severity: 1, createdAt: '2026-01-01T00:00:00Z' } as NeedsYouItem;
+
+describe('Needs you targets and hints', () => {
+  it('goes to the task, else the room, else the page that holds the decision', () => {
+    expect(needsTarget({ ...base, taskId: 'a b' })).toBe('/task/a%20b');
+    expect(needsTarget({ ...base, kind: 'question', roomId: 'r1' })).toBe('/room/r1');
+    expect(needsTarget({ ...base, kind: 'question' })).toBe('/needs-you');
+    expect(needsTarget({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toBe('/mcp');
+    expect(needsTarget({ ...base, title: 'integration:linear/create_comment' })).toBe('/integrations');
+  });
+
+  it('explains the items that need more than a click, from a fixed set of hints', () => {
+    const budget = { ...base, title: 'Budget limit reached', taskId: 't1' };
+    const spec = { ...base, kind: 'review', title: 'Accept the spec: Add Multiply', taskId: 't1' };
+    const outbound = { ...base, title: 'integration:linear/create_comment' };
+    expect(needsTarget(budget)).toBe('/task/t1');
+    expect(needsTarget(spec)).toBe('/task/t1');
+    expect(needsHint(budget)).toContain('raise the limit');
+    expect(needsHint(spec)).toContain('spec gate');
+    expect(needsHint(outbound)).toContain('exact text');
+    expect(needsHint({ ...base, kind: 'question', title: 'x' })).toBe('');
+  });
+});
