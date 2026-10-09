@@ -199,6 +199,7 @@ var ExcludedTables = map[string]string{
 	"mcp_library":              "an MCP server is a program or URL the human chose on this machine, with credentials in the vault: an archive must never bring one in; connect servers again after import",
 	"project_mcp_servers":      "which library servers a project has; the library is not exported",
 	"agent_mcp_access":         "grants to the servers above",
+	"lead_interventions":       "the team lead's supervision log of this installation: agent-authored decisions bound to runs that an import never resumes",
 	"memory_fts":               "full-text index, rebuilt by triggers",
 	"requirement_chunks_fts":   "full-text index, rebuilt by triggers",
 }
