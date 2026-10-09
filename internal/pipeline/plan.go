@@ -69,13 +69,20 @@ var PlanRoles = []string{"pm", "architect", "ux designer", "frontend", "backend"
 
 var keyRE = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 
-// NormalizePlanRole maps a role as written to its canonical form, or "" if it is not a known role.
+// SupervisorRoles are roles Drydock recognizes on the team that are never given a planned task: the team lead supervises.
+var SupervisorRoles = []string{RoleLead}
+
+// NormalizePlanRole maps a role as written to its canonical form, or "" if it is not a known role. The team lead's role
+// (and its synonyms) normalizes to "lead", which is recognized but not one of PlanRoles: no planned task can ask for it.
 func NormalizePlanRole(s string) string {
 	n := normRole(s)
 	for _, r := range PlanRoles {
 		if n == r {
 			return r
 		}
+	}
+	if IsLeadRole(s) {
+		return RoleLead
 	}
 	switch n {
 	case "product manager", "product":
@@ -182,6 +189,8 @@ func ParseProposal(text string) (Proposal, []string) {
 		}
 		if r := NormalizePlanRole(t.Role); r == "" {
 			add("%s: role %q is not one of %s", where, t.Role, strings.Join(PlanRoles, ", "))
+		} else if r == RoleLead {
+			add("%s: the team lead supervises and is never given a task; use one of %s", where, strings.Join(PlanRoles, ", "))
 		} else {
 			t.Role = r
 		}
@@ -323,17 +332,57 @@ func TopoOrder(p Proposal) []string {
 	return out
 }
 
+// Bounds on what the planner sees of the project's existing work and team.
+const (
+	maxPlanOpenTasks = 40
+	maxPlanTeam      = 30
+)
+
+// PlanContext is what the planner sees besides the goal: the project brief, the tasks that are already open (so it does not
+// propose them again) and the team (name, role, adapter).
+type PlanContext struct {
+	Brief string
+	Open  []tasks.Task
+}
+
 // PlanPrompt asks the planner for the proposal.
-func PlanPrompt(goal, requirements string, team []TeamMember, feedback string) string {
+func PlanPrompt(goal, requirements string, team []TeamMember, feedback string, pc PlanContext) string {
 	var b strings.Builder
 	b.WriteString("Drydock phase: plan\n")
 	b.WriteString("You are the planner of an engineering team. Break the goal into a small set of tasks, each of which one agent can build and verify on its own branch. You may read the repository to ground the plan. Do not write or change any code.\n\n")
+	b.WriteString(briefBlock(pc.Brief))
 	fmt.Fprintf(&b, "Goal (from the human):\n%s\n", strings.TrimSpace(goal))
 	if strings.TrimSpace(requirements) != "" {
 		b.WriteString("\n" + quoted("Requirements", clip(requirements, 24000)))
 	}
+	if len(pc.Open) > 0 {
+		b.WriteString("\nTasks already open in this project (do not propose these again; depend on them only by describing the order in the notes):\n")
+		for i, t := range pc.Open {
+			if i == maxPlanOpenTasks {
+				fmt.Fprintf(&b, "- ... and %d more\n", len(pc.Open)-maxPlanOpenTasks)
+				break
+			}
+			fmt.Fprintf(&b, "- #%d %s [%s]\n", t.Seq, oneLine(clip(t.Title, maxTitleRunes)), t.Status)
+		}
+	}
 	if len(team) > 0 {
-		b.WriteString("\nTeam roles available: ")
+		b.WriteString("\nThe team (name, role, adapter):\n")
+		for i, m := range team {
+			if i == maxPlanTeam {
+				fmt.Fprintf(&b, "- ... and %d more\n", len(team)-maxPlanTeam)
+				break
+			}
+			role := strings.TrimSpace(m.Role)
+			if IsLeadRole(role) {
+				role += " (supervises the team; never assign it a task)"
+			}
+			adapter := m.Adapter
+			if adapter == "" {
+				adapter = "unknown"
+			}
+			fmt.Fprintf(&b, "- %s: %s, %s\n", oneLine(clip(m.Name, 80)), oneLine(clip(role, 120)), adapter)
+		}
+		b.WriteString("Team roles available: ")
 		seen := map[string]bool{}
 		var rs []string
 		for _, m := range team {
@@ -464,7 +513,8 @@ func (pd PlanDeps) planNode() workflow.NodeHandler {
 		cfg.ProjectID = pi.ProjectID
 		cfg.Spec.Cwd = repo.Root
 		cfg.Spec.PermissionMode = "plan"
-		prompt := PlanPrompt(pi.Goal, pi.Requirements, team, feedback)
+		open, _ := pd.Tasks.List(ctx, tasks.Filter{ProjectID: pi.ProjectID, Statuses: openStatuses, Limit: maxPlanOpenTasks + 1})
+		prompt := PlanPrompt(pi.Goal, pi.Requirements, team, feedback, PlanContext{Brief: pd.brief(ctx, pi.ProjectID), Open: open})
 		out, err := pd.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
 		if err != nil {
 			return workflow.NodeOutput{}, err

@@ -40,9 +40,10 @@ type Verdict struct {
 
 var jsonObj = regexp.MustCompile(`(?s)\{[^{}]*"verdict"[^{}]*\}`)
 
-// ParseVerdict extracts the reviewer's verdict from free text. It accepts a JSON object with a "verdict" field
-// (the last one wins) and falls back to a leading SHIP/REVISE word. An unparseable answer is REVISE: a review that cannot
-// be understood never ships work.
+// ParseVerdict extracts the reviewer's verdict from free text. It accepts a JSON object with a "verdict" field (the last one
+// wins); without one, only a reply that is exactly the word SHIP ships. Anything else is REVISE: a review that cannot be
+// understood never ships work (a first line that merely starts with "SHIP", such as "SHIPPING this would be a mistake", is
+// not a verdict).
 func ParseVerdict(text string) Verdict {
 	ms := jsonObj.FindAllString(text, -1)
 	for i := len(ms) - 1; i >= 0; i-- {
@@ -61,8 +62,7 @@ func ParseVerdict(text string) Verdict {
 			}
 		}
 	}
-	first := strings.ToUpper(strings.TrimSpace(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0]))
-	if strings.HasPrefix(first, "SHIP") {
+	if w := strings.ToUpper(strings.TrimRight(strings.TrimSpace(text), ".!")); w == "SHIP" {
 		return Verdict{Verdict: "SHIP"}
 	}
 	return Verdict{Verdict: "REVISE", Feedback: "The review response could not be parsed as a verdict; reviewer said:\n" + truncate(text, 1500)}
@@ -79,22 +79,28 @@ func truncate(s string, n int) string {
 // already found.
 func ReviewPrompt(t tasks.Task, evidence []tasks.Evidence, diff string) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "You are the independent reviewer for this task. You did not write this code.\n\nTask: %s\n\n%s\n", t.Title, t.Description)
-	if len(t.Acceptance) > 0 {
-		sb.WriteString("\nAcceptance criteria:\n")
-		for _, a := range t.Acceptance {
-			fmt.Fprintf(&sb, "- %s\n", a)
+	sb.WriteString("You are the independent reviewer for this task. You did not write this code.\n\n")
+	sb.WriteString(taskBlock(t, false))
+	if len(t.Acceptance) == 0 {
+		if dod := statedDoD(evidence); dod != "" {
+			sb.WriteString("\nNo acceptance criteria were given. Check the work against the task text and against the definition of done the worker stated:\n")
+			sb.WriteString(quoted("The worker's definition of done", dod))
+		} else {
+			sb.WriteString("\nNo acceptance criteria were given and the worker stated no definition of done: check the work against the task text.\n")
 		}
 	}
 	sb.WriteString("\nEvidence already produced by deterministic tools (do not redo it):\n")
 	for _, e := range evidence {
+		if e.Kind == dodKind {
+			continue
+		}
 		status := ""
 		if e.Passed != nil {
 			status = map[bool]string{true: " [passed]", false: " [FAILED]"}[*e.Passed]
 		}
 		fmt.Fprintf(&sb, "- %s%s: %s\n", e.Kind, status, e.Summary)
 	}
-	fmt.Fprintf(&sb, "\nDiff of the change:\n```diff\n%s\n```\n", truncate(diff, 12000))
+	sb.WriteString(diffSection(diff))
 	sb.WriteString(`
 Review for correctness against the task and acceptance criteria, missed edge cases, and unintended changes. Answer REVISE only for problems that affect correctness, the stated requirements or security; style preferences, extra abstraction and tests for cases that cannot happen are not reasons to revise. You may read files in the working directory. Do not modify anything.
 Finish with exactly one JSON object on its own line, and nothing after it:
@@ -166,11 +172,21 @@ func Review(d Deps) workflow.NodeHandler {
 			return workflow.NodeOutput{Value: b, Route: "ship"}, nil
 		}
 		if _, err := d.Tasks.Transition(ctx, t.ID, tasks.InProgress, tasks.TransitionOpts{By: cfg.AgentID, Reason: "reviewer returned REVISE", Feedback: v.Feedback}); err != nil {
-			// most often the iteration limit: hand the decision to a human
+			// most often the iteration limit: hand the decision to the escalation (the team lead, then a human)
 			return workflow.NodeOutput{Value: b, Route: "limit"}, nil
 		}
-		return workflow.NodeOutput{Value: b, Route: "revise"}, nil
+		return d.reviseOutput(ctx, t, v, b), nil
 	}
+}
+
+// reviseOutput routes a REVISE back to the worker, or to the escalation when the reviewer repeated the same feedback.
+func (d Deps) reviseOutput(ctx context.Context, t tasks.Task, v Verdict, b []byte) workflow.NodeOutput {
+	if d.reviewRoute(ctx, t.ID) == RouteStuck {
+		d.emit(ctx, "task.review_repeated", t, map[string]any{"rounds": ReviseRepeatRounds, "feedback": truncate(v.Feedback, 300)})
+		sb, _ := json.Marshal(map[string]any{"stuck": true, "verdict": v.Verdict, "feedback": v.Feedback})
+		return workflow.NodeOutput{Value: sb, Route: RouteStuck}
+	}
+	return workflow.NodeOutput{Value: b, Route: "revise"}
 }
 
 // ApproveSummary is the payload shown to the human at the approval step.
@@ -366,7 +382,8 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 	if maxLoops <= 0 {
 		maxLoops = 5
 	}
-	return workflow.NewGraph("iterate-until-verified").
+	esc := NodeEscalate
+	g := workflow.NewGraph("iterate-until-verified").
 		Add(
 			workflow.Route("prepare", Prepare(d)),
 			workflow.AgentTask("work", Work(d)).With("agent", "work"),
@@ -378,25 +395,26 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 			&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(d)},
 			workflow.Route("changes", Changes(d)),
 			workflow.Route("merge", Merge(d, project)),
-			workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
 		).
 		Edge("prepare", "work").
 		Edge("work", "guard").
 		Edge("guard", "verify").
 		EdgeWhen("verify", "finalize", "pass").
-		Loop("verify", "work", "fail", maxLoops, "limit").
+		Loop("verify", "work", "fail", maxLoops, esc).
 		Edge("finalize", "sync").
 		EdgeWhen("sync", "review", RouteCurrent).
 		EdgeWhen("sync", "merge", RouteApproved).
-		Loop("sync", "verify", RouteChanged, maxLoops, "limit").
-		Loop("sync", "work", RouteConflict, maxLoops, "limit").
-		Loop("merge", "sync", RouteStale, maxLoops, "limit").
+		Loop("sync", "verify", RouteChanged, maxLoops, esc).
+		Loop("sync", "work", RouteConflict, maxLoops, esc).
+		Loop("merge", "sync", RouteStale, maxLoops, esc).
 		EdgeWhen("review", "approve", "ship").
-		Loop("review", "work", "revise", maxLoops, "limit").
-		EdgeWhen("review", "limit", "limit").
+		Loop("review", "work", "revise", maxLoops, esc).
+		EdgeWhen("review", esc, "limit").
+		EdgeWhen("review", esc, RouteStuck).
 		EdgeWhen("approve", "merge", "approved").
 		EdgeWhen("approve", "changes", "rejected").
-		Loop("changes", "work", "", maxLoops, "limit").
-		Loop("merge", "merge", "answered", 3, "limit").
-		Start("prepare")
+		Loop("changes", "work", "", maxLoops, esc).
+		Loop("merge", "merge", "answered", 3, esc)
+	addEscalation(g, d, map[workflow.NodeID]workflow.NodeID{"merge": "sync"})
+	return g.Start("prepare")
 }
