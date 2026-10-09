@@ -2,9 +2,14 @@
 // in the text color. Decorative unless a label is given.
 
 import { createElement, type Handle } from 'remix/component';
-import type { IconNode } from 'lucide';
+import { GitBranch, MessageCircle, MessageSquare, type IconNode } from 'lucide';
 
 export type { IconNode };
+
+/** The icon of a room kind, used wherever a room is named (sidebar, header): no "#" glyph. */
+export function roomIcon(kind: string): IconNode {
+  return kind === 'task' ? GitBranch : kind === 'dm' ? MessageCircle : MessageSquare;
+}
 
 export function Icon(handle: Handle<{ icon: IconNode; size?: number; label?: string; strokeWidth?: number }>) {
   return () => {

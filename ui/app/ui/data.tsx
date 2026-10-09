@@ -1,6 +1,8 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import type { PresenceState } from '../api/types.ts';
 import { statusLabel, statusTone } from '../lib/format.ts';
+import { Bot } from 'lucide';
+import { Icon } from './icon.tsx';
 import { t, tone, type Tone } from './tokens.ts';
 
 const badgeCss = css({
@@ -100,37 +102,71 @@ const avatarCss = css({
   display: 'inline-grid',
   placeItems: 'center',
   flex: 'none',
-  borderRadius: '50%',
   fontWeight: '600',
-  color: '#fff',
   userSelect: 'none',
-  letterSpacing: '0.02em',
+  letterSpacing: '0.01em',
+  lineHeight: '1',
 });
 
 const avatarStatus = css({
   position: 'absolute',
   right: '-2px',
   bottom: '-2px',
-  width: '10px',
-  height: '10px',
+  width: '9px',
+  height: '9px',
   borderRadius: '50%',
   border: `2px solid ${t.bgApp}`,
 });
 
-/** A round avatar with initials; `square` gives the rounded-square project look. */
+const avatarBot = css({
+  position: 'absolute',
+  right: '-3px',
+  bottom: '-3px',
+  display: 'grid',
+  placeItems: 'center',
+  width: '13px',
+  height: '13px',
+  borderRadius: '4px',
+  background: t.bgRaised,
+  color: t.textMuted,
+  boxShadow: `0 0 0 1.5px ${t.bgApp}, inset 0 0 0 1px ${t.border}`,
+});
+
+/** The corner radius of an avatar of this size: a rounded-md square (6px at 24-28px). */
+export function avatarRadius(size: number): number {
+  return size <= 16 ? 3 : size <= 20 ? 4 : size <= 30 ? 6 : 8;
+}
+
+/**
+ * A calm avatar: initials on a neutral surface lightly tinted by a stable per-id hue (low chroma, both themes).
+ * People are round; agents, projects and tools are rounded squares, and an agent at 24px or more carries a small bot
+ * badge (unless a presence dot takes that corner). `status` is a presence color for the dot.
+ */
 export function Avatar(handle: Handle<{ id: string; name: string; size?: number; square?: boolean; status?: string; kind?: 'agent' | 'human' | 'system' }>) {
   return () => {
-    const { id, name, size = 32, square, status, kind } = handle.props;
+    const { id, name, size = 32, status, kind } = handle.props;
     const hue = hueFor(id);
-    const bg = kind === 'system' ? t.bgActive : kind === 'human' ? `hsl(${hue} 30% 42%)` : `linear-gradient(135deg, hsl(${hue} 70% 58%), hsl(${(hue + 30) % 360} 65% 46%))`;
+    const neutral = kind === 'system';
+    const bg = neutral ? t.bgActive : `color-mix(in oklab, hsl(${hue} 42% 52%) 16%, ${t.bgRaised})`;
+    const fg = neutral ? t.textMuted : `color-mix(in oklab, hsl(${hue} 48% 50%) 55%, ${t.text})`;
+    const round = kind === 'human';
     return (
       <span
         mix={avatarCss}
         aria-hidden="true"
-        style={{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.38)}px`, background: bg, borderRadius: square ? `${Math.round(size * 0.3)}px` : '50%', color: kind === 'system' ? t.textMuted : '#fff' }}
+        data-kind={kind}
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          fontSize: `${Math.max(8, Math.round(size * 0.4))}px`,
+          background: bg,
+          color: fg,
+          borderRadius: round ? '50%' : `${avatarRadius(size)}px`,
+          boxShadow: `inset 0 0 0 1px ${t.border}`,
+        }}
       >
         {initials(name)}
-        {status ? <span mix={avatarStatus} style={{ background: status }} /> : null}
+        {status ? <span mix={avatarStatus} style={{ background: status }} /> : kind === 'agent' && size >= 24 ? <span mix={avatarBot} class="avatar-bot"><Icon icon={Bot} size={9} strokeWidth={2.25} /></span> : null}
       </span>
     );
   };
