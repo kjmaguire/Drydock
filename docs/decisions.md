@@ -34,7 +34,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | ACP | `github.com/coder/acp-go-sdk` v0.13.5 behind our own interface | Pre-1.0, no Windows CI; `usage_update` and prompt `usage` unstable. |
 | MCP | `github.com/modelcontextprotocol/go-sdk` v1.8.0 behind our own interface | Mixed MIT/Apache-2.0 license in transition: legal sign-off before release. `CommandTransport` kills only the direct child: servers are started under our process manager. |
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
-| Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.8 | Run on Windows to confirm; cannot take a job list (see D7). |
+| Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.9 | Run on Windows to confirm; cannot take a job list (see D7). |
 | Verification tools | osv-scanner v2.6.0, Playwright 1.64.0, Wrangler 4.148.0 as external tools | osv-scanner sends package metadata to osv.dev unless offline: disclosed. |
 | Repo map | `go-tree-sitter` v0.25.0 + MIT grammars, Aider algorithm | D5. SQL grammar pinned to a `gh-pages` pseudo-version; we author TSX, PHP and SQL tag queries. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |

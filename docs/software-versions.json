@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-09T01:43:03Z",
-  "commit": "a0be1a2",
+  "generated": "2026-10-09T01:47:15Z",
+  "commit": "2179a82",
   "summary": {
     "current": 298,
     "major": 8,
@@ -5755,25 +5755,5 @@
     "indirect": 404,
     "runtime": 4,
     "tool": 6
-  },
-  "docDrift": [
-    {
-      "name": "github.com/charmbracelet/x/ansi",
-      "docs": "0.11.8",
-      "code": "0.11.9",
-      "ref": "docs/decisions.md"
-    },
-    {
-      "name": "Go",
-      "docs": "1.26.0",
-      "code": "1.27.2",
-      "ref": "docs/decisions.md"
-    },
-    {
-      "name": "@playwright/test",
-      "docs": "1.56.1",
-      "code": "1.64.0",
-      "ref": "docs/decisions.md"
-    }
-  ]
+  }
 }
