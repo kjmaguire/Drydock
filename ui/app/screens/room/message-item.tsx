@@ -96,9 +96,8 @@ const toolsCss = css({
   background: t.bgRaised,
   boxShadow: t.shadowSm,
   opacity: '0',
-  pointerEvents: 'none',
   transition: `opacity ${t.fast} ${t.ease}`,
-  ':is(.msg:hover, .msg:focus-within) > &': { opacity: '1', pointerEvents: 'auto' },
+  ':is(.msg:hover, .msg:focus-within) > &': { opacity: '1' },
 });
 const toolBtn = css({
   display: 'grid',

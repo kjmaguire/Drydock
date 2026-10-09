@@ -668,7 +668,7 @@ export function LibraryScreen(handle: Handle) {
         </p>
         <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
           {note ? (
-            <Notice tone="ok" role="status">
+            <Notice tone="ok">
               {note}
             </Notice>
           ) : null}

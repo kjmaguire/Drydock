@@ -342,6 +342,7 @@ export function Composer(handle: Handle<ComposerProps>) {
     const idx = Math.min(active, Math.max(list.length - 1, 0));
     const label = roomLabel(room, agents);
     let lastGroup = '';
+    const people = open ? targets() : [];
     return (
       <form
         mix={[
@@ -439,7 +440,7 @@ export function Composer(handle: Handle<ComposerProps>) {
                         <Icon icon={Users} size={14} />
                       </span>
                     ) : sg.insert.startsWith('@') ? (
-                      <Avatar id={sg.insert} name={sg.label} size={24} />
+                      <Avatar id={people.find((x) => x.name === sg.label)?.id ?? sg.insert} name={sg.label} size={24} kind={people.find((x) => x.name === sg.label)?.kind === 'human' ? 'human' : undefined} />
                     ) : sg.insert.startsWith('#') ? (
                       <span class="ico">
                         <Icon icon={Hash} size={14} />
