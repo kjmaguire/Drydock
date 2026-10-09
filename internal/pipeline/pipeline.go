@@ -170,6 +170,7 @@ func Work(d Deps) workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		cfg := d.AgentConfig(t, "work")
+		applyRoute(ctx, &cfg)
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
 		d.addWorkerTools(ctx, t, &cfg)

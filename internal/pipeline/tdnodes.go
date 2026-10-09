@@ -574,6 +574,7 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 			clean.Inbox = append(clean.Inbox, m)
 		}
 		cfg := td.AgentConfig(t, "work")
+		applyRoute(ctx, &cfg)
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
 		td.addWorkerTools(ctx, t, &cfg)

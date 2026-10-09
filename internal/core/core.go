@@ -402,6 +402,14 @@ type Agent struct {
 	Practices bool   `json:"practices"`
 	Status    string `json:"status"`
 	Archived  bool   `json:"archived,omitempty"`
+	// RouteModels are the models the model router may choose between for this agent's turns. Empty: always Model.
+	RouteModels []RouteModel `json:"routeModels"`
+}
+
+// RouteModel is one model the router may choose for an agent, with the tier the router's ladder treats it as.
+type RouteModel struct {
+	Model string `json:"model"`
+	Tier  string `json:"tier"` // cheap | premium
 }
 
 // AgentSpec creates an agent.
@@ -476,7 +484,7 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 
 // Agents lists a project's team.
 func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -485,10 +493,12 @@ func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
 	for rows.Next() {
 		var a Agent
 		var archived, practices int64
-		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived); err != nil {
+		var routes string
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes); err != nil {
 			return nil, err
 		}
 		a.Archived, a.Practices = archived != 0, practices != 0
+		a.RouteModels = parseRouteModels(routes)
 		out = append(out, a)
 	}
 	return out, rows.Err()
@@ -497,10 +507,21 @@ func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
 func (c *Core) agent(ctx context.Context, id string) (Agent, error) {
 	var a Agent
 	var archived, practices int64
-	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at FROM agents WHERE id=?`, id).
-		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived)
+	var routes string
+	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models FROM agents WHERE id=?`, id).
+		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes)
 	a.Archived, a.Practices = archived != 0, practices != 0
+	a.RouteModels = parseRouteModels(routes)
 	return a, err
+}
+
+// parseRouteModels reads the stored route_models JSON; anything unreadable means none.
+func parseRouteModels(s string) []RouteModel {
+	out := []RouteModel{}
+	if s != "" {
+		_ = json.Unmarshal([]byte(s), &out)
+	}
+	return out
 }
 
 // agentConfig is the pipeline's AgentConfig: the task's assignee does the work, its reviewer reviews.

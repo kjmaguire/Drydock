@@ -66,7 +66,7 @@ var Tables = []Table{
 			"responses_validated_at": why_runtime, "updated_at": why_runtime},
 		Export: exportProvider, Import: importProvider},
 	{Name: "agents", Where: `project_id=@p`,
-		Columns: []string{"id", "project_id", "name", "adapter", "role", "model", "effort", "provider_id", "permission_mode", "config", "created_at", "version", "purpose", "archived_at", "practices"},
+		Columns: []string{"id", "project_id", "name", "adapter", "role", "model", "effort", "provider_id", "permission_mode", "config", "created_at", "version", "purpose", "archived_at", "practices", "route_models"},
 		Skipped: map[string]string{"status": "runtime state; imported agents are STOPPED"}, Import: importAgent},
 	{Name: "agent_runs", Where: `agent_id IN ` + agentIDs,
 		Columns: []string{"id", "agent_id", "task_id", "status", "started_at", "ended_at", "exit_code", "error"},

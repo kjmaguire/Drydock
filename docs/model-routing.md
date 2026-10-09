@@ -315,3 +315,22 @@ Not built (as of that worker's report; the probe, selection and `routing_outcome
 **Tests.** `probe_test.go` runs the real Wrapper, registry and SQLite against a labeled protocol fixture (`llmtest`, OpenAI-compatible wire format) whose behavior is chosen by model name: pass, prose-only, leaked tool text, bad arguments, wrong tool, flaky (passes twice, fails the third: fails), no private endpoint, free, too small a context, no tool support, trainable provider. One live test is skipped unless `OPENROUTER_API_KEY` (or `DRYDOCK_LIVE_API_KEY` + `DRYDOCK_LIVE_BASE_URL`) and `DRYDOCK_LIVE_PROBE_MODEL` are set (no model is hard-coded); it has not been run. `internal/core/ext_economics_test.go` drives selection, preview (including the data-class invariant and a budget hard limit), rules compare-and-swap and the Wrapper through the method registry against the same fixture.
 
 **Still unverified.** Whether any real paid private model passes the probe; the wire shapes of real OpenRouter/Gemini/Ollama responses through these paths; the probe cost per provider; CEL cost limiting beyond what `router` tests cover; Windows.
+
+
+## As built: the router in the path of agent turns (2026-10-09)
+
+Off by default, per agent. A human lists the models the router may choose between for an agent (Team, Edit, "Model routing":
+each model cheap or premium, at least one of each, at most six; stored in `agents.route_models`). On every work and review turn
+of that agent the `routeTurn` middleware (internal/core/turnrouting.go, in place of the old static recorder) asks a rule router
+whose candidate source is exactly that list: on the agent's registered provider when it has one (with its health, quota and
+prices), else as agent-native routes of its CLI. The router therefore never moves a turn to another adapter or provider. The
+level is Balanced (no per-project level exists yet); the failure counters come from the run: every earlier work turn routed to
+a cheap model counts as a cheap iteration (it came back with failing checks or a revise), and REVISE verdicts given since the
+run first routed work to premium count as premium revises. With the shipped thresholds a worker runs three cheap turns and
+escalates to premium on the fourth (tested end to end). The chosen model and its tier reach the node through the context
+(`pipeline.RoutedModel`) and replace the agent's model and the usage tier for that turn; effort is left as configured
+(agent-native routes record EffortApplied=false). An agent with no list, or a turn the router cannot decide, runs the
+configured model and records a static decision whose reason says which. Every decision is in the run explanation.
+
+Not built: a per-project level; routing the room replies and template role turns (pm, tests, architect, security), which keep
+their configured model.

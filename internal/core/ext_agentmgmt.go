@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -44,6 +45,8 @@ type AgentUpdate struct {
 	Effort         *string `json:"effort"`
 	PermissionMode *string `json:"permissionMode"`
 	Practices      *bool   `json:"practices"`
+	// RouteModels replaces the models the router may choose between (an empty list turns routing off).
+	RouteModels *[]RouteModel `json:"routeModels"`
 }
 
 // validateAgentFields checks what would otherwise only fail (or misbehave) when the CLI starts: an effort the adapter does not
@@ -106,6 +109,16 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		a.Practices = *u.Practices
 		changed = append(changed, "practices")
 	}
+	if u.RouteModels != nil {
+		rm, err := c.validateRouteModels(a.Adapter, *u.RouteModels)
+		if err != nil {
+			return Agent{}, err
+		}
+		if !sameRoutes(rm, a.RouteModels) {
+			a.RouteModels = rm
+			changed = append(changed, "routeModels")
+		}
+	}
 	if len(changed) == 0 {
 		return a, nil
 	}
@@ -132,8 +145,12 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		}
 	}
 	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE agents SET name=?, role=?, purpose=?, model=?, effort=?, permission_mode=?, practices=?, version=version+1 WHERE id=? AND archived_at=0`,
-			a.Name, a.Role, a.Purpose, a.Model, a.Effort, a.PermissionMode, b2i(a.Practices), a.ID)
+		routes, _ := json.Marshal(a.RouteModels)
+		if len(a.RouteModels) == 0 {
+			routes = nil
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents SET name=?, role=?, purpose=?, model=?, effort=?, permission_mode=?, practices=?, route_models=?, version=version+1 WHERE id=? AND archived_at=0`,
+			a.Name, a.Role, a.Purpose, a.Model, a.Effort, a.PermissionMode, b2i(a.Practices), string(routes), a.ID)
 		return err
 	})
 	if err != nil {
@@ -229,4 +246,52 @@ type ClaudePractices struct {
 
 func claudePracticesFor(role string) ClaudePractices {
 	return ClaudePractices{Version: claude.PracticesVersion, Role: role, Family: claude.FamilyOf(role), Text: claude.Practices(role), Preset: claude.PresetFor(role)}
+}
+
+// validateRouteModels checks the models the router may choose for an agent: each a single word the CLI can take, a known
+// tier, no duplicates, at most six, and at least one of each tier when there are any (the router's ladder starts cheap and
+// escalates to premium).
+func (c *Core) validateRouteModels(adapter string, in []RouteModel) ([]RouteModel, error) {
+	if len(in) == 0 {
+		return []RouteModel{}, nil
+	}
+	if len(in) > 6 {
+		return nil, errors.New("the router can choose between at most 6 models for one agent")
+	}
+	seen := map[string]bool{}
+	tiers := map[string]bool{}
+	out := make([]RouteModel, 0, len(in))
+	for _, r := range in {
+		r.Model, r.Tier = strings.TrimSpace(r.Model), strings.TrimSpace(r.Tier)
+		if r.Model == "" {
+			return nil, errors.New("a routed model needs a name")
+		}
+		if err := c.validateAgentFields(adapter, r.Model, "", ""); err != nil {
+			return nil, err
+		}
+		if r.Tier != "cheap" && r.Tier != "premium" {
+			return nil, fmt.Errorf("the tier of %s must be cheap or premium", r.Model)
+		}
+		if seen[r.Model] {
+			return nil, fmt.Errorf("%s is listed twice", r.Model)
+		}
+		seen[r.Model], tiers[r.Tier] = true, true
+		out = append(out, r)
+	}
+	if !tiers["cheap"] || !tiers["premium"] {
+		return nil, errors.New("give the router at least one cheap and one premium model: it starts cheap and escalates to premium when the work gets stuck")
+	}
+	return out, nil
+}
+
+func sameRoutes(a, b []RouteModel) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

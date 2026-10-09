@@ -127,6 +127,7 @@ func Review(d Deps) workflow.NodeHandler {
 			}
 		}
 		cfg := d.AgentConfig(t, "review")
+		applyRoute(ctx, &cfg)
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
 		if cfg.AgentID == t.Assignee {

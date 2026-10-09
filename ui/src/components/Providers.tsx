@@ -1,3 +1,4 @@
+import { ProviderDetailPanel } from './ProviderDetail';
 import { useRef, useState, type FormEvent } from 'react';
 import type { NewProvider, ProbeResult, Provider, ProviderModel } from '../api/types';
 import { formatDateTime } from '../lib/format';
@@ -92,6 +93,7 @@ function ProviderCard({ p, onChanged }: { p: Provider; onChanged: () => void }) 
   const [probe, setProbe] = useState<ProbeResult | undefined>();
   const [models, setModels] = useState<ProviderModel[] | undefined>();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [detail, setDetail] = useState(false);
   const run = async (what: string, fn: () => Promise<void>) => {
     setBusy(what);
     setError(undefined);
@@ -159,6 +161,9 @@ function ProviderCard({ p, onChanged }: { p: Provider; onChanged: () => void }) 
         <button disabled={busy !== ''} onClick={() => run('models', async () => setModels(await client.providerModels(p.id)))}>
           Models
         </button>
+        <button aria-expanded={detail} onClick={() => setDetail((v) => !v)}>
+          {detail ? 'Hide details' : 'Details and editing'}
+        </button>
         <button disabled={busy !== ''} onClick={() => run('toggle', async () => { await client.providerSetEnabled(p.id, !p.enabled); onChanged(); })}>
           {p.enabled ? 'Disable' : 'Enable'}
         </button>
@@ -175,6 +180,7 @@ function ProviderCard({ p, onChanged }: { p: Provider; onChanged: () => void }) 
       </div>
       {probe ? <ProbeView r={probe} /> : null}
       {models ? <ModelTable models={models} /> : null}
+      {detail ? <ProviderDetailPanel id={p.id} onChanged={onChanged} /> : null}
     </article>
   );
 }

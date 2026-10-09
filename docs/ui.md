@@ -223,6 +223,13 @@ Per-CLI honest notices:
 
 Table of providers: name, base URL, kind (`aggregator|direct|host`), key reference (never the key; shows "stored in Windows Credential Manager" or "encrypted in SQLite" for values over 2560 bytes), `data_class` (`private|trainable`), `tier` (`premium|cheap|free`), status, last check. `trainable` rows carry a persistent badge: "Public documentation questions only; never receives repo content." Detail panel: served models (OpenRouter: catalog from `GET /api/v1/models/user`, refreshed at setup and in the background; D4), tool-call probe result per model, price per Mtok in/out with the editable pricing table's last-updated date, quota (OpenRouter `GET /api/v1/key` plus `usage` per response; rate-limit headers where present; D13), `max_concurrent_agents` for hosts, TLS rule (plain HTTP only on loopback/private addresses; self-signed pinned by fingerprint, brief 16). OpenRouter private routes display "requests carry `provider:{data_collection:"deny", zdr:true}`; fails closed" (D4). Add-provider validates with `/v1/models` before saving. Slice 1A scope: registry, add/edit/test, OpenRouter served-model list. Quota ledger values are shown when present; the UI never invents a limit (Gemini limits are configured by the user, D13).
 
+**As built (2026-10-09).** Each provider card has "Details and editing" (`ui/src/components/ProviderDetail.tsx` over
+`provider.detail`, `provider.update`, `provider.setPrice`, `provider.setQuota`): the settings (name, base URL, tier, data class,
+max concurrent agents) with the registry's validation, a replaced API key (written to the credential store, never returned),
+the served models with their prices, price source and probe result, a price edit per model (stored as `user`, kept over catalog
+refreshes), the quota windows with where each came from, a form to configure a limit the provider does not publish, and for
+OpenRouter a button that reads the key's limits (`GET /api/v1/key`).
+
 ## 10. Agent Inspector (right column tab; brief 21)
 
 Fields, grouped. Anything the adapter cannot report is `not reported`.

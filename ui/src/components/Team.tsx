@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { AdapterInfo, Agent, Capabilities, PresenceState } from '../api/types';
+import type { RouteModel, AdapterInfo, Agent, Capabilities, PresenceState } from '../api/types';
 import { useId } from 'react';
 import { useClient } from '../state/context';
 import { useAdapters, useLive } from '../state/hooks';
@@ -361,6 +361,7 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
   const [model, setModel] = useState(agent.model);
   const [effort, setEffort] = useState(agent.effort);
   const [practices, setPractices] = useState(agent.practices !== false);
+  const [routes, setRoutes] = useState<RouteModel[]>(agent.routeModels ?? []);
   const [busy, setBusy] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [savedAs, setSavedAs] = useState('');
@@ -381,7 +382,7 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
   };
   const save = (e: FormEvent) => {
     e.preventDefault();
-    return run('save', () => client.agentUpdate({ id: agent.id, name: name.trim(), role: role.trim(), purpose: purpose.trim(), model: model.trim(), effort: effort.trim(), practices: agent.adapter === 'claude' ? practices : undefined }));
+    return run('save', () => client.agentUpdate({ id: agent.id, name: name.trim(), role: role.trim(), purpose: purpose.trim(), model: model.trim(), effort: effort.trim(), practices: agent.adapter === 'claude' ? practices : undefined, routeModels: JSON.stringify(routes) === JSON.stringify(agent.routeModels ?? []) ? undefined : routes.filter((r) => r.model.trim()) }));
   };
   return (
     <form className="form form-grid" onSubmit={save} aria-label={`Edit ${agent.name}`} data-testid="agent-editor">
@@ -409,6 +410,7 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
       </label>
       <ModelEffortFields caps={adapter?.capabilities} model={model} effort={effort} setModel={setModel} setEffort={setEffort} />
       <ClaudePracticesPanel info={info} on={practices} onChange={setPractices} />
+      <RouteModelsField routes={routes} setRoutes={setRoutes} suggestions={adapter?.capabilities?.models ?? []} />
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy !== '' || ro.readOnly || !name.trim() || !role.trim()} title={ro.readOnly ? ro.reason : undefined}>
           {busy === 'save' ? 'Saving...' : 'Save changes'}
@@ -451,5 +453,68 @@ function AgentEditor({ agent, adapter, onDone, onCancel }: { agent: Agent; adapt
         )}
       </div>
     </form>
+  );
+}
+
+/**
+ * The models the router may choose between for this agent's turns (internal/core/turnrouting.go). Off (empty) by default:
+ * the agent then always runs its model. With a list the router starts on a cheap model and escalates to a premium one when
+ * the work gets stuck, always on this agent's own CLI.
+ */
+function RouteModelsField({ routes, setRoutes, suggestions }: { routes: RouteModel[]; setRoutes: (r: RouteModel[]) => void; suggestions: string[] }) {
+  const on = routes.length > 0;
+  return (
+    <fieldset className="route-models" data-testid="route-models">
+      <legend>Model routing</legend>
+      <label className="inline">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) =>
+            setRoutes(
+              e.target.checked
+                ? suggestions.includes('haiku') && suggestions.includes('opus')
+                  ? [
+                      { model: 'haiku', tier: 'cheap' },
+                      { model: 'opus', tier: 'premium' },
+                    ]
+                  : [
+                      { model: '', tier: 'cheap' },
+                      { model: '', tier: 'premium' },
+                    ]
+                : [],
+            )
+          }
+        />{' '}
+        Let the router choose this agent&apos;s model for each turn
+      </label>
+      {on ? (
+        <>
+          <p className="muted">It starts on a cheap model and moves to a premium one after three cheap tries that fail their checks, or when the reviewer keeps sending premium work back. It only chooses from this list, on this agent&apos;s own CLI. Every choice and its reason is in the task&apos;s run explanation.</p>
+          {routes.map((r, i) => (
+            <div key={i} className="route-row">
+              <input aria-label={`Routed model ${i + 1}`} value={r.model} list="route-model-suggestions" onChange={(e) => setRoutes(routes.map((x, j) => (j === i ? { ...x, model: e.target.value } : x)))} />
+              <select aria-label={`Tier of routed model ${i + 1}`} value={r.tier} onChange={(e) => setRoutes(routes.map((x, j) => (j === i ? { ...x, tier: e.target.value as RouteModel['tier'] } : x)))}>
+                <option value="cheap">cheap</option>
+                <option value="premium">premium</option>
+              </select>
+              <button type="button" className="link-button" onClick={() => setRoutes(routes.filter((_, j) => j !== i))} aria-label={`Remove routed model ${i + 1}`}>
+                Remove
+              </button>
+            </div>
+          ))}
+          {routes.length < 6 ? (
+            <button type="button" onClick={() => setRoutes([...routes, { model: '', tier: 'premium' }])}>
+              Add a model
+            </button>
+          ) : null}
+          <datalist id="route-model-suggestions">
+            {suggestions.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </>
+      ) : null}
+    </fieldset>
   );
 }

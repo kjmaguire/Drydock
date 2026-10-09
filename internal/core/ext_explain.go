@@ -196,8 +196,12 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 			_ = json.Unmarshal([]byte(items), &v.Manifest)
 			v.AgentID, v.Included = agentID, total
 		}
-		if d, ok := decisions[fmt.Sprintf("%s|%d", x.NodeID, x.Attempt)]; ok {
-			v.Decision = &d
+		// a node runs at several steps with the same attempt number: the decision is the one made while this execution ran
+		for i := range decisions {
+			d := decisions[i]
+			if d.node == string(x.NodeID) && d.attempt == x.Attempt && d.ts >= x.Started && (x.Finished == 0 || d.ts <= x.Finished) {
+				v.Decision = &decisions[i].DecisionView
+			}
 		}
 		if x.Started > 0 && (kinds == nil || kinds[string(x.NodeID)] == string(workflow.KindAgentTask) || v.AgentID != "") {
 			v.Usage = c.usageBetween(ctx, taskID, x.Started, x.Finished)
@@ -246,36 +250,37 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 	return out, evRows.Err()
 }
 
-// runDecisions returns the routing decisions of a run, keyed by "node|attempt" (the latest per turn).
-func (c *Core) runDecisions(ctx context.Context, runID string) map[string]DecisionView {
-	out := map[string]DecisionView{}
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id, node_id, attempt, decided_by, agent, provider_id, model, effort, level, est_cost_usd, escalated_from, decision
+type timedDecision struct {
+	DecisionView
+	node    string
+	attempt int
+	ts      int64
+}
+
+// runDecisions returns the routing decisions of a run, oldest first.
+func (c *Core) runDecisions(ctx context.Context, runID string) []timedDecision {
+	var out []timedDecision
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id, ts, node_id, attempt, decided_by, agent, provider_id, model, effort, level, est_cost_usd, escalated_from, decision
 		FROM routing_decisions WHERE run_id=? ORDER BY ts`, runID)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var d DecisionView
-		var node string
-		var attempt int
+		var d timedDecision
 		var cost *float64
 		var raw []byte
-		if err := rows.Scan(&d.ID, &node, &attempt, &d.DecidedBy, &d.Agent, &d.ProviderID, &d.Model, &d.Effort, &d.Level, &cost, &d.EscalatedFrom, &raw); err != nil {
+		if err := rows.Scan(&d.ID, &d.ts, &d.node, &d.attempt, &d.DecidedBy, &d.Agent, &d.ProviderID, &d.Model, &d.Effort, &d.Level, &cost, &d.EscalatedFrom, &raw); err != nil {
 			return out
 		}
 		d.EstCostUSD = cost
 		var dec struct {
 			Reason string `json:"reason"`
-			Why    string `json:"why"`
 		}
 		if json.Unmarshal(raw, &dec) == nil {
 			d.Reason = dec.Reason
-			if d.Reason == "" {
-				d.Reason = dec.Why
-			}
 		}
-		out[fmt.Sprintf("%s|%d", node, attempt)] = d
+		out = append(out, d)
 	}
 	return out
 }

@@ -49,6 +49,13 @@ export interface Agent {
   /** Whether the Claude best-practices text is added to this agent's system prompt (only for the claude adapter). */
   practices?: boolean;
   status: string;
+  /** Models the model router may choose between for this agent's turns; empty: always `model`. */
+  routeModels?: RouteModel[];
+}
+
+export interface RouteModel {
+  model: string;
+  tier: 'cheap' | 'premium';
 }
 
 export interface AgentSpec {
@@ -74,6 +81,8 @@ export interface AgentUpdate {
   effort?: string;
   permissionMode?: string;
   practices?: boolean;
+  /** Replaces the routed models; an empty list turns routing off. */
+  routeModels?: RouteModel[];
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */

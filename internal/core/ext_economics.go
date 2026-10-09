@@ -50,9 +50,12 @@ type economics struct {
 	rec      *router.Recorder
 	live     *router.RuleRouter // records decisions
 	dry      *router.RuleRouter // route.preview: the same rules and candidates, nothing recorded
-	prober   *probe.Prober
-	sink     *telemetry.Sink
-	outcomes *evals.Outcomes
+	// agentRouter routes agent turns among the models an agent's human listed (turnrouting.go); it records decisions.
+	agentRouter *router.RuleRouter
+	src         *router.RegistrySource
+	prober      *probe.Prober
+	sink        *telemetry.Sink
+	outcomes    *evals.Outcomes
 }
 
 var (
@@ -75,8 +78,8 @@ func EconomicsLLM(c *Core) llm.Client {
 // EconomicsRouter returns the app's model router: the rule router over the provider registry, the stored policies and the
 // probe results, recording every decision, with the budget state of the request's scopes filled in before it decides. A
 // budget at its hard limit therefore sits above the router's heuristics (brief s6 override priority). It is nil if the
-// extension did not start. Agent turns are not routed through it yet (core.agentConfig assigns the agent's configuration);
-// features that choose a model for the app's own calls use it with EconomicsLLM.
+// extension did not start. Agent turns are routed separately, among each agent's own models (turnrouting.go); features that
+// choose a model for the app's own calls use this one with EconomicsLLM.
 func EconomicsRouter(c *Core) router.ModelRouter {
 	econMu.Lock()
 	defer econMu.Unlock()
@@ -133,7 +136,7 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	// Middleware order for agent_task nodes: Watchdog (registered by the core), then Telemetry, Budget, the decision
 	// recorder. docs/workflow-engine.md s7 puts Telemetry first; the core registers the watchdog before extensions start,
 	// so it stays outermost. A budget pause is still recorded as a paused span because Telemetry wraps Budget.
-	c.Engine.Use(workflow.KindAgentTask, sink.Middleware(), e.enforcer.Middleware(), e.recordStaticDecision)
+	c.Engine.Use(workflow.KindAgentTask, sink.Middleware(), e.enforcer.Middleware(), e.routeTurn)
 	c.Engine.Use(workflow.KindCheck, sink.Middleware())
 	c.Engine.Observe(sink.Observer())
 
@@ -154,8 +157,12 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		c.logf("routing rules: %v", err)
 	}
 	src := &router.RegistrySource{Catalog: c.Providers, Avail: c.Health, Quota: e.ledger}
+	e.src = src
 	e.rec = &router.Recorder{DB: c.DB, Bus: c.Bus}
 	if e.live, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Recorder: e.rec}); err != nil {
+		return nil, nil, err
+	}
+	if e.agentRouter, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: agentSource{e}, Store: e.rules, Recorder: e.rec}); err != nil {
 		return nil, nil, err
 	}
 	if e.dry, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules}); err != nil {
@@ -297,19 +304,10 @@ func (e *economics) relay(ctx context.Context, ev events.Event) {
 	}
 }
 
-// recordStaticDecision writes a routing_decisions row, decided_by "static", for every agent turn: the agent's own
-// configured adapter, model and effort. The router is not in the path of agent turns yet (core.agentConfig assigns the
-// agent's configuration), so this is not a router choice and says so; it exists so outcomes join to what actually ran.
-func (e *economics) recordStaticDecision(next workflow.NodeHandler) workflow.NodeHandler {
-	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
-		if in.TaskID != "" {
-			e.saveStatic(ctx, in)
-		}
-		return next(ctx, in)
-	}
-}
-
-func (e *economics) saveStatic(ctx context.Context, in workflow.NodeInput) {
+// saveStatic writes a routing_decisions row, decided_by "static", for an agent turn that runs the agent's own configured
+// adapter, model and effort (routing is off for the agent, or the router could not choose; reason says which), so outcomes
+// join to what actually ran.
+func (e *economics) saveStatic(ctx context.Context, in workflow.NodeInput, reason string) {
 	t, err := e.c.Tasks.Get(ctx, in.TaskID)
 	if err != nil {
 		return
@@ -335,7 +333,7 @@ func (e *economics) saveStatic(ctx context.Context, in workflow.NodeInput) {
 		ProjectID: t.ProjectID, AgentID: a.ID, Workflow: in.Workflow, ContextCeiling: router.ContextPrivate}
 	d := router.RoutingDecision{ID: ids.New("dec"), Agent: router.AgentRef{Adapter: a.Adapter, Instance: a.ID}, Provider: router.ProviderID(provider), Model: a.Model,
 		Effort: router.Effort(a.Effort), TeamSize: 1, Confidence: 1, DecidedBy: "static", Created: time.Now().UTC(),
-		Reason: "the agent's configured assignment: the router is not yet in the path of agent turns",
+		Reason: reason,
 		Facts:  router.DecisionFacts{TaskID: t.ID, Level: level, RunKind: kind, Attempt: in.Attempt, ContextCeiling: router.ContextPrivate, Tier: tier, DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
 	if err := e.rec.Save(ctx, req, d); err != nil {
 		e.c.logf("record decision: %v", err)
