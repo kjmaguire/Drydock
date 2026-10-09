@@ -66,6 +66,18 @@ func (c *Core) AssignTask(ctx context.Context, taskID, assignee, reviewer string
 	return nt, nil
 }
 
+// requireRepo refuses work that changes code in a project without a repository, with an error that says what to do.
+func (c *Core) requireRepo(ctx context.Context, projectID string) error {
+	p, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if !p.HasRepo {
+		return ErrNoRepository
+	}
+	return nil
+}
+
 // StartTask starts the task's workflow: local_merge projects use iterate-until-verified, pr_flow projects the PR variant.
 func (c *Core) StartTask(ctx context.Context, taskID string) (workflow.RunID, error) {
 	if err := c.RequireLicensed(ctx, "start_task"); err != nil {
@@ -73,6 +85,9 @@ func (c *Core) StartTask(ctx context.Context, taskID string) (workflow.RunID, er
 	}
 	t, err := c.Tasks.Get(ctx, taskID)
 	if err != nil {
+		return "", err
+	}
+	if err := c.requireRepo(ctx, t.ProjectID); err != nil {
 		return "", err
 	}
 	if t.Assignee == "" || t.Reviewer == "" {

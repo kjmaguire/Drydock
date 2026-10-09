@@ -56,7 +56,7 @@ const (
 // Tables is the export allow-list in dependency order (parents before children, so foreign keys hold on insert).
 var Tables = []Table{
 	{Name: "projects", Where: `id=@p`,
-		Columns: []string{"id", "name", "default_branch", "merge_strategy", "mode", "created_at", "version"},
+		Columns: []string{"id", "name", "default_branch", "merge_strategy", "mode", "created_at", "version", "brief"},
 		Skipped: map[string]string{"workspace_id": "workspaces are not exported", "repo_path": why_localPath + "; importing requires a new repository path"},
 		Const:   map[string]any{"repo_path": ""}, Import: importProject},
 	{Name: "providers", Where: `id IN (SELECT provider_id FROM agents WHERE project_id=@p AND provider_id<>'')`,

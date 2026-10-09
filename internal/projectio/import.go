@@ -85,10 +85,11 @@ type Target struct {
 	Human string
 }
 
-// ImportOptions are the human's choices. RepoPath is required: the archive never carries a repository.
+// ImportOptions are the human's choices. The archive never carries a repository: RepoPath links one, or is empty for a project
+// whose repository is attached later.
 type ImportOptions struct {
 	Archive  string
-	RepoPath string // an existing local repository root, already validated by the caller
+	RepoPath string // an existing local repository root, already validated by the caller; empty: no repository yet
 	Branch   string // its checked-out branch
 	Name     string // optional; defaults to the exported name
 	Now      int64  // ms
@@ -110,9 +111,6 @@ type ImportResult struct {
 // Import creates a NEW project from the archive with every id remapped. It never overwrites or merges with an existing
 // project. Everything it writes is one transaction; raw run files are restored first and removed again if it fails.
 func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error) {
-	if strings.TrimSpace(o.RepoPath) == "" {
-		return ImportResult{}, errors.New("projectio: a local repository path is required to import a project")
-	}
 	a, err := openArchive(ctx, o.Archive)
 	if err != nil {
 		return ImportResult{}, err

@@ -17,7 +17,6 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/applog"
 	"github.com/kjmaguire/drydock/internal/events"
-	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/projectio"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/security"
@@ -106,26 +105,23 @@ func (p *packaging) importPreview(ctx context.Context, r importReq) (any, error)
 	return projectio.Inspect(ctx, r.Path)
 }
 
-// importProject imports an archive as a NEW project linked to a local repository. Importing creates data and starts nothing,
-// so it works in every license state.
+// importProject imports an archive as a NEW project, linked to a local repository or (repoPath empty) to none yet: the
+// repository is attached later in the project's settings. Importing creates data and starts nothing, so it works in every
+// license state.
 func (p *packaging) importProject(ctx context.Context, r importReq) (any, error) {
 	c := p.c
 	if r.Path == "" {
 		return nil, errors.New("choose a .drydock-project.zip file")
 	}
-	if strings.TrimSpace(r.RepoPath) == "" {
-		return nil, errors.New("link the imported project to a local repository: repoPath is required (the archive never contains your repository)")
-	}
-	repo, err := git.Open(ctx, r.RepoPath)
-	if err != nil {
-		return nil, fmt.Errorf("%s is not a usable Git repository: %w", r.RepoPath, err)
-	}
-	branch, err := repo.CurrentBranch(ctx)
-	if err != nil || branch == "" || branch == "HEAD" {
-		return nil, fmt.Errorf("the repository at %s has no checked-out branch: commit once on a branch first", r.RepoPath)
+	root, branch := "", ""
+	if strings.TrimSpace(r.RepoPath) != "" {
+		var err error
+		if root, branch, err = openProjectRepo(ctx, r.RepoPath); err != nil {
+			return nil, err
+		}
 	}
 	res, err := projectio.Import(ctx, projectio.Target{DB: c.DB, DataDir: c.cfg.DataDir, Human: c.Human()},
-		projectio.ImportOptions{Archive: r.Path, RepoPath: repo.Root, Branch: branch, Name: r.Name, Now: storage.Now()})
+		projectio.ImportOptions{Archive: r.Path, RepoPath: root, Branch: branch, Name: r.Name, Now: storage.Now()})
 	if err != nil {
 		return nil, err
 	}

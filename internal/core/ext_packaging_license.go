@@ -261,7 +261,7 @@ var gatedMethods = map[string]string{
 	"task.start": "start_task", "task.startTemplate": "start_template", "plan.propose": "start_work", "plan.accept": "start_work",
 	"scheduler.tick": "start_work", "room.reply": "room_reply", "check.e2e": "start_work", "preview.start": "start_work", "budget.resume": "start_work",
 	"run.respond": "approve", "integration.outbound.decide": "approve", "integration.outbound.execute": "approve",
-	"agent.create": "create_agent", "agent.update": "create_agent", "project.create": "create_project", "provider.create": "add_connection", "integration.connect": "add_connection",
+	"agent.create": "create_agent", "agent.update": "create_agent", "project.create": "create_project", "project.attachRepo": "create_project", "github.clone": "create_project", "provider.create": "add_connection", "integration.connect": "add_connection",
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an

@@ -487,12 +487,22 @@ func TestImportCreatesANewProjectWithRemappedIdsAndSafeDefaults(t *testing.T) {
 	}
 }
 
-func TestImportRequiresARepositoryPath(t *testing.T) {
+// Without a repository path the import makes a project with no repository yet (attached later); the exported default branch is
+// kept for when it is.
+func TestImportWithoutARepositoryPath(t *testing.T) {
 	src, _ := newSource(t)
 	archive := exportAlpha(t, src, false)
-	_, err := Import(context.Background(), Target{DB: newDB(t), DataDir: t.TempDir(), Human: "human:x"}, ImportOptions{Archive: archive})
-	if err == nil || !strings.Contains(err.Error(), "repository path is required") {
-		t.Fatalf("%v", err)
+	db := newDB(t)
+	res, err := Import(context.Background(), Target{DB: db, DataDir: t.TempDir(), Human: "human:x"}, ImportOptions{Archive: archive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var repo, branch string
+	if err := db.Reader().QueryRow(`SELECT repo_path, default_branch FROM projects WHERE id=?`, res.ProjectID).Scan(&repo, &branch); err != nil {
+		t.Fatal(err)
+	}
+	if repo != "" || branch == "" {
+		t.Fatalf("repo %q branch %q", repo, branch)
 	}
 }
 
@@ -623,7 +633,7 @@ func TestOlderSchemaIsMigratedForwardOnImport(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, q := range []string{`ALTER TABLE agent_templates DROP COLUMN practices`, `DROP TABLE agent_templates`, `DROP TABLE agent_mcp_access`, `DROP TABLE project_mcp_servers`, `DROP TABLE mcp_library`, `DROP TABLE integration_outbox`, `DROP TABLE integration_rule_matches`, `DROP TABLE integration_rules`, `DROP TABLE external_items`,
-			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN practices`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DROP TABLE IF EXISTS room_attachments`, `ALTER TABLE agents DROP COLUMN route_models`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96)`} {
+			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN practices`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DROP TABLE IF EXISTS room_attachments`, `ALTER TABLE agents DROP COLUMN route_models`, `ALTER TABLE projects DROP COLUMN brief`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97)`} {
 			if _, err := raw.Exec(q); err != nil {
 				t.Fatalf("%s: %v", q, err)
 			}

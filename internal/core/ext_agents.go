@@ -241,7 +241,8 @@ func (a *agentsDev) onInconclusive(ctx context.Context, t tasks.Task, r checks.R
 	}
 }
 
-// replyCwd is the task worktree in a task room (when it exists), otherwise the project root.
+// replyCwd is the task worktree in a task room (when it exists), otherwise the project root (or the project's private workspace
+// folder while it has no repository).
 func (a *agentsDev) replyCwd(ctx context.Context, rm room.Room) (string, error) {
 	if rm.TaskID != "" {
 		if t, err := a.c.Tasks.Get(ctx, rm.TaskID); err == nil && t.Worktree != "" {
@@ -254,7 +255,7 @@ func (a *agentsDev) replyCwd(ctx context.Context, rm room.Room) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return p.RepoPath, nil
+	return a.c.projectDir(p)
 }
 
 // roleConfig builds the runtime config for an agent filling a template role.
@@ -390,6 +391,9 @@ func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTe
 	}
 	t, err := c.Tasks.Get(ctx, req.TaskID)
 	if err != nil {
+		return StartTemplateResult{}, err
+	}
+	if err := c.requireRepo(ctx, t.ProjectID); err != nil {
 		return StartTemplateResult{}, err
 	}
 	if w, r := req.Agents[pipeline.RoleWork], req.Agents[pipeline.RoleReview]; w != "" || r != "" {

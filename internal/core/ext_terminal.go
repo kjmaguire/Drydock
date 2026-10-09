@@ -59,7 +59,8 @@ func init() {
 	}})
 }
 
-// terminalDir is a task's worktree while it exists, else its project's repository, else the project's repository.
+// terminalDir is a task's worktree while it exists, else its project's repository (or, before one is attached, the project's
+// private workspace folder).
 func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, title string, err error) {
 	if taskID != "" {
 		t, err := c.Tasks.Get(ctx, taskID)
@@ -78,5 +79,6 @@ func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, 
 	if err != nil {
 		return "", "", err
 	}
-	return p.RepoPath, p.Name, nil
+	dir, err = c.projectDir(p)
+	return dir, p.Name, err
 }

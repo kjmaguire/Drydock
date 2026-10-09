@@ -40,6 +40,18 @@ func (c *Core) Methods() map[string]Method {
 		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
 			return c.CreateProject(ctx, p.Name, p.RepoPath)
 		}),
+		"project.attachRepo": bind(func(ctx context.Context, p struct {
+			ID       string `json:"id"`
+			RepoPath string `json:"repoPath"`
+		}) (any, error) {
+			return c.AttachRepository(ctx, p.ID, p.RepoPath)
+		}),
+		"project.setBrief": bind(func(ctx context.Context, p struct {
+			ID    string `json:"id"`
+			Brief string `json:"brief"`
+		}) (any, error) {
+			return c.SetBrief(ctx, p.ID, p.Brief)
+		}),
 		"project.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Projects(ctx) }),
 		"project.get":  bind(func(ctx context.Context, p idParam) (any, error) { return c.GetProject(ctx, p.ID) }),
 
@@ -49,6 +61,21 @@ func (c *Core) Methods() map[string]Method {
 			MergeStrategy string `json:"mergeStrategy"`
 		}) (any, error) {
 			return c.UpdateProject(ctx, p.ID, p.Mode, p.MergeStrategy)
+		}),
+		"github.status": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubAccountStatus(ctx), nil }),
+		"github.owners": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubOwners(ctx) }),
+		"github.repos": bind(func(ctx context.Context, p struct {
+			Owner string `json:"owner"`
+			Query string `json:"query"`
+		}) (any, error) {
+			return c.GitHubRepos(ctx, p.Owner, p.Query)
+		}),
+		"github.cloneDir": bind(func(ctx context.Context, _ struct{}) (any, error) { return DefaultCloneDir(), nil }),
+		"github.clone": bind(func(ctx context.Context, p struct {
+			Repo string `json:"repo"`
+			Dir  string `json:"dir"`
+		}) (any, error) {
+			return c.GitHubClone(ctx, p.Repo, p.Dir)
 		}),
 		"github.issues": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`

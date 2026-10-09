@@ -281,8 +281,15 @@ func TestProjectExportImportThroughTheMethods(t *testing.T) {
 	if ipv.Counts["tasks"] != 1 || ipv.Pending.MemoryPending != 1 {
 		t.Fatalf("import preview %+v", ipv)
 	}
-	if err := a.callErr("project.import", map[string]any{"path": dest}); err == nil || !strings.Contains(err.Error(), "repoPath is required") {
-		t.Fatalf("import without a repository: %v", err)
+	// without a repository the import makes a project whose repository is attached later
+	var norepo struct {
+		ProjectID string `json:"projectId"`
+	}
+	a.call("project.import", map[string]any{"path": dest, "name": "gocalc (no repo)"}, &norepo)
+	var np core.Project
+	a.call("project.get", map[string]string{"id": norepo.ProjectID}, &np)
+	if np.HasRepo || np.RepoPath != "" || np.Name != "gocalc (no repo)" {
+		t.Fatalf("import without a repository: %+v", np)
 	}
 	if err := a.callErr("project.import", map[string]any{"path": dest, "repoPath": t.TempDir()}); err == nil || !strings.Contains(err.Error(), "not a usable Git repository") {
 		t.Fatalf("import into a non-repository: %v", err)

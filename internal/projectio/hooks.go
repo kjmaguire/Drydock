@@ -94,7 +94,9 @@ func looksLikeLocalPath(s string) bool {
 
 func importProject(r Row, im *ImportEnv) {
 	r["repo_path"] = im.RepoPath
-	r["default_branch"] = im.Branch
+	if im.RepoPath != "" {
+		r["default_branch"] = im.Branch
+	}
 	r["name"] = im.ProjectName
 	r["created_at"] = im.Now
 	r["version"] = int64(1)

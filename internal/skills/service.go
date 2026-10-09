@@ -313,6 +313,9 @@ func (s *Service) ScanRepo(ctx context.Context, projectID string) (ScanResult, e
 	if err := s.DB.Reader().QueryRowContext(ctx, `SELECT repo_path FROM projects WHERE id=?`, projectID).Scan(&repo); err != nil {
 		return res, fmt.Errorf("skills: project %s not found", projectID)
 	}
+	if repo == "" {
+		return res, nil // no repository attached yet: there is nothing to scan (and a relative path would read the app's own folder)
+	}
 	root := filepath.Join(repo, filepath.FromSlash(SkillsDir))
 	seen := map[string]bool{}
 	st, err := os.Lstat(root)

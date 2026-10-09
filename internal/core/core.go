@@ -54,6 +54,11 @@ type Config struct {
 	Credentials providers.CredentialStore
 	// LeaseTTL for workflow runs (default 30s).
 	LeaseTTL time.Duration
+	// GitHubAPI answers the account calls (signed-in user, organizations, repositories). Default: the user's `gh`.
+	GitHubAPI host.API
+	// GitHubCloneURL, when set, makes github.clone run `git clone <url>` instead of `gh repo clone` (tests clone a local
+	// repository this way).
+	GitHubCloneURL func(fullName string) string
 }
 
 // Core is the running application.
@@ -260,35 +265,79 @@ func (c *Core) RegisterAdapter(id string, a agents.Adapter) {
 
 // --- projects ---
 
-// Project is a repository Drydock works in.
+// Project is the work Drydock does for one product: its team, tasks and room, and (once attached) the local Git repository the
+// agents work in. A project can start without a repository: the team can plan and talk, and nothing that changes code runs
+// until a repository is attached (AttachRepository).
 type Project struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
-	RepoPath      string `json:"repoPath"`
+	RepoPath      string `json:"repoPath"` // empty: no repository attached yet
+	HasRepo       bool   `json:"hasRepo"`
 	DefaultBranch string `json:"defaultBranch"`
 	MergeStrategy string `json:"mergeStrategy"`
 	Mode          string `json:"mode"` // local_merge | pr_flow
-	Created       int64  `json:"created"`
+	// Brief is the human's description of the project (what it is for, how the team should work); every agent of the project
+	// is given it as standing context.
+	Brief   string `json:"brief"`
+	Created int64  `json:"created"`
 }
 
-// CreateProject registers a local Git repository as a project and creates its default channels.
+// MaxBriefLen bounds the project brief: it is added to agent prompts, so every character is paid for on many turns.
+const MaxBriefLen = 8000
+
+// ErrNoRepository is returned by everything that needs the project's repository while none is attached.
+var ErrNoRepository = errors.New("this project has no repository yet: attach one in the project's settings first")
+
+const projectCols = `id,name,repo_path,default_branch,merge_strategy,mode,brief,created_at`
+
+func scanProject(sc interface{ Scan(...any) error }) (Project, error) {
+	var p Project
+	err := sc.Scan(&p.ID, &p.Name, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Brief, &p.Created)
+	p.HasRepo = p.RepoPath != ""
+	if !p.HasRepo {
+		p.DefaultBranch = ""
+	}
+	return p, err
+}
+
+// openProjectRepo validates a local repository for a project: it must be a Git repository with a checked-out branch.
+func openProjectRepo(ctx context.Context, repoPath string) (root, branch string, err error) {
+	repo, err := git.Open(ctx, repoPath)
+	if err != nil {
+		return "", "", fmt.Errorf("%s is not a usable Git repository: %w", repoPath, err)
+	}
+	branch, err = repo.CurrentBranch(ctx)
+	if err != nil || branch == "" || branch == "HEAD" {
+		return "", "", fmt.Errorf("the repository at %s has no checked-out branch: commit once on a branch first", repoPath)
+	}
+	return repo.Root, branch, nil
+}
+
+// CreateProject creates a project and its default channels. repoPath names a local Git repository, or is empty for a project
+// whose repository is attached later (then the name is required).
 func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Project, error) {
 	if err := c.RequireLicensed(ctx, "create_project"); err != nil {
 		return Project{}, err
 	}
-	repo, err := git.Open(ctx, repoPath)
-	if err != nil {
-		return Project{}, fmt.Errorf("%s is not a usable Git repository: %w", repoPath, err)
+	name, repoPath = strings.TrimSpace(name), strings.TrimSpace(repoPath)
+	root, branch := "", ""
+	if repoPath != "" {
+		var err error
+		if root, branch, err = openProjectRepo(ctx, repoPath); err != nil {
+			return Project{}, err
+		}
+		if name == "" {
+			name = filepath.Base(root)
+		}
 	}
-	branch, err := repo.CurrentBranch(ctx)
-	if err != nil || branch == "" || branch == "HEAD" {
-		return Project{}, fmt.Errorf("the repository at %s has no checked-out branch: commit once on a branch first", repoPath)
+	if name == "" {
+		return Project{}, errors.New("a project needs a name (or a repository to take the name from)")
 	}
-	if strings.TrimSpace(name) == "" {
-		name = filepath.Base(repo.Root)
+	if len(name) > 200 {
+		return Project{}, errors.New("a project name is at most 200 characters")
 	}
-	p := Project{ID: ids.New("prj"), Name: name, RepoPath: repo.Root, DefaultBranch: branch, MergeStrategy: "merge", Mode: "local_merge", Created: storage.Now()}
-	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	p := Project{ID: ids.New("prj"), Name: name, RepoPath: root, HasRepo: root != "", DefaultBranch: branch, MergeStrategy: "merge", Mode: "local_merge", Created: storage.Now()}
+	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO projects(id,name,repo_path,default_branch,merge_strategy,mode,created_at) VALUES(?,?,?,?,?,?,?)`,
 			p.ID, p.Name, p.RepoPath, p.DefaultBranch, p.MergeStrategy, p.Mode, p.Created)
 		return err
@@ -299,8 +348,81 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	if _, err := c.Room.EnsureDefaultChannels(ctx, p.ID, room.Human(c.cfg.User)); err != nil {
 		return p, fmt.Errorf("project created but channels failed: %w", err)
 	}
-	c.publish(ctx, "project.created", p.ID, map[string]any{"name": p.Name})
+	c.publish(ctx, "project.created", p.ID, map[string]any{"name": p.Name, "hasRepo": p.HasRepo})
 	return p, nil
+}
+
+// AttachRepository links a local Git repository to a project that has none yet. A project's repository is not swapped once
+// attached: task branches, worktrees and merges belong to it.
+func (c *Core) AttachRepository(ctx context.Context, projectID, repoPath string) (Project, error) {
+	if err := c.RequireLicensed(ctx, "create_project"); err != nil {
+		return Project{}, err
+	}
+	p, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return p, err
+	}
+	if p.HasRepo {
+		return p, fmt.Errorf("this project already works in %s; a project's repository cannot be swapped (create another project instead)", p.RepoPath)
+	}
+	if strings.TrimSpace(repoPath) == "" {
+		return p, errors.New("choose a local Git repository to attach")
+	}
+	root, branch, err := openProjectRepo(ctx, strings.TrimSpace(repoPath))
+	if err != nil {
+		return p, err
+	}
+	res, err := c.DB.Writer().ExecContext(ctx, `UPDATE projects SET repo_path=?, default_branch=?, version=version+1 WHERE id=? AND repo_path=''`, root, branch, projectID)
+	if err != nil {
+		return p, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return p, errors.New("the project's repository was attached by someone else in the meantime")
+	}
+	c.mu.Lock()
+	delete(c.repos, projectID)
+	c.mu.Unlock()
+	c.publish(ctx, "project.updated", projectID, map[string]any{"repoAttached": true})
+	return c.GetProject(ctx, projectID)
+}
+
+// SetBrief stores the human's project brief.
+func (c *Core) SetBrief(ctx context.Context, projectID, brief string) (Project, error) {
+	brief = strings.TrimSpace(brief)
+	if len(brief) > MaxBriefLen {
+		return Project{}, fmt.Errorf("the project brief is at most %d characters (it is given to every agent on every turn)", MaxBriefLen)
+	}
+	if _, err := c.GetProject(ctx, projectID); err != nil {
+		return Project{}, err
+	}
+	brief = c.Scanner.Redact(brief) // agents read it: a pasted secret must not reach them
+	if _, err := c.DB.Writer().ExecContext(ctx, `UPDATE projects SET brief=?, version=version+1 WHERE id=?`, brief, projectID); err != nil {
+		return Project{}, err
+	}
+	c.publish(ctx, "project.updated", projectID, map[string]any{"brief": true})
+	return c.GetProject(ctx, projectID)
+}
+
+// ProjectBrief returns the project's brief (empty when there is none or the project is unknown).
+func (c *Core) ProjectBrief(ctx context.Context, projectID string) string {
+	p, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return ""
+	}
+	return p.Brief
+}
+
+// projectDir is where an agent works when it is not on a task: the repository, or for a project without one a private
+// folder in the data directory (so a planning chat never runs in the app's own working directory).
+func (c *Core) projectDir(p Project) (string, error) {
+	if p.HasRepo {
+		return p.RepoPath, nil
+	}
+	dir := filepath.Join(c.cfg.DataDir, "projects", p.ID, "workspace")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func (c *Core) publish(ctx context.Context, typ, projectID string, data any) {
@@ -310,15 +432,15 @@ func (c *Core) publish(ctx context.Context, typ, projectID string, data any) {
 
 // Projects lists projects, newest first.
 func (c *Core) Projects(ctx context.Context) ([]Project, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,name,repo_path,default_branch,merge_strategy,mode,created_at FROM projects ORDER BY created_at DESC, id`)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT `+projectCols+` FROM projects ORDER BY created_at DESC, id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []Project{}
 	for rows.Next() {
-		var p Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Created); err != nil {
+		p, err := scanProject(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -328,9 +450,7 @@ func (c *Core) Projects(ctx context.Context) ([]Project, error) {
 
 // GetProject returns one project.
 func (c *Core) GetProject(ctx context.Context, id string) (Project, error) {
-	var p Project
-	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,name,repo_path,default_branch,merge_strategy,mode,created_at FROM projects WHERE id=?`, id).
-		Scan(&p.ID, &p.Name, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Created)
+	p, err := scanProject(c.DB.Reader().QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, fmt.Errorf("project %s not found", id)
 	}
@@ -346,6 +466,9 @@ func (c *Core) repo(ctx context.Context, projectID string) (*git.Repo, error) {
 	p, err := c.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, err
+	}
+	if !p.HasRepo {
+		return nil, ErrNoRepository
 	}
 	r, err := git.Open(ctx, p.RepoPath)
 	if err != nil {
