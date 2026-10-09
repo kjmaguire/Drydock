@@ -268,7 +268,10 @@ func TestLimiterBoundsConcurrencyAndHonoursCancellation(t *testing.T) {
 // is brought up to date, the conflict is handed to its worker, and it comes back for the human's approval again.
 func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *testing.T) {
 	nap := fakeagent.Step{SleepMS: 500}
-	slow := fakeagent.Step{SleepMS: 1800}
+	// Variant B waits until Variant A has written calc.go (a marker file outside every worktree says so), so the order does not
+	// depend on how busy the machine is
+	marker := filepath.Join(t.TempDir(), "variant-a-wrote-calc")
+	wait := fakeagent.Step{WaitFile: marker}
 	file := func(path, body string) []fakeagent.Step {
 		return []fakeagent.Step{nap, writeStep(path, body), say("done")}
 	}
@@ -278,8 +281,8 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 		aWork: {Rules: []fakeagent.Rule{
 			{Match: "Task: Add Multiply", Steps: file("multiply.go", "package gocalc\n\nfunc Multiply(a, b int) int { return a * b }\n")},
 			{Match: "Task: Add Divide", Steps: file("divide.go", "package gocalc\n\nfunc Divide(a, b int) int { return a / b }\n")},
-			{Match: "Task: Variant A", Steps: file("calc.go", addA)},
-			{Match: "Task: Variant B", Steps: []fakeagent.Step{slow, writeStep("calc.go", addB), say("done")}},
+			{Match: "Task: Variant A", Steps: []fakeagent.Step{nap, writeStep("calc.go", addA), writeStep(marker, "x"), say("done")}},
+			{Match: "Task: Variant B", Steps: []fakeagent.Step{wait, writeStep("calc.go", addB), say("done")}},
 		}},
 		aReview: shipReviewer(),
 	}, tplOpts{title: "Harness task"})
@@ -300,9 +303,24 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 	}
 	s := schedFor(e, 2, start)
 	var all []tasks.Task
-	for _, title := range []string{"Add Multiply", "Add Divide", "Variant A", "Variant B"} {
+	for _, title := range []string{"Add Multiply", "Add Divide", "Variant A"} {
 		all = append(all, e.assign(e.newTask(title, 0)))
 	}
+	// "Earlier" means started first, and tasks that start in the same instant race to say so; Variant B is created only after
+	// Variant A is under way, so it is certainly the later one.
+	started := func(tk tasks.Task) bool {
+		cur, _ := e.tasks.Get(context.Background(), tk.ID)
+		return cur.Started > 0
+	}
+	for deadline := time.Now().Add(2 * time.Minute); !started(all[2]) && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if _, err := s.Tick(context.Background(), "p1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !started(all[2]) {
+		t.Fatal("Variant A never started")
+	}
+	all = append(all, e.assign(e.newTask("Variant B", 0)))
 	parkedAt := func(tk tasks.Task) bool {
 		cur, _ := e.tasks.Get(context.Background(), tk.ID)
 		if cur.RunID == "" {

@@ -184,6 +184,9 @@
     },
     "tool:wrangler": {
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it."
+    },
+    "go:golang.org/x/oauth2": {
+      "role": "The OAuth 2 token handling the MCP SDK's sign-in uses: the stored tokens, and refreshing them when they expire."
     }
   }
 }

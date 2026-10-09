@@ -631,7 +631,7 @@ func (r *Run) credential(ctx context.Context, spec *ServerSpec) (credInfo, error
 				}
 				hint := ""
 				if spec.Auth.Kind == AuthPKCE || spec.Auth.Kind == AuthDCR {
-					hint = " (the OAuth flow is not part of internal/mcp: connect the account first)"
+					hint = " (sign in to the server first: the OAuth flow is run by the application, not by this package)"
 				}
 				return credInfo{}, fmt.Errorf("credentials for %s are not available%s: %v", spec.ID, hint, err)
 			}

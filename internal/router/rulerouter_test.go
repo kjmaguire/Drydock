@@ -619,7 +619,7 @@ func TestExplainRendersTheRecordDeterministically(t *testing.T) {
 		"- Budget: scope at 34%, no downshift.",
 		"- Alternatives rejected: ",
 		"no-tools (capability_tools)",
-		"- Estimated: 14k input / 2k output tokens, about $0.0033 (estimated from catalog price updated 2026-10-08; not reported)",
+		"- Estimated: 14k input / 2k output tokens, about $0.0033 (estimated from catalog price updated " + time.Now().UTC().Format("2006-01-02") + "; not reported)", // the catalog stamps the day it was written
 		"- Effort: medium (applied); team size 1.",
 		"- Next: escalates to premium after 1 more failed iteration (3 cheap iterations) with a handoff artifact",
 	} {

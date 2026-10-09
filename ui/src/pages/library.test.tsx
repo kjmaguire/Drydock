@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '../api/client';
 import type { AgentTemplate } from '../api/libraryClient';
+import type { McpLibraryServer, McpOAuthStatus } from '../api/mcpClient';
 import type { AdapterInfo, Project } from '../api/types';
 import { AppServicesProvider } from '../state/context';
 import { LicenseProvider } from '../state/license';
@@ -227,5 +228,77 @@ describe('Library page', () => {
     expect(box.checked).toBe(false);
     fireEvent.click(box);
     await waitFor(() => expect(mcpTrySet).toHaveBeenCalledWith('codex', true));
+  });
+
+  describe('OAuth sign-in of a web server', () => {
+    const oauthServer = (over: Partial<McpLibraryServer> = {}) =>
+      libServer({ id: 'lin', display: 'Linear', transport: 'http', url: 'https://mcp.example.com/mcp', argv: undefined, env: undefined, secretEnv: [], oauth: true, oauthAt: 0, tools: [], projects: [], ...over });
+    const status = (over: Partial<McpOAuthStatus> = {}): McpOAuthStatus => ({ id: 'lin', state: 'idle', signedIn: false, ...over });
+
+    it('connecting a server with OAuth sends oauth true and no token', async () => {
+      const mcpLibSave = vi.fn(async () => oauthServer());
+      show({ mcpLibList: async () => [], mcpLibSave });
+      fireEvent.click(await screen.findByRole('button', { name: 'Connect an MCP server' }));
+      const f = within(await screen.findByTestId('mcp-form'));
+      fireEvent.change(f.getByLabelText(/Short id/), { target: { value: 'lin' } });
+      fireEvent.change(f.getByLabelText('Name'), { target: { value: 'Linear' } });
+      fireEvent.change(f.getByLabelText('Kind'), { target: { value: 'http' } });
+      fireEvent.change(f.getByLabelText(/Address/), { target: { value: 'https://mcp.example.com/mcp' } });
+      fireEvent.change(f.getByLabelText('Sign-in'), { target: { value: 'oauth' } });
+      expect(f.queryByLabelText(/Bearer token/)).toBeNull();
+      fireEvent.click(f.getByRole('button', { name: 'Connect server' }));
+      await waitFor(() => expect(mcpLibSave).toHaveBeenCalled());
+      const sent = (mcpLibSave.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      expect(sent).toMatchObject({ id: 'lin', transport: 'http', url: 'https://mcp.example.com/mcp', oauth: true });
+      expect(sent.bearerToken).toBeUndefined();
+    });
+
+    it('not signed in: Sign in asks the core to begin, then links the server\'s own sign-in page and can cancel', async () => {
+      const mcpOAuthBegin = vi.fn(async (_id?: string) => status({ state: 'waiting', url: 'https://auth.example.com/authorize?client_id=c1&state=s' }));
+      const mcpOAuthCancel = vi.fn(async () => status());
+      let waiting = false;
+      show({
+        mcpLibList: async () => [oauthServer()],
+        mcpOAuthStatus: async () => (waiting ? status({ state: 'waiting', url: 'https://auth.example.com/authorize?client_id=c1&state=s' }) : status()),
+        mcpOAuthBegin: async (id: string) => {
+          waiting = true;
+          return mcpOAuthBegin(id);
+        },
+        mcpOAuthCancel,
+      });
+      const panel = within(await screen.findByTestId('oauth-panel'));
+      expect(panel.getByText('not signed in')).toBeTruthy();
+      expect(panel.queryByRole('button', { name: 'Sign out' })).toBeNull();
+      fireEvent.click(panel.getByRole('button', { name: 'Sign in' }));
+      await waitFor(() => expect(mcpOAuthBegin).toHaveBeenCalled());
+      const link = (await screen.findByTestId('oauth-link')) as HTMLAnchorElement;
+      expect(link.href).toBe('https://auth.example.com/authorize?client_id=c1&state=s');
+      expect(link.target).toBe('_blank');
+      expect(link.rel).toContain('noopener');
+      fireEvent.click(within(await screen.findByTestId('oauth-waiting')).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(mcpOAuthCancel).toHaveBeenCalledWith('lin'));
+    });
+
+    it('never links an address that is not safe to open', async () => {
+      show({ mcpLibList: async () => [oauthServer()], mcpOAuthStatus: async () => status({ state: 'waiting', url: 'javascript:alert(1)' }) });
+      const waiting = await screen.findByTestId('oauth-waiting');
+      expect(within(waiting).queryByTestId('oauth-link')).toBeNull();
+      expect(waiting.textContent).toContain('not safe to open');
+    });
+
+    it('signed in: says so and signs out; a failed sign-in says why', async () => {
+      const mcpOAuthSignOut = vi.fn(async () => status());
+      show({ mcpLibList: async () => [oauthServer({ oauthAt: 1760000000000 })], mcpOAuthStatus: async () => status({ signedIn: true, at: 1760000000000 }), mcpOAuthSignOut });
+      const panel = within(await screen.findByTestId('oauth-panel'));
+      await waitFor(() => expect(panel.getByText(/signed in/)).toBeTruthy());
+      expect(panel.getByRole('button', { name: 'Sign in again' })).toBeTruthy();
+      fireEvent.click(panel.getByRole('button', { name: 'Sign out' }));
+      await waitFor(() => expect(mcpOAuthSignOut).toHaveBeenCalledWith('lin'));
+    });
+
+    it('shows the reason when the sign-in did not finish', async () => {
+      show({ mcpLibList: async () => [oauthServer()], mcpOAuthStatus: async () => status({ state: 'failed', error: 'the provider refused the sign-in: access_denied' }) });
+      expect((await screen.findByTestId('oauth-error')).textContent).toContain('access_denied');
+    });
   });
 });

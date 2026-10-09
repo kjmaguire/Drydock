@@ -13,6 +13,7 @@
 //	DRYDOCK_E2E_REPO <path>              a fresh git repository copied from testdata/fixtures/gocalc (repeated -repos times)
 //	DRYDOCK_E2E_GREEN_REPO <path>        (-green-repos N) baseline tests pass, and a repository skill is committed
 //	DRYDOCK_E2E_DOCS <path>              a folder with one Markdown page, for an expert pack of type local_dir
+//	DRYDOCK_E2E_OAUTH_MCP <url>          a fake MCP server that wants an OAuth sign-in (internal/mcp/oauthfake, a test double)
 //	DRYDOCK_E2E_LICENSE_ACTIVE <token>   (-licensed only) a license signed by this run's throwaway key, valid for 30 days
 //	DRYDOCK_E2E_LICENSE_EXPIRED <token>  (-licensed only) a license signed by the same key that expired 30 days ago
 //	DRYDOCK_E2E http://127.0.0.1:PORT/?token=TOKEN
@@ -51,6 +52,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
+	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
 )
@@ -175,6 +177,12 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed bool) error {
 		return err
 	}
 	fmt.Printf("DRYDOCK_E2E_DOCS %s\n", docs)
+
+	// a TEST DOUBLE for a hosted MCP server that wants an OAuth sign-in (discovery, registration, PKCE, tokens); the real
+	// Drydock sign-in flow runs against it
+	oauth := oauthfake.New()
+	defer oauth.Close()
+	fmt.Printf("DRYDOCK_E2E_OAUTH_MCP %s\n", oauth.URL())
 
 	if licensed {
 		pub, priv, err := ed25519.GenerateKey(rand.Reader)

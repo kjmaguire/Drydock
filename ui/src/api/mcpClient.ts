@@ -26,6 +26,11 @@ export interface McpLibraryServer {
   env?: Record<string, string>;
   secretEnv: string[];
   hasToken: boolean;
+  /** The server uses OAuth: the human signs in once and Drydock keeps and refreshes the tokens. */
+  oauth?: boolean;
+  /** When the human last signed in (0 or absent: not signed in). */
+  oauthAt?: number;
+  oauthScope?: string;
   guard: boolean;
   readOnlyTools: string[];
   tools: McpToolInfo[];
@@ -55,6 +60,8 @@ export interface McpServerInput {
   secretEnv?: Record<string, string>;
   bearerToken?: string;
   clearBearer?: boolean;
+  /** true: sign in with OAuth; false: turn it off and forget the tokens; absent: keep as it is. */
+  oauth?: boolean;
   guard?: boolean;
   readOnlyTools?: string[];
 }
@@ -90,6 +97,18 @@ export interface McpStatus {
   adapters: McpAdapterRow[];
 }
 
+/** The state of one server's OAuth sign-in. */
+export interface McpOAuthStatus {
+  id: string;
+  state: 'idle' | 'waiting' | 'failed';
+  /** The sign-in page to open in a browser, while waiting. It comes from the server, so it is checked before it is linked. */
+  url?: string;
+  error?: string;
+  signedIn: boolean;
+  at?: number;
+  scope?: string;
+}
+
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const lib = <T extends McpLibraryServer>(s: T): T => ({ ...s, secretEnv: arr(s.secretEnv), readOnlyTools: arr(s.readOnlyTools), tools: arr(s.tools), projects: arr(s.projects) });
 const server = (s: McpServer): McpServer => ({ ...lib(s), agents: arr(s.agents).map((a) => ({ ...a, tools: arr(a.tools) })) });
@@ -110,6 +129,12 @@ export interface McpClient {
   mcpServerAccessSet(projectId: string, serverId: string, agents: McpAccess[]): Promise<McpServer>;
   /** Grants or revokes one agent. Granting also puts the server into the agent's project. */
   mcpServerGrant(projectId: string, serverId: string, agentId: string, on: boolean): Promise<McpServer>;
+  /** OAuth sign-in of an http server: begin returns the sign-in page; poll the status (the core also publishes events). */
+  mcpOAuthBegin(id: string): Promise<McpOAuthStatus>;
+  mcpOAuthStatus(id: string): Promise<McpOAuthStatus>;
+  mcpOAuthCancel(id: string): Promise<McpOAuthStatus>;
+  /** Forgets the tokens; the server stays set up for OAuth. */
+  mcpOAuthSignOut(id: string): Promise<McpOAuthStatus>;
   /** Whether the gateway runs and which agent CLIs it can be given to. */
   mcpStatus(): Promise<McpStatus>;
   /** Allows or stops the gateway for a CLI whose per-run MCP mechanism no real run has proven yet. */
@@ -134,6 +159,10 @@ export function createMcpClient(t: Transport): McpClient {
     mcpServerSetEnabled: async (projectId, serverId, enabled) => server(await t.call<McpServer>('mcpserver.setEnabled', { projectId, serverId, enabled })),
     mcpServerAccessSet: async (projectId, serverId, agents) => server(await t.call<McpServer>('mcpserver.access.set', { projectId, serverId, agents })),
     mcpServerGrant: async (projectId, serverId, agentId, on) => server(await t.call<McpServer>('mcpserver.grant', { projectId, serverId, agentId, on })),
+    mcpOAuthBegin: (id) => t.call('mcplib.oauth.begin', { id }),
+    mcpOAuthStatus: (id) => t.call('mcplib.oauth.status', { id }),
+    mcpOAuthCancel: (id) => t.call('mcplib.oauth.cancel', { id }),
+    mcpOAuthSignOut: (id) => t.call('mcplib.oauth.signout', { id }),
     mcpStatus: async () => {
       const s = await t.call<McpStatus>('mcp.status');
       return { ...s, adapters: arr(s.adapters) };

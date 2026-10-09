@@ -92,10 +92,11 @@ func TestTaskApprovedBeforeTheBaseMovedMergesWithoutAskingAgain(t *testing.T) {
 
 func newCollidingPair(t *testing.T) (*tpl, []tasks.Task, []workflow.RunID) {
 	t.Helper()
-	slow := fakeagent.Step{SleepMS: 800}
+	marker := filepath.Join(t.TempDir(), "first-wrote-calc")
+	slow := fakeagent.Step{WaitFile: marker} // the second task starts writing only after the first has written calc.go
 	e := newTpl(t, map[string]fakeagent.Script{
 		aWork: {Rules: []fakeagent.Rule{
-			{Match: "Task: First", Steps: []fakeagent.Step{writeStep("calc.go", greenCalc+"\n// first\n"), say("done")}},
+			{Match: "Task: First", Steps: []fakeagent.Step{writeStep("calc.go", greenCalc+"\n// first\n"), writeStep(marker, "x"), say("done")}},
 			{Match: "Task: Second", Steps: []fakeagent.Step{slow, writeStep("calc.go", greenCalc+"\n// second\n"), say("done")}},
 		}},
 		aReview: shipReviewer(),
@@ -115,7 +116,11 @@ func newCollidingPair(t *testing.T) (*tpl, []tasks.Task, []workflow.RunID) {
 			t.Fatal(err)
 		}
 		all, runs = append(all, tk), append(runs, id)
-		time.Sleep(100 * time.Millisecond) // the first one starts first
+		// "earlier" means started first: let this task be under way before the next one is started
+		waitFor(t, tk.Title+" to start", func() bool {
+			cur, _ := e.tasks.Get(ctx, tk.ID)
+			return cur.Started > 0
+		})
 	}
 	return e, all, runs
 }
@@ -165,10 +170,11 @@ func TestWaitingTaskCanBeReleasedByAHumanOnly(t *testing.T) {
 
 // Nothing waits when the human switched the guard off for the project.
 func TestCollisionGuardCanBeSwitchedOff(t *testing.T) {
-	slow := fakeagent.Step{SleepMS: 800}
+	marker := filepath.Join(t.TempDir(), "first-wrote-calc")
+	slow := fakeagent.Step{WaitFile: marker} // the second task starts writing only after the first has written calc.go
 	e := newTpl(t, map[string]fakeagent.Script{
 		aWork: {Rules: []fakeagent.Rule{
-			{Match: "Task: First", Steps: []fakeagent.Step{writeStep("calc.go", greenCalc+"\n// first\n"), say("done")}},
+			{Match: "Task: First", Steps: []fakeagent.Step{writeStep("calc.go", greenCalc+"\n// first\n"), writeStep(marker, "x"), say("done")}},
 			{Match: "Task: Second", Steps: []fakeagent.Step{slow, writeStep("calc.go", greenCalc+"\n// second\n"), say("done")}},
 		}},
 		aReview: shipReviewer(),
@@ -191,7 +197,10 @@ func TestCollisionGuardCanBeSwitchedOff(t *testing.T) {
 			t.Fatal(err)
 		}
 		runs = append(runs, id)
-		time.Sleep(100 * time.Millisecond)
+		waitFor(t, tk.Title+" to start", func() bool {
+			cur, _ := e.tasks.Get(ctx, tk.ID)
+			return cur.Started > 0
+		})
 	}
 	for _, id := range runs {
 		e.await(id, workflow.StatusWaitingHuman)

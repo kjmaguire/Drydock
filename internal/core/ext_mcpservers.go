@@ -52,6 +52,9 @@ type MCPServerInput struct {
 	// BearerToken authenticates to an http server. Empty keeps the stored one; ClearBearer removes it.
 	BearerToken string `json:"bearerToken"`
 	ClearBearer bool   `json:"clearBearer"`
+	// OAuth makes an http server use OAuth: the human signs in once (mcplib.oauth.begin) and Drydock keeps and refreshes the tokens.
+	// Nil keeps the setting; false turns it off and forgets the tokens.
+	OAuth *bool `json:"oauth"`
 	// Guard limits what agents may send to the server (no code, files, secrets or long text). Default on.
 	Guard *bool `json:"guard"`
 	// ReadOnlyTools are tools the human declares read-only; every other tool needs an approval for each call.
@@ -69,6 +72,9 @@ type MCPLibraryServer struct {
 	Env           map[string]string `json:"env,omitempty"`
 	SecretEnv     []string          `json:"secretEnv"` // names only
 	HasToken      bool              `json:"hasToken"`
+	OAuth         bool              `json:"oauth"`                // the server uses OAuth
+	OAuthAt       int64             `json:"oauthAt,omitempty"`    // when the human last signed in (0: not signed in)
+	OAuthScope    string            `json:"oauthScope,omitempty"` // what the sign-in granted
 	Guard         bool              `json:"guard"`
 	ReadOnlyTools []string          `json:"readOnlyTools"`
 	Tools         []mcp.ToolInfo    `json:"tools"`
@@ -147,6 +153,11 @@ func startMCPServers(ctx context.Context, c *Core) (map[string]Method, func(), e
 		"mcplib.save":     bind(func(ctx context.Context, p MCPServerInput) (any, error) { return s.save(ctx, p) }),
 		"mcplib.delete":   bind(func(ctx context.Context, p idOnly) (any, error) { return nil, s.libDelete(ctx, p.ID) }),
 		"mcplib.discover": bind(func(ctx context.Context, p idOnly) (any, error) { return s.discover(ctx, p.ID) }),
+		// OAuth sign-in of an http server (ext_mcpoauth.go): begin returns the address the human opens; status is polled
+		"mcplib.oauth.begin":   bind(func(ctx context.Context, p idOnly) (any, error) { return s.oauthBegin(ctx, p.ID) }),
+		"mcplib.oauth.status":  bind(func(ctx context.Context, p idOnly) (any, error) { return s.oauthStatus(ctx, p.ID) }),
+		"mcplib.oauth.cancel":  bind(func(ctx context.Context, p idOnly) (any, error) { s.oauthCancel(p.ID); return s.oauthStatus(ctx, p.ID) }),
+		"mcplib.oauth.signout": bind(func(ctx context.Context, p idOnly) (any, error) { return s.oauthSignOut(ctx, p.ID) }),
 		// a project's servers: put into the project, switch on or off, take out
 		"mcpserver.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
@@ -206,16 +217,17 @@ func (s *mcpServers) load(ctx context.Context, id string) (mcpRow, error) {
 	var r mcpRow
 	var argvJSON, envJSON, secretJSON, roJSON, toolsJSON string
 	var tok, guard int
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_at,updated_at
+	var oauth int
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_at,updated_at,oauth,oauth_at,oauth_scope
 FROM mcp_library WHERE id=?`, id).Scan(&r.ID, &r.Display, &r.Transport, &r.URL, &argvJSON, &r.Cwd, &envJSON, &secretJSON,
-		&tok, &guard, &roJSON, &toolsJSON, &r.DiscoveredAt, &r.CreatedAt, &r.UpdatedAt)
+		&tok, &guard, &roJSON, &toolsJSON, &r.DiscoveredAt, &r.CreatedAt, &r.UpdatedAt, &oauth, &r.OAuthAt, &r.OAuthScope)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, fmt.Errorf("there is no MCP server %q in the library", id)
 	}
 	if err != nil {
 		return r, err
 	}
-	r.HasToken, r.Guard = tok != 0, guard != 0
+	r.HasToken, r.Guard, r.OAuth = tok != 0, guard != 0, oauth != 0
 	_ = json.Unmarshal([]byte(argvJSON), &r.Argv)
 	_ = json.Unmarshal([]byte(envJSON), &r.Env)
 	_ = json.Unmarshal([]byte(secretJSON), &r.SecretEnv)
@@ -363,6 +375,9 @@ func (r mcpRow) spec() mcp.ServerSpec {
 	if r.HasToken {
 		sp.Auth = mcp.AuthSpec{Kind: mcp.AuthBearer, Keyring: mcpVaultRef(r.ID, "token")}
 	}
+	if r.OAuth {
+		sp.Auth = mcp.AuthSpec{Kind: mcp.AuthPKCE, Keyring: mcpVaultRef(r.ID, "oauth")}
+	}
 	if r.Guard {
 		sp.Egress = &mcp.EgressSpec{MaxArgBytes: 4096, ScanSecrets: true, DenyCodeFences: true}
 	}
@@ -379,6 +394,9 @@ func (s *mcpServers) credential(ctx context.Context, serverID, ref string) (stri
 	}
 	if !strings.HasPrefix(ref, "mcp:") {
 		return "", fmt.Errorf("unknown credential reference for %s", serverID)
+	}
+	if ref == mcpVaultRef(serverID, "oauth") {
+		return s.oauthAccessToken(ctx, serverID)
 	}
 	return s.c.secrets.Get(ctx, ref)
 }
@@ -518,6 +536,23 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 		putSecrets[mcpVaultRef(r.ID, "token")] = strings.TrimSpace(in.BearerToken)
 		r.HasToken = true
 	}
+	if in.OAuth != nil {
+		switch {
+		case *in.OAuth && r.Transport != mcp.TransportHTTP:
+			return MCPLibraryServer{}, errors.New("OAuth is for http servers")
+		case *in.OAuth && (r.HasToken || strings.TrimSpace(in.BearerToken) != ""):
+			return MCPLibraryServer{}, errors.New("a server uses either a bearer token or OAuth, not both")
+		case *in.OAuth:
+			r.OAuth = true
+		default:
+			if existing.OAuth {
+				removeRefs = append(removeRefs, mcpVaultRef(r.ID, "oauth"))
+			}
+			r.OAuth, r.OAuthAt, r.OAuthScope = false, 0, ""
+		}
+	} else if r.OAuth && (r.HasToken || strings.TrimSpace(in.BearerToken) != "") {
+		return MCPLibraryServer{}, errors.New("a server uses either a bearer token or OAuth, not both: turn OAuth off first")
+	}
 	if r.Transport != mcp.TransportHTTP && (r.HasToken || in.BearerToken != "") {
 		return MCPLibraryServer{}, errors.New("a bearer token is for http servers; a stdio server gets secrets through environment variables")
 	}
@@ -533,7 +568,12 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 	if err := sp.Normalize(); err != nil {
 		return MCPLibraryServer{}, err
 	}
-	// a changed command or url invalidates the discovered tools; the human's read-only declarations stay as typed
+	// a changed command or url invalidates the discovered tools (and an OAuth sign-in, which belongs to that address); the
+	// human's read-only declarations stay as typed
+	if !isNew && r.OAuth && existing.URL != r.URL {
+		r.OAuthAt, r.OAuthScope = 0, ""
+		removeRefs = append(removeRefs, mcpVaultRef(r.ID, "oauth"))
+	}
 	if !isNew && (existing.Transport != r.Transport || existing.URL != r.URL || strings.Join(existing.Argv, "\x00") != strings.Join(r.Argv, "\x00")) {
 		r.Tools, r.DiscoveredAt = []mcp.ToolInfo{}, 0
 	}
@@ -553,12 +593,12 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 	tools, _ := json.Marshal(r.Tools)
 	now := storage.Now()
 	err = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO mcp_library(id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_by,created_at,updated_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		_, err := tx.ExecContext(ctx, `INSERT INTO mcp_library(id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_by,created_at,updated_at,oauth,oauth_at,oauth_scope)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET display=excluded.display, transport=excluded.transport, url=excluded.url, argv=excluded.argv, cwd=excluded.cwd, env=excluded.env,
  secret_env=excluded.secret_env, has_token=excluded.has_token, guard=excluded.guard, read_only_tools=excluded.read_only_tools, tools=excluded.tools,
- discovered_at=excluded.discovered_at, updated_at=excluded.updated_at`,
-			r.ID, r.Display, r.Transport, r.URL, string(argv), r.Cwd, string(env), string(sec), b2i(r.HasToken), b2i(r.Guard), string(ro), string(tools), r.DiscoveredAt, s.c.Human(), now, now)
+ discovered_at=excluded.discovered_at, updated_at=excluded.updated_at, oauth=excluded.oauth, oauth_at=excluded.oauth_at, oauth_scope=excluded.oauth_scope`,
+			r.ID, r.Display, r.Transport, r.URL, string(argv), r.Cwd, string(env), string(sec), b2i(r.HasToken), b2i(r.Guard), string(ro), string(tools), r.DiscoveredAt, s.c.Human(), now, now, b2i(r.OAuth), r.OAuthAt, r.OAuthScope)
 		return err
 	})
 	if err != nil {
@@ -613,6 +653,7 @@ func (s *mcpServers) libDelete(ctx context.Context, id string) error {
 		if r.HasToken {
 			_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "token"))
 		}
+		_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "oauth"))
 		for _, n := range r.SecretEnv {
 			_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "env:"+n))
 		}

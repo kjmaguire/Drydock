@@ -126,8 +126,23 @@ func (u *upstream) connectLocked(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		at := &authTransport{base: g.httpBase, header: u.spec.Auth.Header, value: u.authValue()}
+		if (u.spec.Auth.Kind == AuthPKCE || u.spec.Auth.Kind == AuthDCR) && g.opts.Credentials != nil {
+			// OAuth access tokens expire while an upstream connection lives on: ask the credential source (which refreshes) for each request
+			spec := u.spec
+			at.dynamic = func(ctx context.Context) (string, error) {
+				tok, err := g.opts.Credentials.Credential(ctx, spec.ID, spec.Auth.Keyring)
+				if err != nil || tok == "" {
+					if err == nil {
+						err = errors.New("credential is empty")
+					}
+					return "", err
+				}
+				return spec.Auth.Scheme + " " + tok, nil
+			}
+		}
 		hc := &http.Client{
-			Transport: &authTransport{base: g.httpBase, header: u.spec.Auth.Header, value: u.authValue()},
+			Transport: at,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return errors.New("upstream redirect refused (credentials are never forwarded to another URL)")
 			},
@@ -426,9 +441,20 @@ type authTransport struct {
 	base   http.RoundTripper
 	header string
 	value  string
+	// dynamic, when set, supplies the header value for every request (OAuth tokens that refresh).
+	dynamic func(ctx context.Context) (string, error)
 }
 
 func (t *authTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if t.dynamic != nil {
+		v, err := t.dynamic(r.Context())
+		if err != nil {
+			return nil, fmt.Errorf("upstream credential: %w", err)
+		}
+		r = r.Clone(r.Context())
+		r.Header.Set(t.header, v)
+		return t.base.RoundTrip(r)
+	}
 	if t.value != "" {
 		r = r.Clone(r.Context())
 		r.Header.Set(t.header, t.value)

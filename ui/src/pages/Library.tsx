@@ -6,6 +6,7 @@ import { DropZone } from '../components/DropZone';
 import { CliGateway } from '../components/CliGateway';
 import { McpServerForm, inputOf } from '../components/McpServerForm';
 import { TemplateForm } from '../components/TemplateForm';
+import { OAuthPanel } from '../components/OAuthPanel';
 import { Badge, ErrorNote, Page } from '../components/common';
 import { startDrag, type Dragged } from '../lib/dnd';
 import { useAction } from '../lib/useAction';
@@ -99,6 +100,7 @@ function McpCard({
       <p>
         <code>{where}</code>
       </p>
+      {s.oauth ? <OAuthPanel server={s} onChanged={onChanged} /> : null}
       {s.secretEnv.length > 0 || s.hasToken ? (
         <p className="muted" data-testid="mcp-secrets">
           Secrets kept in the credential store: {s.hasToken ? 'bearer token' : s.secretEnv.join(', ')} (values are never shown)

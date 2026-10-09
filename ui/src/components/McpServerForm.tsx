@@ -49,6 +49,7 @@ export function McpServerForm({ initial, onDone, onCancel }: { initial?: McpLibr
   const [secrets, setSecrets] = useState<SecretRow[]>((initial?.secretEnv ?? []).map((n) => ({ name: n, value: '', existing: true })));
   const [token, setToken] = useState('');
   const [clearToken, setClearToken] = useState(false);
+  const [auth, setAuth] = useState<'none' | 'token' | 'oauth'>(initial?.oauth ? 'oauth' : initial?.hasToken ? 'token' : 'none');
   const [guard, setGuard] = useState(initial?.guard ?? true);
 
   const submit = async (e: FormEvent) => {
@@ -64,7 +65,12 @@ export function McpServerForm({ initial, onDone, onCancel }: { initial?: McpLibr
     const input: McpServerInput = {
       id: id.trim(), display: display.trim(), transport, guard, readOnlyTools: initial?.readOnlyTools ?? [],
       ...(transport === 'http'
-        ? { url: url.trim(), bearerToken: token.trim() || undefined, clearBearer: clearToken || undefined }
+        ? {
+            url: url.trim(),
+            bearerToken: auth === 'token' ? token.trim() || undefined : undefined,
+            clearBearer: (auth === 'token' ? clearToken : !!initial?.hasToken) || undefined,
+            oauth: auth === 'oauth',
+          }
         : { argv: parseLines(argv), cwd: cwd.trim() || undefined, env: envObj, secretEnv: Object.fromEntries(secrets.filter((s) => s.name.trim()).map((s) => [s.name.trim(), s.value])) }),
     };
     const r = await act.run('save', () => client.mcpLibSave(input));
@@ -98,14 +104,27 @@ export function McpServerForm({ initial, onDone, onCancel }: { initial?: McpLibr
             <input value={url} onChange={(e) => setUrl(e.target.value)} required spellCheck={false} placeholder="https://example.com/mcp" />
           </label>
           <label>
-            Bearer token {initial?.hasToken ? <Badge tone="ok">set</Badge> : null}
-            <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={initial?.hasToken ? 'leave empty to keep the stored token' : 'optional'} />
+            How Drydock proves who it is
+            <select aria-label="Sign-in" value={auth} onChange={(e) => setAuth(e.target.value as 'none' | 'token' | 'oauth')}>
+              <option value="none">Nothing (a public server)</option>
+              <option value="token">A bearer token or API key I paste</option>
+              <option value="oauth">Sign in with the server's account (OAuth)</option>
+            </select>
           </label>
-          {initial?.hasToken ? (
-            <label className="inline">
-              <input type="checkbox" checked={clearToken} onChange={(e) => setClearToken(e.target.checked)} /> Remove the stored token
-            </label>
+          {auth === 'token' ? (
+            <>
+              <label>
+                Bearer token {initial?.hasToken ? <Badge tone="ok">set</Badge> : null}
+                <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={initial?.hasToken ? 'leave empty to keep the stored token' : 'optional'} />
+              </label>
+              {initial?.hasToken ? (
+                <label className="inline">
+                  <input type="checkbox" checked={clearToken} onChange={(e) => setClearToken(e.target.checked)} /> Remove the stored token
+                </label>
+              ) : null}
+            </>
           ) : null}
+          {auth === 'oauth' ? <p className="muted">After you save, press Sign in on the server's card. Your browser opens the server's own sign-in page. Drydock keeps the tokens in the Windows credential store.</p> : null}
         </>
       ) : (
         <>

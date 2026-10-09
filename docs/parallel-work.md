@@ -51,6 +51,7 @@ Where it acts:
 
 ## 3. What the guard cannot know (stated, not hidden)
 
+- Two tasks that start in the same instant race to be "earlier" (the order is the moment each first went IN_PROGRESS), so which of them waits is decided by timing. Only the order is arbitrary; one of them still waits for the other. The tests start the tasks one after the other for that reason.
 - It cannot see the future. Two tasks that both start without planned files and write to the same file at about the same time are
   not detected until the later one reaches the guard and the earlier one has already written. The task that finishes later then
   absorbs the integration through sync (layer 3), which is correct, only less efficient.

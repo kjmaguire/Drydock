@@ -1,10 +1,10 @@
 {
-  "generated": "2026-10-09T00:41:44Z",
-  "commit": "c9e8c57",
+  "generated": "2026-10-09T01:17:34Z",
+  "commit": "836e192",
   "summary": {
-    "current": 234,
+    "current": 235,
     "major": 25,
-    "minor": 131,
+    "minor": 130,
     "patch": 112,
     "prerelease": 2,
     "unknown": 1
@@ -233,7 +233,7 @@
       "usedDate": "2026-09-04",
       "where": "go.mod",
       "role": "The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. Its auth package will carry the OAuth connect flow.",
-      "usedBy": 5
+      "usedBy": 7
     },
     {
       "id": "go:github.com/openai/openai-go/v3",
@@ -299,6 +299,19 @@
       "usedDate": "2026-02-21",
       "where": "go.mod",
       "role": "Scans diffs and outputs for secrets before they are kept or sent.",
+      "usedBy": 1
+    },
+    {
+      "id": "go:golang.org/x/oauth2",
+      "group": "Go libraries Drydock imports",
+      "name": "golang.org/x/oauth2",
+      "kind": "direct",
+      "used": "0.37.0",
+      "latest": "0.37.0",
+      "status": "current",
+      "usedDate": "2026-08-25",
+      "where": "go.mod",
+      "role": "The OAuth 2 token handling the MCP SDK's sign-in uses: the stored tokens, and refreshing them when they expire.",
       "usedBy": 1
     },
     {
@@ -5185,18 +5198,6 @@
       "where": "go.mod"
     },
     {
-      "id": "go:golang.org/x/oauth2",
-      "group": "Go libraries pulled in by other libraries",
-      "name": "golang.org/x/oauth2",
-      "kind": "indirect",
-      "used": "0.35.0",
-      "latest": "0.37.0",
-      "status": "minor",
-      "usedDate": "2026-01-12",
-      "latestDate": "2026-08-25",
-      "where": "go.mod"
-    },
-    {
       "id": "go:golang.org/x/sync",
       "group": "Go libraries pulled in by other libraries",
       "name": "golang.org/x/sync",
@@ -5995,8 +5996,8 @@
     "bridge": 2,
     "cli": 5,
     "dev": 11,
-    "direct": 19,
-    "indirect": 454,
+    "direct": 20,
+    "indirect": 453,
     "runtime": 4,
     "tool": 6
   }

@@ -40,7 +40,10 @@ type Step struct {
 	Vary    bool            `json:"vary,omitempty"`   // add "n": <repeat index> to the tool input so every call differs
 	SleepMS int             `json:"sleepMs,omitempty"`
 	Block   bool            `json:"block,omitempty"` // wait for an interrupt (or stdin close)
-	Exit    int             `json:"exit,omitempty"`  // exit the process with this code (non-zero) mid-turn
+	// WaitFile waits (up to two minutes) until a file exists at this absolute path, so a test can order two scripted agents by what
+	// one of them has done instead of by sleeping.
+	WaitFile string `json:"waitFile,omitempty"`
+	Exit     int    `json:"exit,omitempty"` // exit the process with this code (non-zero) mid-turn
 	// Write makes the agent really write a file (relative to its working directory) and report it as a Write tool call.
 	Write *WriteSpec `json:"write,omitempty"`
 }
@@ -224,6 +227,22 @@ loop:
 				case <-a.interrupt:
 					interrupted = true
 					break loop
+				}
+			case st.WaitFile != "":
+				deadline := time.After(2 * time.Minute)
+			wait:
+				for {
+					if _, err := os.Stat(st.WaitFile); err == nil {
+						break wait
+					}
+					select {
+					case <-time.After(25 * time.Millisecond):
+					case <-deadline:
+						break wait
+					case <-a.interrupt:
+						interrupted = true
+						break loop
+					}
 				}
 			case st.Block:
 				<-a.interrupt
