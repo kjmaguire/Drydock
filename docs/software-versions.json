@@ -1,8 +1,8 @@
 {
-  "generated": "2026-10-09T08:36:05Z",
-  "commit": "a173255",
+  "generated": "2026-10-09T10:45:41Z",
+  "commit": "e2e4c25",
   "summary": {
-    "current": 299,
+    "current": 300,
     "major": 8,
     "minor": 74,
     "patch": 73,
@@ -32,6 +32,18 @@
       "status": "current",
       "where": "internal/agents/manifests/cli/claude.yaml",
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today."
+    },
+    {
+      "id": "cli:cline",
+      "group": "Agent CLIs Drydock drives",
+      "name": "cline (cline)",
+      "kind": "cli",
+      "used": "3.0.70",
+      "latest": "3.0.70",
+      "status": "current",
+      "where": "internal/agents/manifests/cli/cline.yaml (recommended; minimum 3.0.70)",
+      "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
+      "note": "Pinned at 3.0.70 (min and recommended), the newest release on 2026-10-09: version and ACP initialize checked live on Linux; no prompt turn was run (no sign-in here). You install it yourself with npm i -g cline (Node 22+; its launcher is a Node script). Decisions P29."
     },
     {
       "id": "cli:codex",
@@ -361,7 +373,7 @@
       "usedDate": "2022-05-27",
       "where": "go.mod",
       "role": "Reads YAML: agent manifests, the MCP catalog, expert packs, skills.",
-      "usedBy": 6,
+      "usedBy": 7,
       "inBuild": true
     },
     {
@@ -5751,7 +5763,7 @@
   "counts": {
     "action": 5,
     "bridge": 2,
-    "cli": 5,
+    "cli": 6,
     "dev": 6,
     "direct": 25,
     "indirect": 404,
