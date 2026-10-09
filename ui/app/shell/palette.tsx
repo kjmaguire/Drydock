@@ -5,7 +5,7 @@ import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { CornerDownLeft, Search } from 'lucide';
 import type { ThemeChoice } from '../lib/theme.ts';
 import { routes } from '../routes.ts';
-import { services, watch } from '../state/services.tsx';
+import { query as liveQuery, services, watch } from '../state/services.tsx';
 import type { DockTab } from '../state/ui.ts';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
@@ -70,6 +70,13 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   let input: HTMLInputElement | undefined;
   let query = '';
   let active = 0;
+  // recent chats, read while the palette is open
+  const chats = liveQuery(handle, {
+    load: () => s.client.chatList({}),
+    when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted',
+    enabled: () => s.ui.paletteOpen,
+    debounceMs: 300,
+  });
 
   // Ctrl+K anywhere toggles the palette
   window.addEventListener(
@@ -125,7 +132,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   return () => {
     handle.queueTask(sync);
     const p = s.project;
-    const all = s.ui.paletteOpen ? buildItems(p.roomList, p.taskList, p.agentList) : [];
+    const all = s.ui.paletteOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? []) : [];
     const shown = filterItems(all, query);
     const idx = Math.min(active, Math.max(shown.length - 1, 0));
     const listId = `palette-list-${handle.id}`;

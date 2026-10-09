@@ -2,10 +2,11 @@
 // here approves, merges, deletes or stops anything, so the palette can never bypass an approval.
 
 import type { Agent, Room, Task } from '../api/types.ts';
+import type { ChatListItem } from '../api/chatClient.ts';
 import { routes } from '../routes.ts';
 
-export type Group = 'Navigate' | 'Tasks' | 'Agents' | 'Actions';
-export const GROUPS: Group[] = ['Navigate', 'Tasks', 'Agents', 'Actions'];
+export type Group = 'Navigate' | 'Chats' | 'Tasks' | 'Agents' | 'Actions';
+export const GROUPS: Group[] = ['Navigate', 'Chats', 'Tasks', 'Agents', 'Actions'];
 
 export interface PaletteItem {
   id: string;
@@ -20,6 +21,7 @@ export interface PaletteItem {
 
 export const SCREENS: [string, string, string[]?][] = [
   [routes.needsYou.href(), 'Needs you', ['inbox', 'approvals']],
+  [routes.chats.href(), 'Chats', ['claude', 'conversation']],
   [routes.tasks.href(), 'Tasks'],
   [routes.team.href(), 'Team', ['agents']],
   [routes.plan.href(), 'Plan with PlanTeam'],
@@ -46,7 +48,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.settings.href(), 'Settings and About', ['theme', 'preferences']],
 ];
 
-export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agents: readonly Agent[]): PaletteItem[] {
+export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agents: readonly Agent[], chats: readonly ChatListItem[] = []): PaletteItem[] {
   const out: PaletteItem[] = [];
   for (const r of rooms.filter((r) => !r.archived)) {
     const dm = r.kind === 'dm';
@@ -54,6 +56,10 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
     out.push({ id: `room:${r.id}`, group: 'Navigate', label: dm ? `Direct message ${name}` : `#${name}`, hint: dm ? 'direct message' : r.kind, href: routes.room.href({ id: r.id }) });
   }
   for (const [href, label, keywords] of SCREENS) out.push({ id: `screen:${href}`, group: 'Navigate', label, href, keywords });
+  out.push({ id: 'chat:new', group: 'Chats', label: 'New chat', keywords: ['claude', 'conversation', 'ask'], href: `${routes.chats.href()}?new` });
+  for (const c of chats.filter((c) => !c.archived).slice(0, 8)) {
+    out.push({ id: `chat:${c.id}`, group: 'Chats', label: c.title.trim() || 'New chat', hint: c.status === 'running' ? 'running' : 'chat', keywords: ['chat'], href: routes.chat.href({ id: c.id }) });
+  }
   out.push({ id: 'task:new', group: 'Tasks', label: 'Create a task', href: routes.taskNew.href() });
   for (const t of tasks.slice(0, 200)) {
     out.push({ id: `task:${t.id}`, group: 'Tasks', label: `#${t.seq} ${t.title}`, hint: t.status, keywords: [String(t.seq), t.status], href: routes.task.href({ id: t.id }) });

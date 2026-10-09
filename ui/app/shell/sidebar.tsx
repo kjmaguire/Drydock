@@ -312,9 +312,12 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             ref((n) => (nav = n)),
           ]}
         >
+          <ul mix={listCss} style={{ marginTop: '4px' }}>
+            <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
+          </ul>
           {project ? (
             <>
-              <ul mix={listCss} style={{ marginTop: '4px' }}>
+              <ul mix={listCss} style={{ marginTop: '1px' }}>
                 <NavItem
                   href={routes.needsYou.href()}
                   current={at('needs-you')}
