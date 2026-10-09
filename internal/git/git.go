@@ -26,6 +26,8 @@ import (
 var (
 	ErrDirtyWorktree = errors.New("git: worktree has uncommitted changes")
 	ErrNotARepo      = errors.New("git: not a git repository")
+	// ErrUnknownRevision means a commit is not in the object database (never fetched, or collected after its branch went).
+	ErrUnknownRevision = errors.New("git: unknown revision")
 )
 
 // ConflictError reports a merge/rebase that stopped on conflicts. The merge is aborted before this is returned, so

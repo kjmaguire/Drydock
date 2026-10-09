@@ -34,7 +34,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     // evidence with pass/fail, the reviewer verdict and a diff
     await expect(page.getByTestId('evidence').filter({ hasText: 'test' }).first()).toHaveAttribute('data-result', 'pass');
     await expect(page.getByTestId('review').first()).toHaveAttribute('data-verdict', 'SHIP');
-    await page.getByRole('button', { name: 'Show diff' }).click();
+    await page.getByRole('button', { name: 'Show the raw patch' }).click();
     await expect(page.locator('.diff-add', { hasText: 'return a - b' })).toBeVisible();
 
     // the task channel: Tests check card, the worker's message, the reviewer's verdict
@@ -85,7 +85,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
       expect(id).not.toBe(firstRequest);
     }).toPass({ timeout: 90_000 });
 
-    await page.getByRole('button', { name: 'Show diff' }).click();
+    await page.getByRole('button', { name: 'Show the raw patch' }).click();
     await expect(page.locator('.diff-add', { hasText: 'Subtract returns a minus b' })).toBeVisible();
 
     // the human's feedback reached the worker through the core: the channel shows the reworked report

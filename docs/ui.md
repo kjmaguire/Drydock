@@ -109,6 +109,14 @@ Tool members (`Tests`, `Lint`, `Types`, `Build`, later `Secrets`, `CI`, `Preview
 ### 6.1 Monaco diff
 Read-only `DiffEditor` for task diffs (original = merge base or safe-point ref, modified = worktree), inline and side-by-side toggle, file list with +/- counts, per-file collapse, jump to next change. Large diffs: load per file on demand; files over a size threshold (**proposal**, tune after measurement) render a "large file" placeholder with an explicit "render anyway" button. Models are disposed when a file leaves view. Theme follows the app theme (section 12). Inline comments and "Ask Agent about this hunk" arrive with 1D review; no edit-in-place in Slice 1. Bundling Monaco workers under the Wails asset server is **unverified** (needs a spike in 1B).
 
+**As built (2026-10-09).** `ui/src/dock/DiffViewer.tsx` + `MonacoDiff.tsx` (monaco-editor, lazy chunk; only the editor API, the
+diff editor, find, folding, copy, context menu and the language definitions are imported; links are not, since file content is
+untrusted). The core serves `task.diffFiles` (the files of the recorded diff, or of the live worktree) and `task.diffFile` (both
+versions of one file: the base and task commits from git, or the file on disk for a live diff, refusing paths outside the
+worktree); a recorded diff whose commits git has collected falls back to the patch's hunks, marked partial. Files over 2 MB wait
+for "Show it anyway"; binary files are not shown. Monaco's editor worker is bundled by Vite and served from the app's own origin
+(the CSP's `default-src 'self'` covers it); not yet run under the Wails asset server.
+
 ### 6.2 React Flow workflow graph with checkpoint timeline (Slice 1C)
 - Nodes by kind (brief 4): `agent_task`, `check`, `request`, `route`, `subworkflow` (a subworkflow node expands into a nested graph view). Edge kinds: direct, conditional, fan-out, fan-in (barrier), loop (drawn with iteration count and the limit, default five for Iterate Until Verified).
 - Node status from `node_executions` and events: pending, running, completed, failed, waiting_human, skipped; attempt number badge; for `agent_task` nodes: agent, provider, model, tier, tokens, cost (with source badges). `request` nodes show the typed request and a link to the inbox item.
@@ -124,6 +132,22 @@ Used for: message lists (bottom-anchored, dynamic row height, "jump to latest" p
 
 ### 6.5 xterm.js terminal (Slice 1B)
 One xterm instance per ConPTY session (go-pty, ConPTY, 80x25 initial then resize via `ResizePseudoConsole`). Output path: Go reads PTY, coalesces to frames, emits a typed event per terminal id (binary payload encoding **proposal**); the UI writes to xterm directly (never through zustand state) and acknowledges bytes consumed so Go can pause reading when the UI lags (flow control, **proposal**, measure on Windows). Input goes back by service call. The embedded terminal is also where CLI logins run (Connections, section 8) so Drydock never handles tokens. ANSI handling server-side uses `charmbracelet/x/ansi` only for stripping/width in logs (phase0 appendix 10); ConPTY re-renders and emits its own cursor sequences, which must be checked on Windows (unverified). Terminal tabs are killed with the process tree when closed.
+
+**As built (2026-10-09).** `internal/terminal` (go-pty: ConPTY on Windows, a Unix pty elsewhere) behind `terminal.open/read/write/
+resize/close/list`. A terminal opens in a task's worktree or a project's repository, never at a path the caller names. Output is
+kept in a 1 MB ring per terminal and read by offset with a long poll (`terminal.read` waits up to 20 s), so both transports carry
+it on the ordinary call path; a reader that falls behind is told how many bytes were dropped. Output is never written to the event
+log or the database. Closing a terminal ends its process tree: on Windows the shell is put in its own kill-on-close Job Object
+right after it starts (`proc.AttachTree`; D7), on Linux the session is killed. The human's terminal inherits Drydock's full
+environment (it is the human's shell, not an agent's). `ui/src/dock/Xterm.tsx` (xterm.js 6 + fit addon, lazy chunk) writes
+output straight into xterm. Up to 8 terminals at once. **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
+shell (pwsh when installed), the job assignment race for children started in the first instant.
+
+The Logs tab (`ui/src/dock/LogsPanel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the
+`stream.jsonl` of each node execution that streamed something) through `logs.list`, and reads them by byte range through
+`logs.read` (the tail first, earlier output on request, new output followed while running). An agent stream is rendered as
+readable lines (text as it streamed, `[tool]`, `[result]`, `[usage]`, `[error]`); a log is named by an id Drydock gave it, never
+by a path. The dock's open state, tab and height are kept per project; Ctrl+J toggles it and Ctrl+Shift+D opens the Diff tab.
 
 ### 6.6 Other components
 Markdown renderer (sanitized, incremental for streaming), code block with copy, presence dot, usage badge (`reported`/`estimated`/`not reported`), approval card, toast and OS notification bridge (Wails ships a notifications service in `pkg/services/notifications`; behavior on Windows unverified), empty-state panel, error boundary per region, resizable splitter.

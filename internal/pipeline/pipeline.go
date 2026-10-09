@@ -471,7 +471,13 @@ func Finalize(d Deps) workflow.NodeHandler {
 		if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		statJSON, _ := json.Marshal(stat)
+		// base and commit let the diff viewer read both versions of every file from git (internal/core/ext_diffview.go)
+		base, _ := repo.MergeBase(ctx, w, w.Base)
+		statJSON, _ := json.Marshal(struct {
+			git.DiffStat
+			Base   string `json:"base,omitempty"`
+			Commit string `json:"commit,omitempty"`
+		}{stat, base, commit})
 		if _, err := d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "diff", Summary: fmt.Sprintf("%d file(s), +%d -%d", stat.Files, stat.Insertions, stat.Deletions), Ref: diffPath, Data: statJSON}); err != nil {
 			return workflow.NodeOutput{}, err
 		}

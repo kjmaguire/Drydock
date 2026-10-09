@@ -1,8 +1,8 @@
 {
-  "generated": "2026-10-09T01:47:15Z",
-  "commit": "2179a82",
+  "generated": "2026-10-09T05:49:10Z",
+  "commit": "a50554d",
   "summary": {
-    "current": 298,
+    "current": 301,
     "major": 8,
     "minor": 75,
     "patch": 73,
@@ -189,10 +189,9 @@
       "status": "current",
       "usedDate": "2026-05-17",
       "where": "go.mod",
-      "role": "Meant for Windows terminals (ConPTY).",
-      "note": "Declared in go.mod and pinned in internal/tools/deps.go, but no product package imports it yet.",
-      "usedBy": 0,
-      "inBuild": false
+      "role": "The human's terminals in the bottom dock: ConPTY on Windows, a Unix pseudo-terminal elsewhere (internal/terminal).",
+      "usedBy": 1,
+      "inBuild": true
     },
     {
       "id": "go:github.com/charmbracelet/x/ansi",
@@ -1652,7 +1651,7 @@
       "status": "current",
       "usedDate": "2024-10-31",
       "where": "go.mod",
-      "inBuild": false
+      "inBuild": true
     },
     {
       "id": "go:github.com/cyphar/filepath-securejoin",
@@ -4442,7 +4441,7 @@
       "status": "current",
       "usedDate": "2026-02-27",
       "where": "go.mod",
-      "inBuild": false
+      "inBuild": true
     },
     {
       "id": "go:github.com/u-root/uio",
@@ -5700,11 +5699,33 @@
       "group": "UI build and test tools",
       "name": "(all packages in package-lock.json)",
       "kind": "indirect",
-      "used": "147",
-      "latest": "147",
+      "used": "153",
+      "latest": "153",
       "status": "current",
       "where": "ui/package-lock.json",
       "note": "Count of installed packages including everything the listed ones pull in."
+    },
+    {
+      "id": "npm:@xterm/addon-fit",
+      "group": "UI libraries (shipped in the app)",
+      "name": "@xterm/addon-fit",
+      "kind": "direct",
+      "used": "0.11.0",
+      "latest": "0.11.0",
+      "status": "current",
+      "where": "ui/package.json",
+      "role": "Sizes a terminal to its panel."
+    },
+    {
+      "id": "npm:@xterm/xterm",
+      "group": "UI libraries (shipped in the app)",
+      "name": "@xterm/xterm",
+      "kind": "direct",
+      "used": "6.0.0",
+      "latest": "6.0.0",
+      "status": "current",
+      "where": "ui/package.json",
+      "role": "Draws the human's terminals in the bottom dock (lazy-loaded)."
     },
     {
       "id": "npm:marked",
@@ -5717,6 +5738,18 @@
       "where": "ui/package.json",
       "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
       "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."
+    },
+    {
+      "id": "npm:monaco-editor",
+      "group": "UI libraries (shipped in the app)",
+      "name": "monaco-editor",
+      "kind": "direct",
+      "used": "0.57.0",
+      "latest": "0.57.0",
+      "status": "current",
+      "where": "ui/package.json",
+      "role": "The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported).",
+      "note": "Its package.json pins dompurify 3.4.15, which has two low advisories about IN_PLACE mode; Monaco never uses that mode, and ui/package.json overrides the npm copy to 3.4.16."
     },
     {
       "id": "npm:react",
@@ -5751,7 +5784,7 @@
     "bridge": 2,
     "cli": 5,
     "dev": 11,
-    "direct": 20,
+    "direct": 23,
     "indirect": 404,
     "runtime": 4,
     "tool": 6

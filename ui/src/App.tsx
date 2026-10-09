@@ -20,6 +20,7 @@ import { agentName, formatCost, presenceFor } from './lib/format';
 import { useClient, useStoreSnapshot } from './state/context';
 import { useAgents, useLive, useNeedsYou, usePresence, useProjects, useRooms, useTaskDetail, useTasks, useUnread } from './state/hooks';
 import { StatusChip } from './components/common';
+import { Dock } from './dock/Dock';
 
 // Pages that are not on the first screen load on demand, so the first paint stays small.
 const ConnectionsView = lazy(() => import('./components/Connections').then((m) => ({ default: m.ConnectionsView })));
@@ -291,10 +292,13 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
         presence={presence.data ?? []}
         stream={stream.status}
       />
-      <main id="main" className="center" tabIndex={-1}>
-        <ErrorNote error={dmError} what="Could not open the direct message" />
-        <Suspense fallback={<p className="muted pad">Loading...</p>}>{center}</Suspense>
-      </main>
+      <div className="center-col">
+        <main id="main" className="center" tabIndex={-1}>
+          <ErrorNote error={dmError} what="Could not open the direct message" />
+          <Suspense fallback={<p className="muted pad">Loading...</p>}>{center}</Suspense>
+        </main>
+        {project ? <Dock projectId={project.id} taskId={taskContext} /> : null}
+      </div>
       <aside className="right" aria-label="Details">
         <button className="right-toggle" onClick={() => setRightOpen((v) => !v)} aria-expanded={rightOpen} aria-controls="right-body">
           {rightOpen ? 'Hide details' : 'Show details'}

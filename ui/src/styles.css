@@ -1060,3 +1060,226 @@ fieldset {
 .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.25rem 0; padding: 0; list-style: none; }
 .chip { display: inline-flex; align-items: center; gap: 0.3rem; border: 1px solid var(--border, #888); border-radius: 999px; padding: 0.05rem 0.5rem; font-size: 0.85em; }
 .chip button { border: 0; background: none; cursor: pointer; padding: 0 0.15rem; font: inherit; }
+
+/* bottom dock: terminal, diff, logs, activity (docs/ui.md 2) */
+.center-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.center-col > .center {
+  flex: 1;
+  min-height: 0;
+}
+.dock {
+  border-top: 1px solid var(--border);
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  flex: none;
+}
+.dock-resize {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 2;
+}
+.dock-resize:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px;
+}
+.dock-head .tabs {
+  margin: 0;
+}
+.dock-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-0);
+}
+.dock-links {
+  margin: 0 0 6px;
+}
+.segmented {
+  display: inline-flex;
+}
+.segmented button {
+  border-radius: 0;
+}
+.segmented button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.segmented button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.diff-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+.diff-viewer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.diff-body {
+  display: grid;
+  grid-template-columns: minmax(160px, 260px) minmax(0, 1fr);
+  min-height: 320px;
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.diff-files {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.diff-file {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 3px 4px;
+  border-radius: 3px;
+  color: var(--fg-0);
+}
+.diff-file.active {
+  background: var(--bg-2);
+}
+.diff-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.diff-status {
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+}
+.diff-status-added {
+  color: var(--ok);
+}
+.diff-status-deleted {
+  color: var(--err);
+}
+.diff-status-renamed {
+  color: var(--info);
+}
+.diff-counts {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.diff-counts .diff-add {
+  color: var(--ok);
+  background: none;
+}
+.diff-counts .diff-del {
+  color: var(--err);
+  background: none;
+}
+.diff-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.diff-pane-head {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-pane > p {
+  padding: 0 8px;
+}
+.monaco-host {
+  flex: 1;
+  min-height: 300px;
+}
+.dock .monaco-host {
+  min-height: 0;
+}
+.dock .diff-body {
+  min-height: 0;
+}
+.logs-panel,
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.logs-body {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.logs-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.logs-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 3px 4px;
+  border-radius: 3px;
+  color: var(--fg-0);
+}
+.logs-item.active {
+  background: var(--bg-2);
+}
+.log-view {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.log-text {
+  flex: 1;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.term-tab {
+  display: inline-flex;
+  align-items: center;
+}
+.xterm-host {
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+  background: var(--bg-0);
+}

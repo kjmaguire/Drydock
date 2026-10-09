@@ -27,8 +27,7 @@
       "role": "Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. The agent CLIs make their own calls and do not use it."
     },
     "go:github.com/aymanbagabas/go-pty": {
-      "role": "Meant for Windows terminals (ConPTY).",
-      "note": "Declared in go.mod and pinned in internal/tools/deps.go, but no product package imports it yet."
+      "role": "The human's terminals in the bottom dock: ConPTY on Windows, a Unix pseudo-terminal elsewhere (internal/terminal)."
     },
     "go:github.com/charmbracelet/x/ansi": {
       "role": "Meant for reading terminal escape codes in agent and terminal output.",
@@ -183,6 +182,19 @@
     },
     "ci-go:1.27.2": {
       "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."
+    },
+    "npm:monaco-editor": {
+      "role": "The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported).",
+      "note": "Its package.json pins dompurify 3.4.15, which has two low advisories about IN_PLACE mode; Monaco never uses that mode, and ui/package.json overrides the npm copy to 3.4.16."
+    },
+    "npm:@xterm/xterm": {
+      "role": "Draws the human's terminals in the bottom dock (lazy-loaded)."
+    },
+    "npm:@xterm/addon-fit": {
+      "role": "Sizes a terminal to its panel."
+    },
+    "npm:dompurify": {
+      "role": "Pulled in by monaco-editor; pinned by an override to the release that fixes the IN_PLACE advisories."
     }
   }
 }

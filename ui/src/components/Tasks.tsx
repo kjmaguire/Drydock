@@ -1,3 +1,5 @@
+import { DiffViewer } from '../dock/DiffViewer';
+import { openDock } from '../dock/Dock';
 import { useState, type FormEvent } from 'react';
 import type { Agent, Evidence, PendingRequest, ReviewRecord, Task, TaskDetail } from '../api/types';
 import { Markdown } from '../lib/Markdown';
@@ -189,6 +191,12 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
       <TaskDecisions taskId={t.id} />
       <PreviewControls taskId={t.id} hasWorktree={!!t.worktree} />
       <h2>Diff</h2>
+      <p className="dock-links">
+        <button className="link-button" onClick={() => openDock('diff')}>Open in the dock</button> ·{' '}
+        <button className="link-button" onClick={() => openDock('logs')}>Logs</button> ·{' '}
+        <button className="link-button" onClick={() => openDock('terminal')}>Terminal</button>
+      </p>
+      <DiffViewer taskId={t.id} />
       <DiffView taskId={t.id} hasDiff={d.evidence.some((e) => e.kind === 'diff')} />
     </Page>
   );
@@ -696,7 +704,7 @@ function DiffView({ taskId, hasDiff }: { taskId: string; hasDiff: boolean }) {
             }
           }}
         >
-          Show diff
+          Show the raw patch
         </button>
       ) : text === '' ? (
         <p className="muted">The recorded diff is empty.</p>
