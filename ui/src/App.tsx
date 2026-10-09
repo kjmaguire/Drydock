@@ -41,6 +41,7 @@ const LicenseView = lazy(() => import('./pages/License'));
 const BackupsView = lazy(() => import('./pages/Backups'));
 const DataView = lazy(() => import('./pages/Data'));
 const SupportView = lazy(() => import('./pages/Support'));
+const RunView = lazy(() => import('./pages/RunView').then((m) => ({ default: m.RunView })));
 
 const PROJECT_KEY = 'drydock.project';
 const readProject = (): string | undefined => {
@@ -201,6 +202,9 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
       case 'task':
         center = <TaskDetailView taskId={route.id} agents={agentList} key={route.id} />;
         break;
+      case 'run':
+        center = <RunView taskId={route.taskId} runId={route.runId} agents={agentList} key={`${route.taskId}:${route.runId ?? ''}`} />;
+        break;
       case 'pulls':
         center = <PullRequestsView projectId={project.id} tasks={tasks.data ?? []} />;
         break;
@@ -271,7 +275,7 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
   }
 
   const taskContext =
-    route.name === 'task' ? route.id : route.name === 'room' ? roomList.find((r) => r.id === route.id)?.taskId : undefined;
+    route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? roomList.find((r) => r.id === route.id)?.taskId : undefined;
 
   return (
     <div className="app-root">

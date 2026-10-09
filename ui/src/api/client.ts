@@ -7,6 +7,7 @@ import { createPkgClient, type PkgClient } from './pkgClient';
 import { createMcpClient, type McpClient } from './mcpClient';
 import { createLibraryClient, type LibraryClient } from './libraryClient';
 import { createDockClient, type DockClient } from './dockClient';
+import { createRunClient, type RunClient } from './runClient';
 import type {
   AdapterInfo,
   Agent,
@@ -41,7 +42,7 @@ import type {
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient {
   appInfo(): Promise<AppInfo>;
   projectCreate(name: string, repoPath: string): Promise<Project>;
   projectList(): Promise<Project[]>;
@@ -101,6 +102,7 @@ export function createClient(t: Transport): Client {
     ...createMcpClient(t),
     ...createLibraryClient(t),
     ...createDockClient(t),
+    ...createRunClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath) => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),

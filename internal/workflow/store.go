@@ -54,6 +54,9 @@ type ExecRow struct {
 	Output     json.RawMessage
 	Error      string
 	PartialRef string
+	SafePoint  string
+	Started    int64
+	Finished   int64
 }
 
 type store struct {
@@ -303,7 +306,7 @@ func (s *store) setStatus(ctx context.Context, run RunID, status RunStatus, reas
 // --- node executions ---
 
 func (s *store) execRows(ctx context.Context, run RunID, node NodeID, step int) ([]ExecRow, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT node_id,step,attempt,status,output,error,partial_ref FROM node_executions
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT node_id,step,attempt,status,output,error,partial_ref,safe_point_ref,started_at,finished_at FROM node_executions
 		WHERE run_id=? AND node_id=? AND step=? ORDER BY attempt`, string(run), string(node), step)
 	if err != nil {
 		return nil, err
@@ -313,7 +316,7 @@ func (s *store) execRows(ctx context.Context, run RunID, node NodeID, step int) 
 	for rows.Next() {
 		var r ExecRow
 		var o []byte
-		if err := rows.Scan(&r.NodeID, &r.Step, &r.Attempt, &r.Status, &o, &r.Error, &r.PartialRef); err != nil {
+		if err := rows.Scan(&r.NodeID, &r.Step, &r.Attempt, &r.Status, &o, &r.Error, &r.PartialRef, &r.SafePoint, &r.Started, &r.Finished); err != nil {
 			return nil, err
 		}
 		r.Output = o
@@ -348,8 +351,8 @@ func (s *store) execAbandon(ctx context.Context, run RunID, node NodeID, step, a
 
 // ExecRows lists all node executions of a run (for the Workflow view and tests).
 func (s *store) allExecs(ctx context.Context, run RunID) ([]ExecRow, error) {
-	rows, err := s.db.Reader().QueryContext(ctx, `SELECT node_id,step,attempt,status,output,error,partial_ref FROM node_executions
-		WHERE run_id=? ORDER BY step, node_id, attempt`, string(run))
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT node_id,step,attempt,status,output,error,partial_ref,safe_point_ref,started_at,finished_at
+		FROM node_executions WHERE run_id=? ORDER BY step, node_id, attempt`, string(run))
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +361,7 @@ func (s *store) allExecs(ctx context.Context, run RunID) ([]ExecRow, error) {
 	for rows.Next() {
 		var r ExecRow
 		var o []byte
-		if err := rows.Scan(&r.NodeID, &r.Step, &r.Attempt, &r.Status, &o, &r.Error, &r.PartialRef); err != nil {
+		if err := rows.Scan(&r.NodeID, &r.Step, &r.Attempt, &r.Status, &o, &r.Error, &r.PartialRef, &r.SafePoint, &r.Started, &r.Finished); err != nil {
 			return nil, err
 		}
 		r.Output = o

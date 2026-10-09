@@ -5,6 +5,7 @@ export type Route =
   | { name: 'tasks' }
   | { name: 'task-new' }
   | { name: 'task'; id: string }
+  | { name: 'run'; taskId: string; runId?: string }
   | { name: 'pulls' }
   | { name: 'team' }
   | { name: 'activity' }
@@ -42,6 +43,7 @@ export function parseRoute(hash: string): Route {
     case 'tasks':
       return b === 'new' ? { name: 'task-new' } : { name: 'tasks' };
     case 'task':
+      if (b && parts[2] === 'run') return { name: 'run', taskId: b, runId: parts[3] };
       return b ? { name: 'task', id: b } : { name: 'tasks' };
     case 'pulls':
       return { name: 'pulls' };

@@ -1,8 +1,8 @@
 {
-  "generated": "2026-10-09T05:49:10Z",
-  "commit": "a50554d",
+  "generated": "2026-10-09T06:19:04Z",
+  "commit": "435fbcd",
   "summary": {
-    "current": 301,
+    "current": 302,
     "major": 8,
     "minor": 75,
     "patch": 73,
@@ -5699,8 +5699,8 @@
       "group": "UI build and test tools",
       "name": "(all packages in package-lock.json)",
       "kind": "indirect",
-      "used": "153",
-      "latest": "153",
+      "used": "173",
+      "latest": "173",
       "status": "current",
       "where": "ui/package-lock.json",
       "note": "Count of installed packages including everything the listed ones pull in."
@@ -5726,6 +5726,17 @@
       "status": "current",
       "where": "ui/package.json",
       "role": "Draws the human's terminals in the bottom dock (lazy-loaded)."
+    },
+    {
+      "id": "npm:@xyflow/react",
+      "group": "UI libraries (shipped in the app)",
+      "name": "@xyflow/react",
+      "kind": "direct",
+      "used": "12.12.0",
+      "latest": "12.12.0",
+      "status": "current",
+      "where": "ui/package.json",
+      "role": "Draws the workflow graph of a run (React Flow; lazy-loaded)."
     },
     {
       "id": "npm:marked",
@@ -5784,7 +5795,7 @@
     "bridge": 2,
     "cli": 5,
     "dev": 11,
-    "direct": 23,
+    "direct": 24,
     "indirect": 404,
     "runtime": 4,
     "tool": 6

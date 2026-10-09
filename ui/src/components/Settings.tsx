@@ -11,8 +11,6 @@ import type { ThemeChoice } from '../lib/theme';
 export const NOT_BUILT: { feature: string; slice: string; meanwhile: string }[] = [
   { feature: 'Markdown minutes and ADR-candidate export', slice: 'unassigned', meanwhile: 'Absent.' },
   { feature: 'Repo map view', slice: 'gated by decision D5', meanwhile: 'Absent until the Windows CI job is green.' },
-  { feature: 'Workflow graph and checkpoint timeline', slice: 'Slice 1C', meanwhile: 'The task view shows status, evidence, reviews, usage and routing decisions only.' },
-  { feature: 'Context manifest viewer and run explanation', slice: 'Slice 1D', meanwhile: 'The Agent Inspector shows runs and usage; there is no manifest view.' },
   { feature: 'Agent turns chosen by the model router', slice: 'Slice 2 (partly)', meanwhile: 'The router records a decision for every turn, but agents still run with their configured model; the explanation says "static" when it was not routed.' },
   { feature: 'Provider detail panels (quota ledger, OpenRouter key limits), editing a provider, editing prices', slice: 'Slice 1A', meanwhile: 'Providers can be added, tested, enabled, disabled and deleted; the model catalog is read-only.' },
   { feature: 'OAuth sign-in for integrations; live vendor verification', slice: 'Slice 5', meanwhile: 'Integrations use a pasted token and were never run against a live vendor account.' },

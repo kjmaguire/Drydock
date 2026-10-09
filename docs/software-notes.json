@@ -195,6 +195,9 @@
     },
     "npm:dompurify": {
       "role": "Pulled in by monaco-editor; pinned by an override to the release that fixes the IN_PLACE advisories."
+    },
+    "npm:@xyflow/react": {
+      "role": "Draws the workflow graph of a run (React Flow; lazy-loaded)."
     }
   }
 }

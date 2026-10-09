@@ -124,6 +124,21 @@ for "Show it anyway"; binary files are not shown. Monaco's editor worker is bund
 - **Checkpoint timeline** below the graph: one marker per checkpoint ordered by lineage (`parent id`), marker kind `entry`, `step`, `response_entry`; branches from time travel drawn as parallel lanes; latest checkpoint is authoritative for run state (brief 12). Selecting a marker puts the graph in read-only "as of checkpoint" mode (earlier checkpoints are never modified). Actions: Resume latest (after a crash), Time travel from here (starts a new lineage branch, confirmation), Replay from `entry`. A run lease holder indicator shows whether this instance owns the run (`run_leases`).
 - Large graphs: only the active run's graph is mounted; node components are memoized; off-screen elements are not rendered (React Flow option for visible-only rendering, **unverified** against the pinned version).
 
+**As built (2026-10-09), together with the run explanation (S16).** One page per task run, `#/task/<id>/run[/<run id>]`
+(`ui/src/pages/RunView.tsx`), linked from the task page and from each run in the Agent Inspector. The core's `run.explain`
+returns the run, its graph (`workflow.Engine.Describe`: nodes, edges with kind, `when`, loop limit), every node execution with
+its timestamps, safe point, context manifest, routing decision, the usage recorded while it ran and its Logs id, the run's
+checkpoints (kind, step, run status, the nodes of that superstep, the nodes waiting on a human, which one is latest), the MCP
+audit events and the latest 300 events. `run.prompt` returns the exact prompt a turn was sent: Finalize-style, it is written
+next to the turn's `stream.jsonl` on disk (never the database) and is only served for a recorded execution of a run of that
+task. Tabs: Graph (React Flow, `@xyflow/react`, lazy chunk; deterministic layered layout in `ui/src/lib/graphLayout.ts`; node
+state from executions; loop edges dashed with their limit; read-only, nodes are not draggable), Turns (each turn expands into
+"Why this model", "What it was given" (the manifest: source, included, size, priority, reason), the exact prompt on request,
+its usage and a link to its stream), Checkpoints, MCP calls, Events. The checkpoint timeline under the graph puts the graph in
+"as of checkpoint" mode (node states from the executions up to that step). Not built: Resume / Time travel / Replay actions
+(the engine has no service call for them yet); subworkflow nodes are drawn as one node (their nested view is in the data but
+not expanded).
+
 ### 6.3 cmdk command palette
 Opened with `Ctrl+K`. Groups: Navigate (rooms, DMs, tasks, screens), Agents (focus, interrupt, restart, open inspector), Tasks (create, open, move per allowed transition), Actions (open terminal, toggle dock, switch theme, test connection), Recent. Commands are registered by screens and filtered by context (a command whose feature is not built is not registered). Destructive commands open the same approval flow as buttons; the palette never bypasses an approval. Fuzzy matching is done by cmdk over a bounded list (recent 200 entities); larger sets query the Go side (FTS5) on input (**proposal**).
 

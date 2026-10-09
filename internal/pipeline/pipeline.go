@@ -257,6 +257,20 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 	m.Add("room history", false, 0, "no messages selected for this task channel", 7)
 	m.Add("previous session transcript", false, 0, "fresh session per attempt; handoff artifacts only (token rules 5 and 16)", 6)
 	_ = d.Context.SaveManifest(ctx, string(in.RunID), string(in.NodeID), in.Attempt, t.ID, agentID, m)
+	// the exact prompt goes next to the turn's stream on disk (never into the database) for the run explanation
+	if p := PromptPath(d.DataDir, in.NodeInfo); p != "" {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err == nil {
+			_ = os.WriteFile(p, []byte(prompt), 0o600)
+		}
+	}
+}
+
+// PromptPath is where a turn's prompt is kept: beside the stream.jsonl of the same node execution.
+func PromptPath(dataDir string, n workflow.NodeInfo) string {
+	if dataDir == "" || n.RunID == "" {
+		return ""
+	}
+	return filepath.Join(dataDir, "runs", string(n.RunID), string(n.NodeID), fmt.Sprintf("%d-%d", n.Step, n.Attempt), "prompt.md")
 }
 
 // WorkPrompt builds the turn prompt. It contains only what the agent needs now.

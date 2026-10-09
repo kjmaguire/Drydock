@@ -1283,3 +1283,95 @@ fieldset {
   padding: 4px;
   background: var(--bg-0);
 }
+
+/* run explanation and workflow graph (docs/ui.md S14, S16, 6.2) */
+.turns {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.turn {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.turn-head {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  color: var(--fg-0);
+}
+.turn-detail {
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--border);
+}
+.turn-detail h4 {
+  margin: 8px 0 4px;
+}
+.prompt-text {
+  max-height: 400px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+}
+code.wrap {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.wf-canvas {
+  height: 460px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.wf-node {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  width: 180px;
+  text-align: left;
+}
+.react-flow__node.wf-node {
+  padding: 6px 8px;
+}
+.wf-done {
+  border-color: var(--ok);
+  box-shadow: inset 4px 0 0 var(--ok);
+}
+.wf-failed {
+  border-color: var(--err);
+  box-shadow: inset 4px 0 0 var(--err);
+}
+.wf-started {
+  border-color: var(--info);
+  box-shadow: inset 4px 0 0 var(--info);
+}
+.wf-waiting {
+  border-color: var(--warn);
+  box-shadow: inset 4px 0 0 var(--warn);
+}
+.wf-pending {
+  opacity: 0.7;
+}
+.wf-kind,
+.wf-meta {
+  color: var(--fg-2);
+}
+.wf-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.wf-cp {
+  min-width: 32px;
+}
+.wf-cp[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.wf-cp-response_entry {
+  border-style: dashed;
+}

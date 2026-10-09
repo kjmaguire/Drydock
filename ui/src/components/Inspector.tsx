@@ -94,7 +94,8 @@ export function AgentInspector({ agentId, presence, onMessage }: { agentId: stri
               <>
                 <dt>Task</dt>
                 <dd>
-                  <a href={`#/task/${encodeURIComponent(r.taskId)}`}>{r.taskId}</a>
+                  <a href={`#/task/${encodeURIComponent(r.taskId)}`}>{r.taskId}</a> ·{' '}
+                  <a href={`#/task/${encodeURIComponent(r.taskId)}/run`}>what it was given and why</a>
                 </dd>
               </>
             ) : null}

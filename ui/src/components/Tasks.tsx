@@ -158,7 +158,7 @@ export function TaskDetailView({ taskId, agents }: { taskId: string; agents: rea
         {t.acceptedBy ? <span>Accepted by {t.acceptedBy}</span> : null}
         {d.run ? (
           <span>
-            Run: <code>{d.run.status}</code>
+            Run: <code>{d.run.status}</code> <a href={`#/task/${encodeURIComponent(t.id)}/run`}>Workflow and explanation</a>
           </span>
         ) : null}
         {d.roomId ? <a href={`#/room/${encodeURIComponent(d.roomId)}`}>Open task channel</a> : null}
