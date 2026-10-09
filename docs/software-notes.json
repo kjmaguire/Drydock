@@ -1,0 +1,189 @@
+{
+  "used": {
+    "tool:gh": "2.102.0",
+    "tool:task": "3.54.0",
+    "tool:osv-scanner": "2.6.0",
+    "tool:go-licenses": "2.0.1",
+    "tool:wrangler": "4.148.0"
+  },
+  "notes": {
+    "go": {
+      "role": "The language the core is written in. go.mod requires at least this version because SQLite, goose, OpenTelemetry, mvdan/sh and x/sys do."
+    },
+    "go-installed": {
+      "role": "What this sandbox builds and tests with. It is the same version go.mod asks for, so it is the oldest Go that can build Drydock."
+    },
+    "node": {
+      "role": "Builds the UI and runs its tests and the browser tests. Agent CLIs installed through npm also need it (decision D9 sets 22)."
+    },
+    "npm": {
+      "role": "Installs the UI packages.",
+      "hold": "Comes with Node 22; it moves when Node does."
+    },
+    "go:cel.dev/cel-go": {
+      "role": "Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language."
+    },
+    "go:github.com/anthropics/anthropic-sdk-go": {
+      "role": "Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. The agent CLIs make their own calls and do not use it."
+    },
+    "go:github.com/aymanbagabas/go-pty": {
+      "role": "Meant for Windows terminals (ConPTY).",
+      "note": "Declared in go.mod and pinned in internal/tools/deps.go, but no product package imports it yet."
+    },
+    "go:github.com/charmbracelet/x/ansi": {
+      "role": "Meant for reading terminal escape codes in agent and terminal output.",
+      "note": "Declared in go.mod and pinned in internal/tools/deps.go, but no product package imports it yet."
+    },
+    "go:github.com/coder/acp-go-sdk": {
+      "role": "Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose.",
+      "note": "Pre-1.0; the protocol is still changing."
+    },
+    "go:github.com/google/jsonschema-go": {
+      "role": "Describes the workspace tools' inputs to MCP clients as JSON Schema."
+    },
+    "go:github.com/modelcontextprotocol/go-sdk": {
+      "role": "The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. Its auth package will carry the OAuth connect flow."
+    },
+    "go:github.com/openai/openai-go/v3": {
+      "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests."
+    },
+    "go:github.com/pressly/goose/v3": {
+      "role": "Runs the database migrations. (The agent called Goose is a different thing.)"
+    },
+    "go:github.com/wailsapp/wails/v3": {
+      "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
+      "hold": "Still a beta, and beta.28 is the newest published. The risk was accepted in the brief; it is isolated in app/."
+    },
+    "go:github.com/zalando/go-keyring": {
+      "role": "Stores secrets in the Windows Credential Manager."
+    },
+    "go:github.com/zricethezav/gitleaks/v8": {
+      "role": "Scans diffs and outputs for secrets before they are kept or sent."
+    },
+    "go:golang.org/x/sys": {
+      "role": "Windows Job Objects (killing an agent's whole process tree) and other Windows calls."
+    },
+    "go:gopkg.in/yaml.v3": {
+      "role": "Reads YAML: agent manifests, the MCP catalog, expert packs, skills."
+    },
+    "go:modernc.org/sqlite": {
+      "role": "The database. A SQLite written in Go, so no C compiler is needed."
+    },
+    "go:mvdan.cc/sh/v3": {
+      "role": "Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only)."
+    },
+    "npm:react": {
+      "role": "The UI framework.",
+      "hold": "Held on 18 on purpose: the UI and its tests are written for React 18, and moving to 19 is a migration nobody has started."
+    },
+    "npm:react-dom": {
+      "role": "Draws the UI in the browser.",
+      "hold": "Moves together with react."
+    },
+    "npm:marked": {
+      "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
+      "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."
+    },
+    "npm:@playwright/test": {
+      "role": "Runs the browser tests against the real Go core.",
+      "hold": "This sandbox has only the Chromium build that matches Playwright 1.56; a newer Playwright needs its own browser build."
+    },
+    "npm:@testing-library/dom": {
+      "role": "Test helper for finding elements in component tests."
+    },
+    "npm:@testing-library/react": {
+      "role": "Test helper for rendering components in unit tests."
+    },
+    "npm:@types/node": {
+      "role": "Type definitions for the Node APIs the build scripts use.",
+      "hold": "Follows the Node line: 22."
+    },
+    "npm:@types/react": {
+      "role": "Type definitions for React.",
+      "hold": "Moves together with react."
+    },
+    "npm:@types/react-dom": {
+      "role": "Type definitions for React DOM.",
+      "hold": "Moves together with react."
+    },
+    "npm:@vitejs/plugin-react": {
+      "role": "Lets Vite build React."
+    },
+    "npm:jsdom": {
+      "role": "Fake browser used by the unit tests."
+    },
+    "npm:typescript": {
+      "role": "Type-checks the UI before every build."
+    },
+    "npm:vite": {
+      "role": "Builds the UI bundle and serves it while developing.",
+      "note": "npm audit reports advisories against this version of Vite (development server only; the shipped app is not affected)."
+    },
+    "npm:vitest": {
+      "role": "Runs the UI unit tests.",
+      "note": "npm audit reports critical advisories against this version; they concern its optional UI server, which is never started here."
+    },
+    "cli:claude": {
+      "role": "Claude Code: the agent that runs Claude workers and reviewers.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    "cli:codex": {
+      "role": "Codex: runs OpenAI's models as an agent.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    "cli:gemini": {
+      "role": "Gemini CLI: runs Google's models as an agent.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    "cli:goose": {
+      "role": "Goose: the open-source agent (reached through its ACP bridge).",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    "cli:opencode": {
+      "role": "OpenCode: an open-source agent that can use many providers.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    "bridge:@agentclientprotocol/claude-agent-acp": {
+      "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today."
+    },
+    "bridge:@agentclientprotocol/codex-acp": {
+      "role": "The ACP bridge Drydock starts with npx for Codex."
+    },
+    "action:actions/checkout": {
+      "role": "Fetches the repository in CI.",
+      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+    },
+    "action:actions/setup-go": {
+      "role": "Installs Go in CI.",
+      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+    },
+    "action:actions/setup-node": {
+      "role": "Installs Node in CI.",
+      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+    },
+    "action:actions/upload-artifact": {
+      "role": "Keeps test output from CI runs.",
+      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+    },
+    "tool:gh": {
+      "role": "The GitHub CLI Drydock uses for pull requests; you install it.",
+      "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
+    },
+    "tool:task": {
+      "role": "Runs Taskfile targets (build, test, lint); optional, not bundled."
+    },
+    "tool:osv-scanner": {
+      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it."
+    },
+    "tool:go-licenses": {
+      "role": "Produces THIRD_PARTY_NOTICES.md."
+    },
+    "tool:govulncheck": {
+      "role": "Go's own vulnerability scanner; used by the audit tool, runs with go run at its newest version.",
+      "note": "Not pinned: the audit runs it at @latest each time."
+    },
+    "tool:wrangler": {
+      "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it."
+    }
+  }
+}

@@ -27,6 +27,11 @@ tasks:
     cmds:
       - npm run e2e
 
+  audit:
+    desc: Measure every piece of software against the newest release (writes docs/software-versions.json; see docs/software-versions.md)
+    cmds:
+      - go run ./cmd/drydock-audit
+
   go:test:
     desc: Go tests
     cmds:
