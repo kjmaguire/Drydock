@@ -177,6 +177,21 @@ describe('Check settings and development flow', () => {
     expect(calls[0]).toMatchObject({ workerChecks: true });
   });
 
+  it("the team lead's stall time: empty means 15, a number is saved, out of range is explained", async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Team lead: minutes without progress before it checks a task'), r);
+    expect(box.value).toBe('');
+    expect(box.placeholder).toBe('15');
+    type(box, '2000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="stall-note"]')!.textContent).toContain('1440'), r);
+    type(box, '30');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="stall-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
+  });
+
   it('notes that more than five agents at once rarely pays off, and only then', async () => {
     const r = mountDev(async (_p, x) => x);
     const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Maximum parallel agent turns'), r);
