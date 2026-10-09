@@ -115,19 +115,29 @@ type Skill struct {
 	Created             time.Time `json:"created"`
 	Updated             time.Time `json:"updated"`
 	Body                string    `json:"body,omitempty"`
+	// Notes say what the parser tolerated and ignored (front matter keys outside the format, a renamed registry skill).
+	Notes []string `json:"notes"`
+	// Agents are the agents this skill is assigned to. Empty: it reaches every agent whose role matches (drydock.roles);
+	// otherwise only these agents receive it.
+	Agents []string `json:"agents"`
 }
 
-const skillCols = `id,project_id,name,description,body,license,compatibility,globs,roles,origin,registry_id,source_path,pinned_commit,content_hash,has_scripts,allowed_tools_ignored,status,risk,flags,block_reason,decided_by,decided_at,created_at,updated_at`
+const skillCols = `id,project_id,name,description,body,license,compatibility,globs,roles,origin,registry_id,source_path,pinned_commit,content_hash,has_scripts,allowed_tools_ignored,status,risk,flags,block_reason,decided_by,decided_at,created_at,updated_at,parse_notes`
 
 func scanSkill(sc interface{ Scan(...any) error }, withBody bool) (Skill, error) {
 	var k Skill
-	var body, globs, roles, flags string
+	var body, globs, roles, flags, notes string
 	var scripts, ati int
 	var decided, created, updated int64
 	if err := sc.Scan(&k.ID, &k.ProjectID, &k.Name, &k.Description, &body, &k.License, &k.Compatibility, &globs, &roles, &k.Origin, &k.RegistryID, &k.SourcePath, &k.PinnedCommit,
-		&k.ContentHash, &scripts, &ati, &k.Status, &k.Risk, &flags, &k.BlockReason, &k.DecidedBy, &decided, &created, &updated); err != nil {
+		&k.ContentHash, &scripts, &ati, &k.Status, &k.Risk, &flags, &k.BlockReason, &k.DecidedBy, &decided, &created, &updated, &notes); err != nil {
 		return k, err
 	}
+	_ = json.Unmarshal([]byte(notes), &k.Notes)
+	if k.Notes == nil {
+		k.Notes = []string{}
+	}
+	k.Agents = []string{}
 	_ = json.Unmarshal([]byte(globs), &k.Globs)
 	_ = json.Unmarshal([]byte(roles), &k.Roles)
 	if k.Globs == nil {
@@ -175,7 +185,20 @@ func (s *Service) List(ctx context.Context, projectID string, statuses ...string
 		}
 		out = append(out, k)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	assigned, err := s.Assignments(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if a := assigned[out[i].Name]; len(a) > 0 {
+			out[i].Agents = a
+		}
+	}
+	return out, nil
 }
 
 // Get returns one skill with its body.
@@ -184,12 +207,26 @@ func (s *Service) Get(ctx context.Context, projectID, name string) (Skill, error
 	if errors.Is(err, sql.ErrNoRows) {
 		return k, fmt.Errorf("%w: skill %s", ErrNotFound, name)
 	}
-	return k, err
+	if err != nil {
+		return k, err
+	}
+	if a, err := s.agentsOf(ctx, projectID, name); err != nil {
+		return k, err
+	} else if len(a) > 0 {
+		k.Agents = a
+	}
+	return k, nil
 }
 
-// Eligible returns the accepted skills that apply to a role, with bodies, by name. This is the only set that is ever written
-// into a worktree or served to an agent.
-func (s *Service) Eligible(ctx context.Context, projectID, role string) ([]Skill, error) {
+// Eligible returns the accepted skills that reach an agent, with bodies, by name. This is the only set that is ever written
+// into a worktree or served to an agent. A skill assigned to one or more agents (Assign) reaches exactly those agents, whatever
+// its drydock.roles say: the human picked them. A skill assigned to nobody reaches every agent whose role matches. An empty
+// agentID (no agent known) receives only unassigned skills.
+func (s *Service) Eligible(ctx context.Context, projectID, agentID, role string) ([]Skill, error) {
+	assigned, err := s.Assignments(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT `+skillCols+` FROM skills WHERE project_id=? AND status='accepted' ORDER BY name`, projectID)
 	if err != nil {
 		return nil, err
@@ -200,6 +237,13 @@ func (s *Service) Eligible(ctx context.Context, projectID, role string) ([]Skill
 		k, err := scanSkill(rows, true)
 		if err != nil {
 			return nil, err
+		}
+		if to := assigned[k.Name]; len(to) > 0 {
+			k.Agents = to
+			if agentID != "" && contains(to, agentID) {
+				out = append(out, k)
+			}
+			continue
 		}
 		if RolesMatch(k.Roles, role) {
 			out = append(out, k)
@@ -237,6 +281,7 @@ func (s *Service) upsert(ctx context.Context, projectID string, r record) (Skill
 	now := s.now().UnixMilli()
 	globs, _ := json.Marshal(nz(r.ps.Globs))
 	roles, _ := json.Marshal(nz(r.ps.Roles))
+	notes, _ := json.Marshal(nz(r.ps.Notes()))
 	body := r.ps.Body
 	if r.verdict.SecretBlocked {
 		body = "" // never store text that contains a secret
@@ -255,9 +300,9 @@ func (s *Service) upsert(ctx context.Context, projectID string, r record) (Skill
 		case errors.Is(e, sql.ErrNoRows):
 			changed = true
 			id := ids.New("skl")
-			_, e = tx.ExecContext(ctx, `INSERT INTO skills(`+skillCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			_, e = tx.ExecContext(ctx, `INSERT INTO skills(`+skillCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				id, projectID, r.ps.Name, r.ps.Description, body, r.license, r.ps.Compatibility, string(globs), string(roles), r.origin, r.registry, r.source, r.pinned,
-				r.hash, b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, now)
+				r.hash, b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, now, string(notes))
 			return e
 		case e != nil:
 			return e
@@ -269,9 +314,9 @@ func (s *Service) upsert(ctx context.Context, projectID string, r record) (Skill
 		}
 		changed = !(sameContent && oldPin == r.pinned)
 		_, e = tx.ExecContext(ctx, `UPDATE skills SET description=?,body=?,license=?,compatibility=?,globs=?,roles=?,origin=?,registry_id=?,source_path=?,pinned_commit=?,content_hash=?,
-			has_scripts=?,allowed_tools_ignored=?,status=?,risk=?,flags=?,block_reason=?,decided_by=?,decided_at=?,updated_at=? WHERE project_id=? AND name=?`,
+			has_scripts=?,allowed_tools_ignored=?,status=?,risk=?,flags=?,block_reason=?,decided_by=?,decided_at=?,updated_at=?,parse_notes=? WHERE project_id=? AND name=?`,
 			r.ps.Description, body, r.license, r.ps.Compatibility, string(globs), string(roles), r.origin, r.registry, r.source, r.pinned, r.hash,
-			b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, projectID, r.ps.Name)
+			b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, string(notes), projectID, r.ps.Name)
 		return e
 	})
 	if err != nil {
@@ -387,7 +432,10 @@ func (s *Service) ScanRepo(ctx context.Context, projectID string) (ScanResult, e
 	rows.Close()
 	for _, n := range gone {
 		if err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `DELETE FROM skills WHERE project_id=? AND name=? AND origin='repo'`, projectID, n)
+			if _, err := tx.ExecContext(ctx, `DELETE FROM skills WHERE project_id=? AND name=? AND origin='repo'`, projectID, n); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `DELETE FROM agent_skills WHERE project_id=? AND skill_name=?`, projectID, n)
 			return err
 		}); err != nil {
 			return res, err
@@ -667,6 +715,8 @@ type Candidate struct {
 	HasScripts  bool   `json:"hasScripts,omitempty"`
 	Valid       bool   `json:"valid"`
 	Problem     string `json:"problem,omitempty"`
+	// Notes say what the parser would ignore (see Skill.Notes).
+	Notes []string `json:"notes,omitempty"`
 }
 
 // RegistryCandidates resolves ref to a commit and lists the skills the registry holds there. Nothing is stored. Human only
@@ -683,10 +733,10 @@ func (s *Service) RegistryCandidates(ctx context.Context, by, registryID, ref st
 	out := []Candidate{}
 	for _, r := range remote {
 		c := Candidate{Name: r.Name, Dir: r.Dir, HasScripts: r.HasScripts}
-		if ps, err := ParseSkill(r.SkillMD, r.Name); err != nil {
+		if ps, err := ParseRegistrySkill(r.SkillMD, r.Name); err != nil {
 			c.Problem = err.Error()
 		} else {
-			c.Valid, c.Description = true, ps.Description
+			c.Valid, c.Description, c.Notes = true, ps.Description, ps.Notes()
 		}
 		out = append(out, c)
 	}
@@ -792,7 +842,7 @@ func (s *Service) evaluateRemote(ctx context.Context, reg Registry, commit strin
 	if rs.SkillMD == nil {
 		return record{}, &invalidError{fmt.Sprintf("SKILL.md is larger than %d KiB", MaxSkillBytes>>10)}
 	}
-	ps, err := ParseSkill(rs.SkillMD, rs.Name)
+	ps, err := ParseRegistrySkill(rs.SkillMD, rs.Name)
 	if err != nil {
 		return record{}, &invalidError{"not a valid skill: " + err.Error()}
 	}

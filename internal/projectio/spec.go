@@ -155,7 +155,10 @@ var Tables = []Table{
 	{Name: "skills", Where: `project_id=@p`, OrderBy: `name`,
 		Columns: []string{"id", "project_id", "name", "description", "body", "license", "compatibility", "globs", "roles", "origin", "registry_id", "source_path",
 			"pinned_commit", "content_hash", "has_scripts", "allowed_tools_ignored", "status", "risk", "flags", "block_reason", "decided_by", "decided_at",
-			"created_at", "updated_at"}, Import: importSkill},
+			"created_at", "updated_at", "parse_notes"}, Import: importSkill},
+	// which agents a skill is assigned to: it only narrows who receives a skill, and an imported skill waits for acceptance anyway
+	{Name: "agent_skills", Where: `project_id=@p AND agent_id IN ` + agentIDs, OrderBy: `skill_name, agent_id`,
+		Columns: []string{"project_id", "agent_id", "skill_name", "assigned_by", "assigned_at"}},
 	{Name: "settings", Where: `key='devloop:'||@p`, Columns: []string{"key", "value"}, Import: importSetting},
 }
 

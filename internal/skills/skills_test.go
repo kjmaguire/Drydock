@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,20 +23,24 @@ func TestParseSkillSpecRules(t *testing.T) {
 		t.Fatalf("%+v", ps)
 	}
 	bad := map[string]string{
-		"no front matter":  "just text",
-		"not closed":       "---\nname: a\n",
-		"unknown key":      "---\nname: a\ndescription: d\npaths: [x]\n---\nbody\n",
-		"name mismatch":    skillMD("other", "d", "", "b"),
-		"uppercase":        "---\nname: Abc\ndescription: d\n---\nb\n",
-		"double hyphen":    "---\nname: a--b\ndescription: d\n---\nb\n",
-		"leading hyphen":   "---\nname: -ab\ndescription: d\n---\nb\n",
-		"no description":   "---\nname: a\n---\nb\n",
-		"long description": "---\nname: a\ndescription: " + strings.Repeat("x", 1025) + "\n---\nb\n",
-		"empty body":       "---\nname: a\ndescription: d\n---\n\n",
-		"bad glob":         skillMD("a", "d", metaLines("../x", ""), "b"),
-		"bad role":         skillMD("a", "d", metaLines("", "Wizard"), "b"),
-		"binary":           "---\nname: a\ndescription: d\n---\nb\x00",
-		"too big":          "---\nname: a\ndescription: d\n---\n" + strings.Repeat("x", MaxSkillBytes),
+		"no front matter":   "just text",
+		"not closed":        "---\nname: a\n",
+		"not a mapping":     "---\n- name: a\n---\nbody\n",
+		"duplicate key":     "---\nname: a\ndescription: d\ndescription: e\n---\nbody\n",
+		"wrong type":        "---\nname: a\ndescription: d\nmetadata: [x]\n---\nbody\n",
+		"nested metadata":   "---\nname: a\ndescription: d\nmetadata:\n  k: {x: 1}\n---\nbody\n",
+		"bad allowed-tools": "---\nname: a\ndescription: d\nallowed-tools: {x: 1}\n---\nbody\n",
+		"name mismatch":     skillMD("other", "d", "", "b"),
+		"uppercase":         "---\nname: Abc\ndescription: d\n---\nb\n",
+		"double hyphen":     "---\nname: a--b\ndescription: d\n---\nb\n",
+		"leading hyphen":    "---\nname: -ab\ndescription: d\n---\nb\n",
+		"no description":    "---\nname: a\n---\nb\n",
+		"long description":  "---\nname: a\ndescription: " + strings.Repeat("x", 1025) + "\n---\nb\n",
+		"empty body":        "---\nname: a\ndescription: d\n---\n\n",
+		"bad glob":          skillMD("a", "d", metaLines("../x", ""), "b"),
+		"bad role":          skillMD("a", "d", metaLines("", "Wizard"), "b"),
+		"binary":            "---\nname: a\ndescription: d\n---\nb\x00",
+		"too big":           "---\nname: a\ndescription: d\n---\n" + strings.Repeat("x", MaxSkillBytes),
 	}
 	for name, doc := range bad {
 		want := "a"
@@ -51,10 +56,70 @@ func TestParseSkillSpecRules(t *testing.T) {
 	if err != nil || ps.AllowedTools == "" {
 		t.Fatalf("%v %+v", err, ps)
 	}
+	// Claude Code also writes allowed-tools as a list
+	ps, err = ParseSkill([]byte("---\nname: a\ndescription: d\nallowed-tools: [Read, Grep]\n---\nb\n"), "a")
+	if err != nil || ps.AllowedTools != "Read Grep" {
+		t.Fatalf("%v %+v", err, ps)
+	}
 	// long bodies only warn
 	ps, err = ParseSkill([]byte("---\nname: a\ndescription: d\n---\n"+strings.Repeat("line\n", 600)), "a")
 	if err != nil || len(ps.Warnings) == 0 {
 		t.Fatalf("%v %+v", err, ps)
+	}
+}
+
+// Agent products add their own top-level keys to the Agent Skills front matter (Claude Code's `context: fork` in the Microsoft
+// Learn skills, `argument-hint`, `paths`). They are ignored and recorded, never acted on and never written into a worktree.
+func TestParseSkillIgnoresAndRecordsKeysOutsideTheFormat(t *testing.T) {
+	doc := "---\nname: microsoft-docs\ndescription: Query official docs.\ncontext: fork\npaths: [src/**]\ncompatibility: Uses the Learn MCP server.\n" +
+		"metadata:\n  author: vercel\n  version: \"1.0.0\"\n  argument-hint: <file-or-pattern>\n---\n# Body\nUse the docs.\n"
+	ps, err := ParseSkill([]byte(doc), "microsoft-docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(ps.IgnoredKeys, ",") != "context,paths" || ps.Compatibility == "" || ps.Metadata["argument-hint"] != "<file-or-pattern>" || len(ps.Globs) != 0 {
+		t.Fatalf("%+v", ps)
+	}
+	if n := ps.Notes(); len(n) != 1 || !strings.Contains(n[0], "context, paths") {
+		t.Fatalf("notes %v", n)
+	}
+	// the ignored keys never reach a delivered file: the run-start copy is rebuilt from the known fields only
+	out := agentsSkill(Skill{Name: ps.Name, Description: ps.Description, Body: ps.Body})
+	if strings.Contains(out, "context:") || strings.Contains(out, "paths:") {
+		t.Fatalf("ignored keys leaked into a delivered file:\n%s", out)
+	}
+	// a front matter made of junk keys is not a skill
+	var b strings.Builder
+	b.WriteString("---\nname: a\ndescription: d\n")
+	for i := 0; i <= maxIgnoredKeys; i++ {
+		fmt.Fprintf(&b, "k%d: v\n", i)
+	}
+	b.WriteString("---\nbody\n")
+	if _, err := ParseSkill([]byte(b.String()), "a"); err == nil {
+		t.Fatal("too many unknown keys were tolerated")
+	}
+}
+
+// Some published registries ship a front matter name that differs from the skill's directory (vercel-labs/agent-skills:
+// react-best-practices/ says "vercel-react-best-practices"). A registry skill is identified by its directory; a repository
+// skill must still match exactly.
+func TestRegistrySkillIsStoredUnderItsDirectoryName(t *testing.T) {
+	doc := skillMD("vercel-react-best-practices", "React performance rules.", "", "Prefer server components.")
+	if _, err := ParseSkill([]byte(doc), "react-best-practices"); err == nil {
+		t.Fatal("a repository skill must match its directory name")
+	}
+	ps, err := ParseRegistrySkill([]byte(doc), "react-best-practices")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps.Name != "react-best-practices" || ps.DeclaredName != "vercel-react-best-practices" || len(ps.Notes()) != 1 {
+		t.Fatalf("%+v", ps)
+	}
+	if _, err := ParseRegistrySkill([]byte(doc), "Bad_Dir"); err == nil {
+		t.Fatal("an invalid directory name was accepted")
+	}
+	if _, err := ParseRegistrySkill([]byte(skillMD("Bad", "d", "", "b")), "ok"); err == nil {
+		t.Fatal("an invalid front matter name was accepted")
 	}
 }
 
@@ -310,7 +375,7 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 		t.Fatalf("%+v", k)
 	}
 	// offered means: not in any worktree, not served to any agent
-	if el, _ := e.s.Eligible(ctx, "p1", "Database"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 0 {
 		t.Fatalf("an offered skill must not be eligible: %+v", el)
 	}
 	if plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Database", Adapter: "claude"}); len(plan.Files) != 0 {
@@ -360,10 +425,10 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 	if err != nil || acc.Status != StatusAccepted || acc.DecidedBy != human {
 		t.Fatalf("%v %+v", err, acc)
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "Database"); len(el) != 1 {
+	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 1 {
 		t.Fatal("accepted skill is eligible for its role")
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "Frontend"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "", "Frontend"); len(el) != 0 {
 		t.Fatal("roles filter")
 	}
 
@@ -381,7 +446,7 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 	if k.Status != StatusOffered || k.PinnedCommit != "3333333333333333333333333333333333333333" || !strings.Contains(k.Body, "rename tables") {
 		t.Fatalf("a changed skill must be re-accepted: %+v", k)
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "Database"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 0 {
 		t.Fatal("until it is accepted again, the old text is not delivered either")
 	}
 	// disabling the registry stops imports
@@ -502,14 +567,14 @@ func TestManualAcceptRepoSkillsSwitch(t *testing.T) {
 	if err != nil || res.Accepted != 0 || res.Offered != 1 {
 		t.Fatalf("%v %+v", err, res)
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "Backend"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "", "Backend"); len(el) != 0 {
 		t.Fatal("with manual acceptance a committed repo skill is only offered")
 	}
 	if _, err := e.s.Accept(ctx, human, "p1", "rule-one"); err != nil {
 		t.Fatal(err)
 	}
 	e.s.ScanRepo(ctx, "p1") // the human decision survives the rescan
-	if el, _ := e.s.Eligible(ctx, "p1", "Backend"); len(el) != 1 {
+	if el, _ := e.s.Eligible(ctx, "p1", "", "Backend"); len(el) != 1 {
 		t.Fatal("accepted stays accepted for identical content")
 	}
 }
