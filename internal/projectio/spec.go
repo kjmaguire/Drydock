@@ -201,6 +201,11 @@ var ExcludedTables = map[string]string{
 	"agent_mcp_access":         "grants to the servers above",
 	"memory_fts":               "full-text index, rebuilt by triggers",
 	"requirement_chunks_fts":   "full-text index, rebuilt by triggers",
+	"chats":                    "the human's own conversations with an agent CLI, not a project record; CLI session ids only resume on this machine (decisions P29)",
+	"chat_messages":            "messages of the chats above",
+	"chat_turns":               "turn bookkeeping of the chats above",
+	"chat_messages_fts":        "full-text index, rebuilt by triggers",
+	"chats_fts":                "full-text index, rebuilt by triggers",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

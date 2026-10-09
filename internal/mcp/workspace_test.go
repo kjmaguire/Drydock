@@ -178,7 +178,7 @@ func wsEnv(t *testing.T, ws Workspace, mod func(*Options)) (*env, *sdk.ClientSes
 
 func TestWorkspaceToolsListed(t *testing.T) {
 	_, cs, _, _ := wsEnv(t, Workspace{}, nil)
-	want := "fetch_range,handoff,read_range,repo_map,room,search_memory,search_pack,search_requirements,skills,task"
+	want := "chats,fetch_range,handoff,read_range,repo_map,room,search_memory,search_pack,search_requirements,skills,task"
 	if got := strings.Join(toolNames(t, cs), ","); got != want {
 		t.Fatalf("got %s\nwant %s", got, want)
 	}

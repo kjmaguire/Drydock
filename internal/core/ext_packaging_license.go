@@ -32,7 +32,7 @@ func (e *LicenseError) Is(target error) bool { return target == ErrReadOnly }
 var actionPhrases = map[string]string{
 	"start_task": "starting tasks", "start_template": "starting tasks", "start_work": "starting agents and workflows", "approve": "approving agent actions",
 	"create_agent": "adding agents", "create_project": "creating projects", "add_connection": "adding connections", "room_reply": "agent replies in the room",
-	"worktree": "creating worktrees", "merge": "merging", "pull_request": "creating pull requests",
+	"worktree": "creating worktrees", "merge": "merging", "pull_request": "creating pull requests", "chat": "starting chats and sending chat messages",
 }
 
 // licState is one evaluation of the license.
@@ -262,6 +262,7 @@ var gatedMethods = map[string]string{
 	"scheduler.tick": "start_work", "room.reply": "room_reply", "check.e2e": "start_work", "preview.start": "start_work", "budget.resume": "start_work",
 	"run.respond": "approve", "integration.outbound.decide": "approve", "integration.outbound.execute": "approve",
 	"agent.create": "create_agent", "agent.update": "create_agent", "project.create": "create_project", "provider.create": "add_connection", "integration.connect": "add_connection",
+	"chat.create": "chat", "chat.send": "chat",
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an
