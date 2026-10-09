@@ -26,6 +26,8 @@ States: `BACKLOG, READY, CLAIMED, IN_PROGRESS, BLOCKED, WAITING_HUMAN, REVIEW, V
 
 Tested by `TestStateMachineTable` (27 allowed/denied pairs), the evidence/reviewer guard test, the human-acceptance test, iteration limit, dependency gating, dead letters and a 25-way concurrent patch test.
 
+**At an escalation (decision P26).** When a workflow loop runs out (or the reviewer repeats itself) and the question goes to the human, an `IN_PROGRESS` task moves to `WAITING_HUMAN`; a task in `REVIEW` stays there (the state machine has no REVIEW -> WAITING_HUMAN edge). A human (or team lead) "continue" raises `max_iterations` to `iteration + 6` when the limit was used up and moves the task back to `IN_PROGRESS` (from `REVIEW`, `VERIFICATION`, `WAITING_HUMAN` or `BLOCKED`, with the guidance as feedback), except when the work resumes at `sync` or the approval, which keep `VERIFICATION`. A human "stop" (reject, or `data.action: "stop"`) moves the task to `CANCELLED`, as does rejecting a watchdog pause. A team lead's reassignment changes the assignee (and, when needed, the reviewer) through the same rules as `task.assign`.
+
 ## 2. Workflow run
 
 `PENDING → RUNNING`; `RUNNING → PAUSED`; `RUNNING → WAITING_HUMAN` (a request port is pending and nothing else can run) `→ RUNNING` (response delivered); `RUNNING → RECOVERING` (after an app restart, while the engine takes over the lease and restores from the latest checkpoint) `→ RUNNING`; terminal `COMPLETED, FAILED, CANCELLED`. The latest checkpoint is authoritative for position; `workflow_runs.status` is a cached derivation updated in the same transaction as each checkpoint. See [`workflow-engine.md`](workflow-engine.md).
@@ -44,8 +46,13 @@ Checkpoint kinds: `entry` (before step 0; carries the input), `step` (after each
 
 Hard signals: `tool_spin`, `error_echo`, `tool_call_cap`, `time_cap`, `tool_error_streak`. Soft: `stagnation` (warning only).
 - **Stage 1** (first hard trip since the last human reset): cancel the turn (protocol interrupt), continue the same session with one nudge naming the evidence. For `error_echo` the nudge is queued and delivered with the agent's next turn.
-- **Stage 2** (second hard trip): write a handoff artifact, park the node on a `question` request (task → `WAITING_HUMAN`, agent → `NEEDS_ATTENTION`), notify.
-- A human resuming with guidance calls `Watchdog.Reset(task)`; the count restarts from zero.
+- **Stage 2** (second hard trip): write a handoff artifact (`handoffs`, reason `watchdog`), park the node on a `question` request (task → `WAITING_HUMAN`, agent → `NEEDS_ATTENTION`), notify. The request is `Retry` + `DeliverAnswer`: the node runs again after the answer.
+- A human answering the pause (with or without guidance) resets the count (`Watchdog.Reset(task)`) and the guidance reaches the agent's next turn as text; rejecting it cancels the task and ends the run. The count also resets when a human continues past an iteration limit and when the task enters `REVIEW` (it moved on). A reset row is written only when there is a count.
+- **With a team lead** on the project (decision P26), a stage-1 trip stops the turn and asks the lead instead of the generic nudge: its nudge, reassignment or split restarts the work with its message (a fresh turn), its escalation parks the node on a question with its message. The second hard trip is still stage 2. Without a lead, stage 1 is unchanged.
+
+## 6. Team lead intervention (per task and run)
+
+Trigger fires (watchdog stage 1, iteration limit, repeated REVISE, stalled, unassigned) → **no lead, bound used up (3 per task and run), a supervision turn already in flight for the task, the trigger is the lead's own turn, or a budget refuses the turn** → the default behaviour, unchanged → otherwise one read-only lead turn → answer valid → applied (`nudge`, `reassign`, `split`, `escalate`, `continue`) | answer invalid → one retry with the problems → valid → applied | invalid → `escalate` (marked invalid). Each applied decision is one `lead_interventions` row, one message by the lead in the task channel and one `lead.intervened` event. A stalled task is asked about once per silence (a new progress event re-arms it); an unassigned task once.
 
 ## Open questions / unverified
 
