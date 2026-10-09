@@ -40,6 +40,7 @@ func (c *Core) Methods() map[string]Method {
 		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
 			return c.CreateProject(ctx, p.Name, p.RepoPath)
 		}),
+		"project.setup": bind(func(ctx context.Context, p SetupRequest) (any, error) { return c.SetupProject(ctx, p) }),
 		"project.attachRepo": bind(func(ctx context.Context, p struct {
 			ID       string `json:"id"`
 			RepoPath string `json:"repoPath"`
