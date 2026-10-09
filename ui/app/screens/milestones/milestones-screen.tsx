@@ -190,9 +190,11 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
               void handle.update();
             })}
           >
-            <option value="">Add a task...</option>
+            <option value="" selected={add === ''}>
+              Add a task...
+            </option>
             {free.map((x) => (
-              <option key={x.id} value={x.id}>
+              <option key={x.id} value={x.id} selected={x.id === add}>
                 #{x.seq} {x.title}
               </option>
             ))}

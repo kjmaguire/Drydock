@@ -205,6 +205,7 @@ describe('PlanScreen', () => {
     });
     const r = mount(<PlanScreen />, s);
     await waitFor(() => expect(r.$('[data-testid="plan"]')!.textContent).toContain('New goal'), r);
+    expect(byLabel<HTMLSelectElement>(r.container, 'Plan').value).toBe('new');
     type(byLabel<HTMLSelectElement>(r.container, 'Plan'), 'old');
     await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('REJECTED'), r);
     await waitFor(() => byText(r.container, 'option', 'Priya (pm)'), r);

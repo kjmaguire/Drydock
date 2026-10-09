@@ -554,7 +554,7 @@ export function PlanScreen(handle: Handle) {
               ]}
             >
               {plans.map((p) => (
-                <option key={p.id} value={p.id}>
+                <option key={p.id} value={p.id} selected={p.id === current?.id}>
                   {p.goal.slice(0, 60)} ({p.status.toLowerCase()})
                 </option>
               ))}
@@ -602,9 +602,11 @@ export function PlanScreen(handle: Handle) {
                     value={planner}
                     mix={on('change', (e) => ((planner = e.currentTarget.value), void handle.update()))}
                   >
-                    <option value="">First agent with the pm or architect role</option>
+                    <option value="" selected={planner === ''}>
+                      First agent with the pm or architect role
+                    </option>
                     {agents.map((a) => (
-                      <option key={a.id} value={a.id}>
+                      <option key={a.id} value={a.id} selected={a.id === planner}>
                         {a.name} ({a.role})
                       </option>
                     ))}

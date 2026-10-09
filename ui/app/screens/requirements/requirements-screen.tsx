@@ -332,9 +332,11 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
               <Field label="Task">
                 {(fid) => (
                   <select id={fid} aria-label="Task to link" value={taskId} mix={on('change', (e) => set(() => (taskId = e.currentTarget.value)))}>
-                    <option value="">Choose a task</option>
+                    <option value="" selected={taskId === ''}>
+                      Choose a task
+                    </option>
                     {tasks.map((tk) => (
-                      <option key={tk.id} value={tk.id}>
+                      <option key={tk.id} value={tk.id} selected={tk.id === taskId}>
                         #{tk.seq} {tk.title}
                       </option>
                     ))}
