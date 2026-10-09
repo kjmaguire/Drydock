@@ -184,6 +184,10 @@
     },
     "npm:dompurify": {
       "role": "Pulled in by monaco-editor; pinned by an override to the release that fixes the IN_PLACE advisories."
+    },
+    "npm:esbuild": {
+      "role": "Pulled in by vite and remix test (TypeScript transforms in the test runner); not part of the shipped bundle.",
+      "note": "Pinned by an override to 0.28.2, the release that fixes the Windows dev-server file-read advisory (GHSA-g7r4-m6w7-qqqr) that 0.27.x has."
     }
   }
 }
