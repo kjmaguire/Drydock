@@ -203,6 +203,7 @@ type DecisionFacts struct {
 	DataClass         DataClass
 	ExcludedTrainable int
 	QuotaRemainingPct float64 // -1 unknown
+	BudgetScope       string  // "" when no budget applies
 	BudgetPctUsed     float64
 	BudgetDownshift   bool
 	ProbePassed       bool

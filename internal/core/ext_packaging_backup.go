@@ -158,7 +158,7 @@ func (p *packaging) runBackup(ctx context.Context, label string) (BackupResult, 
 		}
 	}
 	if err != nil {
-		p.backupFailed(ctx, s.Dir, err)
+		p.backupFailed(ctx, s.Dir, label, err)
 		return BackupResult{}, err
 	}
 	_ = p.setSetting(ctx, keyBackupLastOK, strconv.FormatInt(p.bnow().UnixMilli(), 10))
@@ -170,7 +170,7 @@ func (p *packaging) runBackup(ctx context.Context, label string) (BackupResult, 
 	return res, nil
 }
 
-func (p *packaging) backupFailed(ctx context.Context, dir string, err error) {
+func (p *packaging) backupFailed(ctx context.Context, dir, label string, err error) {
 	msg := err.Error()
 	if p.c.Scanner != nil {
 		msg = p.c.Scanner.Redact(msg)
@@ -184,8 +184,12 @@ func (p *packaging) backupFailed(ctx context.Context, dir string, err error) {
 	p.c.logf("backup failed: %s", msg)
 	p.c.publish(ctx, "backup.failed", "", map[string]any{"error": msg, "dir": p.identity.Apply(dir)})
 	day := p.bnow().UTC().Format("2006-01-02")
-	p.notify(ctx, "backup-failed:"+day,
-		fmt.Sprintf("The scheduled backup failed: %s. No backup was made. Check that the backup folder exists, has free space and is not locked, then run Back up now in Settings > Backups.", msg), true)
+	kind, which := "manual", "The backup you started"
+	if label == "scheduled" {
+		kind, which = "scheduled", "The scheduled backup"
+	}
+	p.notify(ctx, "backup-failed:"+kind+":"+day,
+		fmt.Sprintf("%s failed: %s. No backup was made. Check that the backup folder exists, has free space and is not locked, then press Back up now on the Backups page.", which, msg), true)
 }
 
 // backupDue decides whether the scheduler should take a backup now: enabled, none in the last 24 hours, the app idle, and

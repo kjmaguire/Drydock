@@ -376,8 +376,8 @@ export function McpScreen(handle: Handle) {
         <p mix={introCss}>
           An MCP server gives agents extra tools: documentation search, an issue tracker, a database. You connect a server once in the <a href={routes.library.href()}>Library</a>, put
           it into the projects that should have it, and choose which agents of each project may use it. A server nobody was granted is never reached. Anything a server returns is
-          treated as outside text, and every tool you have not marked read-only waits for your approval, call by call. Secrets stay in the Windows credential store. Only Claude Code
-          agents receive these servers so far; other agent programs are not verified.
+          treated as outside text, and every tool you have not marked read-only waits for your approval, call by call. Secrets stay in the Windows credential store. Claude Code
+          agents receive these servers; another agent CLI receives them only after you allow it under Agent CLIs in the <a href={routes.library.href()}>Library</a>, because no real run has shown yet that it uses them.
         </p>
         <ErrorNote error={q.error} what="Could not load the servers" />
         <Approvals projectId={projectId} agents={agents} />

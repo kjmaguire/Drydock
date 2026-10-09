@@ -156,7 +156,9 @@ FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`,
 	rows.Close()
 
 	// A blocking QUESTION to a human, until a human replies, it is superseded, acked, or its request row exists (the
-	// approvals-table row above is then the item, or it is resolved).
+	// approvals-table row above is then the item, or it is resolved). A question that is itself a thread reply (the debate
+	// limit asks under the message that started the round) cannot be replied to directly, threads being one level deep: a
+	// human's later message in the same thread answers it.
 	rows, err = q.QueryContext(ctx, `
 SELECT m.id, m.room_id, m.body, m.task_id, m.author, m.created_at, r.project_id
 FROM messages m JOIN rooms r ON r.id = m.room_id
@@ -165,7 +167,8 @@ WHERE m.type = 'QUESTION' AND r.archived = 0 AND (? = '' OR r.project_id = ?)
   AND m.author NOT LIKE 'human:%'
   AND (COALESCE(json_extract(m.payload, '$.to'), '') = '' OR json_extract(m.payload, '$.to') LIKE 'human:%')
   AND NOT EXISTS (SELECT 1 FROM messages a WHERE a.room_id = m.room_id AND a.seq > m.seq
-                  AND (a.supersedes_id = m.id OR ((a.reply_to_id = m.id OR a.thread_id = m.id) AND a.author LIKE 'human:%')))
+                  AND (a.supersedes_id = m.id OR ((a.reply_to_id = m.id OR a.thread_id = m.id
+                       OR (COALESCE(m.thread_id, '') <> '' AND a.thread_id = m.thread_id)) AND a.author LIKE 'human:%')))
   AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'question:' || m.id)
   AND NOT EXISTS (SELECT 1 FROM approvals p WHERE p.id = COALESCE(json_extract(m.payload, '$.request_id'), ''))`, projectID, projectID)
 	if err != nil {

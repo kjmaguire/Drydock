@@ -9,7 +9,7 @@ export function sortRules(rules: readonly RouteRule[]): RouteRule[] {
 }
 
 /** A blank rule for the editor; the core assigns the id. */
-export const newRule = (): RouteRule => ({ id: '', scope: 'workspace', priority: 0, when: 'true', then: {}, enabled: false, version: 0 });
+export const newRule = (): RouteRule => ({ id: '', scope: 'workspace', priority: 0, when: 'true', then: {}, enabled: true, version: 0 });
 
 /** Parse the action text, or say why it is not JSON (checked before the core is called). */
 export function parseThen(text: string): { ok: true; value: RouteAction } | { ok: false; error: string } {

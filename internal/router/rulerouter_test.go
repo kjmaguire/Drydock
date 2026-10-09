@@ -616,7 +616,7 @@ func TestExplainRendersTheRecordDeterministically(t *testing.T) {
 		"cheap-first-classes",
 		"- Data: context is private; only private providers considered (invariant). 2 trainable candidates excluded.",
 		"- Capability: tool calling probe passed.",
-		"- Budget: scope at 34%, no downshift.",
+		"- Budget: project budget at 34%, no downshift.",
 		"- Alternatives rejected: ",
 		"no-tools (capability_tools)",
 		"- Estimated: 14k input / 2k output tokens, about $0.0033 (estimated from catalog price updated " + time.Now().UTC().Format("2006-01-02") + "; not reported)", // the catalog stamps the day it was written
@@ -631,6 +631,19 @@ func TestExplainRendersTheRecordDeterministically(t *testing.T) {
 	d.EstCostUSD = nil
 	if txt := r.Explain(d); !strings.Contains(txt, "price unknown") || strings.Contains(txt, "$0.0000") {
 		t.Errorf("unknown price:\n%s", txt)
+	}
+	// An agent CLI's own model makes no probe claim, says where its effort comes from, and a missing budget is said plainly.
+	ag := d
+	ag.Provider, ag.Facts.ProbePassed, ag.EffortApplied = "agent:claude", false, false
+	ag.Facts.BudgetScope, ag.Facts.BudgetPctUsed = "", 0
+	txt := r.Explain(ag)
+	for _, want := range []string{"the tool-call probe does not apply", "recorded only: the agent runs with the effort set on its Team page", "- Budget: no budget applies."} {
+		if !strings.Contains(txt, want) {
+			t.Errorf("agent-native explanation lacks %q:\n%s", want, txt)
+		}
+	}
+	if strings.Contains(txt, "probe passed") || strings.Contains(txt, "scope at") {
+		t.Errorf("agent-native explanation claims what did not happen:\n%s", txt)
 	}
 	// Public-docs context is described as such.
 	pd := d

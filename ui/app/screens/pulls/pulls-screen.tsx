@@ -1,5 +1,6 @@
 // Pull Requests: the GitHub pull request of each task that has one (CI and reviews, read from GitHub through the core), and
-// importing open GitHub issues as backlog tasks. Merging happens on GitHub by the human; nothing here merges.
+// importing open GitHub issues as backlog tasks. Nothing here merges: a pull request is merged through GitHub when the human
+// approves the task's "Review and merge" request (only the reviewed commit).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { CircleDot, GitPullRequest, Import } from 'lucide';

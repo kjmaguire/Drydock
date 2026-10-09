@@ -151,6 +151,29 @@ describe('Integrations', () => {
     expect(calls[0]![0]).toMatchObject({ kind: 'linear', oauthRef: 'oauth/mcplib/lin1', token: undefined });
   });
 
+  it('a sign-in that fails is said, and the page stops asking', async () => {
+    let polls = 0;
+    const r = show({
+      integrationList: async () => [],
+      integrationOAuthBegin: async () => ({ libraryId: 'lin1', oauthRef: 'oauth/mcplib/lin1', status: { state: 'waiting', url: 'https://linear.app/oauth/authorize?x=1' } }),
+      mcpOAuthStatus: async (id: string) => (polls++, { id, state: 'failed', error: 'sign-in failed: dial tcp 127.0.0.1:9: connection refused', signedIn: false }),
+    });
+    await r.act(() => byText(r.container, 'button', 'Sign in with OAuth instead').click());
+    const err = await waitFor(() => {
+      const e = r.$('[data-testid="integration-oauth-error"]');
+      if (!e) throw new Error('not yet');
+      return e;
+    }, r, 4000);
+    expect(err.textContent).toContain('Could not sign in to Linear');
+    expect(err.textContent).toContain('connection refused');
+    expect(r.$('[data-testid="integration-oauth-link"]')).toBeNull();
+    const seen = polls;
+    await new Promise((res) => setTimeout(res, 1500));
+    expect(polls).toBe(seen);
+    // the token field is still there to connect another way
+    expect(byLabel(r.container, 'Access token')).toBeDefined();
+  });
+
   it('read-only: Connect is turned off and says why', async () => {
     const r = show({ integrationList: async () => [], licenseStatus: async () => expiredLicense });
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).not.toBeNull(), r);

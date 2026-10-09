@@ -125,6 +125,8 @@ function RestoreConfirm(handle: Handle<{ b: BackupInfo; onStaged: (r: RestoreSta
 export function BackupsScreen(handle: Handle) {
   const s = services(handle);
   const list = query(handle, { load: () => s.client.backupList(), when: (e) => starts(e, 'backup.') });
+  // the settings on their own: when the folder cannot be read the list fails, and the form must still be there to fix it
+  const settingsQ = query(handle, { load: () => s.client.backupSettingsGet(), when: (e) => starts(e, 'backup.') });
   const status = query(handle, { load: () => s.client.backupRestoreStatus(), when: (e) => starts(e, 'backup.') });
   const act = action(handle);
   const saveAct = action(handle);
@@ -185,7 +187,7 @@ export function BackupsScreen(handle: Handle) {
 
   return () => {
     const l = list.data;
-    const st = l?.settings;
+    const st = l?.settings ?? settingsQ.data;
     const pending = status.data;
     const backups = l?.backups ?? [];
     const verified = currentVerifications(backups, checked);

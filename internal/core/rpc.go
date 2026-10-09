@@ -104,8 +104,9 @@ func (c *Core) Methods() map[string]Method {
 		}),
 		"connection.test": bind(func(ctx context.Context, p struct {
 			Adapter string `json:"adapter"`
+			Prompt  bool   `json:"prompt"` // also send one tiny prompt on the cheapest model (uses the human's account)
 		}) (any, error) {
-			return c.TestConnection(ctx, p.Adapter)
+			return c.TestConnection(ctx, p.Adapter, p.Prompt)
 		}),
 		"adapter.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.DescribeAdapters(ctx), nil }),
 		"agent.create": bind(func(ctx context.Context, p AgentSpec) (any, error) { return c.CreateAgent(ctx, p) }),

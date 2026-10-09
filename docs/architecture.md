@@ -7,7 +7,7 @@ Scope: the recommended architecture, how the built pieces fit, what is built fir
 One Windows desktop process: a Go core with no UI dependency, wrapped by a Wails v3 shell, driving real agent CLI processes, each in its own Git worktree.
 
 ```
- Wails v3 UI (React + TypeScript)                                       [built; unproven on Windows]
+ Wails v3 UI (Remix 3 + TypeScript)                                     [built; unproven on Windows]
         │  Wails services + events (transport only; replay by event seq)
  ┌──────▼──────────────────────────────────────────────────────────────┐
  │ Go core (one process, no Wails imports)                              │
@@ -59,7 +59,7 @@ Ownership rules that the code enforces:
 | `internal/providers`, `internal/llm`, `internal/router` | provider registry, quota ledger, LLM client + cache + data_class guard, static router + CEL | built, tested on Linux |
 | `internal/security` | approvals with action-hash binding, path guard, command analyzer, secret scanning, audit chain | built, tested on Linux |
 | `internal/mcp` | gateway, workspace server, catalog | built, tested on Linux |
-| `app/`, `ui/`, `main.go` | Wails shell (compiles for Windows, never run) and React UI (130 unit + 16 browser tests against the real core) | built; Windows unproven |
+| `app/`, `ui/`, `main.go` | Wails shell (compiles for Windows, never run) and the Remix 3 UI in `ui/app` (unit tests and browser tests against the real core) | built; Windows unproven |
 | `internal/integrations`, `internal/packs`, `internal/skills`, `internal/requirements` | Slices 3 to 5 | see their own status |
 | `internal/budget`, `internal/evals`, `internal/telemetry`, `internal/llm/probe`; `secrets`/`deps` in `internal/checks` | Slice 2: budgets and pause, evaluation metrics and `routing_outcomes`, local telemetry sink, tool-call probe and cheap-model selection, the two extra checks | built and tested on Linux; wired by `internal/core/ext_economics.go`; Windows unproven (P2); see [`token-control.md`](token-control.md), [`model-routing.md`](model-routing.md), [`evals.md`](evals.md) "As built" sections |
 
@@ -75,7 +75,7 @@ Ownership rules that the code enforces:
 8. `approve`: a `review` request carries the summary to the human. Reject loops back with their feedback; approve proceeds.
 9. `merge`: only a `human:` approval is accepted; merge strategy and branch from the project; conflicts park a question; success completes the task and removes the worktree if clean.
 
-Every step is a checkpoint; kill the app at any point and `Recover()` resumes it without re-running finished nodes.
+Every step is a checkpoint; kill the app at any point and the run resumes without re-running finished nodes. At start `Recover()` takes every run whose lease has expired (or that has none); `Engine.WatchRecover` then checks again every third of the lease TTL (every 10 s with the default 30 s TTL), so a run whose dead owner's lease was still valid at start (killed and restarted within the TTL) is taken over as soon as that lease expires (`internal/workflow/engine.go`, started in `internal/core/core.go`).
 
 ## 4. Build order
 
@@ -86,8 +86,8 @@ Built first, in this order (each with tests): storage, events, process manager, 
 Everything below is absent or only partly done; items marked built elsewhere in this document are tested on Linux only.
 
 - **Windows proof (P2):** nothing has run on Windows. Wails shell and WebView2, NSIS installer and updater flow, Job Object tree kill, ConPTY terminal, Credential Manager, tree-sitter CGO job.
-- **Repo map** (tree-sitter, gated by D5), the bottom dock (terminal/diff/logs), command palette, slash commands, attachments, the workflow graph view, a Providers detail panel (quotas), project export/import, the support bundle, scheduled backups UI, license screen, Claude Design and PR-flow variants of the spec-gated templates.
-- **Routing:** agent turns are not routed through the Model Router (`core.agentConfig` assigns each agent's configured model; decisions are recorded as `static`); LLM tiebreak; pre-call budget reservation and wall-time ceilings; the OTLP exporter (the local telemetry sink exists, D12); the B0/B1 baseline arms of the evaluation.
+- **Repo map** (tree-sitter, gated by D5); Claude Design variants of the spec-gated templates. (Built since the first version of this list, Linux only: the bottom dock with terminal, diff, logs and activity, the command palette, slash commands, attachments, the workflow graph view, the Providers detail panel with quotas, project export/import, the support bundle, the backups screen with its schedule, the license screen, and PR-flow (`-pr`) variants of the templates; see `ui/app/screens` and `internal/core/ext_packaging*.go`.)
+- **Routing:** agent work and review turns are routed only for an agent whose human listed the models the router may choose between (Team page); the router picks among exactly those models and never moves the turn to another CLI (`internal/core/turnrouting.go`). Room replies and template role turns (pm, tests, architect, security) are not routed. An agent with no list runs its configured model, recorded as a `static` decision. Not built: LLM tiebreak; pre-call budget reservation and wall-time ceilings; the OTLP exporter (the local telemetry sink exists, D12); the B0/B1 baseline arms of the evaluation.
 - **Agents:** only Claude Code gets an MCP config (its own workspace tools and the MCP servers the human connects in the library, puts into a project and grants to the agent, decisions P15); Codex, Gemini, OpenCode and Goose run without the workspace tools unless the human allows the gateway for that CLI (decisions P20, unverified with any real CLI), Antigravity cannot be given it; no real prompt turn has been run for any ACP agent (no credentials here); Antigravity and the custom-CLI dialect are not implemented; upstream docs servers are not passed to agent runs; OAuth sign-in exists for servers connected in the library (decisions P22) but has only run against a fake provider; the full per-role MCP policy table.
 - **Integrations:** every vendor shape is a fixture written from documentation; no live Linear/Notion/Sentry/Aikido call has been made; OAuth is not built.
 - **Packs and requirements:** PDF/DOCX parsing, `git_docs` sources, model-synthesized answers.

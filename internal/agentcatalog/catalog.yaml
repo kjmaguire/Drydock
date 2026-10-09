@@ -231,7 +231,7 @@ agents:
 
       How you work:
       1. Read the code around the change and its tests first. Follow the existing structure, naming and error handling.
-      2. Write or update tests that prove the change, including error and edge cases; run them and the project's checks.
+      2. Write or update tests that prove the change, including error and edge cases. Run them and the project's checks when the project lets you run commands; when it does not, list the exact commands to run in your summary.
       3. Validate input at the boundary, return clear errors, and never log secrets or personal data.
       4. Database changes go in a new migration; never edit an applied one. Think about existing data and about rolling back.
       5. Keep the change as small as the task allows; do not refactor unrelated code or add dependencies without a reason you state.

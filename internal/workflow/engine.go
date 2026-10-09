@@ -947,10 +947,38 @@ func (e *Engine) Cancel(ctx context.Context, run RunID) error {
 }
 
 // Recover resumes runs whose driver is gone (expired lease). Call once at startup. It returns how many runs it took over.
-func (e *Engine) Recover(ctx context.Context) (int, error) {
+func (e *Engine) Recover(ctx context.Context) (int, error) { return e.recover(ctx, true) }
+
+// WatchRecover recovers, every interval (a third of the lease TTL when 0) until ctx ends, the runs whose owner's lease has
+// expired. Recover at start cannot take a run whose dead owner's lease is still valid (the app was killed and started again
+// within the lease TTL); without this loop such a run would stay RUNNING, with nothing driving it, until the next start.
+// Runs this engine drives and runs that have no lease row (one being started right now) are never taken.
+func (e *Engine) WatchRecover(ctx context.Context, every time.Duration) {
+	if every <= 0 {
+		every = e.cfg.LeaseTTL / 3
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			_, _ = e.recover(ctx, false)
+		}
+	}
+}
+
+// recover launches the RUNNING runs nobody drives: with unleased, also those without a lease row (only at start, when no
+// run of this process can be between creating its row and taking its lease).
+func (e *Engine) recover(ctx context.Context, unleased bool) (int, error) {
+	cond := `l.run_id IS NOT NULL AND l.expires_at < ?`
+	if unleased {
+		cond = `(l.run_id IS NULL OR l.expires_at < ?)`
+	}
 	rows, err := e.st.db.Reader().QueryContext(ctx, `SELECT r.id FROM workflow_runs r
 		LEFT JOIN run_leases l ON l.run_id = r.id
-		WHERE r.status IN ('RUNNING','RECOVERING') AND (l.run_id IS NULL OR l.expires_at < ?)`, storage.Now())
+		WHERE r.status IN ('RUNNING','RECOVERING') AND `+cond, storage.Now())
 	if err != nil {
 		return 0, err
 	}
@@ -966,6 +994,12 @@ func (e *Engine) Recover(ctx context.Context) (int, error) {
 	rows.Close()
 	n := 0
 	for _, id := range runs {
+		e.mu.Lock()
+		_, local := e.active[id]
+		e.mu.Unlock()
+		if local {
+			continue // this engine drives it already (its lease renewal is late, not lost)
+		}
 		ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
 		if err != nil || !ok {
 			continue

@@ -139,6 +139,21 @@ func TestNeedsYouDerivedFromSourceState(t *testing.T) {
 	if _, ok := keys()["question:"+q.ID]; ok {
 		t.Fatal("human reply should resolve the question")
 	}
+	// a question that is itself a thread reply (the debate limit asks under the round's first message) cannot be replied
+	// to directly, threads being one level deep: a human's later message in the same thread answers it
+	root := e.post(PostParams{RoomID: r.ID, Author: kyle, Body: "Debate the schema"}).Message
+	tq := e.post(PostParams{RoomID: r.ID, Author: System, Type: TypeQuestion, ThreadRootID: root.ID, Body: "The debate limit was reached: decide", Payload: map[string]any{"blocking": true}}).Message
+	if _, ok := keys()["question:"+tq.ID]; !ok {
+		t.Fatalf("thread question not listed: %+v", keys())
+	}
+	e.post(PostParams{RoomID: r.ID, Author: Agent(a), ThreadRootID: root.ID, Body: "I still think Postgres"})
+	if _, ok := keys()["question:"+tq.ID]; !ok {
+		t.Fatal("an agent's message in the thread must not answer it")
+	}
+	e.post(PostParams{RoomID: r.ID, Author: kyle, ThreadRootID: root.ID, Body: "SQLite, final"})
+	if _, ok := keys()["question:"+tq.ID]; ok {
+		t.Fatal("the human's answer in the thread should resolve the question")
+	}
 	// a question backed by an approvals row is that row's item, not a second one
 	e.approval("req_q", "question", "REQUESTED", "")
 	qr := e.post(PostParams{RoomID: r.ID, Author: Agent(a), Type: TypeQuestion, Body: "Backed question", Payload: map[string]any{"blocking": true, "request_id": "req_q"}}).Message

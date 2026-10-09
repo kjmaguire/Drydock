@@ -16,10 +16,12 @@ import (
 
 // GitHubStatus says whether the GitHub integration (the user's own `gh`, signed in) can be used.
 type GitHubStatus struct {
-	Installed bool   `json:"installed"`
-	LoggedIn  bool   `json:"loggedIn"`
-	Login     string `json:"login"`
-	Error     string `json:"error,omitempty"`
+	Installed bool `json:"installed"`
+	LoggedIn  bool `json:"loggedIn"`
+	// Unreachable is true when GitHub (or the network) did not answer in time: gh may well be signed in.
+	Unreachable bool   `json:"unreachable,omitempty"`
+	Login       string `json:"login"`
+	Error       string `json:"error,omitempty"`
 }
 
 // CloneResult is a repository cloned for a new project.
@@ -38,21 +40,26 @@ func (c *Core) githubAPI() (host.API, bool) {
 	return host.GhCLI{}, true
 }
 
+// githubStatusTimeout is how long the account check waits for GitHub before saying it did not answer.
+var githubStatusTimeout = 20 * time.Second
+
 // GitHubAccountStatus reports whether `gh` is installed and signed in. It never reads or stores a token.
 func (c *Core) GitHubAccountStatus(ctx context.Context) GitHubStatus {
 	api, ok := c.githubAPI()
 	if !ok {
 		return GitHubStatus{Error: "the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`"}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, githubStatusTimeout)
 	defer cancel()
 	who, err := host.Viewer(ctx, api)
 	if err != nil {
-		msg := err.Error()
 		if errors.Is(err, host.ErrAuth) {
-			msg = "gh is not signed in: run `gh auth login`"
+			return GitHubStatus{Installed: true, Error: "gh is not signed in: run `gh auth login`"}
 		}
-		return GitHubStatus{Installed: true, Error: msg}
+		if ctx.Err() != nil {
+			return GitHubStatus{Installed: true, Unreachable: true, Error: "GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later"}
+		}
+		return GitHubStatus{Installed: true, Error: err.Error()}
 	}
 	return GitHubStatus{Installed: true, LoggedIn: true, Login: who.Login}
 }

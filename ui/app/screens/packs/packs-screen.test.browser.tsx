@@ -230,7 +230,8 @@ describe('PacksScreen', () => {
             ],
             confidence: 'high',
             sourceAgeDays: 1,
-            route: 'cheap',
+            route: 'private',
+            model: 'qwen-cheap',
             usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
           }
         ),
@@ -266,6 +267,27 @@ describe('SearchResultView and ConsultView', () => {
     expect(r.container.textContent).toContain('Nothing found');
     expect(r.container.textContent).toContain('godocs unavailable: offline');
     expect(r.$('[data-testid="pack-search-result"]')!.getAttribute('data-found')).toBe('false');
+  });
+
+  it('an answer made of the passages alone says no model was used, and an unknown source age is not shown', () => {
+    const r = renderPlain(
+      <ConsultView
+        r={{
+          found: true,
+          answer: 'Use a buffered channel.',
+          citations: null,
+          sources: null,
+          confidence: 'high',
+          sourceAgeDays: -1,
+          route: 'retrieval_only',
+          usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        }}
+      />,
+    );
+    r.root.flush();
+    expect(r.$('[data-testid="consult-no-model"]')!.textContent).toContain('No model was used');
+    expect(r.container.textContent).not.toContain('Cost of this question');
+    expect(r.container.textContent).not.toContain('source age');
   });
 
   it('a degraded answer says so and says when there was no answer', () => {

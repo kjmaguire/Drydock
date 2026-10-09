@@ -97,6 +97,16 @@ describe('Agent inspector', () => {
     expect(box2.querySelector('[data-testid="inspector-purpose"]')!.textContent).toBe('none set');
   });
 
+  it('says whether the router chooses this agent\'s model, and between which models', async () => {
+    const r = mount(
+      <AgentInspector agentId="a1" />,
+      setup({ agentGet: async () => ({ agent: agent({ routeModels: [{ model: 'claude-haiku-4-5', tier: 'cheap' }, { model: 'claude-opus-4-5', tier: 'premium' }] }), runs: [], usage: [] }) }),
+    );
+    const routing = (await inspector(r)).querySelector<HTMLElement>('[data-testid="inspector-routing"]')!;
+    expect(routing.textContent).toContain('claude-haiku-4-5 (cheap), claude-opus-4-5 (premium)');
+    expect(routing.textContent).not.toMatch(/Not routed|Slice/);
+  });
+
   it('states the isolation in plain words, and warns when the permission mode lets the agent act freely', async () => {
     const detail = (level: 'guarded' | 'open'): AgentDetail => ({
       agent: agent(),

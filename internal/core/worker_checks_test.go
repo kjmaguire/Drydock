@@ -94,6 +94,13 @@ func TestWorkersGetNoCommandsUnlessTheProjectAllowsIt(t *testing.T) {
 	if !strings.Contains(d.Isolation.Summary, "hold shell commands for approval") {
 		t.Fatalf("isolation without the switch: %+v", d.Isolation)
 	}
+	// the panel says what is not held in: replies work from the project folder, and the human's own Claude settings apply
+	all := strings.Join(d.Isolation.Details, "\n")
+	for _, want := range []string{"answers read-only, from the project folder", "skills, plugins and hooks in your user folder"} {
+		if !strings.Contains(all, want) {
+			t.Fatalf("isolation details lack %q: %s", want, all)
+		}
+	}
 }
 
 func TestWorkerChecksAreExactCommandsTheWorkerIsToldAboutAndNeverForTheReviewer(t *testing.T) {

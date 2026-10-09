@@ -221,7 +221,11 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined; onN
           ) : null}
           <div>
             <dt>Why this model?</dt>
-            <dd mix={muted}>Not routed: the model was chosen in team setup (the model router is Slice 2).</dd>
+            <dd mix={muted} data-testid="inspector-routing">
+              {(a.routeModels ?? []).length > 0
+                ? `Routed on task work and reviews: the model router chooses between ${(a.routeModels ?? []).map((m) => `${m.model} (${m.tier})`).join(', ')} on each turn, and the task's decisions say why. Room replies use the configured model.`
+                : 'Not routed: every turn uses the configured model. To let the router choose, list models under Edit (models the router may choose).'}
+            </dd>
           </div>
         </dl>
 

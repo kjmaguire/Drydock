@@ -912,3 +912,30 @@ func TestStartTemplateRefusalsAreClearAndOverridesWork(t *testing.T) {
 		t.Fatalf("%+v", rr)
 	}
 }
+
+// A task cancelled while its run waits at the spec gate no longer offers the decision: the run is over and could not take
+// an answer ("run is in a terminal state").
+func TestACancelledTaskOffersNoDecision(t *testing.T) {
+	a, _ := openDev(t, devScript())
+	repo := newGreenRepo(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	a.agent(p.ID, "Priya", "pm")
+	a.agent(p.ID, "Quinn", "qa")
+	dev := a.agent(p.ID, "Dana", "backend")
+	rev := a.agent(p.ID, "Rex", "reviewer")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Add Multiply", Description: "Add a Multiply function.", Template: "feature"}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": dev.ID, "reviewer": rev.ID}, &task)
+	var started core.StartTemplateResult
+	a.call("task.startTemplate", map[string]any{"taskId": task.ID, "template": "feature"}, &started)
+	a.waitPending(task.ID, "specreview")
+	a.call("task.cancel", map[string]string{"id": task.ID}, nil)
+	a.waitFor("the cancelled run", func() bool {
+		d := a.detail(task.ID)
+		return d.Run != nil && d.Run.Status.Terminal()
+	})
+	if d := a.detail(task.ID); len(d.Pending) != 0 {
+		t.Fatalf("a cancelled task still offers %d decision(s): %+v", len(d.Pending), d.Pending)
+	}
+}

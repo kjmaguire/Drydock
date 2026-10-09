@@ -126,7 +126,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
 	c.Connections, err = connections.NewService(connections.Config{
 		Manifests: manifests.Options{ScrubEnv: true, PassEnv: func() []string { return passEnvNames(context.Background(), db) }},
-		Detection: connections.Options{PM: cfg.Procs, Acked: acked},
+		Detection: connections.Options{PM: cfg.Procs, Acked: acked, Last: c.loadTestOutcomes(ctx)},
 	})
 	if err != nil {
 		cancel()
@@ -239,6 +239,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	} else if n > 0 {
 		c.logf("resumed %d interrupted run(s)", n)
 	}
+	// a run whose last owner's lease was still valid at start (killed and restarted within the lease TTL) is taken over
+	// as soon as that lease expires
+	go c.Engine.WatchRecover(bg, 0)
 	return c, nil
 }
 

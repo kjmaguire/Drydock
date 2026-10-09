@@ -235,6 +235,26 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		}
 		res.Agents = append(res.Agents, made)
 	}
+	// an agent whose CLI is not usable on this machine cannot do anything yet: say so now, not at its first turn
+	byAdapter := map[string][]string{}
+	var adapters []string
+	for _, a := range res.Agents {
+		if _, seen := byAdapter[a.Adapter]; !seen {
+			adapters = append(adapters, a.Adapter)
+		}
+		byAdapter[a.Adapter] = append(byAdapter[a.Adapter], a.Name)
+	}
+	for _, ad := range adapters {
+		conn, err := c.Connections.Check(ctx, ad)
+		if err != nil || conn.Usable {
+			continue
+		}
+		why := string(conn.Status)
+		if len(conn.Problems) > 0 {
+			why = conn.Problems[0]
+		}
+		warn("%s cannot work yet: the %s CLI is not usable on this machine (%s). Set it up on the Connections page: install it, sign in and accept its notice", strings.Join(byAdapter[ad], ", "), ad, why)
+	}
 	c.publish(ctx, "project.setup", p.ID, map[string]any{"agents": len(res.Agents), "warnings": len(res.Warnings), "repo": r.Repo.Kind})
 	return res, nil
 }

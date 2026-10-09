@@ -158,7 +158,10 @@ export function PullRequestPanel(handle: Handle<{ state: PRState }>) {
           {pr.mergeable_state ? <span mix={muted}> mergeable state: {pr.mergeable_state}</span> : null}
           {href ? <External href={href}>Open on GitHub</External> : null}
         </div>
-        <p mix={muted}>Merging happens on GitHub by you. Drydock never enables auto-merge.</p>
+        <p mix={muted}>
+          Nothing merges until you approve the task's "Review and merge" in Needs you: Drydock then merges this pull request through GitHub (only the
+          commit that was reviewed; a later push is not merged) and deletes its task branch. Drydock never enables auto-merge.
+        </p>
         {pr.body ? (
           <div class="body">
             <Markdown source={pr.body} />

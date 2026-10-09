@@ -148,7 +148,9 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	if t.RunID != "" {
 		if info, err := c.Engine.Status(ctx, workflow.RunID(t.RunID)); err == nil {
 			d.Run = &info
-			if p, err := c.Engine.Pending(ctx, info.ID); err == nil && p != nil {
+			// a finished, failed or cancelled run waits for nobody: its last checkpoint may still list a request, which can no
+			// longer be answered ("run is in a terminal state")
+			if p, err := c.Engine.Pending(ctx, info.ID); err == nil && p != nil && !info.Status.Terminal() {
 				d.Pending = p
 			}
 		}

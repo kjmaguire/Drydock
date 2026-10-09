@@ -78,7 +78,7 @@ describe('RoutingScreen', () => {
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     type(byLabel<HTMLTextAreaElement>(ed, /^When/), 'task.kind == "docs"');
     type(byLabel<HTMLTextAreaElement>(ed, /^Then/), '{"require_tier":"free"}');
-    await r.act(() => byLabel(ed, 'Enabled').click());
+    expect(byLabel<HTMLInputElement>(ed, 'Enabled').checked).toBe(true); // a rule you add is meant to apply
     await r.act(() => byText(ed, 'button', 'Save rule').click());
     await waitFor(() => expect(sets[0]).toEqual({ id: '', scope: 'workspace', priority: 0, when: 'task.kind == "docs"', then: { require_tier: 'free' }, enabled: true, version: 0 }), r);
     await waitFor(() => expect(r.$('[data-testid="rule-editor"]')).toBeNull(), r);

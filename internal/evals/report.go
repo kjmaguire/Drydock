@@ -717,6 +717,6 @@ func (r *Report) computeRouting(ctx context.Context, db *storage.DB, o Options, 
 	g.Good = ratio(good, g.WithOutcome)
 	_ = db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE type='routing.fallback' AND ts>=? AND ts<=?`, o.SinceMS, until).Scan(&g.Fallbacks)
 	_ = db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE type='routing.escalated' AND ts>=? AND ts<=?`, o.SinceMS, until).Scan(&g.Escalations)
-	g.Note = "A decision is good when its task was accepted by a human and never escalated (no routing.escalated event, no second watchdog trip); it is bad when the task failed, was cancelled or escalated. Decisions of tasks that have not ended are pending. Until the app routes agent turns through the router, the decisions are 'static' (the agent's own configured assignment), and this section then measures the configured assignments, not router choices."
+	g.Note = "A decision is good when its task was accepted by a human and never escalated (no routing.escalated event, no second watchdog trip); it is bad when the task failed, was cancelled or escalated. Decisions of tasks that have not ended are pending. Turns of an agent with no list of models the router may choose between are 'static' decisions (the agent's own configured assignment): for those, this section measures the configured assignments, not router choices."
 	return nil
 }

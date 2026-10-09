@@ -21,12 +21,12 @@ how Drydock should coordinate its agents, not to anything inside one session.
 
 | Recommendation (source) | Drydock |
 |---|---|
-| **Give Claude a way to verify its work**: tests, a build, a linter; "the difference between a session you watch and one you walk away from" (best practices) | Drydock runs the project's checks after every worker turn and sends failures back; an independent reviewer and a human approval follow. The worker cannot run tests itself (Bash is not pre-approved, see section 4); the practices text tells it that checks run for it and to fix root causes. |
+| **Give Claude a way to verify its work**: tests, a build, a linter; "the difference between a session you watch and one you walk away from" (best practices) | Drydock runs the project's checks after every worker turn and sends failures back; an independent reviewer and a human approval follow. By default the worker cannot run tests itself (Bash is not pre-approved); a project can switch on "Let Claude workers run this project's own checks" (off by default, decision P24), which allows exact check command lines only (`worker-commands.md`). The practices text tells it that checks run for it and to fix root causes. |
 | **Address root causes, not symptoms; do not suppress the error** (best practices) | In the worker practices text: never skip, delete or weaken a test or suppress an error to pass a check. |
 | **Explore, plan, then code** for multi-file or unfamiliar changes (best practices) | Templates have spec, design and test-first phases. Worker practices text: read the code and tests first and settle the approach before a multi-file change. |
 | **Be specific; point at files and existing patterns** (best practices) | Task prompts carry the title, description and acceptance criteria; practices text: follow the patterns already in the code, add no dependencies. |
-| **Keep CLAUDE.md short; every line must prevent a mistake**; "Bloated CLAUDE.md files cause Claude to ignore your actual instructions"; aim under 200 lines (best practices, costs, memory) | The practices text is about 200 words and a test keeps it under 330. Generated `AGENTS.md`/`CLAUDE.md` are budgeted by the Context Engine (token-control.md). |
-| **Fresh context for review; a reviewer prompted to find gaps will find some, so tell it to flag only what affects correctness or the stated requirements** (best practices, "Add an adversarial review step") | The reviewer is a different agent in a fresh session. The review prompt and the reviewer practices text say: ask for a revision only for correctness, requirements, security or unrequested changes; style, extra abstraction and tests for impossible cases are optional notes. |
+| **Keep CLAUDE.md short; every line must prevent a mistake**; "Bloated CLAUDE.md files cause Claude to ignore your actual instructions"; aim under 200 lines (best practices, costs, memory) | The practices text is about 200 words and a test keeps it under 330. Generated `AGENTS.md`/`CLAUDE.md` are budgeted by the Context Engine (token-control.md). Claude Code started with `--setting-sources user` does not read them itself; the adapter appends `CLAUDE.md` (with its `@AGENTS.md` import) and `.claude/rules/*.md` to the system prompt, at most 64 KB a file and 256 KB in all (section 5). |
+| **Fresh context for review; a reviewer prompted to find gaps will find some, so tell it to flag only what affects correctness or the stated requirements** (best practices, "Add an adversarial review step") | The reviewer is a different agent in a fresh, read-only session: Claude Code in its default permission mode with Edit, Write, MultiEdit, NotebookEdit and Bash denied (`RunSpec.ReadOnly`; plan mode is not used, see section 5). The review prompt and the reviewer practices text say: ask for a revision only for correctness, requirements, security or unrequested changes; style, extra abstraction and tests for impossible cases are optional notes. |
 | **Clear context between unrelated tasks; sessions that need two corrections should restart** (best practices, costs) | Every attempt is a fresh session with handoff artifacts only (token-control.md rules 5 and 16). |
 | **Avoid file conflicts: two teammates editing the same file leads to overwrites; give each a different set of files** (agent teams) | Worktree per task prevents live overwrites. A task whose files overlap an earlier running task waits for it, and the base is brought into the branch and the checks re-run before review and merge (`parallel-work.md`). The planner practices text asks for tasks that own different files and to say which files each touches. |
 | **Team size: start with 3 to 5; token cost scales linearly; 5 to 6 tasks per teammate** (agent teams) | Default `maxParallel` is 2, the settings page allows up to 16. The Development settings show a note above 5. |
@@ -52,7 +52,9 @@ template. What it does:
 2. Records the version of the text in the `agent.started` event (`practices`), so a run says which wording it was given.
 3. Suggests a model and effort for the role and fills them in until the human changes them (workers, planners and the lead: sonnet,
    medium; reviewers: sonnet, high; architects: opus, high). The suggestion is shown with the reason; nothing is forced.
-4. Starts Claude Code with `--setting-sources user` (section 5) and a trimmed environment (security.md).
+4. Starts Claude Code with `--setting-sources user` (section 5) and a trimmed environment (security.md), and appends the project's own instruction files to the system prompt, because that flag stops Claude Code reading them (section 5).
+
+These are always applied, with or without the switch: read-only sessions (reviewer, security review, room and DM replies, planner, team lead, spec and design turns) run Claude Code in its default permission mode with `--disallowedTools Edit,Write,MultiEdit,NotebookEdit,Bash`, not in plan mode, and get no tool-wide `Read` allow rule, so they read inside their working folder only (room replies pre-approve only Drydock's own `mcp__drydock__*` tools).
 
 The wording of an instruction matters. Measured with Claude Code 2.1.295 (haiku, low effort), a style instruction placed after a
 tool call was followed in about 2 of 9 runs when worded "does not override the task" and in 7 of 8 when worded "always in force,
@@ -61,9 +63,9 @@ on it.
 
 ## 4. What Drydock does not do yet
 
-- **Workers cannot run the project's checks themselves.** Bash is not pre-approved, so a worker finds out that a check failed only
-  on its next turn. Pre-approving the detected check commands would shorten the loop, but a prefix rule such as `go test *` also
-  allows `go test -exec <program>`, so it needs a design that matches whole commands. Not built.
+- **Workers run the project's checks themselves only when the project allows it.** By default Bash is not pre-approved, so a
+  worker finds out that a check failed only on its next turn. Since 2026-10-09 a project can allow exact whole-command rules from
+  a fixed list (decision P24, `worker-commands.md`; off by default; tiers 2 and 3 are not built).
 - **Overlap detection is path-based.** It cannot see two tasks that start without planned files and write the same file at the same moment, nor changes to different files that break each other; sync and the re-run checks catch those (`parallel-work.md` section 3).
 - **No `maxTurns` or per-run budget flag** is passed to the CLI; Drydock's own budgets pause a run between turns.
 - **No plan mode for workers.** Planning is done by separate phases (spec, design) in the templates, not by the worker.
@@ -81,3 +83,7 @@ user-level settings and hooks still apply, a repository's do not. `--bare`, whic
 usable because it never reads the human's login (decision D1). `--strict-mcp-config` already keeps a repository's `.mcp.json`
 servers out. Test: `TestRealClaudeDoesNotRunARepositorysOwnHooks` (real CLI, with a control run that proves the hook runs
 otherwise).
+
+The same flag also stops Claude Code loading the project's memory files: `CLAUDE.md`, the `AGENTS.md` it imports and `.claude/rules` (measured with 2.1.296). The adapter therefore reads `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` (following `@` imports only inside the working folder) and `.claude/rules/*.md` itself and appends them to the system prompt, which goes in a file with `--append-system-prompt-file` (`internal/agents/claude/project_memory.go`, decision P16). A rule's `paths:` front matter is not applied that way: every rule is in every turn. Settings files are never read. Test: `TestRealClaudeGetsTheProjectInstructionsWithUserSettingsOnly`.
+
+Read-only sessions do not use plan mode: Claude Code answers a plan-mode session started with `--model haiku` with Sonnet (since 2.0.17; measured with 2.1.296: the init event reports haiku, every message is Sonnet, about 10 to 50 times the cost). They run in the default mode with every writing tool denied instead (`RunSpec.ReadOnly`, `internal/agents/claude/adapter.go`). Test: `TestRealClaudeReadOnlySessionKeepsItsModelAndCannotWrite`.

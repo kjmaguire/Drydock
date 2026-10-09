@@ -155,7 +155,7 @@ func (s agentSource) Candidates(ctx context.Context, req router.RouteRequest) ([
 		}
 		out = append(out, router.Candidate{Provider: router.ProviderID("agent:" + a.Adapter), Model: r.Model, Tier: tier, DataClass: providers.DataPrivate,
 			Enabled: true, PrivateEligible: true, SupportsTools: true, ResponsesValidated: true, Healthy: true, QuotaOK: true, QuotaRemainingPct: -1,
-			ProbePassed: true, AgentNative: true})
+			AgentNative: true}) // no tool-call probe ran: the agent CLI brings its own tools (the explanation says so)
 	}
 	return out, nil
 }

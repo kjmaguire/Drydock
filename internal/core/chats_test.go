@@ -405,6 +405,21 @@ func TestChatStopAndOneTurnAtATime(t *testing.T) {
 	if ev := e.send(c.ID, "quick question"); ev["status"] != chats.TurnDone || ev["resumed"] != true {
 		t.Fatalf("after a stop the chat continues: %v", ev)
 	}
+	// the stopped CLI never saved the partial answer: the resumed session is told what the person saw, and the stored message
+	// is still only what the person typed
+	pr := e.prompts()
+	last := pr[len(pr)-1]
+	if !strings.Contains(last, "I stopped your previous answer before it finished") || !strings.Contains(last, "> working on it") || !strings.HasSuffix(last, "quick question") {
+		t.Fatalf("prompt after a stop: %q", last)
+	}
+	if d := e.get(c.ID); d.Messages[len(d.Messages)-2].Body != "quick question" {
+		t.Fatalf("stored user message %q", d.Messages[len(d.Messages)-2].Body)
+	}
+	// once a turn ended normally there is no note any more
+	e.send(c.ID, "another quick one")
+	if pr := e.prompts(); pr[len(pr)-1] != "another quick one" {
+		t.Fatalf("a note after a normal turn: %q", pr[len(pr)-1])
+	}
 }
 
 func TestChatForkCopiesHistoryAndStartsWithTheTranscript(t *testing.T) {

@@ -710,7 +710,7 @@ function ConnectForm(handle: Handle<{ projects: Project[]; onConnected: () => vo
   let cfg: Record<string, string> = {};
   let baseUrl = '';
   let result: IntegrationTestReport | undefined;
-  let oauth: { ref: string; url?: string; signedIn: boolean } | undefined;
+  let oauth: { ref: string; url?: string; signedIn: boolean; error?: string } | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   const stopPoll = () => {
     clearInterval(timer);
@@ -725,7 +725,12 @@ function ConnectForm(handle: Handle<{ projects: Project[]; onConnected: () => vo
       try {
         const st = await s.client.mcpOAuthStatus(oauthLibraryId(oauth.ref));
         if (st.signedIn && oauth) {
-          oauth = { ...oauth, signedIn: true };
+          oauth = { ...oauth, signedIn: true, error: undefined };
+          stopPoll();
+          void handle.update();
+        } else if (st.state === 'failed' && oauth) {
+          // a sign-in that failed is said, and the polling stops (it would never succeed by itself)
+          oauth = { ...oauth, error: st.error || 'the sign-in failed' };
           stopPoll();
           void handle.update();
         }
@@ -841,16 +846,21 @@ function ConnectForm(handle: Handle<{ projects: Project[]; onConnected: () => vo
                 on('click', async () => {
                   const r = await act.run('oauth', () => s.client.integrationOAuthBegin(kind, baseUrl.trim() || undefined));
                   if (r) {
-                    oauth = { ref: r.oauthRef, url: r.status.url, signedIn: !!r.status.signedIn };
+                    oauth = { ref: r.oauthRef, url: r.status.url, signedIn: !!r.status.signedIn, error: r.status.state === 'failed' ? r.status.error || 'the sign-in failed' : undefined };
                     void handle.update();
-                    if (!oauth.signedIn) startPoll();
+                    if (!oauth.signedIn && !oauth.error) startPoll();
                   }
                 }),
               ]}
             >
               Sign in with OAuth instead
             </Button>
-            {signHref ? (
+            {oauth?.error ? (
+              <div mix={full} data-testid="integration-oauth-error">
+                <ErrorNote error={new Error(oauth.error)} what={`Could not sign in to ${spec.label}`} />
+              </div>
+            ) : null}
+            {signHref && !oauth?.error ? (
               <a href={signHref} target="_blank" rel="noreferrer noopener" data-rmx-document data-testid="integration-oauth-link" mix={buttonStyle('link', 'sm')}>
                 <Icon icon={ExternalLink} size={13} />
                 Open the {spec.label} sign-in page

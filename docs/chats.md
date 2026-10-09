@@ -124,12 +124,18 @@ well, with the chat id as `agentId`.
 4. Output is stored as it arrives: assistant text blocks, tool calls, refusals, warnings. Usage adds up; the CLI's session id is
    recorded; the process is stopped. With no title yet, the first line of the first message (60 characters) becomes the title.
 5. `chat.stop` cancels the turn: streamed text so far is kept as an assistant message and "Stopped by you." is added; the session
-   (when it started) is kept, so the next message continues it. A turn has 30 minutes.
+   (when it started) is kept, so the next message continues it. The CLI is killed before it saves the partial answer to its own
+   session (observed with claude 2.1.296), so when the next turn resumes that session Drydock puts a note in front of the new
+   message: the text the person saw of the stopped answer (its last 4,000 characters, quoted line by line), or that the answer
+   was stopped before any text (`stoppedNote` in `internal/chats/turn.go`). A turn has 30 minutes.
 
 ## 5. The `chats` workspace tool
 
-A chat session whose `readHistory` is on gets one MCP tool, `chats` (Claude: `mcp__drydock__chats`, callable without a prompt),
-and nothing else of the workspace. Arguments: `{action: "list" | "search" | "read", query?, k?[10], chat_id?, from_seq?[0],
+A chat session whose `readHistory` is on gets the `chats` tool (Claude: `mcp__drydock__chats`) and the gateway's `fetch_range`
+(continues a truncated result; `mcp__drydock__fetch_range`), both callable without a prompt, and nothing else of the workspace
+or the library (`planChatMCP` in `internal/core/ext_chats.go`). Arguments: `{action: "list" | "search" | "read", query?, k?[10], chat_id?, from_seq?[0],
 limit?}`. It reads the chats of the chat's own project and the chats without a project (a chat without a project reads every
-chat); archived chats are not listed. Results go through the gateway's usual pipeline (secret scan, untrusted marking, audit).
+chat). `list` leaves archived chats out (at most 100, default 30); `search` includes them, marked `archived` (at most 20 hits,
+default 10); `read` reads any readable chat by id, archived or not (at most 200 messages, default 50, each cut at 4,000
+characters). Results go through the gateway's usual pipeline (secret scan, untrusted marking, audit).
 For ACP agents the tool is attached only when the human allowed the gateway for that CLI (`mcp.try.set`, decisions P20).

@@ -263,7 +263,7 @@ func (t *tester) run(ctx context.Context) Report {
 
 	// T5: stop
 	t.stop(sess)
-	t.skip("T6", "Gateway reachability", "the MCP gateway is not part of this build yet")
+	t.skip("T6", "Gateway reachability", "checked on the agent's first real run instead: its Inspector and the MCP page show whether Drydock's workspace tools were attached")
 	t.skip("T7", "Provider path", "no provider is configured for this agent")
 	return t.finish(conn)
 }

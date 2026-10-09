@@ -85,7 +85,8 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   agentGet(id: string): Promise<AgentDetail>;
   connectionList(): Promise<Connection[]>;
   connectionAcknowledge(gateId: string): Promise<void>;
-  connectionTest(adapter: string): Promise<ConnectionReport>;
+  /** With prompt, also one tiny prompt on the adapter's cheapest model (uses the person's account). */
+  connectionTest(adapter: string, prompt?: boolean): Promise<ConnectionReport>;
   providerList(): Promise<Provider[]>;
   providerCreate(p: NewProvider): Promise<Provider>;
   providerDelete(id: string): Promise<void>;
@@ -157,8 +158,8 @@ export function createClient(t: Transport): Client {
     connectionAcknowledge: async (gateId) => {
       await t.call('connection.acknowledge', { gateId });
     },
-    connectionTest: async (adapter) => {
-      const r = await t.call<ConnectionReport>('connection.test', { adapter });
+    connectionTest: async (adapter, prompt = false) => {
+      const r = await t.call<ConnectionReport>('connection.test', { adapter, prompt });
       return { ...r, steps: arr(r.steps), matrix: r.matrix ?? {} };
     },
     providerList: async () => arr(await t.call<Provider[] | null>('provider.list')),

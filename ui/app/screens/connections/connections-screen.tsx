@@ -173,6 +173,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
   const s = services(handle);
   let confirming = false;
   let testing = false;
+  let prompt = true;
   let report: ConnectionReport | undefined;
   let error: Error | undefined;
   const upd = (f: () => void) => {
@@ -195,7 +196,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
       confirming = false;
     });
     try {
-      report = await s.client.connectionTest(handle.props.c.adapter);
+      report = await s.client.connectionTest(handle.props.c.adapter, prompt);
       handle.props.onChanged();
     } catch (e) {
       error = e as Error;
@@ -299,7 +300,13 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
           </div>
         ) : (
           <div mix={confirmCss}>
-            <p>Test can start the real {c.adapter} CLI and send it a short prompt. That can use your account and cost a few cents.</p>
+            <p>Test starts the real {c.adapter} CLI on this machine and checks that it starts, answers and stops.</p>
+            <Checkbox
+              label="Also send one tiny prompt"
+              description="On the cheapest model. It uses your account: a fraction of a cent. Without it the answer is not checked."
+              checked={prompt}
+              onChange={(v) => upd(() => (prompt = v))}
+            />
             <div mix={rowCss}>
               <Button size="sm" variant="primary" mix={[on('click', () => void runTest())]}>
                 Run the test

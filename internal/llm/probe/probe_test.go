@@ -298,6 +298,70 @@ func TestRankIsPureAndOrdersByBlendedPrice(t *testing.T) {
 	}
 }
 
+// A private self-hosted model server (Ollama, vLLM) qualifies for cheap_default: its models are listed free with no token
+// price (the host's own cost is hourly_cost), which disqualifies a hosted free route but not a model on your own machine.
+func TestRankAcceptsAPrivateSelfHostedModel(t *testing.T) {
+	free := model("qwen3-coder:30b", 0, 0, 128000)
+	free.IsFree = true
+	private := func(providers.Model) providers.DataClass { return providers.DataPrivate }
+	host := providers.Provider{Enabled: true, Kind: providers.KindHost, DataClass: providers.DataPrivate, BaseURL: "http://127.0.0.1:11434/v1"}
+	if !host.PrivateEligible() {
+		t.Skip("this loopback host is not private-eligible here")
+	}
+	ranked, skipped := probe.Rank(host, []providers.Model{free}, private, 64000)
+	if len(ranked) != 1 || ranked[0].Model.ID != "qwen3-coder:30b" {
+		t.Fatalf("a private local model was skipped: %+v", skipped)
+	}
+	// the same free model behind a hosted aggregator stays a free route
+	agg := providers.Provider{Enabled: true, Kind: providers.KindAggregator, DataClass: providers.DataPrivate}
+	if ranked, _ := probe.Rank(agg, []providers.Model{free}, private, 64000); len(ranked) != 0 {
+		t.Fatalf("a hosted free route qualified: %+v", ranked)
+	}
+}
+
+// quotaClient is a labeled test double for the app's LLM client when Drydock's own request limit for the provider refuses
+// every call (the QuotaLedger answers before any request leaves).
+type quotaClient struct{}
+
+func (quotaClient) Complete(context.Context, llm.Request) (llm.Response, error) {
+	return llm.Response{}, &llm.QuotaError{Provider: "p", Scope: "daily_quota"}
+}
+func (quotaClient) Stream(context.Context, llm.Request, func(llm.Delta) error) (llm.Response, error) {
+	return llm.Response{}, &llm.QuotaError{Provider: "p", Scope: "daily_quota"}
+}
+
+// Drydock's own quota refusing the probe says nothing about the model: nothing is recorded and the earlier cheap_default
+// stays (before, it was stored as fail:error:quota and cheap_default was unset).
+func TestOwnQuotaDoesNotCountAsAFailedProbe(t *testing.T) {
+	w := newWorld(t)
+	w.catalog(w.prov, model("pass-a", 0.10, 0.30, 128000), model("pass-b", 0.20, 0.60, 200000))
+	sel, err := w.pr.Select(w.ctx, w.prov.ID, false)
+	if err != nil || sel.Default != "pass-a" {
+		t.Fatalf("first selection %+v %v", sel, err)
+	}
+	var rows int
+	w.db.Reader().QueryRow(`SELECT COUNT(*) FROM probe_results`).Scan(&rows)
+	w.pr.Client = quotaClient{}
+	sel, err = w.pr.Select(w.ctx, w.prov.ID, true)
+	if err != nil || sel.Default != "pass-a" || sel.Fallback != "pass-b" || !strings.Contains(sel.Message, "probing stopped") {
+		t.Fatalf("after the limit: %+v %v", sel, err)
+	}
+	var after int
+	w.db.Reader().QueryRow(`SELECT COUNT(*) FROM probe_results`).Scan(&after)
+	if after != rows {
+		t.Fatalf("a refused probe was recorded: %d -> %d rows", rows, after)
+	}
+	ms, _ := w.reg.Models(w.ctx, w.prov.ID)
+	for _, m := range ms {
+		if m.ProbeStatus != "pass" {
+			t.Fatalf("%s is now %q", m.ID, m.ProbeStatus)
+		}
+	}
+	if stored, ok, _ := probe.Stored(w.ctx, w.db, w.prov.ID); !ok || stored.Default != "pass-a" {
+		t.Fatalf("stored selection %+v", stored)
+	}
+}
+
 // ---- live tests: skipped unless a key is provided ----
 
 func TestLiveProbeAgainstARealProvider(t *testing.T) {

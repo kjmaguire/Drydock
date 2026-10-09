@@ -235,16 +235,26 @@ func (p *packaging) notify(ctx context.Context, idem, body string, needsYou bool
 			c.logf("notice: %v", err)
 		}
 		if needsYou {
-			title := body
-			if i := strings.IndexAny(title, ".\n"); i > 0 {
-				title = title[:i+1]
-			}
-			if _, err := c.Room.Post(ctx, room.PostParams{RoomID: target, Type: room.TypeQuestion, Author: room.System, Body: title, IdempotencyKey: idem + ":needs-you",
+			if _, err := c.Room.Post(ctx, room.PostParams{RoomID: target, Type: room.TypeQuestion, Author: room.System, Body: noticeTitle(body), IdempotencyKey: idem + ":needs-you",
 				Payload: map[string]any{"blocking": true, "to": ""}}); err != nil {
 				c.logf("needs-you item: %v", err)
 			}
 		}
 	}
+}
+
+// noticeTitle is the first sentence of a notice, for its Needs-you item: it ends at a full stop followed by a space or the
+// end, or at a line break, so a dot inside a path, a file name or a version does not cut it short.
+func noticeTitle(body string) string {
+	if i := strings.IndexByte(body, '\n'); i > 0 {
+		body = body[:i]
+	}
+	for i := 0; i < len(body); i++ {
+		if body[i] == '.' && (i+1 == len(body) || body[i+1] == ' ') {
+			return body[:i+1]
+		}
+	}
+	return body
 }
 
 func (p *packaging) audit(ctx context.Context, action, subject string, detail any) {

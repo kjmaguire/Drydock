@@ -4,7 +4,7 @@ Scope: this document turns brief section 21 into an implementable UI plan for Sl
 
 **Status (what exists, honestly), 2026-10-09: rebuilt on Remix 3 (decision P25).** The UI in `ui/app` is a browser-only Remix 3 app: `remix` 3.0.0 components and SPA router (path routes, the Navigation API; the Go side serves `index.html` for app paths, `internal/uiassets`), `@remix-run/ui` headless widgets wrapped in our own kit, Lucide icons and Inter bundled, built by Vite 8 with Pitlane's Remix plugin in SPA mode (component hot reloading in `npm run dev`). React, React Flow and cmdk are gone: the workflow graph is our own SVG (pan, zoom, fit, keyboard navigation) and the Ctrl+K palette is our own dialog. Monaco and xterm stay, loaded lazily. The design is one Linear-style sidebar (a monochrome Drydock mark and a **project switcher** menu at the top, then screens, channels named with icons rather than `#`, and the workspace pages) around dense pages and a compact comment-thread conversation, with a details panel on the right and the dock at the bottom; the Discord-style project rail is gone. Light and dark come from one set of `light-dark()` tokens. **New projects are made with a wizard** (`/project/new`, also the first run): Basics (name, brief), Repository (GitHub through the user's own `gh` with an owner select, search and clone folder; a local folder; or Later), Connectors (library and built-in MCP servers), Team (prebuilt agents from the catalog, custom agents and templates, each with its agent CLI, model, effort and permission mode; a Team Lead, an engineer and a Code Reviewer suggested) and Review, sent as one `project.setup`; what failed after creation is listed as warnings before the project opens. **A project can exist without a repository**: Project settings then says so and attaches one once (a local folder, or a GitHub repository cloned with gh), delivery mode is off, Pull Requests asks for a GitHub repository and the dock offers no repository terminal. The brief is edited in Project settings. The Team page adds prebuilt agents (`agentcatalog.apply`, with skills and connectors) and the Library lists the catalog read-only. **The team lead** (an agent with the role `lead`): Run stand-up on the Team page and in the details panel (`lead.standup`, posted in #general), its interventions on the Team page and on each task page (`lead.interventions`, live on `lead.intervened`), and its stall time in Project settings (`leadStallMinutes`). **The limit question and watchdog pauses** are answered on the task page with Continue (optional guidance) or Stop, with the lead's recommendation shown first when it looked; Needs you says which is which. **Chats** (`/chats`, `/chats/:id`, decision P29, contract in [`chats.md`](chats.md); a sidebar item that is there with or without a project, and New chat plus the recent chats in Ctrl+K): a list column (chat.search with highlighted matches, pinned first, the current project's chats or All chats, archived on request; a row menu to pin, rename, fork, archive, or delete after a confirmation) and the conversation. Streamed text (`chat.delta`) fills an in-progress bubble that sits outside the `role="log"` live region, so only stored messages are announced; tool calls are compact rows with the input collapsible; a refusal is a callout with the suggested rule, "Allow for this chat" (`chat.allowTool`) and then Retry; system notes and errors are quiet lines. The header has the inline title, adapter, model, effort and permission-mode chips with a settings popover (a mode that skips approvals is marked and warned about), the folder, the session status, tokens and a cost that reads "cost unknown", never $0, when no turn reported one, Fork, and the allowed tools (remove, or add a rule). The composer sends with Ctrl+Enter, attaches up to five other chats as removable chips (their history goes with that one message), and offers Stop while a turn runs (a send is not possible then). Older messages page in on scroll-up. The new chat dialog takes the project (or no project with an absolute folder, checked before sending), the agent CLI (Claude Code first; CLIs that are not installed are listed disabled with the reason), model, effort, permission mode and "Let this chat read my other chats" (on). Not verified: a real Claude Code chat from the UI (the e2e uses the scripted agent), a real ACP chat, Windows. Conventions: `ui/app/README.md`. Every screen listed below exists in the new UI with the behavior it had before (the e2e suite is the contract for labels, roles and test ids).
 
-Transport: `ui/app/api/transport.ts` (HTTP + Server-Sent Events) and `ui/app/api/wails.ts` (chosen by `main.tsx` when a WebView2/Wails host is detected, otherwise HTTP). Start-up is exact: read `events.head`, open the stream after it, then let screens read their projections; screens re-read on matching events and on every reconnect (`ui/app/state/live.ts`). **Tested:** 596 `remix test` tests (Node unit tests and component tests in a real Chromium page) and 32 Playwright tests that drive the real Go core (`cmd/drydock-e2e`; the scripted fake agent and an in-memory credential store are the only test doubles) in Chromium on Linux, covering the product loop (approve, request changes, reload equality), threads, DMs, archived channels, the inspector, the dock (Monaco diff, logs, a terminal), the workflow graph and checkpoints, the composer and palette, budgets, evals, routing, telemetry, licensing (unconfigured, expired, active), backups and restore staging, export and import, the support bundle, the MCP library with drag and drop and OAuth, integrations, the collision guard, XSS and chats (create, reply, reload, resume, a refused tool allowed and retried). **Not verified:** anything in WebView2 or on Windows (Navigation API interception, the Go index fallback on a reload, Monaco workers under the Wails asset server, the CSP in WebView2); a screen reader or contrast audit; the pre-existing gaps listed in earlier revisions of this paragraph (a staged restore applied after a restart, the licensed grace state, vendor-backed integrations, GitHub screens against GitHub) still hold.
+Transport: `ui/app/api/transport.ts` (HTTP + Server-Sent Events) and `ui/app/api/wails.ts` (chosen by `main.tsx` when a WebView2/Wails host is detected, otherwise HTTP). Start-up is exact: read `events.head`, open the stream after it, then let screens read their projections; screens re-read on matching events and on every reconnect (`ui/app/state/live.ts`). **Tested (2026-10-09):** 626 `remix test` tests (Node unit tests and component tests in a real Chromium page) and 32 Playwright tests that drive the real Go core (`cmd/drydock-e2e`; the scripted fake agent and an in-memory credential store are the only test doubles) in Chromium on Linux, covering the product loop (approve, request changes, reload equality), threads, DMs, archived channels, the inspector, the dock (Monaco diff, logs, a terminal), the workflow graph and checkpoints, the composer and palette, budgets, evals, routing, telemetry, licensing (unconfigured, expired, active), backups and restore staging, export and import, the support bundle, the MCP library with drag and drop and OAuth, integrations, the collision guard, XSS and chats (create, reply, reload, resume, a refused tool allowed and retried). **Not verified:** anything in WebView2 or on Windows (Navigation API interception, the Go index fallback on a reload, Monaco workers under the Wails asset server, the CSP in WebView2); a screen reader or contrast audit; the pre-existing gaps listed in earlier revisions of this paragraph (a staged restore applied after a restart, the licensed grace state, vendor-backed integrations, GitHub screens against GitHub) still hold.
 
 ## 1. Principles (from brief sections 0, 16, 21)
 
@@ -37,12 +37,12 @@ Transport: `ui/app/api/transport.ts` (HTTP + Server-Sent Events) and `ui/app/api
 
 | # | Screen | Slice | Content and rules |
 |---|---|---|---|
-| S1 | First-run and onboarding | 1A | Terms notice for D1 (own, unmodified, user-logged-in `claude`; Drydock never reads or transmits Claude credentials; ACP bridge off). Steps: Connections -> add provider (optional) -> create workspace/project -> team -> first message. Target under ten minutes (see `packaging.md`). |
+| S1 | First-run and onboarding | 1A | Terms notice for D1 (own, unmodified, user-logged-in `claude`; Drydock never reads or transmits Claude credentials; ACP bridge off). Steps: Connections -> add provider (optional) -> create workspace/project -> team -> first message. Target under ten minutes (see `packaging.md`). As built: there is no terms notice and no Connections step at first run; the first run opens the new-project wizard (status paragraph). The D1 statement is on the Connections page ("uses your own installed CLI and its own sign-in; it never reads or transmits your credentials"), and a CLI whose manifest has a notice is not usable until a human ticks it and presses Accept there. |
 | S2 | Connections | 1A (agents, providers' API-key checks); `gh` card in 1E | Section 8. |
 | S3 | Providers settings | 1A | Section 9. |
 | S4 | Project create / open | 1A | Pick a local Git repository (Git is driven through the `git` CLI, brief 2). Project Overview shows repo path, branch, and team. |
 | S5 | Team setup | 1A | Agent = (Provider, Role, Expert Packs[]) plus policy (brief 1). 1A offers provider, role, model, effort (only as far as the adapter reports the capability, brief 5), permission mode. Packs column is absent until Slice 3. Templates set defaults, not locks. As built: the add form and a per-agent Edit panel carry name, role, **purpose** (standing instructions sent with every run), model (the adapter's aliases are suggested) and effort (a list when the adapter lists its levels); the adapter is fixed after creation; Remove from team archives the agent after a confirmation and is refused while it owns unfinished tasks (docs/decisions.md P14). |
-| S6 | Engineering Room (channel and DM) | 1A | Message cards (section 5), presence, composer. 1A: one project channel plus DMs with each agent. Task channels from 1B. Room modes `auto`/`sequential`/`moderator`: the mode selector is **not built** until a mode other than the default exists (**proposal**: Slice 4). |
+| S6 | Engineering Room (channel and DM) | 1A | Message cards (section 5), presence, composer. 1A: one project channel plus DMs with each agent. Task channels from 1B. Room modes `auto`/`sequential`/`moderator`: built; the Mode select is in the room's agents bar (`ui/app/screens/room/room-agents.tsx`), and `/mode auto|sequential` works in the composer. |
 | S7 | Needs you inbox | 1A minimal, grows each slice | Section 7. |
 | S8 | Agent Inspector (right tab) | 1A, fields grow | Section 10. |
 | S9 | Activity (Project) | 1A | Event log viewer over the `events` table (type, seq, time, scope), filter by prefix (`agent.*`, `task.*`, ...). Useful for the 1A acceptance of replay. |
@@ -50,13 +50,13 @@ Transport: `ui/app/api/transport.ts` (HTTP + Server-Sent Events) and `ui/app/api
 | S11 | Task channel | 1B | Conversation scoped to a task; tool members (`Tests`, `Lint`, `Types`, `Build`) post check results at zero cost. `Secrets` is Slice 2 (P5), `CI` is 1E, `Preview` unassigned. |
 | S12 | Diff and Terminal docks | 1B | Monaco diff for the task worktree; xterm.js over ConPTY (go-pty, D7: ConPTY children are tree-killed by walking the job after spawn). |
 | S13 | Dirty-worktree dialog | 1B | A dirty worktree is never deleted without approval: modal listing tracked and untracked changes, creating an approval row. |
-| S14 | Workflow view | 1C | React Flow graph of the run plus the checkpoint timeline (section 6.2); watchdog events and trips on nodes; request nodes link to the inbox. |
+| S14 | Workflow view | 1C | Graph of the run (our own SVG since P25; React Flow is gone) plus the checkpoint timeline (section 6.2); watchdog events and trips on nodes; request nodes link to the inbox. |
 | S15 | Review screen | 1D | Changed files, diff, test results, reviewer/QA/security results as evidence; actions Accept, Reject, Request Changes, Ask Agent, Merge (brief 13). Merge is a human action using the per-project strategy. |
 | S16 | Run explanation | 1D | "The run is fully explained by manifest, usage, checkpoints and events" (brief 24): context manifest (source, included/excluded, size, reason, priority), usage rows, checkpoints, events, MCP per-call audit events. Read-only. |
 | S17 | Instruction files | 1D | Generated `AGENTS.md` (canonical) plus one-line import files for `CLAUDE.md`, `GEMINI.md`, `.goosehints` (phase0 3.12), regeneration status, human edits offered back as memory updates (accept/reject). |
 | S18 | Pull Requests view | 1E | PR list and detail: description (generated, editable before push), CI check results (failing logs fed back to the worker), review-comment round trip (all comment text untrusted), issue import, "merge on GitHub" is a human-initiated link-out/action; auto-merge is never enabled (brief 13). |
-| S19 | Settings | 1A | Appearance (theme), data location (read-only display), keyboard map (read-only in v1), About (version, licenses link, the "Not built yet" list from section 4). |
-| S20 | Command palette | 1A | cmdk overlay, section 6.3. |
+| S19 | Settings | 1A | Appearance (theme), data location (read-only display), keyboard map (read-only in v1), About (version, licenses link, the "Not built yet" list from section 4). As built (`/settings`, "Settings and About"): Appearance (theme), About this session (transport, event stream, who you are, data location), agent environment, telemetry, Updates, and the "Not built yet" list. Not built: the app version, a licenses link and a keyboard map on this page. |
+| S20 | Command palette | 1A | Our own Ctrl+K dialog (cmdk is gone), section 6.3. |
 | S21 | Chats | P29 | The human's own conversations with an agent CLI, kept, resumed, searched, forked, attached and readable by later chats (`chats.md`). Built as described in the status paragraph. |
 
 Packaging pages (Updates, License, Backups, Export/Import, Support bundle, Diagnostics consent) are specified in `packaging.md`. The brief assigns them to no slice; **proposal**: Updates and Support bundle ship with the first installer release, License/Backups/Export before the first paid release.
@@ -72,9 +72,9 @@ Rendered in Settings > About as a list (feature, slice). Since this table was wr
 | `secrets` check (gitleaks) | 2 (P5) | Tool member absent. |
 | `deps`, `e2e`, `preview` checks | unassigned | Absent. |
 | Expert Packs, Requirements, Skills, Memory UI | 3 | Project nav hides Requirements; team setup has no Packs column. |
-| Autonomous multi-agent development, `moderator`/`auto` room modes, group chats | 4 (**proposal**) | Absent. |
+| Autonomous multi-agent development, `moderator`/`auto` room modes, group chats | 4 (**proposal**) | Built since: room modes (the room's Mode select), PlanTeam and the scheduler (Plan screen). Group chats exist in the room core only (`room.Service.CreateGroup`); there is no RPC or UI to create one. |
 | Linear, Notion, Sentry, Aikido integrations | 5 | Integrations nav entry absent; Connections shows only `gh` (1E) and agent CLIs. |
-| Milestones; Markdown minutes and ADR-candidate export | unassigned | Absent. (PR description drafts arrive with 1E.) |
+| Milestones; Markdown minutes and ADR-candidate export | unassigned | Built since: the Milestones screen, and a room's Minutes and ADR candidates exports (`ui/app/screens/room/room-exports.tsx`, `room.export`). |
 | Repo map view | gated by D5 | Absent until the Windows CI job is green. |
 | Cloud sync, accounts, team sharing | never (brief 0: no cloud component) | Not mentioned in the UI. |
 
@@ -86,7 +86,7 @@ Common envelope on every card: `id`, `room_id`, `thread_id?`, `seq` (event seque
 |---|---|---|
 | `CHAT` | body, reply count | Plain bubble; thread opens in the right column. |
 | `TASK` | task_id, title, state, assignee, attempt | Compact card; state chip uses brief 12 states; click opens Task details. |
-| `DECISION` | statement, rationale, alternatives?, adr_candidate flag | Highlighted; ADR candidate chip. Export to ADR is not built (section 4). |
+| `DECISION` | statement, rationale, alternatives?, adr_candidate flag | Highlighted; ADR candidate chip. A room's "ADR candidates" export snapshots its DECISION messages as JSON (`room.export`, room-protocol section 8). |
 | `STATUS` | agent_id, presence state, short text | Collapsible into a one-line system row; consecutive statuses merge. |
 | `RESULT` | task_id, summary, evidence[] (check ids, diff stat, test summary), verdict? (`SHIP`/`REVISE` for reviews) | "Evidence" list links to checks and diff; verdict chip. A task enters REVIEW only with evidence (brief 12). |
 | `QUESTION` | asked_by, addressed_to (human or agent), options?, request_id (typed request port id) | Answer box; answering calls `Resume(run, response)` for a request node or posts to the agent for a chat question. Mirrors to the inbox when addressed to a human. |
@@ -103,7 +103,7 @@ Tool members (`Tests`, `Lint`, `Types`, `Build`, later `Secrets`, `CI`, `Preview
 ### 6.1 Monaco diff
 Read-only `DiffEditor` for task diffs (original = merge base or safe-point ref, modified = worktree), inline and side-by-side toggle, file list with +/- counts, per-file collapse, jump to next change. Large diffs: load per file on demand; files over a size threshold (**proposal**, tune after measurement) render a "large file" placeholder with an explicit "render anyway" button. Models are disposed when a file leaves view. Theme follows the app theme (section 12). Inline comments and "Ask Agent about this hunk" arrive with 1D review; no edit-in-place in Slice 1. Bundling Monaco workers under the Wails asset server is **unverified** (needs a spike in 1B).
 
-**As built (2026-10-09).** `ui/src/dock/DiffViewer.tsx` + `MonacoDiff.tsx` (monaco-editor, lazy chunk; only the editor API, the
+**As built (2026-10-09).** `ui/app/screens/dock/diff-viewer.tsx` + `monaco-diff.ts` (monaco-editor, lazy chunk; only the editor API, the
 diff editor, find, folding, copy, context menu and the language definitions are imported; links are not, since file content is
 untrusted). The core serves `task.diffFiles` (the files of the recorded diff, or of the live worktree) and `task.diffFile` (both
 versions of one file: the base and task commits from git, or the file on disk for a live diff, refusing paths outside the
@@ -111,38 +111,40 @@ worktree); a recorded diff whose commits git has collected falls back to the pat
 for "Show it anyway"; binary files are not shown. Monaco's editor worker is bundled by Vite and served from the app's own origin
 (the CSP's `default-src 'self'` covers it); not yet run under the Wails asset server.
 
-### 6.2 React Flow workflow graph with checkpoint timeline (Slice 1C)
+### 6.2 Workflow graph with checkpoint timeline (Slice 1C; planned with React Flow, built as our own SVG)
 - Nodes by kind (brief 4): `agent_task`, `check`, `request`, `route`, `subworkflow` (a subworkflow node expands into a nested graph view). Edge kinds: direct, conditional, fan-out, fan-in (barrier), loop (drawn with iteration count and the limit, default five for Iterate Until Verified).
 - Node status from `node_executions` and events: pending, running, completed, failed, waiting_human, skipped; attempt number badge; for `agent_task` nodes: agent, provider, model, tier, tokens, cost (with source badges). `request` nodes show the typed request and a link to the inbox item.
 - Layout is computed deterministically (left-to-right layered) so a re-render does not move nodes; supersteps are columns. Positions are not persisted in Slice 1.
 - **Checkpoint timeline** below the graph: one marker per checkpoint ordered by lineage (`parent id`), marker kind `entry`, `step`, `response_entry`; branches from time travel drawn as parallel lanes; latest checkpoint is authoritative for run state (brief 12). Selecting a marker puts the graph in read-only "as of checkpoint" mode (earlier checkpoints are never modified). Actions: Resume latest (after a crash), Time travel from here (starts a new lineage branch, confirmation), Replay from `entry`. A run lease holder indicator shows whether this instance owns the run (`run_leases`).
 - Large graphs: only the active run's graph is mounted; node components are memoized; off-screen elements are not rendered (React Flow option for visible-only rendering, **unverified** against the pinned version).
 
-**As built (2026-10-09), together with the run explanation (S16).** One page per task run, `#/task/<id>/run[/<run id>]`
-(`ui/src/pages/RunView.tsx`), linked from the task page and from each run in the Agent Inspector. The core's `run.explain`
+**As built (2026-10-09), together with the run explanation (S16).** One page per task run, `/task/<id>/run[/<run id>]`
+(`ui/app/screens/run/run-screen.tsx`), linked from the task page and from each run in the Agent Inspector. The core's `run.explain`
 returns the run, its graph (`workflow.Engine.Describe`: nodes, edges with kind, `when`, loop limit), every node execution with
 its timestamps, safe point, context manifest, routing decision, the usage recorded while it ran and its Logs id, the run's
 checkpoints (kind, step, run status, the nodes of that superstep, the nodes waiting on a human, which one is latest), the MCP
 audit events and the latest 300 events. `run.prompt` returns the exact prompt a turn was sent: Finalize-style, it is written
 next to the turn's `stream.jsonl` on disk (never the database) and is only served for a recorded execution of a run of that
-task. Tabs: Graph (React Flow, `@xyflow/react`, lazy chunk; deterministic layered layout in `ui/src/lib/graphLayout.ts`; node
-state from executions; loop edges dashed with their limit; read-only, nodes are not draggable), Turns (each turn expands into
+task. The graph (our own inline SVG, `ui/app/screens/run/workflow-graph.tsx`: pan, zoom, fit to view, arrow keys between nodes;
+deterministic layered layout in `ui/app/lib/graphLayout.ts`; node state from executions; loop edges dashed with their limit;
+read-only, nodes are not draggable) with a side panel for the selected node, then the tabs Turns (each turn expands into
 "Why this model", "What it was given" (the manifest: source, included, size, priority, reason), the exact prompt on request,
 its usage and a link to its stream), Checkpoints, MCP calls, Events. The checkpoint timeline under the graph puts the graph in
 "as of checkpoint" mode (node states from the executions up to that step). Not built: Resume / Time travel / Replay actions
 (the engine has no service call for them yet); subworkflow nodes are drawn as one node (their nested view is in the data but
 not expanded).
 
-### 6.3 cmdk command palette
+### 6.3 Command palette (planned with cmdk, built as our own dialog)
 Opened with `Ctrl+K`. Groups: Navigate (rooms, DMs, tasks, screens), Agents (focus, interrupt, restart, open inspector), Tasks (create, open, move per allowed transition), Actions (open terminal, toggle dock, switch theme, test connection), Recent. Commands are registered by screens and filtered by context (a command whose feature is not built is not registered). Destructive commands open the same approval flow as buttons; the palette never bypasses an approval. Fuzzy matching is done by cmdk over a bounded list (recent 200 entities); larger sets query the Go side (FTS5) on input (**proposal**).
 
-**As built (2026-10-09).** `ui/src/components/CommandPalette.tsx` (cmdk 1.1.1), Ctrl+K anywhere. Groups: Navigate (the
-project's rooms and DMs, every screen), Tasks (create, open, a task's workflow), Agents (inspect, message), Actions (terminal,
-diff, logs, activity, toggle the dock, add a project, theme). It holds no destructive command at all (no approve, merge, stop,
-delete), so it cannot bypass an approval. The fuzzy match is cmdk's over the loaded lists (tasks capped at 200); no server-side
-search yet.
+**As built (2026-10-09).** `ui/app/shell/palette.tsx` (a modal `<dialog>`, no cmdk) with the items and ranking in
+`ui/app/shell/palette-items.ts`, Ctrl+K anywhere or the sidebar's search button. Groups: Navigate (the project's rooms and DMs,
+every screen), Chats (New chat, recent chats), Tasks (create, open, a task's workflow), Agents (inspect, message), Actions
+(terminal, diff, logs, activity, toggle the dock, toggle the details panel, add a project, theme). It holds no destructive
+command at all (no approve, merge, stop, delete), so it cannot bypass an approval. The match is our own prefix and word ranking
+over the loaded lists (tasks capped at 200); no server-side search yet.
 
-**Composer (brief 21; As built 2026-10-09).** `ui/src/components/Composer.tsx` with the pure helpers in `ui/src/lib/composer.ts`.
+**Composer (brief 21; As built 2026-10-09).** `ui/app/screens/room/composer.tsx` with the pure helpers in `ui/app/lib/composer.ts`.
 Typing `@` lists the room's members (and roles), `@role:` the roles, `#` the project's channels and task channels, `/` at the
 start of an empty message the commands; arrow keys, Enter or Tab pick, Esc closes. A mention is inserted in the form the room
 core resolves (`internal/room/parse.go`): the member's name as a handle when that is a clean, unique handle, else its id. Slash
@@ -168,11 +170,11 @@ kept in a 1 MB ring per terminal and read by offset with a long poll (`terminal.
 it on the ordinary call path; a reader that falls behind is told how many bytes were dropped. Output is never written to the event
 log or the database. Closing a terminal ends its process tree: on Windows the shell is put in its own kill-on-close Job Object
 right after it starts (`proc.AttachTree`; D7), on Linux the session is killed. The human's terminal inherits Drydock's full
-environment (it is the human's shell, not an agent's). `ui/src/dock/Xterm.tsx` (xterm.js 6 + fit addon, lazy chunk) writes
+environment (it is the human's shell, not an agent's). `ui/app/screens/dock/xterm-view.ts` (xterm.js 6 + fit addon, lazy chunk) writes
 output straight into xterm. Up to 8 terminals at once. **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
 shell (pwsh when installed), the job assignment race for children started in the first instant.
 
-The Logs tab (`ui/src/dock/LogsPanel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the
+The Logs tab (`ui/app/screens/dock/logs-panel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the
 `stream.jsonl` of each node execution that streamed something) through `logs.list`, and reads them by byte range through
 `logs.read` (the tail first, earlier output on request, new output followed while running). An agent stream is rendered as
 readable lines (text as it streamed, `[tool]`, `[result]`, `[usage]`, `[error]`); a log is named by an id Drydock gave it, never
@@ -194,7 +196,7 @@ The inbox is the single list of things that wait on a human. It is a projection 
 | Agent `NEEDS_ATTENTION` / watchdog stage 2 | `watchdog trips`, agent state | 1C | Open handoff artifact, evidence of the trip, then resume, reassign or cancel. |
 | Connection degraded / adapter drift | `adapter.drift`, connection status | 1A | Open Connections. |
 | PR needs action (CI failed, review comments, ready to merge) | `github.*` events | 1E | Open PR. |
-| Budget pause | `budget.*` | Slice 2 | Not built. |
+| Budget pause | `budget.*` | Slice 2 | Built: the pause is an approval item in Needs you; the task page offers new limits and Resume (without a new limit, exactly one more turn) or Stop the run. |
 
 Rules: items sorted by age then risk; each shows the originating agent, task, and run; `BLOCKED` is not an inbox item (it clears by itself, brief 12); count badge in the sidebar and in the window title; a new item raises an OS notification once (setting to disable). Answering is idempotent (receipts are idempotent by `(scope, receipt_id)`, brief 18): double clicks and reconnects cannot answer twice. The Resume call routes the answer and writes a `response_entry` checkpoint (brief 4); the UI does not assume success until the `approval.*` event arrives.
 
@@ -213,11 +215,13 @@ Per-CLI honest notices:
 - **Prerequisites card:** Node 22+ detection (needed by ACP bridges, Gemini CLI, Wrangler, Playwright; D9), Git, and (1E) `gh`. Missing prerequisite shows install guidance only.
 - `unsupported_version` shows the verified range; `degraded` shows the failing conformance case and links the log.
 
+**As built (2026-10-09).** `/connections` (`ui/app/screens/connections/connections-screen.tsx`) has one card per agent CLI (no `gh` card: GitHub sign-in is checked in the project wizard and on Pull Requests). A card shows the status and whether the CLI is usable, installed, version, path, signed in, transport, platform and the reason when not ready, problems and warnings, the install guidance as text ("Drydock never runs this for you"), prerequisites, and each notice the human must accept (tick, then Accept). The only button is **Test connection...**: it asks first, with "Also send one tiny prompt" (on the cheapest model; it uses the person's account), then shows the steps. The last result is kept in the database and survives a restart: a failure shows as `degraded` with its reason, a pass clears "version untested" for that CLI version. Not built: Detect (the page detects again each time it loads and on `connection.*` events), Log in, a Copy button for install commands, conformance history, and the capability matrix on the card (it is in the Test report).
+
 ## 9. Providers settings (brief 6, 8; D4, D13)
 
 Table of providers: name, base URL, kind (`aggregator|direct|host`), key reference (never the key; shows "stored in Windows Credential Manager" or "encrypted in SQLite" for values over 2560 bytes), `data_class` (`private|trainable`), `tier` (`premium|cheap|free`), status, last check. `trainable` rows carry a persistent badge: "Public documentation questions only; never receives repo content." Detail panel: served models (OpenRouter: catalog from `GET /api/v1/models/user`, refreshed at setup and in the background; D4), tool-call probe result per model, price per Mtok in/out with the editable pricing table's last-updated date, quota (OpenRouter `GET /api/v1/key` plus `usage` per response; rate-limit headers where present; D13), `max_concurrent_agents` for hosts, TLS rule (plain HTTP only on loopback/private addresses; self-signed pinned by fingerprint, brief 16). OpenRouter private routes display "requests carry `provider:{data_collection:"deny", zdr:true}`; fails closed" (D4). Add-provider validates with `/v1/models` before saving. Slice 1A scope: registry, add/edit/test, OpenRouter served-model list. Quota ledger values are shown when present; the UI never invents a limit (Gemini limits are configured by the user, D13).
 
-**As built (2026-10-09).** Each provider card has "Details and editing" (`ui/src/components/ProviderDetail.tsx` over
+**As built (2026-10-09).** Each provider card has "Details and editing" (`ui/app/screens/providers/provider-detail.tsx` over
 `provider.detail`, `provider.update`, `provider.setPrice`, `provider.setQuota`): the settings (name, base URL, tier, data class,
 max concurrent agents) with the registry's validation, a replaced API key (written to the credential store, never returned),
 the served models with their prices, price source and probe result, a price edit per model (stored as `user`, kept over catalog
@@ -257,9 +261,13 @@ Fields, grouped. Anything the adapter cannot report is `not reported`.
 
 CSS custom properties are the only color source: semantic tokens (`--bg-0..3`, `--fg-0..2`, `--border`, `--accent`, status colors `--ok/--warn/--err/--info`, presence colors, diff add/remove). Default follows `prefers-color-scheme`; a Settings override (System/Dark/Light) is stored in `settings`. The theme is applied by one attribute on the root; no component hard-codes a hex value. Third-party widgets are themed from the same tokens: a Monaco theme pair, an xterm theme object (16 ANSI colors defined for both themes and checked for contrast), React Flow's color mode and edge/node colors from tokens. Status never relies on color alone (icon plus text). Motion: 100-150 ms opacity/transform only, disabled under `prefers-reduced-motion` (**proposal** for numbers). Dark first for contrast checks, light checked equally.
 
-## 13. State management: zustand
+**As built (2026-10-09).** The colors are `light-dark()` tokens in `ui/app/styles/app.css`; the theme choice (System, Dark, Light: Settings and About > Appearance, or the palette) is kept in the browser's `localStorage` (`drydock.theme`, `ui/app/lib/theme.ts`), not in the `settings` table, and applied as `data-theme` on the root (removed for System). Monaco and xterm read the same tokens.
+
+## 13. State management (planned: zustand)
 
 Choice: **zustand** (one store per domain: connection, rooms, agents, tasks, approvals, workflow, ui). Reasons: (1) selector subscriptions give per-component re-render control, which matters with a streaming transcript; (2) stores are usable outside React, so the Wails event handler writes straight into the store without a provider tree; (3) small, no boilerplate, easy to test in isolation; (4) no server-cache semantics are needed because the source of truth is the event log, not request/response caches (this is why TanStack Query is not adopted). Rules: store state is derived by a pure reducer `applyEvent(state, event)` shared by live events and replay, keyed on `seq`, so replay and live paths cannot diverge; service calls return snapshots that seed the store at a known `seq`; streaming text lives in an external buffer (section 15), not in the store; persisted UI preferences (theme, panel sizes, last room) go to the settings service, with `localStorage` only as a cache that may be empty.
+
+**As built (2026-10-09): no zustand and no client-side domain store.** `ui/app/state/eventStore.ts` only opens the core's event stream, dedupes by `seq`, remembers the highest `seq` and reopens after a break; screens read the core with RPC calls and re-read when a matching event arrives or the stream reconnects (`ui/app/state/live.ts`, `query` in `services.tsx`). Cross-region state lives in small models (`state/ui.ts`, `workspace.ts`, `project.ts`). UI preferences (theme, dock, details panel, collapsed sidebar groups, the selected project) are kept in `localStorage` only; nothing goes to the settings service. Conventions: `ui/app/README.md`.
 
 ## 14. Keyboard map (defaults; **proposal**, rebinding is not built in v1)
 

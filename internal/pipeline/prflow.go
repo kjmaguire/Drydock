@@ -98,7 +98,7 @@ func PushPR(d Deps, src PRSource) workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		if err := repo.Push(ctx, w, cfg.remote()); err != nil {
-			return workflow.NodeOutput{}, fmt.Errorf("push: %w", err)
+			return githubTrouble(in, "push the branch", err)
 		}
 		d.emit(ctx, "github.pushed", t, map[string]any{"branch": t.Branch, "commit": head})
 
@@ -107,14 +107,14 @@ func PushPR(d Deps, src PRSource) workflow.NodeHandler {
 			var n int
 			fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
 			if pr, _, err = cfg.GitHub.GetPR(ctx, n, ""); err != nil {
-				return workflow.NodeOutput{}, err
+				return githubTrouble(in, "read the pull request", err)
 			}
 		} else {
 			ev, _ := d.Tasks.Evidence(ctx, t.ID)
 			rv, _ := d.Tasks.Reviews(ctx, t.ID)
 			pr, err = cfg.GitHub.OpenPR(ctx, host.PRRequest{Title: t.Title, Body: PRBody(t, ev, rv), Head: t.Branch, Base: cfg.BaseBranch})
 			if err != nil {
-				return workflow.NodeOutput{}, fmt.Errorf("open PR: %w", err)
+				return githubTrouble(in, "open the pull request", err)
 			}
 			ref := fmt.Sprintf("%s/%s#%d", cfg.GitHub.Owner, cfg.GitHub.Repo, pr.Number)
 			if t, err = d.Tasks.Patch(ctx, t.ID, tasks.Update{PRRef: &ref}); err != nil {
@@ -393,13 +393,27 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 		fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
 		pr, _, err := cfg.GitHub.GetPR(ctx, n, "")
 		if err != nil {
-			return workflow.NodeOutput{}, err
+			return githubTrouble(in, "read the pull request", err)
 		}
 		var sha string
 		if pr.Merged {
 			sha = pr.MergeCommitSHA
 		} else {
-			sha, err = cfg.GitHub.Merge(ctx, n, cfg.MergeStrategy, pr.Head.SHA, "")
+			// the guard is the commit the reviewer and the human saw (the task branch Drydock pushed), never the PR's current
+			// head: a push made to the branch after the review must not be merged unseen (decision P7)
+			reviewed := ""
+			if repo, rerr := d.Repo(ctx, t.ProjectID); rerr == nil {
+				reviewed, _ = repo.Head(ctx, worktreeOf(t))
+			}
+			if reviewed == "" || pr.Head.SHA != reviewed {
+				reason := fmt.Sprintf("the pull request's branch changed after the review (it is at %s, the reviewed commit is %s): review the new commits on GitHub, then push them through the task again", short(pr.Head.SHA), short(reviewed))
+				if reviewed == "" {
+					reason = "the reviewed commit is not known (the task's worktree is gone), so nothing is merged"
+				}
+				p, _ := json.Marshal(map[string]any{"pr": n, "reason": reason, "head": pr.Head.SHA, "reviewed": reviewed})
+				return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Title: "Not merged: " + reason, Payload: p}}, nil
+			}
+			sha, err = cfg.GitHub.Merge(ctx, n, cfg.MergeStrategy, reviewed, "")
 			if err != nil {
 				var ae *host.APIError
 				if errors.As(err, &ae) && (ae.Status == 405 || ae.Status == 409) {
@@ -407,7 +421,7 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 					p, _ := json.Marshal(map[string]any{"pr": n, "reason": ae.Message})
 					return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Title: "GitHub refused the merge: " + ae.Message, Payload: p}}, nil
 				}
-				return workflow.NodeOutput{}, err
+				return githubTrouble(in, "merge the pull request", err)
 			}
 		}
 		d.emit(ctx, "github.pr_merged", t, map[string]any{"number": n, "sha": sha})
@@ -475,4 +489,31 @@ func IterateUntilVerifiedPR(d Deps, src PRSource, maxLoops int) *workflow.Graph 
 	// a merge GitHub keeps refusing goes back to the human's approval, not to the worker
 	addEscalation(g, d, map[workflow.NodeID]workflow.NodeID{"merge": "approve"})
 	return g.Start("prepare")
+}
+
+// short is the first 12 characters of a commit id, for messages.
+func short(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	if sha == "" {
+		return "unknown"
+	}
+	return sha
+}
+
+// githubTrouble turns a GitHub or network failure of a pull-request step (gh signed out, an outage, a remote that refuses
+// the push) into a question for the human instead of a failed run: a failed run strands the task after the agents' work
+// was paid for. Answering runs the same step again (nothing else is redone); rejecting stops the run.
+func githubTrouble(in workflow.NodeInput, step string, err error) (workflow.NodeOutput, error) {
+	if h := humanResponse(in); h.decision == "rejected" && strings.HasPrefix(h.by, "human:") {
+		return workflow.NodeOutput{}, fmt.Errorf("%s: stopped by %s after GitHub failed: %w", step, h.by, err)
+	}
+	msg := err.Error()
+	if len(msg) > 300 {
+		msg = msg[:300] + "..."
+	}
+	p, _ := json.Marshal(map[string]any{"step": step, "error": msg})
+	return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Payload: p,
+		Title: "Could not " + step + " on GitHub: " + msg + ". Fix the cause (for example run `gh auth login`), then answer to try again."}}, nil
 }

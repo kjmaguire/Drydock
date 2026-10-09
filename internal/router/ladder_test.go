@@ -396,3 +396,20 @@ func TestRouterDoesNotImportLLM(t *testing.T) {
 		}
 	}
 }
+
+// A model that answered the tool-call probe wrongly never gets agent work (before it was only ranked lower and could still
+// be chosen when the better model was denied); a probe that could not run (an error) says nothing and excludes nothing.
+func TestAModelThatFailedTheToolProbeGetsNoAgentWork(t *testing.T) {
+	failed := cand("p", "chatty-model", providers.TierCheap, providers.DataPrivate, 0.1)
+	failed.ProbeFailure = probeFailure("fail:no_tool_call")
+	errored := cand("p", "busy-model", providers.TierCheap, providers.DataPrivate, 0.1)
+	errored.ProbeFailure = probeFailure("fail:error:rate_limit")
+	kept, rejected := HardFilter(RouteRequest{RunKind: RunAgentTask, ContextCeiling: ContextPrivate}, []Candidate{failed, errored})
+	if len(kept) != 1 || kept[0].Model != "busy-model" || len(rejected) != 1 || rejected[0].Rejected != FilterTools || !strings.Contains(rejected[0].Detail, "no_tool_call") {
+		t.Fatalf("kept %+v rejected %+v", kept, rejected)
+	}
+	// a consult does not call tools: the model may still answer it
+	if kept, _ := HardFilter(RouteRequest{RunKind: RunConsult, ContextCeiling: ContextPrivate}, []Candidate{failed}); len(kept) != 1 {
+		t.Fatalf("consult: %+v", kept)
+	}
+}

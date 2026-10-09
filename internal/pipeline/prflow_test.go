@@ -39,6 +39,7 @@ type githubFixture struct {
 	reviews   func(headMoved bool) []map[string]any // returned for /pulls/7/reviews and /comments
 	inline    func(headMoved bool) []map[string]any
 	firstHead string
+	openFail  int // POST /pulls answers 401 this many times first (gh signed out, a revoked token)
 }
 
 func (f *githubFixture) head(t *testing.T) string {
@@ -63,6 +64,10 @@ func (f *githubFixture) handler(t *testing.T) http.Handler {
 				"head": map[string]any{"ref": f.branch, "sha": f.head(t)}, "base": map[string]any{"ref": "main"}}
 		}
 		switch {
+		case r.Method == "POST" && p == "/pulls" && f.openFail > 0:
+			f.openFail--
+			w.WriteHeader(401)
+			j(w, map[string]any{"message": "Bad credentials"})
 		case r.Method == "POST" && p == "/pulls":
 			var b map[string]any
 			json.NewDecoder(r.Body).Decode(&b)
@@ -310,5 +315,86 @@ func TestPRFlowReviewFeedbackTrustedVersusUntrusted(t *testing.T) {
 		if merged || info.Status == workflow.StatusCompleted {
 			t.Fatal("an agent identity merged the PR")
 		}
+	}
+}
+
+// A commit pushed to the PR branch after the review is never merged unseen (decision P7): the merge is guarded by the
+// commit the reviewer and the human saw, and a moved branch becomes a question to the human instead of a merge.
+func TestPRFlowNeverMergesACommitPushedAfterTheReview(t *testing.T) {
+	ad, cfg, _ := fakeRoles(t,
+		fakeagent.Script{Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}}},
+		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
+	e := setup(t, cfg, ad)
+	f := &githubFixture{}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.await(t, id, workflow.StatusWaitingHuman)
+	task, _ := e.tasks.Get(context.Background(), e.task.ID)
+
+	// someone pushes to the PR branch while the approval waits
+	clone := filepath.Join(t.TempDir(), "other")
+	for _, args := range [][]string{
+		{"clone", "-q", "-b", task.Branch, f.bare, clone},
+		{"-C", clone, "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "--allow-empty", "-m", "UNSEEN: pushed after review"},
+		{"-C", clone, "push", "-q", "origin", task.Branch},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+	}
+	if err := e.answer(t, id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
+	e.await(t, id, workflow.StatusWaitingHuman)
+	f.mu.Lock()
+	merged := f.merged
+	f.mu.Unlock()
+	if merged {
+		t.Fatal("a commit pushed after the review was merged")
+	}
+	pend, err := e.eng.Pending(context.Background(), id)
+	if err != nil || len(pend) != 1 || pend[0].Spec.Kind != "question" || !strings.Contains(pend[0].Spec.Title, "changed after the review") {
+		t.Fatalf("pending %+v %v", pend, err)
+	}
+}
+
+// GitHub failing while the PR is opened (here a revoked token) becomes a question, not a failed run: the work and the
+// review are not lost, and answering after fixing the cause opens the PR and carries on. The worker ran once.
+func TestPRFlowAGitHubFailureAsksTheHumanAndRetriesOnlyThatStep(t *testing.T) {
+	ad, cfg, lg := fakeRoles(t,
+		fakeagent.Script{Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}}},
+		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
+	e := setup(t, cfg, ad)
+	f := &githubFixture{openFail: 1}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.await(t, id, workflow.StatusWaitingHuman)
+	pend, err := e.eng.Pending(context.Background(), id)
+	if err != nil || len(pend) != 1 || pend[0].Spec.Kind != "question" || !strings.Contains(pend[0].Spec.Title, "Could not open the pull request on GitHub") {
+		t.Fatalf("pending %+v %v", pend, err)
+	}
+	if err := e.eng.Resume(context.Background(), id, workflow.Response{RequestID: pend[0].ID, Decision: "answered", By: "human:kyle", Data: json.RawMessage(`{"text":"signed in again"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	// the PR opens, CI (none here) passes, and the run waits for the merge approval
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		p, _ := e.eng.Pending(context.Background(), id)
+		if len(p) == 1 && p[0].Spec.Kind == "review" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no merge approval after the retry: %+v", p)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	f.mu.Lock()
+	opened := f.opened
+	f.mu.Unlock()
+	if opened != 1 {
+		t.Fatalf("PR opened %d times", opened)
+	}
+	if wp := prompts(lg.workLog); len(wp) != 1 {
+		t.Fatalf("the worker ran %d times; a GitHub failure must not redo paid work", len(wp))
 	}
 }

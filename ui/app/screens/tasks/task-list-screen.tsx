@@ -148,8 +148,10 @@ export function TaskListScreen(handle: Handle) {
     const q = s.project.tasks;
     const all = q.data ?? [];
     const agents = s.project.agentList;
-    const counts = filterCounts(all);
-    const shown = all.filter((x) => inFilter(x, filter) && matchesText(x, text));
+    // tasks whose run waits for the person (an item in Needs you), whatever their status says
+    const waiting = new Set((s.project.needs.data ?? []).map((i) => i.taskId).filter((id): id is string => !!id));
+    const counts = filterCounts(all, waiting);
+    const shown = all.filter((x) => inFilter(x, filter, waiting) && matchesText(x, text));
     const groups = groupByStatus(shown);
     const now = Date.now();
     return (

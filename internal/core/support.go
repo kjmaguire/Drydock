@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -69,19 +70,31 @@ func (c *Core) watchdogNotify(ctx context.Context, typ string, tr watchdog.TripR
 	}
 }
 
-var ghRemote = regexp.MustCompile(`github\.com[:/]+([^/\s]+)/([^/\s]+?)(?:\.git)?$`)
+// ghRemote matches the URL forms of a github.com remote (https, ssh, scp-like), never a local path that merely contains
+// "github.com/owner/repo".
+var ghRemote = regexp.MustCompile(`^(?:https?://(?:[^@/\s]+@)?github\.com/|ssh://git@github\.com(?::\d+)?/|git@github\.com:)([^/\s]+)/([^/\s]+?)(?:\.git)?/?$`)
+
+// parseGitHubRemote returns the owner and repository of a github.com remote URL.
+func parseGitHubRemote(url string) (owner, name string, ok bool) {
+	m := ghRemote.FindStringSubmatch(strings.TrimSpace(url))
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
 
 // remoteRepo reads the GitHub owner and repository from the project's origin remote.
 func remoteRepo(ctx context.Context, repo *git.Repo) (owner, name string, err error) {
 	out, err := exec.CommandContext(ctx, "git", "-C", repo.Root, "remote", "get-url", "origin").Output()
 	if err != nil {
-		return "", "", fmt.Errorf("pr_flow needs an 'origin' remote on GitHub: %w", err)
+		return "", "", errors.New("pull requests need an 'origin' remote on github.com, and this repository has no 'origin' remote")
 	}
-	m := ghRemote.FindStringSubmatch(strings.TrimSpace(string(out)))
-	if m == nil {
-		return "", "", fmt.Errorf("origin %q is not a github.com remote", strings.TrimSpace(string(out)))
+	url := strings.TrimSpace(string(out))
+	owner, name, ok := parseGitHubRemote(url)
+	if !ok {
+		return "", "", fmt.Errorf("origin %q is not a github.com remote", url)
 	}
-	return m[1], m[2], nil
+	return owner, name, nil
 }
 
 var timeZero time.Time

@@ -1,7 +1,9 @@
 # Parallel work: keeping agents from colliding
 
-Status: implemented and tested on Linux with scripted agents (`internal/pipeline`, `internal/git`). Not run on Windows. The real
-agents' behavior on collisions (does the worker resolve conflict markers well?) is untested; the mechanism around them is.
+Status: implemented and tested on Linux with scripted agents: Go tests in `internal/pipeline`, `internal/git`, `internal/tasks` and
+`internal/core`, and a Playwright test through the real core (`ui/e2e/round8.spec.ts`). Not run on Windows. Not tested: a real
+agent (no scripted one) handed conflict markers, so how well a real worker resolves a conflict is unknown; the mechanism around it
+is tested (section 6).
 
 The question this answers: when several agents work on one project at the same time, what stops one from overwriting or breaking
 another's work, and what happens when two of them need the same code?
@@ -86,5 +88,7 @@ under the scheduler with a limit of 2 where the fourth collides with the third (
 file, is released by the merge, gets the base, its worker is handed the conflict, and it comes back for approval; it is never forced
 into main); a task approved before the base moved merges after a clean sync without asking again and without another worker turn;
 the human release (and the refusal of an agent's); the switch; scheduler admission by planned files; footprint/overlap/ordering unit
-tests. `internal/tasks`: the resync transition. `internal/core`: the setting and the release RPC. UI: the toggle and the release
-button.
+tests (`internal/pipeline/scheduler_test.go`, `sync_test.go`, `guard_internal_test.go`). `internal/tasks`: the resync transition.
+`internal/core`: the setting and the release RPC (`ext_guard_test.go`). UI: the toggle and the release button; the browser test
+`ui/e2e/round8.spec.ts` drives two tasks that change the same file through the real core: the second waits, names the first task
+and the file, and goes on after "Let it go on now", while the first is left alone. All of these use the scripted worker.

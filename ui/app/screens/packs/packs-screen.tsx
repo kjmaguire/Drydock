@@ -148,7 +148,8 @@ export function ConsultView(handle: Handle<{ r: PackConsult }>) {
           <Badge tone={r.confidence === 'high' ? 'ok' : r.confidence === 'none' ? 'muted' : 'warn'}>{r.confidence}</Badge>
           <span mix={faint}>
             route {r.route}
-            {r.model ? `, model ${r.model}` : ''}; source age {r.sourceAgeDays} day(s)
+            {r.model ? `, model ${r.model}` : ''}
+            {r.sourceAgeDays >= 0 ? `; source age ${r.sourceAgeDays} day(s)` : ''}
           </span>
         </p>
         {r.degraded ? <Notice tone="warn">{r.degraded}</Notice> : null}
@@ -164,10 +165,16 @@ export function ConsultView(handle: Handle<{ r: PackConsult }>) {
             </li>
           ))}
         </ol>
-        <p mix={faint}>
-          Cost of this question: {formatCost(r.usage.costUsd)} ({r.usage.inputTokens} in / {r.usage.outputTokens} out tokens). The answer is generated from the
-          cited text; check the citations.
-        </p>
+        {r.model ? (
+          <p mix={faint}>
+            Cost of this question: {formatCost(r.usage.costUsd)} ({r.usage.inputTokens} in / {r.usage.outputTokens} out tokens). The answer is generated from the
+            cited text; check the citations.
+          </p>
+        ) : (
+          <p mix={faint} data-testid="consult-no-model">
+            No model was used: the answer is the cited passages themselves, at no cost.
+          </p>
+        )}
       </div>
     );
   };
@@ -515,7 +522,7 @@ export function PacksScreen(handle: Handle) {
           </div>
         ) : null}
 
-        <Section title="Search and ask" description="Search returns passages with citations; a question is answered from the cited text by a model.">
+        <Section title="Search and ask" description="Search returns passages with citations. A question returns the passages that answer it, with their citations; no model writes the answer.">
           <div mix={[card, formCss]}>
             {list.length > 0 ? (
               <fieldset>
@@ -564,7 +571,7 @@ export function PacksScreen(handle: Handle) {
                 }),
               ]}
             >
-              <Field label="Ask a question (uses a model call and may cost a little)">
+              <Field label="Ask a question">
                 {(id) => <input id={id} aria-label="Ask the packs" value={question} mix={on('input', (e) => set(() => (question = e.currentTarget.value)))} />}
               </Field>
               <Button type="submit" icon={MessageSquareText} disabled={busy || !question.trim() || ids.length === 0}>

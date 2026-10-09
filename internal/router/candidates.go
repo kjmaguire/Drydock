@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/providers"
@@ -96,7 +97,7 @@ func (s *RegistrySource) candidate(ctx context.Context, req RouteRequest, p prov
 	c := Candidate{Provider: ProviderID(p.ID), Model: m.ID, Tier: tier, DataClass: s.Catalog.EffectiveDataClass(ctx, p, m.ID), Kind: p.Kind,
 		Enabled: p.Enabled, PrivateEligible: p.PrivateEligible() || p.DataClass != providers.DataPrivate, SupportsTools: m.SupportsTools,
 		ResponsesValidated: !p.ResponsesValidatedAt.IsZero(), Healthy: true, QuotaOK: true, QuotaRemainingPct: -1,
-		MaxConcurrent: p.MaxConcurrent, ProbePassed: m.ProbeStatus == "pass", Context: m.ContextLength, PriceKnown: m.PriceKnown(),
+		MaxConcurrent: p.MaxConcurrent, ProbePassed: m.ProbeStatus == "pass", ProbeFailure: probeFailure(m.ProbeStatus), Context: m.ContextLength, PriceKnown: m.PriceKnown(),
 		BlendedPerM: blendedPerM(m), PriceUpdatedAt: m.PriceUpdatedAt}
 	if s.Avail != nil {
 		if st, err := s.Avail.Status(ctx, p.ID); err == nil {
@@ -111,4 +112,14 @@ func (s *RegistrySource) candidate(ctx context.Context, req RouteRequest, p prov
 		c.EstCostUSD = &usd
 	}
 	return c
+}
+
+// probeFailure is the capability failure recorded by the tool-call probe ("fail:no_tool_call" -> "no_tool_call"), or "" for a
+// pass, no probe, or a probe that could not run ("fail:error:..."): only a model that answered wrongly is excluded.
+func probeFailure(status string) string {
+	mode, ok := strings.CutPrefix(status, "fail:")
+	if !ok || strings.HasPrefix(mode, "error") {
+		return ""
+	}
+	return mode
 }

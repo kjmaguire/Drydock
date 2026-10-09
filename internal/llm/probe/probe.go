@@ -88,12 +88,15 @@ type Skip struct {
 // Rank filters a provider's catalog to the candidates for cheap_default and orders them cheapest first. It is a pure
 // function of the catalog rows and the provider; the effective data class of each model is passed in.
 func Rank(prov providers.Provider, models []providers.Model, class func(providers.Model) providers.DataClass, minContext int) (ranked []Candidate, skipped []Skip) {
+	// a self-hosted model server (Ollama, vLLM) has no per-token price: its models are free to call and private when the
+	// host is, and its cost is the host's own (hourly_cost), so "free" and "no price" do not disqualify them
+	host := prov.Kind == providers.KindHost
 	for _, m := range models {
 		skip := func(r string) { skipped = append(skipped, Skip{Model: m.ID, Reason: r}) }
 		switch {
 		case !prov.Enabled:
 			skip("provider disabled")
-		case m.IsFree || strings.HasSuffix(m.ID, ":free") || m.ID == "openrouter/free":
+		case !host && (m.IsFree || strings.HasSuffix(m.ID, ":free") || m.ID == "openrouter/free"):
 			skip("free route (trainable, public-docs CONSULT only)")
 		case class(m) != providers.DataPrivate:
 			skip("not private (trainable models never carry private work)")
@@ -101,7 +104,7 @@ func Rank(prov providers.Provider, models []providers.Model, class func(provider
 			skip("provider cannot carry private context (plain http LAN host without attestation)")
 		case !m.SupportsTools:
 			skip("tool calling not advertised")
-		case !m.PriceKnown() || (m.InputPerM <= 0 && m.OutputPerM <= 0):
+		case !host && (!m.PriceKnown() || (m.InputPerM <= 0 && m.OutputPerM <= 0)):
 			skip("price unknown or zero")
 		case m.ContextLength > 0 && m.ContextLength < minContext:
 			skip(fmt.Sprintf("context %d below the minimum %d", m.ContextLength, minContext))
@@ -194,6 +197,9 @@ func leakedToolText(content string) bool {
 	return false
 }
 
+// ErrQuotaReached means the probe did not run because Drydock's own quota for the provider refused the call.
+var ErrQuotaReached = errors.New("the request limit you set for this provider is reached, so the probe did not run")
+
 // ModelResult is the outcome of probing one model.
 type ModelResult struct {
 	Provider    string    `json:"provider"`
@@ -222,6 +228,12 @@ func (p *Prober) Probe(ctx context.Context, providerID, model string) (ModelResu
 		if err != nil {
 			if ctx.Err() != nil {
 				return res, ctx.Err()
+			}
+			var qe *llm.QuotaError
+			if errors.As(err, &qe) {
+				// Drydock's own request limit for this provider refused the call: nothing was learned about the model, so
+				// nothing is recorded (it would read as a failed probe and unset a good cheap_default)
+				return res, fmt.Errorf("%w: %v", ErrQuotaReached, err)
 			}
 			res.FailureMode = classify(err)
 			break
@@ -337,7 +349,7 @@ func (p *Prober) Select(ctx context.Context, providerID string, force bool) (Sel
 		sel.Skipped = []Skip{}
 	}
 	if len(models) == 0 {
-		sel.Message = "the provider's catalog is empty: refresh it with provider.test first"
+		sel.Message = "the provider's catalog is empty: refresh it first (Test on the provider)"
 		return sel, p.store(ctx, sel)
 	}
 	for i, c := range ranked {
@@ -349,6 +361,15 @@ func (p *Prober) Select(ctx context.Context, providerID string, force bool) (Sel
 			continue
 		}
 		r, err := p.Probe(ctx, providerID, c.Model.ID)
+		if errors.Is(err, ErrQuotaReached) {
+			// keep what was chosen before: the limit says nothing about the models
+			prev, ok, perr := Stored(ctx, p.DB, providerID)
+			if perr != nil || !ok {
+				prev = Selection{ProviderID: providerID, Skipped: sel.Skipped, Probed: sel.Probed, At: sel.At}
+			}
+			prev.Message = "probing stopped: " + ErrQuotaReached.Error() + "; the earlier selection is kept"
+			return prev, nil
+		}
 		if err != nil {
 			return sel, err
 		}

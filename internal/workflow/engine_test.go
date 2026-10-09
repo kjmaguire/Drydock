@@ -764,3 +764,48 @@ func TestRetryRequestRerunsTheNodeAfterTheAnswer(t *testing.T) {
 		t.Fatal("a second answer to the same request must be refused")
 	}
 }
+
+// Killed and started again at once, within the dead owner's lease: Recover at start cannot take the run, and the recovery
+// watch takes it over as soon as the lease expires (before, the run stayed RUNNING with nothing driving it).
+func TestARunIsRecoveredWhenTheAppRestartsWithinTheLease(t *testing.T) {
+	dir := t.TempDir()
+	child, run := startChild(t, "partial", dir)
+	probe := openEnv(t, dir)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for {
+		rows, _ := probe.eng.Executions(ctx, run)
+		started := false
+		for _, r := range rows {
+			if r.NodeID == "B" && r.Status == "started" {
+				started = true
+			}
+		}
+		if started && effects(dir)["B_start"] == 1 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal("timed out waiting for B to start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = child.Wait() // no wait for the lease: the app starts again immediately
+
+	e := openEnv(t, dir)
+	if err := e.eng.Register(partialGraph(dir, false)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := e.eng.Recover(context.Background()); err != nil || n != 0 {
+		t.Fatalf("the dead owner's lease is still valid, recover took n=%d err=%v", n, err)
+	}
+	wctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	go e.eng.WatchRecover(wctx, 50*time.Millisecond)
+	waitStatus(t, e.eng, run, wf.StatusCompleted)
+	if got := effects(dir); got["A"] != 1 || got["B"] != 1 || got["J"] != 1 {
+		t.Fatalf("finished node re-ran or unfinished node ran !=1 times: %v", got)
+	}
+}

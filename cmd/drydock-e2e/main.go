@@ -117,8 +117,8 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed bool) error {
 			{Match: "the tool is now allowed", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "Done: chat_probe.txt is there now."}}},
 			// the independent reviewer (prompt text from internal/pipeline/review.go) always ships
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
-			// after a human "request changes" the worker's prompt carries "Reviewer feedback:"
-			{Match: "Reviewer feedback", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implDoc}}, {Say: "addressed the feedback: added the doc comment"}}},
+			// after a human "request changes" the worker's prompt carries "Changes requested by the human:"
+			{Match: "Changes requested by the human", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implDoc}}, {Say: "addressed the feedback: added the doc comment"}}},
 			// the Feature template (spec gate, tests first) and PlanTeam: each Drydock prompt starts with a phase line
 			{Match: "Drydock phase: plan", Steps: []fakeagent.Step{{Say: planProposal}}},
 			{Match: "Drydock phase: spec", Steps: []fakeagent.Step{{Say: mulSpec}}},

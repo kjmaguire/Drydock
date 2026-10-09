@@ -52,6 +52,13 @@ describe('the GitHub repository picker', () => {
     expect(note.textContent).toContain('run `gh auth login`');
   });
 
+  it('says GitHub did not answer (not "not signed in") when it timed out', async () => {
+    const { r } = setup({ githubStatus: async () => ({ installed: true, loggedIn: false, unreachable: true, login: '', error: 'GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later' }) });
+    const note = await waitFor(() => { const n = r.$('[data-testid="github-unavailable"]'); if (!n) throw new Error('not yet'); return n; }, r);
+    expect(note.textContent).toContain('GitHub did not answer.');
+    expect(note.textContent).not.toContain('not signed in');
+  });
+
   it('lists the repositories of the first owner, with private and archived marks, and picks one; the clone folder defaults from the core', async () => {
     const calls: [string, string][] = [];
     const { r, picked } = setup({

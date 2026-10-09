@@ -218,6 +218,21 @@ func TestBackupFailureIsReportedEverywhere(t *testing.T) {
 	if len(evs) != 1 {
 		t.Fatalf("retried immediately: %d failures", len(evs))
 	}
+	// a failed Back up now is announced as the human's own backup, not as the scheduled one, and names the real page
+	if err := a.callErr("backup.now", map[string]any{}); err == nil {
+		t.Fatal("Back up now into a broken folder must fail")
+	}
+	msgs = nil
+	a.call("room.messages", map[string]any{"roomId": alerts, "limit": 50}, &msgs)
+	manual := false
+	for _, m := range msgs {
+		if m.Type == room.TypeSystem && strings.HasPrefix(m.Body, "The backup you started failed") && strings.Contains(m.Body, "on the Backups page") {
+			manual = true
+		}
+	}
+	if !manual {
+		t.Fatalf("no notice for the failed Back up now in %d messages", len(msgs))
+	}
 	// the folder is fixed; after the retry delay the backup succeeds and the error clears
 	os.Remove(dir)
 	a.c.TestSetBackupRetry(0)

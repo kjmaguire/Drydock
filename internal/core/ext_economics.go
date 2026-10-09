@@ -466,6 +466,9 @@ func (e *economics) methods() map[string]Method {
 		"route.rules.set": bind(func(ctx context.Context, p struct {
 			Rule router.Rule `json:"rule"`
 		}) (any, error) {
+			if strings.TrimSpace(p.Rule.ID) == "" && p.Rule.Version == 0 {
+				p.Rule.ID = ids.New("rule") // a new rule from the editor: the core names it
+			}
 			r, err := e.rules.Put(ctx, p.Rule)
 			if errors.Is(err, router.ErrVersionConflict) {
 				return nil, fmt.Errorf("rule %s changed since you read it (version %d is stale): reload and retry", p.Rule.ID, p.Rule.Version)

@@ -532,6 +532,16 @@ func TestRoutingProbeSelectionPreviewAndRulesThroughTheMethods(t *testing.T) {
 	if _, err := a.c.Call(context.Background(), "route.rules.set", mustJSON(map[string]any{"rule": rule})); err == nil {
 		t.Fatal("a rule that does not compile must be refused")
 	}
+	// a new rule from the editor has no id yet: the core names it (the UI's "Add a rule" could never save before)
+	var added struct {
+		ID      string `json:"id"`
+		Version int    `json:"version"`
+		Enabled bool   `json:"enabled"`
+	}
+	a.call("route.rules.set", map[string]any{"rule": map[string]any{"id": "", "scope": "workspace", "priority": 0, "when": "true", "then": map[string]any{"prefer_tier": "cheap"}, "enabled": true, "version": 0}}, &added)
+	if !strings.HasPrefix(added.ID, "rule_") || added.Version != 1 || !added.Enabled {
+		t.Fatalf("new rule %+v", added)
+	}
 
 	// the app's own LLM calls go through the Wrapper: guarded and recorded
 	cl := core.EconomicsLLM(c)

@@ -3,7 +3,10 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/agents"
 
 	"github.com/kjmaguire/drydock/internal/connections"
 )
@@ -42,11 +45,60 @@ func (c *Core) AcknowledgeGate(ctx context.Context, gateID string) error {
 	return nil
 }
 
-// TestConnection runs the Test connection steps for one adapter. It can start the real CLI and may cost a few cents.
-func (c *Core) TestConnection(ctx context.Context, adapterID string) (connections.Report, error) {
-	rep, err := c.Connections.TestConnection(ctx, adapterID, connections.TestOptions{})
+// TestConnection runs the Test connection steps for one adapter. With prompt it also sends one tiny prompt on the adapter's
+// cheapest model (it uses the human's account: a fraction of a cent); without it nothing that costs tokens runs. The outcome
+// is kept (it survives a restart): a pass clears "version untested" for exactly that CLI version, a failure degrades it.
+func (c *Core) TestConnection(ctx context.Context, adapterID string, prompt bool) (connections.Report, error) {
+	o := connections.TestOptions{}
+	if prompt {
+		o.Prompt, o.Model = true, cheapestModel(adapterID, c.adapters[adapterID])
+	}
+	rep, err := c.Connections.TestConnection(ctx, adapterID, o)
 	if err == nil {
 		c.Connections.RecordTest(adapterID, rep)
+		out := connections.TestOutcome{OK: rep.OK, Reason: rep.FailureReason(), Version: rep.CLIVersion}
+		if b, jerr := json.Marshal(out); jerr == nil {
+			if werr := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, testKey+adapterID, string(b))
+				return err
+			}); werr != nil {
+				c.logf("keep the Test connection result: %v", werr)
+			}
+		}
 	}
 	return rep, err
+}
+
+const testKey = "connection.test."
+
+// loadTestOutcomes reads the kept Test connection results, by adapter id.
+func (c *Core) loadTestOutcomes(ctx context.Context) map[string]connections.TestOutcome {
+	out := map[string]connections.TestOutcome{}
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT key, value FROM settings WHERE key LIKE ?`, testKey+"%")
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, v string
+		var o connections.TestOutcome
+		if rows.Scan(&k, &v) == nil && json.Unmarshal([]byte(v), &o) == nil {
+			out[strings.TrimPrefix(k, testKey)] = o
+		}
+	}
+	return out
+}
+
+// cheapestModel is the model Test connection's tiny prompt uses: Claude's haiku, else the first model the adapter lists ("" when
+// it lists none: the prompt step then says so).
+func cheapestModel(adapterID string, ad agents.Adapter) string {
+	if adapterID == "claude" {
+		return "haiku"
+	}
+	if ad != nil {
+		if ms := ad.Capabilities().Models; len(ms) > 0 {
+			return ms[0]
+		}
+	}
+	return ""
 }

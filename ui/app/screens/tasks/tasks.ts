@@ -19,8 +19,15 @@ export const FILTERS: { name: TaskFilter; label: string; statuses?: readonly str
   { name: 'done', label: 'Done', statuses: ['COMPLETED', 'FAILED', 'CANCELLED'] },
 ];
 
-/** True when the task belongs under the filter. A status the UI does not know shows under All only. */
-export function inFilter(t: Pick<Task, 'status'>, f: TaskFilter): boolean {
+/**
+ * True when the task belongs under the filter. A status the UI does not know shows under All only. A task whose run waits for
+ * the human (a watchdog or Team Lead question, a budget pause, a GitHub problem) is "Waiting on you" whatever its status, and
+ * not "Active": `waiting` holds the ids of the tasks with an item in Needs you.
+ */
+export function inFilter(t: Pick<Task, 'status'> & { id?: string }, f: TaskFilter, waiting?: ReadonlySet<string>): boolean {
+  const asked = !!t.id && !!waiting?.has(t.id);
+  if (f === 'waiting' && asked) return true;
+  if (f === 'active' && asked) return false;
   const def = FILTERS.find((x) => x.name === f);
   return !def?.statuses || def.statuses.includes(t.status);
 }
@@ -33,9 +40,9 @@ export function matchesText(t: Pick<Task, 'title' | 'seq' | 'branch'>, text: str
   return t.title.toLowerCase().includes(q) || (t.branch ?? '').toLowerCase().includes(q);
 }
 
-export function filterCounts(tasks: readonly Pick<Task, 'status'>[]): Record<TaskFilter, number> {
+export function filterCounts(tasks: readonly (Pick<Task, 'status'> & { id?: string })[], waiting?: ReadonlySet<string>): Record<TaskFilter, number> {
   const out = { all: 0, waiting: 0, active: 0, backlog: 0, done: 0 } as Record<TaskFilter, number>;
-  for (const t of tasks) for (const f of FILTERS) if (inFilter(t, f.name)) out[f.name]++;
+  for (const t of tasks) for (const f of FILTERS) if (inFilter(t, f.name, waiting)) out[f.name]++;
   return out;
 }
 

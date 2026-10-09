@@ -267,7 +267,7 @@ func Changes(d Deps) workflow.NodeHandler {
 		if _, err := d.Tasks.Transition(ctx, t.ID, tasks.InProgress, tasks.TransitionOpts{By: resp.by, Reason: "human requested changes", Feedback: fb}); err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		b, _ := json.Marshal(map[string]string{"feedback": fb})
+		b, _ := json.Marshal(map[string]string{"feedback": fb, "from": "human"})
 		return workflow.NodeOutput{Value: b}, nil
 	}
 }

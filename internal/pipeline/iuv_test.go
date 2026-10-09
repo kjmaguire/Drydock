@@ -227,7 +227,7 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 func TestHumanRejectionLoopsBackThenMerges(t *testing.T) {
 	ad, cfg, lg := fakeRoles(t,
 		fakeagent.Script{
-			Rules: []fakeagent.Rule{{Match: "Reviewer feedback", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "added the doc comment"}}}},
+			Rules: []fakeagent.Rule{{Match: "Changes requested by the human", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "added the doc comment"}}}},
 			Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImpl}}, {Say: "implemented"}}},
 		},
 		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
@@ -238,8 +238,8 @@ func TestHumanRejectionLoopsBackThenMerges(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.await(t, id, workflow.StatusWaitingHuman)
-	if wp := prompts(lg.workLog); len(wp) != 2 || !strings.Contains(wp[1], "please add a doc comment") {
-		t.Fatalf("rework prompt %q", wp)
+	if wp := prompts(lg.workLog); len(wp) != 2 || !strings.Contains(wp[1], "Changes requested by the human:\nplease add a doc comment") || strings.Contains(wp[1], "Reviewer feedback") {
+		t.Fatalf("rework prompt (the human's request is labelled as theirs, not the reviewer's) %q", wp)
 	}
 	if err := e.answer(t, id, "approved", "human:kyle", `{}`); err != nil {
 		t.Fatal(err)

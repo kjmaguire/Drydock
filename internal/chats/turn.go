@@ -238,6 +238,10 @@ func (s *Service) run(ctx context.Context, c Chat, caps agents.Capabilities, tur
 		s.logf("chats: read history: %v", err)
 	}
 	resume := c.SessionID != "" && caps.SessionResume
+	if resume {
+		// the CLI was stopped before it saved the answer the person saw: tell it what was shown, or it contradicts it
+		base = stoppedNote(earlier) + base
+	}
 	prompt, transcript := base, false
 	if !resume && hasConversation(earlier) {
 		// a fork, an adapter that cannot resume, or a session already known to be gone: the transcript carries the context
@@ -504,7 +508,7 @@ func (t *turnRun) finish(ctx context.Context, o attemptOut, resumed, transcript 
 	}
 	switch status {
 	case TurnStopped:
-		t.store(RoleSystem, "Stopped by you.", "", nil)
+		t.store(RoleSystem, StoppedNote, "", nil)
 	case TurnError:
 		errMsg = clip(s.d.Redact(strings.TrimSpace(errMsg)), 2000)
 		t.store(RoleError, errMsg, "", nil)
@@ -573,4 +577,40 @@ func (s *Service) firstUserTitle(ctx context.Context, chatID string) string {
 		return ""
 	}
 	return AutoTitle(body)
+}
+
+// StoppedNote is the system note a turn the person stopped ends with.
+const StoppedNote = "Stopped by you."
+
+// stoppedNote returns, when the previous turn was stopped by the person, a note quoting the answer they saw up to the stop, to
+// put in front of the next message of a resumed session ("" otherwise). A stopped CLI is killed before it saves the partial
+// answer to its session (observed with claude 2.1.296), so without the note the next answer can deny what the person read.
+func stoppedNote(earlier []Message) string {
+	n := len(earlier)
+	if n == 0 || earlier[n-1].Role != RoleSystem || earlier[n-1].Body != StoppedNote {
+		return ""
+	}
+	var parts []string
+	for i := n - 2; i >= 0 && earlier[i].Role != RoleUser; i-- {
+		if earlier[i].Role == RoleAssistant && strings.TrimSpace(earlier[i].Body) != "" {
+			parts = append([]string{strings.TrimSpace(earlier[i].Body)}, parts...)
+		}
+	}
+	shown := strings.Join(parts, "\n\n")
+	if shown == "" {
+		return "(Note from Drydock: I stopped your previous answer before you wrote anything.)\n\n"
+	}
+	if len(shown) > 4000 {
+		shown = "..." + shown[len(shown)-4000:]
+	}
+	return "(Note from Drydock: I stopped your previous answer before it finished. This is what I saw of it; your session may not contain it:\n\n" +
+		quoteLines(shown) + ")\n\n"
+}
+
+func quoteLines(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = "> " + l
+	}
+	return strings.Join(lines, "\n")
 }

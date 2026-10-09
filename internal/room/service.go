@@ -307,7 +307,7 @@ var DefaultChannels = []struct{ Name, Topic string }{
 	{"general", "Project-wide discussion"},
 	{"reviews", "Review requests and verdicts"},
 	{"decisions", "Decisions and ADR candidates"},
-	{"alerts", "Watchdog, budget and check alerts"},
+	{"alerts", "Backup, restore and license notices"},
 }
 
 // EnsureDefaultChannels creates #general, #reviews, #decisions and #alerts if missing (idempotent).

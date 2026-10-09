@@ -168,6 +168,21 @@ describe('BackupsScreen', () => {
     expect(btn(r.container, 'Restore b1.db').disabled).toBe(true);
   });
 
+  it('keeps the settings form when the backup folder cannot be read, so the folder can be changed back', async () => {
+    const sets: object[] = [];
+    const r = show({
+      backupList: async () => Promise.reject(new Error('open C:\\data\\bk: not a directory')),
+      backupSettingsGet: async () => settings({ dir: 'C:\\data\\bk', lastError: 'open C:\\data\\bk: not a directory' }),
+      backupSettingsSet: async (x) => (sets.push(x), settings()),
+    });
+    const folder = await waitFor(() => byLabel<HTMLInputElement>(r.container, /Backup folder/), r);
+    expect(folder.value).toBe('C:\\data\\bk');
+    expect(r.container.textContent).toContain('not a directory');
+    type(folder, 'D:\\bk');
+    await r.act(() => btn(r.container, 'Save schedule').click());
+    await waitFor(() => expect(sets).toEqual([{ enabled: true, dir: 'D:\\bk', daily: 7, weekly: 4 }]), r);
+  });
+
   it('saves the schedule', async () => {
     const sets: object[] = [];
     const r = show({ backupList: async () => backups(), backupSettingsSet: async (x) => (sets.push(x), settings()) });

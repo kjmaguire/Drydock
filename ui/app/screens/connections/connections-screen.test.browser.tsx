@@ -99,12 +99,15 @@ describe('Connections page', () => {
 
   it('Test connection warns about the real CLI and cost first, runs only after confirmation, and shows a plain report', async () => {
     const tests: string[] = [];
-    const r = show({ connectionList: async () => [conn()], connectionTest: async (a: string) => (tests.push(a), report()) });
+    const r = show({ connectionList: async () => [conn()], connectionTest: async (a: string, prompt?: boolean) => (tests.push(`${a}:${prompt}`), report()) });
     const c = await card(r);
     await r.act(() => byText(c, 'button', 'Test connection...').click());
     expect(tests).toEqual([]);
-    expect(c.textContent).toContain('can start the real claude CLI');
-    expect(c.textContent).toContain('cost a few cents');
+    expect(c.textContent).toContain('starts the real claude CLI');
+    // the tiny prompt is offered, ticked, with what it costs; unticked, nothing that costs tokens runs
+    const box = byLabel<HTMLInputElement>(c, /^Also send one tiny prompt/);
+    expect(box.checked).toBe(true);
+    expect(c.textContent).toContain('a fraction of a cent');
     await r.act(() => byText(c, 'button', 'Cancel').click());
     expect(c.querySelector('[data-testid="connection-report"]')).toBeNull();
     await r.act(() => byText(c, 'button', 'Test connection...').click());
@@ -114,7 +117,7 @@ describe('Connections page', () => {
       if (!x) throw new Error('not yet');
       return x;
     }, r);
-    expect(tests).toEqual(['claude']);
+    expect(tests).toEqual(['claude:true']);
     expect(rep.textContent).toContain('The CLI started but did not answer.');
     expect(rep.textContent).toContain('did not pass');
   });

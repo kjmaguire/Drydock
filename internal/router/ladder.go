@@ -28,12 +28,15 @@ type Candidate struct {
 	Concurrent         int
 	MaxConcurrent      int // 0 = unlimited
 	ProbePassed        bool
-	Context            int
-	AgentNative        bool
-	PriceKnown         bool
-	BlendedPerM        float64 // USD per million tokens at the 3:1 input:output weight; meaningful when PriceKnown
-	PriceUpdatedAt     time.Time
-	EstCostUSD         *float64 // for this request; nil when the price is unknown
+	// ProbeFailure is how the model failed the tool-call probe ("no_tool_call", "bad_arguments", ...); "" when it passed,
+	// was never probed, or the probe could not run (an error says nothing about the model).
+	ProbeFailure   string
+	Context        int
+	AgentNative    bool
+	PriceKnown     bool
+	BlendedPerM    float64 // USD per million tokens at the 3:1 input:output weight; meaningful when PriceKnown
+	PriceUpdatedAt time.Time
+	EstCostUSD     *float64 // for this request; nil when the price is unknown
 }
 
 // Key identifies the candidate.
@@ -78,6 +81,8 @@ func HardFilter(req RouteRequest, cands []Candidate) (kept []Candidate, rejected
 			rejected = append(rejected, c.rejected(FilterConcurrency, "max_concurrent reached"))
 		case req.RunKind == RunAgentTask && !c.SupportsTools:
 			rejected = append(rejected, c.rejected(FilterTools, "agent work needs tool calling"))
+		case req.RunKind == RunAgentTask && c.ProbeFailure != "":
+			rejected = append(rejected, c.rejected(FilterTools, "failed the tool-call probe ("+c.ProbeFailure+"): it does not call tools reliably"))
 		case c.Context > 0 && req.ContextTokens > 0 && need > c.Context:
 			rejected = append(rejected, c.rejected(FilterContext, "context does not fit the model window"))
 		default:

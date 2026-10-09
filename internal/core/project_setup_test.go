@@ -108,3 +108,19 @@ func TestProjectSetupMakesTheWholeProject(t *testing.T) {
 		t.Fatalf("bare %+v", bare.Project)
 	}
 }
+
+// With no agent CLI usable on this machine, the setup says so (and where to fix it) instead of returning no warning.
+func TestProjectSetupWarnsWhenTheTeamsCLIIsNotUsable(t *testing.T) {
+	a := openMCPApp(t, &claude.Adapter{Exe: os.Args[0]})
+	t.Setenv("PATH", t.TempDir()) // no claude on this machine
+	var res core.SetupResult
+	a.call("project.setup", core.SetupRequest{Name: "Later", Repo: core.SetupRepo{Kind: "none"},
+		Agents: []core.SetupAgent{{Name: "Wren", Role: "backend", Adapter: "claude", Model: "sonnet"}, {Name: "Robin", Role: "reviewer", Adapter: "claude", Model: "sonnet"}}}, &res)
+	if len(res.Agents) != 2 {
+		t.Fatalf("agents %+v", res.Agents)
+	}
+	joined := strings.Join(res.Warnings, "\n")
+	if !strings.Contains(joined, "Wren, Robin cannot work yet: the claude CLI is not usable") || !strings.Contains(joined, "Connections page") {
+		t.Fatalf("warnings %v", res.Warnings)
+	}
+}

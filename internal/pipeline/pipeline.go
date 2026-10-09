@@ -370,7 +370,11 @@ func inboxFeedback(in workflow.NodeInput) []string {
 					feedback = append(feedback, guidanceLabel(o["from"])+"\n"+clip(strings.TrimSpace(g), maxGuidance))
 				}
 			} else if fb, ok := o["feedback"].(string); ok {
-				feedback = append(feedback, "Reviewer feedback:\n"+fb)
+				label := "Reviewer feedback:" // the reviewer agent's REVISE
+				if from, _ := o["from"].(string); from == "human" {
+					label = "Changes requested by the human:" // the human's "Request changes" at the merge approval
+				}
+				feedback = append(feedback, label+"\n"+fb)
 			} else if d, ok := o["data"]; ok {
 				raw, _ := json.Marshal(d)
 				if g := HumanText(raw); g != "" {

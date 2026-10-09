@@ -52,12 +52,18 @@ describe('task list helpers', () => {
   });
 
   it('filters by status group and counts each filter', () => {
-    const list = [task({ status: 'WAITING_HUMAN' }), task({ status: 'BLOCKED' }), task({ status: 'IN_PROGRESS' }), task({ status: 'CANCELLED' }), task({ status: 'NEW_KIND' })];
+    const list = [task({ id: 't1', status: 'WAITING_HUMAN' }), task({ id: 't2', status: 'BLOCKED' }), task({ id: 't3', status: 'IN_PROGRESS' }), task({ id: 't4', status: 'CANCELLED' }), task({ id: 't5', status: 'NEW_KIND' })];
     expect(inFilter(list[0]!, 'waiting')).toBe(true);
     expect(inFilter(list[2]!, 'waiting')).toBe(false);
     expect(inFilter(list[4]!, 'all')).toBe(true);
     expect(inFilter(list[4]!, 'active')).toBe(false);
     expect(filterCounts(list)).toEqual({ all: 5, waiting: 2, active: 1, backlog: 0, done: 1 });
+    // a task whose run waits for the human (a watchdog question) is waiting on you, not active, whatever its status
+    const asked = new Set([list[2]!.id]);
+    expect(list[2]!.status).toBe('IN_PROGRESS');
+    expect(inFilter(list[2]!, 'waiting', asked)).toBe(true);
+    expect(inFilter(list[2]!, 'active', asked)).toBe(false);
+    expect(filterCounts(list, asked)).toEqual({ all: 5, waiting: 3, active: 0, backlog: 0, done: 1 });
   });
 
   it('matches text on the title, the number and the branch', () => {

@@ -39,7 +39,10 @@ func explain(d RoutingDecision) string {
 	default:
 		fmt.Fprintf(&b, "- Data: context is private; only private providers considered (invariant). %d trainable candidates excluded.\n", f.ExcludedTrainable)
 	}
-	if f.ProbePassed {
+	switch {
+	case strings.HasPrefix(string(d.Provider), "agent:"):
+		b.WriteString("- Capability: runs in the agent's own CLI, which brings its own tools (the tool-call probe does not apply).\n")
+	case f.ProbePassed:
 		b.WriteString("- Capability: tool calling probe passed.\n")
 	}
 	switch {
@@ -48,10 +51,17 @@ func explain(d RoutingDecision) string {
 	default:
 		b.WriteString("- Quota: remaining quota unknown.\n")
 	}
-	if f.BudgetDownshift {
-		fmt.Fprintf(&b, "- Budget: scope at %.0f%%, downshifted to a cheaper tier.\n", f.BudgetPctUsed*100)
-	} else {
-		fmt.Fprintf(&b, "- Budget: scope at %.0f%%, no downshift.\n", f.BudgetPctUsed*100)
+	scope := "scope"
+	if f.BudgetScope != "" {
+		scope = f.BudgetScope + " budget"
+	}
+	switch {
+	case f.BudgetDownshift:
+		fmt.Fprintf(&b, "- Budget: %s at %.0f%%, downshifted to a cheaper tier.\n", scope, f.BudgetPctUsed*100)
+	case f.BudgetScope == "" && f.BudgetPctUsed == 0:
+		b.WriteString("- Budget: no budget applies.\n")
+	default:
+		fmt.Fprintf(&b, "- Budget: %s at %.0f%%, no downshift.\n", scope, f.BudgetPctUsed*100)
 	}
 	if f.FallbackFrom != nil {
 		fmt.Fprintf(&b, "- Fallback: %s/%s was unavailable (%s).\n", f.FallbackFrom.Provider, f.FallbackFrom.Model, f.FallbackFrom.Rejected)
@@ -86,7 +96,7 @@ func explain(d RoutingDecision) string {
 	if d.Effort != "" {
 		applied := "applied"
 		if !d.EffortApplied {
-			applied = "recorded; the adapter has no effort control"
+			applied = "recorded only: the agent runs with the effort set on its Team page"
 		}
 		fmt.Fprintf(&b, "- Effort: %s (%s); team size %d.\n", d.Effort, applied, d.TeamSize)
 	}

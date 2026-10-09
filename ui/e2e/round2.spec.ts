@@ -23,7 +23,8 @@ test('Connections: gates need a checkbox and a click by the human; Test is gated
   const claude = page.locator('[data-testid=connection][data-adapter=claude]');
   await expect(claude).toBeVisible();
   await claude.getByRole('button', { name: 'Test connection...' }).click();
-  await expect(claude).toContainText('cost a few cents');
+  await expect(claude).toContainText('It uses your account');
+  await expect(claude.getByLabel('Also send one tiny prompt')).toBeChecked();
   await expect(claude.getByRole('button', { name: 'Run the test' })).toBeVisible();
   await claude.getByRole('button', { name: 'Cancel' }).click();
   await expect(claude.getByTestId('connection-report')).toHaveCount(0);

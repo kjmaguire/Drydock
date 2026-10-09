@@ -223,7 +223,7 @@ func (p *packaging) require(ctx context.Context, action string) error {
 		why = "There is no valid license, so Drydock is read-only"
 	}
 	return &LicenseError{Action: action, State: st.status.State, Message: fmt.Sprintf(
-		"%s: %s is turned off. You can still read everything, export, back up, restore and create a support bundle, and nothing has been deleted. Import a license in Settings > License to continue.", why, what)}
+		"%s: %s is turned off. You can still read everything, export, back up, restore and create a support bundle, and nothing has been deleted. Import a license on the License page to continue.", why, what)}
 }
 
 // RetentionAllowed reports whether data may be deleted by retention (docs/packaging.md s6 and s10, decision P12). The

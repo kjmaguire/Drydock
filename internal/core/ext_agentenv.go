@@ -104,7 +104,7 @@ type Isolation struct {
 // isolationOf describes a's isolation. workerChecks is the agent's project letting Claude workers run its checks.
 func isolationOf(a Agent, workerChecks bool) Isolation {
 	in := Isolation{Level: "guarded", Details: []string{
-		"Its working folder is its own Git worktree for the task, so its changes are separate from every other task and project and are reviewed before they are merged.",
+		"On a task its working folder is its own Git worktree, so its changes are separate from every other task and project and are reviewed before they are merged. In the room and in direct messages it answers read-only, from the project folder.",
 		"It starts with a trimmed environment: your other tools' tokens (GitHub, cloud providers) are not handed to it. Settings > Agents lists what is kept and lets you pass named variables on.",
 		"It can only use the MCP servers you granted it in its own project.",
 	}}
@@ -117,6 +117,7 @@ func isolationOf(a Agent, workerChecks bool) Isolation {
 	switch a.Adapter {
 	case "claude":
 		in.Summary = "Claude Code's own permission checks keep it to its working folder and hold shell commands for approval, which a background run cannot give. This is not an operating-system sandbox."
+		in.Details = append(in.Details, "Your own Claude Code user settings still apply to it, as they do when you run Claude Code yourself: the skills, plugins and hooks in your user folder. The project's own Claude settings files are not loaded; its CLAUDE.md and rules are given to it as instructions.")
 		in.Details = append(in.Details, "Measured with Claude Code 2.1.295 on Linux in acceptEdits mode: reading or writing a file outside the working folder and running a shell command on one were all refused. Not measured on Windows.")
 		if workerChecks {
 			in.Summary = "Claude Code's own permission checks keep it to its working folder, but this project lets it run its checks (build, test, lint) without approval when it works on a task. Those commands run the project's code, which it can change, so through them it can run any program with your rights. This is not an operating-system sandbox."

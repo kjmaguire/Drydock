@@ -86,7 +86,7 @@ export function RepoPicker(
     const st = status.data;
     if (!st?.loggedIn) {
       return (
-        <Notice tone="warn" title={st?.installed ? 'GitHub is not signed in.' : 'GitHub is not available.'} testId="github-unavailable">
+        <Notice tone="warn" title={st?.unreachable ? 'GitHub did not answer.' : st?.installed ? 'GitHub is not signed in.' : 'GitHub is not available.'} testId="github-unavailable">
           {st?.error ? <span>{st.error}. </span> : null}
           Drydock uses your own GitHub CLI and stores no GitHub token. {unavailableHint ?? null}
         </Notice>

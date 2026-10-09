@@ -306,8 +306,9 @@ export function RoutingScreen(_handle: Handle) {
   return () => (
     <Page title="Routing" icon={RouteIcon} subtitle="Model routing">
       <p mix={introCss}>
-        Agent turns still use each agent&apos;s configured model; the router decides for the app&apos;s own model calls and records a decision for every turn so outcomes
-        can be compared. Where a decision was static, the explanation says so.
+        The router chooses the model for an agent&apos;s task work and reviews when its human listed the models it may choose between (Team, Edit); it never picks
+        another agent&apos;s CLI. Other agents, and every room reply, use the configured model. The router also decides for the app&apos;s own model calls. Every turn
+        records a decision so outcomes can be compared; where a decision was static, the explanation says so.
       </p>
       <RulesPanel />
       <PreviewPanel />

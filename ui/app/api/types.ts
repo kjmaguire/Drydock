@@ -50,6 +50,8 @@ export const projectHasRepo = (p: Pick<Project, 'hasRepo'> | undefined): boolean
 export interface GitHubStatus {
   installed: boolean;
   loggedIn: boolean;
+  /** GitHub (or the network) did not answer in time; gh may well be signed in. */
+  unreachable?: boolean;
   login: string;
   error?: string;
 }
