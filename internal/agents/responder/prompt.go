@@ -16,7 +16,11 @@ type PromptInput struct {
 	Extra     []room.Message // DM window
 	Moderator bool           // this agent moderates a moderator-mode room
 	Trigger   room.Message
+	Brief     string // the project brief, written by the human (bounded here)
 }
+
+// maxBriefPrompt bounds the brief in a reply prompt; every reply pays for it.
+const maxBriefPrompt = 2000
 
 // BuildPrompt renders the turn prompt. The first line names the phase so scripted test agents and logs can tell turns
 // apart; the rules come before any room content, and the room content (already wrapped by room.RenderContext: other
@@ -33,6 +37,12 @@ func BuildPrompt(in PromptInput) string {
 `)
 	if in.Room.Mode == room.ModeSequential {
 		b.WriteString("- Members speak in a fixed order. If you have nothing to add, reply with exactly: PASS\n")
+	}
+	if brief := strings.TrimSpace(in.Brief); brief != "" {
+		if len(brief) > maxBriefPrompt {
+			brief = brief[:maxBriefPrompt] + " [...]"
+		}
+		b.WriteString("\nProject brief, written by the human who owns this project:\n" + brief + "\n")
 	}
 	b.WriteString("\n")
 	b.WriteString("Members of this room:\n")

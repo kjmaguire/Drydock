@@ -111,22 +111,6 @@ func humanBodyOf(in workflow.NodeInput) (humanBody, bool) {
 
 func isHuman(by string) bool { return strings.HasPrefix(by, "human:") && len(by) > len("human:") }
 
-// addEvidenceOnce records evidence unless an identical item (same kind, summary and ref) is already there: nodes may run
-// again after a crash, and evidence must not double up.
-func (td TemplateDeps) addEvidenceOnce(ctx context.Context, taskID string, e tasks.Evidence) error {
-	have, err := td.Tasks.Evidence(ctx, taskID)
-	if err != nil {
-		return err
-	}
-	for _, x := range have {
-		if x.Kind == e.Kind && x.Summary == e.Summary && x.Ref == e.Ref {
-			return nil
-		}
-	}
-	_, err = td.Tasks.AddEvidence(ctx, taskID, e)
-	return err
-}
-
 func latestEvidence(ev []tasks.Evidence, kind string) (tasks.Evidence, bool) {
 	for i := len(ev) - 1; i >= 0; i-- {
 		if ev[i].Kind == kind {
@@ -171,7 +155,7 @@ func (td TemplateDeps) specDraft() workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		feedback, previous := feedbackFromInbox(in)
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RolePM, ReadOnly: true, Phase: "spec", Prompt: SpecPrompt(t, previous, feedback)})
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RolePM, ReadOnly: true, Phase: "spec", Prompt: SpecPrompt(t, previous, feedback, td.brief(ctx, t.ProjectID))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -360,7 +344,7 @@ func (td TemplateDeps) design() workflow.NodeHandler {
 			return workflow.NodeOutput{Value: json.RawMessage(`{"design":"skipped: no architect agent on the team"}`)}, nil
 		}
 		cur, _ := td.Tasks.Get(ctx, t.ID)
-		out, err := td.roleTurn(ctx, in, cur, turnOpts{Role: RoleArchitect, ReadOnly: true, Phase: "design", Prompt: DesignPrompt(cur)})
+		out, err := td.roleTurn(ctx, in, cur, turnOpts{Role: RoleArchitect, ReadOnly: true, Phase: "design", Prompt: DesignPrompt(cur, td.acceptedSpec(ctx, t.ID), td.brief(ctx, t.ProjectID))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -395,7 +379,11 @@ func (td TemplateDeps) writeTests(bug bool) workflow.NodeHandler {
 		if bug {
 			phase = "reproduce"
 		}
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleTests, Phase: phase, Prompt: TestsPrompt(t, bug, feedback)})
+		spec := ""
+		if !bug {
+			spec = td.acceptedSpec(ctx, t.ID)
+		}
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleTests, Phase: phase, Prompt: TestsPrompt(t, bug, feedback, spec, td.brief(ctx, t.ProjectID))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -578,17 +566,10 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
 		td.addWorkerTools(ctx, t, &cfg)
-		prompt := WorkPrompt(t, clean)
+		// the accepted spec and the architect's notes go with every implementation pass, not only the first
+		prompt := WorkPrompt(t, clean, td.promptContext(ctx, t, td.gated(in)))
 		if red.Red {
-			design := ""
-			if ev, err := td.Tasks.Evidence(ctx, t.ID); err == nil {
-				if d, ok := latestEvidence(ev, "design"); ok && d.Ref != "" {
-					if b, err := os.ReadFile(d.Ref); err == nil {
-						design = string(b)
-					}
-				}
-			}
-			prompt += ImplementSuffix(red.Failing, red.Output, design)
+			prompt += ImplementSuffix(red.Failing, red.Output)
 		}
 		if scan.Summary != "" {
 			prompt += "\n\nA security scan of the tree found the following. Fix every finding that is real, and do not just silence the scanner:\n" + quoted("Scan results", clip(scan.Summary, 4000))
@@ -605,6 +586,7 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 				cost += u.CostUSD
 			}
 			_, _ = td.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: cost})
+			td.recordDoD(ctx, t, res.Text)
 			if td.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
 				td.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
 			}
@@ -613,9 +595,16 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 	}
 }
 
-// gated reports whether this run's workflow has the spec gate (so the implementation requires an accepted spec).
+// gated reports whether this run's workflow has the spec gate (so the implementation requires an accepted spec). The pull
+// request variants (feature-pr, full-stack-saas-pr) have the same gate.
 func (td TemplateDeps) gated(in workflow.NodeInput) bool {
-	return in.Workflow == WorkflowFeature || in.Workflow == WorkflowSaaS
+	return IsGated(in.Workflow)
+}
+
+// IsGated reports whether a workflow (local or pull request variant) has the spec gate.
+func IsGated(workflowName string) bool {
+	w := strings.TrimSuffix(workflowName, PRSuffix)
+	return w == WorkflowFeature || w == WorkflowSaaS
 }
 
 // verifyTDD is Verify plus what the test-first templates add: after the project's checks pass, the e2e check (when the
@@ -787,6 +776,6 @@ func (td TemplateDeps) securityReview() workflow.NodeHandler {
 		if _, err := td.Tasks.Transition(ctx, t.ID, tasks.InProgress, tasks.TransitionOpts{By: out.AgentID, Reason: "the security reviewer returned REVISE", Feedback: v.Feedback}); err != nil {
 			return workflow.NodeOutput{Value: b, Route: "limit"}, nil
 		}
-		return workflow.NodeOutput{Value: b, Route: "revise"}, nil
+		return td.reviseOutput(ctx, t, v, b), nil
 	}
 }

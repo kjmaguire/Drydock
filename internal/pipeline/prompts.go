@@ -29,12 +29,14 @@ func clip(s string, n int) string {
 	return s[:cut] + "\n...[truncated]"
 }
 
-// SpecPrompt asks the PM-role agent for a spec. previous and feedback are set when the spec is being revised.
-func SpecPrompt(t tasks.Task, previous, feedback string) string {
+// SpecPrompt asks the PM-role agent for a spec. previous and feedback are set when the spec is being revised; brief is the
+// project brief (empty: none).
+func SpecPrompt(t tasks.Task, previous, feedback, brief string) string {
 	var b strings.Builder
 	b.WriteString("Drydock phase: spec\n")
 	b.WriteString("You are the product manager on this team. Write a specification for the task below. Do not write or change code; you may read the repository to ground the spec.\n\n")
-	fmt.Fprintf(&b, "Task: %s\n\n%s\n", t.Title, strings.TrimSpace(t.Description))
+	b.WriteString(briefBlock(brief))
+	fmt.Fprintf(&b, "Task: %s\n\n%s\n", t.Title, clip(strings.TrimSpace(t.Description), maxDescFirst))
 	if len(t.Acceptance) > 0 {
 		b.WriteString("\nCriteria the requester already wrote (keep their intent):\n")
 		for _, a := range t.Acceptance {
@@ -66,26 +68,36 @@ Every acceptance criterion must contain the words Given, when and then. Nothing 
 	return b.String()
 }
 
-// DesignPrompt asks the architect for a short implementation plan for the accepted spec.
-func DesignPrompt(t tasks.Task) string {
+// DesignPrompt asks the architect for a short implementation plan for the accepted spec (spec: the accepted spec without its
+// criteria, see SpecContext; brief: the project brief).
+func DesignPrompt(t tasks.Task, spec, brief string) string {
 	var b strings.Builder
 	b.WriteString("Drydock phase: design\n")
 	b.WriteString("You are the architect. A human accepted the spec below. Write a short implementation plan (under 300 words): the files or modules to touch, data model and API changes, and risks. Do not write code. You may read the repository.\n\n")
-	fmt.Fprintf(&b, "Task: %s\n\n", t.Title)
-	b.WriteString("Accepted acceptance criteria:\n")
+	b.WriteString(briefBlock(brief))
+	fmt.Fprintf(&b, "Task: %s\n", t.Title)
+	if d := strings.TrimSpace(t.Description); d != "" {
+		b.WriteString("\n" + clip(d, maxDescFirst) + "\n")
+	}
+	if strings.TrimSpace(spec) != "" {
+		b.WriteString("\n" + quoted("The accepted spec (problem, scope and non-goals)", spec))
+	}
+	b.WriteString("\nAccepted acceptance criteria:\n")
 	for _, a := range t.Acceptance {
 		fmt.Fprintf(&b, "- %s\n", a)
 	}
 	return b.String()
 }
 
-// TestsPrompt asks for tests that fail until the feature exists (a feature) or reproduce the defect (a bug).
-func TestsPrompt(t tasks.Task, bug bool, feedback string) string {
+// TestsPrompt asks for tests that fail until the feature exists (a feature) or reproduce the defect (a bug). spec is the
+// accepted spec without its criteria (features only), brief the project brief.
+func TestsPrompt(t tasks.Task, bug bool, feedback, spec, brief string) string {
 	var b strings.Builder
 	if bug {
 		b.WriteString("Drydock phase: reproduce\n")
 		b.WriteString("You are reproducing a bug with a failing automated test BEFORE anything is fixed.\n\n")
-		fmt.Fprintf(&b, "Bug: %s\n\n%s\n", t.Title, strings.TrimSpace(t.Description))
+		b.WriteString(briefBlock(brief))
+		fmt.Fprintf(&b, "Bug: %s\n\n%s\n", t.Title, clip(strings.TrimSpace(t.Description), maxDescFirst))
 		b.WriteString(`
 Rules:
 - Write one or more automated tests that fail because of exactly this bug, using the project's existing test framework and layout (read the existing tests first).
@@ -96,8 +108,15 @@ Rules:
 	} else {
 		b.WriteString("Drydock phase: write-tests\n")
 		b.WriteString("You are writing the tests BEFORE the implementation exists (test-driven development).\n\n")
-		fmt.Fprintf(&b, "Task: %s\n\n", t.Title)
-		b.WriteString("Acceptance criteria, accepted by a human (each id is how the tests are traced back to the spec):\n")
+		b.WriteString(briefBlock(brief))
+		fmt.Fprintf(&b, "Task: %s\n", t.Title)
+		if d := strings.TrimSpace(t.Description); d != "" {
+			b.WriteString("\n" + clip(d, maxDescRework) + "\n")
+		}
+		if strings.TrimSpace(spec) != "" {
+			b.WriteString("\n" + quoted("The accepted spec (problem, scope and non-goals)", spec))
+		}
+		b.WriteString("\nAcceptance criteria, accepted by a human (each id is how the tests are traced back to the spec):\n")
 		for _, a := range t.Acceptance {
 			fmt.Fprintf(&b, "- %s\n", a)
 		}
@@ -117,8 +136,9 @@ Rules:
 	return b.String()
 }
 
-// ImplementSuffix is appended to the work prompt on the first implementation pass of a test-first template.
-func ImplementSuffix(failing []string, output, design string) string {
+// ImplementSuffix is appended to the work prompt on the first implementation pass of a test-first template. The design notes
+// and the accepted spec are part of every implementation pass (WorkPrompt with a PromptContext), not only this one.
+func ImplementSuffix(failing []string, output string) string {
 	var b strings.Builder
 	b.WriteString("\n\nTests for this task were written first and currently fail. Make them pass without weakening or deleting them.\n")
 	if len(failing) > 0 {
@@ -127,9 +147,6 @@ func ImplementSuffix(failing []string, output, design string) string {
 	if strings.TrimSpace(output) != "" {
 		b.WriteString(quoted("Output of the failing test run", clip(output, 3000)))
 	}
-	if strings.TrimSpace(design) != "" {
-		b.WriteString(quoted("Design notes from the architect", clip(design, 3000)))
-	}
 	return b.String()
 }
 
@@ -137,16 +154,20 @@ func ImplementSuffix(failing []string, output, design string) string {
 func SecurityReviewPrompt(t tasks.Task, evidence []tasks.Evidence, diff string) string {
 	var b strings.Builder
 	b.WriteString("Drydock phase: security-review\n")
-	fmt.Fprintf(&b, "You are the independent security reviewer for this task. You did not write this change.\n\nTask: %s\n\n%s\n", t.Title, strings.TrimSpace(t.Description))
+	fmt.Fprintf(&b, "You are the independent security reviewer for this task. You did not write this change.\n\n")
+	b.WriteString(taskBlock(t, false))
 	b.WriteString("\nEvidence already produced by deterministic tools (do not redo it):\n")
 	for _, e := range evidence {
+		if e.Kind == dodKind {
+			continue
+		}
 		status := ""
 		if e.Passed != nil {
 			status = map[bool]string{true: " [passed]", false: " [FAILED]"}[*e.Passed]
 		}
 		fmt.Fprintf(&b, "- %s%s: %s\n", e.Kind, status, e.Summary)
 	}
-	fmt.Fprintf(&b, "\nDiff of the change:\n```diff\n%s\n```\n", truncate(diff, 12000))
+	b.WriteString(diffSection(diff))
 	b.WriteString(`
 Review for security: secrets in code or config, injection (SQL, command, path), missing authentication or authorization, unsafe deserialization, unvalidated input, vulnerable or unpinned dependencies, and anything the scans above flagged. You may read files in the working directory. Do not modify anything.
 Finish with exactly one JSON object on its own line, and nothing after it:

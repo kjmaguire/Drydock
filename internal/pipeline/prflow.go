@@ -437,7 +437,8 @@ func IterateUntilVerifiedPR(d Deps, src PRSource, maxLoops int) *workflow.Graph 
 	if maxLoops <= 0 {
 		maxLoops = 5
 	}
-	return workflow.NewGraph("iterate-until-verified-pr").
+	esc := NodeEscalate
+	g := workflow.NewGraph("iterate-until-verified-pr").
 		Add(
 			workflow.Route("prepare", Prepare(d)),
 			workflow.AgentTask("work", Work(d)).With("agent", "work"),
@@ -450,26 +451,28 @@ func IterateUntilVerifiedPR(d Deps, src PRSource, maxLoops int) *workflow.Graph 
 			&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(d)},
 			workflow.Route("changes", Changes(d)),
 			workflow.Route("merge", MergePR(d, src)),
-			workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
 		).
 		Edge("prepare", "work").
 		Edge("work", "verify").
 		EdgeWhen("verify", "finalize", "pass").
-		Loop("verify", "work", "fail", maxLoops, "limit").
+		Loop("verify", "work", "fail", maxLoops, esc).
 		Edge("finalize", "review").
 		EdgeWhen("review", "push_pr", "ship").
-		Loop("review", "work", "revise", maxLoops, "limit").
-		EdgeWhen("review", "limit", "limit").
+		Loop("review", "work", "revise", maxLoops, esc).
+		EdgeWhen("review", esc, "limit").
+		EdgeWhen("review", esc, RouteStuck).
 		Edge("push_pr", "ci").
 		EdgeWhen("ci", "pr_feedback", "pass").
-		Loop("ci", "work", "fail", maxLoops, "limit").
-		EdgeWhen("ci", "limit", "limit").
+		Loop("ci", "work", "fail", maxLoops, esc).
+		EdgeWhen("ci", esc, "limit").
 		EdgeWhen("pr_feedback", "approve", "clean").
-		Loop("pr_feedback", "work", "revise", maxLoops, "limit").
-		EdgeWhen("pr_feedback", "limit", "limit").
+		Loop("pr_feedback", "work", "revise", maxLoops, esc).
+		EdgeWhen("pr_feedback", esc, "limit").
 		EdgeWhen("approve", "merge", "approved").
 		EdgeWhen("approve", "changes", "rejected").
-		Loop("changes", "work", "", maxLoops, "limit").
-		Loop("merge", "merge", "answered", 3, "limit").
-		Start("prepare")
+		Loop("changes", "work", "", maxLoops, esc).
+		Loop("merge", "merge", "answered", 3, esc)
+	// a merge GitHub keeps refusing goes back to the human's approval, not to the worker
+	addEscalation(g, d, map[workflow.NodeID]workflow.NodeID{"merge": "approve"})
+	return g.Start("prepare")
 }

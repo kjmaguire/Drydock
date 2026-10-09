@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
-// TeamMember is the part of an agent the template role resolution needs.
+// TeamMember is the part of an agent the template role resolution and the planner need.
 type TeamMember struct {
-	ID   string
-	Name string
-	Role string
+	ID      string
+	Name    string
+	Role    string
+	Adapter string // the agent's CLI (claude, codex, gemini...); shown to the planner
 }
 
 // Template roles beyond the task's own worker and reviewer.
@@ -21,17 +24,27 @@ const (
 	RoleTests     = "tests"
 	RoleArchitect = "architect"
 	RoleSecurity  = "security"
+	// RoleLead is the team lead (supervisor): it watches the team's tasks when Drydock's deterministic triggers fire and
+	// decides one small intervention. It never writes code and is never a task's worker, reviewer or template role.
+	RoleLead = "lead"
 )
 
 // roleSynonyms maps the normalized text of an agent's role to the template role it can fill. Roles in Drydock are free
 // text on the agent (brief section 1: PM, Architect, UX Designer, Frontend, Backend, Database, DevOps, QA, Security,
-// Reviewer), so matching is by normalized name, never by provider.
+// Reviewer, and the team lead), so matching is by normalized name, never by provider.
 var roleSynonyms = map[string][]string{
 	RolePM:        {"pm", "product manager", "product owner", "product"},
 	RoleTests:     {"qa", "tester", "test engineer", "quality", "quality assurance", "sdet", "test"},
 	RoleArchitect: {"architect", "software architect", "architecture"},
 	RoleSecurity:  {"security", "security engineer", "appsec", "secops"},
+	RoleLead:      {"lead", "team lead", "teamlead", "manager", "supervisor", "engineering manager"},
 }
+
+// IsLeadRole reports whether an agent's role text names the team lead ("lead", "team lead", "manager", "supervisor").
+func IsLeadRole(role string) bool { return RoleMatches(role, RoleLead) }
+
+// openStatuses are the task states that are not terminal.
+var openStatuses = []tasks.Status{tasks.Backlog, tasks.Ready, tasks.Claimed, tasks.InProgress, tasks.Blocked, tasks.WaitingHuman, tasks.Review, tasks.Verification}
 
 func normRole(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))

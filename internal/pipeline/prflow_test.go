@@ -193,8 +193,8 @@ func TestPRFlowCIFailureLoopsBackThenHumanMergesThroughGitHub(t *testing.T) {
 	e.await(t, id, workflow.StatusWaitingHuman)
 
 	wp := prompts(lg.workLog)
-	if len(wp) != 2 || !strings.Contains(wp[1], "doc comment (revive)") || strings.Contains(wp[1], "2026-10-08T10:00:00") || strings.Contains(wp[1], "Acceptance criteria") {
-		t.Fatalf("the rework prompt must carry only the CI failure, without log timestamps: %q", wp)
+	if len(wp) != 2 || !strings.Contains(wp[1], "doc comment (revive)") || strings.Contains(wp[1], "2026-10-08T10:00:00") || !strings.Contains(wp[1], "Task: Implement Subtract") || strings.Contains(wp[1], "Work in the current directory") {
+		t.Fatalf("the rework prompt must carry the task and the CI failure (no previous-session history, no log timestamps): %q", wp)
 	}
 	f.mu.Lock()
 	opened, body := f.opened, f.openBody

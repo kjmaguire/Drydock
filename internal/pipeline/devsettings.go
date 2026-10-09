@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/storage"
 )
@@ -31,6 +32,20 @@ type DevSettings struct {
 	// command lines (checks.WorkerRules; docs/worker-commands.md, tier 1). Those run code the worker can change, so in practice
 	// it can then run anything. Off by default, off after an import; never applies to a reviewer.
 	WorkerChecks bool `json:"workerChecks,omitempty"`
+	// LeadStallMinutes is how long a RUNNING task may go without progress events before the team lead is asked about it
+	// (trigger "stalled"). 0 means the default, 15 minutes. Only matters when the project has an agent with the lead role.
+	LeadStallMinutes int `json:"leadStallMinutes,omitempty"`
+}
+
+// DefaultLeadStallMinutes is the stall time when LeadStallMinutes is not set.
+const DefaultLeadStallMinutes = 15
+
+// LeadStall is the stall time in force.
+func (s DevSettings) LeadStall() time.Duration {
+	if s.LeadStallMinutes <= 0 {
+		return DefaultLeadStallMinutes * time.Minute
+	}
+	return time.Duration(s.LeadStallMinutes) * time.Minute
 }
 
 // GuardOn reports whether the collision guard is in force.
@@ -74,6 +89,9 @@ func (s *DevSettings) Validate() error {
 	}
 	if s.E2E.TimeoutSec < 0 || s.Preview.TimeoutSec < 0 || s.E2E.TimeoutSec > 7200 || s.Preview.TimeoutSec > 3600 {
 		return errors.New("devloop: timeout out of range")
+	}
+	if s.LeadStallMinutes < 0 || s.LeadStallMinutes > 1440 {
+		return errors.New("devloop: leadStallMinutes must be 0 (default 15) to 1440")
 	}
 	return nil
 }

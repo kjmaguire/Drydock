@@ -57,6 +57,9 @@ type Deps struct {
 	Enabled func(ctx context.Context, projectID string) bool
 	// OnCost receives the cost of a turn in a task room so it counts toward the task (cost per accepted task).
 	OnCost func(ctx context.Context, taskID string, usd float64)
+	// Brief returns the project's brief (the human's description of the project), shown to the agent before the conversation.
+	// Optional.
+	Brief func(ctx context.Context, projectID string) string
 	// Spec lets the application adjust the run spec (MCP configuration, test environment). Optional.
 	Spec func(a Agent, base agents.RunSpec) agents.RunSpec
 	Logf func(format string, args ...any)
@@ -430,7 +433,11 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	extra := r.dmRecent(ctx, rm, trig, sel)
 	members, _ := r.d.Room.Members(ctx, rm.ID)
 	moderator := rm.Mode == room.ModeModerator && rm.ModeParams.Moderator == agent.ID
-	prompt := BuildPrompt(PromptInput{Agent: agent, Room: rm, Members: members, Selection: sel, Extra: extra, Moderator: moderator, Trigger: trig})
+	brief := ""
+	if r.d.Brief != nil {
+		brief = r.d.Brief(ctx, rm.ProjectID)
+	}
+	prompt := BuildPrompt(PromptInput{Agent: agent, Room: rm, Members: members, Selection: sel, Extra: extra, Moderator: moderator, Trigger: trig, Brief: brief})
 	r.saveManifest(ctx, info.TurnID, rm, agent, sel, extra, prompt)
 
 	// admission: the global cap, then the project/provider gate (a queued agent shows Waiting)

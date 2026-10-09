@@ -82,8 +82,9 @@ type Core struct {
 
 	extMethods map[string]Method
 	extClose   []func()
-	mcpw       atomic.Pointer[mcpWiring] // the shared MCP gateway (ext_mcp.go)
-	secrets    providers.SecretStore     // API keys and tokens (Credential Manager plus an encrypted overflow); nil when the host has no store
+	mcpw       atomic.Pointer[mcpWiring]     // the shared MCP gateway (ext_mcp.go)
+	lead       atomic.Pointer[pipeline.Lead] // the team lead service (ext_lead.go)
+	secrets    providers.SecretStore         // API keys and tokens (Credential Manager plus an encrypted overflow); nil when the host has no store
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
@@ -162,7 +163,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		},
 		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
 	}}
-	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}}
+	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
@@ -173,9 +174,19 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTurn:       c.postTurn,
 		MCPStatus:    c.mcpStatus,
 		WorkerChecks: c.workerChecks,
+		Lead:         leadHook{c},
+		ResetWatch:   c.resetWatch,
+		ProjectBrief: c.ProjectBrief,
+		PlanDir: func(ctx context.Context, projectID string) (string, error) {
+			p, err := c.GetProject(ctx, projectID)
+			if err != nil {
+				return "", err
+			}
+			return c.projectDir(p)
+		},
 	}
 	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps)})
-	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, watchdog.Hooks{Notify: c.watchdogNotify}, nil)
+	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, c.watchdogHooks(), watchdog.ForNode)
 	c.Engine.Use(workflow.KindAgentTask, c.Watch.Middleware())
 	c.Engine.Observe(c.Watch.Observer())
 	c.Engine.Use(workflow.KindCheck, c.Watch.CheckMiddleware(nil))

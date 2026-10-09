@@ -136,8 +136,8 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 	if len(wp) != 2 || len(rp) != 2 {
 		t.Fatalf("worker turns=%d reviewer turns=%d", len(wp), len(rp))
 	}
-	if !strings.Contains(wp[1], "remove the HACK comment") || strings.Contains(wp[1], "Acceptance criteria") {
-		t.Fatalf("rework prompt must carry only the reviewer's feedback: %q", wp[1])
+	if !strings.Contains(wp[1], "remove the HACK comment") || !strings.Contains(wp[1], "Acceptance criteria") || strings.Contains(wp[1], "implemented") {
+		t.Fatalf("rework prompt must carry the task and the reviewer's feedback, and no previous-session history: %q", wp[1])
 	}
 	if !strings.Contains(rp[0], "independent reviewer") || !strings.Contains(rp[0], "[passed]") || !strings.Contains(rp[0], "```diff") {
 		t.Fatalf("review prompt must attach the evidence and diff: %q", rp[0])
@@ -300,10 +300,13 @@ func TestParseVerdict(t *testing.T) {
 		`Looks right. {"verdict":"SHIP","feedback":""}`:                  "SHIP",
 		"thinking...\n{\"verdict\":\"revise\",\"feedback\":\"fix nil\"}": "REVISE",
 		`{"verdict":"REVISE","feedback":"a"} then {"verdict":"SHIP"}`:    "SHIP", // last wins
-		"SHIP\nall good":      "SHIP",
-		"I think it is fine":  "REVISE", // unparseable never ships
-		`{"verdict":"MAYBE"}`: "REVISE",
-		"":                    "REVISE",
+		"SHIP":                             "SHIP", // the bare word alone is a verdict
+		"ship.":                            "SHIP",
+		"SHIP\nall good":                   "REVISE", // strict: a first line that starts with SHIP is not a verdict
+		"SHIPPING this would be a mistake": "REVISE",
+		"I think it is fine":               "REVISE", // unparseable never ships
+		`{"verdict":"MAYBE"}`:              "REVISE",
+		"":                                 "REVISE",
 	}
 	for in, want := range cases {
 		if got := pipeline.ParseVerdict(in).Verdict; got != want {
