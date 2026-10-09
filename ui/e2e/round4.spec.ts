@@ -150,7 +150,8 @@ test('export a project, preview what is in it, import it into a second project; 
   await expect(page.getByTestId('import-result')).toContainText('It came in untrusted');
 
   // the second project exists, is separate, and opens
-  await page.getByLabel('Project', { exact: true }).selectOption({ label: 'pkg-export-copy' });
+  // projects are tiles in the rail (the Discord-style server list)
+  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: 'pkg-export-copy', exact: true }).click();
   await expect(page.getByRole('link', { name: '# general' })).toBeVisible();
   await page.getByRole('link', { name: '# general' }).click();
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();
@@ -325,6 +326,8 @@ test('licensed test harness: no license is read-only and says why; expired is re
 test('the main harness page also loads through appUrl with the banner present on every route', async ({ page }) => {
   await page.goto(appUrl());
   await expect(page.getByTestId('license-banner')).toBeVisible();
+  // an old #/ link still opens its screen (the UI routes by path now)
   await page.goto(appUrl() + '#/settings');
+  await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByTestId('license-banner')).toBeVisible();
 });

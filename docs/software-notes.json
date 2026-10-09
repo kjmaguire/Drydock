@@ -14,11 +14,11 @@
       "role": "What this sandbox builds and tests with (the toolchain go.mod asks for, downloaded automatically)."
     },
     "node": {
-      "role": "Builds the UI and runs its tests and the browser tests. Agent CLIs installed through npm also need it (decision D9 sets 22)."
+      "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine)."
     },
     "npm": {
       "role": "Installs the UI packages.",
-      "hold": "Comes with Node 22; it moves when Node does."
+      "hold": "Comes with Node; it moves when Node does."
     },
     "go:cel.dev/cel-go": {
       "role": "Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language."
@@ -71,49 +71,38 @@
     "go:mvdan.cc/sh/v3": {
       "role": "Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only)."
     },
-    "npm:react": {
-      "role": "The UI framework (React 19)."
-    },
-    "npm:react-dom": {
-      "role": "Draws the UI in the browser."
-    },
     "npm:marked": {
       "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
       "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."
     },
+    "npm:remix": {
+      "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."
+    },
+    "npm:@remix-run/ui": {
+      "role": "Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui.",
+      "hold": "Pinned exactly: Remix calls it unstable (0.x, breaking changes in minor releases). Re-read its changelog before every bump."
+    },
+    "npm:lucide": {
+      "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled."
+    },
+    "npm:@fontsource-variable/inter": {
+      "role": "Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1)."
+    },
     "npm:@playwright/test": {
       "role": "Runs the browser tests against the real Go core."
     },
-    "npm:@testing-library/dom": {
-      "role": "Test helper for finding elements in component tests."
-    },
-    "npm:@testing-library/react": {
-      "role": "Test helper for rendering components in unit tests."
+    "npm:playwright": {
+      "role": "The browser automation remix test uses to run the component tests in Chromium (same version as @playwright/test)."
     },
     "npm:@types/node": {
       "role": "Type definitions for the Node APIs the build scripts use.",
-      "hold": "Follows the Node line the project is on (22), not the newest Node: the types must match the runtime."
-    },
-    "npm:@types/react": {
-      "role": "Type definitions for React."
-    },
-    "npm:@types/react-dom": {
-      "role": "Type definitions for React DOM."
-    },
-    "npm:@vitejs/plugin-react": {
-      "role": "Lets Vite build React."
-    },
-    "npm:jsdom": {
-      "role": "Fake browser used by the unit tests."
+      "hold": "Follows the Node line the UI tooling is on (24 LTS), not the newest Node: the types must match the runtime."
     },
     "npm:typescript": {
       "role": "Type-checks the UI before every build (TypeScript 7, the native compiler)."
     },
     "npm:vite": {
       "role": "Builds the UI bundle and serves it while developing."
-    },
-    "npm:vitest": {
-      "role": "Runs the UI unit tests."
     },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
@@ -195,12 +184,6 @@
     },
     "npm:dompurify": {
       "role": "Pulled in by monaco-editor; pinned by an override to the release that fixes the IN_PLACE advisories."
-    },
-    "npm:@xyflow/react": {
-      "role": "Draws the workflow graph of a run (React Flow; lazy-loaded)."
-    },
-    "npm:cmdk": {
-      "role": "The Ctrl+K command palette."
     }
   }
 }

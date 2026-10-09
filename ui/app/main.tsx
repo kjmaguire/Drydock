@@ -44,7 +44,7 @@ async function boot() {
   applyTheme(loadTheme());
   // links from before the UI routed by path (#/task/x) still open the right screen
   const legacy = hashToPath(window.location.hash);
-  if (legacy) window.history.replaceState(null, '', legacy);
+  if (legacy) window.history.replaceState(null, '', legacy + window.location.search); // keep ?token= for pickTransport
 
   const transport = await pickTransport();
   const client = createClient(transport);

@@ -46,6 +46,6 @@ test('mentions autocomplete, slash commands, attachments and the Ctrl+K palette'
   await expect(cmd).toBeVisible();
   await cmd.fill('team');
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/#\/team$/);
+  await expect(page).toHaveURL(/\/team$/);
   await expect(cmd).toBeHidden();
 });

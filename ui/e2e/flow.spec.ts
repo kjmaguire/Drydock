@@ -122,10 +122,10 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
 test('the sidebar is keyboard navigable and Needs you comes first', async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
-  await expect(items.first()).toHaveAttribute('href', '#/project/new');
+  await expect(items.first()).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('link', { name: '# alerts' })).toBeFocused();
+  await expect(page.getByTestId('nav-tasks')).toBeFocused();
   await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');

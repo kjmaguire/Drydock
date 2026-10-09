@@ -1,9 +1,9 @@
 # Working in this repository
 
-Drydock is a Windows-only desktop app (Go core, React/TypeScript UI). The brief is `docs/brief.md`, decisions are in
+Drydock is a Windows-only desktop app (Go core, Remix 3/TypeScript UI; conventions in `ui/app/README.md`). The brief is `docs/brief.md`, decisions are in
 `docs/decisions.md`. Linux is only the development host.
 
-- Build and test: `GOFLAGS=-mod=mod go test ./...`, `go vet ./...` and `GOOS=windows go vet ./...`; UI: `cd ui && npm test && npm run build`;
+- Build and test: `GOFLAGS=-mod=mod go test ./...`, `go vet ./...` and `GOOS=windows go vet ./...`; UI (Node 24): `cd ui && npm test && npm run build`;
   browser tests: `cd ui && npx playwright test` (needs `npm run build` first, the harness serves `ui/dist`).
 - Nothing is marked done with a failing test. Every change ships with tests. No mocks of agents except labelled test doubles.
 - Never upload source code; no secrets in logs, events or the database.

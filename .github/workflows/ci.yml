@@ -48,10 +48,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
+        working-directory: ui
+      # remix test runs the component tests in a real Chromium page
+      - run: npx playwright install chromium
         working-directory: ui
       - run: npm test
         working-directory: ui
@@ -68,7 +71,7 @@ jobs:
           go-version-file: go.mod
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
       - run: npm ci && npm run build
         working-directory: ui
       - name: Build the Wails app (CGO off, as Wails v3 needs none on Windows)

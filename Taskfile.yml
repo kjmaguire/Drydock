@@ -15,7 +15,7 @@ tasks:
       - npm run build
 
   ui:test:
-    desc: UI unit and component tests (vitest, jsdom)
+    desc: UI unit tests (Node) and component tests (a real Chromium page) with remix test; needs Node 24
     dir: ui
     cmds:
       - npm test
