@@ -109,6 +109,12 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed bool) error {
 	}
 	script, err := json.Marshal(fakeagent.Script{
 		Rules: []fakeagent.Rule{
+			// Chats (ui/e2e/chats.spec.ts): the scripted agent answers a chat message that carries the marker text, refuses a
+			// Bash call in the default permission mode, and runs it after the human allowed the suggested rule and pressed Retry
+			// (the retry text comes from the UI). It is a TEST DOUBLE, never presented as Claude.
+			{Match: "drydock-e2e chat", Steps: []fakeagent.Step{{Say: "Hello from the scripted chat stand-in (a test double). I read: drydock-e2e chat."}}},
+			{Match: "drydock-e2e touch", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "I was not allowed to run that."}}},
+			{Match: "the tool is now allowed", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "Done: chat_probe.txt is there now."}}},
 			// the independent reviewer (prompt text from internal/pipeline/review.go) always ships
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
 			// after a human "request changes" the worker's prompt carries "Reviewer feedback:"
