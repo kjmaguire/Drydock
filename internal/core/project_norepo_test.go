@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -106,5 +107,32 @@ func TestProjectBrief(t *testing.T) {
 	}
 	if a.c.ProjectBrief(ctx, p.ID) != p.Brief || a.c.ProjectBrief(ctx, "prj_nope") != "" {
 		t.Fatal("ProjectBrief")
+	}
+}
+
+// A project without a repository can still be planned: the planner reads in the project's private folder, and the accepted
+// tasks wait in the backlog until a repository is attached.
+func TestPlanningWorksWithoutARepository(t *testing.T) {
+	a, _ := openDev(t, devScript())
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "Someday"}, &p)
+	a.agent(p.ID, "Priya", "pm")
+	a.agent(p.ID, "Dana", "backend")
+	a.agent(p.ID, "Rex", "reviewer")
+	a.call("project.setBrief", map[string]any{"id": p.ID, "brief": "A calculator library in Go."}, nil)
+	var prop map[string]any
+	a.call("plan.propose", map[string]any{"projectId": p.ID, "goal": "Add Multiply and then Divide to gocalc"}, &prop)
+	planID := prop["planId"].(string)
+	var plan pipeline.Plan
+	a.waitFor("the proposal", func() bool {
+		a.call("plan.get", map[string]string{"planId": planID}, &plan)
+		return plan.Status == "PROPOSED" || plan.Status == "FAILED"
+	})
+	if plan.Status != "PROPOSED" {
+		t.Fatalf("planning without a repository: %+v", plan)
+	}
+	a.call("plan.accept", map[string]any{"planId": planID}, &plan)
+	if len(plan.Created) != 2 {
+		t.Fatalf("plan %+v", plan)
 	}
 }

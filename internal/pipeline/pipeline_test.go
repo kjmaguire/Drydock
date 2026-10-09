@@ -201,8 +201,13 @@ func TestPipelineLoopsOnFailingChecksWithMinimalContext(t *testing.T) {
 	if !strings.Contains(p[1], "TestSubtract") || !strings.Contains(p[1], "check failed") {
 		t.Fatalf("second prompt must carry the failing tests: %q", p[1])
 	}
-	if strings.Contains(p[1], "Acceptance criteria") || strings.Contains(p[1], "stub Subtract") {
-		t.Fatalf("iteration context must be minimal (feedback only, no re-sent spec/history): %q", p[1])
+	// a later pass keeps the task (title, description, criteria) so the agent never loses what it is building, but carries
+	// no history of the previous session: only the failure
+	if !strings.Contains(p[1], "Task: Implement Subtract") || !strings.Contains(p[1], "Acceptance criteria") || !strings.Contains(p[1], "stub Subtract") {
+		t.Fatalf("a rework pass must still carry the task: %q", p[1])
+	}
+	if strings.Contains(p[1], "implemented") || strings.Contains(p[1], "Work in the current directory") {
+		t.Fatalf("a rework pass carries no previous-session history: %q", p[1])
 	}
 
 	task, _ := e.tasks.Get(context.Background(), e.task.ID)
@@ -269,8 +274,12 @@ func TestPipelineIterationLimitParksForHumanAndKeepsWork(t *testing.T) {
 		t.Fatalf("pending %+v", pend)
 	}
 	task, _ := e.tasks.Get(context.Background(), e.task.ID)
-	if task.Status != tasks.InProgress {
-		t.Fatalf("task should stay IN_PROGRESS, got %s", task.Status)
+	if task.Status != tasks.WaitingHuman {
+		t.Fatalf("the task waits for the human at the limit, got %s", task.Status)
+	}
+	var lp pipeline.LimitPayload
+	if err := json.Unmarshal(pend[0].Spec.Payload, &lp); err != nil || lp.Trigger != pipeline.TriggerIterationLimit || lp.Origin != "verify" || !strings.Contains(lp.Evidence, "TestSubtract") || lp.Note == "" {
+		t.Fatalf("the limit question must say why the run stopped and how to answer: %+v (%v)", lp, err)
 	}
 	w := git.Worktree{Path: task.Worktree, Branch: task.Branch, Base: task.BaseBranch, TaskID: task.ID}
 	if err := e.repo.DeleteWorktree(context.Background(), w, false); err == nil {

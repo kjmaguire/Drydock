@@ -44,12 +44,14 @@ When the adapter is Claude Code, the switch "Follow Claude Code best practices" 
 template. What it does:
 
 1. Adds a short, role-specific working-practices text to the system prompt of every session of the agent
-   (`--append-system-prompt`), before the human's own purpose text. Three families, picked from the role of the session (a review
+   (`--append-system-prompt`), before the human's own purpose text. Four families, picked from the role of the session (a review
    turn of any agent is `reviewer`): worker (writes code), reviewer (judges, never modifies), planner (pm, architect, ux designer:
-   words, not code). The exact text is shown in the create/edit form and returned by the `claude.practices` method.
+   words, not code), lead (team lead, manager, supervisor: supervises, never writes code, decides crisply, prefers the smallest
+   intervention, escalates to the human when unsure; decision P26, `PracticesVersion` 2). The exact text is shown in the
+   create/edit form and returned by the `claude.practices` method.
 2. Records the version of the text in the `agent.started` event (`practices`), so a run says which wording it was given.
-3. Suggests a model and effort for the role and fills them in until the human changes them (workers and planners: sonnet, medium;
-   reviewers: sonnet, high; architects: opus, high). The suggestion is shown with the reason; nothing is forced.
+3. Suggests a model and effort for the role and fills them in until the human changes them (workers, planners and the lead: sonnet,
+   medium; reviewers: sonnet, high; architects: opus, high). The suggestion is shown with the reason; nothing is forced.
 4. Starts Claude Code with `--setting-sources user` (section 5) and a trimmed environment (security.md).
 
 The wording of an instruction matters. Measured with Claude Code 2.1.295 (haiku, low effort), a style instruction placed after a

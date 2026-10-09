@@ -3,22 +3,25 @@ package claude
 import "strings"
 
 // PracticesVersion changes whenever the text below changes, so a run records which wording it was given.
-const PracticesVersion = 1
+const PracticesVersion = 2
 
 // Role families for the practices text. A role the planner or the human typed is mapped to one of them.
 const (
 	FamilyWorker   = "worker"   // writes code
 	FamilyReviewer = "reviewer" // reads and judges; never modifies
 	FamilyPlanner  = "planner"  // writes specs, designs and plans; does not write code
+	FamilyLead     = "lead"     // supervises the team; never writes code
 )
 
 // FamilyOf maps a role name to its family. Unknown roles are workers: they are the ones that change files.
 func FamilyOf(role string) string {
-	switch strings.ToLower(strings.TrimSpace(role)) {
+	switch strings.Join(strings.Fields(strings.ToLower(strings.NewReplacer("-", " ", "_", " ").Replace(role))), " ") {
 	case "reviewer", "security", "security reviewer", "code reviewer":
 		return FamilyReviewer
 	case "pm", "product manager", "architect", "ux designer", "ux", "planner":
 		return FamilyPlanner
+	case "lead", "team lead", "teamlead", "manager", "supervisor", "engineering manager":
+		return FamilyLead
 	}
 	return FamilyWorker
 }
@@ -44,6 +47,12 @@ const practicesPlanner = `
 - Be specific: name the files, interfaces and edge cases involved, say what is out of scope, and state how the result will be verified.
 - Split work so that parallel tasks own different files. Say which files each piece touches.`
 
+const practicesLead = `
+- You supervise the team: you never write or change code, and you do not run builds or tests. You read what you are shown and, if you need to, the repository.
+- Decide crisply from the evidence. Prefer the smallest intervention that gets the work moving: a precise nudge before a reassignment, a reassignment before a split.
+- Escalate to the human when you are unsure, or when the problem needs a human decision (scope, priorities, credentials, money).
+- Answer in exactly the format you are asked for.`
+
 // Practices returns the working-practices text for a role. It is short on purpose: every line is paid for in tokens on every run,
 // and a long list of rules makes the model ignore the ones that matter (Anthropic's CLAUDE.md guidance).
 func Practices(role string) string {
@@ -52,6 +61,8 @@ func Practices(role string) string {
 		return practicesCommon + practicesReviewer
 	case FamilyPlanner:
 		return practicesCommon + practicesPlanner
+	case FamilyLead:
+		return practicesCommon + practicesLead
 	}
 	return practicesCommon + practicesWorker
 }
@@ -66,6 +77,8 @@ type Preset struct {
 // PresetFor suggests a model and effort for a role. It is a suggestion shown to the human, never applied silently.
 func PresetFor(role string) Preset {
 	switch FamilyOf(role) {
+	case FamilyLead:
+		return Preset{"sonnet", "medium", "The lead makes short, structured decisions from a compact digest; Sonnet at medium effort decides well and keeps every supervision turn cheap."}
 	case FamilyReviewer:
 		return Preset{"sonnet", "high", "Review is where verification matters and edge cases hide, so a higher effort pays off; Sonnet handles most review well."}
 	case FamilyPlanner:

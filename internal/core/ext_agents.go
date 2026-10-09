@@ -137,7 +137,8 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 			}
 			return responder.Agent{ID: ag.ID, ProjectID: ag.ProjectID, Name: ag.Name, Adapter: ag.Adapter, Role: ag.Role, Model: ag.Model, Effort: ag.Effort, ProviderID: ag.ProviderID}, nil
 		},
-		Cwd: a.replyCwd,
+		Cwd:   a.replyCwd,
+		Brief: c.ProjectBrief,
 		Gate: func(ctx context.Context, projectID string, ag responder.Agent) (func(), error) {
 			return a.limiter.Acquire(ctx, projectID, ag.ProviderID)
 		},
@@ -278,7 +279,7 @@ func (a *agentsDev) team(ctx context.Context, projectID string) ([]pipeline.Team
 	}
 	out := make([]pipeline.TeamMember, len(ags))
 	for i, ag := range ags {
-		out[i] = pipeline.TeamMember{ID: ag.ID, Name: ag.Name, Role: ag.Role}
+		out[i] = pipeline.TeamMember{ID: ag.ID, Name: ag.Name, Role: ag.Role, Adapter: ag.Adapter}
 	}
 	return out, nil
 }
@@ -331,7 +332,7 @@ func (a *agentsDev) assignByRole(ctx context.Context, t tasks.Task, role string)
 	}
 	if reviewer == "" {
 		for _, ag := range ags {
-			if ag.ID != worker && pipeline.NormalizePlanRole(ag.Role) != "pm" {
+			if ag.ID != worker && pipeline.NormalizePlanRole(ag.Role) != "pm" && !pipeline.IsLeadRole(ag.Role) { // the lead supervises, never reviews
 				reviewer = ag.ID
 				break
 			}

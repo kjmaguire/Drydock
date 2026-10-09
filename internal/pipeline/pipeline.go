@@ -60,6 +60,19 @@ type Deps struct {
 	WorkerChecks func(ctx context.Context, t tasks.Task, cfg rt.Config) bool
 	// GuardPoll is how often a task waiting for an earlier task looks again (default 2 seconds).
 	GuardPoll time.Duration
+	// ProjectBrief, if set, returns the brief the human wrote for the project. It is put, bounded and labelled as the human's,
+	// into the worker, spec, design, test-writing and planner prompts (and the core feeds the same text into the generated
+	// AGENTS.md). Nil, or an empty brief: nothing is added.
+	ProjectBrief func(ctx context.Context, projectID string) string
+	// PlanDir, if set, is the folder a read-only planning turn runs in (the repository, or a private folder for a project that
+	// has no repository yet). Nil: the repository root.
+	PlanDir func(ctx context.Context, projectID string) (string, error)
+	// Lead, if set, runs the team lead's supervision turn when a deterministic trigger fires (an iteration limit, repeated
+	// identical review feedback). Nil, or a project without a lead agent: the behaviour is exactly as without a lead.
+	Lead LeadSupervisor
+	// ResetWatch, if set, is called when a human continues a task past a limit and when a task moves on successfully (its
+	// checks passed and it entered review): the watchdog's trip count for the task starts again (watchdog.Watchdog.Reset).
+	ResetWatch func(ctx context.Context, taskID string)
 }
 
 // MCPStatus is the manifest view of one turn's MCP attachment.
@@ -161,8 +174,9 @@ func stageIndex(s tasks.Status) int {
 	return 4
 }
 
-// Work runs one agent turn in the task worktree. The prompt is the task spec on the first pass and, on later passes,
-// only the latest failure or review feedback (token rule 16: never the previous session's history).
+// Work runs one agent turn in the task worktree. Every pass carries the task (title, description, acceptance criteria) and the
+// project brief; a later pass adds only the latest failure, review feedback or guidance (token rule 16: never the previous
+// session's history).
 func Work(d Deps) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, d, in)
@@ -174,7 +188,7 @@ func Work(d Deps) workflow.NodeHandler {
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
 		d.addWorkerTools(ctx, t, &cfg)
-		prompt := WorkPrompt(t, in)
+		prompt := WorkPrompt(t, in, d.promptContext(ctx, t, false))
 		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "work")
 		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
 		out, err := h(ctx, in)
@@ -188,12 +202,29 @@ func Work(d Deps) workflow.NodeHandler {
 				cost += u.CostUSD
 			}
 			_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: cost})
+			d.recordDoD(ctx, t, res.Text)
 			if d.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
 				d.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
 			}
 		}
 		return out, nil
 	}
+}
+
+// promptContext gathers what a builder's turn carries besides the task: the brief, the accepted spec and design notes (when the
+// task went through the spec gate) and the worker's own definition of done for a task without criteria.
+func (d Deps) promptContext(ctx context.Context, t tasks.Task, withSpec bool) PromptContext {
+	pc := PromptContext{Brief: d.brief(ctx, t.ProjectID)}
+	if withSpec {
+		pc.Spec = d.acceptedSpec(ctx, t.ID)
+		pc.Design = d.designNotes(ctx, t.ID)
+	}
+	if len(t.Acceptance) == 0 {
+		if ev, err := d.Tasks.Evidence(ctx, t.ID); err == nil {
+			pc.DoD = statedDoD(ev)
+		}
+	}
+	return pc
 }
 
 // addWorkerTools lets a worker turn run the project's check commands, when the project allows it: the exact command lines
@@ -240,7 +271,7 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 		return
 	}
 	var m ctxeng.Manifest
-	m.Add("prompt ("+role+")", true, len(prompt), "task spec on the first pass; only the latest failure or feedback on later passes (token rule 16)", 1)
+	m.Add("prompt ("+role+")", true, len(prompt), "the task (compact on later passes) and the project brief on every pass; later passes add only the latest failure, feedback or guidance (token rule 16)", 1)
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md"} {
 		if st, err := os.Stat(filepath.Join(t.Worktree, name)); err == nil {
 			m.Add("file:"+name, true, int(st.Size()), "generated instruction file read natively by the CLI (cache-stable prefix)", 5)
@@ -274,10 +305,39 @@ func PromptPath(dataDir string, n workflow.NodeInfo) string {
 	return filepath.Join(dataDir, "runs", string(n.RunID), string(n.NodeID), fmt.Sprintf("%d-%d", n.Step, n.Attempt), "prompt.md")
 }
 
-// WorkPrompt builds the turn prompt. It contains only what the agent needs now.
-func WorkPrompt(t tasks.Task, in workflow.NodeInput) string {
+// WorkPrompt builds the turn prompt. It contains only what the agent needs now: the project brief, the task (title,
+// description, acceptance criteria; compact on a later pass), the accepted spec and design notes when there are any, and on a
+// later pass the latest failure, review feedback or guidance. A task without acceptance criteria asks the worker to state the
+// definition of done it works to (or reminds it of the one it stated).
+func WorkPrompt(t tasks.Task, in workflow.NodeInput, pc PromptContext) string {
+	feedback := inboxFeedback(in)
 	var sb strings.Builder
-	// feedback from the last failing check, a review, a watchdog nudge, or a human answer arrives through the inbox
+	sb.WriteString(briefBlock(pc.Brief))
+	sb.WriteString(taskBlock(t, len(feedback) > 0))
+	if strings.TrimSpace(pc.Spec) != "" {
+		sb.WriteString("\n" + quoted("The spec a human accepted for this task (problem, scope and non-goals)", pc.Spec))
+	}
+	if strings.TrimSpace(pc.Design) != "" {
+		sb.WriteString("\n" + quoted("Design notes from the architect", pc.Design))
+	}
+	if len(t.Acceptance) == 0 {
+		if strings.TrimSpace(pc.DoD) != "" {
+			sb.WriteString("\nNo acceptance criteria were given. The definition of done you stated earlier (keep to it, and start your final summary with it):\n" + pc.DoD + "\n")
+		} else {
+			sb.WriteString("\n" + dodAsk)
+		}
+	}
+	if len(feedback) == 0 {
+		sb.WriteString("\nWork in the current directory. Make the change, keep it minimal, and stop when the task is done. Do not commit.")
+		return sb.String()
+	}
+	fmt.Fprintf(&sb, "\nYour previous attempt needs changes. Fix the following and stop. Do not commit.\n\n%s", strings.Join(feedback, "\n\n---\n\n"))
+	return sb.String()
+}
+
+// inboxFeedback collects what a later pass must fix or follow: a failing check, a merge conflict, a watchdog notice, review
+// feedback, or guidance from a human or the team lead (rendered as readable text, never raw JSON).
+func inboxFeedback(in workflow.NodeInput) []string {
 	var feedback []string
 	for _, m := range in.Inbox {
 		var cr workflow.CheckResult
@@ -305,28 +365,28 @@ func WorkPrompt(t tasks.Task, in workflow.NodeInput) string {
 				feedback = append(feedback, conflictPrompt(files, target))
 			} else if w, ok := o["watchdog"].(string); ok {
 				feedback = append(feedback, w)
+			} else if g, ok := o["guidance"].(string); ok {
+				if strings.TrimSpace(g) != "" {
+					feedback = append(feedback, guidanceLabel(o["from"])+"\n"+clip(strings.TrimSpace(g), maxGuidance))
+				}
 			} else if fb, ok := o["feedback"].(string); ok {
 				feedback = append(feedback, "Reviewer feedback:\n"+fb)
 			} else if d, ok := o["data"]; ok {
-				if b, _ := json.Marshal(d); len(b) > 0 && string(b) != "null" {
-					feedback = append(feedback, "Guidance from the human:\n"+string(b))
+				raw, _ := json.Marshal(d)
+				if g := HumanText(raw); g != "" {
+					feedback = append(feedback, "Guidance from the human:\n"+g)
 				}
 			}
 		}
 	}
-	if len(feedback) == 0 {
-		fmt.Fprintf(&sb, "Task: %s\n\n%s\n", t.Title, t.Description)
-		if len(t.Acceptance) > 0 {
-			sb.WriteString("\nAcceptance criteria:\n")
-			for _, a := range t.Acceptance {
-				fmt.Fprintf(&sb, "- %s\n", a)
-			}
-		}
-		sb.WriteString("\nWork in the current directory. Make the change, keep it minimal, and stop when the task is done. Do not commit.")
-		return sb.String()
+	return feedback
+}
+
+func guidanceLabel(from any) string {
+	if s, _ := from.(string); s == "lead" {
+		return "Guidance from the team lead:"
 	}
-	fmt.Fprintf(&sb, "Task: %s\n\nYour previous attempt needs changes. Fix the following and stop:\n\n%s", t.Title, strings.Join(feedback, "\n\n---\n\n"))
-	return sb.String()
+	return "Guidance from the human:"
 }
 
 // Verify runs the project's checks in order (build, test, lint, typecheck as detected, then the settings-controlled
@@ -505,6 +565,9 @@ func Finalize(d Deps) workflow.NodeHandler {
 		if cur, err := d.Tasks.Get(ctx, t.ID); err == nil && cur.Reviewer != "" && cur.Reviewer != cur.Assignee && cur.Status == tasks.InProgress {
 			if nt, err := d.Tasks.Transition(ctx, t.ID, tasks.Review, tasks.TransitionOpts{By: "system", Reason: "checks passed with evidence"}); err == nil {
 				out["status"] = string(nt.Status)
+				if d.ResetWatch != nil {
+					d.ResetWatch(ctx, t.ID) // the task moved on: an earlier watchdog trip no longer counts toward a pause
+				}
 			} else {
 				out["reviewBlocked"] = err.Error()
 			}
@@ -532,24 +595,25 @@ func changedFiles(diff string) []string {
 }
 
 // TaskPipeline is the single-agent pipeline: prepare, work, verify (loop back to work on failure), finalize.
-// MaxLoops bounds the work/verify loop; when exhausted the task goes to a human (WAITING_HUMAN) with a summary.
+// MaxLoops bounds the work/verify loop; when exhausted the escalation asks the team lead (if any), then a human, who can
+// continue with guidance (a fresh loop budget) or stop the task.
 func TaskPipeline(d Deps, maxLoops int) *workflow.Graph {
 	if maxLoops <= 0 {
 		maxLoops = 5
 	}
-	return workflow.NewGraph("task-pipeline").
+	g := workflow.NewGraph("task-pipeline").
 		Add(
 			workflow.Route("prepare", Prepare(d)),
 			workflow.AgentTask("work", Work(d)).With("agent", "work"),
 			workflow.Check("verify", Verify(d)),
 			workflow.Route("finalize", Finalize(d)),
-			workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: checks still failing"}),
 		).
 		Edge("prepare", "work").
 		Edge("work", "verify").
 		EdgeWhen("verify", "finalize", "pass").
-		Loop("verify", "work", "fail", maxLoops, "limit").
-		Start("prepare")
+		Loop("verify", "work", "fail", maxLoops, NodeEscalate)
+	addEscalation(g, d, nil)
+	return g.Start("prepare")
 }
 
 var _ = agents.StatusReady

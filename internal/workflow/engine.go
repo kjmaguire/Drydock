@@ -341,6 +341,12 @@ func (e *Engine) ready(g *Graph, st RunState) []NodeID {
 
 // route delivers a finished node's output to its out-edges (pure over state).
 func route(g *Graph, st *RunState, from NodeID, out NodeOutput) error {
+	if out.ResetLoops {
+		st.LoopCounts = map[string]int{}
+	}
+	if out.Halt {
+		return nil
+	}
 	for _, ed := range g.outEdges(from) {
 		if ed.When != "" && ed.When != out.Route {
 			continue
@@ -781,7 +787,10 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	out.Value = body
 	if pr.Spec.Retry {
 		// the node is still owed: it runs again with the inbox it had, and reads the human's decision from the approvals row
-		st.Inboxes[pr.NodeID] = pr.Inbox
+		st.Inboxes[pr.NodeID] = append([]Message(nil), pr.Inbox...)
+		if pr.Spec.DeliverAnswer {
+			st.Inboxes[pr.NodeID] = append(st.Inboxes[pr.NodeID], Message{From: pr.NodeID, Value: body})
+		}
 		if n := g.Nodes[pr.NodeID]; n != nil && len(n.FanIn) > 0 {
 			st.Barriers[pr.NodeID] = append([]NodeID(nil), n.FanIn...)
 		}

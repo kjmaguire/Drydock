@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
@@ -16,8 +15,8 @@ import (
 // be overridden when a run starts, the settings can switch e2e and preview on or off per project, and the human can send
 // the work back at every request.
 //
-// The graphs below reuse the existing nodes (Prepare, Verify, Finalize, Review, Approve, Changes, Merge) and add the
-// spec gate, the test-first nodes and the security scan. Nothing in a template merges without a human's approval.
+// The graphs (templates_graphs.go) reuse the existing nodes (Prepare, Verify, Finalize, Review, Approve, Changes, Merge) and
+// add the spec gate, the test-first nodes and the security scan. Nothing in a template merges without a human's approval.
 
 // Names of the registered workflows.
 const (
@@ -154,6 +153,18 @@ type graphBuilder struct {
 	td TemplateDeps
 	g  *workflow.Graph
 	pr bool
+	// back maps the node a loop exhausted from to where the work resumes after a continue (see addEscalation)
+	back map[workflow.NodeID]workflow.NodeID
+}
+
+func newBuilder(td TemplateDeps, g *workflow.Graph, pr bool) graphBuilder {
+	return graphBuilder{td: td, g: g, pr: pr, back: map[workflow.NodeID]workflow.NodeID{}}
+}
+
+// finish adds the escalation (team lead, then the human; continue or stop) and the entry point.
+func (b graphBuilder) finish() *workflow.Graph {
+	addEscalation(b.g, b.td.Deps, b.back)
+	return b.g.Start("prepare")
 }
 
 func graphName(name string, pr bool) string {
@@ -161,281 +172,4 @@ func graphName(name string, pr bool) string {
 		return name + PRSuffix
 	}
 	return name
-}
-
-func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
-	if b.pr {
-		b.prTail(extraBeforeApprove)
-		return
-	}
-	td, g, n := b.td, b.g, b.td.loops()
-	g.Add(
-		workflow.AgentTask("work", td.implement()).With("agent", "work"),
-		workflow.Route("guard", Guard(td.Deps, td.projectFn())),
-		workflow.Check("verify", td.verifyTDD()),
-		workflow.Route("finalize", Finalize(td.Deps)),
-		workflow.Route("sync", Sync(td.Deps, td.projectFn())),
-		workflow.AgentTask("review", Review(td.Deps)).With("agent", "review"),
-		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
-		workflow.Route("changes", Changes(td.Deps)),
-		workflow.Route("merge", Merge(td.Deps, td.projectFn())),
-		workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
-		workflow.Route("abort", td.abort()),
-	)
-	g.Edge("work", "guard").
-		Edge("guard", "verify").
-		EdgeWhen("verify", "finalize", "pass").
-		Loop("verify", "work", "fail", n, "limit").
-		Edge("finalize", "sync").
-		EdgeWhen("sync", "review", RouteCurrent).
-		EdgeWhen("sync", "merge", RouteApproved).
-		Loop("sync", "verify", RouteChanged, n, "limit").
-		Loop("sync", "work", RouteConflict, n, "limit").
-		Loop("merge", "sync", RouteStale, n, "limit")
-	next := workflow.NodeID("approve")
-	if len(extraBeforeApprove) > 0 {
-		next = extraBeforeApprove[0]
-	}
-	g.EdgeWhen("review", next, "ship").
-		Loop("review", "work", "revise", n, "limit").
-		EdgeWhen("review", "limit", "limit").
-		EdgeWhen("approve", "merge", "approved").
-		EdgeWhen("approve", "changes", "rejected").
-		Loop("changes", "work", "", n, "limit").
-		Loop("merge", "merge", "answered", 3, "limit").
-		EdgeWhen("limit", "work", "approved").
-		EdgeWhen("limit", "work", "answered").
-		EdgeWhen("limit", "abort", "rejected")
-}
-
-// prTail is the pull request variant of the tail: after the review the branch is pushed and a PR opened (push_pr), CI
-// runs (ci: a failure goes back to the worker), the PR's review comments are read (pr_feedback: a change request goes back
-// to the worker), then the template's extra steps, then the human's approval, and the merge goes through GitHub (merge).
-// The same nodes as the default workflow's pr_flow variant (IterateUntilVerifiedPR).
-func (b graphBuilder) prTail(extraBeforeApprove []workflow.NodeID) {
-	td, g, n := b.td, b.g, b.td.loops()
-	g.Add(
-		workflow.AgentTask("work", td.implement()).With("agent", "work"),
-		workflow.Route("guard", Guard(td.Deps, td.projectFn())),
-		workflow.Check("verify", td.verifyTDD()),
-		workflow.Route("finalize", Finalize(td.Deps)),
-		workflow.AgentTask("review", Review(td.Deps)).With("agent", "review"),
-		workflow.Route("push_pr", PushPR(td.Deps, td.PR)),
-		workflow.Check("ci", CI(td.Deps, td.PR)),
-		workflow.Route("pr_feedback", PRFeedback(td.Deps, td.PR)),
-		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
-		workflow.Route("changes", Changes(td.Deps)),
-		workflow.Route("merge", MergePR(td.Deps, td.PR)),
-		workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
-		workflow.Route("abort", td.abort()),
-	)
-	next := workflow.NodeID("approve")
-	if len(extraBeforeApprove) > 0 {
-		next = extraBeforeApprove[0]
-	}
-	g.Edge("work", "guard").
-		Edge("guard", "verify").
-		EdgeWhen("verify", "finalize", "pass").
-		Loop("verify", "work", "fail", n, "limit").
-		Edge("finalize", "review")
-	b.prSteps("review", next)
-	g.EdgeWhen("approve", "merge", "approved").
-		EdgeWhen("approve", "changes", "rejected").
-		Loop("changes", "work", "", n, "limit").
-		Loop("merge", "merge", "answered", 3, "limit").
-		EdgeWhen("limit", "work", "approved").
-		EdgeWhen("limit", "work", "answered").
-		EdgeWhen("limit", "abort", "rejected")
-}
-
-// prSteps wires review -> push_pr -> ci -> pr_feedback -> next, with the loops back to the worker.
-func (b graphBuilder) prSteps(review, next workflow.NodeID) {
-	g, n := b.g, b.td.loops()
-	g.EdgeWhen(review, "push_pr", "ship").
-		Loop(review, "work", "revise", n, "limit").
-		EdgeWhen(review, "limit", "limit").
-		Edge("push_pr", "ci").
-		EdgeWhen("ci", "pr_feedback", "pass").
-		Loop("ci", "work", "fail", n, "limit").
-		EdgeWhen("ci", "limit", "limit").
-		EdgeWhen("pr_feedback", next, "clean").
-		Loop("pr_feedback", "work", "revise", n, "limit").
-		EdgeWhen("pr_feedback", "limit", "limit")
-}
-
-func (td TemplateDeps) projectFn() func(ctx context.Context, projectID string) (ProjectInfo, error) {
-	if td.Project != nil {
-		return td.Project
-	}
-	return func(context.Context, string) (ProjectInfo, error) {
-		return ProjectInfo{}, fmt.Errorf("pipeline: the template has no project resolver")
-	}
-}
-
-// specGate wires prepare -> spec -> check -> human review -> accept, and returns the node the accepted spec continues to.
-func (b graphBuilder) specGate(next workflow.NodeID) {
-	td, g := b.td, b.g
-	g.Add(
-		workflow.AgentTask("spec", td.specDraft()).With("agent", RolePM),
-		workflow.Route("speccheck", td.specCheck()),
-		&workflow.Node{ID: "specreview", Kind: workflow.KindRequest, Handler: td.specReview()},
-		workflow.Route("specaccept", td.specAccept()),
-		workflow.Route("specrevise", td.specRevise()),
-	)
-	g.Edge("prepare", "spec").
-		Edge("spec", "speccheck").
-		EdgeWhen("speccheck", "specreview", "valid").
-		Loop("speccheck", "spec", "invalid", 3, "limit").
-		EdgeWhen("specreview", "specaccept", "approved").
-		EdgeWhen("specreview", "specrevise", "rejected").
-		Loop("specreview", "specreview", "answered", 3, "limit").
-		EdgeWhen("specaccept", next, "ok").
-		EdgeWhen("specaccept", "specrevise", "revise").
-		Loop("specrevise", "spec", "", 5, "limit")
-}
-
-// testFirst wires tests -> scope check -> red check -> work (the implementation).
-func (b graphBuilder) testFirst(id workflow.NodeID, bug bool) {
-	td, g := b.td, b.g
-	g.Add(
-		workflow.AgentTask(id, td.writeTests(bug)).With("agent", RoleTests),
-		workflow.Route("testscope", td.testScope(!bug)),
-		workflow.Check("red", td.redCheck()),
-		workflow.Request("redlimit", workflow.RequestSpec{Kind: "question", Title: "The tests do not fail before the implementation: a human needs to decide (approve to build without red evidence)"}),
-	)
-	g.Edge(id, "testscope").
-		EdgeWhen("testscope", "red", "ok").
-		Loop("testscope", id, "badscope", 3, "limit").
-		EdgeWhen("red", "work", "red").
-		Loop("red", id, "notred", 3, "redlimit").
-		EdgeWhen("redlimit", "work", "approved").
-		EdgeWhen("redlimit", "work", "answered").
-		EdgeWhen("redlimit", "abort", "rejected")
-}
-
-// FeatureGraph is the Feature template: the spec gate, tests first, implementation, review, human approval.
-func (td TemplateDeps) FeatureGraph() *workflow.Graph { return td.featureGraph(false) }
-
-func (td TemplateDeps) featureGraph(pr bool) *workflow.Graph {
-	g := workflow.NewGraph(graphName(WorkflowFeature, pr)).Add(workflow.Route("prepare", Prepare(td.Deps)))
-	b := graphBuilder{td, g, pr}
-	b.specGate("tests")
-	b.testFirst("tests", false)
-	b.tail(nil)
-	return g.Start("prepare")
-}
-
-// BugGraph is the Bug template: reproduce with a failing test first, then fix.
-func (td TemplateDeps) BugGraph() *workflow.Graph { return td.bugGraph(false) }
-
-func (td TemplateDeps) bugGraph(pr bool) *workflow.Graph {
-	g := workflow.NewGraph(graphName(WorkflowBug, pr)).Add(workflow.Route("prepare", Prepare(td.Deps)))
-	b := graphBuilder{td, g, pr}
-	b.testFirst("repro", true)
-	g.Edge("prepare", "repro")
-	b.tail(nil)
-	return g.Start("prepare")
-}
-
-// SaaSGraph is the Full Stack SaaS template: Feature plus a design step, e2e inside verify, a security scan and a preview
-// before the human approves.
-func (td TemplateDeps) SaaSGraph() *workflow.Graph { return td.saasGraph(false) }
-
-func (td TemplateDeps) saasGraph(pr bool) *workflow.Graph {
-	g := workflow.NewGraph(graphName(WorkflowSaaS, pr)).Add(workflow.Route("prepare", Prepare(td.Deps)))
-	b := graphBuilder{td, g, pr}
-	g.Add(workflow.AgentTask("design", td.design()).With("agent", RoleArchitect))
-	b.specGate("design")
-	g.Edge("design", "tests")
-	b.testFirst("tests", false)
-	g.Add(
-		workflow.Check("secscan", td.scanNode("secscan", false)),
-		workflow.Route("preview", td.previewNode()),
-	)
-	b.tail([]workflow.NodeID{"secscan"})
-	g.EdgeWhen("secscan", "preview", "pass").
-		Loop("secscan", "work", "fail", td.loops(), "limit").
-		Edge("preview", "approve")
-	return g.Start("prepare")
-}
-
-// SecurityGraph is the Security template: scan, fix, verify, re-scan, security review, human approval.
-func (td TemplateDeps) SecurityGraph() *workflow.Graph { return td.securityGraph(false) }
-
-func (td TemplateDeps) securityGraph(pr bool) *workflow.Graph {
-	n := td.loops()
-	g := workflow.NewGraph(graphName(WorkflowSecurity, pr)).Add(
-		workflow.Route("prepare", Prepare(td.Deps)),
-		workflow.Check("scan", td.scanNode("scan", true)),
-		workflow.AgentTask("work", td.implement()).With("agent", "work"),
-		workflow.Route("guard", Guard(td.Deps, td.projectFn())),
-		workflow.Check("verify", Verify(td.Deps)),
-		workflow.Check("gate", td.scanNode("gate", false)),
-		workflow.Route("finalize", Finalize(td.Deps)),
-		workflow.AgentTask("sreview", td.securityReview()).With("agent", RoleSecurity),
-		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
-		workflow.Route("changes", Changes(td.Deps)),
-		workflow.Request("limit", workflow.RequestSpec{Kind: "question", Title: "Iteration limit reached: a human needs to decide"}),
-		workflow.Route("abort", td.abort()),
-	)
-	g.Edge("prepare", "scan").
-		Edge("scan", "work").
-		Edge("work", "guard").
-		Edge("guard", "verify").
-		EdgeWhen("verify", "gate", "pass").
-		Loop("verify", "work", "fail", n, "limit").
-		EdgeWhen("gate", "finalize", "pass").
-		Loop("gate", "work", "fail", n, "limit")
-	if pr {
-		g.Add(
-			workflow.Route("push_pr", PushPR(td.Deps, td.PR)),
-			workflow.Check("ci", CI(td.Deps, td.PR)),
-			workflow.Route("pr_feedback", PRFeedback(td.Deps, td.PR)),
-			workflow.Route("merge", MergePR(td.Deps, td.PR)),
-		)
-		g.Edge("finalize", "sreview")
-		graphBuilder{td, g, true}.prSteps("sreview", "approve")
-	} else {
-		g.Add(
-			workflow.Route("sync", Sync(td.Deps, td.projectFn())),
-			workflow.Route("merge", Merge(td.Deps, td.projectFn())),
-		)
-		g.Edge("finalize", "sync").
-			EdgeWhen("sync", "sreview", RouteCurrent).
-			EdgeWhen("sync", "merge", RouteApproved).
-			Loop("sync", "verify", RouteChanged, n, "limit").
-			Loop("sync", "work", RouteConflict, n, "limit").
-			Loop("merge", "sync", RouteStale, n, "limit").
-			EdgeWhen("sreview", "approve", "ship").
-			Loop("sreview", "work", "revise", n, "limit").
-			EdgeWhen("sreview", "limit", "limit")
-	}
-	g.EdgeWhen("approve", "merge", "approved").
-		EdgeWhen("approve", "changes", "rejected").
-		Loop("changes", "work", "", n, "limit").
-		Loop("merge", "merge", "answered", 3, "limit").
-		EdgeWhen("limit", "work", "approved").
-		EdgeWhen("limit", "work", "answered").
-		EdgeWhen("limit", "abort", "rejected")
-	return g.Start("prepare")
-}
-
-// abort cancels the task when a human rejects a "limit" question: nothing further runs.
-func (td TemplateDeps) abort() workflow.NodeHandler {
-	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
-		t, err := taskFromInput(ctx, td.Deps, in)
-		if err != nil {
-			return workflow.NodeOutput{}, err
-		}
-		h := humanResponse(in)
-		by := h.by
-		if len(by) < 6 || by[:6] != "human:" {
-			return workflow.NodeOutput{}, fmt.Errorf("abort needs a human decision; got %q", h.by)
-		}
-		if _, err := td.Tasks.Transition(ctx, t.ID, tasks.Cancelled, tasks.TransitionOpts{By: by, Reason: "stopped by the human at a limit"}); err != nil {
-			return workflow.NodeOutput{}, err
-		}
-		b, _ := json.Marshal(map[string]any{"cancelled": true, "by": by})
-		return workflow.NodeOutput{Value: b}, nil
-	}
 }
