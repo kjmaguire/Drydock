@@ -1,6 +1,6 @@
 # Shell commands for Claude workers: what would need your approval
 
-Status: **proposal, not built.** Nothing here is enabled. It needs the owner's decision (section 5).
+Status: **built as the section 5 proposal (tier 1 only), approved by the owner 2026-10-09; decision P24.** The switch is off for every project until a human turns it on. Tiers 2 and 3 are not built.
 
 ## 1. Where things stand
 

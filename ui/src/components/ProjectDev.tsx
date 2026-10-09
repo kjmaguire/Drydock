@@ -94,6 +94,14 @@ export function DevSettingsPanel({ projectId }: { projectId: string }) {
           <input type="checkbox" checked={s.collisionGuard !== false} onChange={(e) => patch({ collisionGuard: e.target.checked })} /> Make a task wait while an earlier task is changing the same code
         </label>
         <label className="inline">
+          <input type="checkbox" checked={s.workerChecks === true} onChange={(e) => patch({ workerChecks: e.target.checked })} /> Let Claude workers run this project's own checks (build, test, lint) while they work
+        </label>
+        {s.workerChecks ? (
+          <p className="muted" data-testid="worker-checks-note">
+            Workers may run only the exact check commands Drydock detects for this project (for example go build ./..., go test ./..., go vet ./..., or npm run test --silent), in their own worktree. Nothing else: no git, installs, downloads, go run or shells. Reviewers never get this. The tests run code the agent wrote, with your user's rights, the same as Drydock's own checks after the turn.
+          </p>
+        ) : null}
+        <label className="inline">
           <input type="checkbox" checked={s.respond} onChange={(e) => patch({ respond: e.target.checked })} /> Agents answer in channels and direct messages
         </label>
         <fieldset>

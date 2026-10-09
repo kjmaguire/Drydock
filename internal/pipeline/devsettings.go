@@ -27,6 +27,10 @@ type DevSettings struct {
 	// CollisionGuard makes a task wait while an earlier task is changing the same code (docs/parallel-work.md). On unless
 	// the human switches it off; nil means on.
 	CollisionGuard *bool `json:"collisionGuard,omitempty"`
+	// WorkerChecks lets a Claude worker run this project's own checks (build, test, lint, typecheck) during its turn, as the
+	// exact command lines Drydock detects and runs itself afterwards (docs/worker-commands.md, tier 1). Off by default; never
+	// applies to a reviewer.
+	WorkerChecks bool `json:"workerChecks,omitempty"`
 }
 
 // GuardOn reports whether the collision guard is in force.

@@ -580,6 +580,7 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 		cfg := td.AgentConfig(t, "work")
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
+		td.addWorkerTools(ctx, t, &cfg)
 		prompt := WorkPrompt(t, clean)
 		if red.Red {
 			design := ""

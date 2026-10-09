@@ -55,6 +55,9 @@ type Deps struct {
 	// manifest can list it as included or excluded with the reason. The wiring itself is rt.Runtime.MCP, which sees every
 	// session; this is only the read side for the manifest. Nil: the manifest says MCP is not wired in this build.
 	MCPStatus func(ctx context.Context, t tasks.Task, agentID, phase string) MCPStatus
+	// WorkerTools, if set, returns extra allow rules for a worker turn on this task (the project's check commands when the
+	// project switched that on). Never consulted for a reviewer. Nil or empty: the worker gets none.
+	WorkerTools func(ctx context.Context, t tasks.Task, cfg rt.Config) []string
 	// GuardPoll is how often a task waiting for an earlier task looks again (default 2 seconds).
 	GuardPoll time.Duration
 }
@@ -169,6 +172,7 @@ func Work(d Deps) workflow.NodeHandler {
 		cfg := d.AgentConfig(t, "work")
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
+		d.addWorkerTools(ctx, t, &cfg)
 		prompt := WorkPrompt(t, in)
 		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "work")
 		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
@@ -188,6 +192,16 @@ func Work(d Deps) workflow.NodeHandler {
 			}
 		}
 		return out, nil
+	}
+}
+
+// addWorkerTools extends a worker turn's allowed tools with the project's check commands, when the project allows it.
+func (d Deps) addWorkerTools(ctx context.Context, t tasks.Task, cfg *rt.Config) {
+	if d.WorkerTools == nil {
+		return
+	}
+	if extra := d.WorkerTools(ctx, t, *cfg); len(extra) > 0 {
+		cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), extra...)
 	}
 }
 

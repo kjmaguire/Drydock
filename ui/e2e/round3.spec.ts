@@ -66,9 +66,14 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(page.getByRole('status').filter({ hasText: 'Saved.' }).first()).toBeVisible();
   await page.getByLabel('Maximum parallel agent turns').fill('2');
   await page.getByLabel('Agents answer in channels and direct messages').check();
+  const workerChecks = page.getByLabel(/Let Claude workers run this project's own checks/);
+  await expect(workerChecks).not.toBeChecked(); // off until the human says so
+  await workerChecks.check();
+  await expect(page.getByTestId('worker-checks-note')).toContainText('exact check commands');
   await page.getByRole('button', { name: 'Save development settings' }).click();
   await page.reload();
   await expect(page.getByLabel('Maximum parallel agent turns')).toHaveValue('2');
+  await expect(page.getByLabel(/Let Claude workers run this project's own checks/)).toBeChecked();
   await expect(page.getByLabel('Dependency vulnerability scan')).toBeChecked();
 });
 

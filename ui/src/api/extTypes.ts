@@ -238,6 +238,8 @@ export interface DevSettings {
   respond: boolean;
   /** A task waits while an earlier task changes the same code. Absent means on. */
   collisionGuard?: boolean;
+  /** Claude workers may run the project's detected check commands (exact lines) during their turn. Absent means off. */
+  workerChecks?: boolean;
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }

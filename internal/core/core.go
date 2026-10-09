@@ -19,6 +19,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/connections"
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
@@ -167,6 +168,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnCheck:     c.postCheck,
 		OnTurn:      c.postTurn,
 		MCPStatus:   c.mcpStatus,
+		WorkerTools: c.workerTools,
 	}
 	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps)})
 	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, watchdog.Hooks{Notify: c.watchdogNotify}, nil)
@@ -518,6 +520,15 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 		spec.Role = "reviewer"
 	}
 	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: spec, Provider: providerLabel(a), Tier: c.agentTier(a)}
+}
+
+// workerTools is Deps.WorkerTools: when the project let workers run its checks, a Claude worker may run exactly the detected
+// check commands in its worktree (docs/worker-commands.md, tier 1). Other CLIs have no such rule syntax and get nothing.
+func (c *Core) workerTools(ctx context.Context, t tasks.Task, cfg rt.Config) []string {
+	if cfg.Adapter != "claude" || t.Worktree == "" || !pipeline.LoadDevSettings(ctx, c.DB, t.ProjectID).WorkerChecks {
+		return nil
+	}
+	return checks.WorkerRules(checks.Detect(t.Worktree))
 }
 
 // agentTier is the cost tier of an agent's usage rows: the registered provider's tier when the agent runs on one (so a
