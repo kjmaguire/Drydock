@@ -68,6 +68,10 @@ describe('Conversation', () => {
     await waitFor(() => expect(messagesOf(r)).toHaveLength(5), r);
     expect(messagesOf(r).map((m) => m.getAttribute('data-author-kind'))).toEqual(['human', 'agent', 'tool', 'tool', 'system']);
     await waitFor(() => expect(qa(r, '.msg-author').some((e) => e.textContent === 'Backend #1')).toBe(true), r);
+    // one author line: the name, then the agent's role (or the author kind) as a quiet label; people get none
+    expect(messagesOf(r).map((m) => m.querySelector('.msg-role')?.textContent ?? null)).toEqual([null, 'backend', 'tool', 'tool', 'system']);
+    expect(messagesOf(r)[1]!.querySelector('[data-kind="agent"]')).not.toBeNull();
+    expect(messagesOf(r)[0]!.querySelector('[data-kind="human"]')).not.toBeNull();
     expect(qa(r, '[data-testid="message"] span').some((e) => e.textContent === 'DECISION')).toBe(true);
     expect(messagesOf(r)[1]!.textContent).toContain('untrusted');
     const cards = qa(r, '[data-testid="check-card"]');
@@ -187,7 +191,7 @@ describe('Conversation', () => {
   it('says so when a room has no messages, and when they cannot be read', async () => {
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, servicesWith({}));
     await waitFor(() => expect(r.container.textContent).toContain('No messages yet.'), r);
-    expect(r.container.textContent).toContain('Welcome to #general');
+    expect(r.container.textContent).toContain('This is the start of the general channel.');
     const bad = mount(
       <Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />,
       servicesWith({

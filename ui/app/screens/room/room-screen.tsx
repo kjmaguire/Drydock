@@ -1,9 +1,9 @@
-// A channel (Discord/Slack): the header (# name, topic, members, export, the task link), the agents bar, the message list
+// A channel: the header (name, topic, members, export, the task link), the agents bar, the message list
 // with day dividers, groups, threads and a "new messages" line, and the composer at the bottom. The room comes from the
 // project's room list, or from room.get so an archived task channel still opens.
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { ArrowDown, Hash, ListChecks, MessageCircle, MessagesSquare } from 'lucide';
+import { ArrowDown, ListChecks, MessageSquare, MessagesSquare } from 'lucide';
 import type { Room } from '../../api/types.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -12,7 +12,7 @@ import { query, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
-import { Icon } from '../../ui/icon.tsx';
+import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { headerCss, Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Composer } from './composer.tsx';
@@ -40,13 +40,13 @@ export function RoomScreen(handle: Handle<{ id: string }>) {
     if (room) return <Conversation key={room.id} room={room} />;
     if (loadingRooms() || fetched.loading) {
       return (
-        <Page title="Channel" icon={Hash}>
+        <Page title="Channel" icon={MessageSquare}>
           <Loading />
         </Page>
       );
     }
     return (
-      <Page title="Channel" icon={Hash}>
+      <Page title="Channel" icon={MessageSquare}>
         <Empty title="Channel not found" icon={MessagesSquare}>
           <p>It may belong to another project, or it was never created.</p>
           <ErrorNote error={fetched.error} />
@@ -73,37 +73,47 @@ const modeCss = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', 
 
 const logWrap = css({ position: 'relative', flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' });
 const logCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', padding: `${t.s4} 0 ${t.s5}`, outline: 'none', '&:focus-visible': { boxShadow: `inset ${t.focus}` } });
+// the start of a room: a quiet heading and one line, not a banner
 const introCss = css({
   display: 'grid',
-  gap: t.s2,
-  padding: `${t.s6} ${t.s6} ${t.s4}`,
-  '& h2': { margin: '0', fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.01em' },
-  '& p': { margin: '0', color: t.textMuted, fontSize: t.textMd },
+  gridTemplateColumns: 'auto minmax(0, 1fr)',
+  alignItems: 'center',
+  columnGap: t.s3,
+  rowGap: '2px',
+  padding: `${t.s5} ${t.s6} ${t.s3} ${t.s5}`,
+  '& h2': { margin: '0', fontSize: t.textLg, fontWeight: '600' },
+  '& p': { gridColumn: '2', margin: '0', color: t.textMuted, fontSize: t.textMd },
 });
-const introIcon = css({ display: 'grid', placeItems: 'center', width: '56px', height: '56px', borderRadius: t.rXl, background: t.accentSoft, color: t.accentText, marginBottom: t.s1 });
+const introIcon = css({
+  gridRow: 'span 2',
+  display: 'grid',
+  placeItems: 'center',
+  width: '36px',
+  height: '36px',
+  borderRadius: t.rLg,
+  background: t.bgSurface,
+  boxShadow: `inset 0 0 0 1px ${t.border}`,
+  color: t.textMuted,
+});
 const dividerCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s3,
-  margin: `${t.s4} ${t.s6} ${t.s1}`,
-  color: t.textMuted,
+  margin: `${t.s4} ${t.s6} ${t.s1} ${t.s5}`,
+  color: t.textFaint,
   fontSize: t.textXs,
-  fontWeight: '600',
-  '&::before, &::after': { content: '""', flex: '1', height: '1px', background: t.border },
-  '& span': { padding: '2px 10px', border: `1px solid ${t.border}`, borderRadius: t.rFull, background: t.bgApp },
+  fontWeight: '500',
+  '&::after': { content: '""', flex: '1', height: '1px', background: t.border },
 });
 const newCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s2,
-  margin: `${t.s3} ${t.s6} 0 ${t.s4}`,
+  margin: `${t.s3} ${t.s6} 0 ${t.s5}`,
   color: t.danger,
   fontSize: t.textXs,
-  fontWeight: '700',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-  '&::before': { content: '""', flex: '1', height: '0', borderTop: `1px solid ${t.danger}` },
-  '& span': { padding: '0 6px', borderRadius: t.rSm, background: t.danger, color: t.onAccent, lineHeight: '16px' },
+  fontWeight: '500',
+  '&::before': { content: '""', flex: '1', height: '0', borderTop: `1px solid color-mix(in srgb, ${t.danger} 45%, transparent)` },
 });
 const emptyCss = css({ margin: `0 ${t.s6}`, color: t.textMuted, fontSize: t.textMd });
 const jumpCss = css({
@@ -129,7 +139,6 @@ const jumpCss = css({
 });
 const notesCss = css({ padding: `0 ${t.s5}` });
 
-const TITLE_ICON = { channel: Hash, task: ListChecks, dm: MessageCircle } as const;
 
 /** The conversation of one room. Keyed by room id: a new room is a new feed. */
 export function Conversation(handle: Handle<{ room: Room }>) {
@@ -188,7 +197,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
         <header mix={headerCss}>
           <h1>
             <span mix={titleIcon}>
-              <Icon icon={TITLE_ICON[room.kind as keyof typeof TITLE_ICON] ?? Hash} size={18} />
+              <Icon icon={roomIcon(room.kind)} size={16} />
             </span>
             {label}
           </h1>
@@ -245,15 +254,15 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             {!feed.loading ? (
               <div mix={introCss}>
                 <span mix={introIcon} aria-hidden="true">
-                  <Icon icon={TITLE_ICON[room.kind as keyof typeof TITLE_ICON] ?? Hash} size={28} />
+                  <Icon icon={roomIcon(room.kind)} size={18} />
                 </span>
-                <h2>{room.kind === 'dm' ? label : `Welcome to #${label}`}</h2>
+                <h2>{label}</h2>
                 <p>
                   {room.kind === 'dm'
                     ? `This is the beginning of your direct messages with ${label}.`
                     : room.kind === 'task'
                       ? `This channel follows the task: the agents' reports, check results and reviews land here.`
-                      : `This is the start of the #${label} channel.`}
+                      : `This is the start of the ${label} channel.`}
                   {room.topic ? ` ${room.topic}` : ''}
                 </p>
               </div>
@@ -274,6 +283,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
                   key={r.key}
                   m={r.m}
                   name={authorName(r.m.author, agents)}
+                  role={r.m.author.kind === 'agent' ? agents.find((a) => a.id === r.m.author.id)?.role : undefined}
                   head={r.head}
                   replies={replies.get(r.m.id) ?? 0}
                   onReply={() => s.ui.openThread(room.id, r.m.id)}
