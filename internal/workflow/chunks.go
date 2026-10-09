@@ -94,6 +94,18 @@ type SessionChunk struct {
 	Tools     int    `json:"tools,omitempty"`
 }
 
+// ChunkPermissionDenied is a tool use the CLI refused on its own because the permission mode and allow rules did not cover
+// it, without asking anyone (headless Claude Code reports these in its result as permission_denials): PermissionDenial. It
+// is reported after the turn's text, before its usage and done chunks.
+const ChunkPermissionDenied = "permission_denied"
+
+// PermissionDenial is one refused tool use.
+type PermissionDenial struct {
+	ToolName  string          `json:"toolName"`
+	ToolUseID string          `json:"toolUseId,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+}
+
 // ChunkPlan is an agent's own task plan (ACP `plan` updates): PlanChunk. Informational; nothing decides on it.
 const ChunkPlan = "plan"
 
