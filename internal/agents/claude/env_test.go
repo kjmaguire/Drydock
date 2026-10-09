@@ -1,10 +1,16 @@
 package claude
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 func agentsRunSpec() agents.RunSpec { return agents.RunSpec{AgentID: "a1", Cwd: "/x"} }
@@ -62,5 +68,61 @@ func TestUserSettingsOnlyAddsTheSettingSourcesFlag(t *testing.T) {
 	}
 	if !has((&Adapter{UserSettingsOnly: true}).Args(agentsRunSpec())) {
 		t.Fatal("a repository's own hooks would run in an unattended agent")
+	}
+}
+
+// The instructions reach the CLI through a file, never as one long multi-line argument (claude.cmd on Windows runs through
+// cmd.exe, which ends the command line at the first newline), the flags after them still arrive, and the file is gone once
+// the process has exited.
+func TestStartPassesTheInstructionsInAFileAndRemovesIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script as the CLI")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "seen")
+	script := filepath.Join(dir, "claude")
+	body := `#!/bin/sh
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--append-system-prompt-file" ]; then cat "$a" > "$OUT.content"; printf '%s' "$a" > "$OUT.path"; fi
+  if [ "$prev" = "--allowedTools" ]; then printf '%s' "$a" > "$OUT.allowed"; fi
+  if [ "$a" = "--append-system-prompt" ]; then echo inline > "$OUT.inline"; fi
+  prev="$a"
+done
+`
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	text := "Line one of the instructions.\nLine two & \"quoted\" | piped\n\nThe end."
+	spec := agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: text, AllowedTools: []string{"Bash(npm test)", "Edit"}, Env: []string{"OUT=" + out}}
+	s, err := (&Adapter{Exe: script}).Start(context.Background(), proc.New(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.Wait():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the script did not exit")
+	}
+	got, err := os.ReadFile(out + ".content")
+	if err != nil || string(got) != text {
+		t.Fatalf("the CLI read %q (%v), want the instructions", got, err)
+	}
+	if allowed, _ := os.ReadFile(out + ".allowed"); string(allowed) != "Bash(npm test),Edit" {
+		t.Fatalf("the flags after the instructions: --allowedTools %q", allowed)
+	}
+	if _, err := os.Stat(out + ".inline"); err == nil {
+		t.Fatal("the instructions were also passed inline")
+	}
+	path, _ := os.ReadFile(out + ".path")
+	if _, err := os.Stat(string(path)); !os.IsNotExist(err) {
+		t.Fatalf("the instructions file %s is still there after the exit (%v)", path, err)
+	}
+	// no instructions: no file and no flag
+	if args := (&Adapter{}).argsWith(agents.RunSpec{}, ""); strings.Contains(strings.Join(args, " "), "system-prompt") {
+		t.Fatalf("args without instructions: %v", args)
+	}
+	if f, err := writePromptFile("  \n"); err != nil || f != "" {
+		t.Fatalf("blank instructions made a file: %q %v", f, err)
 	}
 }

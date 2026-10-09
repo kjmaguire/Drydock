@@ -296,7 +296,7 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 }
 
 // The real Claude Code CLI, driven through Core.Runtime.Spawn exactly as a task turn is, uses a server the human added and
-// receives the agent's purpose: both reach it only through what Drydock generates (the gateway entry and --append-system-prompt).
+// receives the agent's purpose: both reach it only through what Drydock generates (the gateway entry and --append-system-prompt-file).
 func TestRealClaudeUsesAUserAddedServerAndReceivesThePurpose(t *testing.T) {
 	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
 		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")

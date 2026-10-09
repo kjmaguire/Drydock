@@ -168,8 +168,15 @@ func (a *Adapter) Detect(ctx context.Context) (agents.Detection, error) {
 	return d, nil
 }
 
-// Args builds the argv (after the executable) for a session.
-func (a *Adapter) Args(spec agents.RunSpec) []string {
+// Args builds the argv (after the executable) for a session, with the system prompt addition inline. Start passes it in a
+// file instead (argsWith).
+func (a *Adapter) Args(spec agents.RunSpec) []string { return a.argsWith(spec, "") }
+
+// argsWith builds the argv; with promptFile set, spec.SystemAppend is read by the CLI from that file
+// (--append-system-prompt-file) rather than given on the command line. On Windows an npm install of Claude Code is
+// claude.cmd, which runs through cmd.exe: cmd.exe ends the command line at the first newline, so a multi-line argument would
+// lose the rest of the instructions and every flag after it (the allow rules), and it caps the line at 8191 characters.
+func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 	args := append([]string(nil), a.BaseArgs...)
 	args = append(args, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages")
 	if spec.Model != "" {
@@ -190,7 +197,9 @@ func (a *Adapter) Args(spec agents.RunSpec) []string {
 	if spec.ResumeID != "" {
 		args = append(args, "--resume", spec.ResumeID)
 	}
-	if spec.SystemAppend != "" {
+	if promptFile != "" {
+		args = append(args, "--append-system-prompt-file", promptFile)
+	} else if spec.SystemAppend != "" {
 		args = append(args, "--append-system-prompt", spec.SystemAppend)
 	}
 	if len(spec.AllowedTools) > 0 {
@@ -207,15 +216,45 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 	}
 	env := a.childEnv(os.Environ())
 	env = append(env, spec.Env...)
-	p, err := pm.Start(ctx, proc.Spec{Path: exe, Args: a.Args(spec), Dir: spec.Cwd, Env: env, Label: "agent:" + spec.AgentID})
+	promptFile, err := writePromptFile(spec.SystemAppend)
 	if err != nil {
+		return nil, fmt.Errorf("claude: %w", err)
+	}
+	p, err := pm.Start(ctx, proc.Spec{Path: exe, Args: a.argsWith(spec, promptFile), Dir: spec.Cwd, Env: env, Label: "agent:" + spec.AgentID})
+	if err != nil {
+		removePromptFile(promptFile)
 		return nil, err
 	}
 	s := &session{proc: p, parser: NewParser(), out: make(chan workflow.Chunk, 256), acks: map[string]chan bool{}, exited: make(chan struct{})}
-	go func() { s.ei = <-p.Wait(); close(s.exited) }()
+	go func() { s.ei = <-p.Wait(); removePromptFile(promptFile); close(s.exited) }()
 	go s.readStdout()
 	go s.readStderr()
 	return s, nil
+}
+
+// writePromptFile puts the system prompt addition in a private temporary file for --append-system-prompt-file ("" when there
+// is none). It holds instructions, never credentials; it is removed when the process exits.
+func writePromptFile(text string) (string, error) {
+	if strings.TrimSpace(text) == "" {
+		return "", nil
+	}
+	f, err := os.CreateTemp("", "drydock-claude-prompt-*.md")
+	if err != nil {
+		return "", fmt.Errorf("writing the instructions file: %w", err)
+	}
+	_, werr := f.WriteString(text)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("writing the instructions file: %w", errors.Join(werr, cerr))
+	}
+	return f.Name(), nil
+}
+
+func removePromptFile(path string) {
+	if path != "" {
+		_ = os.Remove(path)
+	}
 }
 
 type session struct {

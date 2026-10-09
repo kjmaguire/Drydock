@@ -44,7 +44,7 @@ When the adapter is Claude Code, the switch "Follow Claude Code best practices" 
 template. What it does:
 
 1. Adds a short, role-specific working-practices text to the system prompt of every session of the agent
-   (`--append-system-prompt`), before the human's own purpose text. Four families, picked from the role of the session (a review
+   (`--append-system-prompt-file`: a temporary file, never a command-line argument, because `claude.cmd` runs through cmd.exe, which cuts a command line at its first newline), before the human's own purpose text. Four families, picked from the role of the session (a review
    turn of any agent is `reviewer`): worker (writes code), reviewer (judges, never modifies), planner (pm, architect, ux designer:
    words, not code), lead (team lead, manager, supervisor: supervises, never writes code, decides crisply, prefers the smallest
    intervention, escalates to the human when unsure; decision P26, `PracticesVersion` 2). The exact text is shown in the
