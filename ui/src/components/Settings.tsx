@@ -15,8 +15,6 @@ export const NOT_BUILT: { feature: string; slice: string; meanwhile: string }[] 
   { feature: 'Provider detail panels (quota ledger, OpenRouter key limits), editing a provider, editing prices', slice: 'Slice 1A', meanwhile: 'Providers can be added, tested, enabled, disabled and deleted; the model catalog is read-only.' },
   { feature: 'OAuth sign-in for integrations; live vendor verification', slice: 'Slice 5', meanwhile: 'Integrations use a pasted token and were never run against a live vendor account.' },
   { feature: 'Pull request variants of the workflow templates', slice: 'Slice 4', meanwhile: 'Templates end in a local merge; a project in pull request mode uses the default workflow.' },
-  { feature: 'Mentions autocomplete, slash commands, attachments', slice: 'Slice 1A', meanwhile: 'The composer posts plain messages.' },
-  { feature: 'Command palette (Ctrl+K)', slice: 'Slice 1A', meanwhile: 'Not built.' },
   { feature: 'Cloud sync, accounts, team sharing', slice: 'never', meanwhile: 'Drydock has no cloud component.' },
 ];
 

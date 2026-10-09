@@ -21,6 +21,7 @@ import { useClient, useStoreSnapshot } from './state/context';
 import { useAgents, useLive, useNeedsYou, usePresence, useProjects, useRooms, useTaskDetail, useTasks, useUnread } from './state/hooks';
 import { StatusChip } from './components/common';
 import { Dock } from './dock/Dock';
+import { CommandPalette } from './components/CommandPalette';
 
 // Pages that are not on the first screen load on demand, so the first paint stays small.
 const ConnectionsView = lazy(() => import('./components/Connections').then((m) => ({ default: m.ConnectionsView })));
@@ -280,6 +281,7 @@ function AppShell({ rightOpen, setRightOpen }: { rightOpen: boolean; setRightOpe
   return (
     <div className="app-root">
     <LicenseBanner />
+    <CommandPalette rooms={roomList} tasks={tasks.data ?? []} agents={agentList} onTheme={setTheme} onMessage={openDM} />
     <div className={rightOpen ? 'app' : 'app right-closed'}>
       <a className="skip-link" href="#main">
         Skip to content

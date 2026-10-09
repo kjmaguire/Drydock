@@ -63,7 +63,13 @@ type ContextSelection struct {
 	TriggerFound bool
 }
 
-func estTokens(m Message) int { return (len(m.Body)+len(m.Author.Key())+len(m.Type)+24)/4 + 1 }
+func estTokens(m Message) int {
+	n := len(m.Body)
+	for _, a := range m.Attachments() {
+		n += len(a.Text) + len(a.Name) + 40
+	}
+	return (n+len(m.Author.Key())+len(m.Type)+24)/4 + 1
+}
 
 func textTokens(s string) int { return len(s)/4 + 1 }
 
@@ -333,6 +339,14 @@ func RenderContext(sel ContextSelection) string {
 			fmt.Fprintf(&b, "<untrusted source=\"room:%s\" ref=\"%s\">\n%s\n</untrusted>\n", m.Author.Key(), m.ID, strings.ReplaceAll(m.Body, "</untrusted>", "</ untrusted>"))
 		} else {
 			b.WriteString(m.Body + "\n")
+		}
+		// an attached file is data whoever attached it: its text never becomes an instruction
+		for _, a := range m.Attachments() {
+			if a.Text != "" {
+				fmt.Fprintf(&b, "<untrusted source=\"attachment:%s\" ref=\"%s\">\n%s\n</untrusted>\n", strings.ReplaceAll(a.Name, `"`, "'"), a.ID, strings.ReplaceAll(a.Text, "</untrusted>", "</ untrusted>"))
+			} else {
+				fmt.Fprintf(&b, "(attached file %q, %d bytes, %s: not text, so not shown)\n", a.Name, a.Size, a.Mime)
+			}
 		}
 	}
 	return b.String()

@@ -1,8 +1,8 @@
 {
-  "generated": "2026-10-09T06:19:04Z",
-  "commit": "435fbcd",
+  "generated": "2026-10-09T06:32:59Z",
+  "commit": "5e930f1",
   "summary": {
-    "current": 302,
+    "current": 303,
     "major": 8,
     "minor": 75,
     "patch": 73,
@@ -5699,8 +5699,8 @@
       "group": "UI build and test tools",
       "name": "(all packages in package-lock.json)",
       "kind": "indirect",
-      "used": "173",
-      "latest": "173",
+      "used": "199",
+      "latest": "199",
       "status": "current",
       "where": "ui/package-lock.json",
       "note": "Count of installed packages including everything the listed ones pull in."
@@ -5737,6 +5737,17 @@
       "status": "current",
       "where": "ui/package.json",
       "role": "Draws the workflow graph of a run (React Flow; lazy-loaded)."
+    },
+    {
+      "id": "npm:cmdk",
+      "group": "UI libraries (shipped in the app)",
+      "name": "cmdk",
+      "kind": "direct",
+      "used": "1.1.1",
+      "latest": "1.1.1",
+      "status": "current",
+      "where": "ui/package.json",
+      "role": "The Ctrl+K command palette."
     },
     {
       "id": "npm:marked",
@@ -5795,7 +5806,7 @@
     "bridge": 2,
     "cli": 5,
     "dev": 11,
-    "direct": 24,
+    "direct": 25,
     "indirect": 404,
     "runtime": 4,
     "tool": 6

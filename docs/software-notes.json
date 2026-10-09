@@ -198,6 +198,9 @@
     },
     "npm:@xyflow/react": {
       "role": "Draws the workflow graph of a run (React Flow; lazy-loaded)."
+    },
+    "npm:cmdk": {
+      "role": "The Ctrl+K command palette."
     }
   }
 }

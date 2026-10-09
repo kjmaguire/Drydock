@@ -232,7 +232,7 @@ describe('Conversation', () => {
     fireEvent.change(screen.getByLabelText('Message to #general'), { target: { value: 'key=sk-123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText(/blocked by secret scan/);
-    expect(roomPost).toHaveBeenCalledWith('r', 'key=sk-123');
+    expect(roomPost).toHaveBeenCalledWith('r', 'key=sk-123', undefined);
   });
 
   it('disables the composer for an archived room', async () => {

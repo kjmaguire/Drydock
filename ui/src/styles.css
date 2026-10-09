@@ -1375,3 +1375,135 @@ code.wrap {
 .wf-cp-response_entry {
   border-style: dashed;
 }
+
+/* composer: suggestions, commands, attachments */
+.composer-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+.composer-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+.composer-input-wrap textarea {
+  flex: 1;
+}
+.composer-suggest {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin: 0 0 4px;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 5;
+}
+.composer-suggest li {
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.composer-suggest li.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.composer-suggest li.active .muted {
+  color: inherit;
+}
+.composer-help {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: var(--bg-1);
+}
+.composer-files {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0;
+  margin: 0 0 4px;
+}
+.attachments {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+}
+.attachment-preview {
+  display: block;
+  max-width: 360px;
+  max-height: 240px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+}
+
+/* command palette (cmdk) */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 50;
+}
+.palette-content {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  background: var(--bg-0);
+  color: var(--fg-0);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  z-index: 51;
+  overflow: hidden;
+}
+.palette [cmdk-input] {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  font-size: 15px;
+  background: transparent;
+  color: var(--fg-0);
+  outline: none;
+}
+.palette [cmdk-list] {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 6px;
+}
+.palette [cmdk-group-heading] {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding: 6px 8px 2px;
+}
+.palette [cmdk-item] {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.palette [cmdk-item][data-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.palette [cmdk-item][data-selected='true'] .muted {
+  color: inherit;
+}
+.palette [cmdk-empty] {
+  padding: 12px;
+  color: var(--fg-2);
+}

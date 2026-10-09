@@ -1,12 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Agent, Message, Room } from '../api/types';
 import { Markdown } from '../lib/Markdown';
 import { authorName, formatTime } from '../lib/format';
 import { useClient } from '../state/context';
-import { useLive, useMessages } from '../state/hooks';
+import { useLive, useMessages, useRooms } from '../state/hooks';
 import { useUi } from '../state/ui';
 import { Badge, ErrorNote } from './common';
 import { RoomAgentsPanel } from './RoomAgents';
+import { Composer } from './Composer';
+import { Attachments } from './Attachments';
 
 const MARKERS = new Set(['DECISION', 'TODO', 'STATUS', 'RESULT']);
 
@@ -92,58 +94,10 @@ function MessageCard({ m, agents, replies, onReply }: { m: Message; agents: read
       ) : (
         <div className="msg-body">
           <Markdown source={m.body} />
+          <Attachments m={m} />
         </div>
       )}
     </article>
-  );
-}
-
-function Composer({ room, disabled, onSent }: { room: Room; disabled: boolean; onSent: () => void }) {
-  const client = useClient();
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<Error | undefined>();
-  const send = async (e?: FormEvent) => {
-    e?.preventDefault();
-    const body = text.trim();
-    if (!body || busy) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      await client.roomPost(room.id, body);
-      setText('');
-      onSent();
-    } catch (err) {
-      setError(err as Error);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      void send();
-    }
-  };
-  return (
-    <form className="composer" onSubmit={send} aria-label="Message composer">
-      <ErrorNote error={error} what="Message not sent" />
-      <label htmlFor="composer-input" className="sr-only">
-        Message to #{room.name}
-      </label>
-      <textarea
-        id="composer-input"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={onKey}
-        placeholder={disabled ? 'This channel is archived' : `Message #${room.name}  (Ctrl+Enter to send)`}
-        disabled={disabled}
-        rows={2}
-      />
-      <button type="submit" className="primary" disabled={disabled || busy || !text.trim()}>
-        {busy ? 'Sending...' : 'Send'}
-      </button>
-    </form>
   );
 }
 
@@ -152,6 +106,7 @@ export function Conversation({ room, agents }: { room: Room; agents: readonly Ag
   const { messages, error, loading } = useMessages(room.id);
   const ui = useUi();
   const members = useLive(() => client.roomMembers(room.id), [room.id], (e) => e.type.startsWith('room.member'));
+  const rooms = useRooms(room.projectId);
   const replyCount = new Map<string, number>();
   for (const m of messages) if (m.thread_root_id) replyCount.set(m.thread_root_id, (replyCount.get(m.thread_root_id) ?? 0) + 1);
   const logRef = useRef<HTMLDivElement>(null);
@@ -219,6 +174,9 @@ export function Conversation({ room, agents }: { room: Room; agents: readonly Ag
       </div>
       <Composer
         room={room}
+        agents={agents}
+        members={members.data ?? []}
+        rooms={rooms.data ?? []}
         disabled={room.archived}
         onSent={() => {
           stick.current = true;

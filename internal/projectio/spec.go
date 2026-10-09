@@ -168,6 +168,7 @@ var ExcludedTables = map[string]string{
 	"sessions":                 "agent CLI session ids only resume on the exporting machine",
 	"provider_quotas":          "provider runtime state",
 	"llm_cache":                "response cache; may hold prompts and answers of other work",
+	"room_attachments":         "files a human attached in a room stay on this machine; the messages keep each file's name, size and the text an agent saw",
 	"secret_blobs":             "encrypted secrets are never exported",
 	"run_leases":               "runtime lock rows",
 	"generated_files":          "hashes of files in the exporting machine's repository",

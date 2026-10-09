@@ -279,6 +279,26 @@ type Message struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
+// Attachment is a file a human attached to a message (payload field "attachments"). Text is the file's content when it is
+// short UTF-8 text, after the secret scan; it is what an agent sees. The file itself stays on disk (room_attachments).
+type Attachment struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Mime string `json:"mime"`
+	Size int64  `json:"size"`
+	Text string `json:"text,omitempty"`
+}
+
+// Attachments returns the message's attached files.
+func (m Message) Attachments() []Attachment {
+	var a []Attachment
+	if len(m.Payload) == 0 {
+		return nil
+	}
+	m.PayloadField("attachments", &a)
+	return a
+}
+
 // PayloadField decodes one top-level payload field into v. It reports whether the field was present.
 func (m Message) PayloadField(name string, v any) bool {
 	var raw map[string]json.RawMessage

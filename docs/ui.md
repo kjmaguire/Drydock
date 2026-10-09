@@ -142,6 +142,26 @@ not expanded).
 ### 6.3 cmdk command palette
 Opened with `Ctrl+K`. Groups: Navigate (rooms, DMs, tasks, screens), Agents (focus, interrupt, restart, open inspector), Tasks (create, open, move per allowed transition), Actions (open terminal, toggle dock, switch theme, test connection), Recent. Commands are registered by screens and filtered by context (a command whose feature is not built is not registered). Destructive commands open the same approval flow as buttons; the palette never bypasses an approval. Fuzzy matching is done by cmdk over a bounded list (recent 200 entities); larger sets query the Go side (FTS5) on input (**proposal**).
 
+**As built (2026-10-09).** `ui/src/components/CommandPalette.tsx` (cmdk 1.1.1), Ctrl+K anywhere. Groups: Navigate (the
+project's rooms and DMs, every screen), Tasks (create, open, a task's workflow), Agents (inspect, message), Actions (terminal,
+diff, logs, activity, toggle the dock, add a project, theme). It holds no destructive command at all (no approve, merge, stop,
+delete), so it cannot bypass an approval. The fuzzy match is cmdk's over the loaded lists (tasks capped at 200); no server-side
+search yet.
+
+**Composer (brief 21; As built 2026-10-09).** `ui/src/components/Composer.tsx` with the pure helpers in `ui/src/lib/composer.ts`.
+Typing `@` lists the room's members (and roles), `@role:` the roles, `#` the project's channels and task channels, `/` at the
+start of an empty message the commands; arrow keys, Enter or Tab pick, Esc closes. A mention is inserted in the form the room
+core resolves (`internal/room/parse.go`): the member's name as a handle when that is a clean, unique handle, else its id. Slash
+commands map to existing actions only: `/task <title>` (create and open), `/decision`, `/todo`, `/status`, `/result` (post with
+the marker), `/invite @agent` (room.invite), `/mode auto|sequential` (room.setMode), `/help`. Attachments: up to 4 files of up
+to 10 MB per message, by the Attach button, drop or paste (`room.attach`). Each file is kept on disk under
+`<data>/attachments/<room>/<id>/` with its SHA-256 in `room_attachments`; the message's payload lists them. An agent sees a text
+file of up to 32 KB, after the secret scan, as an `<untrusted source="attachment:...">` block in its room context, and only the
+name, size and type of anything else. The human saves a file back through `room.attachment` (refused if the file on disk no
+longer matches its hash); PNG, JPEG, GIF and WebP can be previewed on request (as a data: URL; SVG is never rendered).
+Attachments stay on this machine: a project export leaves `room_attachments` out (the messages keep the names and the text an
+agent saw). The thread panel keeps its plain composer.
+
 ### 6.4 TanStack Virtual lists
 Used for: message lists (bottom-anchored, dynamic row height, "jump to latest" pill when scrolled up, no auto-scroll while the user has scrolled away), task lists, the event log, inbox, changed-file lists, logs. Rules: stable row keys (`id`), measured heights cached per id, overscan small (**proposal**: 6 rows), expanded/collapsed state stored outside the row component so recycling does not lose it, and `role="log"`/`role="list"` semantics with accessible names (section 14).
 
