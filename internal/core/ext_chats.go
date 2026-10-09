@@ -19,25 +19,8 @@ import (
 // file wires it to the core (adapters, Connection gates, project folders, the secret scanner, the license) and registers the
 // chat.* methods. It changes none of the base services.
 //
-// RPC contract (all parameters are JSON objects; omitted fields take the defaults in brackets):
-//
-//	chat.list         {projectId?, query?, includeArchived?}            -> [ListItem]  pinned first, then newest updated
-//	chat.create       {projectId?, cwd?, title?, adapter["claude"], model?, effort?, permissionMode?, readHistory?[true]} -> Chat
-//	chat.get          {id}                                              -> {chat, messages (latest 200, oldest first), hasMore}
-//	chat.messages     {id, beforeSeq?, limit?[100]}                     -> [Message]   older page, oldest first
-//	chat.send         {id, text, attach?: [chatId]}                     -> {turnId}    the turn runs in the background
-//	chat.stop         {id}                                              -> {stopped}
-//	chat.update       {id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?} -> Chat
-//	chat.delete       {id}                                              -> {deleted: true}
-//	chat.search       {query, projectId?, limit?[50]}                   -> [{chatId, title, seq, role, snippet, archived}]
-//	chat.fork         {id, uptoSeq?[all]}                               -> Chat        no CLI session; first turn gets the transcript
-//	chat.allowTool    {id, tool}                                        -> Chat        Claude --allowedTools rule, validated
-//	chat.disallowTool {id, tool}                                        -> Chat
-//
-// Events (events.Event.Type, Data): chat.created {chatId, chat}, chat.updated {chatId, chat}, chat.deleted {chatId},
-// chat.turn_started {chatId, turnId, attach}, chat.delta {chatId, turnId, text}, chat.tool {chatId, turnId, name, summary,
-// messageId}, chat.message {chatId, message}, chat.turn {chatId, turnId, status: done|error|stopped, usage: {inputTokens,
-// outputTokens, costUsd|null}, sessionId, resumed, fallback, error?}.
+// The chat.* methods and events are specified once, in docs/chats.md section 2 (parameters, results, events); keep that file in
+// step with the bindings below.
 
 func init() {
 	RegisterExtension(Extension{Name: "chats", Start: startChats})
@@ -101,14 +84,14 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"messages": ms, "hasMore": more}, nil
+			return chats.Page{Messages: ms, HasMore: more}, nil
 		}),
 		"chat.send": bind(func(ctx context.Context, p chats.SendReq) (any, error) {
-			id, err := svc.Send(ctx, p)
+			res, err := svc.Send(ctx, p)
 			if err != nil {
 				return nil, err
 			}
-			return map[string]string{"turnId": id}, nil
+			return res, nil
 		}),
 		"chat.stop": bind(func(ctx context.Context, p idOnly) (any, error) {
 			ok, err := svc.Stop(ctx, p.ID)

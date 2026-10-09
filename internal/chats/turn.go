@@ -38,43 +38,52 @@ type SendReq struct {
 	Attach []string `json:"attach"` // ids of other chats whose transcripts this turn is given
 }
 
-// Send stores the human's message and starts one agent turn in the background. It returns the turn id; the turn's output
-// arrives as chat.delta, chat.tool, chat.message and finally chat.turn events. A second send while a turn runs is refused.
-func (s *Service) Send(ctx context.Context, r SendReq) (string, error) {
+// SendResult is what chat.send returns.
+type SendResult struct {
+	TurnID string `json:"turnId"`
+	// Version is the chat's version once the turn was claimed and published as running (chat.updated): a snapshot of the chat
+	// at this version or later already shows the turn, running or over.
+	Version int64 `json:"version"`
+}
+
+// Send stores the human's message and starts one agent turn in the background. It publishes the chat as running
+// (chat.updated, then chat.turn_started) and returns the turn id; the turn's output arrives as chat.delta, chat.tool,
+// chat.message and finally chat.turn and chat.updated events. A second send while a turn runs is refused.
+func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	if s.d.Licensed != nil {
 		if err := s.d.Licensed(ctx); err != nil {
-			return "", err
+			return SendResult{}, err
 		}
 	}
 	text := strings.TrimSpace(strings.ToValidUTF8(r.Text, "�"))
 	if text == "" {
-		return "", errors.New("the message is empty")
+		return SendResult{}, errors.New("the message is empty")
 	}
 	if len(text) > s.o.MaxTextBytes {
-		return "", fmt.Errorf("the message is %d bytes; the limit is %d", len(text), s.o.MaxTextBytes)
+		return SendResult{}, fmt.Errorf("the message is %d bytes; the limit is %d", len(text), s.o.MaxTextBytes)
 	}
 	c, err := s.Get(ctx, r.ID)
 	if err != nil {
-		return "", err
+		return SendResult{}, err
 	}
 	if c.Archived {
-		return "", errors.New("this chat is archived: unarchive it to continue")
+		return SendResult{}, errors.New("this chat is archived: unarchive it to continue")
 	}
 	caps, ok := s.caps(c.Adapter)
 	if !ok {
-		return "", fmt.Errorf("the adapter %q of this chat is not available", c.Adapter)
+		return SendResult{}, fmt.Errorf("the adapter %q of this chat is not available", c.Adapter)
 	}
 	attached, err := s.loadAttachments(ctx, c, r.Attach)
 	if err != nil {
-		return "", err
+		return SendResult{}, err
 	}
 	cwd := c.Cwd
 	if c.ProjectID != "" {
 		if cwd, err = s.d.ProjectDir(ctx, c.ProjectID); err != nil {
-			return "", err
+			return SendResult{}, err
 		}
 	} else if cwd, err = ValidateFolder(c.Cwd); err != nil {
-		return "", fmt.Errorf("this chat's folder cannot be used any more: %w", err)
+		return SendResult{}, fmt.Errorf("this chat's folder cannot be used any more: %w", err)
 	}
 
 	// one turn at a time: the in-memory reservation, then the row (which also covers a second process on the same data)
@@ -84,7 +93,7 @@ func (s *Service) Send(ctx context.Context, r SendReq) (string, error) {
 	if s.running[c.ID] != nil {
 		s.mu.Unlock()
 		cancel(nil)
-		return "", ErrBusy
+		return SendResult{}, ErrBusy
 	}
 	s.running[c.ID] = &turnState{turnID: turnID, cancel: cancel}
 	s.mu.Unlock()
@@ -101,7 +110,7 @@ func (s *Service) Send(ctx context.Context, r SendReq) (string, error) {
 	aj, _ := json.Marshal(attachedIDs)
 	var claimed bool
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=? WHERE id=? AND status<>?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning)
+		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=?, version=version+1 WHERE id=? AND status<>?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning)
 		if err != nil {
 			return err
 		}
@@ -117,14 +126,20 @@ func (s *Service) Send(ctx context.Context, r SendReq) (string, error) {
 		if err == nil {
 			err = ErrBusy
 		}
-		return "", err
+		return SendResult{}, err
 	}
 	c.Cwd, c.Status = cwd, StatusRunning
 	user, err := s.insertMessage(ctx, c, turnID, RoleUser, text, "", nil)
 	if err != nil {
 		s.endTurnRow(c, turnID, TurnError, err.Error())
 		release()
-		return "", err
+		return SendResult{}, err
+	}
+	res := SendResult{TurnID: turnID}
+	// the running chat as a versioned snapshot, so a view orders it with every other snapshot of the chat
+	if nc, err := s.Get(ctx, c.ID); err == nil {
+		res.Version = nc.Version
+		s.publish(ctx, "chat.updated", c.ProjectID, map[string]any{"chatId": c.ID, "chat": nc})
 	}
 	s.publish(ctx, "chat.turn_started", c.ProjectID, map[string]any{"chatId": c.ID, "turnId": turnID, "attach": attachedIDs})
 	s.wg.Add(1)
@@ -133,7 +148,7 @@ func (s *Service) Send(ctx context.Context, r SendReq) (string, error) {
 		defer release()
 		s.run(tctx, c, caps, turnID, user, attachmentBlock(attached, s.o.AttachChars))
 	}()
-	return turnID, nil
+	return res, nil
 }
 
 // Stop cancels the running turn of a chat. It reports whether a turn was running.
@@ -452,7 +467,7 @@ func (s *Service) endTurnRow(c Chat, turnID, status, errMsg string) {
 		if _, err := tx.ExecContext(context.Background(), `UPDATE chat_turns SET status=?, error=?, ended_at=? WHERE id=?`, status, errMsg, storage.Now(), turnID); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(context.Background(), `UPDATE chats SET status=?, last_error=? WHERE id=?`, StatusError, errMsg, c.ID)
+		_, err := tx.ExecContext(context.Background(), `UPDATE chats SET status=?, last_error=?, version=version+1 WHERE id=?`, StatusError, errMsg, c.ID)
 		return err
 	})
 }
@@ -524,7 +539,7 @@ func (t *turnRun) finish(ctx context.Context, o attemptOut, resumed, transcript 
 			status, session, b2i(resumed), b2i(transcript), o.in, o.out, turnCost, errMsg, now, t.turnID); err != nil {
 			return err
 		}
-		q := `UPDATE chats SET status=?, last_error=?, session_id=?, tokens_in=tokens_in+?, tokens_out=tokens_out+?, cost_unknown_turns=cost_unknown_turns+?, updated_at=?`
+		q := `UPDATE chats SET status=?, last_error=?, session_id=?, tokens_in=tokens_in+?, tokens_out=tokens_out+?, cost_unknown_turns=cost_unknown_turns+?, updated_at=?, version=version+1`
 		args := []any{chatStatus, errMsg, session, o.in, o.out, unknown, now}
 		if o.costKnown {
 			q += `, cost_usd=COALESCE(cost_usd,0)+?`

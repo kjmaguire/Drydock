@@ -3,6 +3,7 @@
 
 import type { ProviderDetail } from '../../api/providerClient.ts';
 import type { DataClass, NewProvider, PriceTier, ProbeResult, ProviderKind, ProviderModel } from '../../api/types.ts';
+import { formatUsd } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
 export const isZeroTime = (s: string | undefined) => !s || s.startsWith('0001-');
@@ -12,7 +13,7 @@ export function priceText(m: ProviderModel, which: 'in' | 'out'): string {
   if (m.isFree) return 'free';
   const v = which === 'in' ? m.inputPerM : m.outputPerM;
   if (!(m.inputPerM > 0 || m.outputPerM > 0)) return 'not reported';
-  return v > 0 ? `$${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}` : 'free';
+  return v > 0 ? formatUsd(v) : 'free';
 }
 
 export const priceKnown = (m: ProviderModel) => m.isFree || m.inputPerM > 0 || m.outputPerM > 0;

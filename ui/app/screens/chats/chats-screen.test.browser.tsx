@@ -5,8 +5,9 @@ import type { Chat, ChatHit, ChatListItem, ChatMessage } from '../../api/chatCli
 import type { AdapterInfo, Project } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { lic } from '../../test/fixtures.ts';
+import { CommandPalette } from '../../shell/palette.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
-import { onWindows, RETRY_TEXT } from './chats.ts';
+import { RETRY_TEXT } from './chats.ts';
 
 afterEach(cleanup);
 
@@ -37,6 +38,7 @@ const chat = (over: Partial<Chat> = {}): Chat => ({
   tokensOut: 340,
   costUsd: 0.0123,
   costUnknownTurns: 0,
+  version: 1,
   ...over,
 });
 const item = (over: Partial<ChatListItem> = {}): ChatListItem => ({ ...chat(over), preview: 'The Multiply function goes in calc.go', messageCount: 4, ...over });
@@ -65,7 +67,7 @@ const must$ = (r: R, sel: string): HTMLElement => must($<HTMLElement>(r, sel), s
 const dialogWith = (text: string) => must(doc$$('dialog[open]').find((d) => d.textContent!.includes(text)), `dialog with ${text}`);
 const newChatDialog = () => must(doc$$('dialog[open]').find((d) => d.querySelector('[data-testid="new-chat-form"]')), 'new chat dialog');
 
-function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean } = {}) {
+function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean; palette?: boolean } = {}) {
   const s = testServices({
     projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project, { id: 'prj_2', name: 'payments-api' } as Project],
     licenseStatus: async () => lic(),
@@ -76,7 +78,14 @@ function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean 
   });
   s.workspace.start();
   const navigated: string[] = [];
-  const r = mount(<ChatsScreen id={props.id} newChat={props.newChat} onNavigate={(h) => void navigated.push(h)} />, s);
+  if (props.newChat) s.ui.requestNewChat(); // the palette's New chat, before the screen opened
+  const r = mount(
+    <>
+      <ChatsScreen id={props.id} onNavigate={(h) => void navigated.push(h)} />
+      {props.palette ? <CommandPalette onMessage={() => {}} onNavigate={(h) => void navigated.push(h)} /> : null}
+    </>,
+    s,
+  );
   return { s, r, navigated };
 }
 
@@ -155,7 +164,7 @@ describe('Chats list', () => {
     await waitFor(() => expect(rowTitles(r)).toEqual(['First', 'Second']), r);
     await pickMenu(r, 'Second', 'Pin');
     await waitFor(() => expect(updates).toEqual([{ id: 'c2', pinned: true }]), r);
-    s.emit({ type: 'chat.updated', data: { chatId: 'c2' } }); // the core announces the change; the list follows it
+    // the list is read again after the change, without waiting for the core's chat.updated (the stream may be down)
     await waitFor(() => expect(rowTitles(r)).toEqual(['Second', 'First']), r);
     expect($(r, '[aria-label="Pinned chats"]')).not.toBeNull();
     // another window created a chat: the list follows the event
@@ -185,9 +194,43 @@ describe('Chats list', () => {
     expect(deleted).toEqual([]);
     await r.act(() => byText(dlg, 'button', 'Delete chat').click());
     await waitFor(() => expect(deleted).toEqual(['chat_a']), r);
-    s.emit({ type: 'chat.deleted', data: { chatId: 'chat_a' } }); // the core announces it
     await waitFor(() => expect(navigated).toEqual(['/chats']), r);
-    await waitFor(() => expect(rows(r)).toHaveLength(0), r);
+    await waitFor(() => expect(rows(r)).toHaveLength(0), r); // read again, no chat.deleted needed
+    s.emit({ type: 'chat.deleted', data: { chatId: 'chat_a' } }); // the core announces it later
+    await waitFor(() => expect(r.container.textContent).toContain('This chat was deleted.'), r);
+  });
+
+  it('shows a failed delete inside the dialog, and nothing in the list once it is closed', async () => {
+    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'Keep' })], chatDelete: async () => Promise.reject(new Error('a turn is running in this chat: stop it first')) });
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Keep']), r);
+    await pickMenu(r, 'Keep', 'Delete…');
+    const dlg = await waitFor(() => dialogWith('Delete chat'), r);
+    await r.act(() => byText(dlg, 'button', 'Delete chat').click());
+    await waitFor(() => expect(must(dlg.querySelector('[role="alert"]'), 'alert in the dialog').textContent).toContain('stop it first'), r);
+    expect(rowTitles(r)).toEqual(['Keep']);
+    await r.act(() => byText(dlg, 'button', 'Cancel').click());
+    await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
+    expect(must$(r, '[aria-label="Chats"]').querySelector('[role="alert"]')).toBeNull();
+    // opened again, the dialog starts without the old error
+    await new Promise((res) => setTimeout(res, 300)); // the menu finishes closing after a selection
+    await pickMenu(r, 'Keep', 'Delete…');
+    const again = await waitFor(() => dialogWith('Delete chat'), r);
+    expect(again.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('keeps a pin error in the list when a dialog opens and closes', async () => {
+    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'Draft' })], chatUpdate: async () => Promise.reject(new Error('Drydock is read-only: no valid license')) });
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Draft']), r);
+    await pickMenu(r, 'Draft', 'Pin');
+    const list = must$(r, '[aria-label="Chats"]');
+    await waitFor(() => expect(must(list.querySelector('[role="alert"]'), 'list alert').textContent).toContain('no valid license'), r);
+    await new Promise((res) => setTimeout(res, 300));
+    await pickMenu(r, 'Draft', 'Rename');
+    const dlg = await waitFor(() => dialogWith('Rename chat'), r);
+    expect(dlg.querySelector('[role="alert"]')).toBeNull(); // the list's error is not the dialog's
+    await r.act(() => byText(dlg, 'button', 'Cancel').click());
+    await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
+    expect(must(list.querySelector('[role="alert"]'), 'list alert').textContent).toContain('no valid license');
   });
 
   it('shows a failed rename inside the dialog, not behind it', async () => {
@@ -199,16 +242,28 @@ describe('Chats list', () => {
     await r.act(() => byText(dlg, 'button', 'Save').click());
     await waitFor(() => expect(dlg.textContent).toContain('no valid license'), r);
     expect(must(dlg.querySelector('[role="alert"]'), 'alert in the dialog')).toBeTruthy();
+    // closed, the error goes with the dialog: the list shows no bare alert
+    await r.act(() => byText(dlg, 'button', 'Cancel').click());
+    await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
+    expect(must$(r, '[aria-label="Chats"]').querySelector('[role="alert"]')).toBeNull();
   });
 
-  it('renames from the row menu and forks into a new chat', async () => {
-    const list = [item({ id: 'c1', title: 'Draft' })];
+  it('renames from the row menu and forks into a new chat, reading the list again after each', async () => {
+    let list = [item({ id: 'c1', title: 'Draft' })];
     const updates: unknown[] = [];
     const forks: unknown[] = [];
     const { r, navigated } = setup({
       chatList: async () => list,
-      chatUpdate: async (u) => (updates.push(u), chat({ id: u.id, title: u.title ?? '' })),
-      chatFork: async (id, upto) => (forks.push([id, upto]), chat({ id: 'c9', forkedFrom: id })),
+      chatUpdate: async (u) => {
+        updates.push(u);
+        list = list.map((c) => (c.id === u.id ? { ...c, title: u.title ?? '' } : c));
+        return chat({ id: u.id, title: u.title ?? '' });
+      },
+      chatFork: async (id, upto) => {
+        forks.push([id, upto]);
+        list = [item({ id: 'c9', title: 'Release notes (fork)' }), ...list];
+        return chat({ id: 'c9', forkedFrom: id });
+      },
     });
     await waitFor(() => expect(rowTitles(r)).toEqual(['Draft']), r);
     await pickMenu(r, 'Draft', 'Rename');
@@ -216,10 +271,12 @@ describe('Chats list', () => {
     type(byLabel(dlg, 'Title'), 'Release notes');
     await r.act(() => byText(dlg, 'button', 'Save').click());
     await waitFor(() => expect(updates).toEqual([{ id: 'c1', title: 'Release notes' }]), r);
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Release notes']), r); // no chat.updated was sent
     await new Promise((res) => setTimeout(res, 300)); // the menu finishes closing after a selection
-    await pickMenu(r, 'Draft', 'Fork');
+    await pickMenu(r, 'Release notes', 'Fork');
     await waitFor(() => expect(navigated).toEqual(['/chats/c9']), r);
     expect(forks).toEqual([['c1', undefined]]);
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Release notes (fork)', 'Release notes']), r);
   });
 });
 
@@ -249,32 +306,49 @@ describe('New chat dialog', () => {
     await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
   });
 
-  it('New chat over an open chat keeps it: cancelling goes back to it without "?new"', async () => {
-    const { r, navigated } = setup({ chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }) }, { id: 'chat_a', newChat: true });
+  it("the palette's New chat over an open chat keeps it: cancelling leaves it as it was, with no navigation", async () => {
+    const { r, s, navigated } = setup({ chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }) }, { id: 'chat_a' });
+    await waitFor(() => expect(messages(r)).toHaveLength(1), r);
+    expect(doc$$('dialog[open]')).toHaveLength(0);
+    await r.act(() => s.ui.requestNewChat()); // the screen is already open
     const dlg = await waitFor(newChatDialog, r);
-    await waitFor(() => expect(messages(r)).toHaveLength(1), r); // the conversation stays mounted behind the dialog
+    expect(messages(r)).toHaveLength(1); // the conversation stays mounted behind the dialog
     await r.act(() => byText(dlg, 'button', 'Cancel').click());
-    await waitFor(() => expect(navigated).toEqual(['/chats/chat_a']), r);
+    await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
+    expect(navigated).toEqual([]);
     expect(messages(r)).toHaveLength(1);
+    // asked once, opened once: a later render does not reopen it
+    await r.act(() => s.ui.setTheme('dark'));
+    expect(doc$$('dialog[open]')).toHaveLength(0);
   });
 
-  it('without a project takes an absolute folder (or none) and refuses a relative one', async () => {
-    const created: unknown[] = [];
-    const { r } = setup({ chatCreate: async (p) => (created.push(p), chat({ id: 'c_np', projectId: '' })) }, { newChat: true });
+  it('without a project sends the folder to the core, which decides, and shows its refusal', async () => {
+    const created: { cwd?: string }[] = [];
+    const { r, navigated } = setup(
+      {
+        chatCreate: async (p) => {
+          created.push(p);
+          if (p.cwd === 'notes\\weekly') throw new Error('the folder "notes\\weekly" is not an absolute path');
+          return chat({ id: 'c_np', projectId: '' });
+        },
+      },
+      { newChat: true },
+    );
     const dlg = await waitFor(newChatDialog, r);
     await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Project').value).toBe('prj_1'), r);
     type(byLabel<HTMLSelectElement>(dlg, 'Project'), '');
     const folder = await waitFor(() => byLabel(dlg, 'Folder'), r);
     type(folder, 'notes\\weekly');
-    await waitFor(() => expect(dlg.textContent).toContain('Enter an absolute folder path'), r);
-    expect(byText<HTMLButtonElement>(dlg, 'button', 'Start chat').disabled).toBe(true);
-    const abs = onWindows() ? 'C:\\work\\notes' : '/work/notes'; // what the core's filepath.IsAbs accepts here
-    type(folder, abs);
+    // the browser does not guess the core's path rules: Start stays enabled and the core answers
     await waitFor(() => expect(byText<HTMLButtonElement>(dlg, 'button', 'Start chat').disabled).toBe(false), r);
-    expect(dlg.textContent).not.toContain('Enter an absolute folder path');
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
-    await waitFor(() => expect(created).toHaveLength(1), r);
-    expect(created[0]).toEqual({ projectId: undefined, cwd: abs, adapter: 'claude', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true });
+    await waitFor(() => expect(must(dlg.querySelector('[role="alert"]'), 'alert').textContent).toContain('is not an absolute path'), r);
+    expect(navigated).toEqual([]);
+    type(folder, 'C:\\work\\notes');
+    await r.act(() => byText(dlg, 'button', 'Start chat').click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_np']), r);
+    expect(created.map((c) => c.cwd)).toEqual(['notes\\weekly', 'C:\\work\\notes']);
+    expect(created[1]).toEqual({ projectId: undefined, cwd: 'C:\\work\\notes', adapter: 'claude', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true });
   });
 
   it('warns clearly when a permission mode that skips approvals is picked', async () => {
@@ -341,7 +415,7 @@ describe('Conversation', () => {
 
   it('streams a turn: deltas fill the in-progress bubble outside the live region, the stored message replaces it, chat.turn ends it', async () => {
     const sent: unknown[] = [];
-    const { r, s } = conv(chat(), [msg(1, 'user', 'earlier'), msg(2, 'assistant', 'earlier answer')], { chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 'turn_2' }) });
+    const { r, s } = conv(chat(), [msg(1, 'user', 'earlier'), msg(2, 'assistant', 'earlier answer')], { chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 'turn_2', version: 2 }) });
     await waitFor(() => expect(messages(r)).toHaveLength(2), r);
     const box = byLabel<HTMLTextAreaElement>(r.container, 'Message');
     type(box, 'explain Multiply');
@@ -409,7 +483,7 @@ describe('Conversation', () => {
         c = chat({ allowedTools: [tool] });
         return c;
       },
-      chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 't3' }),
+      chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 't3', version: 3 }),
     });
     const callout = await waitFor(() => must$(r, '[data-testid="chat-denied"]'), r);
     expect(callout.textContent).toContain('Claude was not allowed to run Bash');
@@ -479,7 +553,7 @@ describe('Conversation', () => {
       {
         chatList: async () => others,
         chatGet: async () => ({ chat: chat(), messages: [], hasMore: false }),
-        chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 't' }),
+        chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 't', version: 2 }),
       },
       { id: 'chat_a' },
     );
@@ -504,6 +578,65 @@ describe('Conversation', () => {
     await r.act(() => byText(r.container, 'button', 'Send').click());
     await waitFor(() => expect(sent).toEqual([['chat_a', 'compare with the overflow chat', ['c2']]]), r);
     await waitFor(() => expect($$(r, '[data-testid="attach-chip"]')).toHaveLength(0), r);
+  });
+
+  it("searches every chat for the picker, and an attached chat's chip keeps its title when it leaves the list", async () => {
+    const asked: unknown[] = [];
+    const recent = [item({ id: 'chat_a' }), item({ id: 'c2', title: 'Overflow edge cases' })];
+    const old = item({ id: 'c_old', title: 'Release notes from last year', archived: true });
+    const { r } = setup(
+      {
+        chatList: async (p) => (asked.push(p), p?.query ? [old] : recent),
+        chatGet: async () => ({ chat: chat(), messages: [], hasMore: false }),
+      },
+      { id: 'chat_a' },
+    );
+    const open = await waitFor(() => byText(r.container, 'button', 'Attach chats'), r);
+    await r.act(() => open.click());
+    const picker = must$(r, '[data-testid="attach-picker"]');
+    const titles = () => Array.from(picker.querySelectorAll('[data-testid="attach-option"] .t')).map((e) => e.textContent);
+    await waitFor(() => expect(titles()).toEqual(['Overflow edge cases']), r);
+    type(byLabel(picker, 'Filter chats'), 'release');
+    // not in the recent chats shown: the core's search finds it (archived chats included)
+    await waitFor(() => expect(titles()).toEqual(['Release notes from last year']), r);
+    expect(asked.find((a) => (a as { query?: string } | undefined)?.query)).toEqual({ query: 'release', includeArchived: true, limit: 100 });
+    await r.act(() => (picker.querySelector('[data-testid="attach-option"]') as HTMLElement).click());
+    type(byLabel(picker, 'Filter chats'), '');
+    await waitFor(() => expect(titles()).toEqual(['Overflow edge cases']), r);
+    expect($$(r, '[data-testid="attach-chip"]').map((e) => e.textContent!.trim())).toEqual(['Release notes from last year']);
+    expect(byText(r.container, 'button', 'Remove attached chat Release notes from last year')).toBeDefined();
+  });
+
+  it('a send scrolls to the latest message even when its turn ended before chat.send answered', async () => {
+    const latest = Array.from({ length: 40 }, (_, i) => msg(1 + i, i % 2 ? 'assistant' : 'user', `line ${1 + i}`));
+    let emit: (e: { type: string; data: unknown }) => void = () => {};
+    const { r, s } = conv(chat(), latest, {
+      chatSend: async () => {
+        // the CLI could not start: the turn is over before the answer arrives
+        emit({ type: 'chat.turn_started', data: { chatId: 'chat_a', turnId: 't5', attach: [] } });
+        emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(41, 'error', 'the CLI could not start') } });
+        emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 't5', status: 'error' } });
+        return { turnId: 't5', version: 3 };
+      },
+    });
+    emit = (e) => s.emit(e);
+    await waitFor(() => expect(messages(r)).toHaveLength(40), r);
+    const scroller = must$(r, '[data-testid="chat-scroll"]');
+    scroller.style.flex = 'none';
+    scroller.style.height = '200px';
+    scroller.style.overflowY = 'auto';
+    await r.act(() => {
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+    await waitFor(() => must$(r, '[data-testid="chat-jump"]'), r);
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Message'), 'go');
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Send').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Send').click());
+    await waitFor(() => expect(messages(r)).toHaveLength(41), r);
+    await waitFor(() => expect($(r, '[data-testid="chat-jump"]')).toBeNull(), r);
+    await waitFor(() => expect(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight).toBeLessThan(40), r);
+    expect($(r, '[data-testid="chat-stop"]')).toBeNull();
   });
 
   it('forks the whole chat from the header, or from one message', async () => {
@@ -585,5 +718,56 @@ describe('Conversation', () => {
     const { r } = conv(chat({ archived: true }), [msg(1, 'user', 'old')]);
     await waitFor(() => expect(r.container.textContent).toContain('This chat is archived.'), r);
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Message').disabled).toBe(true);
+  });
+});
+
+describe("The palette's New chat", () => {
+  /** Run with the page at `path` (the palette reads where it is), then put the address back. */
+  async function at(path: string, fn: () => Promise<void>) {
+    const was = window.location.pathname + window.location.search + window.location.hash;
+    history.replaceState(history.state, '', path);
+    try {
+      await fn();
+    } finally {
+      history.replaceState(history.state, '', was);
+    }
+  }
+  async function choose(r: R, s: { ui: { setPalette(open: boolean): void } }, label: string) {
+    await r.act(() => s.ui.setPalette(true));
+    const input = byLabel<HTMLInputElement>(r.container, 'Command');
+    await r.act(() => type(input, label));
+    await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+  }
+
+  it('opens the dialog over the open chat, without navigating', async () => {
+    await at('/chats/chat_a', async () => {
+      const { r, s, navigated } = setup({ chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }) }, { id: 'chat_a', palette: true });
+      await waitFor(() => expect(messages(r)).toHaveLength(1), r);
+      await choose(r, s, 'New chat');
+      await waitFor(newChatDialog, r);
+      expect(navigated).toEqual([]);
+      expect(messages(r)).toHaveLength(1);
+      expect(s.ui.paletteOpen).toBe(false);
+    });
+  });
+
+  it('from another screen goes to Chats, which opens the dialog', async () => {
+    await at('/tasks', async () => {
+      const s = testServices({
+        projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
+        licenseStatus: async () => lic(),
+        appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
+        adapterList: async () => [claude],
+        chatList: async () => [],
+      });
+      s.workspace.start();
+      const navigated: string[] = [];
+      const pal = mount(<CommandPalette onMessage={() => {}} onNavigate={(h) => void navigated.push(h)} />, s);
+      await choose(pal, s, 'New chat');
+      await waitFor(() => expect(navigated).toEqual(['/chats']), pal);
+      // the route renders the Chats screen, which takes the request
+      const r = mount(<ChatsScreen onNavigate={(h) => void navigated.push(h)} />, s);
+      await waitFor(newChatDialog, r);
+    });
   });
 });

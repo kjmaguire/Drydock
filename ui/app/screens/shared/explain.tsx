@@ -1,5 +1,6 @@
 import { css, on, type Handle } from 'remix/component';
 import type { DecisionRow, RoutingDecision } from '../../api/extTypes.ts';
+import { formatUsd } from '../../lib/format.ts';
 import { query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
@@ -8,7 +9,7 @@ import { card, tableCard } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 
-export const money = (v: number | null | undefined) => (v === null || v === undefined ? 'price unknown' : `$${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`);
+export const money = (v: number | null | undefined) => (v === null || v === undefined ? 'price unknown' : formatUsd(v));
 
 const explainCss = css({ display: 'grid', gap: t.s2, '& summary': { fontSize: t.textSm }, '& ul': { margin: `${t.s2} 0 0`, paddingLeft: '20px' } });
 

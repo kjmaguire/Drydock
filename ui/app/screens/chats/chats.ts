@@ -80,19 +80,6 @@ export function adapterOptionText(a: AdapterInfo): string {
   return a.detection.version ? `${adapterLabel(a.id)} ${a.detection.version}` : adapterLabel(a.id);
 }
 
-/** Whether the app runs on Windows (the product target; Linux is only the development host). */
-export const onWindows = (): boolean => typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
-
-/**
- * An absolute folder path as the core's filepath.IsAbs sees it: on Windows a drive (C:\x, C:/x) or a share (\\server\share,
- * //server/share) — "/x" is not absolute there; elsewhere a path starting with "/".
- */
-export function isAbsolutePath(p: string, windows = onWindows()): boolean {
-  const s = p.trim();
-  if (!windows) return s.startsWith('/');
-  return /^[a-zA-Z]:[\\/]/.test(s) || /^[\\/]{2}[^\\/]+[\\/][^\\/]+/.test(s);
-}
-
 /** Split a search snippet into plain and matched parts ([brackets] mark the matches). */
 export function snippetParts(snippet: string): { text: string; hit: boolean }[] {
   const out: { text: string; hit: boolean }[] = [];
@@ -107,8 +94,7 @@ export function snippetParts(snippet: string): { text: string; hit: boolean }[] 
   return out;
 }
 
-/** The title shown for a chat: its own, else "New chat". */
-export const chatTitle = (c: Pick<Chat, 'title'>): string => c.title.trim() || 'New chat';
+export { chatTitle } from '../../api/chatClient.ts';
 
 /** The middle of a long path is cut so the start (drive) and the end (folder) stay visible. */
 export function shortPath(p: string, max = 48): string {

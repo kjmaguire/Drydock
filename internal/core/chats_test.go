@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -483,10 +484,7 @@ func TestChatSearchListAndDelete(t *testing.T) {
 	if err := e.callErr("chat.send", map[string]any{"id": b.ID, "text": "more"}); err == nil || !strings.Contains(err.Error(), "archived") {
 		t.Fatalf("an archived chat does not take messages: %v", err)
 	}
-	var older struct {
-		Messages []chats.Message `json:"messages"`
-		HasMore  bool            `json:"hasMore"`
-	}
+	var older chats.Page
 	e.call("chat.messages", map[string]any{"id": a.ID, "beforeSeq": 2, "limit": 10}, &older)
 	if len(older.Messages) != 1 || older.Messages[0].Seq != 1 || older.HasMore {
 		t.Fatalf("older page %+v", older)
@@ -791,3 +789,110 @@ func TestChatTurnInterruptedByACrashIsMarkedFailed(t *testing.T) {
 		t.Fatalf("turn row %q", st)
 	}
 }
+
+// Every write to a chat's row raises its version, and every snapshot (a method's result, chat.updated, chat.get) carries it,
+// so the UI orders snapshots by version instead of by the clock. chat.update and the allow-rule methods return the row they
+// committed, so the archived flag, the status and the counters are never from before the write.
+func TestChatVersionsOrderSnapshotsAndActionsReturnTheCommittedRow(t *testing.T) {
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "understood"}}}, nil)
+	p, _ := e.setup("versions")
+	c := e.create(map[string]any{"projectId": p.ID})
+	if c.Version != 1 {
+		t.Fatalf("a new chat is at version 1: %d", c.Version)
+	}
+	var arch chats.Chat
+	e.call("chat.update", map[string]any{"id": c.ID, "archived": true}, &arch)
+	if !arch.Archived || arch.ArchivedAt == 0 || arch.Version != 2 {
+		t.Fatalf("archiving returns the archived row: %+v", arch)
+	}
+	var un chats.Chat
+	e.call("chat.update", map[string]any{"id": c.ID, "archived": false}, &un)
+	if un.Archived || un.ArchivedAt != 0 || un.Version != 3 {
+		t.Fatalf("unarchiving returns the unarchived row: %+v", un)
+	}
+	// the published snapshot is the returned one
+	var lastUpdated map[string]any
+	for _, ev := range e.eventsOf("chat.updated") {
+		lastUpdated, _ = ev["chat"].(map[string]any)
+	}
+	if lastUpdated["archived"] != false || lastUpdated["version"] != float64(3) {
+		t.Fatalf("chat.updated must carry the committed row: %+v", lastUpdated)
+	}
+
+	// a turn: the running chat is published with the version chat.send returns, its end with a higher one
+	var sent struct {
+		TurnID  string `json:"turnId"`
+		Version int64  `json:"version"`
+	}
+	e.call("chat.send", map[string]any{"id": c.ID, "text": "hello"}, &sent)
+	e.waitTurn(sent.TurnID)
+	var running, ended map[string]any
+	for _, ev := range e.eventsOf("chat.updated") {
+		ch, _ := ev["chat"].(map[string]any)
+		if ch["status"] == "running" {
+			running = ch
+		} else if running != nil {
+			ended = ch
+		}
+	}
+	if running == nil || int64(running["version"].(float64)) != sent.Version || sent.Version <= un.Version {
+		t.Fatalf("the running chat is published at the version chat.send returns (%d): %+v", sent.Version, running)
+	}
+	if ended == nil || ended["status"] != "idle" || int64(ended["version"].(float64)) <= sent.Version {
+		t.Fatalf("the end of the turn is a newer version: %+v", ended)
+	}
+
+	// an update after the turn returns the committed row, which is the row chat.get reads
+	var renamed chats.Chat
+	e.call("chat.update", map[string]any{"id": c.ID, "title": "Renamed"}, &renamed)
+	got := e.get(c.ID).Chat
+	if renamed.Status != "idle" || renamed.Title != "Renamed" || renamed.Version != got.Version || renamed.TokensIn != got.TokensIn || renamed.SessionID != got.SessionID {
+		t.Fatalf("chat.update returns the committed row: returned %+v, stored %+v", renamed, got)
+	}
+	if renamed.Version <= int64(ended["version"].(float64)) {
+		t.Fatalf("the rename is newer than the end of the turn: %d", renamed.Version)
+	}
+	// allow rules too: committed row, higher version, same as stored (the rule's note then raises it once more)
+	var allowed chats.Chat
+	e.call("chat.allowTool", map[string]any{"id": c.ID, "tool": "Bash(npm test)"}, &allowed)
+	if allowed.Version <= renamed.Version || len(allowed.AllowedTools) != 1 || allowed.Title != "Renamed" {
+		t.Fatalf("allowTool returns the committed row: %+v", allowed)
+	}
+	var same chats.Chat
+	e.call("chat.allowTool", map[string]any{"id": c.ID, "tool": "Bash(npm test)"}, &same)
+	if same.Version < allowed.Version || len(same.AllowedTools) != 1 {
+		t.Fatalf("allowing a rule twice changes nothing: %+v", same)
+	}
+	var removed chats.Chat
+	e.call("chat.disallowTool", map[string]any{"id": c.ID, "tool": "Bash(npm test)"}, &removed)
+	if removed.Version <= same.Version || len(removed.AllowedTools) != 0 {
+		t.Fatalf("disallowTool returns the committed row: %+v", removed)
+	}
+}
+
+// chat.list's limit is clamped to 1..500: SQLite reads a negative LIMIT as "no limit", so the clamp is what keeps the maximum.
+func TestChatListLimitIsClampedToTheMaximum(t *testing.T) {
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "ok"}}}, nil)
+	tx, err := e.c.DB.Writer().Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 501; i++ {
+		if _, err := tx.Exec(`INSERT INTO chats(id,adapter,created_at,updated_at) VALUES(?,?,?,?)`, "chat_bulk"+strings.Repeat("0", 4-len(itoa(i)))+itoa(i), "claude", i+1, i+1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for limit, want := range map[int]int{-1: 500, 0: 500, 1000: 500, 501: 500, 3: 3} {
+		var list []chats.ListItem
+		e.call("chat.list", map[string]any{"limit": limit}, &list)
+		if len(list) != want {
+			t.Errorf("limit %d: %d chats, want %d", limit, len(list), want)
+		}
+	}
+}
+
+func itoa(i int) string { return strconv.Itoa(i) }
+

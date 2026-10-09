@@ -94,8 +94,9 @@ const pickList = css({
 });
 const noteCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 
-/** How many recent chats the attach picker offers. */
+/** How many chats the attach picker offers (the most recent, or the best matches of its search). */
 const ATTACH_PICKER_CHATS = 100;
+const FILTER_DEBOUNCE_MS = 250;
 
 export function ChatComposer(
   handle: Handle<{
@@ -114,15 +115,32 @@ export function ChatComposer(
   let attach: string[] = [];
   let picking = false;
   let filter = '';
+  /** The filter as searched (debounced): chat.list's full-text query, so any chat can be found, not only the recent ones. */
+  let search = '';
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  handle.signal.addEventListener('abort', () => clearTimeout(timer));
+  /** The title of each attached chat, from when it was picked: a chip keeps it when the chat leaves the list shown. */
+  const titles = new Map<string, string>();
   let area: HTMLTextAreaElement | undefined;
-  // the other chats, read when the picker opens (every chat: attaching one from another project is the human's choice);
-  // the most recent ones, the picker's filter narrows them
+  // the other chats of every project (attaching one from another project is the human's choice), read when the picker opens:
+  // the most recent ones, or with a filter the ones chat.list's search finds (archived chats included)
   const others = query(handle, {
-    load: () => s.client.chatList({ limit: ATTACH_PICKER_CHATS }),
+    load: () => (search ? s.client.chatList({ query: search, includeArchived: true, limit: ATTACH_PICKER_CHATS }) : s.client.chatList({ limit: ATTACH_PICKER_CHATS })),
     when: (e) => e.type === 'chat.created' || e.type === 'chat.deleted' || e.type === 'chat.updated',
+    key: () => search,
     enabled: () => picking || attach.length > 0,
     debounceMs: 400,
   });
+
+  const onFilter = (v: string) => {
+    filter = v;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      search = filter.trim();
+      void handle.update();
+    }, FILTER_DEBOUNCE_MS);
+    void handle.update();
+  };
 
   const canSend = () => !handle.props.disabled && !handle.props.running && !handle.props.sending && text.trim().length > 0;
 
@@ -146,6 +164,11 @@ export function ChatComposer(
     area.style.height = `${Math.min(area.scrollHeight, Math.round(window.innerHeight * 0.4))}px`;
   };
 
+  const pick = (c: ChatListItem) => {
+    titles.set(c.id, chatTitle(c));
+    toggle(c.id);
+  };
+
   const toggle = (id: string) => {
     attach = attach.includes(id) ? attach.filter((x) => x !== id) : attach.length < MAX_ATTACH ? [...attach, id] : attach;
     void handle.update();
@@ -156,10 +179,8 @@ export function ChatComposer(
     const list: ChatListItem[] = (others.data ?? []).filter((c) => c.id !== chat.id);
     const titleOf = (id: string) => {
       const c = list.find((x) => x.id === id);
-      return c ? chatTitle(c) : id;
+      return titles.get(id) ?? (c ? chatTitle(c) : id);
     };
-    const f = filter.trim().toLowerCase();
-    const shown = f ? list.filter((c) => chatTitle(c).toLowerCase().includes(f) || c.preview.toLowerCase().includes(f)) : list;
     const who = adapterLabel(chat.adapter);
     return (
       <form
@@ -214,7 +235,7 @@ export function ChatComposer(
           <div mix={composerBar}>
             <Popover
               open={picking}
-              onOpen={() => ((picking = true), (filter = ''), void handle.update())}
+              onOpen={() => ((picking = true), (filter = ''), (search = ''), clearTimeout(timer), void handle.update())}
               onClose={() => ((picking = false), void handle.update())}
               label="Attach chats"
               placement="top-start"
@@ -231,18 +252,18 @@ export function ChatComposer(
               <p mix={noteCss}>
                 Their history is given to {agentWord(chat.adapter)} for this message only, quoted as data. Up to {MAX_ATTACH}.
               </p>
-              <input type="search" aria-label="Filter chats" placeholder="Filter" value={filter} mix={on('input', (e) => ((filter = e.currentTarget.value), void handle.update()))} />
+              <input type="search" aria-label="Filter chats" placeholder="Search all chats" value={filter} mix={on('input', (e) => onFilter(e.currentTarget.value))} />
               {others.loading && !others.data ? (
                 <Loading label="Loading chats..." />
-              ) : shown.length === 0 ? (
-                <p mix={noteCss}>{list.length ? 'Nothing matches.' : 'There are no other chats yet.'}</p>
+              ) : list.length === 0 ? (
+                <p mix={noteCss}>{search ? 'Nothing matches.' : 'There are no other chats yet.'}</p>
               ) : (
                 <ul mix={pickList} aria-label="Chats to attach">
-                  {shown.map((c) => {
+                  {list.map((c) => {
                     const on_ = attach.includes(c.id);
                     return (
                       <li key={c.id}>
-                        <button type="button" aria-pressed={on_ ? 'true' : 'false'} disabled={!on_ && attach.length >= MAX_ATTACH} data-testid="attach-option" mix={on('click', () => toggle(c.id))}>
+                        <button type="button" aria-pressed={on_ ? 'true' : 'false'} disabled={!on_ && attach.length >= MAX_ATTACH} data-testid="attach-option" mix={on('click', () => pick(c))}>
                           <input type="checkbox" checked={on_} tabIndex={-1} aria-hidden="true" />
                           <span class="t">{chatTitle(c)}</span>
                           <span class="w">{relTime(c.updatedAt)}</span>

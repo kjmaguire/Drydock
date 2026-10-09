@@ -108,6 +108,9 @@ type Chat struct {
 	CostUSD *float64 `json:"costUsd"`
 	// CostUnknownTurns counts turns that reported no cost; when it is non-zero CostUSD covers only the other turns.
 	CostUnknownTurns int `json:"costUnknownTurns"`
+	// Version goes up by one with every write to the chat's row. Two snapshots of a chat are ordered by it (never by the clock):
+	// the higher version is the newer state.
+	Version int64 `json:"version"`
 }
 
 // ListItem is a chat in chat.list.
@@ -234,7 +237,7 @@ func (s *Service) Start(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE chat_turns SET status=?, error=?, ended_at=? WHERE status=?`, TurnError, why, now, TurnRunning); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error=? WHERE status=?`, StatusError, why, StatusRunning)
+		_, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error=?, version=version+1 WHERE status=?`, StatusError, why, StatusRunning)
 		return err
 	})
 }
@@ -343,7 +346,7 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 	}
 	c.SkipsApprovals = SkipsApprovals(c.PermissionMode)
 	now := storage.Now()
-	c.Created, c.Updated = now, now
+	c.Created, c.Updated, c.Version = now, now, 1
 	if err := s.insertChat(ctx, c); err != nil {
 		return Chat{}, err
 	}
@@ -424,7 +427,7 @@ func (s *Service) cleanTitle(t string) (string, error) {
 }
 
 const chatCols = `id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,last_error,pinned,
-	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns`
+	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -434,7 +437,7 @@ func scanChat(r scanner, extra ...any) (Chat, error) {
 	var readHistory, pinned int64
 	var cost sql.NullFloat64
 	dest := []any{&c.ID, &c.ProjectID, &c.Title, &c.Adapter, &c.Model, &c.Effort, &c.PermissionMode, &c.Cwd, &c.SessionID, &rules, &readHistory, &c.Status,
-		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns}
+		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return c, err
 	}
@@ -451,7 +454,16 @@ func scanChat(r scanner, extra ...any) (Chat, error) {
 
 // Get returns one chat.
 func (s *Service) Get(ctx context.Context, id string) (Chat, error) {
-	c, err := scanChat(s.d.DB.Reader().QueryRowContext(ctx, `SELECT `+chatCols+` FROM chats WHERE id=?`, id))
+	return getChat(s.d.DB.Reader().QueryRowContext(ctx, `SELECT `+chatCols+` FROM chats WHERE id=?`, id), id)
+}
+
+// getTx reads one chat inside a write transaction, so it sees that transaction's own writes.
+func getTx(ctx context.Context, tx *sql.Tx, id string) (Chat, error) {
+	return getChat(tx.QueryRowContext(ctx, `SELECT `+chatCols+` FROM chats WHERE id=?`, id), id)
+}
+
+func getChat(r scanner, id string) (Chat, error) {
+	c, err := scanChat(r)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
@@ -521,11 +533,16 @@ func prefixCols(p string) string {
 	return strings.Join(parts, ",")
 }
 
-// Detail is chat.get.
+// Page is a page of messages, oldest first (chat.messages, and the latest messages of chat.get).
+type Page struct {
+	Messages []Message `json:"messages"`
+	HasMore  bool      `json:"hasMore"` // older messages exist (chat.messages with beforeSeq)
+}
+
+// Detail is chat.get: the chat and its latest messages.
 type Detail struct {
-	Chat     Chat      `json:"chat"`
-	Messages []Message `json:"messages"` // the latest messages, oldest first
-	HasMore  bool      `json:"hasMore"`  // older messages exist (chat.messages with beforeSeq)
+	Chat Chat `json:"chat"`
+	Page
 }
 
 // Detail returns a chat with its latest messages.
@@ -541,7 +558,7 @@ func (s *Service) Detail(ctx context.Context, id string, limit int) (Detail, err
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Chat: c, Messages: ms, HasMore: more}, nil
+	return Detail{Chat: c, Page: Page{Messages: ms, HasMore: more}}, nil
 }
 
 // Messages returns up to limit messages before beforeSeq (0 = the latest), oldest first, and whether older ones exist.
@@ -622,66 +639,71 @@ type UpdateReq struct {
 	ReadHistory    *bool   `json:"readHistory"`
 }
 
-// Update changes a chat's settings. Model, effort and permission mode apply from the next turn.
+// Update changes a chat's settings. Model, effort and permission mode apply from the next turn. The row is read, changed and
+// written in one transaction, and the committed row (with its new version) is what is returned and published, so a reply never
+// carries a status or counters from before a write that happened meanwhile.
 func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
-	c, err := s.Get(ctx, r.ID)
+	var out Chat
+	err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		c, err := getTx(ctx, tx, r.ID)
+		if err != nil {
+			return err
+		}
+		if r.Title != nil {
+			if c.Title, err = s.cleanTitle(*r.Title); err != nil {
+				return err
+			}
+		}
+		if r.Pinned != nil {
+			c.Pinned = *r.Pinned
+		}
+		if r.Archived != nil {
+			switch {
+			case *r.Archived && c.ArchivedAt == 0:
+				if s.isRunning(c.ID) {
+					return errors.New("stop the running turn before archiving the chat")
+				}
+				c.ArchivedAt = storage.Now()
+			case !*r.Archived:
+				c.ArchivedAt = 0
+			}
+		}
+		if r.Model != nil || r.Effort != nil {
+			model, effort := c.Model, c.Effort
+			if r.Model != nil {
+				model = strings.TrimSpace(*r.Model)
+			}
+			if r.Effort != nil {
+				effort = strings.TrimSpace(*r.Effort)
+			}
+			if s.d.ValidateFields != nil {
+				if err := s.d.ValidateFields(c.Adapter, model, effort); err != nil {
+					return err
+				}
+			}
+			c.Model, c.Effort = model, effort
+		}
+		if r.PermissionMode != nil {
+			caps, _ := s.caps(c.Adapter)
+			if c.PermissionMode, err = permissionMode(caps, *r.PermissionMode); err != nil {
+				return err
+			}
+		}
+		if r.ReadHistory != nil {
+			c.ReadHistory = *r.ReadHistory
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, updated_at=?, version=version+1 WHERE id=?`,
+			c.Title, b2i(c.Pinned), c.ArchivedAt, c.Model, c.Effort, c.PermissionMode, b2i(c.ReadHistory), storage.Now(), c.ID); err != nil {
+			return err
+		}
+		out, err = getTx(ctx, tx, c.ID)
+		return err
+	})
 	if err != nil {
 		return Chat{}, err
 	}
-	if r.Title != nil {
-		if c.Title, err = s.cleanTitle(*r.Title); err != nil {
-			return Chat{}, err
-		}
-	}
-	if r.Pinned != nil {
-		c.Pinned = *r.Pinned
-	}
-	if r.Archived != nil {
-		switch {
-		case *r.Archived && c.ArchivedAt == 0:
-			if s.isRunning(c.ID) {
-				return Chat{}, errors.New("stop the running turn before archiving the chat")
-			}
-			c.ArchivedAt = storage.Now()
-		case !*r.Archived:
-			c.ArchivedAt = 0
-		}
-	}
-	if r.Model != nil || r.Effort != nil {
-		model, effort := c.Model, c.Effort
-		if r.Model != nil {
-			model = strings.TrimSpace(*r.Model)
-		}
-		if r.Effort != nil {
-			effort = strings.TrimSpace(*r.Effort)
-		}
-		if s.d.ValidateFields != nil {
-			if err := s.d.ValidateFields(c.Adapter, model, effort); err != nil {
-				return Chat{}, err
-			}
-		}
-		c.Model, c.Effort = model, effort
-	}
-	if r.PermissionMode != nil {
-		caps, _ := s.caps(c.Adapter)
-		if c.PermissionMode, err = permissionMode(caps, *r.PermissionMode); err != nil {
-			return Chat{}, err
-		}
-	}
-	if r.ReadHistory != nil {
-		c.ReadHistory = *r.ReadHistory
-	}
-	c.SkipsApprovals = SkipsApprovals(c.PermissionMode)
-	c.Updated = storage.Now()
-	if err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, updated_at=? WHERE id=?`,
-			c.Title, b2i(c.Pinned), c.ArchivedAt, c.Model, c.Effort, c.PermissionMode, b2i(c.ReadHistory), c.Updated, c.ID)
-		return err
-	}); err != nil {
-		return Chat{}, err
-	}
-	s.publish(ctx, "chat.updated", c.ProjectID, map[string]any{"chatId": c.ID, "chat": c})
-	return c, nil
+	s.publish(ctx, "chat.updated", out.ProjectID, map[string]any{"chatId": out.ID, "chat": out})
+	return out, nil
 }
 
 // Delete removes a chat with its messages and turns. A running chat must be stopped first.
@@ -731,7 +753,7 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 	}
 	n.SkipsApprovals = SkipsApprovals(n.PermissionMode)
 	now := storage.Now()
-	n.Created, n.Updated = now, now
+	n.Created, n.Updated, n.Version = now, now, 1
 	rules, _ := json.Marshal(n.AllowedTools)
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
@@ -777,63 +799,81 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 
 // AllowTool adds an allow rule to a chat (Claude --allowedTools). It applies from the next turn.
 func (s *Service) AllowTool(ctx context.Context, id, rule string) (Chat, error) {
-	c, err := s.Get(ctx, id)
-	if err != nil {
-		return Chat{}, err
-	}
-	caps, _ := s.caps(c.Adapter)
-	if !takesRules(c.Adapter, caps) {
-		return Chat{}, fmt.Errorf("%s does not take per-chat allow rules: its permission requests are answered by Drydock and refused", c.Adapter)
-	}
-	rule, err = ValidateRule(rule)
-	if err != nil {
-		return Chat{}, err
-	}
-	if contains(c.AllowedTools, rule) {
-		return c, nil
-	}
-	if len(c.AllowedTools) >= s.o.MaxRules {
-		return Chat{}, fmt.Errorf("a chat can have at most %d allow rules", s.o.MaxRules)
-	}
-	return s.setRules(ctx, c, append(c.AllowedTools, rule), "Allowed for this chat: "+rule)
+	return s.editRules(ctx, id, func(c Chat) ([]string, string, error) {
+		caps, _ := s.caps(c.Adapter)
+		if !takesRules(c.Adapter, caps) {
+			return nil, "", fmt.Errorf("%s does not take per-chat allow rules: its permission requests are answered by Drydock and refused", c.Adapter)
+		}
+		r, err := ValidateRule(rule)
+		if err != nil {
+			return nil, "", err
+		}
+		if contains(c.AllowedTools, r) {
+			return nil, "", nil
+		}
+		if len(c.AllowedTools) >= s.o.MaxRules {
+			return nil, "", fmt.Errorf("a chat can have at most %d allow rules", s.o.MaxRules)
+		}
+		return append(c.AllowedTools, r), "Allowed for this chat: " + r, nil
+	})
 }
 
 // DisallowTool removes an allow rule.
 func (s *Service) DisallowTool(ctx context.Context, id, rule string) (Chat, error) {
-	c, err := s.Get(ctx, id)
+	rule = strings.TrimSpace(rule)
+	return s.editRules(ctx, id, func(c Chat) ([]string, string, error) {
+		keep := []string{}
+		for _, r := range c.AllowedTools {
+			if r != rule {
+				keep = append(keep, r)
+			}
+		}
+		if len(keep) == len(c.AllowedTools) {
+			return nil, "", nil
+		}
+		return keep, "No longer allowed for this chat: " + rule, nil
+	})
+}
+
+// editRules changes a chat's allow rules in one transaction: edit gets the current row and returns the new rules and the note
+// that records the change, or nil rules for no change. The committed row is returned and published, as Update does.
+func (s *Service) editRules(ctx context.Context, id string, edit func(Chat) (rules []string, note string, err error)) (Chat, error) {
+	var out Chat
+	var note string
+	changed := false
+	err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		changed = false // WriteTx may run this more than once
+		c, err := getTx(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		var rules []string
+		if rules, note, err = edit(c); err != nil {
+			return err
+		}
+		if rules == nil {
+			out = c
+			return nil
+		}
+		b, _ := json.Marshal(rules)
+		if _, err := tx.ExecContext(ctx, `UPDATE chats SET allowed_tools=?, updated_at=?, version=version+1 WHERE id=?`, string(b), storage.Now(), id); err != nil {
+			return err
+		}
+		changed = true
+		out, err = getTx(ctx, tx, id)
+		return err
+	})
 	if err != nil {
 		return Chat{}, err
 	}
-	rule = strings.TrimSpace(rule)
-	var keep []string
-	for _, r := range c.AllowedTools {
-		if r != rule {
-			keep = append(keep, r)
-		}
+	if !changed {
+		return out, nil
 	}
-	if len(keep) == len(c.AllowedTools) {
-		return c, nil
-	}
-	return s.setRules(ctx, c, keep, "No longer allowed for this chat: "+rule)
-}
-
-func (s *Service) setRules(ctx context.Context, c Chat, rules []string, note string) (Chat, error) {
-	if rules == nil {
-		rules = []string{}
-	}
-	b, _ := json.Marshal(rules)
-	c.AllowedTools, c.Updated = rules, storage.Now()
-	if err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE chats SET allowed_tools=?, updated_at=? WHERE id=?`, string(b), c.Updated, c.ID)
-		return err
-	}); err != nil {
-		return Chat{}, err
-	}
-	if _, err := s.insertMessage(ctx, c, "", RoleSystem, note, "", nil); err != nil {
+	if _, err := s.insertMessage(ctx, out, "", RoleSystem, note, "", nil); err != nil {
 		s.logf("chats: note rule change: %v", err)
 	}
-	s.publish(ctx, "chat.updated", c.ProjectID, map[string]any{"chatId": c.ID, "chat": c})
-	return c, nil
+	s.publish(ctx, "chat.updated", out.ProjectID, map[string]any{"chatId": out.ID, "chat": out})
+	return out, nil
 }
 
 // ---- messages ----
@@ -856,7 +896,7 @@ func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body,
 			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at=? WHERE id=?`, m.Created, c.ID)
+		_, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at=?, version=version+1 WHERE id=?`, m.Created, c.ID)
 		return err
 	})
 	if err != nil {

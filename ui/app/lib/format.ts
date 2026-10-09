@@ -87,8 +87,12 @@ export function formatCost(usd: number | undefined | null): string {
   return formatUsd(usd);
 }
 
-/** A dollar amount: four decimals under a cent, else two. */
+/**
+ * A dollar amount, the one rule for every screen: four decimals under a cent, else two. An amount above zero is never shown
+ * as $0 (under $0.00005 it reads "<$0.0001").
+ */
 export function formatUsd(usd: number): string {
+  if (usd > 0 && usd < 0.00005) return '<$0.0001';
   return `$${usd > 0 && usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
 }
 

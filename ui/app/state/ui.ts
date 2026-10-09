@@ -40,6 +40,7 @@ export class UiModel extends Model {
   detailsOpen = readJSON(DETAILS_KEY, { open: true }).open;
   paletteOpen = false;
   theme: ThemeChoice = 'system';
+  #newChat = false;
   #dock: Record<string, DockState> = {};
   #project = '';
 
@@ -83,6 +84,19 @@ export class UiModel extends Model {
   setPalette(open: boolean): void {
     this.paletteOpen = open;
     this.changed();
+  }
+
+  /** The palette's New chat: the Chats screen takes it (once) and opens its dialog. */
+  requestNewChat(): void {
+    this.#newChat = true;
+    this.changed();
+  }
+
+  /** Whether New chat was asked for since the last call; clears it (no change event: read while rendering). */
+  takeNewChat(): boolean {
+    const asked = this.#newChat;
+    this.#newChat = false;
+    return asked;
   }
 
   setTheme(t: ThemeChoice): void {

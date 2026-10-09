@@ -9,7 +9,7 @@ import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
-import { adapterOptionText, adapterUnavailable, isAbsolutePath, skipsApprovals, sortChatAdapters } from './chats.ts';
+import { adapterOptionText, adapterUnavailable, skipsApprovals, sortChatAdapters } from './chats.ts';
 
 const NO_PROJECT = '';
 
@@ -25,7 +25,6 @@ export function NewChatDialog(
   let effort = '';
   let mode = '';
   let readHistory = true;
-  let tried = false;
   let wasOpen = false;
   const listId = `new-chat-models-${handle.id}`;
 
@@ -37,7 +36,6 @@ export function NewChatDialog(
     effort = '';
     mode = '';
     readHistory = true;
-    tried = false;
     if (act.error) handle.queueTask(() => act.clear()); // not during render
   };
   const set = (fn: () => void) => {
@@ -58,15 +56,11 @@ export function NewChatDialog(
     const modes = caps?.permissionModes ?? [];
     const pid = project ?? projectId ?? NO_PROJECT;
     const modeNow = mode || (modes.includes('default') ? 'default' : '');
-    const cwdError = pid === NO_PROJECT && cwd.trim() && !isAbsolutePath(cwd) ? 'Enter an absolute folder path, such as C:\\work\\notes (or leave it empty for a private folder).' : '';
-    const canCreate = !!chosen && !cwdError && !act.busy;
+    // the folder is checked by the core (it knows its own system's paths): a refusal shows as "Could not start the chat"
+    const canCreate = !!chosen && !act.busy;
 
     const create = async () => {
-      tried = true;
-      if (!canCreate || !chosen) {
-        void handle.update();
-        return;
-      }
+      if (!canCreate || !chosen) return;
       const c = await act.run('create', () =>
         s.client.chatCreate({
           projectId: pid || undefined,
@@ -113,7 +107,7 @@ export function NewChatDialog(
               )}
             </Field>
             {pid === NO_PROJECT ? (
-              <Field label="Folder" error={tried || cwd ? cwdError : undefined} hint="An absolute path to an existing folder. Empty: a private folder Drydock creates for this chat.">
+              <Field label="Folder" hint="An absolute path to an existing folder, checked when the chat starts. Empty: a private folder Drydock creates for this chat.">
                 {(id) => <input id={id} value={cwd} placeholder="C:\work\notes" spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />}
               </Field>
             ) : (

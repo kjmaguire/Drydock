@@ -125,6 +125,9 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
+  // each dialog has its own action: its error shows (and is cleared) with the dialog, never in the list
+  const renameAct = action(handle);
+  const deleteAct = action(handle);
   let all = false;
   let archived = false;
   let typed = '';
@@ -161,30 +164,33 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
     void handle.update();
   };
 
+  // after a change the list is read again: the chat.* events may be late (the stream reconnecting) while RPC works
   const run = async (name: string, c: ChatListItem) => {
     switch (name) {
       case 'pin':
-        await act.run('pin', () => s.client.chatUpdate({ id: c.id, pinned: !c.pinned }));
+        if (await act.run('pin', () => s.client.chatUpdate({ id: c.id, pinned: !c.pinned }))) void chats.reload();
         break;
       case 'rename':
-        act.clear(); // the dialog shows only its own error
         renaming = c;
         renameText = c.title;
+        renameAct.clear(); // a previous rename's error; also renders the dialog
         break;
       case 'fork': {
         const f = await act.run('fork', () => s.client.chatFork(c.id));
-        if (f) await go(routes.chat.href({ id: f.id }));
+        if (f) {
+          void chats.reload();
+          await go(routes.chat.href({ id: f.id }));
+        }
         break;
       }
       case 'archive':
-        await act.run('archive', () => s.client.chatUpdate({ id: c.id, archived: !c.archived }));
+        if (await act.run('archive', () => s.client.chatUpdate({ id: c.id, archived: !c.archived }))) void chats.reload();
         break;
       case 'delete':
-        act.clear();
         deleting = c;
+        deleteAct.clear();
         break;
     }
-    void handle.update(); // the list follows the core's chat.updated / chat.created events
   };
 
   const items = (c: ChatListItem): MenuItem[] => [
@@ -288,7 +294,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
           </div>
         </div>
         <div mix={scrollCss}>
-          {renaming || deleting ? null : <ErrorNote error={act.error} />}
+          <ErrorNote error={act.error} />
           {searching ? (
             <>
               <div mix={groupCss} aria-live="polite">
@@ -338,18 +344,21 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
               e.preventDefault();
               const c = renaming;
               if (!c) return;
-              const ok = await act.run('rename', () => s.client.chatUpdate({ id: c.id, title: renameText.trim() }));
-              if (ok) renaming = undefined;
+              const ok = await renameAct.run('rename', () => s.client.chatUpdate({ id: c.id, title: renameText.trim() }));
+              if (ok) {
+                renaming = undefined;
+                void chats.reload();
+              }
               void handle.update();
             })}
           >
-            <ErrorNote error={act.error} what="Could not rename the chat" />
+            <ErrorNote error={renameAct.error} what="Could not rename the chat" />
             <Field label="Title">{(id) => <input id={id} value={renameText} maxLength={200} mix={[on('input', (e) => void (renameText = e.currentTarget.value)), ref((n) => queueMicrotask(() => (n as HTMLInputElement).select()))]} />}</Field>
             <div mix={formActions} style={{ justifyContent: 'flex-end' }}>
               <Button variant="ghost" mix={[on('click', () => ((renaming = undefined), void handle.update()))]}>
                 Cancel
               </Button>
-              <Button variant="primary" type="submit" disabled={act.busy === 'rename'}>
+              <Button variant="primary" type="submit" disabled={!!renameAct.busy}>
                 Save
               </Button>
             </div>
@@ -359,28 +368,29 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
           <p>
             Delete <strong>{deleting ? chatTitle(deleting) : ''}</strong> and all {deleting?.messageCount ?? 0} of its messages? This cannot be undone. Archive it instead to keep it searchable.
           </p>
-          <ErrorNote error={act.error} what="Could not delete the chat" />
+          <ErrorNote error={deleteAct.error} what="Could not delete the chat" />
           <div mix={formActions} style={{ justifyContent: 'flex-end' }}>
             <Button variant="ghost" mix={[on('click', () => ((deleting = undefined), void handle.update()))]}>
               Cancel
             </Button>
             <Button
               variant="danger"
-              disabled={act.busy === 'delete'}
+              disabled={!!deleteAct.busy}
               mix={[
                 on('click', async () => {
                   const c = deleting;
                   if (!c) return;
-                  const ok = await act.run('delete', async () => (await s.client.chatDelete(c.id), true));
+                  const ok = await deleteAct.run('delete', async () => (await s.client.chatDelete(c.id), true));
                   if (ok) {
                     deleting = undefined;
+                    void chats.reload();
                     if (handle.props.selectedId === c.id) await go(routes.chats.href());
                   }
                   void handle.update();
                 }),
               ]}
             >
-              {act.busy === 'delete' ? 'Deleting...' : 'Delete chat'}
+              {deleteAct.busy ? 'Deleting...' : 'Delete chat'}
             </Button>
           </div>
         </Dialog>

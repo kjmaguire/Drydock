@@ -5,11 +5,11 @@ import { createChatClient } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { isWorkspaceRoute, parseRoute } from '../../lib/route.ts';
 import { routes } from '../../routes.ts';
-import { buildItems, newChatHref } from '../../shell/palette-items.ts';
+import { buildItems, isChatsPath } from '../../shell/palette-items.ts';
 import { EventStore } from '../../state/eventStore.ts';
 import { ev, FakeTransport } from '../../test/fakes.ts';
 import { ChatFeed } from './chat-feed.ts';
-import { adapterOptionText, adapterUnavailable, compactNumber, costText, isAbsolutePath, mergeMessages, relTime, shortPath, snippetParts, sortChatAdapters, startsGroup, toolInputText } from './chats.ts';
+import { adapterOptionText, adapterUnavailable, compactNumber, costText, mergeMessages, relTime, shortPath, snippetParts, sortChatAdapters, startsGroup, toolInputText } from './chats.ts';
 
 const adapter = (id: string, status: string, installed = status !== 'not_installed', version = ''): AdapterInfo => ({
   id,
@@ -18,7 +18,7 @@ const adapter = (id: string, status: string, installed = status !== 'not_install
 });
 const msg = (seq: number, role = 'user', over: Partial<ChatMessage> = {}): ChatMessage => ({ id: `m${seq}`, chatId: 'c1', seq, role, body: `b${seq}`, createdAt: seq, ...over });
 const chat = (over: Partial<Chat> = {}): Chat =>
-  ({ id: 'c1', projectId: '', title: '', adapter: 'claude', status: 'idle', allowedTools: [], costUsd: null, costUnknownTurns: 0, ...over }) as Chat;
+  ({ id: 'c1', projectId: '', title: '', adapter: 'claude', status: 'idle', allowedTools: [], costUsd: null, costUnknownTurns: 0, version: 1, ...over }) as Chat;
 
 describe('chats helpers', () => {
   it('formats relative times for the list', () => {
@@ -50,15 +50,6 @@ describe('chats helpers', () => {
       { text: '!', hit: false },
     ]);
     expect(snippetParts('plain')).toEqual([{ text: 'plain', hit: false }]);
-  });
-
-  it('accepts only absolute folders, as the core sees them on its platform', () => {
-    // Windows (the product): a drive or a share; "/x" is not absolute there (filepath.IsAbs refuses it)
-    for (const ok of ['C:\\work', 'd:/x', '\\\\server\\share\\x', '//server/share/x']) expect(isAbsolutePath(ok, true)).toBe(true);
-    for (const bad of ['work', '.\\x', 'C:', 'notes/weekly', '', '/work/notes', '\\work', '\\\\server']) expect(isAbsolutePath(bad, true)).toBe(false);
-    // the development host
-    expect(isAbsolutePath('/home/me', false)).toBe(true);
-    for (const bad of ['C:\\work', 'work', '']) expect(isAbsolutePath(bad, false)).toBe(false);
   });
 
   it('puts Claude Code first and marks CLIs that cannot start', () => {
@@ -109,18 +100,19 @@ describe('chats routes and palette', () => {
   it('offers New chat and the recent chats in the palette', () => {
     const items = buildItems([], [], [], [{ ...chat({ id: 'c1', title: 'Overflow' }), preview: '', messageCount: 1 }, { ...chat({ id: 'c2', title: 'Old', archived: true }), preview: '', messageCount: 1 }]);
     const chats = items.filter((i) => i.group === 'Chats');
-    expect(chats.map((i) => [i.label, i.href])).toEqual([
-      ['New chat', '/chats?new'],
-      ['Overflow', '/chats/c1'],
+    // New chat is an action (the Chats screen opens its dialog over what is shown), not a URL
+    expect(chats.map((i) => [i.label, i.href, i.action])).toEqual([
+      ['New chat', undefined, 'chat:new'],
+      ['Overflow', '/chats/c1', undefined],
     ]);
     expect(items.some((i) => i.label === 'Chats' && i.href === '/chats')).toBe(true);
   });
 
-  it('New chat from an open conversation keeps it behind the dialog', () => {
-    expect(newChatHref('/chats/chat_a')).toBe('/chats/chat_a?new');
-    expect(newChatHref('/chats')).toBe('/chats?new');
-    expect(newChatHref('/tasks')).toBe('/chats?new');
-    expect(buildItems([], [], [], [], '/chats/chat_a').find((i) => i.id === 'chat:new')?.href).toBe('/chats/chat_a?new');
+  it('knows the Chats screen from the routes, so New chat stays on an open conversation', () => {
+    expect(isChatsPath(routes.chats.href())).toBe(true);
+    expect(isChatsPath(routes.chat.href({ id: 'chat_a' }))).toBe(true);
+    expect(isChatsPath(routes.tasks.href())).toBe(false);
+    expect(isChatsPath('/chats/a/b')).toBe(false);
   });
 });
 
@@ -134,19 +126,26 @@ describe('chat client', () => {
     const d = await c.chatGet('c1');
     expect(d.messages).toEqual([]);
     expect(d.chat.allowedTools).toEqual([]);
-    t.responses.set('chat.send', { turnId: 't1' });
-    await c.chatSend('c1', 'hi', ['c2']);
-    await c.chatMessages('c1', 50);
+    expect(d.hasMore).toBe(true);
+    t.responses.set('chat.send', { turnId: 't1', version: 4 });
+    expect(await c.chatSend('c1', 'hi', ['c2'])).toEqual({ turnId: 't1', version: 4 });
+    t.responses.set('chat.messages', { messages: [msg(1)], hasMore: true });
+    expect(await c.chatMessages('c1', 50)).toEqual({ messages: [msg(1)], hasMore: true });
+    t.responses.set('chat.messages', { messages: null, hasMore: false });
+    expect(await c.chatMessages('c1', 2)).toEqual({ messages: [], hasMore: false });
     await c.chatSearch('overflow');
     t.responses.set('chat.fork', chat());
     await c.chatFork('c1', 3);
+    await c.chatList({ query: 'notes', includeArchived: true, limit: 8 });
     expect(t.calls.map((x) => [x.method, x.params])).toEqual([
       ['chat.list', { projectId: 'p', query: '', includeArchived: false }],
       ['chat.get', { id: 'c1' }],
       ['chat.send', { id: 'c1', text: 'hi', attach: ['c2'] }],
       ['chat.messages', { id: 'c1', beforeSeq: 50, limit: 100 }],
+      ['chat.messages', { id: 'c1', beforeSeq: 2, limit: 100 }],
       ['chat.search', { query: 'overflow', projectId: '', limit: 50 }],
       ['chat.fork', { id: 'c1', uptoSeq: 3 }],
+      ['chat.list', { projectId: '', query: 'notes', includeArchived: true, limit: 8 }], // the limit is passed on
     ]);
   });
 });
@@ -197,37 +196,92 @@ describe('ChatFeed', () => {
   it('a chat.send answer that arrives after its turn already ended does not bring the turn back', async () => {
     const { f, emit } = feed();
     await settle();
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'running', version: 2 }) });
     emit('chat.turn_started', { chatId: 'c1', turnId: 't9', attach: [] });
     emit('chat.turn', { chatId: 'c1', turnId: 't9', status: 'done' });
-    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', updatedAt: 5 }) });
-    f.sent('t9'); // the HTTP answer lands last
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', version: 5 }) });
+    f.sent('t9', 2); // the HTTP answer lands last
     expect(f.running).toBe(false);
     expect(f.chat?.status).toBe('idle');
-    f.sent('t10'); // a turn that has not ended yet does show as running
+    f.sent('t10', 6); // a turn no snapshot shows yet does show as running
     expect(f.running).toBe(true);
   });
 
-  it('an action answer older than the chat shown is dropped', async () => {
+  it('orders snapshots by version: an older action answer or chat.updated never replaces a newer one', async () => {
     const { f, emit } = feed();
     await settle();
-    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', title: 'Fresh', updatedAt: 200 }) });
-    f.setChat(chat({ status: 'running', title: 'Stale', updatedAt: 100 }));
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', title: 'Fresh', version: 7 }) });
+    f.setChat(chat({ status: 'running', title: 'Stale', version: 6 })); // read before the turn ended
     expect(f.chat?.title).toBe('Fresh');
     expect(f.running).toBe(false);
-    f.setChat(chat({ status: 'idle', title: 'Newer', updatedAt: 300 }));
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'running', title: 'Stale event', version: 5 }) });
+    expect(f.chat?.title).toBe('Fresh');
+    expect(f.running).toBe(false);
+    // the clock does not count: a newer version wins even with an older updatedAt
+    f.setChat(chat({ status: 'idle', title: 'Newer', version: 8, updatedAt: 1 }));
+    expect(f.chat?.title).toBe('Newer');
+    f.setChat(chat({ id: 'c2', title: 'Other chat', version: 99 }));
     expect(f.chat?.title).toBe('Newer');
   });
 
-  it('a snapshot taken before events that arrived meanwhile does not undo them', async () => {
+  it('drops a late delta of a turn that already ended', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.turn_started', { chatId: 'c1', turnId: 't2', attach: [] });
+    emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'Hel' });
+    emit('chat.turn', { chatId: 'c1', turnId: 't2', status: 'done' });
+    emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'lo' });
+    expect(f.streaming).toBeUndefined();
+    expect(f.running).toBe(false);
+  });
+
+  it('a snapshot read before the turn started does not undo it', async () => {
     let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
     const { f, emit } = feed(false, () => new Promise((res) => (release = res)));
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'running', version: 3 }) });
     emit('chat.turn_started', { chatId: 'c1', turnId: 't1', attach: [] });
-    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'running', updatedAt: 50 }) });
-    release({ chat: chat({ status: 'idle', updatedAt: 10 }), messages: [msg(1)], hasMore: false });
+    release({ chat: chat({ status: 'idle', version: 2 }), messages: [msg(1)], hasMore: false });
     await settle();
     expect(f.running).toBe(true);
     expect(f.chat?.status).toBe('running');
     expect(f.messages.map((m) => m.seq)).toEqual([1]);
+  });
+
+  it('a send while the chat is read keeps the turn running until a snapshot at its version shows it', async () => {
+    let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const { f, emit } = feed(false, () => new Promise((res) => (release = res)));
+    f.sent('t1', 5);
+    expect(f.running).toBe(true);
+    release({ chat: chat({ status: 'idle', version: 4 }), messages: [msg(1)], hasMore: false }); // read before the send
+    await settle();
+    expect(f.running).toBe(true);
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'running', version: 5 }) });
+    expect(f.running).toBe(true);
+    emit('chat.turn', { chatId: 'c1', turnId: 't1', status: 'done' });
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', version: 7 }) });
+    expect(f.running).toBe(false);
+  });
+
+  it('a running chat opened while one of its tools reports still shows the turn in progress', async () => {
+    let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const { f, emit } = feed(false, () => new Promise((res) => (release = res)));
+    emit('chat.tool', { chatId: 'c1', turnId: 't1', name: 'Bash', summary: 'Bash: npm test' });
+    emit('chat.message', { chatId: 'c1', message: msg(301, 'tool') });
+    release({ chat: chat({ status: 'running', version: 9 }), messages: [msg(299), msg(300, 'assistant')], hasMore: false });
+    await settle();
+    expect(f.running).toBe(true);
+    expect(f.streaming).toEqual({ turnId: '', text: '' });
+  });
+
+  it('keeps the first page\'s hasMore when a message arrives while it is read', async () => {
+    let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const { f, emit } = feed(false, () => new Promise((res) => (release = res)));
+    emit('chat.message', { chatId: 'c1', message: msg(301, 'tool') });
+    release({ chat: chat({ status: 'running' }), messages: Array.from({ length: 200 }, (_, i) => msg(101 + i)), hasMore: true });
+    await settle();
+    expect(f.hasMore).toBe(true);
+    expect(f.messages[0]?.seq).toBe(101);
+    expect(f.messages.at(-1)?.seq).toBe(301);
   });
 
   it('after a reconnect a page that does not join the shown messages replaces them and keeps paging possible', async () => {
@@ -245,12 +299,61 @@ describe('ChatFeed', () => {
     expect(f.messages.map((m) => m.seq)).toEqual([300, 301, 302]);
   });
 
-  it('a deleted chat empties the feed', async () => {
-    const { f, emit } = feed();
+  it('a message that arrives during a reconnect read does not make a gap look joined', async () => {
+    let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    let first = true;
+    const store = new EventStore(new FakeTransport());
+    const get = () => (first ? ((first = false), Promise.resolve({ chat: chat(), messages: [msg(1), msg(2, 'assistant')], hasMore: false })) : new Promise<{ chat: Chat; messages: ChatMessage[]; hasMore: boolean }>((res) => (release = res)));
+    const f = new ChatFeed({ chatGet: get, chatMessages: async () => ({ messages: [], hasMore: false }) }, store, 'c1').start();
     await settle();
-    emit('chat.deleted', { chatId: 'c1' });
+    const reload = f.load();
+    store.ingest(ev(2, 'chat.message', { data: { chatId: 'c1', message: msg(302) } }));
+    release({ chat: chat(), messages: Array.from({ length: 200 }, (_, i) => msg(102 + i)), hasMore: true });
+    await reload;
+    expect(f.messages[0]?.seq).toBe(102); // not [1, 2, 102...]: 3..101 stay reachable through "Load older"
+    expect(f.messages.at(-1)?.seq).toBe(302);
+    expect(f.hasMore).toBe(true);
+  });
+
+  it('drops an older page asked for before a reload replaced the list', async () => {
+    let page = { chat: chat(), messages: Array.from({ length: 200 }, (_, i) => msg(101 + i)), hasMore: true };
+    let releaseOlder: (v: { messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const store = new EventStore(new FakeTransport());
+    const f = new ChatFeed({ chatGet: async () => page, chatMessages: () => new Promise((res) => (releaseOlder = res)) }, store, 'c1').start();
+    await settle();
+    const older = f.loadOlder();
+    page = { chat: chat(), messages: Array.from({ length: 200 }, (_, i) => msg(401 + i)), hasMore: true };
+    await f.load(); // the stream came back: 401..600 does not join 101..300
+    releaseOlder({ messages: Array.from({ length: 100 }, (_, i) => msg(1 + i)), hasMore: false });
+    expect(await older).toBe(0);
+    expect(f.messages[0]?.seq).toBe(401);
+    expect(f.hasMore).toBe(true);
+  });
+
+  it('a deleted chat empties the feed and nothing lands on it afterwards', async () => {
+    let fail = false;
+    let releaseOlder: (v: { messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const store = new EventStore(new FakeTransport());
+    const client = {
+      chatGet: async () => {
+        if (fail) throw new Error('chat not found');
+        return { chat: chat(), messages: [msg(101), msg(102, 'assistant')], hasMore: true };
+      },
+      chatMessages: () => new Promise<{ messages: ChatMessage[]; hasMore: boolean }>((res) => (releaseOlder = res)),
+    };
+    const f = new ChatFeed(client, store, 'c1').start();
+    await settle();
+    const older = f.loadOlder();
+    store.ingest(ev(2, 'chat.deleted', { data: { chatId: 'c1' } }));
     expect(f.deleted).toBe(true);
     expect(f.chat).toBeUndefined();
     expect(f.messages).toEqual([]);
+    releaseOlder({ messages: [msg(1)], hasMore: false });
+    await older;
+    fail = true;
+    await f.load(); // a reconnect's reload
+    expect(f.messages).toEqual([]);
+    expect(f.hasMore).toBe(false);
+    expect(f.error).toBeUndefined();
   });
 });

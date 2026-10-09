@@ -21,13 +21,16 @@ skipped without a logged-in `claude`: resume, fallback, a refusal and its allow 
   "status": "idle | running | error", "lastError": "",
   "pinned": false, "archived": false, "archivedAt": 0, "forkedFrom": "",
   "createdAt": 1791500000000, "updatedAt": 1791500000000,
-  "tokensIn": 10, "tokensOut": 5, "costUsd": 0.0002, "costUnknownTurns": 0
+  "tokensIn": 10, "tokensOut": 5, "costUsd": 0.0002, "costUnknownTurns": 0, "version": 7
 }
 ```
 
 `costUsd` is `null` when no turn reported a cost (unknown, never zero); `costUnknownTurns` counts turns that reported none, so
 a non-zero value means `costUsd` covers only the other turns. `skipsApprovals` is true for `bypassPermissions`, `auto` and
-`dontAsk`: the UI must show it. Times are Unix milliseconds.
+`dontAsk`: the UI must show it. Times are Unix milliseconds. `version` goes up by one with every write to the chat's row: two
+snapshots of a chat (a method's result, a `chat.updated` event, `chat.get`) are ordered by it, never by `updatedAt` (the wall
+clock can step back, and a write can be stamped before an earlier one commits). `chat.update`, `chat.allowTool` and
+`chat.disallowTool` read, change and write the row in one transaction and return the committed row.
 
 `ListItem` is a `Chat` with two more fields: `"preview"` (the start of the latest user or assistant message, at most 160
 characters) and `"messageCount"`.
@@ -62,7 +65,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], model?, effort?, permissionMode?, readHistory?[true]}` | `Chat` |
 | `chat.get` | `{id}` | `{chat: Chat, messages: [Message] (latest 200, oldest first), hasMore}` |
 | `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `{messages: [Message] oldest first, hasMore}` (`hasMore`: still older messages exist) |
-| `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId}`; the turn runs in the background |
+| `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
 | `chat.stop` | `{id}` | `{stopped}` (false when nothing was running) |
 | `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?}` | `Chat` |
 | `chat.delete` | `{id}` | `{deleted: true}` |
@@ -98,7 +101,7 @@ Every event carries `chatId` and the chat's project as `projectId` (empty for a 
 | Type | Data |
 |---|---|
 | `chat.created` | `{chatId, chat, forkedFrom?}` |
-| `chat.updated` | `{chatId, chat}` (settings, rules, title, the end of a turn) |
+| `chat.updated` | `{chatId, chat}` (settings, rules, title, the start and the end of a turn) |
 | `chat.deleted` | `{chatId}` |
 | `chat.turn_started` | `{chatId, turnId, attach: [chatId]}` |
 | `chat.delta` | `{chatId, turnId, text}`: streamed assistant text, coalesced (about 60 ms, cut at whitespace) |
@@ -111,7 +114,8 @@ well, with the chat id as `agentId`.
 
 ## 4. A turn
 
-1. The user message is stored (secret-scanned), the chat is marked `running` and `chat.turn_started` is published.
+1. The chat is claimed (`running`), the user message is stored (secret-scanned), and the running chat is published
+   (`chat.updated`, then `chat.turn_started`).
 2. The adapter starts through the Agent Runtime in the chat's folder, with the chat's model, effort, mode and allow rules, and
    `ResumeID` = the stored session id when the adapter can resume (Claude `--resume`, ACP `session/load` or `session/resume`).
 3. If the session cannot be resumed (the CLI fails before any session or output), a system note is stored and a fresh session

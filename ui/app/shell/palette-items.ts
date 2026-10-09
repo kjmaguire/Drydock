@@ -2,9 +2,9 @@
 // here approves, merges, deletes or stops anything, so the palette can never bypass an approval.
 
 import type { Agent, Room, Task } from '../api/types.ts';
-import type { ChatListItem } from '../api/chatClient.ts';
+import { chatTitle, type ChatListItem } from '../api/chatClient.ts';
+import { parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
-import { chatTitle } from '../screens/chats/chats.ts';
 
 export type Group = 'Navigate' | 'Chats' | 'Tasks' | 'Agents' | 'Actions';
 export const GROUPS: Group[] = ['Navigate', 'Chats', 'Tasks', 'Agents', 'Actions'];
@@ -52,12 +52,13 @@ export const SCREENS: [string, string, string[]?][] = [
 /** How many recent chats the palette offers (and asks the core for). */
 export const PALETTE_CHATS = 8;
 
-/** New chat from an open conversation keeps it open behind the dialog (and goes back to it on cancel). */
-export function newChatHref(currentPath = ''): string {
-  return /^\/chats\/[^/?#]+$/.test(currentPath) ? `${currentPath}?new` : `${routes.chats.href()}?new`;
+/** The Chats screen is open (the list, or a conversation): New chat opens its dialog there, over what is shown. */
+export function isChatsPath(pathname: string): boolean {
+  const name = parseRoute(pathname).name;
+  return name === 'chats' || name === 'chat';
 }
 
-export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agents: readonly Agent[], chats: readonly ChatListItem[] = [], currentPath = ''): PaletteItem[] {
+export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agents: readonly Agent[], chats: readonly ChatListItem[] = []): PaletteItem[] {
   const out: PaletteItem[] = [];
   for (const r of rooms.filter((r) => !r.archived)) {
     const dm = r.kind === 'dm';
@@ -65,7 +66,7 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
     out.push({ id: `room:${r.id}`, group: 'Navigate', label: dm ? `Direct message ${name}` : `#${name}`, hint: dm ? 'direct message' : r.kind, href: routes.room.href({ id: r.id }) });
   }
   for (const [href, label, keywords] of SCREENS) out.push({ id: `screen:${href}`, group: 'Navigate', label, href, keywords });
-  out.push({ id: 'chat:new', group: 'Chats', label: 'New chat', keywords: ['claude', 'conversation', 'ask'], href: newChatHref(currentPath) });
+  out.push({ id: 'chat:new', group: 'Chats', label: 'New chat', keywords: ['claude', 'conversation', 'ask'], action: 'chat:new' });
   for (const c of chats.filter((c) => !c.archived).slice(0, PALETTE_CHATS)) {
     out.push({ id: `chat:${c.id}`, group: 'Chats', label: chatTitle(c), hint: c.status === 'running' ? 'running' : 'chat', keywords: ['chat'], href: routes.chat.href({ id: c.id }) });
   }

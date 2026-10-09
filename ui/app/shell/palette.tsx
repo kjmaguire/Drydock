@@ -9,7 +9,7 @@ import { query as liveQuery, services, watch } from '../state/services.tsx';
 import type { DockTab } from '../state/ui.ts';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
-import { GROUPS, PALETTE_CHATS, buildItems, filterItems, type PaletteItem } from './palette-items.ts';
+import { GROUPS, PALETTE_CHATS, buildItems, filterItems, isChatsPath, type PaletteItem } from './palette-items.ts';
 
 const dialogCss = css({
   width: 'min(640px, calc(100vw - 32px))',
@@ -63,8 +63,9 @@ const optCss = css({
 const emptyCss = css({ padding: t.s6, textAlign: 'center', color: t.textMuted });
 const footCss = css({ display: 'flex', gap: t.s4, padding: `${t.s2} ${t.s4}`, borderTop: `1px solid ${t.border}`, color: t.textFaint, fontSize: t.textXs });
 
-export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => void }>) {
+export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => void; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
+  const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href));
   watch(handle, s.ui);
   let dialog: HTMLDialogElement | undefined;
   let input: HTMLInputElement | undefined;
@@ -105,7 +106,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   const run = (it: PaletteItem) => {
     s.ui.setPalette(false);
     if (it.href) {
-      void navigate(it.href);
+      go(it.href);
       return;
     }
     const [kind, arg] = (it.action ?? '').split(':') as [string, string];
@@ -126,13 +127,18 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
       case 'theme':
         s.ui.setTheme(arg as ThemeChoice);
         break;
+      case 'chat':
+        // the Chats screen opens the dialog over the chat that is open (no URL flag: Back and a reload never reopen it)
+        s.ui.requestNewChat();
+        if (!isChatsPath(window.location.pathname)) go(routes.chats.href());
+        break;
     }
   };
 
   return () => {
     handle.queueTask(sync);
     const p = s.project;
-    const all = s.ui.paletteOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? [], window.location.pathname) : [];
+    const all = s.ui.paletteOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? []) : [];
     const shown = filterItems(all, query);
     const idx = Math.min(active, Math.max(shown.length - 1, 0));
     const listId = `palette-list-${handle.id}`;

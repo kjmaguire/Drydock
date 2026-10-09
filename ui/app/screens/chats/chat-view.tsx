@@ -181,8 +181,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   const send = async (text: string, attach: string[] = []): Promise<boolean> => {
     const r = await act.run('send', () => s.client.chatSend(handle.props.id, text, attach));
     if (!r) return false;
-    feed.sent(r.turnId);
-    stick = true;
+    stick = true; // before sent(): it may not emit (a turn that already ended), so render here as well
+    feed.sent(r.turnId, r.version);
+    void handle.update();
     return true;
   };
 
@@ -230,9 +231,17 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const running = feed.running;
     const adapter = adapters.find((a) => a.id === chat.adapter);
     const readOnly = s.workspace.license.readOnly;
-    const lastUserSeq = msgs.reduce((n, m) => (m.role === 'user' ? Math.max(n, m.seq) : n), 0);
+    let lastUserSeq = 0;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]!.role === 'user') {
+        lastUserSeq = msgs[i]!.seq;
+        break;
+      }
+    }
     if (stick) seenSeq = msgs.at(-1)?.seq ?? 0;
-    const unseen = msgs.reduce((n, m) => (m.seq > seenSeq ? n + 1 : n), 0);
+    // the messages are in seq order: count back from the newest (nothing is unseen while stuck to the bottom)
+    let unseen = 0;
+    if (!stick) for (let i = msgs.length - 1; i >= 0 && msgs[i]!.seq > seenSeq; i--) unseen++;
     handle.queueTask(() => {
       if (keepFrom !== undefined && scroller && !feed.loadingOlder) {
         scroller.scrollTop += scroller.scrollHeight - keepFrom;

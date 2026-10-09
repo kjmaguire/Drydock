@@ -16,39 +16,33 @@ import { NewChatDialog } from './new-chat-dialog.tsx';
 const screenCss = css({ display: 'flex', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
 const emptyCss = css({ flex: '1', minWidth: '0', display: 'grid', placeItems: 'center', '& kbd': { margin: '0 2px' } });
 
-export function ChatsScreen(handle: Handle<{ id?: string; newChat?: boolean; onNavigate?: (href: string) => void }>) {
+export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
+  watch(handle, s.ui); // the palette's New chat (s.ui.requestNewChat)
   const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
-  let dialog = !!handle.props.newChat;
-  let lastNew = !!handle.props.newChat;
+  let dialog = false;
 
   const open = () => {
     dialog = true;
     void handle.update();
   };
-  /** One navigation; "?new" (the palette's New chat) is replaced, so Back and a reload do not reopen the dialog. */
-  const go = (href: string) => {
-    if (handle.props.onNavigate) handle.props.onNavigate(href);
-    else void navigate(href, handle.props.newChat ? { history: 'replace' } : undefined).catch(() => {});
-  };
-  const here = () => (handle.props.id ? routes.chat.href({ id: handle.props.id }) : routes.chats.href());
+  // the dialog is not in the URL: closing it leaves the chat (or the list) behind it as it was
   const close = () => {
     dialog = false;
     void handle.update();
-    // back to the chat that was open behind the dialog (or the list), without "?new"
-    if (handle.props.newChat) go(here());
   };
   const created = (chatId: string) => {
     dialog = false;
     void handle.update();
-    go(routes.chat.href({ id: chatId }));
+    const href = routes.chat.href({ id: chatId });
+    if (handle.props.onNavigate) handle.props.onNavigate(href);
+    else void navigate(href).catch(() => {});
   };
 
   return () => {
-    const { id, newChat, onNavigate } = handle.props;
-    if (newChat && !lastNew) dialog = true; // the palette's New chat while the screen is already open
-    lastNew = !!newChat;
+    const { id, onNavigate } = handle.props;
+    if (s.ui.takeNewChat()) dialog = true;
     const ws = s.workspace;
     return (
       <div mix={screenCss} data-testid="chats-screen">

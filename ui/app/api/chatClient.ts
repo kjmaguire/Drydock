@@ -36,6 +36,8 @@ export interface Chat {
   costUsd: number | null;
   /** Turns that reported no cost: non-zero means costUsd covers only the other turns. */
   costUnknownTurns: number;
+  /** Raised by the core with every write to the chat: of two snapshots of a chat, the higher version is the newer one. */
+  version: number;
 }
 
 export interface ChatListItem extends Chat {
@@ -59,17 +61,15 @@ export interface ChatMessage {
   suggestedRule?: string;
 }
 
-export interface ChatDetail {
-  chat: Chat;
-  /** The latest 200, oldest first. */
+/** A page of messages, oldest first; hasMore says whether still older ones exist. */
+export interface ChatPage {
   messages: ChatMessage[];
   hasMore: boolean;
 }
 
-/** chat.messages: a page of older messages. */
-export interface ChatPage {
-  messages: ChatMessage[];
-  hasMore: boolean;
+/** chat.get: the chat and its latest 200 messages. */
+export interface ChatDetail extends ChatPage {
+  chat: Chat;
 }
 
 export interface ChatHit {
@@ -124,8 +124,8 @@ export interface ChatClient {
   chatGet(id: string): Promise<ChatDetail>;
   /** Older messages, oldest first; hasMore says whether still older ones exist. */
   chatMessages(id: string, beforeSeq?: number, limit?: number): Promise<ChatPage>;
-  /** Returns the turn id; the turn runs in the background. */
-  chatSend(id: string, text: string, attach?: string[]): Promise<{ turnId: string }>;
+  /** The turn runs in the background; version is the chat's version once the turn was claimed (a snapshot at or after it shows the turn). */
+  chatSend(id: string, text: string, attach?: string[]): Promise<{ turnId: string; version: number }>;
   chatStop(id: string): Promise<{ stopped: boolean }>;
   chatUpdate(u: ChatUpdate): Promise<Chat>;
   chatDelete(id: string): Promise<void>;
@@ -142,6 +142,11 @@ export function normalizeChat<T extends Chat>(c: T): T {
   return { ...c, allowedTools: arr(c.allowedTools) };
 }
 
+const page = (p: ChatPage | null | undefined): ChatPage => ({ messages: arr(p?.messages), hasMore: !!p?.hasMore });
+
+/** The title shown for a chat: its own, else "New chat". */
+export const chatTitle = (c: Pick<Chat, 'title'>): string => c.title.trim() || 'New chat';
+
 export function createChatClient(t: Transport): ChatClient {
   return {
     chatList: async (p = {}) =>
@@ -149,12 +154,9 @@ export function createChatClient(t: Transport): ChatClient {
     chatCreate: async (p) => normalizeChat(await t.call<Chat>('chat.create', p)),
     chatGet: async (id) => {
       const d = await t.call<ChatDetail>('chat.get', { id });
-      return { chat: normalizeChat(d.chat), messages: arr(d.messages), hasMore: !!d.hasMore };
+      return { chat: normalizeChat(d.chat), ...page(d) };
     },
-    chatMessages: async (id, beforeSeq = 0, limit = 100) => {
-      const p = await t.call<ChatPage | null>('chat.messages', { id, beforeSeq, limit });
-      return { messages: arr(p?.messages), hasMore: !!p?.hasMore };
-    },
+    chatMessages: async (id, beforeSeq = 0, limit = 100) => page(await t.call<ChatPage | null>('chat.messages', { id, beforeSeq, limit })),
     chatSend: (id, text, attach = []) => t.call('chat.send', { id, text, attach }),
     chatStop: (id) => t.call('chat.stop', { id }),
     chatUpdate: async (u) => normalizeChat(await t.call<Chat>('chat.update', u)),

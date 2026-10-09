@@ -1,11 +1,12 @@
 // One chat as a small live model: chat.get for the chat and its latest messages, then the chat.* events. chat.message adds
-// a stored message (merged by id, in seq order), chat.delta appends to the in-progress assistant text, chat.updated replaces
-// the chat, chat.turn ends the streaming state, chat.deleted empties it. Older messages are read in pages (chat.messages
-// beforeSeq). After a reconnect everything is read again. Nothing here is authoritative: the list is what the core returned.
+// a stored message (merged by id, in seq order), chat.delta appends to the in-progress assistant text, chat.turn ends the
+// streaming state, chat.deleted stops the feed. Older messages are read in pages (chat.messages beforeSeq). After a reconnect
+// everything is read again. Nothing here is authoritative: what is shown is what the core returned.
 //
-// Three answers can arrive after the events that made them stale, and none of them may undo newer state: the chat.send
-// response (its turn may already have ended over the event stream), an action's returned chat (compared by updatedAt), and
-// a chat.get snapshot taken before events that arrived while it was in flight.
+// The chat itself is only ever a snapshot from the core (chat.get, chat.updated, an action's reply), and of two snapshots the
+// one with the higher version wins: the core raises it with every write, so a reply or a reload read before a newer write
+// never replaces it. What only this view knows is kept apart from the snapshot: the turn a send started (until a snapshot at
+// or after the send's version, or the turn's own events, show it) and the streamed text.
 
 import { TypedEventTarget } from 'remix/component';
 import type { Chat, ChatClient, ChatMessage, ChatTurnEnd } from '../../api/chatClient.ts';
@@ -24,19 +25,13 @@ export const OLDER_PAGE = 100;
 
 type FeedClient = Pick<ChatClient, 'chatGet' | 'chatMessages'>;
 
-/** Whether chat a is at least as recent as b (updatedAt, ms; a missing value counts as 0). */
-const notOlder = (a: Pick<Chat, 'updatedAt'>, b: Pick<Chat, 'updatedAt'> | undefined): boolean => !b || (a.updatedAt ?? 0) >= (b.updatedAt ?? 0);
-
-/** Remembered ended turns (a late chat.send response is checked against them). */
-const ENDED_KEEP = 20;
-
 export class ChatFeed extends TypedEventTarget<{ change: Event }> {
   chat: Chat | undefined;
   messages: ChatMessage[] = [];
   hasMore = false;
   loading = true;
   loadingOlder = false;
-  /** The chat was deleted (here or elsewhere). */
+  /** The chat was deleted (here or elsewhere); the feed is stopped. */
   deleted = false;
   error: Error | undefined;
   /** Set while a turn runs (from chat.turn_started, the first delta, or a running chat). */
@@ -50,9 +45,12 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
   #off: (() => void)[] = [];
   #epoch: number;
   #gen = 0;
-  /** Counts this chat's events, so a load can tell whether any arrived while it was in flight. */
-  #events = 0;
-  #ended: string[] = [];
+  /** Raised by every load that lands: an older page asked for before it may no longer join the list. */
+  #listGen = 0;
+  /** A load has landed; until then a load starts the list from its own page. */
+  #loaded = false;
+  /** A turn chat.send accepted that no snapshot shows yet, and the chat version that will show it. */
+  #pending: { turnId: string; version: number } | undefined;
   #stopped = false;
 
   constructor(client: FeedClient, store: EventStore, id: string) {
@@ -85,31 +83,33 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
   }
 
   get running(): boolean {
-    return this.chat?.status === 'running' || !!this.streaming;
+    return this.chat?.status === 'running' || !!this.streaming || !!this.#pending;
   }
 
-  /** Read the chat and its latest messages (keeps older pages already loaded when they join up). */
+  /** Read the chat and its latest messages (keeps what is shown when the page joins it). */
   load = async (): Promise<void> => {
     const my = ++this.#gen;
-    const eventsBefore = this.#events;
+    const first = !this.#loaded;
+    // what was shown before this read; messages events add meanwhile are newer and must not make a gap look joined
+    const baseNewest = this.messages.at(-1)?.seq;
     try {
       const d = await this.#client.chatGet(this.id);
-      if (my !== this.#gen || this.#stopped || this.deleted) return;
-      const raced = this.#events !== eventsBefore; // events newer than this snapshot arrived meanwhile
-      const newest = this.messages.at(-1)?.seq;
-      const firstNew = d.messages[0]?.seq;
-      if (newest === undefined || (firstNew !== undefined && firstNew > newest + 1)) {
-        // first load, or the page does not join what is shown (a long turn while the stream was down): start from it
-        this.messages = raced ? mergeMessages(d.messages, this.messages.filter((m) => firstNew === undefined || m.seq >= firstNew)) : d.messages;
-        this.hasMore = d.hasMore;
-      } else {
+      if (my !== this.#gen || this.#stopped) return;
+      this.#listGen++;
+      const firstSeq = d.messages[0]?.seq;
+      if (!first && baseNewest !== undefined && firstSeq !== undefined && firstSeq <= baseNewest + 1) {
+        // the page joins what was shown: merge; its hasMore counts when it reaches back to the oldest message shown
+        const oldest = this.messages[0]?.seq ?? firstSeq;
         this.messages = mergeMessages(this.messages, d.messages);
+        if (firstSeq <= oldest) this.hasMore = d.hasMore;
+      } else {
+        // the first load, or a page that does not join (a long turn stored messages while the stream was down): start the
+        // list from the page, keeping only what events added from the page on
+        this.messages = mergeMessages(d.messages, firstSeq === undefined ? this.messages : this.messages.filter((m) => m.seq >= firstSeq));
+        this.hasMore = d.hasMore;
       }
-      if (!raced || notOlder(d.chat, this.chat)) this.chat = d.chat;
-      if (!raced) {
-        if (d.chat.status === 'running') this.streaming ??= { turnId: '', text: '' };
-        else this.streaming = undefined;
-      }
+      this.#loaded = true;
+      this.#take(d.chat);
       this.error = undefined;
     } catch (e) {
       if (my !== this.#gen || this.#stopped) return;
@@ -123,19 +123,21 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
   loadOlder = async (): Promise<number> => {
     if (this.loadingOlder || !this.hasMore || this.#stopped) return 0;
     const before = this.messages[0]?.seq ?? 0;
+    const gen = this.#listGen;
     this.loadingOlder = true;
     this.#emit();
     let added = 0;
     try {
       const page = await this.#client.chatMessages(this.id, before, OLDER_PAGE);
-      if (this.#stopped) return 0;
+      // stopped, or a load landed meanwhile: the page was asked for against a list that may be gone
+      if (this.#stopped || gen !== this.#listGen) return 0;
       const n = this.messages.length;
       this.messages = mergeMessages(this.messages, page.messages);
       added = this.messages.length - n;
       this.hasMore = page.hasMore;
       this.error = undefined;
     } catch (e) {
-      this.error = e instanceof Error ? e : new Error(String(e));
+      if (!this.#stopped) this.error = e instanceof Error ? e : new Error(String(e));
     } finally {
       this.loadingOlder = false;
       this.#emit();
@@ -143,35 +145,47 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
     return added;
   };
 
-  /** A send was accepted: show the turn as running before its first event arrives, unless it already ended. */
-  sent(turnId: string): void {
-    if (this.#ended.includes(turnId)) return;
-    this.streaming = { turnId, text: this.streaming?.turnId === turnId ? this.streaming.text : '' };
-    if (this.chat) this.chat = { ...this.chat, status: 'running' };
+  /**
+   * chat.send accepted a turn: show it as running until a snapshot at or after `version`, or the turn's own events, show it.
+   * A turn that already ended (its chat.turn came first) or that a snapshot already shows is not pending.
+   */
+  sent(turnId: string, version = 0): void {
+    if (this.#stopped || this.lastTurn?.turnId === turnId) return;
+    if (version > 0 && this.chat && this.chat.version >= version) return;
+    this.#pending = { turnId, version };
     this.#emit();
   }
 
-  /** The chat came back from an action (update, allow rule); an answer older than what is shown is dropped. */
+  /** The chat came back from an action (update, allow rule): kept only when it is not older than the one shown. */
   setChat(c: Chat): void {
-    if (c.id !== this.id || this.deleted) return;
-    if (!notOlder(c, this.chat)) return;
+    if (c.id !== this.id || this.#stopped) return;
+    if (this.#take(c)) this.#emit();
+  }
+
+  /** Apply a snapshot of the chat unless it is older (by version) than the one shown. */
+  #take(c: Chat): boolean {
+    if (this.chat && (c.version ?? 0) < (this.chat.version ?? 0)) return false;
     this.chat = c;
-    this.#emit();
+    if (this.#pending && (c.version ?? 0) >= this.#pending.version) this.#pending = undefined; // it shows the send's turn
+    if (c.status === 'running') this.streaming ??= { turnId: '', text: '' };
+    else if (!this.#pending) this.streaming = undefined;
+    return true;
   }
 
   #onEvent(e: DrydockEvent): void {
     const d = (e.data ?? {}) as Record<string, unknown>;
     if (!e.type.startsWith('chat.') || d.chatId !== this.id) return;
-    this.#events++;
     switch (e.type) {
-      case 'chat.turn_started':
-        this.streaming = { turnId: String(d.turnId ?? ''), text: '' };
-        if (this.chat) this.chat = { ...this.chat, status: 'running' };
+      case 'chat.turn_started': {
+        const turnId = String(d.turnId ?? '');
+        this.streaming = { turnId, text: '' };
+        if (this.#pending?.turnId === turnId) this.#pending = undefined;
         this.lastTurn = undefined;
         break;
+      }
       case 'chat.delta': {
         const turnId = String(d.turnId ?? '');
-        if (this.#ended.includes(turnId)) return;
+        if (this.lastTurn?.turnId === turnId) return; // a late delta of a turn that already ended
         const cur = this.streaming;
         this.streaming = { turnId, text: (cur && (cur.turnId === turnId || !cur.turnId) ? cur.text : '') + String(d.text ?? '') };
         break;
@@ -186,27 +200,24 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
       }
       case 'chat.updated': {
         const c = d.chat as Chat | undefined;
-        if (c && notOlder(c, this.chat)) {
-          this.chat = normalizeChat(c);
-          if (c.status !== 'running' && this.streaming && !this.streaming.text) this.streaming = undefined;
-        }
+        if (!c || !this.#take(normalizeChat(c))) return;
         break;
       }
-      case 'chat.turn': {
-        const turnId = String(d.turnId ?? '');
-        this.#ended = [...this.#ended, turnId].slice(-ENDED_KEEP);
+      case 'chat.turn':
         this.lastTurn = d as unknown as ChatTurnEnd;
         this.streaming = undefined;
-        if (this.chat && this.chat.status === 'running') this.chat = { ...this.chat, status: d.status === 'error' ? 'error' : 'idle' };
+        if (this.#pending?.turnId === d.turnId) this.#pending = undefined;
         break;
-      }
       case 'chat.deleted':
+        this.stop(); // no reload or older page lands on a deleted chat
         this.deleted = true;
         this.chat = undefined;
         this.streaming = undefined;
+        this.#pending = undefined;
         this.messages = [];
         this.hasMore = false;
         this.loading = false;
+        this.error = undefined;
         break;
       default:
         return;
