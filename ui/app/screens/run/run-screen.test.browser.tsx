@@ -153,7 +153,7 @@ describe('RunScreen', () => {
     expect(node(r, 'done')!.getAttribute('data-status')).toBe('pending');
     const edges = all(r, '[data-testid="wf-edge"]');
     expect(edges.length).toBe(7);
-    expect(graph.querySelectorAll('.react-flow__edge').length).toBe(7);
+    expect(graph.querySelectorAll('[data-testid="wf-edge"]').length).toBe(7);
     expect(edges.every((e) => /^url\(#wf-arrow-/.test(e.querySelector('path')!.getAttribute('marker-end') ?? ''))).toBe(true);
     const loop = edges.find((e) => e.getAttribute('data-kind') === 'loop')!;
     expect(getComputedStyle(loop.querySelector('path')!).strokeDasharray).not.toBe('none');

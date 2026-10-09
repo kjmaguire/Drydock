@@ -402,9 +402,8 @@ export function WorkflowGraph(
               </defs>
               <g transform={viewTransform(v)} data-testid="wf-viewport">
                 <g aria-hidden="true">
-                  {/* react-flow__edge: kept for the end-to-end contract (e2e/round11.spec.ts) */}
                   {ordered.map((e) => (
-                    <g key={e.id} class="wf-edge react-flow__edge" data-testid="wf-edge" data-from={e.edge.from} data-to={e.edge.to} data-kind={e.edge.kind} data-taken={String(e.taken)} data-active={String(e.active)}>
+                    <g key={e.id} class="wf-edge" data-testid="wf-edge" data-from={e.edge.from} data-to={e.edge.to} data-kind={e.edge.kind} data-taken={String(e.taken)} data-active={String(e.active)}>
                       <path d={e.d} marker-end={`url(#${e.marker})`} />
                     </g>
                   ))}

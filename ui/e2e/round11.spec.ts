@@ -15,7 +15,7 @@ test('workflow graph, checkpoint timeline and the explanation of every turn', as
   const graph = page.getByTestId('workflow-graph');
   await expect(graph.locator('[data-testid=wf-node][data-node=work]')).toHaveAttribute('data-status', 'done');
   await expect(graph.locator('[data-testid=wf-node][data-node=work]')).toContainText('Worker One');
-  await expect(graph.locator('.react-flow__edge').first()).toBeAttached();
+  await expect(graph.getByTestId('wf-edge').first()).toBeAttached();
 
   // the first checkpoint: nothing has run yet
   await graph.getByTestId('wf-checkpoint').first().click();
