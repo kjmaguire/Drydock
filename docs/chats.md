@@ -58,10 +58,10 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 
 | Method | Parameters | Result |
 |---|---|---|
-| `chat.list` | `{projectId?, query?, includeArchived?[false]}` (`projectId` empty = every chat; `query` = full text over titles and messages) | `[ListItem]`, pinned first, then most recently updated, at most 500 |
+| `chat.list` | `{projectId?, query?, includeArchived?[false], limit?[500, max 500]}` (`projectId` empty = every chat; `query` = full text over titles and messages) | `[ListItem]`, pinned first, then most recently updated, at most 500 |
 | `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], model?, effort?, permissionMode?, readHistory?[true]}` | `Chat` |
 | `chat.get` | `{id}` | `{chat: Chat, messages: [Message] (latest 200, oldest first), hasMore}` |
-| `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `[Message]`, oldest first |
+| `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `{messages: [Message] oldest first, hasMore}` (`hasMore`: still older messages exist) |
 | `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId}`; the turn runs in the background |
 | `chat.stop` | `{id}` | `{stopped}` (false when nothing was running) |
 | `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?}` | `Chat` |

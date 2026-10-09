@@ -66,6 +66,12 @@ export interface ChatDetail {
   hasMore: boolean;
 }
 
+/** chat.messages: a page of older messages. */
+export interface ChatPage {
+  messages: ChatMessage[];
+  hasMore: boolean;
+}
+
 export interface ChatHit {
   chatId: string;
   title: string;
@@ -112,11 +118,12 @@ export interface ChatTurnEnd {
 }
 
 export interface ChatClient {
-  chatList(p?: { projectId?: string; query?: string; includeArchived?: boolean }): Promise<ChatListItem[]>;
+  /** limit: at most this many (1-500; omitted = 500). */
+  chatList(p?: { projectId?: string; query?: string; includeArchived?: boolean; limit?: number }): Promise<ChatListItem[]>;
   chatCreate(p: ChatCreate): Promise<Chat>;
   chatGet(id: string): Promise<ChatDetail>;
-  /** Older messages, oldest first. */
-  chatMessages(id: string, beforeSeq?: number, limit?: number): Promise<ChatMessage[]>;
+  /** Older messages, oldest first; hasMore says whether still older ones exist. */
+  chatMessages(id: string, beforeSeq?: number, limit?: number): Promise<ChatPage>;
   /** Returns the turn id; the turn runs in the background. */
   chatSend(id: string, text: string, attach?: string[]): Promise<{ turnId: string }>;
   chatStop(id: string): Promise<{ stopped: boolean }>;
@@ -137,13 +144,17 @@ export function normalizeChat<T extends Chat>(c: T): T {
 
 export function createChatClient(t: Transport): ChatClient {
   return {
-    chatList: async (p = {}) => arr(await t.call<ChatListItem[] | null>('chat.list', { projectId: p.projectId ?? '', query: p.query ?? '', includeArchived: p.includeArchived ?? false })).map(normalizeChat),
+    chatList: async (p = {}) =>
+      arr(await t.call<ChatListItem[] | null>('chat.list', { projectId: p.projectId ?? '', query: p.query ?? '', includeArchived: p.includeArchived ?? false, ...(p.limit ? { limit: p.limit } : {}) })).map(normalizeChat),
     chatCreate: async (p) => normalizeChat(await t.call<Chat>('chat.create', p)),
     chatGet: async (id) => {
       const d = await t.call<ChatDetail>('chat.get', { id });
       return { chat: normalizeChat(d.chat), messages: arr(d.messages), hasMore: !!d.hasMore };
     },
-    chatMessages: async (id, beforeSeq = 0, limit = 100) => arr(await t.call<ChatMessage[] | null>('chat.messages', { id, beforeSeq, limit })),
+    chatMessages: async (id, beforeSeq = 0, limit = 100) => {
+      const p = await t.call<ChatPage | null>('chat.messages', { id, beforeSeq, limit });
+      return { messages: arr(p?.messages), hasMore: !!p?.hasMore };
+    },
     chatSend: (id, text, attach = []) => t.call('chat.send', { id, text, attach }),
     chatStop: (id) => t.call('chat.stop', { id }),
     chatUpdate: async (u) => normalizeChat(await t.call<Chat>('chat.update', u)),

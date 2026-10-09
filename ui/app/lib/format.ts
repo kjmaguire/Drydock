@@ -84,7 +84,12 @@ export const presenceFor = (agentId: string, list: readonly PresenceState[] | un
  */
 export function formatCost(usd: number | undefined | null): string {
   if (usd === undefined || usd === null || !(usd > 0)) return 'not reported';
-  return `$${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
+  return formatUsd(usd);
+}
+
+/** A dollar amount: four decimals under a cent, else two. */
+export function formatUsd(usd: number): string {
+  return `$${usd > 0 && usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
 }
 
 /** 1536 -> "1.5 KB". Sizes in the packaging screens come from the core as byte counts. */

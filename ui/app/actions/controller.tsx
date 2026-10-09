@@ -95,9 +95,9 @@ export const controller = createController(routes, {
       // one key for the list and every chat, so switching chats keeps the list (and its search) mounted
       return render(<ChatsScreen key="chats" newChat={url.searchParams.has('new')} />);
     },
-    async chat({ render, params }) {
+    async chat({ render, params, url }) {
       const { ChatsScreen } = await import('../screens/chats/chats-screen.tsx');
-      return render(<ChatsScreen key="chats" id={params.id} />);
+      return render(<ChatsScreen key="chats" id={params.id} newChat={url.searchParams.has('new')} />);
     },
     async library({ render }) {
       const { LibraryScreen } = await import('../screens/library/library-screen.tsx');

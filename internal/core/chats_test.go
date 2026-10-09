@@ -483,10 +483,23 @@ func TestChatSearchListAndDelete(t *testing.T) {
 	if err := e.callErr("chat.send", map[string]any{"id": b.ID, "text": "more"}); err == nil || !strings.Contains(err.Error(), "archived") {
 		t.Fatalf("an archived chat does not take messages: %v", err)
 	}
-	var older []chats.Message
+	var older struct {
+		Messages []chats.Message `json:"messages"`
+		HasMore  bool            `json:"hasMore"`
+	}
 	e.call("chat.messages", map[string]any{"id": a.ID, "beforeSeq": 2, "limit": 10}, &older)
-	if len(older) != 1 || older[0].Seq != 1 {
+	if len(older.Messages) != 1 || older.Messages[0].Seq != 1 || older.HasMore {
 		t.Fatalf("older page %+v", older)
+	}
+	// an exact page reports whether anything older is left, so the UI never asks for an empty page
+	e.call("chat.messages", map[string]any{"id": a.ID, "beforeSeq": 3, "limit": 1}, &older)
+	if len(older.Messages) != 1 || older.Messages[0].Seq != 2 || !older.HasMore {
+		t.Fatalf("a page with more before it %+v", older)
+	}
+	var limited []chats.ListItem
+	e.call("chat.list", map[string]any{"includeArchived": true, "limit": 1}, &limited)
+	if len(limited) != 1 {
+		t.Fatalf("chat.list limit %d", len(limited))
 	}
 	e.call("chat.delete", map[string]string{"id": a.ID}, nil)
 	if err := e.callErr("chat.get", map[string]string{"id": a.ID}); err == nil {

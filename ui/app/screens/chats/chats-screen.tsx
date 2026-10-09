@@ -27,14 +27,22 @@ export function ChatsScreen(handle: Handle<{ id?: string; newChat?: boolean; onN
     dialog = true;
     void handle.update();
   };
+  /** One navigation; "?new" (the palette's New chat) is replaced, so Back and a reload do not reopen the dialog. */
+  const go = (href: string) => {
+    if (handle.props.onNavigate) handle.props.onNavigate(href);
+    else void navigate(href, handle.props.newChat ? { history: 'replace' } : undefined).catch(() => {});
+  };
+  const here = () => (handle.props.id ? routes.chat.href({ id: handle.props.id }) : routes.chats.href());
   const close = () => {
     dialog = false;
     void handle.update();
-    // "/chats?new" (the palette's New chat) should not reopen the dialog on a reload
-    if (handle.props.newChat && !handle.props.id) {
-      if (handle.props.onNavigate) handle.props.onNavigate(routes.chats.href());
-      else void navigate(routes.chats.href(), { history: 'replace' });
-    }
+    // back to the chat that was open behind the dialog (or the list), without "?new"
+    if (handle.props.newChat) go(here());
+  };
+  const created = (chatId: string) => {
+    dialog = false;
+    void handle.update();
+    go(routes.chat.href({ id: chatId }));
   };
 
   return () => {
@@ -61,7 +69,7 @@ export function ChatsScreen(handle: Handle<{ id?: string; newChat?: boolean; onN
             </Empty>
           </div>
         )}
-        <NewChatDialog open={dialog} onClose={close} projects={ws.projectList} projectId={ws.projectId} adapters={adapters.data} adaptersError={adapters.error} onNavigate={onNavigate} />
+        <NewChatDialog open={dialog} onClose={close} projects={ws.projectList} projectId={ws.projectId} adapters={adapters.data} adaptersError={adapters.error} onCreated={created} />
       </div>
     );
   };

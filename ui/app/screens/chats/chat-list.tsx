@@ -167,6 +167,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
         await act.run('pin', () => s.client.chatUpdate({ id: c.id, pinned: !c.pinned }));
         break;
       case 'rename':
+        act.clear(); // the dialog shows only its own error
         renaming = c;
         renameText = c.title;
         break;
@@ -179,11 +180,11 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
         await act.run('archive', () => s.client.chatUpdate({ id: c.id, archived: !c.archived }));
         break;
       case 'delete':
+        act.clear();
         deleting = c;
         break;
     }
-    chats.reload();
-    void handle.update();
+    void handle.update(); // the list follows the core's chat.updated / chat.created events
   };
 
   const items = (c: ChatListItem): MenuItem[] => [
@@ -237,7 +238,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
     <li key={`${h.chatId}:${h.seq}:${i}`} class="chat-row" mix={rowCss} data-testid="chat-hit">
       <a href={routes.chat.href({ id: h.chatId })} aria-current={handle.props.selectedId === h.chatId ? 'page' : undefined}>
         <span class="title">
-          <span>{h.title.trim() || 'New chat'}</span>
+          <span>{chatTitle(h)}</span>
           {h.archived ? <Badge>archived</Badge> : null}
         </span>
         <span class="when">{h.seq === 0 ? 'title' : h.role ?? ''}</span>
@@ -287,7 +288,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
           </div>
         </div>
         <div mix={scrollCss}>
-          <ErrorNote error={act.error} />
+          {renaming || deleting ? null : <ErrorNote error={act.error} />}
           {searching ? (
             <>
               <div mix={groupCss} aria-live="polite">
@@ -338,13 +339,11 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
               const c = renaming;
               if (!c) return;
               const ok = await act.run('rename', () => s.client.chatUpdate({ id: c.id, title: renameText.trim() }));
-              if (ok) {
-                renaming = undefined;
-                chats.reload();
-              }
+              if (ok) renaming = undefined;
               void handle.update();
             })}
           >
+            <ErrorNote error={act.error} what="Could not rename the chat" />
             <Field label="Title">{(id) => <input id={id} value={renameText} maxLength={200} mix={[on('input', (e) => void (renameText = e.currentTarget.value)), ref((n) => queueMicrotask(() => (n as HTMLInputElement).select()))]} />}</Field>
             <div mix={formActions} style={{ justifyContent: 'flex-end' }}>
               <Button variant="ghost" mix={[on('click', () => ((renaming = undefined), void handle.update()))]}>
@@ -360,6 +359,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
           <p>
             Delete <strong>{deleting ? chatTitle(deleting) : ''}</strong> and all {deleting?.messageCount ?? 0} of its messages? This cannot be undone. Archive it instead to keep it searchable.
           </p>
+          <ErrorNote error={act.error} what="Could not delete the chat" />
           <div mix={formActions} style={{ justifyContent: 'flex-end' }}>
             <Button variant="ghost" mix={[on('click', () => ((deleting = undefined), void handle.update()))]}>
               Cancel
@@ -374,7 +374,6 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
                   const ok = await act.run('delete', async () => (await s.client.chatDelete(c.id), true));
                   if (ok) {
                     deleting = undefined;
-                    chats.reload();
                     if (handle.props.selectedId === c.id) await go(routes.chats.href());
                   }
                   void handle.update();

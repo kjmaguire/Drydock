@@ -2,9 +2,8 @@
 // CLI (Claude Code by default; one that is not installed is listed but disabled with the reason), model, effort, permission
 // mode (a mode that skips approvals shows a warning) and whether the chat may read the human's other chats.
 
-import { navigate, on, type Handle } from 'remix/component';
+import { on, type Handle } from 'remix/component';
 import type { AdapterInfo, Project } from '../../api/types.ts';
-import { routes } from '../../routes.ts';
 import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
@@ -15,7 +14,7 @@ import { adapterOptionText, adapterUnavailable, isAbsolutePath, skipsApprovals, 
 const NO_PROJECT = '';
 
 export function NewChatDialog(
-  handle: Handle<{ open: boolean; onClose: () => void; projects: Project[]; projectId: string | undefined; adapters: AdapterInfo[] | undefined; adaptersError?: Error; onNavigate?: (href: string) => void }>,
+  handle: Handle<{ open: boolean; onClose: () => void; projects: Project[]; projectId: string | undefined; adapters: AdapterInfo[] | undefined; adaptersError?: Error; onCreated: (chatId: string) => void }>,
 ) {
   const s = services(handle);
   const act = action(handle);
@@ -79,11 +78,8 @@ export function NewChatDialog(
           readHistory,
         }),
       );
-      if (c) {
-        onClose();
-        const href = routes.chat.href({ id: c.id });
-        await (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
-      }
+      // the screen closes the dialog and navigates once (closing first would race a second navigation)
+      if (c) handle.props.onCreated(c.id);
     };
 
     return (

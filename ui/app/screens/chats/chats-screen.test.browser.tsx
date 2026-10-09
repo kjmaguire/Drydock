@@ -6,7 +6,7 @@ import type { AdapterInfo, Project } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { lic } from '../../test/fixtures.ts';
 import { ChatsScreen } from './chats-screen.tsx';
-import { RETRY_TEXT } from './chats.ts';
+import { onWindows, RETRY_TEXT } from './chats.ts';
 
 afterEach(cleanup);
 
@@ -155,6 +155,7 @@ describe('Chats list', () => {
     await waitFor(() => expect(rowTitles(r)).toEqual(['First', 'Second']), r);
     await pickMenu(r, 'Second', 'Pin');
     await waitFor(() => expect(updates).toEqual([{ id: 'c2', pinned: true }]), r);
+    s.emit({ type: 'chat.updated', data: { chatId: 'c2' } }); // the core announces the change; the list follows it
     await waitFor(() => expect(rowTitles(r)).toEqual(['Second', 'First']), r);
     expect($(r, '[aria-label="Pinned chats"]')).not.toBeNull();
     // another window created a chat: the list follows the event
@@ -166,7 +167,7 @@ describe('Chats list', () => {
   it('deletes a chat only after the confirmation, and leaves the deleted chat', async () => {
     let list = [item({ id: 'chat_a', title: 'Doomed', messageCount: 7 })];
     const deleted: string[] = [];
-    const { r, navigated } = setup(
+    const { r, s, navigated } = setup(
       {
         chatList: async () => list,
         chatGet: async () => ({ chat: chat({ title: 'Doomed' }), messages: [], hasMore: false }),
@@ -184,8 +185,20 @@ describe('Chats list', () => {
     expect(deleted).toEqual([]);
     await r.act(() => byText(dlg, 'button', 'Delete chat').click());
     await waitFor(() => expect(deleted).toEqual(['chat_a']), r);
+    s.emit({ type: 'chat.deleted', data: { chatId: 'chat_a' } }); // the core announces it
     await waitFor(() => expect(navigated).toEqual(['/chats']), r);
     await waitFor(() => expect(rows(r)).toHaveLength(0), r);
+  });
+
+  it('shows a failed rename inside the dialog, not behind it', async () => {
+    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'Draft' })], chatUpdate: async () => Promise.reject(new Error('Drydock is read-only: no valid license')) });
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Draft']), r);
+    await pickMenu(r, 'Draft', 'Rename');
+    const dlg = await waitFor(() => dialogWith('Rename chat'), r);
+    type(byLabel(dlg, 'Title'), 'Notes');
+    await r.act(() => byText(dlg, 'button', 'Save').click());
+    await waitFor(() => expect(dlg.textContent).toContain('no valid license'), r);
+    expect(must(dlg.querySelector('[role="alert"]'), 'alert in the dialog')).toBeTruthy();
   });
 
   it('renames from the row menu and forks into a new chat', async () => {
@@ -232,7 +245,17 @@ describe('New chat dialog', () => {
     type(byLabel<HTMLSelectElement>(dlg, 'Effort'), 'low');
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
     await waitFor(() => expect(created).toEqual([{ projectId: 'prj_1', cwd: undefined, adapter: 'claude', model: 'opus', effort: 'low', permissionMode: undefined, readHistory: true }]), r);
-    await waitFor(() => expect(navigated).toContain('/chats/c_new'), r);
+    // one navigation, straight to the new chat (no extra trip to /chats on the way)
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
+  });
+
+  it('New chat over an open chat keeps it: cancelling goes back to it without "?new"', async () => {
+    const { r, navigated } = setup({ chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }) }, { id: 'chat_a', newChat: true });
+    const dlg = await waitFor(newChatDialog, r);
+    await waitFor(() => expect(messages(r)).toHaveLength(1), r); // the conversation stays mounted behind the dialog
+    await r.act(() => byText(dlg, 'button', 'Cancel').click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/chat_a']), r);
+    expect(messages(r)).toHaveLength(1);
   });
 
   it('without a project takes an absolute folder (or none) and refuses a relative one', async () => {
@@ -245,12 +268,13 @@ describe('New chat dialog', () => {
     type(folder, 'notes\\weekly');
     await waitFor(() => expect(dlg.textContent).toContain('Enter an absolute folder path'), r);
     expect(byText<HTMLButtonElement>(dlg, 'button', 'Start chat').disabled).toBe(true);
-    type(folder, 'C:\\work\\notes');
+    const abs = onWindows() ? 'C:\\work\\notes' : '/work/notes'; // what the core's filepath.IsAbs accepts here
+    type(folder, abs);
     await waitFor(() => expect(byText<HTMLButtonElement>(dlg, 'button', 'Start chat').disabled).toBe(false), r);
     expect(dlg.textContent).not.toContain('Enter an absolute folder path');
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
     await waitFor(() => expect(created).toHaveLength(1), r);
-    expect(created[0]).toEqual({ projectId: undefined, cwd: 'C:\\work\\notes', adapter: 'claude', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true });
+    expect(created[0]).toEqual({ projectId: undefined, cwd: abs, adapter: 'claude', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true });
   });
 
   it('warns clearly when a permission mode that skips approvals is picked', async () => {
@@ -502,7 +526,9 @@ describe('Conversation', () => {
     const { r } = conv(chat(), latest, {
       chatMessages: async (id, before, limit) => {
         asked.push([id, before, limit]);
-        return before === 201 ? Array.from({ length: 100 }, (_, i) => msg(101 + i, 'user', `old ${101 + i}`)) : [msg(1, 'user', 'the very first')];
+        return before === 201
+          ? { messages: Array.from({ length: 100 }, (_, i) => msg(101 + i, 'user', `old ${101 + i}`)), hasMore: true }
+          : { messages: [msg(1, 'user', 'the very first')], hasMore: false };
       },
     }, true);
     await waitFor(() => expect(messages(r)).toHaveLength(5), r);
@@ -514,9 +540,37 @@ describe('Conversation', () => {
     await r.act(() => $(r, '[data-testid="chat-older"]')!.click());
     await waitFor(() => expect(messages(r)).toHaveLength(106), r);
     expect(asked[1]).toEqual(['chat_a', 101, 100]);
-    // a short page means the start was reached
+    // the core says when the start was reached
     await waitFor(() => expect($(r, '[data-testid="chat-older"]')).toBeNull(), r);
     expect(r.container.textContent).toContain('This is the start of');
+  });
+
+  it('counts only messages that arrive below as new, not older pages loaded above', async () => {
+    const latest = Array.from({ length: 40 }, (_, i) => msg(201 + i, i % 2 ? 'assistant' : 'user', `recent ${201 + i}`));
+    const { r, s } = conv(chat(), latest, { chatMessages: async () => ({ messages: Array.from({ length: 100 }, (_, i) => msg(101 + i, 'user', `old ${101 + i}`)), hasMore: true }) }, true);
+    await waitFor(() => expect(messages(r)).toHaveLength(40), r);
+    const scroller = must$(r, '[data-testid="chat-scroll"]');
+    scroller.style.flex = 'none'; // a fixed, small viewport so the conversation scrolls
+    scroller.style.height = '200px';
+    scroller.style.overflowY = 'auto';
+    // scroll to the top: the view leaves the bottom and the older page is read
+    await r.act(() => {
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+    await waitFor(() => expect(messages(r)).toHaveLength(140), r);
+    const jump = await waitFor(() => must$(r, '[data-testid="chat-jump"]'), r);
+    expect(jump.textContent).toContain('Jump to the latest');
+    s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(241, 'assistant', 'fresh') } });
+    await waitFor(() => expect(must$(r, '[data-testid="chat-jump"]').textContent).toContain('1 new message'), r);
+  });
+
+  it('shows that a chat deleted elsewhere is gone', async () => {
+    const { r, s } = conv(chat(), [msg(1, 'user', 'hi')]);
+    await waitFor(() => expect(messages(r)).toHaveLength(1), r);
+    s.emit({ type: 'chat.deleted', data: { chatId: 'chat_a' } });
+    await waitFor(() => expect(r.container.textContent).toContain('This chat was deleted.'), r);
+    expect($(r, '[data-testid="chat-composer"]')).toBeNull();
   });
 
   it('renders system notes and errors quietly', async () => {

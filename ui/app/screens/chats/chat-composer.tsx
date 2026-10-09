@@ -11,7 +11,7 @@ import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Popover } from '../../ui/popover.tsx';
 import { t } from '../../ui/tokens.ts';
 import { composerBar, composerBox, composerWrap, sendCss } from '../room/composer.tsx';
-import { adapterLabel, chatTitle, MAX_ATTACH, relTime } from './chats.ts';
+import { adapterLabel, agentWord, chatTitle, MAX_ATTACH, relTime } from './chats.ts';
 
 const hintCss = css({ flex: '1', minWidth: '0', color: t.textFaint, fontSize: t.textXs, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', '& kbd': { margin: '0 2px' } });
 const attachBtn = css({
@@ -94,6 +94,9 @@ const pickList = css({
 });
 const noteCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 
+/** How many recent chats the attach picker offers. */
+const ATTACH_PICKER_CHATS = 100;
+
 export function ChatComposer(
   handle: Handle<{
     chat: Chat;
@@ -112,9 +115,10 @@ export function ChatComposer(
   let picking = false;
   let filter = '';
   let area: HTMLTextAreaElement | undefined;
-  // the other chats, read when the picker opens (every chat: attaching one from another project is the human's choice)
+  // the other chats, read when the picker opens (every chat: attaching one from another project is the human's choice);
+  // the most recent ones, the picker's filter narrows them
   const others = query(handle, {
-    load: () => s.client.chatList({}),
+    load: () => s.client.chatList({ limit: ATTACH_PICKER_CHATS }),
     when: (e) => e.type === 'chat.created' || e.type === 'chat.deleted' || e.type === 'chat.updated',
     enabled: () => picking || attach.length > 0,
     debounceMs: 400,
@@ -182,7 +186,7 @@ export function ChatComposer(
                     </button>
                   </li>
                 ))}
-                <li mix={explainCss}>Their history is given to {who === 'Claude Code' ? 'Claude' : who} for this message only.</li>
+                <li mix={explainCss}>Their history is given to {agentWord(chat.adapter)} for this message only.</li>
               </ul>
             </div>
           ) : null}
@@ -225,7 +229,7 @@ export function ChatComposer(
             >
               <h2>Attach chats</h2>
               <p mix={noteCss}>
-                Their history is given to {who === 'Claude Code' ? 'Claude' : who} for this message only, quoted as data. Up to {MAX_ATTACH}.
+                Their history is given to {agentWord(chat.adapter)} for this message only, quoted as data. Up to {MAX_ATTACH}.
               </p>
               <input type="search" aria-label="Filter chats" placeholder="Filter" value={filter} mix={on('input', (e) => ((filter = e.currentTarget.value), void handle.update()))} />
               {others.loading && !others.data ? (

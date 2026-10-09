@@ -148,7 +148,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   const act = action(handle);
   let scroller: HTMLDivElement | undefined;
   let stick = true;
-  let seen = 0;
+  /** The newest message seen while at the bottom: only messages after it are "new" (older pages above are not). */
+  let seenSeq = 0;
   /** scrollHeight before older messages were added, to keep the view where it was. */
   let keepFrom: number | undefined;
   let editing = false;
@@ -218,7 +219,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             <Loading label="Loading the chat..." />
           ) : (
             <Empty title="Chat not found" icon={Bot}>
-              <p>It may have been deleted.</p>
+              <p>{feed.deleted ? 'This chat was deleted.' : 'It may have been deleted.'}</p>
               <ErrorNote error={feed.error} />
             </Empty>
           )}
@@ -230,8 +231,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const adapter = adapters.find((a) => a.id === chat.adapter);
     const readOnly = s.workspace.license.readOnly;
     const lastUserSeq = msgs.reduce((n, m) => (m.role === 'user' ? Math.max(n, m.seq) : n), 0);
-    if (stick) seen = msgs.length;
-    const unseen = msgs.length - seen;
+    if (stick) seenSeq = msgs.at(-1)?.seq ?? 0;
+    const unseen = msgs.reduce((n, m) => (m.seq > seenSeq ? n + 1 : n), 0);
     handle.queueTask(() => {
       if (keepFrom !== undefined && scroller && !feed.loadingOlder) {
         scroller.scrollTop += scroller.scrollHeight - keepFrom;
@@ -482,6 +483,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           {!stick ? (
             <button
               type="button"
+              data-testid="chat-jump"
               mix={[
                 jumpCss,
                 on('click', () => {

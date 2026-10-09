@@ -97,8 +97,11 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 			BeforeSeq int64  `json:"beforeSeq"`
 			Limit     int    `json:"limit"`
 		}) (any, error) {
-			ms, _, err := svc.Messages(ctx, p.ID, p.BeforeSeq, p.Limit)
-			return ms, err
+			ms, more, err := svc.Messages(ctx, p.ID, p.BeforeSeq, p.Limit)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"messages": ms, "hasMore": more}, nil
 		}),
 		"chat.send": bind(func(ctx context.Context, p chats.SendReq) (any, error) {
 			id, err := svc.Send(ctx, p)

@@ -9,7 +9,7 @@ import { query as liveQuery, services, watch } from '../state/services.tsx';
 import type { DockTab } from '../state/ui.ts';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
-import { GROUPS, buildItems, filterItems, type PaletteItem } from './palette-items.ts';
+import { GROUPS, PALETTE_CHATS, buildItems, filterItems, type PaletteItem } from './palette-items.ts';
 
 const dialogCss = css({
   width: 'min(640px, calc(100vw - 32px))',
@@ -72,7 +72,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   let active = 0;
   // recent chats, read while the palette is open
   const chats = liveQuery(handle, {
-    load: () => s.client.chatList({}),
+    load: () => s.client.chatList({ limit: PALETTE_CHATS }),
     when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted',
     enabled: () => s.ui.paletteOpen,
     debounceMs: 300,
@@ -132,7 +132,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   return () => {
     handle.queueTask(sync);
     const p = s.project;
-    const all = s.ui.paletteOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? []) : [];
+    const all = s.ui.paletteOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? [], window.location.pathname) : [];
     const shown = filterItems(all, query);
     const idx = Math.min(active, Math.max(shown.length - 1, 0));
     const listId = `palette-list-${handle.id}`;

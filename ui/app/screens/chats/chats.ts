@@ -2,6 +2,7 @@
 
 import type { AdapterInfo } from '../../api/types.ts';
 import type { Chat, ChatMessage } from '../../api/chatClient.ts';
+import { formatUsd } from '../../lib/format.ts';
 
 /** Permission modes that skip approvals (docs/chats.md: skipsApprovals). */
 export const SKIP_MODES = new Set(['bypassPermissions', 'auto', 'dontAsk']);
@@ -41,8 +42,7 @@ export function compactNumber(n: number): string {
 /** The cost of a chat. null is unknown, never $0; turns without a reported cost are said. */
 export function costText(c: Pick<Chat, 'costUsd' | 'costUnknownTurns'>): string {
   if (c.costUsd === null || c.costUsd === undefined) return 'cost unknown';
-  const usd = c.costUsd;
-  const money = usd > 0 && usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
+  const money = formatUsd(c.costUsd);
   return c.costUnknownTurns > 0 ? `${money} + ${c.costUnknownTurns} ${c.costUnknownTurns === 1 ? 'turn' : 'turns'} unknown` : money;
 }
 
@@ -80,10 +80,17 @@ export function adapterOptionText(a: AdapterInfo): string {
   return a.detection.version ? `${adapterLabel(a.id)} ${a.detection.version}` : adapterLabel(a.id);
 }
 
-/** An absolute folder path: C:\x, C:/x, \\server\share or /x. */
-export function isAbsolutePath(p: string): boolean {
+/** Whether the app runs on Windows (the product target; Linux is only the development host). */
+export const onWindows = (): boolean => typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+
+/**
+ * An absolute folder path as the core's filepath.IsAbs sees it: on Windows a drive (C:\x, C:/x) or a share (\\server\share,
+ * //server/share) — "/x" is not absolute there; elsewhere a path starting with "/".
+ */
+export function isAbsolutePath(p: string, windows = onWindows()): boolean {
   const s = p.trim();
-  return /^[a-zA-Z]:[\\/]/.test(s) || /^\\\\[^\\]+\\[^\\]+/.test(s) || s.startsWith('/');
+  if (!windows) return s.startsWith('/');
+  return /^[a-zA-Z]:[\\/]/.test(s) || /^[\\/]{2}[^\\/]+[\\/][^\\/]+/.test(s);
 }
 
 /** Split a search snippet into plain and matched parts ([brackets] mark the matches). */

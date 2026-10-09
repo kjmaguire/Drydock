@@ -463,6 +463,7 @@ type ListReq struct {
 	ProjectID       string `json:"projectId"` // only this project's chats; "" = every chat
 	Query           string `json:"query"`     // full-text over titles and messages
 	IncludeArchived bool   `json:"includeArchived"`
+	Limit           int    `json:"limit"` // at most this many (1-500; 0 = 500)
 }
 
 // List returns chats, pinned first, then the most recently updated.
@@ -487,7 +488,12 @@ func (s *Service) List(ctx context.Context, r ListReq) ([]ListItem, error) {
 		q += ` AND (c.rowid IN (SELECT rowid FROM chats_fts WHERE chats_fts MATCH ?) OR c.id IN (SELECT m.chat_id FROM chat_messages_fts f JOIN chat_messages m ON m.rowid=f.rowid WHERE chat_messages_fts MATCH ?))`
 		args = append(args, match, match)
 	}
-	q += ` ORDER BY c.pinned DESC, c.updated_at DESC, c.id DESC LIMIT 500`
+	limit := r.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	q += ` ORDER BY c.pinned DESC, c.updated_at DESC, c.id DESC LIMIT ?`
+	args = append(args, limit)
 	rows, err := s.d.DB.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err

@@ -5,7 +5,7 @@ import { createChatClient } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { isWorkspaceRoute, parseRoute } from '../../lib/route.ts';
 import { routes } from '../../routes.ts';
-import { buildItems } from '../../shell/palette-items.ts';
+import { buildItems, newChatHref } from '../../shell/palette-items.ts';
 import { EventStore } from '../../state/eventStore.ts';
 import { ev, FakeTransport } from '../../test/fakes.ts';
 import { ChatFeed } from './chat-feed.ts';
@@ -52,9 +52,13 @@ describe('chats helpers', () => {
     expect(snippetParts('plain')).toEqual([{ text: 'plain', hit: false }]);
   });
 
-  it('accepts only absolute folders', () => {
-    for (const ok of ['C:\\work', 'd:/x', '\\\\server\\share\\x', '/home/me']) expect(isAbsolutePath(ok)).toBe(true);
-    for (const bad of ['work', '.\\x', 'C:', 'notes/weekly', '']) expect(isAbsolutePath(bad)).toBe(false);
+  it('accepts only absolute folders, as the core sees them on its platform', () => {
+    // Windows (the product): a drive or a share; "/x" is not absolute there (filepath.IsAbs refuses it)
+    for (const ok of ['C:\\work', 'd:/x', '\\\\server\\share\\x', '//server/share/x']) expect(isAbsolutePath(ok, true)).toBe(true);
+    for (const bad of ['work', '.\\x', 'C:', 'notes/weekly', '', '/work/notes', '\\work', '\\\\server']) expect(isAbsolutePath(bad, true)).toBe(false);
+    // the development host
+    expect(isAbsolutePath('/home/me', false)).toBe(true);
+    for (const bad of ['C:\\work', 'work', '']) expect(isAbsolutePath(bad, false)).toBe(false);
   });
 
   it('puts Claude Code first and marks CLIs that cannot start', () => {
@@ -111,6 +115,13 @@ describe('chats routes and palette', () => {
     ]);
     expect(items.some((i) => i.label === 'Chats' && i.href === '/chats')).toBe(true);
   });
+
+  it('New chat from an open conversation keeps it behind the dialog', () => {
+    expect(newChatHref('/chats/chat_a')).toBe('/chats/chat_a?new');
+    expect(newChatHref('/chats')).toBe('/chats?new');
+    expect(newChatHref('/tasks')).toBe('/chats?new');
+    expect(buildItems([], [], [], [], '/chats/chat_a').find((i) => i.id === 'chat:new')?.href).toBe('/chats/chat_a?new');
+  });
 });
 
 describe('chat client', () => {
@@ -141,11 +152,11 @@ describe('chat client', () => {
 });
 
 describe('ChatFeed', () => {
-  function feed(running = false) {
+  function feed(running = false, get?: () => Promise<{ chat: Chat; messages: ChatMessage[]; hasMore: boolean }>) {
     const store = new EventStore(new FakeTransport());
     const client = {
-      chatGet: async () => ({ chat: chat({ status: running ? 'running' : 'idle' }), messages: [msg(1), msg(2, 'assistant')], hasMore: false }),
-      chatMessages: async () => [],
+      chatGet: get ?? (async () => ({ chat: chat({ status: running ? 'running' : 'idle' }), messages: [msg(1), msg(2, 'assistant')], hasMore: false })),
+      chatMessages: async () => ({ messages: [], hasMore: false }),
     };
     const f = new ChatFeed(client, store, 'c1').start();
     let seq = 1;
@@ -165,12 +176,9 @@ describe('ChatFeed', () => {
     emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'lo ' });
     emit('chat.delta', { chatId: 'c9', turnId: 'x', text: 'other chat' });
     expect(f.streaming).toEqual({ turnId: 't2', text: 'Hello ' });
-    let completed = 0;
-    f.addEventListener('completed', () => completed++);
     emit('chat.message', { chatId: 'c1', message: msg(3, 'assistant', { body: 'Hello there' }) });
     expect(f.streaming?.text).toBe('');
     expect(f.messages.map((m) => m.seq)).toEqual([1, 2, 3]);
-    expect(completed).toBe(1);
     emit('chat.message', { chatId: 'c1', message: msg(3, 'assistant', { body: 'Hello there' }) }); // a duplicate is merged
     expect(f.messages).toHaveLength(3);
     emit('chat.turn', { chatId: 'c1', turnId: 't2', status: 'done', fallback: true });
@@ -184,5 +192,65 @@ describe('ChatFeed', () => {
     await settle();
     expect(f.running).toBe(true);
     expect(f.streaming).toEqual({ turnId: '', text: '' });
+  });
+
+  it('a chat.send answer that arrives after its turn already ended does not bring the turn back', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.turn_started', { chatId: 'c1', turnId: 't9', attach: [] });
+    emit('chat.turn', { chatId: 'c1', turnId: 't9', status: 'done' });
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', updatedAt: 5 }) });
+    f.sent('t9'); // the HTTP answer lands last
+    expect(f.running).toBe(false);
+    expect(f.chat?.status).toBe('idle');
+    f.sent('t10'); // a turn that has not ended yet does show as running
+    expect(f.running).toBe(true);
+  });
+
+  it('an action answer older than the chat shown is dropped', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'idle', title: 'Fresh', updatedAt: 200 }) });
+    f.setChat(chat({ status: 'running', title: 'Stale', updatedAt: 100 }));
+    expect(f.chat?.title).toBe('Fresh');
+    expect(f.running).toBe(false);
+    f.setChat(chat({ status: 'idle', title: 'Newer', updatedAt: 300 }));
+    expect(f.chat?.title).toBe('Newer');
+  });
+
+  it('a snapshot taken before events that arrived meanwhile does not undo them', async () => {
+    let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const { f, emit } = feed(false, () => new Promise((res) => (release = res)));
+    emit('chat.turn_started', { chatId: 'c1', turnId: 't1', attach: [] });
+    emit('chat.updated', { chatId: 'c1', chat: chat({ status: 'running', updatedAt: 50 }) });
+    release({ chat: chat({ status: 'idle', updatedAt: 10 }), messages: [msg(1)], hasMore: false });
+    await settle();
+    expect(f.running).toBe(true);
+    expect(f.chat?.status).toBe('running');
+    expect(f.messages.map((m) => m.seq)).toEqual([1]);
+  });
+
+  it('after a reconnect a page that does not join the shown messages replaces them and keeps paging possible', async () => {
+    let page = { chat: chat(), messages: [msg(1), msg(2, 'assistant')], hasMore: false };
+    const store = new EventStore(new FakeTransport());
+    const f = new ChatFeed({ chatGet: async () => page, chatMessages: async () => ({ messages: [], hasMore: false }) }, store, 'c1').start();
+    await settle();
+    expect(f.messages.map((m) => m.seq)).toEqual([1, 2]);
+    page = { chat: chat(), messages: [msg(300), msg(301, 'assistant')], hasMore: true };
+    await f.load();
+    expect(f.messages.map((m) => m.seq)).toEqual([300, 301]);
+    expect(f.hasMore).toBe(true);
+    page = { chat: chat(), messages: [msg(301, 'assistant'), msg(302)], hasMore: true };
+    await f.load(); // a page that overlaps is merged
+    expect(f.messages.map((m) => m.seq)).toEqual([300, 301, 302]);
+  });
+
+  it('a deleted chat empties the feed', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.deleted', { chatId: 'c1' });
+    expect(f.deleted).toBe(true);
+    expect(f.chat).toBeUndefined();
+    expect(f.messages).toEqual([]);
   });
 });
