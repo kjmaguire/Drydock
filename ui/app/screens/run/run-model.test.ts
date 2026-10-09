@@ -52,6 +52,45 @@ describe('the workflow layout', () => {
     expect(lone?.column).toBe(6);
   });
 
+  it('keeps the real loop narrow: an escalation that resumes earlier work does not stretch it', () => {
+    // the iterate-until-verified graph as the core sends it (internal/pipeline/review.go and escalation.go)
+    const n = (id: string) => ({ id, kind: 'route' });
+    const e = (from: string, to: string, kind = 'conditional') => ({ from, to, kind });
+    const iuv: GraphView = {
+      name: 'iterate-until-verified',
+      entry: ['prepare'],
+      nodes: ['prepare', 'work', 'guard', 'verify', 'finalize', 'sync', 'review', 'approve', 'changes', 'merge', 'escalate', 'limit', 'resume', 'abort'].map(n),
+      edges: [
+        e('prepare', 'work', 'direct'),
+        e('work', 'guard', 'direct'),
+        e('guard', 'verify', 'direct'),
+        e('verify', 'finalize'),
+        e('verify', 'work', 'loop'),
+        e('finalize', 'sync', 'direct'),
+        e('sync', 'review'),
+        e('sync', 'merge'),
+        e('sync', 'verify', 'loop'),
+        e('merge', 'sync', 'loop'),
+        e('review', 'approve'),
+        e('review', 'work', 'loop'),
+        e('review', 'escalate'),
+        e('approve', 'merge'),
+        e('approve', 'changes'),
+        e('changes', 'work', 'loop'),
+        e('merge', 'merge', 'loop'),
+        e('escalate', 'limit'),
+        e('escalate', 'resume'),
+        e('limit', 'resume'),
+        e('limit', 'abort'),
+        e('resume', 'work'), // closes a cycle without being a loop edge
+        e('resume', 'sync'),
+      ],
+    };
+    const col = Object.fromEntries(layout(iuv).map((p) => [p.id, p.column]));
+    expect(col).toMatchObject({ prepare: 0, work: 1, guard: 2, verify: 3, finalize: 4, sync: 5, review: 6, approve: 7, merge: 8, changes: 8, escalate: 7, limit: 8, resume: 9, abort: 9 });
+    expect(Math.max(...Object.values(col))).toBe(9);
+  });
+
   it('derives node states from executions, as of a step, and marks the nodes waiting on a human', () => {
     const execs = [ex('prepare', 1), ex('work', 2), ex('verify', 3, 'failed'), ex('work', 4, 'done', 2), ex('verify', 5)];
     const s = nodeStates(execs);

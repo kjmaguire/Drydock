@@ -130,19 +130,8 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		return Agent{}, err
 	}
 	if u.PermissionMode != nil {
-		c.mu.Lock()
-		ad, ok := c.adapters[a.Adapter]
-		c.mu.Unlock()
-		if ok {
-			if modes := ad.Capabilities().PermissionModes; len(modes) > 0 {
-				found := a.PermissionMode == ""
-				for _, m := range modes {
-					found = found || m == a.PermissionMode
-				}
-				if !found {
-					return Agent{}, fmt.Errorf("%s accepts these permission modes: %s (got %q)", a.Adapter, strings.Join(modes, ", "), a.PermissionMode)
-				}
-			}
+		if err := c.checkPermissionMode(a.Adapter, a.PermissionMode); err != nil {
+			return Agent{}, err
 		}
 	}
 	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
@@ -312,4 +301,24 @@ func sameRoutes(a, b []RouteModel) bool {
 		}
 	}
 	return true
+}
+
+// checkPermissionMode refuses a permission mode the agent's adapter does not list ("" is the adapter's default).
+func (c *Core) checkPermissionMode(adapter, mode string) error {
+	c.mu.Lock()
+	ad, ok := c.adapters[adapter]
+	c.mu.Unlock()
+	if !ok || mode == "" {
+		return nil
+	}
+	modes := ad.Capabilities().PermissionModes
+	if len(modes) == 0 {
+		return nil
+	}
+	for _, m := range modes {
+		if m == mode {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s accepts these permission modes: %s (got %q)", adapter, strings.Join(modes, ", "), mode)
 }

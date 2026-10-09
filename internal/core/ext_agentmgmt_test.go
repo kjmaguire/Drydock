@@ -56,6 +56,7 @@ func TestTeamManagementPurposeEditAndRemove(t *testing.T) {
 		"model that reads as a flag":   {Name: "x", Adapter: "claude", Role: "r", Model: "--dangerously-skip-permissions"},
 		"model with a space":           {Name: "x", Adapter: "claude", Role: "r", Model: "two words"},
 		"purpose too long":             {Name: "x", Adapter: "claude", Role: "r", Purpose: strings.Repeat("a", core.MaxPurposeRunes+1)},
+		"permission mode claude lacks": {Name: "x", Adapter: "claude", Role: "r", PermissionMode: "yolo"},
 	} {
 		if _, err := create(s); err == nil {
 			t.Errorf("%s was accepted", name)

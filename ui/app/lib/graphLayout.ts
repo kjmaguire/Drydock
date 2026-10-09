@@ -8,26 +8,42 @@ export interface Placed {
 
 /**
  * A deterministic left-to-right layered layout (docs/ui.md 6.2): a node's column is the longest path to it from an entry
- * node, ignoring loop edges (which point back); rows follow declaration order within a column. The same graph always gets
- * the same positions, so a re-render never moves a node.
+ * node over the forward edges; rows follow declaration order within a column. Loop edges point back, and so does any other
+ * edge that closes a cycle (an escalation that resumes earlier work is a conditional edge, not a loop): a depth-first walk
+ * from the entries finds those and leaves them out, so a cycle never stretches the graph. The same graph always gets the
+ * same positions, so a re-render never moves a node.
  */
 export function layout(g: GraphView): Placed[] {
   const ids = g.nodes.map((n) => n.id);
+  const known = new Set(ids);
+  const next = new Map<string, string[]>();
+  for (const e of g.edges) {
+    if (e.kind === 'loop' || e.from === e.to || !known.has(e.from) || !known.has(e.to)) continue;
+    const list = next.get(e.from) ?? [];
+    if (!list.includes(e.to)) list.push(e.to);
+    next.set(e.from, list);
+  }
+  const roots = g.entry.filter((e) => known.has(e));
+  if (roots.length === 0 && ids.length) roots.push(ids[0]!);
+  // depth-first from the entries, in post-order: a forward edge goes to a node that finished earlier; an edge to a node that
+  // finished later (still on the walk when it was met) points back and is dropped
+  const seen = new Set<string>();
+  const order: string[] = [];
+  const walk = (id: string) => {
+    seen.add(id);
+    for (const to of next.get(id) ?? []) if (!seen.has(to)) walk(to);
+    order.push(id);
+  };
+  for (const r of roots) if (!seen.has(r)) walk(r);
+  const finished = new Map(order.map((id, i) => [id, i]));
+  const forward = (from: string) => (next.get(from) ?? []).filter((to) => finished.get(to)! < finished.get(from)!);
   const depth = new Map<string, number>();
-  for (const e of g.entry) depth.set(e, 0);
-  if (depth.size === 0 && ids.length) depth.set(ids[0]!, 0);
-  const forward = g.edges.filter((e) => e.kind !== 'loop' && e.from !== e.to);
-  for (let i = 0; i < ids.length; i++) {
-    let changed = false;
-    for (const e of forward) {
-      const d = depth.get(e.from);
-      if (d === undefined) continue;
-      if ((depth.get(e.to) ?? -1) < d + 1 && d + 1 < ids.length) {
-        depth.set(e.to, d + 1);
-        changed = true;
-      }
-    }
-    if (!changed) break;
+  for (const r of roots) depth.set(r, 0);
+  for (let i = order.length - 1; i >= 0; i--) {
+    const from = order[i]!;
+    const d = depth.get(from);
+    if (d === undefined) continue;
+    for (const to of forward(from)) depth.set(to, Math.max(depth.get(to) ?? 0, d + 1));
   }
   const maxDepth = Math.max(0, ...depth.values());
   const rows = new Map<number, number>();

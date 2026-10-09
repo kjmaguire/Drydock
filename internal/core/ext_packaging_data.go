@@ -80,6 +80,11 @@ func (p *packaging) export(ctx context.Context, r exportReq) (any, error) {
 		return nil, err
 	}
 	dest := r.Dest
+	if dest != "" {
+		if err := needFullPath("the file to save to", dest); err != nil {
+			return nil, err
+		}
+	}
 	if dest == "" {
 		dest = filepath.Join(p.c.cfg.DataDir, "exports", fmt.Sprintf("%s-%s.drydock-project.zip", slug(proj.Name), p.bnow().UTC().Format("20060102-150405")))
 	}
@@ -102,6 +107,9 @@ func (p *packaging) importPreview(ctx context.Context, r importReq) (any, error)
 	if r.Path == "" {
 		return nil, errors.New("choose a .drydock-project.zip file")
 	}
+	if err := needFullPath("the archive", r.Path); err != nil {
+		return nil, err
+	}
 	return projectio.Inspect(ctx, r.Path)
 }
 
@@ -112,6 +120,9 @@ func (p *packaging) importProject(ctx context.Context, r importReq) (any, error)
 	c := p.c
 	if r.Path == "" {
 		return nil, errors.New("choose a .drydock-project.zip file")
+	}
+	if err := needFullPath("the archive", r.Path); err != nil {
+		return nil, err
 	}
 	root, branch := "", ""
 	if strings.TrimSpace(r.RepoPath) != "" {
@@ -349,6 +360,11 @@ func (p *packaging) dataMethods(m map[string]Method) {
 			return nil, err
 		}
 		dest := r.Dest
+		if dest != "" {
+			if err := needFullPath("the file to save to", dest); err != nil {
+				return nil, err
+			}
+		}
 		if dest == "" {
 			dest = filepath.Join(p.c.cfg.DataDir, "support", "drydock-support-"+p.bnow().UTC().Format("20060102-150405")+".zip")
 		}

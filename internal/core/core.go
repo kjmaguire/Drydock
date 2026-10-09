@@ -321,6 +321,9 @@ func scanProject(sc interface{ Scan(...any) error }) (Project, error) {
 
 // openProjectRepo validates a local repository for a project: it must be a Git repository with a checked-out branch.
 func openProjectRepo(ctx context.Context, repoPath string) (root, branch string, err error) {
+	if err := needFullPath("the repository folder", repoPath); err != nil {
+		return "", "", err
+	}
 	repo, err := git.Open(ctx, repoPath)
 	if err != nil {
 		return "", "", fmt.Errorf("%s is not a usable Git repository: %w", repoPath, err)
@@ -330,6 +333,15 @@ func openProjectRepo(ctx context.Context, repoPath string) (root, branch string,
 		return "", "", fmt.Errorf("the repository at %s has no checked-out branch: commit once on a branch first", repoPath)
 	}
 	return repo.Root, branch, nil
+}
+
+// needFullPath refuses a relative path: it would be resolved against the folder Drydock happens to run in, not one the
+// person chose.
+func needFullPath(what, path string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("%s must be a full path (for example C:\\Users\\you\\code\\app), not %q", what, path)
+	}
+	return nil
 }
 
 // CreateProject creates a project and its default channels. repoPath names a local Git repository, or is empty for a project
@@ -600,6 +612,9 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	s.Model, s.Effort, s.Purpose = strings.TrimSpace(s.Model), strings.TrimSpace(s.Effort), strings.TrimSpace(s.Purpose)
 	if s.PermissionMode == "" {
 		s.PermissionMode = "acceptEdits" // headless agents cannot answer prompts; edits inside the worktree are the job
+	}
+	if err := c.checkPermissionMode(s.Adapter, s.PermissionMode); err != nil {
+		return Agent{}, err
 	}
 	a := Agent{ID: ids.New("agt"), ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED"}
 	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
