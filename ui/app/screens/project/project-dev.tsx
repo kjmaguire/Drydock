@@ -104,6 +104,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
     }
   };
   const parId = `par-${handle.id}`;
+  const stallId = `stall-${handle.id}`;
   const e2eId = `e2e-${handle.id}`;
   const prevId = `prev-${handle.id}`;
   const urlId = `url-${handle.id}`;
@@ -157,6 +158,24 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
               </p>
             ) : null}
             <ToggleRow label="Agents answer in channels and direct messages" checked={d.respond} onChange={(v) => patch({ respond: v })} />
+            <SettingRow
+              label="Team lead: minutes without progress before it checks a task"
+              for={stallId}
+              description="When the project has a team lead (an agent with the role lead), it looks at a running task that has shown no progress for this long. Empty or 0 means 15; at most 1440 (a day)."
+            >
+              <input
+                id={stallId}
+                inputMode="numeric"
+                placeholder="15"
+                value={d.leadStallMinutes ? String(d.leadStallMinutes) : ''}
+                mix={[numCss, on('input', (e) => patch({ leadStallMinutes: numOrUndef(e.currentTarget.value) ?? 0 }))]}
+              />
+            </SettingRow>
+            {(d.leadStallMinutes ?? 0) > 1440 || (d.leadStallMinutes ?? 0) < 0 ? (
+              <p mix={[noteRow, warnNote]} data-testid="stall-note">
+                The team lead's stall time is between 0 (15 minutes) and 1440 minutes.
+              </p>
+            ) : null}
 
             <h3 mix={subhead}>End-to-end check</h3>
             <ToggleRow label="Run e2e tests in the task worktree" checked={d.e2e.enabled} onChange={(v) => patch({ e2e: { ...d.e2e, enabled: v } })} />

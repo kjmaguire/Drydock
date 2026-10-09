@@ -5,6 +5,7 @@ import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts'
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { CATALOG } from '../project/wizard-fixtures.ts';
 import { TeamScreen } from './team-screen.tsx';
 
 afterEach(cleanup);
@@ -346,5 +347,21 @@ describe('Claude best practices', () => {
     await waitFor(() => must(ed.querySelector('[data-testid="claude-practices"]'), 'no box'), r);
     expect(byLabel<HTMLInputElement>(ed, 'Model').value).toBe('opus');
     expect(byLabel<HTMLSelectElement>(ed, 'Effort').value).toBe('max');
+  });
+
+  it('adds a prebuilt agent from the gallery dialog and re-reads the team', async () => {
+    const applied: string[] = [];
+    const { r, listed } = show([agent()], {
+      agentCatalogList: async () => CATALOG,
+      agentCatalogApply: async (req) => (applied.push(`${req.id}:${req.projectId}`), { id: req.id, agent: agent({ id: 'agt_9', name: 'Team Lead' }), mcp: { granted: [], skipped: [] }, skills: { assigned: [], shared: [], pending: [], failed: [] }, notes: [] }),
+    });
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Add prebuilt agent').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Add prebuilt agent').click());
+    const dialog = await waitFor(() => must(r.container.querySelector('dialog[open] [data-testid="add-prebuilt"]'), 'no dialog'), r);
+    await waitFor(() => byText(dialog, 'button', 'Add Team Lead'), r);
+    const before = listed();
+    await r.act(() => byText(dialog, 'button', 'Add Team Lead').click());
+    await waitFor(() => expect(applied).toEqual(['team-lead:prj_1']), r);
+    await waitFor(() => expect(listed()).toBeGreaterThan(before), r);
   });
 });

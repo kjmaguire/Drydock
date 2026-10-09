@@ -5,6 +5,7 @@ import type { McpLibraryServer, McpOAuthStatus } from '../../api/mcpClient.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { claude, devLicense, libServer, pay, projects, projServer, rev, tpl } from '../mcp/fixtures.ts';
 import { DRAG_MIME } from './dnd.ts';
+import { CATALOG } from '../project/wizard-fixtures.ts';
 import { LibraryScreen } from './library-screen.tsx';
 
 afterEach(cleanup);
@@ -80,6 +81,14 @@ describe('Library page', () => {
     expect(r.$('h1')!.textContent).toContain('Library');
     // exactly one h3 per draggable card: the e2e suite drags by it
     expect(card.querySelectorAll('h3').length).toBe(1);
+  });
+
+  it('shows the prebuilt agents as a read-only section next to the templates', async () => {
+    const r = show({ agentCatalogList: async () => CATALOG });
+    const sec = await one(r, '[data-testid="library-prebuilt"]');
+    await waitFor(() => expect(sec.querySelectorAll('[data-testid="prebuilt"]').length).toBe(CATALOG.length), r);
+    expect(sec.textContent).toContain('Cloudflare Engineer');
+    expect(sec.querySelectorAll('[data-testid="prebuilt"] button').length).toBe(0);
   });
 
   it('dropping a server on a project puts it there', async () => {

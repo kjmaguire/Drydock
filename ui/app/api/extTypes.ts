@@ -240,6 +240,8 @@ export interface DevSettings {
   collisionGuard?: boolean;
   /** Claude workers may run the project's detected check commands (exact lines) during their turn. Absent means off. */
   workerChecks?: boolean;
+  /** Minutes a RUNNING task may go without progress before the team lead is asked about it (0 or absent: 15; at most 1440). */
+  leadStallMinutes?: number;
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }

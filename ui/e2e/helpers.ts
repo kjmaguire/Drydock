@@ -39,15 +39,50 @@ export async function switchProject(page: Page, name: string): Promise<void> {
   await expect(projectSwitcher(page)).toContainText(name);
 }
 
-/** First run shows the create form directly; later runs offer "New project…" in the switcher. Wait for whichever the app renders. */
+/** The new-project wizard: the first run shows it directly; later runs open it from the switcher's "New project…". */
 export async function showNewProjectForm(page: Page): Promise<void> {
-  const field = page.getByLabel('Repository path');
+  const field = page.getByLabel('Project name', { exact: true });
   await field.or(projectSwitcher(page)).first().waitFor();
   if (!(await field.isVisible())) {
     await projectSwitcher(page).click();
     await page.getByRole('menuitem', { name: 'New project…', exact: true }).click();
   }
   await expect(field).toBeVisible();
+}
+
+/** The wizard's Next button. */
+export async function wizardNext(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+}
+
+/**
+ * Walk the open wizard to its Review step: Basics (the name, when given), Repository (a local folder, or Later), no
+ * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Team page).
+ */
+export async function wizardToReview(page: Page, opts: { name?: string; repo?: string; later?: boolean }): Promise<void> {
+  if (opts.name) await page.getByLabel('Project name', { exact: true }).fill(opts.name);
+  await wizardNext(page);
+  const source = page.getByRole('radiogroup', { name: 'Repository source' });
+  if (opts.later) {
+    await source.getByRole('radio', { name: 'Later' }).check();
+  } else {
+    await source.getByRole('radio', { name: 'Local folder' }).check();
+    await page.getByLabel('Repository path').fill(opts.repo ?? freshRepo());
+  }
+  await wizardNext(page); // Connectors
+  await wizardNext(page); // Team
+  await expect(page.getByTestId('team-list')).toHaveAttribute('data-ready', 'true');
+  const removeAll = page.getByRole('button', { name: 'Remove all', exact: true });
+  if (await removeAll.isVisible()) await removeAll.click();
+  await expect(page.getByTestId('team-member')).toHaveCount(0);
+  await wizardNext(page); // Review
+  await expect(page.locator('form[data-step="Review"]')).toBeVisible();
+}
+
+/** Create from the Review step and open the new project. */
+export async function wizardCreate(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.getByRole('button', { name: 'Open project' }).click();
 }
 
 let nextGreen = 0;
@@ -66,9 +101,8 @@ export const docsDir = (): string => process.env.DRYDOCK_E2E_DOCS ?? '';
 export async function createProject(page: Page, name: string, repo?: string): Promise<void> {
   await page.goto(appUrl());
   await showNewProjectForm(page);
-  await page.getByLabel('Repository path').fill(repo ?? freshRepo());
-  await page.getByLabel('Project name (optional)').fill(name);
-  await page.getByRole('button', { name: 'Create project' }).click();
+  await wizardToReview(page, { name, repo: repo ?? freshRepo() });
+  await wizardCreate(page);
   await expect(roomLink(page, 'general')).toBeVisible();
 }
 

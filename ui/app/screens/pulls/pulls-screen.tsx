@@ -3,7 +3,7 @@
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { CircleDot, GitPullRequest, Import } from 'lucide';
-import type { GitHubIssue, Task } from '../../api/types.ts';
+import { projectHasRepo, type GitHubIssue, type Task } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -40,6 +40,7 @@ const issuesCss = css({ margin: '0', padding: '0', listStyle: 'none', border: `1
 export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }>) {
   const s = services(handle);
   watch(handle, s.project);
+  watch(handle, s.workspace);
   let selected: string | undefined;
   const withPR = () => s.project.taskList.filter((x) => x.prRef);
   const currentId = () => {
@@ -96,6 +97,18 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
   };
 
   return () => {
+    const project = s.workspace.project;
+    if (project && !projectHasRepo(project)) {
+      return (
+        <Page title="Pull Requests" icon={GitPullRequest}>
+          <Empty title="No repository yet" icon={GitPullRequest}>
+            <p data-testid="pulls-no-repo">
+              Attach a GitHub repository to see pull requests. <a href={routes.project.href()}>Open Project settings</a>
+            </p>
+          </Empty>
+        </Page>
+      );
+    }
     const list = withPR();
     const taskId = currentId();
     const current = list.find((x) => x.id === taskId);

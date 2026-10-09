@@ -2,7 +2,7 @@
 // from scratch, editing and removing them, and the adapters this machine has.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { Cpu, MessageSquare, Pencil, ScanSearch, Trash2, UserPlus, Users } from 'lucide';
+import { Cpu, MessageSquare, Pencil, ScanSearch, Sparkles, Trash2, UserPlus, Users } from 'lucide';
 import type { AdapterInfo, Agent } from '../../api/types.ts';
 import { presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -14,6 +14,8 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, cardGrid } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { AddPrebuilt } from './add-prebuilt.tsx';
+import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
 import { purposeExcerpt, sortAdapters } from './team.ts';
@@ -131,6 +133,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
   const act = action(handle);
   let editing: string | undefined;
   let removing: string | undefined;
+  let prebuiltOpen = false;
   let addSection: HTMLElement | undefined;
 
   const reload = () => s.project.agents.reload();
@@ -164,9 +167,14 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
         icon={Users}
         subtitle={count}
         actions={
-          <Button variant="primary" size="sm" icon={UserPlus} mix={on('click', focusAdd)}>
-            Add agent
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" icon={Sparkles} disabled={!projectId} mix={on('click', () => ((prebuiltOpen = true), void handle.update()))}>
+              Add prebuilt agent
+            </Button>
+            <Button variant="primary" size="sm" icon={UserPlus} mix={on('click', focusAdd)}>
+              Add agent
+            </Button>
+          </>
         }
       >
         <Section title="Agents" description="Each agent is a real coding CLI with a role. A task needs a worker and a different agent as reviewer.">
@@ -243,6 +251,17 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
           ) : null}
         </Section>
 
+        {leadOf(agents) && projectId ? (
+          <Section
+            title="Team lead"
+            label="Team lead"
+            description={`${leadOf(agents)!.name} supervises the team: it steps in when a task loops, stalls or trips the watchdog, and can post a stand-up.`}
+            actions={<RunStandup projectId={projectId} lead={leadOf(agents)!} />}
+          >
+            <Interventions projectId={projectId} limit={20} />
+          </Section>
+        ) : null}
+
         <Section title="Add an agent" description="Start from a saved template, or describe a new team member.">
           <div
             mix={[
@@ -289,6 +308,9 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
               onCancel={() => ((editing = undefined), void handle.update())}
             />
           ) : null}
+        </Dialog>
+        <Dialog open={prebuiltOpen} title="Add a prebuilt agent" label="Add a prebuilt agent" wide onClose={() => ((prebuiltOpen = false), void handle.update())}>
+          {prebuiltOpen ? <AddPrebuilt projectId={projectId} onAdded={() => reload()} /> : null}
         </Dialog>
         <Dialog open={!!removeAgent} title={removeAgent ? `Remove ${removeAgent.name}?` : ''} onClose={() => ((removing = undefined), void handle.update())}>
           {removeAgent ? (

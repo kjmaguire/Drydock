@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
+import { AgentGallery } from '../team/agent-gallery.tsx';
 import type { McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
@@ -633,6 +634,7 @@ export function LibraryScreen(handle: Handle) {
   const adapters = query(handle, { load: () => s.client.adapterList() });
   const servers = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
   const templates = query(handle, { load: () => s.client.agentTemplateList(), when: (e) => e.type.startsWith('agenttemplate.') });
+  const prebuilt = query(handle, { load: () => s.client.agentCatalogList() });
   let dragging: Dragged | undefined;
   let note = '';
   let error: Error | undefined;
@@ -725,6 +727,20 @@ export function LibraryScreen(handle: Handle) {
                   <TemplateCard key={x.id} t={x} servers={libServers} projects={projects} adapters={adapterList} onDragging={onDragging} say={say} onChanged={reload} />
                 ))}
               </div>
+            </Section>
+
+            <Section
+              title="Prebuilt agents"
+              description={
+                <>
+                  Built into Drydock, with their skills and connectors pinned. Add them to a project on the <a href={routes.team.href()}>Team</a> page or when you create a project.
+                </>
+              }
+              testId="library-prebuilt"
+            >
+              <ErrorNote error={prebuilt.error} what="Could not load the prebuilt agents" />
+              {prebuilt.loading && !prebuilt.data ? <Loading /> : null}
+              <AgentGallery entries={prebuilt.data ?? []} label="Prebuilt agents" />
             </Section>
           </div>
           <div mix={sideCss}>
