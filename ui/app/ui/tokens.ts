@@ -21,7 +21,6 @@ export const t = {
   rLg: 'var(--radius-lg)',
   rXl: 'var(--radius-xl)',
   rFull: 'var(--radius-full)',
-  bgRail: 'var(--bg-rail)',
   bgSidebar: 'var(--bg-sidebar)',
   bgApp: 'var(--bg-app)',
   bgSurface: 'var(--bg-surface)',

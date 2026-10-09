@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { inflateRawSync } from 'node:zlib';
 
@@ -17,12 +17,36 @@ export function freshRepo(): string {
   return r;
 }
 
-/** First run shows the create form directly; later runs have a "+ New project" link. Wait for whichever the app renders. */
+/** The sidebar (the app's main navigation). */
+export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
+
+/**
+ * A room's link in the sidebar. Rooms are named without a "#" (an icon, then the name, then an unread count such as
+ * ", 3 unread"), so the accessible name starts with the room name and nothing word-like follows it.
+ */
+export function roomLink(page: Page, name: string): Locator {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return sidebar(page).getByRole('link', { name: new RegExp(`^${escaped}(?![\\w-])`) });
+}
+
+/** The project switcher at the top of the sidebar: opens the menu of projects, "New project…" and "App settings". */
+export const projectSwitcher = (page: Page): Locator => page.getByRole('button', { name: 'Switch project' });
+
+/** Switch to a project through the switcher's menu (exact name: "gocalc-approve" must not match a button "Approve"). */
+export async function switchProject(page: Page, name: string): Promise<void> {
+  await projectSwitcher(page).click();
+  await page.getByRole('menuitemradio', { name, exact: true }).click();
+  await expect(projectSwitcher(page)).toContainText(name);
+}
+
+/** First run shows the create form directly; later runs offer "New project…" in the switcher. Wait for whichever the app renders. */
 export async function showNewProjectForm(page: Page): Promise<void> {
   const field = page.getByLabel('Repository path');
-  const link = page.getByRole('link', { name: '+ New project' });
-  await field.or(link).first().waitFor();
-  if (!(await field.isVisible())) await link.click();
+  await field.or(projectSwitcher(page)).first().waitFor();
+  if (!(await field.isVisible())) {
+    await projectSwitcher(page).click();
+    await page.getByRole('menuitem', { name: 'New project…', exact: true }).click();
+  }
   await expect(field).toBeVisible();
 }
 
@@ -45,7 +69,7 @@ export async function createProject(page: Page, name: string, repo?: string): Pr
   await page.getByLabel('Repository path').fill(repo ?? freshRepo());
   await page.getByLabel('Project name (optional)').fill(name);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByRole('link', { name: /# general/ })).toBeVisible();
+  await expect(roomLink(page, 'general')).toBeVisible();
 }
 
 export async function createAgent(page: Page, name: string, role: string): Promise<void> {

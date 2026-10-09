@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo } from './helpers';
+import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink } from './helpers';
 
 // Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; integrations have no vendor server
 // here, so only their list and refusal paths are exercised.
@@ -265,7 +265,7 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
 test('room modes, the scheduler and previews report what the core says', async ({ page }) => {
   await createProject(page, 'gocalc-room');
   await createAgent(page, 'Dana', 'backend');
-  await page.getByRole('link', { name: '# general' }).click();
+  await roomLink(page, 'general').click();
   const panel = page.getByTestId('room-agents');
   await panel.locator('summary').click();
   await panel.getByLabel('Mode', { exact: true }).selectOption('sequential');
@@ -274,7 +274,7 @@ test('room modes, the scheduler and previews report what the core says', async (
   await panel.getByRole('button', { name: 'Save mode' }).click();
   await expect(panel).toContainText('Current mode: sequential');
   await page.reload();
-  await page.getByRole('link', { name: '# general' }).click();
+  await roomLink(page, 'general').click();
   await page.getByTestId('room-agents').locator('summary').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
   // moderator mode needs a moderator: the core refuses and says so
