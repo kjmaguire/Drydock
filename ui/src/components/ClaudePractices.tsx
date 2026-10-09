@@ -19,8 +19,9 @@ export function useClaudePractices(adapterId: string, role: string, model: strin
     }
     let live = true;
     const timer = setTimeout(() => {
-      client
-        .claudePractices(r)
+      // a failure to ask (the core is gone, the call is missing) must never surface as an unhandled error from a timer
+      Promise.resolve()
+        .then(() => client.claudePractices(r))
         .then((x) => live && setInfo(x))
         .catch(() => undefined);
     }, 200);

@@ -31,6 +31,7 @@ func actions(ctx context.Context) []Item {
 	}
 	sort.Strings(names)
 	var items []Item
+	items = append(items, ciGoPins(files)...)
 	for _, n := range names {
 		it := Item{ID: "action:" + n, Group: "GitHub Actions (CI)", Name: n, Kind: "action", Used: seen[n], Where: ".github/workflows/" + strings.Join(dedupe(where[n]), ", ")}
 		out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+n)
@@ -64,6 +65,25 @@ func actions(ctx context.Context) []Item {
 		items = append(items, it)
 	}
 	return items
+}
+
+var goVersionR = regexp.MustCompile(`(?m)^\s*go-version:\s*"?([0-9][0-9.]*)"?`)
+
+// ciGoPins: workflows that pin an exact Go version (instead of reading go.mod) are measured against the newest Go release.
+func ciGoPins(files []string) []Item {
+	pins := map[string][]string{}
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		for _, m := range goVersionR.FindAllStringSubmatch(string(b), -1) {
+			pins[m[1]] = append(pins[m[1]], filepath.Base(f))
+		}
+	}
+	var out []Item
+	for v, where := range pins {
+		out = append(out, Item{ID: "ci-go:" + v, Group: "GitHub Actions (CI)", Name: "Go version pinned in a workflow", Kind: "action", Used: v, Latest: latestGo,
+			Where: ".github/workflows/" + strings.Join(dedupe(where), ", ")})
+	}
+	return out
 }
 
 func dedupe(s []string) []string {

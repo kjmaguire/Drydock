@@ -37,6 +37,8 @@ or implements a feature that starts using a new piece of software:
 
 ## Refreshing the Artifact
 
+The page's own source is `docs/software-versions-page.html` (publish it as `files/index.html` of the Artifact only when the design changes).
+
 The page is the Artifact type "Dashboard" over four data files. To refresh, after running the audit with `-artifact-dir`:
 
 1. For each of `items.json`, `vulns.json`, `drift.json`, `meta.json`: upload it to the Artifact as an asset
@@ -48,7 +50,7 @@ The page is the Artifact type "Dashboard" over four data files. To refresh, afte
 ## Known limits
 
 - The "newest" column is the newest stable release. Whether it is safe to move is a decision; `hold` in the notes records the
-  reasons something is deliberately behind (React 18, Wails beta, the Chromium build this sandbox has for Playwright).
+  reasons something is deliberately behind (for example the Wails beta, or the Node types that must follow the Node line).
 - Security advisories come from two databases (the Go vulnerability database and npm's advisory feed). They do not cover the agent
   CLIs, Node itself or the tools you install.
 - Tools such as `gh` and `osv-scanner` are not pinned anywhere in the repository; the version shown is what the documentation says

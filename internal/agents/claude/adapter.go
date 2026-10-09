@@ -24,10 +24,10 @@ import (
 )
 
 // MinVersion is the lowest Claude Code version Drydock supports: 2.1.205 introduced interrupt receipts (system/init
-// `capabilities`). 2.1.277 is recommended (reads AGENTS.md natively). Verified against 2.1.294 on 2026-10-08.
+// `capabilities`). 2.1.295 is recommended (2.1.277 added reading AGENTS.md natively). Verified against 2.1.295 on 2026-10-09.
 var (
 	MinVersion         = [3]int{2, 1, 205}
-	RecommendedVersion = [3]int{2, 1, 277}
+	RecommendedVersion = [3]int{2, 1, 295}
 )
 
 // Adapter drives the user's installed `claude`.

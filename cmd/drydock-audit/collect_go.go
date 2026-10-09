@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+var latestGo string // set by goToolchain, used for the Go versions CI pins
+
 var goDirectiveR = regexp.MustCompile(`(?m)^go\s+(\S+)`)
 
 // goToolchain: the version go.mod requires, the one installed here, and the newest stable release (from the Go module proxy,
@@ -50,6 +52,7 @@ func goToolchain(ctx context.Context) []Item {
 			}
 		}
 	}
+	latestGo = latest
 	it := Item{ID: "go", Group: "Language and toolchain", Name: "Go", Kind: "runtime", Used: used, Latest: latest, Where: "go.mod (go directive)"}
 	if latestSeries != "" && latestSeries != used {
 		it.Note = "Newest patch of the " + used[:strings.LastIndex(used, ".")] + " series: " + latestSeries + "."
@@ -156,8 +159,31 @@ func markGoUsage(ctx context.Context, items []Item) {
 			}
 		}
 	}
+	// every package compiled into the product or its tests, transitively
+	built := map[string]bool{}
+	for _, goos := range []string{"linux", "windows"} {
+		out, err := run(ctx, root, []string{"GOOS=" + goos}, "go", "list", "-e", "-deps", "-test", "-f", "{{.ImportPath}}", "./...")
+		if err != nil {
+			fail("go list -deps (" + goos + "): " + err.Error())
+			break
+		}
+		for _, l := range strings.Fields(out) {
+			built[l] = true
+		}
+	}
 	for i := range items {
 		it := &items[i]
+		if strings.HasPrefix(it.ID, "go:") && len(built) > 0 {
+			mod := strings.TrimPrefix(it.ID, "go:")
+			in := false
+			for p := range built {
+				if p == mod || strings.HasPrefix(p, mod+"/") {
+					in = true
+					break
+				}
+			}
+			it.InBuild = &in
+		}
 		if it.Kind != "direct" || !strings.HasPrefix(it.ID, "go:") {
 			continue
 		}

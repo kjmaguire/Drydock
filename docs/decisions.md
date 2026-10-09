@@ -25,7 +25,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 
 | Layer | Decision | Evidence and caveats |
 |---|---|---|
-| Language and toolchain | Go, `go 1.26.0` in `go.mod` | sqlite, goose, otel, mvdan/sh, x/sys all require 1.26. |
+| Language and toolchain | Go, `go 1.27.2` in `go.mod` (moved up from 1.26.0 on 2026-10-09) | sqlite, goose, otel, mvdan/sh, x/sys need 1.26 or newer; the whole module graph was updated with it. |
 | Desktop shell | Wails v3 `v3.0.0-beta.28`, isolated in `app/`, pinned | MIT, beta, builds Windows-only with `CGO_ENABLED=0`; bindings generation proven; open issues unchecked. Accepted risk (brief risk register). |
 | Storage | `modernc.org/sqlite` v1.60.1, WAL, FTS5; migrations with `pressly/goose` v3.28.0 | FTS5/bm25/WAL proven on Linux; single writer connection plus pooled readers; `BEGIN IMMEDIATE`/`_txlock=immediate` for write transactions. Re-run on NTFS. |
 | Secrets | `zalando/go-keyring` v0.2.8; values over 2560 bytes are encrypted into SQLite with the key in Credential Manager | Limit confirmed in source and Microsoft docs. |
@@ -35,7 +35,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | MCP | `github.com/modelcontextprotocol/go-sdk` v1.8.0 behind our own interface | Mixed MIT/Apache-2.0 license in transition: legal sign-off before release. `CommandTransport` kills only the direct child: servers are started under our process manager. |
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
 | Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.8 | Run on Windows to confirm; cannot take a job list (see D7). |
-| Verification tools | osv-scanner v2.6.0, Playwright 1.56.1 (ui/package.json; newest is 1.64.0), Wrangler 4.148.0 as external tools | osv-scanner sends package metadata to osv.dev unless offline: disclosed. |
+| Verification tools | osv-scanner v2.6.0, Playwright 1.64.0, Wrangler 4.148.0 as external tools | osv-scanner sends package metadata to osv.dev unless offline: disclosed. |
 | Repo map | `go-tree-sitter` v0.25.0 + MIT grammars, Aider algorithm | D5. SQL grammar pinned to a `gh-pages` pseudo-version; we author TSX, PHP and SQL tag queries. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
@@ -73,6 +73,8 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 - **P21. Software versions are measured and published (2026-10-09).** `cmd/drydock-audit` measures every piece of third-party software (Go toolchain and libraries, UI packages, CI actions, agent CLIs and ACP bridges, tools) against the newest release, scans for known vulnerabilities (govulncheck, npm audit) and compares the documentation with the code; the result is `docs/software-versions.json` and the Artifact "Drydock Software Versions". Any change that adds or updates software refreshes both (`docs/software-versions.md`, `CLAUDE.md`). The policy is to stay as current as is safe, with a written reason (`hold` in `docs/software-notes.json`) for anything deliberately behind.
 
 - **P22. OAuth sign-in for web MCP servers (2026-10-09).** Servers that want an account (Linear, Notion, Sentry and the like) can be connected with OAuth through the official MCP SDK's authorization-code handler instead of being hand-rolled: the human signs in in their own browser, Drydock keeps the tokens only in the credential vault and refreshes them, the gateway fetches the access token per request, and agents never see any of it (`docs/mcp.md` "OAuth sign-in"). Choices: the page only links the server's sign-in address when it is https (or local for a local server); the flow's network requests refuse addresses inside the user's network; one answer per flow; sign-out and any change of the server's address delete the stored sign-in. No pre-registered client entry yet, so a provider without dynamic client registration cannot be used. Migration `00094_mcp_oauth.sql`. New dependency `golang.org/x/oauth2` (the SDK already required it).
+
+- **P23. Everything moved to the newest release (2026-10-09).** On the owner's instruction ("upgrades, all of them") the Go toolchain (1.27.2), every Go library, every UI package (React 19, Vite 8, Vitest 5, TypeScript 7, jsdom 29, Playwright 1.64, marked 18), the CI actions (checkout, setup-go, setup-node, upload-artifact at v7) and the agent pins that could be checked here (Claude Code 2.1.295 verified by the conformance suite against the real CLI; Goose 1.54.0 and the Claude ACP bridge 0.88.0 by a live ACP handshake; Codex 0.162.0 by version and login status only) were updated together, with the full Go, vitest and browser suites passing. Left behind on purpose: `@types/node` follows the Node line the project is on (22) and Node itself is the sandbox's. Libraries that are only in the module graph and not compiled into the app or its tests (about 150, mostly through gitleaks) are listed on the Software Versions page under their own heading and are not chased. The GitHub Actions bumps and the new Go version have not run in CI (decision P2).
 
 ## 4. Locked versus open
 

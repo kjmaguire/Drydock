@@ -138,7 +138,7 @@ transports:
     parser: claude_sdkmessage                        # Go
     interrupt: {via: stdin_control, message: interrupt, needs: system_init.capabilities.interrupt_receipt_v1}
     probe_unknown: [verbose_flag_required]           # unverified [cli §1]
-  acp: {enabled: false, argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.87.0"], env: {CLAUDE_CODE_EXECUTABLE: "{{resolved_binary}}"}, requires: [{tool: node, min: "22"}], enable_when: written_confirmation_recorded}
+  acp: {enabled: false, argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.88.0"], env: {CLAUDE_CODE_EXECUTABLE: "{{resolved_binary}}"}, requires: [{tool: node, min: "22"}], enable_when: written_confirmation_recorded}
 mcp: {inject: config_file, transports: [stdio, http], per_session: true, http_headers: unverified}
 usage: {normalizer: claude_result_modelusage, quota: {source: stream, normalizer: claude_rate_limit_event}}
 capabilities_declared: {streaming: true, structured_output: true, model_selection: true, effort_control: true, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: estimate, headless: true, permission_modes: true, image_input: unknown, tool_call_visibility: true}

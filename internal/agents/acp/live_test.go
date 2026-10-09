@@ -47,7 +47,7 @@ var liveCases = []liveCase{
 				t.Errorf("opencode capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)
 			}
 		}},
-	{name: "goose", env: "GOOSE", bin: "goose", args: []string{"acp"}, extra: []string{"GOOSE_MODE=approve"}, version: "1.53.0",
+	{name: "goose", env: "GOOSE", bin: "goose", args: []string{"acp"}, extra: []string{"GOOSE_MODE=approve"}, version: "1.54.0",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || i.Resume || i.Fork || !i.List || !i.Delete || !i.Close || !i.MCPHTTP || i.MCPSSE {
 				t.Errorf("goose capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)

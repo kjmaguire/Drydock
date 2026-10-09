@@ -24,6 +24,9 @@ func writeArtifactData(dir string, rep Report) error {
 		layer := "chosen"
 		if it.Kind == "indirect" {
 			layer = "pulled"
+			if it.InBuild != nil && !*it.InBuild {
+				layer = "graph" // in the module graph, but no package of it is compiled into the app or its tests
+			}
 		}
 		var remark []string
 		if it.Hold != "" {

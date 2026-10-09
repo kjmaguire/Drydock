@@ -4,14 +4,14 @@
     "tool:task": "3.54.0",
     "tool:osv-scanner": "2.6.0",
     "tool:go-licenses": "2.0.1",
-    "tool:wrangler": "4.148.0"
+    "tool:wrangler": "4.149.0"
   },
   "notes": {
     "go": {
-      "role": "The language the core is written in. go.mod requires at least this version because SQLite, goose, OpenTelemetry, mvdan/sh and x/sys do."
+      "role": "The language the core is written in. go.mod requires at least this version, and the sandbox and CI build with exactly it."
     },
     "go-installed": {
-      "role": "What this sandbox builds and tests with. It is the same version go.mod asks for, so it is the oldest Go that can build Drydock."
+      "role": "What this sandbox builds and tests with (the toolchain go.mod asks for, downloaded automatically)."
     },
     "node": {
       "role": "Builds the UI and runs its tests and the browser tests. Agent CLIs installed through npm also need it (decision D9 sets 22)."
@@ -73,20 +73,17 @@
       "role": "Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only)."
     },
     "npm:react": {
-      "role": "The UI framework.",
-      "hold": "Held on 18 on purpose: the UI and its tests are written for React 18, and moving to 19 is a migration nobody has started."
+      "role": "The UI framework (React 19)."
     },
     "npm:react-dom": {
-      "role": "Draws the UI in the browser.",
-      "hold": "Moves together with react."
+      "role": "Draws the UI in the browser."
     },
     "npm:marked": {
       "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
       "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."
     },
     "npm:@playwright/test": {
-      "role": "Runs the browser tests against the real Go core.",
-      "hold": "This sandbox has only the Chromium build that matches Playwright 1.56; a newer Playwright needs its own browser build."
+      "role": "Runs the browser tests against the real Go core."
     },
     "npm:@testing-library/dom": {
       "role": "Test helper for finding elements in component tests."
@@ -96,15 +93,13 @@
     },
     "npm:@types/node": {
       "role": "Type definitions for the Node APIs the build scripts use.",
-      "hold": "Follows the Node line: 22."
+      "hold": "Follows the Node line the project is on (22), not the newest Node: the types must match the runtime."
     },
     "npm:@types/react": {
-      "role": "Type definitions for React.",
-      "hold": "Moves together with react."
+      "role": "Type definitions for React."
     },
     "npm:@types/react-dom": {
-      "role": "Type definitions for React DOM.",
-      "hold": "Moves together with react."
+      "role": "Type definitions for React DOM."
     },
     "npm:@vitejs/plugin-react": {
       "role": "Lets Vite build React."
@@ -113,19 +108,17 @@
       "role": "Fake browser used by the unit tests."
     },
     "npm:typescript": {
-      "role": "Type-checks the UI before every build."
+      "role": "Type-checks the UI before every build (TypeScript 7, the native compiler)."
     },
     "npm:vite": {
-      "role": "Builds the UI bundle and serves it while developing.",
-      "note": "npm audit reports advisories against this version of Vite (development server only; the shipped app is not affected)."
+      "role": "Builds the UI bundle and serves it while developing."
     },
     "npm:vitest": {
-      "role": "Runs the UI unit tests.",
-      "note": "npm audit reports critical advisories against this version; they concern its optional UI server, which is never started here."
+      "role": "Runs the UI unit tests."
     },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+      "note": "Recommended and verified: 2.1.295 (conformance suite against the real CLI). You install the CLI yourself."
     },
     "cli:codex": {
       "role": "Codex: runs OpenAI's models as an agent.",
@@ -187,6 +180,9 @@
     },
     "go:golang.org/x/oauth2": {
       "role": "The OAuth 2 token handling the MCP SDK's sign-in uses: the stored tokens, and refreshing them when they expire."
+    },
+    "ci-go:1.27.2": {
+      "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."
     }
   }
 }

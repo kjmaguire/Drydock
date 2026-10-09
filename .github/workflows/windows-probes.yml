@@ -23,10 +23,10 @@ jobs:
         shell: pwsh
         working-directory: evidence/phase0/windows-probes
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: build fixture and jobtree
         run: |
           go build -o bin/fixture.exe ./fixture
@@ -55,10 +55,10 @@ jobs:
         shell: pwsh
         working-directory: evidence/phase0/windows-probes
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: wincred (go-keyring on Credential Manager)
         if: always()
         run: go run ./wincred
@@ -77,10 +77,10 @@ jobs:
         shell: pwsh
         working-directory: evidence/phase0/go-probes/ts
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
       - name: toolchain facts
         run: |
           where.exe gcc
@@ -112,11 +112,11 @@ jobs:
         shell: pwsh
         working-directory: evidence/phase0/windows-probes
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.1"
-      - uses: actions/setup-node@v4
+          go-version: "1.27.2"
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: install CLIs from npm
@@ -160,11 +160,11 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.1"
-      - uses: actions/setup-node@v4
+          go-version: "1.27.2"
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: install wails3 CLI

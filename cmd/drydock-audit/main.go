@@ -45,6 +45,9 @@ type Item struct {
 	Note       string `json:"note,omitempty"`
 	// UsedBy is how many product packages import a Go library (Linux and Windows builds together); -1 when not measured.
 	UsedBy *int `json:"usedBy,omitempty"`
+	// InBuild says whether any package of a Go library is compiled into Drydock or its tests (Linux and Windows builds together);
+	// a library that is only in the module graph does not run in the app.
+	InBuild *bool `json:"inBuild,omitempty"`
 }
 
 // Vuln is one known vulnerability that affects what is installed.
