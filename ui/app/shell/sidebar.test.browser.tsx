@@ -53,6 +53,19 @@ describe('the sidebar', () => {
     expect(task!.querySelector('[data-testid="unread-count"]')).toBeNull();
   });
 
+  it('offers Chats after the quick links with a project, and alone without one', async () => {
+    const r = mount(<Sidebar route={{ name: 'chat', id: 'c1' }} />, svc());
+    await waitFor(() => expect(r.$('[data-testid="nav-needs-you"]')).not.toBeNull(), r);
+    const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
+    expect(nav.indexOf('nav-chats')).toBe(nav.indexOf('nav-activity') + 1);
+    expect(nav[0]).toBe('nav-needs-you');
+    expect(r.$('[data-testid="nav-chats"]')!.getAttribute('aria-current')).toBe('page');
+    cleanup();
+    const none = mount(<Sidebar route={{ name: 'chats' }} />, svc({ projectList: async () => [] }));
+    await waitFor(() => expect(none.$('[data-testid="nav-chats"]')).not.toBeNull(), none);
+    expect(none.$('[data-testid="nav-needs-you"]')).toBeNull();
+  });
+
   it('keeps the needs-you count and the workspace links', async () => {
     const r = mount(<Sidebar route={{ name: 'home' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you'), r);

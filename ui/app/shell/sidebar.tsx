@@ -312,12 +312,15 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             ref((n) => (nav = n)),
           ]}
         >
-          <ul mix={listCss} style={{ marginTop: '4px' }}>
-            <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
-          </ul>
+          {project ? null : (
+            // chats open without a project too; with one, Chats sits at the end of the quick links (Needs you stays first)
+            <ul mix={listCss} style={{ marginTop: '4px' }}>
+              <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
+            </ul>
+          )}
           {project ? (
             <>
-              <ul mix={listCss} style={{ marginTop: '1px' }}>
+              <ul mix={listCss} style={{ marginTop: '4px' }}>
                 <NavItem
                   href={routes.needsYou.href()}
                   current={at('needs-you')}
@@ -337,6 +340,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 <NavItem href={routes.plan.href()} current={at('plan')} testId="nav-plan" icon={Sparkles} label="Plan" />
                 <NavItem href={routes.team.href()} current={at('team')} testId="nav-team" icon={Users} label="Team" />
                 <NavItem href={routes.activity.href()} current={at('activity')} testId="nav-activity" icon={Activity} label="Activity" />
+                <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
               </ul>
               {group('channels', 'Channels', rooms.filter((r) => r.kind === 'channel').map(roomItem))}
               {rooms.some((r) => r.kind === 'task') ? group('task-channels', 'Task channels', rooms.filter((r) => r.kind === 'task').map(roomItem)) : null}

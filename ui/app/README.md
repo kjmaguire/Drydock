@@ -30,9 +30,10 @@ app/
   state/              eventStore, live reads (live.ts), services/query/action/watch (services.tsx),
                       models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts
   lib/                pure helpers (format, composer, route, theme, graphLayout)
-  ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, markdown
+  ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown
   shell/              sidebar (with the project switcher), details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
+  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog
   styles/app.css      design tokens (light-dark()) + base layer for native elements
   test/               labelled test doubles (fakes.ts) and render helpers (render.tsx)
 ```
@@ -119,7 +120,7 @@ Use the kit before writing CSS:
   (form.tsx). Native `input`, `select`, `textarea`, `button`, `table`, `kbd`, `code`, `pre` are styled by the base layer.
 - `ErrorNote` (role="alert"), `Notice`, `Loading`, `Spinner`, `Empty` (feedback.tsx).
 - `Badge`, `StatusChip`, `PresenceDot`, `Avatar`, `SourceBadge`, `kv`, `muted`, `faint`, `mono` (data.tsx).
-- `Dialog` (native `<dialog>`), `Tabs`, `Menu`, `Markdown`.
+- `Dialog` (native `<dialog>`), `Tabs`, `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.
 - Colors only through tokens (`t.text`, `t.bgSurface`, `tone.ok`, ...), never hex values in screens. Both themes come
   from the same tokens.
 
