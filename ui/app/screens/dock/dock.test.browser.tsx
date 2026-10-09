@@ -452,6 +452,16 @@ describe('the terminal panel', () => {
     expect(byText(r.container, 'button', 'Close terminal 1')).toBeTruthy();
   });
 
+  it('does not offer a repository terminal for a project without a repository', async () => {
+    const s = testServices({ terminalList: async () => [], projectList: async () => [{ id: 'p1', name: 'later', repoPath: '', hasRepo: false } as never] });
+    s.workspace.start();
+    const r = mount(<TerminalPanel projectId="p1" taskId={undefined} />, s);
+    const b = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'No repository for a terminal yet'), r);
+    expect(b.disabled).toBe(true);
+    expect(b.title).toContain('attach one in Project settings');
+    expect(() => byText(r.container, 'button', 'New terminal in the repository')).toThrow();
+  });
+
   it('shows an error from opening', async () => {
     const r = mount(
       <TerminalPanel projectId="p1" taskId={undefined} />,

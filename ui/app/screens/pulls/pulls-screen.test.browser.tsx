@@ -139,6 +139,13 @@ describe('PullsScreen', () => {
     expect(githubIssues.calls).toEqual([['prj_1', 'bug']]);
   });
 
+  it('asks for a GitHub repository when the project has none', async () => {
+    const r = mount(<PullsScreen />, svc({ projectList: async () => [{ id: 'prj_1', name: 'later', repoPath: '', hasRepo: false } as never] }));
+    await waitFor(() => expect(r.$('[data-testid="pulls-no-repo"]')!.textContent).toContain('Attach a GitHub repository to see pull requests'), r);
+    expect(r.$('[data-testid="pulls-no-repo"] a')!.getAttribute('href')).toBe('/project');
+    expect(r.container.textContent).not.toContain('Load open issues');
+  });
+
   it('shows the first task pull request, and another when it is chosen', async () => {
     const githubPullRequest = recorder((id: string) => (id === 't1' ? prState() : prState({ number: 4, title: 'Add Divide PR' })));
     const r = mount(<PullsScreen />, svc({ githubPullRequest }, { tasks }));

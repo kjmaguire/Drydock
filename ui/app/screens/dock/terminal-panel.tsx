@@ -5,7 +5,8 @@
 import { css, on, ref, type Handle } from 'remix/component';
 import { FolderGit2, GitBranch, SquareTerminal, X } from 'lucide';
 import type { TerminalInfo } from '../../api/dockClient.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { projectHasRepo } from '../../api/types.ts';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -47,6 +48,7 @@ const startingCss = css({ position: 'absolute', inset: '0', margin: '0', padding
 
 export function TerminalPanel(handle: Handle<{ projectId: string | undefined; taskId: string | undefined }>) {
   const s = services(handle);
+  watch(handle, s.workspace);
   const list = query<TerminalInfo[]>(handle, { load: () => s.client.terminalList() });
   const act = action(handle);
   let active: string | undefined;
@@ -70,6 +72,8 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
 
   return () => {
     const { projectId, taskId } = handle.props;
+    const p = s.workspace.projectList.find((x) => x.id === projectId);
+    const noRepo = !!p && !projectHasRepo(p);
     const terms = list.data ?? [];
     const current = terms.find((x) => x.id === active) ?? terms[terms.length - 1];
     const err = act.error ?? list.error;
@@ -109,7 +113,11 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
                 New terminal in the task
               </Button>
             ) : null}
-            {projectId ? (
+            {projectId && noRepo ? (
+              <Button size="sm" variant="ghost" icon={FolderGit2} disabled title="This project has no repository yet: attach one in Project settings">
+                No repository for a terminal yet
+              </Button>
+            ) : projectId ? (
               <Button size="sm" variant="ghost" icon={FolderGit2} disabled={!!act.busy} mix={on('click', () => void open({ projectId }))}>
                 New terminal in the repository
               </Button>
