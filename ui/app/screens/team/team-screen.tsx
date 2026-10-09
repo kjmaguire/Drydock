@@ -15,6 +15,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, cardGrid } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AddPrebuilt } from './add-prebuilt.tsx';
+import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
 import { purposeExcerpt, sortAdapters } from './team.ts';
@@ -249,6 +250,17 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
             </ul>
           ) : null}
         </Section>
+
+        {leadOf(agents) && projectId ? (
+          <Section
+            title="Team lead"
+            label="Team lead"
+            description={`${leadOf(agents)!.name} supervises the team: it steps in when a task loops, stalls or trips the watchdog, and can post a stand-up.`}
+            actions={<RunStandup projectId={projectId} lead={leadOf(agents)!} />}
+          >
+            <Interventions projectId={projectId} limit={20} />
+          </Section>
+        ) : null}
 
         <Section title="Add an agent" description="Start from a saved template, or describe a new team member.">
           <div

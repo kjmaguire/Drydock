@@ -288,6 +288,26 @@ describe('project setup client methods', () => {
   });
 });
 
+describe('team lead client methods', () => {
+  it('sends the parameter names the core decodes and normalizes nulls', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.endsWith('lead.interventions')) return json({ result: [{ id: 'i1', createdTasks: null }] });
+      if (url.endsWith('lead.standup')) return json({ result: { messageId: 'm1', text: 'stand-up', tasks: 2 } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.leadStandup('p1')).toEqual({ messageId: 'm1', text: 'stand-up', tasks: 2 });
+    expect(await c.leadInterventions('p1')).toEqual([{ id: 'i1', createdTasks: [] } as never]);
+    await c.leadInterventions('p1', 't1');
+    const sent = f.mock.calls.map((c) => c.arguments).map((x) => [(x as unknown as [string])[0].replace('/rpc/', ''), JSON.parse((x as unknown as [string, RequestInit])[1].body as string)]);
+    expect(sent).toEqual([
+      ['lead.standup', { projectId: 'p1' }],
+      ['lead.interventions', { projectId: 'p1', taskId: '' }],
+      ['lead.interventions', { projectId: 'p1', taskId: 't1' }],
+    ]);
+  });
+});
+
 describe('Wails runtime wiring (against a fake runtime module; never run in WebView2)', () => {
   it('addresses the bridge by its fully qualified name and passes arguments in order', async () => {
     const ByName = mock.fn(async (name: string) => (name.endsWith('.Call') ? '{"ok":true}' : null));

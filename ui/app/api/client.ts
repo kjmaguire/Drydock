@@ -11,6 +11,7 @@ import { createRunClient, type RunClient } from './runClient.ts';
 import { createAttachClient, type AttachClient } from './attachClient.ts';
 import { createProviderClient, type ProviderClient } from './providerClient.ts';
 import { createSetupClient, type SetupClient } from './setupClient.ts';
+import { createLeadClient, type LeadClient } from './leadClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -45,7 +46,7 @@ import type {
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -110,6 +111,7 @@ export function createClient(t: Transport): Client {
     ...createAttachClient(t),
     ...createProviderClient(t),
     ...createSetupClient(t),
+    ...createLeadClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),

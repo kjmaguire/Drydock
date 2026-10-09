@@ -7,6 +7,7 @@ import { agentName, formatCost, presenceFor } from '../lib/format.ts';
 import { routes } from '../routes.ts';
 import { query, services, watch } from '../state/services.tsx';
 import { AgentInspector } from '../screens/team/inspector.tsx';
+import { leadOf, RunStandup } from '../screens/team/lead.tsx';
 import { ThreadPanel } from '../screens/room/thread-panel.tsx';
 import { IconButton } from '../ui/button.tsx';
 import { Avatar, PresenceDot, StatusChip, kv, presenceColor } from '../ui/data.tsx';
@@ -78,6 +79,11 @@ export function Details(handle: Handle<{ taskId: string | undefined }>) {
           {tab === 'agents' ? (
             <div data-testid="details-agents">
               <p mix={sectionLabel}>Team · {agents.length}</p>
+              {leadOf(agents) && s.workspace.projectId ? (
+                <div style={{ padding: '0 8px 8px' }}>
+                  <RunStandup projectId={s.workspace.projectId} lead={leadOf(agents)!} />
+                </div>
+              ) : null}
               {agents.length === 0 ? <p style={{ color: 'var(--text-muted)', padding: '0 8px' }}>No agents yet.</p> : null}
               {agents.map((a) => {
                 const pr = presenceFor(a.id, presence);

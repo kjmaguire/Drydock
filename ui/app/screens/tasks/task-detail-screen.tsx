@@ -22,6 +22,7 @@ import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
 import { DiffView } from './raw-diff.tsx';
 import { ReviewPanel } from './review-panel.tsx';
+import { Interventions, leadOf } from '../team/lead.tsx';
 import { TaskControls } from './task-controls.tsx';
 import { isWaitingForTask } from './tasks.ts';
 
@@ -165,6 +166,11 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
             <Section title="Reviews">
               <ReviewList reviews={d.reviews} agents={agents} />
             </Section>
+            {leadOf(agents) ? (
+              <Section title="Team lead" label="Team lead on this task">
+                <Interventions projectId={task.projectId} taskId={task.id} />
+              </Section>
+            ) : null}
             <Section
               title="Diff"
               actions={
