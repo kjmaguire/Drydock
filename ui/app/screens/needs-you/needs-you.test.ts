@@ -24,5 +24,9 @@ describe('Needs you targets and hints', () => {
     expect(needsHint(spec)).toContain('spec gate');
     expect(needsHint(outbound)).toContain('exact text');
     expect(needsHint({ ...base, kind: 'question', title: 'x' })).toBe('');
+    expect(needsHint({ ...base, kind: 'question', title: 'Iteration limit reached: a human needs to decide', taskId: 't1' })).toContain('fresh loop budget');
+    expect(needsHint({ ...base, kind: 'question', title: 'The reviewer keeps asking for the same change: a human needs to decide' })).toContain('stop it');
+    expect(needsHint({ ...base, kind: 'watchdog_pause', title: 'Watchdog paused work: tool_spin' })).toContain('send guidance and continue');
+    expect(needsHint({ ...base, kind: 'watchdog_pause', title: 'The team lead asks for a human decision on work' })).toContain('recommendation');
   });
 });

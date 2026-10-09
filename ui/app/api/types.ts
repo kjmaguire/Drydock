@@ -27,11 +27,194 @@ export type MergeStrategy = 'merge' | 'squash' | 'rebase';
 export interface Project {
   id: string;
   name: string;
+  /** Empty while no repository is attached. */
   repoPath: string;
+  /** False for a project made without a repository (attach one in Project settings). Absent from older cores: treat as true. */
+  hasRepo?: boolean;
   defaultBranch: string;
   mergeStrategy: MergeStrategy | string;
   mode: ProjectMode | string;
+  /** The human's description of the project, given to every agent as standing context (at most PROJECT_BRIEF_MAX). */
+  brief?: string;
   created: number;
+}
+
+/** core.MaxBriefLen */
+export const PROJECT_BRIEF_MAX = 8000;
+
+/** Whether a project has a repository (older cores do not send hasRepo; every project had one then). */
+export const projectHasRepo = (p: Pick<Project, 'hasRepo'> | undefined): boolean => !!p && p.hasRepo !== false;
+
+// ---- GitHub account (internal/core/github_account.go, internal/git/host/account.go) ----
+
+export interface GitHubStatus {
+  installed: boolean;
+  loggedIn: boolean;
+  login: string;
+  error?: string;
+}
+
+/** A repository the signed-in user can reach. Name and description are outside text: shown, never acted on. */
+export interface GitHubRepo {
+  fullName: string;
+  owner: string;
+  name: string;
+  description: string;
+  private: boolean;
+  archived: boolean;
+  fork: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+  pushedAt: string;
+}
+
+export interface CloneResult {
+  path: string;
+  defaultBranch: string;
+}
+
+// ---- project.setup (internal/core/project_setup.go) ----
+
+export type SetupRepoKind = 'none' | 'local' | 'github';
+
+export interface SetupRepo {
+  kind: SetupRepoKind;
+  /** local */
+  path?: string;
+  /** github: owner/name */
+  github?: string;
+  /** github: the parent folder (default github.cloneDir) */
+  cloneDir?: string;
+}
+
+/** One agent of the wizard: a prebuilt catalog entry, a saved template, or a custom agent (name, role, adapter). */
+export interface SetupAgent {
+  prebuilt?: string;
+  template?: string;
+  name?: string;
+  role?: string;
+  adapter?: string;
+  model?: string;
+  effort?: string;
+  permissionMode?: string;
+  purpose?: string;
+  practices?: boolean;
+  /** Library or catalog server ids to grant (custom agents). */
+  servers?: string[];
+}
+
+export interface SetupRequest {
+  name: string;
+  brief: string;
+  repo: SetupRepo;
+  mode: ProjectMode;
+  libraryServers: string[];
+  catalogServers: string[];
+  agents: SetupAgent[];
+  installSkills: boolean;
+}
+
+export interface SetupResult {
+  project: Project;
+  agents: Agent[];
+  clone?: CloneResult;
+  /** What did not work after the project was created (the project exists). */
+  warnings: string[];
+}
+
+/** core.MaxSetupAgents */
+export const SETUP_MAX_AGENTS = 20;
+
+// ---- MCP catalog (internal/core/ext_mcpcatalog.go) ----
+
+export interface McpCatalogEntry {
+  id: string;
+  display: string;
+  url: string;
+  description: string;
+  auth: 'none' | 'bearer' | 'oauth' | string;
+  authOptional: boolean;
+  readOnlyTools: string[];
+  recommendedRoles: string[];
+  trust: string;
+  inLibrary: boolean;
+  libraryId?: string;
+}
+
+export interface McpCatalogAdded {
+  server: { id: string; display: string };
+  created: boolean;
+  /** What the human still has to do (sign in, add a token). */
+  next?: string;
+}
+
+// ---- Prebuilt agents (internal/core/ext_agentcatalog.go, internal/agentcatalog) ----
+
+export type AgentCategory = 'management' | 'engineering' | 'design' | 'docs' | 'quality' | 'security';
+export const AGENT_CATEGORIES: AgentCategory[] = ['management', 'engineering', 'design', 'docs', 'quality', 'security'];
+
+export interface SkillRef {
+  registry: string;
+  name: string;
+  ref: string;
+}
+
+export interface AdapterAvailability {
+  adapter: string;
+  preferred: boolean;
+  installed: boolean;
+  usable: boolean;
+  status: string;
+  reason?: string;
+}
+
+export interface PrebuiltAgent {
+  id: string;
+  name: string;
+  role: string;
+  category: AgentCategory | string;
+  summary: string;
+  description: string;
+  purpose: string;
+  preferred: { adapter: string; model: string; effort: string; permissionMode: string; practices?: boolean | null };
+  alternatives: { adapter: string; model: string; effort: string }[];
+  /** MCP catalog server ids. */
+  mcp: string[];
+  skills: SkillRef[];
+  tags: string[];
+  availability: {
+    /** The preferred CLI first, then the alternatives. */
+    adapters: AdapterAvailability[];
+    preferredUsable: boolean;
+    mcp: { id: string; inLibrary: boolean; libraryId?: string }[];
+    skills: (SkillRef & { imported: boolean; status?: string; samePin: boolean })[];
+  };
+}
+
+export interface PrebuiltApplyReq {
+  id: string;
+  projectId: string;
+  name?: string;
+  adapter?: string;
+  model?: string;
+  effort?: string;
+  permissionMode?: string;
+  installSkills: boolean;
+  connectMcp: boolean;
+}
+
+export interface SkippedItem {
+  id?: string;
+  name?: string;
+  reason: string;
+}
+
+export interface PrebuiltApplied {
+  id: string;
+  agent: Agent;
+  mcp: { granted: string[]; skipped: SkippedItem[] };
+  skills: { assigned: string[]; shared: string[]; pending: SkippedItem[]; failed: SkippedItem[] };
+  notes: string[];
 }
 
 export interface Agent {

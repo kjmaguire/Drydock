@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm } from './helpers';
+import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardToReview } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -101,7 +101,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
   test('the core refuses a bad repository path and the UI shows its message', async ({ page }) => {
     await page.goto(appUrl());
     await showNewProjectForm(page);
-    await page.getByLabel('Repository path').fill('/definitely/not/a/repo');
+    await wizardToReview(page, { repo: '/definitely/not/a/repo' });
     await page.getByRole('button', { name: 'Create project' }).click();
     await expect(page.getByRole('alert')).toContainText('not a usable Git repository');
   });

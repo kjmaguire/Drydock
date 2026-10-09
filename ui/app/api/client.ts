@@ -10,6 +10,8 @@ import { createDockClient, type DockClient } from './dockClient.ts';
 import { createRunClient, type RunClient } from './runClient.ts';
 import { createAttachClient, type AttachClient } from './attachClient.ts';
 import { createProviderClient, type ProviderClient } from './providerClient.ts';
+import { createSetupClient, type SetupClient } from './setupClient.ts';
+import { createLeadClient, type LeadClient } from './leadClient.ts';
 import { createChatClient, type ChatClient } from './chatClient.ts';
 import type {
   AdapterInfo,
@@ -45,9 +47,10 @@ import type {
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, ChatClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient {
   appInfo(): Promise<AppInfo>;
-  projectCreate(name: string, repoPath: string): Promise<Project>;
+  /** An empty repoPath makes a project without a repository (attach one later). */
+  projectCreate(name: string, repoPath?: string): Promise<Project>;
   projectList(): Promise<Project[]>;
   projectGet(id: string): Promise<Project>;
   projectUpdate(id: string, mode?: ProjectMode, mergeStrategy?: MergeStrategy): Promise<Project>;
@@ -108,9 +111,11 @@ export function createClient(t: Transport): Client {
     ...createRunClient(t),
     ...createAttachClient(t),
     ...createProviderClient(t),
+    ...createSetupClient(t),
+    ...createLeadClient(t),
     ...createChatClient(t),
     appInfo: () => t.call('app.info'),
-    projectCreate: (name, repoPath) => t.call('project.create', { name, repoPath }),
+    projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
     projectGet: (id) => t.call('project.get', { id }),
     projectUpdate: (id, mode, mergeStrategy) => t.call('project.update', { id, mode: mode ?? '', mergeStrategy: mergeStrategy ?? '' }),
