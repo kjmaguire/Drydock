@@ -92,7 +92,9 @@ func TestGitHubListAndCloneIntoAProject(t *testing.T) {
 // A clone that fails leaves no half-made folder behind, and its error never carries a secret.
 func TestGitHubCloneFailureCleansUp(t *testing.T) {
 	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
-		GitHubCloneURL: func(string) string { return filepath.Join(os.TempDir(), "drydock-no-such-repo-"+fmt.Sprint(time.Now().UnixNano())) }})
+		GitHubCloneURL: func(string) string {
+			return filepath.Join(os.TempDir(), "drydock-no-such-repo-"+fmt.Sprint(time.Now().UnixNano()))
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
