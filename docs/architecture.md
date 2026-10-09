@@ -55,6 +55,7 @@ Ownership rules that the code enforces:
 | `internal/git/host` | GitHub over the user's `gh` (REST, ETag polling): PRs, checks and logs, reviews, merge, issues, releases | built; live read-only test verified (304 to `ErrNotModified`) |
 | `internal/memory`, `internal/context` | project memory (FTS5), generated instruction files, context manifests | built |
 | `internal/room` | channels, DMs, task channels, messages, presence, turn-taking, exports | built, tested on Linux |
+| `internal/chats` | the human's own chats with an agent CLI: history, resume or transcript fallback, attachments, the `chats` workspace tool, allow rules ([`chats.md`](chats.md), decisions P29) | built; tested on Linux against the scripted agents and the real Claude Code 2.1.295; no real ACP chat turn |
 | `internal/providers`, `internal/llm`, `internal/router` | provider registry, quota ledger, LLM client + cache + data_class guard, static router + CEL | built, tested on Linux |
 | `internal/security` | approvals with action-hash binding, path guard, command analyzer, secret scanning, audit chain | built, tested on Linux |
 | `internal/mcp` | gateway, workspace server, catalog | built, tested on Linux |

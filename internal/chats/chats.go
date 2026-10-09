@@ -789,7 +789,7 @@ func (s *Service) AllowTool(ctx context.Context, id, rule string) (Chat, error) 
 	if len(c.AllowedTools) >= s.o.MaxRules {
 		return Chat{}, fmt.Errorf("a chat can have at most %d allow rules", s.o.MaxRules)
 	}
-	return s.setRules(ctx, c, append(c.AllowedTools, rule), "allowed", rule)
+	return s.setRules(ctx, c, append(c.AllowedTools, rule), "Allowed for this chat: "+rule)
 }
 
 // DisallowTool removes an allow rule.
@@ -808,10 +808,10 @@ func (s *Service) DisallowTool(ctx context.Context, id, rule string) (Chat, erro
 	if len(keep) == len(c.AllowedTools) {
 		return c, nil
 	}
-	return s.setRules(ctx, c, keep, "removed", rule)
+	return s.setRules(ctx, c, keep, "No longer allowed for this chat: "+rule)
 }
 
-func (s *Service) setRules(ctx context.Context, c Chat, rules []string, what, rule string) (Chat, error) {
+func (s *Service) setRules(ctx context.Context, c Chat, rules []string, note string) (Chat, error) {
 	if rules == nil {
 		rules = []string{}
 	}
@@ -823,7 +823,7 @@ func (s *Service) setRules(ctx context.Context, c Chat, rules []string, what, ru
 	}); err != nil {
 		return Chat{}, err
 	}
-	if _, err := s.insertMessage(ctx, c, "", RoleSystem, fmt.Sprintf("Allow rule %s for this chat: %s", what, rule), "", nil); err != nil {
+	if _, err := s.insertMessage(ctx, c, "", RoleSystem, note, "", nil); err != nil {
 		s.logf("chats: note rule change: %v", err)
 	}
 	s.publish(ctx, "chat.updated", c.ProjectID, map[string]any{"chatId": c.ID, "chat": c})
