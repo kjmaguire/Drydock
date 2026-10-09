@@ -92,6 +92,10 @@ type RequestSpec struct {
 	// turn (the budget gate) uses it: the turn is still owed once the human has decided. Whatever the decision, the node
 	// runs again and reads the decision itself (the approvals row), so a rejection is the node's to act on.
 	Retry bool `json:"retry,omitempty"`
+	// DeliverAnswer (with Retry) appends the human's answer {"decision","data","by","request"} to the restored inbox as one
+	// more message, so the node that runs again sees what the human said. The watchdog's pause uses it: the human's guidance
+	// reaches the agent's next turn, and a rejection is the node's to act on.
+	DeliverAnswer bool `json:"deliverAnswer,omitempty"`
 }
 
 // NodeOutput is what a handler returns: a complete value, optionally a routing label, or a request.
@@ -99,6 +103,12 @@ type NodeOutput struct {
 	Value   json.RawMessage `json:"value,omitempty"`
 	Route   string          `json:"route,omitempty"`
 	Request *RequestSpec    `json:"request,omitempty"`
+	// Halt ends this branch of the run: the output is recorded but routed to no edge, not even an unconditional one. A node
+	// that stopped the task (a human rejected a watchdog pause) uses it so the run completes cleanly instead of carrying on.
+	Halt bool `json:"halt,omitempty"`
+	// ResetLoops clears every loop counter of the run before the output is routed, so the loop budget starts again. A human
+	// (or the team lead) continuing past an iteration limit uses it.
+	ResetLoops bool `json:"resetLoops,omitempty"`
 }
 
 // Previous carries what an earlier, interrupted attempt of the same node left behind.
