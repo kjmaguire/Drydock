@@ -34,3 +34,6 @@ go.work.sum
 
 /drydock
 /drydock.exe
+
+# Windows test builds (zip handed out, never committed)
+dist-windows/
