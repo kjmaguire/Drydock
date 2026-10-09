@@ -333,3 +333,16 @@ custom:
 		t.Fatal("tool outside the custom allowlist")
 	}
 }
+
+// Every catalog entry says in plain words what it gives an agent: the library shows it when a human adds a server from the catalog.
+func TestCatalogEntriesHaveShortDescriptions(t *testing.T) {
+	c, err := LoadBuiltin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range c.Servers {
+		if d := strings.TrimSpace(s.Description); d == "" || len(d) > 300 || strings.Contains(d, "\n") {
+			t.Errorf("%s: description %q must be one short paragraph", s.ID, d)
+		}
+	}
+}

@@ -10,6 +10,7 @@ schema: 1
 servers:
   - id: mslearn
     display: Microsoft Learn
+    description: "Official Microsoft and Azure documentation and code samples (Microsoft Learn): search, fetch a page, find samples. No account needed."
     transport: http
     # ?maxTokenBudget=N truncates search responses at the source (tooling-integrations section 6); added via shape.url_params.
     url: https://learn.microsoft.com/api/mcp
@@ -43,6 +44,7 @@ servers:
 
   - id: cfdocs
     display: Cloudflare documentation
+    description: "The Cloudflare developer documentation (Workers, Durable Objects, D1, R2, Pages and the rest), searchable by the agent. No account needed."
     transport: http
     # Stateless streamable HTTP; /sse is only an alias and legacy SSE GET returns 410 (docs/mcp.md section 9).
     url: https://docs.mcp.cloudflare.com/mcp
@@ -73,6 +75,7 @@ servers:
 
   - id: gh
     display: GitHub (hosted MCP)
+    description: "GitHub's hosted server: read pull requests, issues, Actions runs and code of your repositories. Needs a personal access token; every tool that writes waits for your approval."
     transport: http
     url: https://api.githubcopilot.com/mcp/
     # OAuth is also supported by the server; the gateway uses a PAT held by Drydock. Header support in the agent CLIs is
@@ -129,6 +132,7 @@ servers:
 
   - id: ctx7
     display: Context7
+    description: "Up-to-date documentation for thousands of open-source libraries and frameworks. Works without an account; a free key raises the rate limits."
     transport: http
     url: https://mcp.context7.com/mcp
     # A free API key from context7.com/dashboard raises the rate limits; the server works without one.
@@ -156,6 +160,7 @@ servers:
 
   - id: linear
     display: Linear (hosted MCP, read-only endpoint)
+    description: "Read your team's Linear issues and projects (read-only endpoint). You sign in with your Linear account."
     transport: http
     # The read-only endpoint is the default for agents (docs/mcp.md section 9). Snippet-level evidence only: UNVERIFIED.
     url: https://mcp.linear.app/mcp/readonly
@@ -171,6 +176,7 @@ servers:
 
   - id: notion
     display: Notion (hosted MCP)
+    description: "Read and search your Notion pages and databases. You sign in with your Notion account."
     transport: http
     # /sse is the documented fallback endpoint. The local makenotion/notion-mcp-server is retired and unsupported (D14).
     url: https://mcp.notion.com/mcp
@@ -186,6 +192,7 @@ servers:
 
   - id: sentry
     display: Sentry (hosted MCP)
+    description: "Read Sentry issues, events and releases of your projects. Needs a Sentry access token."
     transport: http
     url: https://mcp.sentry.dev/mcp
     # OAuth, or Authorization: Sentry-Bearer <SENTRY_ACCESS_TOKEN>.
@@ -202,6 +209,7 @@ servers:
   # ---- user-install templates (never bundled, never started unless a project enables them) ----
   - id: sentryx
     display: Sentry (user-installed stdio server, template)
+    description: "Sentry as a program you install yourself (a template, never bundled)."
     transport: stdio
     command:
       argv: ["npx", "-y", "@sentry/mcp-server@latest"]
@@ -222,6 +230,7 @@ servers:
 
   - id: aikido
     display: Aikido (user-installed stdio server, template)
+    description: "Aikido security findings through a program you install yourself (a template, never bundled; AGPL)."
     transport: stdio
     command:
       argv: ["npx", "-y", "@aikidosec/mcp@1.0.27"]

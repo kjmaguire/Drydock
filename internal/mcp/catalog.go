@@ -81,10 +81,12 @@ var knownRoles = map[string]bool{
 
 // ServerSpec is one catalog entry: schema of docs/mcp.md section 9 plus the extensions listed on each field.
 type ServerSpec struct {
-	ID        string `yaml:"id"`
-	Display   string `yaml:"display"`
-	Transport string `yaml:"transport"`
-	URL       string `yaml:"url,omitempty"`
+	ID      string `yaml:"id"`
+	Display string `yaml:"display"`
+	// Description (extension) says in one or two plain sentences what the server gives an agent; shown when a human adds it.
+	Description string `yaml:"description,omitempty"`
+	Transport   string `yaml:"transport"`
+	URL         string `yaml:"url,omitempty"`
 	// Command is the stdio command (user-installed unless License.Bundled).
 	Command *CommandSpec `yaml:"command,omitempty"`
 	Auth    AuthSpec     `yaml:"auth"`
