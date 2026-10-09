@@ -37,3 +37,6 @@ go.work.sum
 
 # Windows test builds (zip handed out, never committed)
 dist-windows/
+
+# Agent worktrees (temporary, never committed)
+.claude/worktrees/
