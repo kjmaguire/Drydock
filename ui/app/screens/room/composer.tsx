@@ -16,6 +16,9 @@ import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { checkFiles, formatSize, MAX_FILES } from './messages.ts';
 
+// The textarea is the combobox of the suggestion list (ARIA 1.2); the JSX types only allow role="textbox" on it.
+const COMBOBOX = { role: 'combobox' } as Record<string, string>;
+
 interface Pending {
   name: string;
   size: number;
@@ -482,7 +485,7 @@ export function Composer(handle: Handle<ComposerProps>) {
             rows={1}
             placeholder={disabled ? 'This channel is archived' : `Message ${room.kind === 'dm' ? '' : '#'}${label}`}
             disabled={disabled}
-            role="combobox"
+            {...COMBOBOX}
             aria-expanded={open ? 'true' : 'false'}
             aria-controls={open ? listId : undefined}
             aria-activedescendant={open ? `${listId}-${idx}` : undefined}

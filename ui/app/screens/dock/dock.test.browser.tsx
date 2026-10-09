@@ -367,7 +367,7 @@ describe('the terminal panel', () => {
     await waitFor(() => expect(terminals.length).toBe(2), r);
     expect(terminals[0]!.disposed).toBe(true);
     await r.act(() => byText(r.container, 'button', 'Close gocalc').click());
-    await waitFor(() => expect(r.$$('[role="tab"]').map((e) => e.textContent)).toEqual(['task #3']), r);
+    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((e) => e.textContent)).toEqual(['task #3']), r);
     expect(closes).toEqual(['term_2']);
     expect(terminals[1]!.disposed).toBe(true);
   });

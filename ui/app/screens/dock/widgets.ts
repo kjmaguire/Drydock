@@ -36,8 +36,13 @@ export type TerminalFactory = (host: HTMLElement) => TerminalView;
 
 type Loader<T> = () => Promise<T>;
 
-const realDiff: Loader<DiffEditorFactory> = () => import('./monaco-diff.ts').then((m) => m.createMonacoDiff);
-const realTerminal: Loader<TerminalFactory> = () => import('./xterm-view.ts').then((m) => m.createXterm);
+// import.meta.glob (Vite) instead of import(): Vite turns it into a lazy chunk exactly like a dynamic import, while the
+// browser test runner, whose import rewriting breaks dynamic import() literals, never evaluates it (the call sits inside
+// a function the tests replace).
+const realDiff: Loader<DiffEditorFactory> = () =>
+  import.meta.glob<{ createMonacoDiff: DiffEditorFactory }>('./monaco-diff.ts')['./monaco-diff.ts']!().then((m) => m.createMonacoDiff);
+const realTerminal: Loader<TerminalFactory> = () =>
+  import.meta.glob<{ createXterm: TerminalFactory }>('./xterm-view.ts')['./xterm-view.ts']!().then((m) => m.createXterm);
 
 let diffLoader = realDiff;
 let terminalLoader = realTerminal;
