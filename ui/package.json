@@ -26,6 +26,7 @@
     "remix": "3.0.0"
   },
   "devDependencies": {
+    "@pitlane/vite-plugin-remix": "0.8.0",
     "@playwright/test": "1.64.0",
     "@types/node": "24.19.1",
     "playwright": "1.64.0",

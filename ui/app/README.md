@@ -7,6 +7,9 @@ the UI is authoritative.
 - Components: `remix/component` (JSX, but **not React**: setup runs once, the returned function renders).
 - Routing: `remix/routes` + `remix/router` + `remix/spa` (path routes, the browser Navigation API). The Go side serves
   `index.html` for app paths (`internal/uiassets`).
+- Build: plain Vite 8 with Pitlane's Remix plugin in SPA mode (`@pitlane/vite-plugin-remix`, `remix({ server: false })`):
+  `npm run dev` hot-swaps an edited component and keeps its state (an edit to a component's setup scope remounts it).
+  Run it against a core with `DRYDOCK_DEV_URL=http://127.0.0.1:PORT npm run dev`.
 - Headless widgets: `@remix-run/ui` (tabs, menu, toggle, ...), wrapped in `app/ui/`.
 - Icons: `lucide` icon nodes through `app/ui/icon.tsx`. Font: Inter Variable (bundled).
 - Tests: `remix test` (`npm test`): `*.test.ts` run in Node, `*.test.browser.tsx` in a real Chromium page.

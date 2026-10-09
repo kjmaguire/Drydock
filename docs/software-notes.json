@@ -104,6 +104,10 @@
     "npm:vite": {
       "role": "Builds the UI bundle and serves it while developing."
     },
+    "npm:@pitlane/vite-plugin-remix": {
+      "role": "Pitlane's Remix 3 Vite plugin in SPA mode (server: false): component hot module replacement while developing (an edited component swaps in place and keeps its state). Development only; the production build is the same static dist/. Its chunk import map is off because it is an inline script the CSP forbids.",
+      "hold": "Pinned exactly: 0.x and first published 2026-10-07; breaking changes can come in minor releases. Read its changelog before every bump."
+    },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
       "note": "Recommended and verified: 2.1.295 (conformance suite against the real CLI). You install the CLI yourself."
