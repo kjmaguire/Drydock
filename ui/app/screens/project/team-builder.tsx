@@ -150,7 +150,7 @@ function TeamRow(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adapters
         <fieldset>
           <legend>
             <span class="who">
-              <Avatar id={m.ref ?? m.key} name={label} size={24} kind="agent" />
+              <Avatar id={m.ref ?? m.key} name={label} size={22} kind="agent" />
               <strong>{label}</strong>
               <Badge tone="muted">{m.role || 'role?'}</Badge>
               <span class="end">

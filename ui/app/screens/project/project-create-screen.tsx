@@ -225,6 +225,7 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
           </label>
         ))}
       </div>
+      <div key={`repo-${st.repo}`} style={{ display: 'grid', gap: 'var(--space-4)', minWidth: '0' }}>
       {st.repo === 'github' ? (
         <RepoPicker
           selected={st.github}
@@ -255,6 +256,7 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
           )}
         </Field>
       ) : null}
+      </div>
     </>
   );
 
@@ -482,7 +484,9 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
                   ) : null}
                 </h2>
                 <p class="lead">{LEAD[step]}</p>
-                {step === 'Basics' ? basics() : step === 'Repository' ? repository() : step === 'Connectors' ? connectors() : step === 'Team' ? team() : review()}
+                <div key={`step-${step}`} style={{ display: 'grid', gap: 'var(--space-4)', minWidth: '0' }}>
+                  {step === 'Basics' ? basics() : step === 'Repository' ? repository() : step === 'Connectors' ? connectors() : step === 'Team' ? team() : review()}
+                </div>
                 <div mix={footCss}>
                   {i > 0 ? (
                     <Button variant="secondary" mix={on('click', () => go(STEPS[i - 1]!))}>
