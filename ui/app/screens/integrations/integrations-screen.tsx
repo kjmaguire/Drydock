@@ -568,6 +568,7 @@ function ConnectionCard(handle: Handle<{ c: IntegrationView; projects: Project[]
   });
   const toggle = (v: typeof show) => {
     show = show === v ? '' : v;
+    if (show === 'items' && list.data) list.reload();
     void handle.update();
   };
 

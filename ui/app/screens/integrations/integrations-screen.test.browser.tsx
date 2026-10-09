@@ -153,8 +153,9 @@ describe('Integrations', () => {
 
   it('read-only: Connect is turned off and says why', async () => {
     const r = show({ integrationList: async () => [], licenseStatus: async () => expiredLicense });
-    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Connect').disabled).toBe(true), r);
-    expect(r.$('[data-testid="readonly-note"]')).not.toBeNull();
+    await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).not.toBeNull(), r);
+    await waitFor(() => expect(r.$('select[aria-label="Project"] option')).not.toBeNull(), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Connect').disabled).toBe(true);
   });
 
   it('items are inert untrusted text with an injection-risk score; high risk cannot be imported; import is by item id', async () => {

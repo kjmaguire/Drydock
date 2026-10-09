@@ -28,7 +28,7 @@ const rowCss = css({
 });
 const headCss = css({ marginTop: t.s3, paddingTop: '4px' });
 const mentionCss = css({ background: t.mentionBg, boxShadow: `inset 2px 0 0 ${t.mentionBorder}`, '&:hover': { background: t.mentionBg } });
-const errorCss = css({ background: t.dangerSoft, boxShadow: `inset 2px 0 0 ${t.danger}`, '&:hover': { background: t.dangerSoft } });
+const errorCss = css({ background: `color-mix(in srgb, ${t.dangerSoft} 55%, transparent)`, boxShadow: `inset 2px 0 0 ${t.danger}`, '&:hover': { background: t.dangerSoft } });
 const quietCss = css({ color: t.textMuted, fontSize: t.textSm });
 
 const gutterCss = css({ display: 'flex', justifyContent: 'center', paddingTop: '2px' });

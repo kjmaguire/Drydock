@@ -102,7 +102,7 @@ const newCss = css({
   fontWeight: '700',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
-  '&::before': { content: '""', flex: '1', height: '1px', background: t.danger },
+  '&::before': { content: '""', flex: '1', height: '0', borderTop: `1px solid ${t.danger}` },
   '& span': { padding: '0 6px', borderRadius: t.rSm, background: t.danger, color: t.onAccent, lineHeight: '16px' },
 });
 const emptyCss = css({ margin: `0 ${t.s6}`, color: t.textMuted, fontSize: t.textMd });
