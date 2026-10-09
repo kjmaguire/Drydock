@@ -59,14 +59,15 @@ export function UnifiedDiff(handle: Handle<{ text: string }>) {
   };
 }
 
-/** "Show the raw patch": reads task.diff once on request. Says so when no diff was recorded or it is empty. */
+/** "Show the raw patch": reads task.diff once on request; offered only when a diff was recorded. */
 export function DiffView(handle: Handle<{ taskId: string; hasDiff: boolean }>) {
   const s = services(handle);
   const act = action(handle);
   let text: string | undefined;
   return () => {
     const { taskId, hasDiff } = handle.props;
-    if (!hasDiff && text === undefined) return <p mix={muted}>No diff has been recorded yet.</p>;
+    // with no diff recorded the diff viewer above already says so; there is no raw patch to offer
+    if (!hasDiff && text === undefined) return null;
     return (
       <div style={{ display: 'grid', gap: '8px' }}>
         {text === undefined ? (

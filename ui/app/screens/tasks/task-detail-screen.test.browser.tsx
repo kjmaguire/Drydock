@@ -99,10 +99,9 @@ describe('Task view: header, properties and content', () => {
     expect(taskDiff.calls).toEqual([['t1']]);
   });
 
-  it('says when no diff has been recorded', async () => {
+  it('offers no raw patch when no diff has been recorded', async () => {
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail() }));
     await ready(r);
-    expect(r.container.textContent).toContain('No diff has been recorded yet.');
     expect(buttonNames(r.container)).not.toContain('Show the raw patch');
   });
 });
