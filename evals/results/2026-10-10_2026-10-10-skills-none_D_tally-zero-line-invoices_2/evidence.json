@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /v1/invoices` and `GET /v1/invoices/{id}` (and create, pay, void) return 200 for invoices with no lines, with `description` set to `\"\"`. A regression test reproduces the panic and passes.\n- Free-plan (price 0) renewals and first invoices get one plan line with the existing description format, the subscription quantity, and unit_amount 0. They are marked paid immediately.\n- A metered renewal with no usage creates no invoice. `go build`, `go test` and `go vet` pass.",
+    "data": {},
+    "created": 1791671711697
+  },
+  {
+    "id": 2,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 430ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-2/data/runs/run_d866671b7f26/checks/build_e48373688161.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 432,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671712165
+  },
+  {
+    "id": 3,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 380ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-2/data/runs/run_d866671b7f26/checks/test_08e903951ea2.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 380,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671712547
+  },
+  {
+    "id": 4,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 330ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-2/data/runs/run_d866671b7f26/checks/lint_bf93e226891f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 334,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671712884
+  },
+  {
+    "id": 5,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-2/data/runs/run_d866671b7f26/checks/secrets_a3fc4e1baf31.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 13,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671712899
+  },
+  {
+    "id": 6,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +84 -7",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-2/data/runs/run_d866671b7f26/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 84,
+      "Deletions": 7,
+      "base": "526741cd1a20dfcc1568c812ec9c04787ce8ad07",
+      "commit": "c30910ed9779038932eabd0d35ee5fc67441c57b"
+    },
+    "created": 1791671713034
+  },
+  {
+    "id": 7,
+    "taskId": "task_01819275ad9b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit c30910ed97",
+    "ref": "c30910ed9779038932eabd0d35ee5fc67441c57b",
+    "data": {},
+    "created": 1791671713035
+  }
+]

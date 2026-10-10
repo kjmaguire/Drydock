@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Each invoice gets `number` (\"INV-000001\", ...) from a per-organization sequence at creation, and every invoice API answer shows it. Snapshot v3 stores the numbers and each organization's next number. Versions 1 and 2 are numbered in creation order on load.\n- `Save` writes v3 atomically (temp file in the same folder, then rename, no leftover temp file). `Upgrade(path)` backs up a v1/v2 file to `\u003cpath\u003e.v\u003cN\u003e.bak` and rewrites it as v3. A v3 file is left alone. Loading or upgrading a version above 3 fails with `ErrUnsupportedVersion` and leaves the file untouched.\n- `go build ./...`, `go test ./\n...[truncated]",
+    "data": {},
+    "created": 1791671422583
+  },
+  {
+    "id": 2,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 540ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-2/data/runs/run_b38680318a08/checks/build_a9bcb91d2fd7.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 536,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671423159
+  },
+  {
+    "id": 3,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 610ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-2/data/runs/run_b38680318a08/checks/test_40d3c2bb2f79.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 607,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671423768
+  },
+  {
+    "id": 4,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 530ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-2/data/runs/run_b38680318a08/checks/lint_859a54cf19bd.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 533,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671424303
+  },
+  {
+    "id": 5,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-2/data/runs/run_b38680318a08/checks/secrets_8e364bd9f427.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671424322
+  },
+  {
+    "id": 6,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +409 -12",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-2/data/runs/run_b38680318a08/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 409,
+      "Deletions": 12,
+      "base": "472fa41918334ef146eb79513172ce8c038baba1",
+      "commit": "f9a1651641324377ff4988f51120856cc1b744e5"
+    },
+    "created": 1791671424473
+  },
+  {
+    "id": 7,
+    "taskId": "task_b6502f84be1a",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f9a1651641",
+    "ref": "f9a1651641324377ff4988f51120856cc1b744e5",
+    "data": {},
+    "created": 1791671424474
+  }
+]

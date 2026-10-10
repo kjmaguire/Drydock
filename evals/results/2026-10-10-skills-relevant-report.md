@@ -2,7 +2,7 @@ Trial 2026-10-10-skills-relevant; Drydock 60019f9be6f2; 2.1.296 (Claude Code); m
 
 | Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|---|
-| D | 40 | 39 | $3.8792 | $0.0995 | $0.0598 ($0.0254 to $0.3890) | 4m9s (1m38s to 7m31s) |
+| D | 46 | 45 | $4.3790 | $0.0973 | $0.0586 ($0.0240 to $0.3890) | 3m55s (1m21s to 7m31s) |
 
 | Task | Arm | Runs | Accepted | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|
@@ -20,15 +20,15 @@ Trial 2026-10-10-skills-relevant; Drydock 60019f9be6f2; 2.1.296 (Claude Code); m
 | tally-renewal-dedupe | D | 2 | 2 | $0.0680 ($0.0603 to $0.0757) | 4m54s (4m27s to 5m21s) |
 | tally-role-permissions | D | 2 | 2 | $0.1813 ($0.0967 to $0.2659) | 6m9s (4m47s to 7m31s) |
 | tally-seat-limits | D | 2 | 2 | $0.0511 ($0.0493 to $0.0529) | 2m54s (2m52s to 2m56s) |
-| tally-snapshot-v3 | D | 1 | 1 | $0.0544 (n=1) | 3m29s (n=1) |
+| tally-snapshot-v3 | D | 2 | 2 | $0.0561 ($0.0544 to $0.0579) | 3m36s (3m29s to 3m43s) |
 | tally-soft-delete-customers | D | 2 | 2 | $0.0781 ($0.0555 to $0.1008) | 5m8s (3m41s to 6m36s) |
-| tally-tenant-isolation | D | 1 | 1 | $0.2735 (n=1) | 5m12s (n=1) |
+| tally-tenant-isolation | D | 2 | 2 | $0.2699 ($0.2663 to $0.2735) | 4m58s (4m45s to 5m12s) |
 | tally-tiered-pricing | D | 2 | 2 | $0.0638 ($0.0593 to $0.0683) | 3m59s (3m37s to 4m22s) |
-| tally-timezone-reports | D | 1 | 1 | $0.0354 (n=1) | 2m48s (n=1) |
-| tally-webhook-retries | D | 1 | 1 | $0.0517 (n=1) | 4m7s (n=1) |
-| tally-webhook-signatures | D | 1 | 1 | $0.0664 (n=1) | 4m41s (n=1) |
+| tally-timezone-reports | D | 2 | 2 | $0.0342 ($0.0331 to $0.0354) | 2m46s (2m45s to 2m48s) |
+| tally-webhook-retries | D | 2 | 2 | $0.0492 ($0.0467 to $0.0517) | 3m46s (3m25s to 4m7s) |
+| tally-webhook-signatures | D | 2 | 2 | $0.0691 ($0.0664 to $0.0718) | 4m46s (4m41s to 4m52s) |
 | tally-webhook-ssrf | D | 2 | 2 | $0.0314 ($0.0297 to $0.0331) | 2m23s (2m16s to 2m29s) |
-| tally-zero-line-invoices | D | 1 | 1 | $0.0264 (n=1) | 1m38s (n=1) |
+| tally-zero-line-invoices | D | 2 | 2 | $0.0252 ($0.0240 to $0.0264) | 1m29s (1m21s to 1m38s) |
 
 Every run:
 
@@ -63,16 +63,22 @@ Every run:
 | tally-seat-limits | D | 1 | accepted | $0.0493 | 2m52s | 2 | 52 / 32678 / 1403718 / 94474 | SHIP |  |
 | tally-seat-limits | D | 2 | accepted | $0.0529 | 2m56s | 2 | 66 / 33937 / 1728821 / 93416 | SHIP |  |
 | tally-snapshot-v3 | D | 1 | accepted | $0.0544 | 3m29s | 2 | 48 / 41823 / 1375312 / 98404 | SHIP |  |
+| tally-snapshot-v3 | D | 2 | accepted | $0.0579 | 3m43s | 2 | 46 / 47086 / 1342164 / 104586 | SHIP |  |
 | tally-soft-delete-customers | D | 1 | accepted | $0.1008 | 6m36s | 4 | 76 / 79296 / 1789899 / 174805 | REVISE, SHIP |  |
 | tally-soft-delete-customers | D | 2 | accepted | $0.0555 | 3m41s | 2 | 54 / 44765 / 1314084 / 99968 | SHIP |  |
 | tally-tenant-isolation | D | 1 | accepted | $0.2735 | 5m12s | 2 | 88 / 59771 / 3758041 / 158913 | SHIP |  |
+| tally-tenant-isolation | D | 2 | accepted | $0.2663 | 4m45s | 2 | 122 / 51562 / 4905676 / 166532 | SHIP |  |
 | tally-tiered-pricing | D | 1 | accepted | $0.0683 | 4m22s | 4 | 84 / 51978 / 1669218 / 128005 | REVISE, SHIP |  |
 | tally-tiered-pricing | D | 2 | accepted | $0.0593 | 3m37s | 2 | 54 / 45048 / 1592271 / 104052 | SHIP |  |
 | tally-timezone-reports | D | 1 | accepted | $0.0354 | 2m48s | 2 | 28 / 33172 / 530872 / 67381 | SHIP |  |
+| tally-timezone-reports | D | 2 | accepted | $0.0331 | 2m45s | 2 | 30 / 35592 / 438071 / 54557 | SHIP |  |
 | tally-webhook-retries | D | 1 | accepted | $0.0517 | 4m7s | 2 | 42 / 46759 / 876576 / 97959 | SHIP |  |
+| tally-webhook-retries | D | 2 | accepted | $0.0467 | 3m25s | 2 | 44 / 40246 / 945190 / 85847 | SHIP |  |
 | tally-webhook-signatures | D | 1 | accepted | $0.0664 | 4m41s | 4 | 78 / 51383 / 1410131 / 132789 | REVISE, SHIP |  |
+| tally-webhook-signatures | D | 2 | accepted | $0.0718 | 4m52s | 4 | 66 / 60030 / 1194181 / 149293 | REVISE, SHIP |  |
 | tally-webhook-ssrf | D | 1 | accepted | $0.0297 | 2m16s | 4 | 58 / 21784 / 637689 / 62362 | REVISE, SHIP |  |
 | tally-webhook-ssrf | D | 2 | accepted | $0.0331 | 2m29s | 2 | 44 / 27741 / 766770 / 57756 | SHIP |  |
 | tally-zero-line-invoices | D | 1 | accepted | $0.0264 | 1m38s | 2 | 50 / 15516 / 710977 / 57779 | SHIP |  |
+| tally-zero-line-invoices | D | 2 | accepted | $0.0240 | 1m21s | 2 | 40 / 12798 / 584901 / 58765 | SHIP |  |
 
 Cost is Claude Code's own `total_cost_usd` (its estimate at API prices, not what a subscription costs); "unknown" counts sessions that reported none, which makes a figure a lower bound. Accepted: the hidden acceptance check passed. The numbers are a small sample: medians and ranges, no averages, no claim of a difference beyond these runs.

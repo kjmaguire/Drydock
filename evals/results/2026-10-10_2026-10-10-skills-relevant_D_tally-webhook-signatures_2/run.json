@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-webhook-signatures",
+  "taskClass": "security review",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "7be621f3742869a776ef18933b9542fd1bccb661",
+  "startedAt": "2026-10-10T22:29:23.161196149Z",
+  "wallMs": 291861,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1591,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1916,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.026s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.020s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.010s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.005s\nok  \texample.com/tally/internal/snapshot\t0.010s\nok  \texample.com/tally/internal/store\t0.006s\nok  \texample.com/tally/internal/subscriptions\t0.012s\nok  \texample.com/tally/internal/webhooks\t0.006s\n"
+      }
+    ],
+    "durationMs": 3521
+  },
+  "costUsd": 0.07182200999999999,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 66,
+    "output": 60030,
+    "cacheRead": 1194181,
+    "cacheWrite": 149293
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_84622d062681",
+      "feedback": "internal/store/types.go (~line 252): PreviousSecret is tagged json:\"-\" but the snapshot (internal/snapshot/snapshot.go:30, via store.Export in internal/store/state.go:22) persists WebhookEndpoints as JSON, so the previous secret is dropped on save and lost on restart (cmd/tally/main.go:35). Within 24h of a rotation, deliveries after a restart then carry only the new v1 entry, violating the two-entry requirement. Persist PreviousSecret in the snapshot state (e.g. a json tag or a separate persistence type) while keeping it out of API responses (the handlers in internal/api/webhooks.go write store.WebhookEndpoint directly, so use a view type or equivalent). Add a test that saves and loads via internal/snapshot and checks that a delivery within 24h of rotation still carries two v1 entries."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_84622d062681"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_be7c91e99636"
+}
