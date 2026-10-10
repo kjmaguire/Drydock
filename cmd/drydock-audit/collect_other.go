@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/agents/pins"
 )
 
 var usesR = regexp.MustCompile(`(?m)^\s*-?\s*uses:\s*([\w.-]+/[\w./-]+)@(\S+)`)
@@ -99,12 +101,12 @@ func dedupe(s []string) []string {
 }
 
 func npmLatest(ctx context.Context, pkg string) string {
-	out, err := run(ctx, root, nil, "npm", "view", pkg, "version")
+	v, err := pins.Latest(ctx, pkg)
 	if err != nil {
 		fail("npm view " + pkg + ": " + err.Error())
 		return ""
 	}
-	return strings.TrimSpace(out)
+	return v
 }
 
 func goLatest(ctx context.Context, mod string) (version, date string) {
@@ -124,44 +126,33 @@ func releaseOf(v string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(v, "v"), "+incompatible")
 }
 
-var (
-	bridgeR  = regexp.MustCompile(`"(@[\w.-]+/[\w.-]+)@(\d+\.\d+\.\d+)"`)
-	recommR  = regexp.MustCompile(`versions:\s*\{min:\s*"([^"]+)",\s*recommended:\s*"([^"]+)"\}`)
-	cliNames = map[string]string{
-		"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "gemini": "@google/gemini-cli",
-		"goose": "@aaif/goose-acp", "opencode": "opencode-ai", "cline": "cline",
-	}
-)
-
 // agentSoftware: the agent CLIs Drydock drives (the version its manifest recommends, against the newest release) and the ACP
-// bridges it starts with npx (the pinned version, against the newest).
+// bridges it starts with npx (the pinned version, against the newest). The pins are read by internal/agents/pins, which the
+// contract suite's version watch (cmd/drydock-contract) uses too.
 func agentSoftware(ctx context.Context) []Item {
-	dir := filepath.Join(root, "internal", "agents", "manifests", "cli")
-	files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	sort.Strings(files)
+	ps, err := pins.Embedded()
+	if err != nil {
+		fail("agent manifests: " + err.Error())
+		return nil
+	}
 	var items []Item
-	for _, f := range files {
-		id := strings.TrimSuffix(filepath.Base(f), ".yaml")
-		b, _ := os.ReadFile(f)
-		text := string(b)
-		if pkg, ok := cliNames[id]; ok {
-			if m := recommR.FindStringSubmatch(text); m != nil {
-				it := Item{ID: "cli:" + id, Group: "Agent CLIs Drydock drives", Name: id + " (" + pkg + ")", Kind: "cli", Used: m[2], Where: "internal/agents/manifests/cli/" + id + ".yaml (recommended; minimum " + m[1] + ")"}
-				it.Latest = npmLatest(ctx, pkg)
-				if id == "claude" {
-					if v, err := run(ctx, root, nil, "claude", "--version"); err == nil {
-						f := strings.Fields(v)
-						if len(f) > 0 {
-							it.Note = "Installed in this sandbox: " + f[0] + "."
-						}
+	for _, p := range ps {
+		switch p.Kind {
+		case pins.KindCLI:
+			it := Item{ID: p.ID(), Group: "Agent CLIs Drydock drives", Name: p.Adapter + " (" + p.Package + ")", Kind: "cli", Used: p.Version, Where: p.File + " (recommended; minimum " + p.Min + ")"}
+			it.Latest = npmLatest(ctx, p.Package)
+			if p.Adapter == "claude" {
+				if v, err := run(ctx, root, nil, "claude", "--version"); err == nil {
+					f := strings.Fields(v)
+					if len(f) > 0 {
+						it.Note = "Installed in this sandbox: " + f[0] + "."
 					}
 				}
-				items = append(items, it)
 			}
-		}
-		for _, m := range bridgeR.FindAllStringSubmatch(text, -1) {
-			it := Item{ID: "bridge:" + m[1], Group: "Agent CLIs Drydock drives", Name: m[1] + " (ACP bridge)", Kind: "bridge", Used: m[2], Where: "internal/agents/manifests/cli/" + id + ".yaml"}
-			it.Latest = npmLatest(ctx, m[1])
+			items = append(items, it)
+		case pins.KindBridge:
+			it := Item{ID: p.ID(), Group: "Agent CLIs Drydock drives", Name: p.Package + " (ACP bridge)", Kind: "bridge", Used: p.Version, Where: p.File}
+			it.Latest = npmLatest(ctx, p.Package)
 			items = append(items, it)
 		}
 	}

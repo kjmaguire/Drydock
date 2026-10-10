@@ -43,3 +43,6 @@ dist-windows/
 
 # Agent worktrees (temporary, never committed)
 .claude/worktrees/
+
+# Contract suite reports (go run ./cmd/drydock-contract; docs/contract-tests.md)
+/contract-report/
