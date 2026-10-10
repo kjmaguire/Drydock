@@ -1,13 +1,15 @@
 // Package sandboxtest builds the container images the sandbox tests use, offline. The development sandbox cannot pull images
 // (registries refuse it), so the images are made from this machine's own programs: each listed program, the shared libraries
 // it loads (found with ldd), /etc/passwd and /tmp, and optionally the Go toolchain, imported with `docker import`. The product
-// itself pulls the images a project names. Test helper only.
+// itself pulls the images a project names. A test helper, also used by the trial harness (cmd/drydock-trial) to make the Go
+// image of its Drydock arm.
 package sandboxtest
 
 import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -54,15 +56,23 @@ func Engine(t testing.TB) string {
 // rootfs maps container paths to host files for the programs and their libraries.
 func rootfs(t testing.TB) map[string]string {
 	t.Helper()
+	files, err := programFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func programFiles() (map[string]string, error) {
 	files := map[string]string{}
 	for _, p := range Programs {
 		host, err := exec.LookPath(p)
 		if err != nil {
-			t.Fatalf("test image: %s is not on this machine: %v", p, err)
+			return nil, fmt.Errorf("test image: %s is not on this machine: %w", p, err)
 		}
 		real, err := filepath.EvalSymlinks(host)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		files["/usr/bin/"+p] = real
 		out, err := exec.Command("ldd", real).Output()
@@ -75,7 +85,7 @@ func rootfs(t testing.TB) map[string]string {
 			}
 		}
 	}
-	return files
+	return files, nil
 }
 
 // write streams a tar of the base files, files (container path -> host file) and trees (container dir -> host dir).
@@ -175,6 +185,12 @@ func write(w io.Writer, files map[string]string, trees map[string]string) error 
 
 func importImage(t testing.TB, bin, tag string, files, trees map[string]string, changes ...string) {
 	t.Helper()
+	if err := importTar(bin, tag, files, trees, changes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func importTar(bin, tag string, files, trees map[string]string, changes ...string) error {
 	pr, pw := io.Pipe()
 	go func() { pw.CloseWithError(write(pw, files, trees)) }()
 	args := []string{"import", "--change", "ENV PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
@@ -186,8 +202,9 @@ func importImage(t testing.TB, bin, tag string, files, trees map[string]string, 
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("test image %s: %v: %s", tag, err, errb.String())
+		return fmt.Errorf("test image %s: %w: %s", tag, err, errb.String())
 	}
+	return nil
 }
 
 var (
@@ -219,14 +236,26 @@ func Base(t testing.TB, bin string) string {
 // Go is Base plus this machine's Go toolchain at /usr/local/go.
 func Go(t testing.TB, bin string) string {
 	return once(t, "go", func() string {
-		out, err := exec.Command("go", "env", "GOROOT").Output()
+		tag, err := GoImage(bin)
 		if err != nil {
-			t.Fatalf("go env GOROOT: %v", err)
+			t.Fatal(err)
 		}
-		tag := "drydock-sandbox-test/go:2"
-		importImage(t, bin, tag, rootfs(t), map[string]string{"/usr/local/go": strings.TrimSpace(string(out))})
 		return tag
 	})
+}
+
+// GoImage builds the image Go returns, without a test.
+func GoImage(bin string) (string, error) {
+	out, err := exec.Command("go", "env", "GOROOT").Output()
+	if err != nil {
+		return "", fmt.Errorf("go env GOROOT: %w", err)
+	}
+	files, err := programFiles()
+	if err != nil {
+		return "", err
+	}
+	tag := "drydock-sandbox-test/go:2"
+	return tag, importTar(bin, tag, files, map[string]string{"/usr/local/go": strings.TrimSpace(string(out))})
 }
 
 // GoBuild builds a Linux binary of a package (a path relative to the module root's package dir, or an import path).

@@ -1,0 +1,28 @@
+# A feature with time, concurrency and an exact contract.
+id: saasapi-rate-limit
+title: Rate-limit the API per API key
+fixture: testdata/fixtures/saasapi
+class: iteration
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Add per-API-key rate limiting to the HTTP API (internal/api).
+
+  - A key whose account is on the free plan may make 60 requests per rolling 60 seconds; a key whose account is on the pro
+    plan, 600.
+  - A request at time t is allowed when fewer than the limit of that key's requests were allowed in the window (t-60s, t].
+    Rejected requests do not count. Each key has its own limit, even two keys of the same account.
+  - A rejected request gets status 429, the JSON body {"error":"rate_limited"} and a `Retry-After` header: the number of
+    seconds until the oldest counted request leaves the window, rounded up to a whole second and at least 1.
+  - Requests with a missing or unknown key keep getting 401 and are not counted. /healthz is not limited.
+  - Use the server's clock (`api.Options.Now`) so tests can move time without sleeping, and make it safe for concurrent
+    requests.
+
+  Add tests. Keep the existing exported functions and their signatures.
+acceptance:
+  files: evals/testdata/hidden/saasapi-rate-limit
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 300

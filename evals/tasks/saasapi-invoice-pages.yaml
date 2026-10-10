@@ -1,0 +1,26 @@
+# A change to an existing endpoint's contract, with ordering and concurrent-writes edge cases.
+id: saasapi-invoice-pages
+title: Paginate the invoice list
+fixture: testdata/fixtures/saasapi
+class: iteration
+risk: low
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  `GET /api/invoices` returns every invoice at once, which is too slow for big accounts. Add cursor pagination to it.
+
+  - Query parameters `limit` and `cursor`. `limit` defaults to 20 and may be a whole number from 1 to 100; anything else is a
+    400 with {"error":"invalid_limit"}.
+  - The response is `{"items": [...], "next_cursor": "..."}` with the items in creation order (oldest first, ties by id), in
+    the same item format as today. `next_cursor` is a non-empty string only when there are more items, and empty or absent
+    on the last page. Passing it back as `cursor` returns the next page.
+  - The cursor is opaque to clients. A cursor the server cannot read is a 400 with {"error":"invalid_cursor"}.
+  - Paging must not skip or repeat an invoice when new invoices are created between page requests.
+
+  Add tests. Keep the existing exported functions and their signatures.
+acceptance:
+  files: evals/testdata/hidden/saasapi-invoice-pages
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 300

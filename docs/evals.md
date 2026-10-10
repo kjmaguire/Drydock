@@ -234,4 +234,41 @@ Measured with `DRYDOCK_REAL_CLAUDE=1 go test ./internal/core -run TestRealClaude
 |---|---|---|---|---|---|
 | 1 | 2 (one worker turn, one review turn) | $0.0983 | 2,993 / 1,076 / 178,049 / 36,926 | 1 | yes |
 
-What this does and does not say: it is one task of trivial size, so it is not a baseline and supports no claim about savings. The review turn may not have run on haiku: at the time the reviewer ran in Claude Code's `plan` permission mode, and Claude Code answers a plan-mode session started with `--model haiku` with Sonnet (found later and measured with 2.1.296; see `RunSpec.ReadOnly` in `internal/agents/agents.go`). The `model_usage` rows of this run were not re-checked, so the $0.0983 may include a Sonnet review turn. Since 2026-10-09 the reviewer runs read-only in the default mode with every writing tool denied (`internal/core/core.go`, `agentConfig`) and keeps the configured model; the measurement has not been repeated. Most of the cost is Claude Code's own context overhead (the cached and cache-write tokens), which is why a two-turn task costs about ten cents even though the code change is one line. The cheap-tier share is 0/1 because both agents ran a subscription CLI (premium); no cheap-tier model was used, so none of the routing economics (cheap-first, escalation) has been measured yet. Neither agent had a list of models for the router, so its decisions are `static` and the routing-quality section measures configured assignments. The B0/B1 baseline arms are not built. Nothing was measured on Windows.
+What this does and does not say: it is one task of trivial size, so it is not a baseline and supports no claim about savings. The review turn may not have run on haiku: at the time the reviewer ran in Claude Code's `plan` permission mode, and Claude Code answers a plan-mode session started with `--model haiku` with Sonnet (found later and measured with 2.1.296; see `RunSpec.ReadOnly` in `internal/agents/agents.go`). The `model_usage` rows of this run were not re-checked, so the $0.0983 may include a Sonnet review turn. Since 2026-10-09 the reviewer runs read-only in the default mode with every writing tool denied (`internal/core/core.go`, `agentConfig`) and keeps the configured model; the measurement has not been repeated. Most of the cost is Claude Code's own context overhead (the cached and cache-write tokens), which is why a two-turn task costs about ten cents even though the code change is one line. The cheap-tier share is 0/1 because both agents ran a subscription CLI (premium); no cheap-tier model was used, so none of the routing economics (cheap-first, escalation) has been measured yet. Neither agent had a list of models for the router, so its decisions are `static` and the routing-quality section measures configured assignments. The B1 baseline arm is built since 2026-10-10 (section 13); B0 is not. Nothing was measured on Windows.
+
+## 13. Head-to-head trial: Drydock against plain Claude Code (B1)
+
+Built 2026-10-10 on the owner's request ("a head-to-head trial against plain Claude Code"): `internal/trial`, `cmd/drydock-trial`,
+`evals/` (decision P34). It answers one question with measured runs: on the same task, does Drydock's loop get an accepted
+result as often as one plain Claude Code session, and at what cost and time?
+
+**The arms.** *D*: Drydock's plain workflow through the core's own methods (the ones the UI calls), on a fresh core per run: a
+worker and an independent reviewer, both Claude Code with the same model, the project's checks, up to five iterations, and the
+per-task sandbox (P30) for the worker's commands. At the merge approval the hidden acceptance check stands in for the human:
+it passes and the harness approves the merge, it fails and the harness cancels the task (`rejected`). Any other question
+Drydock asks a human ends the run as `failed` (no human answers in a trial). *B1*: one plain `claude -p` session with the
+task as its prompt, `--permission-mode acceptEdits --allowedTools Bash`, on this machine, no reviewer.
+
+**What both get.** The same fixture as one commit on `main`; the same prompt (title and text); the same model; the same CLI
+version; the same dollar ceiling (B1 `--max-budget-usd`, D a project budget) and wall-clock cap; the same trimmed environment
+(Drydock's agent allowlist, outside the session that started the harness, background tasks off); arms interleaved, so neither
+always runs first. Acceptance is the same for both, on a copy of the result: the task's hidden test files laid over it, then
+`go vet ./...` and `go test -count=1 ./...` (the arm's own tests included), offline. Cost is Claude Code's own
+`total_cost_usd` in both arms (API list prices; not what a subscription costs).
+
+**The suite** (`evals/tasks`, fixture `testdata/fixtures/saasapi`, a small multi-tenant billing API in standard-library Go):
+`saasapi-invoice-rules` (a money bug with exact rounding rules), `saasapi-rate-limit` (per-key sliding window, Retry-After,
+concurrency), `saasapi-csv-export` (tenant isolation, RFC 4180, spreadsheet formula injection), `saasapi-invoice-pages`
+(cursor pagination that neither skips nor repeats under concurrent writes). Every hidden check is shown to fail on the
+untouched fixture and pass on a reference solution (`drydock-trial selfcheck`, and `internal/trial`'s tests).
+
+**Limits, stated rather than hidden.** Four tasks, not the twenty this plan asks for before a headline number; one model per
+trial. B1 can read the whole machine (a session whose tool calls name the hidden checks is reported and not counted). D's
+sandbox image here is built offline from this machine's programs: Go and a basic toolset, no `git` (which does not work in a
+task's container anyway, P30), while B1 has the whole host. Linux only.
+
+**Found by the harness before the pilot.** The first smoke run's D worker had no gateway: Claude Code starts the gateway's
+stdio shim as `<executable> mcp-shim`, and the harness binary did not serve it, so the worker could not run a command and
+finished "not verified". The harness was fixed, the run discarded, and the product now stops a turn whose gateway failed to
+connect instead of letting it work blind (P33).
+
