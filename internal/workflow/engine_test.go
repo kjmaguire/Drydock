@@ -388,6 +388,53 @@ func TestDuplicateResume(t *testing.T) {
 	}
 }
 
+// slowPauseBus is the event bus of a busy machine: recording that a run paused takes longer than a moment.
+type slowPauseBus struct {
+	events.Bus
+	delay time.Duration
+}
+
+func (b slowPauseBus) Publish(ctx context.Context, ev events.Event) (uint64, error) {
+	if ev.Type == "workflow.paused" {
+		time.Sleep(b.delay)
+	}
+	return b.Bus.Publish(ctx, ev)
+}
+
+// A human may answer the moment a run parks. Resume waits for the parking driver to finish winding down, however slow the
+// machine, instead of refusing the answer with ErrLeaseHeld (it gave up after about 2 seconds, which a loaded Windows runner
+// can exceed; the delay here is well past that).
+func TestResumeWaitsForADriverStillParking(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	db, err := storage.OpenTemp(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bus := events.NewSQLBus(db, 4096)
+	eng := wf.New(wf.Config{DB: db, Bus: slowPauseBus{Bus: bus, delay: 5 * time.Second}, DataDir: dir, LeaseTTL: leaseTTL})
+	t.Cleanup(func() { eng.Close(); bus.Close(); db.Close() })
+	if err := eng.Register(approvalGraph(dir)); err != nil {
+		t.Fatal(err)
+	}
+	run, err := eng.Start(ctx, "approval", "go", wf.StartOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, eng, run, wf.StatusWaitingHuman) // written before the slow "paused" event: the driver is still winding down
+	pend, err := eng.Pending(ctx, run)
+	if err != nil || len(pend) != 1 {
+		t.Fatalf("pending %+v %v", pend, err)
+	}
+	if err := eng.Resume(ctx, run, wf.Response{RequestID: pend[0].ID, Decision: "approved", By: "human:test"}); err != nil {
+		t.Fatalf("Resume right after the run parked: %v", err)
+	}
+	waitStatus(t, eng, run, wf.StatusCompleted)
+	if got := effects(dir); got["A"] != 1 || got["B"] != 1 {
+		t.Fatalf("effects %v, want A and B once each", got)
+	}
+}
+
 func TestTimeTravelCreatesBranchWithoutAlteringHistory(t *testing.T) {
 	dir := t.TempDir()
 	e := openEnv(t, dir)

@@ -445,8 +445,9 @@ func TestPRFlowAGitHubFailureAsksTheHumanAndRetriesOnlyThatStep(t *testing.T) {
 	if err := e.eng.Resume(context.Background(), id, workflow.Response{RequestID: pend[0].ID, Decision: "answered", By: "human:kyle", Data: json.RawMessage(`{"text":"signed in again"}`)}); err != nil {
 		t.Fatal(err)
 	}
-	// the PR opens, CI passes, and the run waits for the merge approval
-	deadline := time.Now().Add(20 * time.Second)
+	// the PR opens, CI passes, and the run waits for the merge approval (as long as await allows: a loaded Windows runner
+	// took more than 20 seconds)
+	deadline := time.Now().Add(4 * time.Minute)
 	for {
 		p, _ := e.eng.Pending(context.Background(), id)
 		if len(p) == 1 && p[0].Spec.Kind == "review" {

@@ -27,19 +27,13 @@ func (e *Engine) Suspend(ctx context.Context, run RunID, reason string) (bool, e
 		return false, nil
 	}
 	e.mu.Lock()
-	c, active := e.active[run]
+	d, active := e.active[run]
 	e.mu.Unlock()
 	if active {
-		c()
-		deadline := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadline) {
-			e.mu.Lock()
-			_, still := e.active[run]
-			e.mu.Unlock()
-			if !still {
-				break
-			}
-			time.Sleep(5 * time.Millisecond)
+		d.cancel()
+		select {
+		case <-d.done:
+		case <-time.After(10 * time.Second):
 		}
 	}
 	// The driver may have finished the run, or parked it for a human, between the status read and the cancel.

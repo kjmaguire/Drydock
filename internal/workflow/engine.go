@@ -47,7 +47,7 @@ type Engine struct {
 	graphs    map[string]*Graph
 	mw        map[NodeKind][]Middleware
 	observers []ObserverFactory
-	active    map[RunID]context.CancelFunc
+	active    map[RunID]*driver
 	wg        sync.WaitGroup
 	closed    bool
 }
@@ -61,7 +61,7 @@ func New(cfg Config) *Engine {
 		host, _ := os.Hostname()
 		cfg.Owner = fmt.Sprintf("%s:%d:%s", host, os.Getpid(), ids.New("o"))
 	}
-	return &Engine{cfg: cfg, st: &store{db: cfg.DB}, graphs: map[string]*Graph{}, mw: map[NodeKind][]Middleware{}, active: map[RunID]context.CancelFunc{}}
+	return &Engine{cfg: cfg, st: &store{db: cfg.DB}, graphs: map[string]*Graph{}, mw: map[NodeKind][]Middleware{}, active: map[RunID]*driver{}}
 }
 
 // Register makes a graph available by name (needed for Start and Recover).
@@ -92,12 +92,19 @@ func (e *Engine) Observe(f ObserverFactory) {
 // Owner returns this engine's lease owner id.
 func (e *Engine) Owner() string { return e.cfg.Owner }
 
+// driver is a run this engine is driving: cancel stops it; done is closed once its goroutine has ended, after the run's
+// lease was released.
+type driver struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 // Close cancels active runs' drivers and waits for them. Runs stay RUNNING in the database and are resumed by Recover.
 func (e *Engine) Close() {
 	e.mu.Lock()
 	e.closed = true
-	for _, c := range e.active {
-		c()
+	for _, d := range e.active {
+		d.cancel()
 	}
 	e.mu.Unlock()
 	e.wg.Wait()
@@ -159,7 +166,8 @@ func (e *Engine) launch(info RunInfo, g *Graph, from Checkpoint) {
 		return
 	}
 	dctx, cancel := context.WithCancel(context.Background())
-	e.active[info.ID] = cancel
+	d := &driver{cancel: cancel, done: make(chan struct{})}
+	e.active[info.ID] = d
 	e.wg.Add(1)
 	e.mu.Unlock()
 	go func() {
@@ -169,6 +177,7 @@ func (e *Engine) launch(info RunInfo, g *Graph, from Checkpoint) {
 			delete(e.active, info.ID)
 			e.mu.Unlock()
 			cancel()
+			close(d.done)
 		}()
 		e.drive(dctx, info, g, from)
 	}()
@@ -727,21 +736,11 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	if err != nil {
 		return err
 	}
-	// A driver of this very engine may still be winding down after parking the run; give it a moment to release.
-	var ok bool
-	for waited := time.Duration(0); ; waited += 5 * time.Millisecond {
-		e.mu.Lock()
-		_, local := e.active[run]
-		e.mu.Unlock()
-		if !local {
-			break
-		}
-		if waited > 2*time.Second {
-			return ErrLeaseHeld
-		}
-		time.Sleep(5 * time.Millisecond)
+	// A driver of this very engine may still be winding down after parking the run; wait for it to end.
+	if err := e.awaitDriver(ctx, run, info.Status); err != nil {
+		return err
 	}
-	ok, err = e.st.acquireLease(ctx, run, e.cfg.Owner, e.cfg.LeaseTTL)
+	ok, err := e.st.acquireLease(ctx, run, e.cfg.Owner, e.cfg.LeaseTTL)
 	if err != nil {
 		return err
 	}
@@ -835,6 +834,33 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	return nil
 }
 
+// awaitDriver waits until this engine's driver of run, if it has one, has ended. A run parked at a request only has its
+// driver winding down (its last status, event and lease release go through the database, which a busy machine makes slow),
+// so that wait is generous; any other run's driver may be busy for a long time, so that wait is a moment. ErrLeaseHeld when
+// the driver did not end in time.
+func (e *Engine) awaitDriver(ctx context.Context, run RunID, status RunStatus) error {
+	e.mu.Lock()
+	d, local := e.active[run]
+	e.mu.Unlock()
+	if !local {
+		return nil
+	}
+	bound := 2 * time.Second
+	if status == StatusWaitingHuman {
+		bound = 30 * time.Second
+	}
+	t := time.NewTimer(bound)
+	defer t.Stop()
+	select {
+	case <-d.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return ErrLeaseHeld
+	}
+}
+
 // ResumeFrom starts a new run (a lineage branch) from any earlier checkpoint. History is never modified.
 func (e *Engine) ResumeFrom(ctx context.Context, cpID CheckpointID) (RunID, error) {
 	src, err := e.st.getCheckpoint(ctx, cpID)
@@ -916,21 +942,15 @@ func (e *Engine) Cancel(ctx context.Context, run RunID) error {
 		return ErrRunTerminal
 	}
 	e.mu.Lock()
-	c, active := e.active[run]
+	d, active := e.active[run]
 	e.mu.Unlock()
 	if active {
-		c()
-	}
-	// wait briefly for the driver to stop so its lease is released before we mark the run
-	deadline := time.Now().Add(5 * time.Second)
-	for active && time.Now().Before(deadline) {
-		e.mu.Lock()
-		_, still := e.active[run]
-		e.mu.Unlock()
-		if !still {
-			break
+		d.cancel()
+		// wait briefly for the driver to stop so its lease is released before we mark the run
+		select {
+		case <-d.done:
+		case <-time.After(5 * time.Second):
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 	err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='CANCELLED', updated_at=?, version=version+1 WHERE id=?`, storage.Now(), string(run)); err != nil {

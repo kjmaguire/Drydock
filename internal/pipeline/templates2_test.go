@@ -94,7 +94,9 @@ func TestSecurityTemplateScansFixesRescansAndNeedsAHumanMerge(t *testing.T) {
 	if m, _ := os.ReadFile(filepath.Join(e.repo.Root, "config.txt")); !strings.Contains(string(m), fakeToken) {
 		t.Fatal("main must still hold the old file until the human merges")
 	}
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusCompleted)
 	if m, _ := os.ReadFile(filepath.Join(e.repo.Root, "config.txt")); strings.Contains(string(m), "ghp_") || !strings.Contains(string(m), "DEPLOY_TOKEN") {
 		t.Fatalf("merged config.txt:\n%s", m)
@@ -189,7 +191,9 @@ func TestFullStackSaaSRunsDesignE2EScanAndPreviewBeforeTheHumanApproves(t *testi
 	if n := len(e.prompts(aArch)) + len(e.prompts(aQA)) + len(e.prompts(aWork)); n != 0 {
 		t.Fatalf("design, tests and work wait for the spec: %d turns", n)
 	}
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusWaitingHuman)
 	if p := e.pending(id); p.NodeID != "approve" {
 		t.Fatalf("pending %+v", p)
@@ -230,7 +234,9 @@ func TestFullStackSaaSRunsDesignE2EScanAndPreviewBeforeTheHumanApproves(t *testi
 	if !haveURL {
 		t.Fatalf("the human's approval request must carry the preview URL: %+v", sum.Evidence)
 	}
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusCompleted)
 }
 
@@ -239,7 +245,9 @@ func TestSaaSE2EAndPreviewAreSkippedHonestlyWhenOff(t *testing.T) {
 	e := newTpl(t, featureScripts(), tplOpts{})
 	id := e.start(pipeline.WorkflowSaaS, featureRoles())
 	e.await(id, workflow.StatusWaitingHuman)
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusWaitingHuman)
 	ev := e.evidence()
 	if len(ev["e2e"]) != 1 || ev["e2e"][0].Passed != nil || !strings.Contains(ev["e2e"][0].Summary, "skipped") {

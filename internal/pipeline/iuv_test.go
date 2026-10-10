@@ -86,12 +86,27 @@ func (e *env) await(t *testing.T, id workflow.RunID, want workflow.RunStatus) wo
 	defer cancel()
 	info, err := e.eng.Await(ctx, id, func(r workflow.RunInfo) bool { return r.Status == want || r.Status.Terminal() })
 	if err != nil {
-		t.Fatalf("await %s: %v", want, err)
+		t.Fatalf("await %s: %v (the run is %s%s)", want, err, info.Status, describePending(e.eng, id))
 	}
 	if info.Status != want {
 		t.Fatalf("run ended %s (%s), wanted %s", info.Status, info.FailedReason, want)
 	}
 	return info
+}
+
+// describePending names the run's open requests for a failure message, so that a run waiting for a human where a test
+// expected it to go on says what it asks.
+func describePending(eng *workflow.Engine, id workflow.RunID) string {
+	p, err := eng.Pending(context.Background(), id)
+	if err != nil || len(p) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("; it waits for:")
+	for _, r := range p {
+		b.WriteString(" [" + string(r.NodeID) + " " + r.Spec.Kind + ": " + r.Spec.Title + "]")
+	}
+	return b.String()
 }
 
 func (e *env) answer(t *testing.T, id workflow.RunID, decision, by, dataJSON string) error {

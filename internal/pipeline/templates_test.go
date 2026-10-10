@@ -270,7 +270,9 @@ func TestTestsThatPassBeforeTheImplementationAreRejected(t *testing.T) {
 	e := newTpl(t, sc, tplOpts{})
 	id := e.start(pipeline.WorkflowFeature, featureRoles())
 	e.await(id, workflow.StatusWaitingHuman)
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusWaitingHuman)
 	p := e.pending(id)
 	if p.NodeID != "redlimit" {
@@ -307,7 +309,9 @@ func TestTestWritingStepIsScopedToTestsAndTracesTheCriteria(t *testing.T) {
 	e := newTpl(t, sc, tplOpts{})
 	id := e.start(pipeline.WorkflowFeature, featureRoles())
 	e.await(id, workflow.StatusWaitingHuman)
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusWaitingHuman)
 	tp := e.prompts(aQA)
 	if len(tp) != 3 || !strings.Contains(tp[1], "non-test files changed") || !strings.Contains(tp[1], "calc.go") || !strings.Contains(tp[2], "no test refers to AC2") {
@@ -365,7 +369,9 @@ func TestBugTemplateReproducesWithAFailingTestFirst(t *testing.T) {
 	if wp := e.prompts(aWork); len(wp) != 1 || !strings.Contains(wp[0], "TestDoubleOfTwoIsFour") {
 		t.Fatalf("the fixer must be told the failing reproduction: %q", wp)
 	}
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusCompleted)
 	if m, _ := os.ReadFile(filepath.Join(e.repo.Root, "calc.go")); !strings.Contains(string(m), "return a + a }") {
 		t.Fatalf("main:\n%s", m)
@@ -462,7 +468,9 @@ func TestBugTemplatePullRequestVariant(t *testing.T) {
 	if wp := e.prompts(aWork); len(wp) != 2 || !strings.Contains(wp[1], "CI") {
 		t.Fatalf("the CI failure must go back to the worker: %q", wp)
 	}
-	e.respond(id, "approved", "human:kyle", `{}`)
+	if err := e.respond(id, "approved", "human:kyle", `{}`); err != nil {
+		t.Fatal(err)
+	}
 	e.await(id, workflow.StatusCompleted)
 	f.mu.Lock()
 	defer f.mu.Unlock()
