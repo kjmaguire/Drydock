@@ -1,6 +1,7 @@
 # An everyday endpoint where the traps are tenant isolation, CSV escaping and spreadsheet formula injection.
 id: saasapi-csv-export
 title: Export customers as CSV
+suite: pilot
 fixture: testdata/fixtures/saasapi
 class: boilerplate
 risk: high

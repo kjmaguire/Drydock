@@ -13,9 +13,15 @@ func TestRunRefusesAWorkDirectoryInsideTheRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = run(context.Background(), []string{"-arms", "B1", "-tasks", "saasapi-invoice-rules", "-claude", "/bin/echo", "-work", filepath.Join(root, "trial-work")})
-	if err == nil || !strings.Contains(err.Error(), "-work must be outside the repository") {
-		t.Fatalf("a work directory inside the repository: %v", err)
+	for _, work := range []string{filepath.Join(root, "trial-work"), root} {
+		// the check comes before claude is ever started, so no claude is needed here
+		err = run(context.Background(), []string{"-arms", "B1", "-tasks", "saasapi-invoice-rules", "-claude", "no-such-claude", "-work", work})
+		if err == nil || !strings.Contains(err.Error(), "-work must be outside the repository") {
+			t.Fatalf("work directory %s: %v", work, err)
+		}
+	}
+	if insideRepo(root, filepath.Join(filepath.Dir(root), "elsewhere")) {
+		t.Fatal("a sibling of the repository counts as inside it")
 	}
 }
 
@@ -28,7 +34,7 @@ func TestRunRefusesUnknownArmsTasksAndModes(t *testing.T) {
 		{[]string{"-tasks", "no-such-task"}, "no such task: no-such-task"},
 		{[]string{"-d-mode", "vm"}, "-d-mode is sandbox or checks"},
 	} {
-		if err := run(context.Background(), append(c.args, "-claude", "/bin/echo")); err == nil || !strings.Contains(err.Error(), c.want) {
+		if err := run(context.Background(), append(c.args, "-claude", "no-such-claude")); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%v: %v, want %q", c.args, err, c.want)
 		}
 	}

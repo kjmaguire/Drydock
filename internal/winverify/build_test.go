@@ -208,6 +208,45 @@ func TestPrepareOutOnlyReplacesAnEarlierBundle(t *testing.T) {
 	}
 }
 
+// A bundle built inside a module (dist-windows/ in Drydock's repository) holds Go's own source tree; its go.mod keeps the
+// go command from listing that as packages of the module around it.
+func TestTheBundleFolderIsFencedOffFromTheModuleAroundIt(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go command")
+	}
+	mod := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(mod, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go.mod", "module example.com/outer\n\ngo 1.24\n")
+	write("a/a.go", "package a\n")
+	out := filepath.Join(mod, "dist-windows", "verify")
+	if err := prepareOut(out); err != nil {
+		t.Fatal(err)
+	}
+	if err := fenceModule(out); err != nil {
+		t.Fatal(err)
+	}
+	write("dist-windows/verify/go/src/weak/pointer.go", "package weak\n")
+	cmd := exec.Command("go", "list", "./...")
+	cmd.Dir = mod
+	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, b)
+	}
+	if got := strings.TrimSpace(string(b)); got != "example.com/outer/a" {
+		t.Fatalf("go list ./... = %q, want only the outer module's package", got)
+	}
+}
+
 func TestCopyTreeSkipsWhatItIsTold(t *testing.T) {
 	src, dst := t.TempDir(), filepath.Join(t.TempDir(), "copy")
 	os.MkdirAll(filepath.Join(src, "a", "node_modules", "big"), 0o755)

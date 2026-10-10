@@ -77,7 +77,8 @@ func TestRPCRequiresTheTokenAndALoopbackHostAndRejectsForeignOrigins(t *testing.
 	if code, body := rpc(t, ts, "nope", "{}", map[string]string{"X-Drydock-Token": "secret"}); code != 404 || !strings.Contains(body, "unknown method") {
 		t.Fatalf("%d %s", code, body)
 	}
-	if code, body := rpc(t, ts, "project.create", `{"name":"x","repoPath":"/definitely/not/a/repo"}`, map[string]string{"X-Drydock-Token": "secret"}); code != 400 || !strings.Contains(body, "not a usable Git repository") {
+	notRepo, _ := json.Marshal(map[string]string{"name": "x", "repoPath": filepath.Join(t.TempDir(), "definitely-not-a-repo")})
+	if code, body := rpc(t, ts, "project.create", string(notRepo), map[string]string{"X-Drydock-Token": "secret"}); code != 400 || !strings.Contains(body, "not a usable Git repository") {
 		t.Fatalf("%d %s", code, body)
 	}
 }

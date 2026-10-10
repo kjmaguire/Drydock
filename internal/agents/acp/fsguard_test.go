@@ -150,11 +150,26 @@ func TestGuardSymlinkedSessionCwdStillWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer g.Close()
-	// the agent may name the file by the lexical path or by the resolved one
-	for _, p := range []string{filepath.Join(link, "ok.txt"), filepath.Join(work, "ok.txt"), "ok.txt"} {
+	// the agent may name the file by the lexical path, by the resolved one, or through another name of the same folder (on
+	// Windows a short 8.3 name such as RUNNER~1; here a second symlink)
+	other := filepath.Join(filepath.Dir(work), "work-link-2")
+	symlinkOrSkip(t, work, other)
+	for _, p := range []string{filepath.Join(link, "ok.txt"), filepath.Join(work, "ok.txt"), "ok.txt", filepath.Join(other, "ok.txt")} {
 		if _, err := g.Read(p, nil, nil); err != nil {
 			t.Errorf("%q: %v", p, err)
 		}
+	}
+	if err := g.Write(filepath.Join(other, "sub", "new.txt"), "x"); err != nil {
+		t.Errorf("a new file through another name of the folder: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(work, "sub", "new.txt")); err != nil || string(b) != "x" {
+		t.Errorf("the new file: %q %v", b, err)
+	}
+	// another name that leads outside stays outside
+	outside := filepath.Join(filepath.Dir(work), "outside-link")
+	symlinkOrSkip(t, filepath.Dir(work), outside)
+	if _, err := g.Read(filepath.Join(outside, "secret.txt"), nil, nil); !errors.Is(err, acp.ErrOutsideCwd) {
+		t.Errorf("a symlink to the folder above the cwd: %v", err)
 	}
 }
 

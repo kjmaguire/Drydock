@@ -74,8 +74,14 @@ func (g *guard) rel(p string) (string, error) {
 		p = filepath.Join(g.root, p)
 	}
 	p = filepath.Clean(p)
-	for _, base := range []string{g.root, g.real} {
-		if rel, ok := within(base, p); ok {
+	candidates := []struct{ base, path string }{{g.root, p}, {g.real, p}}
+	// the path may name the working folder in another form than the session's: on Windows a short 8.3 name (RUNNER~1 for
+	// runneradmin) or another symlink to it. Its resolved form is compared too; the open still goes through g.r.
+	if r, err := resolveExisting(p); err == nil {
+		candidates = append(candidates, struct{ base, path string }{g.real, r})
+	}
+	for _, c := range candidates {
+		if rel, ok := within(c.base, c.path); ok {
 			if runtime.GOOS == "windows" && strings.Contains(rel, ":") {
 				return "", fmt.Errorf("%w: alternate data streams are not allowed", ErrOutsideCwd)
 			}
@@ -83,6 +89,23 @@ func (g *guard) rel(p string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: %q", ErrOutsideCwd, p)
+}
+
+// resolveExisting resolves the symlinks (and, on Windows, the short 8.3 names) of the longest part of p that exists, and
+// joins the rest back on: a file that does not exist yet still resolves through its folder.
+func resolveExisting(p string) (string, error) {
+	rest := ""
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest), nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return "", errors.New("acp: no part of the path exists")
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }
 
 // readFile reads a text file (at most MaxReadBytes), returning lines [line, line+limit) when line (1-based) or limit is set.

@@ -1,6 +1,7 @@
 # A money bug with exact rules: the kind of fix where a plausible change is easy and a correct one needs care.
 id: saasapi-invoice-rules
 title: Fix invoice totals with a coupon and a credit
+suite: pilot
 fixture: testdata/fixtures/saasapi
 class: test-fix loop
 risk: medium

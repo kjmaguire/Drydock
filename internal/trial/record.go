@@ -34,6 +34,8 @@ type Record struct {
 	Arm       string `json:"arm"`
 	ArmDetail string `json:"armDetail"`
 	TaskID    string `json:"taskId"`
+	// TaskClass is the task's class (docs/evals.md 6.1), for the report's per-class table.
+	TaskClass string `json:"taskClass,omitempty"`
 	Repeat    int    `json:"repeat"`
 	// Model is the model both arms were asked to use; ModelsUsed is what the CLI reported using.
 	Model       string    `json:"model"`

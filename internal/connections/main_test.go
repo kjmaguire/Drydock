@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -84,6 +85,9 @@ func stubEnv(t *testing.T, tbl stubTable) (dir string, invocations func() []stri
 	}
 	for name := range tbl {
 		dst := filepath.Join(dir, name)
+		if runtime.GOOS == "windows" {
+			dst += ".exe" // Windows finds programs on PATH by extension (PATHEXT); the stub strips it from its name
+		}
 		if err := os.Symlink(self, dst); err != nil {
 			if err := copyFile(self, dst); err != nil {
 				t.Fatal(err)

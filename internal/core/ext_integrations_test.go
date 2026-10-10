@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -210,6 +211,9 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 
 func TestIntegrationsWithoutACredentialStoreSayWhyAndAgentsCannotConnect(t *testing.T) {
 	// no Credentials in the config and no Windows Credential Manager on this host: connect fails with a clear message and nothing is stored
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has the Credential Manager, so there is always a credential store")
+	}
 	a := open(t, "")
 	_, err := a.c.Call(context.Background(), "integration.connect", mustJSON(map[string]any{"kind": "linear", "token": itLinearToken}))
 	if err == nil || !strings.Contains(err.Error(), "credential store") {

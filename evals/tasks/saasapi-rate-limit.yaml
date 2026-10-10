@@ -1,6 +1,7 @@
 # A feature with time, concurrency and an exact contract.
 id: saasapi-rate-limit
 title: Rate-limit the API per API key
+suite: pilot
 fixture: testdata/fixtures/saasapi
 class: iteration
 risk: medium

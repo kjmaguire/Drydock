@@ -65,7 +65,11 @@ func TestGitHubListAndCloneIntoAProject(t *testing.T) {
 	if _, err := c.Call(ctx, "github.clone", mustJSON(map[string]any{"repo": "acme/gocalc", "dir": "relative/dir"})); err == nil {
 		t.Fatal("a relative folder must be refused")
 	}
-	parent := filepath.Join(t.TempDir(), "repos")
+	base, err := filepath.EvalSymlinks(t.TempDir()) // the canonical form Drydock reports (no 8.3 short names on Windows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(base, "repos")
 	var cl core.CloneResult
 	a.call("github.clone", map[string]any{"repo": "acme/gocalc", "dir": parent}, &cl)
 	if cl.Path != filepath.Join(parent, "gocalc") || cl.DefaultBranch != "main" {

@@ -21,6 +21,8 @@ import (
 type Task struct {
 	ID    string `yaml:"id" json:"id"`
 	Title string `yaml:"title" json:"title"`
+	// Suite groups tasks that are run and reported together (for example "pilot", "tally"); empty is no suite.
+	Suite string `yaml:"suite" json:"suite,omitempty"`
 	// Fixture is the directory, relative to the repository root, copied into a fresh repository for each run.
 	Fixture       string     `yaml:"fixture" json:"fixture"`
 	Class         string     `yaml:"class" json:"class"`
@@ -101,6 +103,23 @@ func (t *Task) check(root string) error {
 		t.Acceptance.TimeoutSeconds = 300
 	}
 	return errors.Join(errs...)
+}
+
+// InSuite returns the tasks of one suite (all of them when suite is empty), in suite order.
+func InSuite(all []Task, suite string) ([]Task, error) {
+	if suite == "" {
+		return all, nil
+	}
+	var out []Task
+	for _, t := range all {
+		if t.Suite == suite {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no task is in suite %q", suite)
+	}
+	return out, nil
 }
 
 // FindTasks picks the tasks named in ids (all of them when ids is empty), in suite order.

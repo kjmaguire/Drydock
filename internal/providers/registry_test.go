@@ -262,7 +262,9 @@ func TestDialGuardRefusesRebinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := c.Get(p.BaseURL)
+	first, _ := http.NewRequest("GET", p.BaseURL, nil)
+	first.Close = true // no keep-alive: whatever the platform's timing, the next request dials again
+	resp, err := c.Do(first)
 	if err != nil {
 		t.Fatalf("before rebinding: %v", err)
 	}

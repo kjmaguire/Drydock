@@ -125,8 +125,14 @@ func (a *app) waitFor(what string, cond func() bool) {
 	a.t.Fatalf("timed out waiting for %s", what)
 }
 
+// newRepo makes a Git repository of the gocalc fixture and returns its canonical path: the form git reports and Drydock
+// stores (on Windows the temporary folder can be a short 8.3 name such as RUNNER~1, which git and Drydock expand).
 func newRepo(t *testing.T) string {
-	repo := filepath.Join(t.TempDir(), "gocalc")
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(base, "gocalc")
 	os.MkdirAll(repo, 0o755)
 	copyTree(t, filepath.Join("..", "..", "testdata", "fixtures", "gocalc"), repo)
 	if _, err := git.Init(context.Background(), repo, "main"); err != nil {

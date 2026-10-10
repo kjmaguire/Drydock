@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -60,18 +62,63 @@ func task(t *testing.T, id string) Task {
 
 func TestTheSuiteLoadsEveryTaskWithItsHiddenCheck(t *testing.T) {
 	ts := suite(t)
-	var ids []string
+	keep := regexp.MustCompile(`Keep (the )?existing exported`)
 	for _, x := range ts {
-		ids = append(ids, x.ID)
-		if x.Acceptance.TimeoutSeconds <= 0 || len(x.Acceptance.Commands) == 0 || !strings.Contains(x.Prompt, "Keep the existing exported functions") {
-			t.Errorf("%s: %+v", x.ID, x.Acceptance)
+		if x.Acceptance.TimeoutSeconds <= 0 || len(x.Acceptance.Commands) == 0 || !keep.MatchString(x.Prompt) || x.Suite == "" {
+			t.Errorf("%s: suite %q, %+v", x.ID, x.Suite, x.Acceptance)
 		}
 	}
+	pilot, err := InSuite(ts, "pilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, x := range pilot {
+		ids = append(ids, x.ID)
+	}
 	if strings.Join(ids, ",") != "saasapi-csv-export,saasapi-invoice-pages,saasapi-invoice-rules,saasapi-rate-limit" {
-		t.Fatalf("tasks %v", ids)
+		t.Fatalf("pilot tasks %v", ids)
+	}
+	if _, err := InSuite(ts, "nope"); err == nil {
+		t.Fatal("an unknown suite is not an error")
 	}
 	if _, err := FindTasks(ts, []string{"saasapi-rate-limit", "nope"}); err == nil || !strings.Contains(err.Error(), "nope") {
 		t.Fatalf("an unknown task id: %v", err)
+	}
+}
+
+// A reference solution can be a patch; one that does not apply, or that the hidden check rejects, fails the self-check.
+func TestSelfCheckAppliesAPatchSolution(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("fx/go.mod", "module example.com/fx\n\ngo 1.24\n")
+	write("fx/add.go", "package fx\n\nfunc Add(a, b int) int { return a - b }\n")
+	write("hidden/p/add_hidden_test.go", "package fx\n\nimport \"testing\"\n\nfunc TestHiddenAdd(t *testing.T) {\n\tif Add(2, 3) != 5 {\n\t\tt.Fatal(Add(2, 3))\n\t}\n}\n")
+	// the hidden folder mirrors the fixture's layout: its root is the module root
+	if err := os.Rename(filepath.Join(root, "hidden", "p", "add_hidden_test.go"), filepath.Join(root, "hidden", "add_hidden_test.go")); err != nil {
+		t.Fatal(err)
+	}
+	x := Task{ID: "fx-add", Fixture: "fx", Acceptance: Acceptance{Files: "hidden", Commands: []string{"go test -count=1 ./..."}, TimeoutSeconds: 120}}
+	write(SolutionsDir+"/fx-add.patch", "--- a/add.go\n+++ b/add.go\n@@ -1,3 +1,3 @@\n package fx\n \n-func Add(a, b int) int { return a - b }\n+func Add(a, b int) int { return a + b }\n")
+	if err := SelfCheck(context.Background(), root, x); err != nil {
+		t.Fatalf("a good patch: %v", err)
+	}
+	write(SolutionsDir+"/fx-add.patch", "--- a/add.go\n+++ b/add.go\n@@ -1,3 +1,3 @@\n package fx\n \n-func Add(a, b int) int { return a - b }\n+func Add(a, b int) int { return a * b }\n")
+	if err := SelfCheck(context.Background(), root, x); err == nil || !strings.Contains(err.Error(), "fails on the reference solution") {
+		t.Fatalf("a wrong patch: %v", err)
+	}
+	write(SolutionsDir+"/fx-add.patch", "--- a/nothere.go\n+++ b/nothere.go\n@@ -1 +1 @@\n-x\n+y\n")
+	if err := SelfCheck(context.Background(), root, x); err == nil || !strings.Contains(err.Error(), "does not apply") {
+		t.Fatalf("a patch that does not apply: %v", err)
 	}
 }
 
@@ -90,11 +137,12 @@ func TestATaskFileWithAMisspelledFieldIsRefused(t *testing.T) {
 // The hidden checks prove something only if they fail on the untouched fixture and pass on a correct solution.
 func TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds and tests the fixture eight times")
+		t.Skip("builds and tests every task's fixture twice")
 	}
 	root := repoRoot(t)
 	for _, x := range suite(t) {
 		t.Run(x.ID, func(t *testing.T) {
+			t.Parallel()
 			if err := SelfCheck(context.Background(), root, x); err != nil {
 				t.Fatal(err)
 			}
@@ -413,8 +461,69 @@ func TestTheReportShowsEveryRunWithMediansAndRangesOnly(t *testing.T) {
 	if regexp.MustCompile(`(?i)\b(mean|average|significant)\b`).MatchString(md) {
 		t.Errorf("the report must not print a mean or a significance claim:\n%s", md)
 	}
+	if !strings.Contains(md, "This is a pilot") || !strings.Contains(md, "| a | unknown | 1 of 2 | 1 of 1 |") {
+		t.Errorf("the task-by-task comparison is missing or wrong:\n%s", md)
+	}
 	none := Report([]Record{{Trial: "p", Arm: ArmB1, TaskID: "a", Outcome: Failed, Reason: "the wall-clock cap of 30m0s ended it"}})
 	if !strings.Contains(none, "n/a (n=0)") {
 		t.Errorf("no accepted task must read n/a (n=0):\n%s", none)
+	}
+}
+
+func TestPairComparesTheArmsTaskByTask(t *testing.T) {
+	var recs []Record
+	add := func(task, class, arm string, accepted ...bool) {
+		for i, ok := range accepted {
+			out := Rejected
+			if ok {
+				out = Accepted
+			}
+			recs = append(recs, Record{Trial: "t", Arm: arm, TaskID: task, TaskClass: class, Repeat: i + 1, Outcome: out, CostUSD: float64(i + 1), WallMs: 1000})
+		}
+	}
+	// 20 tasks, 3 runs each: D better on 8, B1 better on 1, the same on 11
+	for i := 0; i < 20; i++ {
+		task := fmt.Sprintf("t%02d", i)
+		switch {
+		case i < 8:
+			add(task, "security review", ArmDrydock, true, true, true)
+			add(task, "security review", ArmB1, true, false, false)
+		case i == 8:
+			add(task, "iteration", ArmDrydock, false, false, false)
+			add(task, "iteration", ArmB1, true, false, false)
+		default:
+			add(task, "iteration", ArmDrydock, true, true, false)
+			add(task, "iteration", ArmB1, false, true, true)
+		}
+	}
+	p := Pair(recs)
+	if len(p.Rows) != 20 || p.DMore != 8 || p.B1More != 1 || p.Same != 11 || p.MinRepeats != 3 || !p.Claim {
+		t.Fatalf("pair = %+v", p)
+	}
+	// exact sign test, 8 against 1: 2 * (C(9,0) + C(9,1)) / 2^9 = 20/512
+	if math.Abs(p.P-20.0/512) > 1e-12 {
+		t.Fatalf("p = %v", p.P)
+	}
+	if p.Rows[0].DMedianCost != 2 || p.Rows[0].Class != "security review" {
+		t.Fatalf("row = %+v", p.Rows[0])
+	}
+	md := Report(recs)
+	for _, want := range []string{"p = 0.039", "| security review | 24 of 24 | 8 of 24 |", "on 8 task(s), less often on 1 and as often on 11"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("the report lacks %q", want)
+		}
+	}
+	// a run that read the hidden checks does not count, which leaves a task with 2 runs of B1: no longer a claim
+	recs[3].SawHiddenFiles = true
+	if p := Pair(recs); p.Claim || p.MinRepeats != 2 || p.P != -1 {
+		t.Fatalf("with one run not counted: %+v", p)
+	}
+	for _, c := range []struct {
+		a, b int
+		p    float64
+	}{{0, 0, 1}, {1, 1, 1}, {5, 0, 2.0 / 32}, {0, 10, 2.0 / 1024}, {3, 2, 1}} {
+		if got := signTest(c.a, c.b); math.Abs(got-c.p) > 1e-12 {
+			t.Errorf("signTest(%d, %d) = %v, want %v", c.a, c.b, got, c.p)
+		}
 	}
 }

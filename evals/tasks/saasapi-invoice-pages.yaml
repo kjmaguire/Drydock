@@ -1,6 +1,7 @@
 # A change to an existing endpoint's contract, with ordering and concurrent-writes edge cases.
 id: saasapi-invoice-pages
 title: Paginate the invoice list
+suite: pilot
 fixture: testdata/fixtures/saasapi
 class: iteration
 risk: low

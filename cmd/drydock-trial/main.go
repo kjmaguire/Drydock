@@ -82,7 +82,8 @@ func repoRoot() (string, error) {
 
 func run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	taskList := fs.String("tasks", "", "comma-separated task ids (default: every task in evals/tasks)")
+	taskList := fs.String("tasks", "", "comma-separated task ids (default: every task of -suite)")
+	suiteName := fs.String("suite", "", "only the tasks of this suite (default: every task in evals/tasks)")
 	armList := fs.String("arms", "D,B1", "arms to run: D (Drydock), B1 (plain Claude Code)")
 	k := fs.Int("k", 1, "repeats of each (task, arm)")
 	model := fs.String("model", "haiku", "the model both arms use (a Claude Code --model value)")
@@ -97,21 +98,15 @@ func run(ctx context.Context, args []string) error {
 	bin := fs.String("claude", "claude", "the claude command")
 	total := fs.Float64("total-usd", 10, "stop starting runs once what this invocation spent plus one more ceiling would pass this")
 	firstRep := fs.Int("first-repeat", 1, "number of the first repeat (to add repeats to a trial in a later batch)")
+	startBefore := fs.Duration("start-before", 0, "start no run once this long has passed since the command started (0: no limit)")
 	_ = fs.Parse(args)
+	began := time.Now()
 
 	root, err := repoRoot()
 	if err != nil {
 		return err
 	}
-	all, err := trial.LoadSuite(root, filepath.Join(root, "evals", "tasks"))
-	if err != nil {
-		return err
-	}
-	var ids []string
-	if *taskList != "" {
-		ids = strings.Split(*taskList, ",")
-	}
-	tasks, err := trial.FindTasks(all, ids)
+	tasks, err := pickTasks(root, *suiteName, *taskList)
 	if err != nil {
 		return err
 	}
@@ -126,6 +121,9 @@ func run(ctx context.Context, args []string) error {
 	}
 	if *mode != trial.ModeSandbox && *mode != trial.ModeChecks {
 		return fmt.Errorf("-d-mode is sandbox or checks, not %q", *mode)
+	}
+	if *work != "" && insideRepo(root, *work) {
+		return errors.New("-work must be outside the repository: plain Claude Code would see the hidden checks next to its task")
 	}
 	cli, err := trial.CLIVersion(ctx, *bin)
 	if err != nil {
@@ -147,7 +145,7 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	if strings.HasPrefix(*work, root+string(os.PathSeparator)) {
+	if insideRepo(root, *work) {
 		return errors.New("-work must be outside the repository: plain Claude Code would see the hidden checks next to its task")
 	}
 	outDir := filepath.Join(root, *out)
@@ -165,6 +163,11 @@ func run(ctx context.Context, args []string) error {
 				}
 				if spent+*ceiling > *total {
 					fmt.Printf("stopping: $%.4f spent, and one more run could pass -total-usd $%.2f\n", spent, *total)
+					return finish(outDir, *name)
+				}
+				if *startBefore > 0 && time.Since(began) > *startBefore {
+					fmt.Printf("stopping: %s have passed, past -start-before %s; %s %s #%d and the runs after it did not start\n",
+						time.Since(began).Round(time.Second), *startBefore, t.ID, arm, rep)
 					return finish(outDir, *name)
 				}
 				dir := filepath.Join(*work, fmt.Sprintf("%s-%s-%d", t.ID, arm, rep))
@@ -263,7 +266,7 @@ func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model stri
 			extra["evidence.json"] = art.Evidence
 		}
 	}
-	rec.StartCommit, rec.StartedAt = startCommit, started
+	rec.StartCommit, rec.StartedAt, rec.TaskClass = startCommit, started, t.Class
 	return rec, extra
 }
 
@@ -292,21 +295,14 @@ func report(args []string) error {
 
 func selfcheck(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("selfcheck", flag.ExitOnError)
-	taskList := fs.String("tasks", "", "comma-separated task ids (default: all)")
+	taskList := fs.String("tasks", "", "comma-separated task ids (default: every task of -suite)")
+	suiteName := fs.String("suite", "", "only the tasks of this suite (default: all)")
 	_ = fs.Parse(args)
 	root, err := repoRoot()
 	if err != nil {
 		return err
 	}
-	all, err := trial.LoadSuite(root, filepath.Join(root, "evals", "tasks"))
-	if err != nil {
-		return err
-	}
-	var ids []string
-	if *taskList != "" {
-		ids = strings.Split(*taskList, ",")
-	}
-	tasks, err := trial.FindTasks(all, ids)
+	tasks, err := pickTasks(root, *suiteName, *taskList)
 	if err != nil {
 		return err
 	}
@@ -320,6 +316,32 @@ func selfcheck(ctx context.Context, args []string) error {
 		fmt.Println("ok  ", t.ID, "(the hidden check fails on the fixture and passes on the reference solution)")
 	}
 	return errors.Join(errs...)
+}
+
+// insideRepo reports whether dir is the repository or inside it.
+func insideRepo(root, dir string) bool {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(root, abs)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel)
+}
+
+// pickTasks loads the suite and returns the tasks of suite (all when empty), only those named in list when it is set.
+func pickTasks(root, suite, list string) ([]trial.Task, error) {
+	all, err := trial.LoadSuite(root, filepath.Join(root, "evals", "tasks"))
+	if err != nil {
+		return nil, err
+	}
+	if all, err = trial.InSuite(all, suite); err != nil {
+		return nil, err
+	}
+	var ids []string
+	if list != "" {
+		ids = strings.Split(list, ",")
+	}
+	return trial.FindTasks(all, ids)
 }
 
 func gitOut(dir string, args ...string) string {

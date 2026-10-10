@@ -61,6 +61,9 @@ func Build(ctx context.Context, o BuildOptions) (*Manifest, error) {
 	if err := prepareOut(out); err != nil {
 		return nil, err
 	}
+	if err := fenceModule(out); err != nil {
+		return nil, err
+	}
 	env := buildEnv(o.GOOS, o.GOARCH)
 
 	fmt.Fprintf(o.Log, "listing packages for %s/%s\n", o.GOOS, o.GOARCH)
@@ -174,6 +177,13 @@ func goOutput(ctx context.Context, dir string, env []string, args ...string) (st
 		return stdout.String(), fmt.Errorf("%w\n%s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// fenceModule writes a go.mod into the bundle folder. The folder usually sits inside Drydock's own module (dist-windows/)
+// and can hold Go's source tree (go/src): without a module of its own, `go vet ./...` and `go test ./...` in the repository
+// would take the copied standard library for packages of the module, and with -mod=mod add its imports to go.mod.
+func fenceModule(out string) error {
+	return os.WriteFile(filepath.Join(out, "go.mod"), []byte("// Written by drydock-winbundle: it keeps this bundle out of any Go module around it.\nmodule drydock.invalid/verify-bundle\n"), 0o644)
 }
 
 // prepareOut makes sure the output folder is empty. It refuses to empty a folder that is not an earlier bundle, so a
