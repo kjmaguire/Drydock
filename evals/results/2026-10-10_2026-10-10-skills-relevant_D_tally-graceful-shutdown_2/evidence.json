@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `internal/jobs` gets `Shutdown(ctx)`, `ErrStopped`, `Pending()`, and panic recovery; `Stop()` delegates to `Shutdown` with a 30s timeout. `Enqueue` no longer panics after stop.\n- `cmd/tally` calls `Shutdown` on SIGTERM before the snapshot save, and logs any pending jobs.\n- Tests in `internal/jobs/jobs_test.go` cover: `ErrStopped` after shutdown, unstarted jobs never running, the timeout path (cancel, `ctx.Err()`, `Pending` order), panic recovery, and second `Shutdown`/`Stop` returning at once. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791670498774
+  },
+  {
+    "id": 2,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 840ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/build_1a57abf85c0f.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 835,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670499648
+  },
+  {
+    "id": 3,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 670ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/test_218370fe3897.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 669,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670500320
+  },
+  {
+    "id": 4,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 580ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/lint_cc569c65379f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 581,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670500903
+  },
+  {
+    "id": 5,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/secrets_888332b37211.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670500925
+  },
+  {
+    "id": 6,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +405 -15",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 405,
+      "Deletions": 15,
+      "base": "a9028f83cf261c487d5339492154f890bab53409",
+      "commit": "497cefb43f9e753af4b8ff535ef45767a15aef25"
+    },
+    "created": 1791670501081
+  },
+  {
+    "id": 7,
+    "taskId": "task_c75ccf218c23",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 497cefb43f",
+    "ref": "497cefb43f9e753af4b8ff535ef45767a15aef25",
+    "data": {},
+    "created": 1791670501082
+  }
+]

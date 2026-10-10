@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- API tokens are generated as `tly_` plus 40 random `[A-Za-z0-9]` characters, and only the SHA-256 hex hash and last four characters are stored. The full token is returned once, by create and invite-accept, and nowhere else.\n- Auth hashes the presented token, and old plain-text snapshot tokens still load and authenticate. The next snapshot written contains no plain-text token. Revoked keys and removed members still get 401.\n- `last_used_at` is updated at most once per minute per key. New tests cover generation, hashing, listing without secrets, legacy migration, and the throttle. `go build`, `\n...[truncated]",
+    "data": {},
+    "created": 1791670402536
+  },
+  {
+    "id": 2,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 790ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-api-key-hashing-D-2/data/runs/run_ecf8e1374cd0/checks/build_daddde6347c8.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 789,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670403385
+  },
+  {
+    "id": 3,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 690ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-api-key-hashing-D-2/data/runs/run_ecf8e1374cd0/checks/test_fecb3430d9f0.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 686,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670404074
+  },
+  {
+    "id": 4,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 650ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-api-key-hashing-D-2/data/runs/run_ecf8e1374cd0/checks/lint_33b1fe10d7aa.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 650,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670404727
+  },
+  {
+    "id": 5,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-api-key-hashing-D-2/data/runs/run_ecf8e1374cd0/checks/secrets_f8e23c312f17.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670404751
+  },
+  {
+    "id": 6,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +248 -15",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-api-key-hashing-D-2/data/runs/run_ecf8e1374cd0/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 248,
+      "Deletions": 15,
+      "base": "a53b28c02ebb5570fd6001982fc3d707fc671dc7",
+      "commit": "5d52224852c6493dc696f1af0cbd16c06a68b592"
+    },
+    "created": 1791670404901
+  },
+  {
+    "id": 7,
+    "taskId": "task_2556a1328fc5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5d52224852",
+    "ref": "5d52224852c6493dc696f1af0cbd16c06a68b592",
+    "data": {},
+    "created": 1791670404902
+  }
+]

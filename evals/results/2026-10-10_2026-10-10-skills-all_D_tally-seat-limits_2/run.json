@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-seat-limits",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "a60b9be66a68d117a1b27e36b4f121701c50cd93",
+  "startedAt": "2026-10-10T22:24:08.671389558Z",
+  "wallMs": 139705,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1271,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2225,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.435s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.006s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.006s\nok  \texample.com/tally/internal/payments\t0.002s\nok  \texample.com/tally/internal/reports\t0.008s\nok  \texample.com/tally/internal/snapshot\t0.021s\nok  \texample.com/tally/internal/store\t0.006s\nok  \texample.com/tally/internal/subscriptions\t0.012s\nok  \texample.com/tally/internal/webhooks\t0.010s\n"
+      }
+    ],
+    "durationMs": 3509
+  },
+  "costUsd": 0.05885611,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 46,
+    "output": 27382,
+    "cacheRead": 1641351,
+    "cacheWrite": 143735
+  },
+  "sessions": 2,
+  "reviews": [
+    {
+      "verdict": "SHIP",
+      "by": "agt_93b07791e281"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_ef90ba6a760c"
+}

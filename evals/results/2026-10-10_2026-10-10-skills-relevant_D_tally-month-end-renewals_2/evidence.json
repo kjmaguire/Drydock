@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `billing.PeriodStart` and `billing.PeriodIndex` compute periods from the anchor (StartedAt, or TrialEnd for a trial), clamping to the month's last day and keeping the time of day. `AddInterval` keeps its signature and uses the same rule.\n- `RenewDue` renews each missed period in order, with one invoice per period and each period starting where the previous one ended. The job's run time no longer affects the periods.\n- New tests in `internal/billing` and `internal/subscriptions` cover month-end anchors (Jan 31, Feb 28, leap-year Feb 29, yearly), trial anchors, and a late job that catches up s\n...[truncated]",
+    "data": {},
+    "created": 1791670674605
+  },
+  {
+    "id": 2,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 560ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-2/data/runs/run_13cf29e0eb80/checks/build_93d516fbcb66.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 560,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670675205
+  },
+  {
+    "id": 3,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 620ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-2/data/runs/run_13cf29e0eb80/checks/test_57f1d05decd4.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 624,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670675833
+  },
+  {
+    "id": 4,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 850ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-2/data/runs/run_13cf29e0eb80/checks/lint_f888ba45cc01.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 849,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670676684
+  },
+  {
+    "id": 5,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 40ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-2/data/runs/run_13cf29e0eb80/checks/secrets_076594c4e44e.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 35,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670676723
+  },
+  {
+    "id": 6,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +248 -39",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-2/data/runs/run_13cf29e0eb80/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 248,
+      "Deletions": 39,
+      "base": "63c88695f8d607f0ce5d86b4fe14422a0b5d3a1b",
+      "commit": "7849b7038f478459a47697ca21056c2838c6d366"
+    },
+    "created": 1791670676934
+  },
+  {
+    "id": 7,
+    "taskId": "task_c3ee5e53eecf",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 7849b7038f",
+    "ref": "7849b7038f478459a47697ca21056c2838c6d366",
+    "data": {},
+    "created": 1791670676935
+  }
+]

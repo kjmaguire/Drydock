@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seat rules in the store, under its existing lock: invites, viewer-to-paid role changes and plan downgrades are refused with `402 seat_limit_reached` or `409 over_seat_limit` as specified, and accepting an invite never fails for lack of a seat.\n- `GET /v1/org` and the `PATCH /v1/org` response include `\"seats\": {\"used\", \"limit\"}`, with `limit` null for unlimited plans.\n- Tests cover each rule plus a concurrency test where one seat left and several simultaneous invites produce exactly one success. `go build ./...`, `go vet ./...` and `go test ./...` all pass.",
+    "data": {},
+    "created": 1791670860220
+  },
+  {
+    "id": 2,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 580ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-2/data/runs/run_17f65cf0ec63/checks/build_c78d2587dc52.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 579,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670860838
+  },
+  {
+    "id": 3,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 590ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-2/data/runs/run_17f65cf0ec63/checks/test_e889977ffd21.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 587,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670861428
+  },
+  {
+    "id": 4,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 400ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-2/data/runs/run_17f65cf0ec63/checks/lint_8699155aa4ef.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 396,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670861828
+  },
+  {
+    "id": 5,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-2/data/runs/run_17f65cf0ec63/checks/secrets_d751f0bf9409.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670861847
+  },
+  {
+    "id": 6,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +438 -5",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-2/data/runs/run_17f65cf0ec63/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 438,
+      "Deletions": 5,
+      "base": "25f649e057ebbf9bf2c2d2de9d9bb52c22d7e1ba",
+      "commit": "27a3412f9adc7eeb9749eb570f1538598c62afd7"
+    },
+    "created": 1791670861972
+  },
+  {
+    "id": 7,
+    "taskId": "task_013f70a37f38",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 27a3412f9a",
+    "ref": "27a3412f9adc7eeb9749eb570f1538598c62afd7",
+    "data": {},
+    "created": 1791670861972
+  }
+]

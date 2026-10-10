@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/invoices/{id}/pay` honours `Idempotency-Key` as specified: validation, per-organization keys, replay with `Idempotent-Replayed: true`, 422 on reuse with another invoice or body, 409 `request_in_progress`, 5xx responses not kept, 24-hour expiry on the server clock.\n- Pay is single-flight per invoice with or without a key: a concurrent pay gets 409 `payment_in_progress` and the gateway is charged once.\n- Checked with new tests in `internal/api` and `internal/payments`, run through `go build ./...`, `go test ./...` and `go vet ./...`.",
+    "data": {},
+    "created": 1791670893058
+  },
+  {
+    "id": 2,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 760ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-idempotent-payments-D-2/data/runs/run_54f0fd529ed4/checks/build_c05df0e35ac3.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 763,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670893866
+  },
+  {
+    "id": 3,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 680ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-idempotent-payments-D-2/data/runs/run_54f0fd529ed4/checks/test_1f5dddcca1be.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 679,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670894557
+  },
+  {
+    "id": 4,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 870ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-idempotent-payments-D-2/data/runs/run_54f0fd529ed4/checks/lint_4619c774a686.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 865,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670895423
+  },
+  {
+    "id": 5,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-idempotent-payments-D-2/data/runs/run_54f0fd529ed4/checks/secrets_adfce3e96cab.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 45,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670895478
+  },
+  {
+    "id": 6,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +454 -1",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-idempotent-payments-D-2/data/runs/run_54f0fd529ed4/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 454,
+      "Deletions": 1,
+      "base": "6dd8fbf03adcc047b3002174fe5cb03f17305892",
+      "commit": "ad71f7322be211d9ba2b6069c363cde94b40a78a"
+    },
+    "created": 1791670895675
+  },
+  {
+    "id": 7,
+    "taskId": "task_204b94100a3d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit ad71f7322b",
+    "ref": "ad71f7322be211d9ba2b6069c363cde94b40a78a",
+    "data": {},
+    "created": 1791670895675
+  }
+]

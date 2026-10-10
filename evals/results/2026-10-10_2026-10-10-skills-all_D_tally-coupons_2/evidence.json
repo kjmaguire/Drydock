@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Coupons work end to end: `POST` and `GET /v1/coupons`, `GET /v1/coupons/{code}`, and `POST /v1/subscriptions/{id}/coupon`, with the status and error codes from the spec. Subscriptions and invoices show their coupon, and invoices are discounted by the duration rules, with tax computed after the discount.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, with new tests in the store, billing, subscriptions and api packages covering validation, code uniqueness, each redemption refusal, and discounting by duration.\n- Existing exported names, signatures and API fields are unchanged. Cha\n...[truncated]",
+    "data": {},
+    "created": 1791670480000
+  },
+  {
+    "id": 2,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 580ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/build_3427ddad6529.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 584,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670480628
+  },
+  {
+    "id": 3,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 460ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/test_e8eddaf76c46.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 457,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670481088
+  },
+  {
+    "id": 4,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 490ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/lint_750dcdbf41c1.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 489,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670481579
+  },
+  {
+    "id": 5,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/secrets_1edf09aebc32.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 28,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670481610
+  },
+  {
+    "id": 6,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "14 file(s), +743 -8",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/evidence/task.diff",
+    "data": {
+      "Files": 14,
+      "Insertions": 743,
+      "Deletions": 8,
+      "base": "bf18d66c3fd84c50fdee9085e05d181b781b2579",
+      "commit": "ce8a0898ad66513ecff263a3b02dc9650d11594e"
+    },
+    "created": 1791670481792
+  },
+  {
+    "id": 7,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit ce8a0898ad",
+    "ref": "ce8a0898ad66513ecff263a3b02dc9650d11594e",
+    "data": {},
+    "created": 1791670481793
+  },
+  {
+    "id": 8,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- The reviewer's blocking item is resolved and `go build ./...`, `go test ./...` and `go vet ./...` pass. Coupon endpoints, validation and the redemption refusals were not re-checked in this pass; the reviewer confirmed them.",
+    "data": {},
+    "created": 1791670571817
+  },
+  {
+    "id": 9,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 670ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/build_fcb81e794168.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 665,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670572522
+  },
+  {
+    "id": 10,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 610ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/test_f0aa00c045ee.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 614,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670573139
+  },
+  {
+    "id": 11,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 840ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/lint_bc181da8d681.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 844,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670573987
+  },
+  {
+    "id": 12,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/secrets_37d9cc8e63b0.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 51,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670574046
+  },
+  {
+    "id": 13,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "14 file(s), +782 -8",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/evidence/task.diff",
+    "data": {
+      "Files": 14,
+      "Insertions": 782,
+      "Deletions": 8,
+      "base": "bf18d66c3fd84c50fdee9085e05d181b781b2579",
+      "commit": "50712f6a7c4202c666d7f7c21057823d2e30b948"
+    },
+    "created": 1791670574263
+  },
+  {
+    "id": 14,
+    "taskId": "task_33156e13219e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 50712f6a7c",
+    "ref": "50712f6a7c4202c666d7f7c21057823d2e30b948",
+    "data": {},
+    "created": 1791670574264
+  }
+]

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-renewal-dedupe",
+  "taskClass": "test-fix loop",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "24e7f82ffb291e903b8b3ff846fa00491f5a95c2",
+  "startedAt": "2026-10-10T22:18:08.39991995Z",
+  "wallMs": 320866,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1676,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 4630,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.071s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.068s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.045s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.013s\nok  \texample.com/tally/internal/payments\t0.008s\nok  \texample.com/tally/internal/reports\t0.012s\nok  \texample.com/tally/internal/snapshot\t0.089s\nok  \texample.com/tally/internal/store\t0.012s\nok  \texample.com/tally/internal/subscriptions\t0.047s\nok  \texample.com/tally/internal/webhooks\t0.013s\n"
+      }
+    ],
+    "durationMs": 6311
+  },
+  "costUsd": 0.07572885000000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 64,
+    "output": 67631,
+    "cacheRead": 1130035,
+    "cacheWrite": 153033
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_607a3c0e80fe",
+      "feedback": "internal/subscriptions/subscriptions.go:208-212 claims the period (moves CurrentPeriodStart/End) before invoicePeriod creates the invoice. If invoicePeriod then fails for a non-gateway reason (CreateInvoice returns ErrNotFound or an invalid-currency error, or the process crashes in between), renew returns at lines 222-223 with the period already advanced and no invoice, so that period is never billed. Before this change the period stayed due and was retried. Fix: create the invoice first and rely on the store's (subscription, period start) check in CreateInvoice (store/billing.go:262-270) to refuse duplicates; treat store.ErrConflict as already handled and skip the charge; advance the period only once the invoice exists or the conflict is seen. Or roll the period back on non-gateway errors. Add a test where CreateInvoice fails for a non-gateway reason and the next RenewDue still invoices the period."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_607a3c0e80fe"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_a1b8029dcd73"
+}

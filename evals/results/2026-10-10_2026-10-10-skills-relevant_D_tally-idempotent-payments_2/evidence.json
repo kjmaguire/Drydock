@@ -1,0 +1,115 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_c2f88182b584",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 510ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-idempotent-payments-D-2/data/runs/run_3647e5b21c29/checks/build_d980eddf56a9.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 509,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670884625
+  },
+  {
+    "id": 2,
+    "taskId": "task_c2f88182b584",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 490ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-idempotent-payments-D-2/data/runs/run_3647e5b21c29/checks/test_3e1577874c53.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 487,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670885124
+  },
+  {
+    "id": 3,
+    "taskId": "task_c2f88182b584",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 380ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-idempotent-payments-D-2/data/runs/run_3647e5b21c29/checks/lint_ee9c746925ea.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 379,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670885506
+  },
+  {
+    "id": 4,
+    "taskId": "task_c2f88182b584",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-idempotent-payments-D-2/data/runs/run_3647e5b21c29/checks/secrets_1795b17eddc9.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 28,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670885536
+  },
+  {
+    "id": 5,
+    "taskId": "task_c2f88182b584",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "9 file(s), +542 -2",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-idempotent-payments-D-2/data/runs/run_3647e5b21c29/evidence/task.diff",
+    "data": {
+      "Files": 9,
+      "Insertions": 542,
+      "Deletions": 2,
+      "base": "21c11ea41cefd580f18e96c925397d58ed9828ad",
+      "commit": "b1468c24591fc3519d4231ff5fd2c4249502c4c4"
+    },
+    "created": 1791670885662
+  },
+  {
+    "id": 6,
+    "taskId": "task_c2f88182b584",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit b1468c2459",
+    "ref": "b1468c24591fc3519d4231ff5fd2c4249502c4c4",
+    "data": {},
+    "created": 1791670885662
+  }
+]

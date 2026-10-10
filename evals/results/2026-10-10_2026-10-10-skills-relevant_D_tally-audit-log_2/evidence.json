@@ -1,0 +1,237 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 3.1s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/build_5f7e8dd4dced.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 3100,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670117507
+  },
+  {
+    "id": 2,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 6.75s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/test_745687f1f984.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 6745,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670124256
+  },
+  {
+    "id": 3,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 2.36s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/lint_da83ddc14b66.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 2355,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670126615
+  },
+  {
+    "id": 4,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 70ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/secrets_cf2bc7b170f0.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 68,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670126704
+  },
+  {
+    "id": 5,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +197 -1",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 197,
+      "Deletions": 1,
+      "base": "b779512d64c74388bf6d29c4adcbd4c91a6c47d1",
+      "commit": "a3a3f56bbdf54067561ce628bdf2e232dde208b7"
+    },
+    "created": 1791670126994
+  },
+  {
+    "id": 6,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit a3a3f56bbd",
+    "ref": "a3a3f56bbdf54067561ce628bdf2e232dde208b7",
+    "data": {},
+    "created": 1791670126995
+  },
+  {
+    "id": 7,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Each of the 22 listed actions is recorded by its handler after the change succeeds, with the right action, target and ID. Updates carry `changes`; cancel and pay get their specific actions. No other request writes an entry.\n- A new `internal/api/audit_test.go` covers the 2xx-only rule, the cancel and pay mapping, the changes diff, secret exclusion, the `GET /v1/audit-events` filters and paging, and 403 for member, billing and viewer roles.\n- `go build ./...`, `go vet ./...` and `go test ./...` pass.",
+    "data": {},
+    "created": 1791670321771
+  },
+  {
+    "id": 8,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 580ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/build_cf1b2793ae8a.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 583,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670322402
+  },
+  {
+    "id": 9,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 440ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/test_fc7c7dc9ba31.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 442,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670322847
+  },
+  {
+    "id": 10,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 510ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/lint_ab045282b93c.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 507,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670323358
+  },
+  {
+    "id": 11,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/checks/secrets_48c6c9774b8a.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 32,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670323393
+  },
+  {
+    "id": 12,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "13 file(s), +543 -3",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-audit-log-D-2/data/runs/run_baebfc0d00bc/evidence/task.diff",
+    "data": {
+      "Files": 13,
+      "Insertions": 543,
+      "Deletions": 3,
+      "base": "b779512d64c74388bf6d29c4adcbd4c91a6c47d1",
+      "commit": "5b112b4175577498ef7eb92a23b69021f8c68003"
+    },
+    "created": 1791670323537
+  },
+  {
+    "id": 13,
+    "taskId": "task_7a704807a1f3",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5b112b4175",
+    "ref": "5b112b4175577498ef7eb92a23b69021f8c68003",
+    "data": {},
+    "created": 1791670323538
+  }
+]

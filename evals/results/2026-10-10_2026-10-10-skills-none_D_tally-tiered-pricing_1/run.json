@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-tiered-pricing",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "4ab43871fb18a5d0a131770da7a70a7df855e362",
+  "startedAt": "2026-10-10T22:11:27.98212284Z",
+  "wallMs": 235358,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1287,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1841,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.016s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.005s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.003s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.007s\nok  \texample.com/tally/internal/reports\t0.011s\nok  \texample.com/tally/internal/snapshot\t0.008s\nok  \texample.com/tally/internal/store\t0.006s\nok  \texample.com/tally/internal/subscriptions\t0.006s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 3131
+  },
+  "costUsd": 0.06010929,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 68,
+    "output": 46157,
+    "cacheRead": 1304479,
+    "cacheWrite": 119896
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_3c1e337edfa9",
+      "feedback": "internal/api/plans.go, tierIn.UpTo (*int64): a non-integer or string up_to (e.g. 10.5 or \"10\") fails decode() and returns 400 invalid_json. The spec requires any invalid tier, including a up_to that is not a positive whole number or null, to return 422 invalid_tiers. Decode up_to as json.RawMessage or json.Number, accept only null or a positive whole number in parseTiers, and wrap store.ErrInvalidTiers on anything else. Add a case to TestTieredPlans (e.g. up_to 10.5) that expects 422 invalid_tiers."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_3c1e337edfa9"
+    }
+  ],
+  "coreTaskId": "task_a5285c3a6185"
+}
