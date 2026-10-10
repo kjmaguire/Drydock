@@ -131,10 +131,21 @@ func TestTurnStreamsRecordsRunUsageAndEvents(t *testing.T) {
 	if err := m.Stop(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// the exit watcher writes the run's row, then publishes agent.stopped: wait for both (on the Windows runner the event
+	// came a moment after the row)
 	waitFor(t, func() bool {
 		var st string
 		h.db.Reader().QueryRow(`SELECT status FROM agent_runs WHERE id=?`, m.RunID).Scan(&st)
-		return st == "STOPPED"
+		if st != "STOPPED" {
+			return false
+		}
+		evs, _ := h.bus.Replay(ctx, 0, events.Filter{AgentID: "a1"}, 0)
+		for _, e := range evs {
+			if e.Type == "agent.stopped" {
+				return true
+			}
+		}
+		return false
 	})
 
 	// usage recorded under the tier, as reported
