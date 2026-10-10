@@ -2,7 +2,7 @@ Trial 2026-10-10-tally-haiku; Drydock cba4f9eaa7b8; 2.1.296 (Claude Code); model
 
 | Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|---|
-| D | 22 | 22 | $3.2452 | $0.1475 | $0.1165 ($0.0331 to $0.4310) | 4m16s (1m34s to 9m8s) |
+| D | 23 | 23 | $3.3226 | $0.1445 | $0.1019 ($0.0331 to $0.4310) | 4m13s (1m34s to 9m8s) |
 | B1 | 23 | 23 | $2.6744 | $0.1163 | $0.0664 ($0.0222 to $0.3337) | 3m9s (59s to 6m19s) |
 
 | Task | Arm | Runs | Accepted | Cost per run, median (range) | Wall time per run, median (range) |
@@ -33,6 +33,7 @@ Trial 2026-10-10-tally-haiku; Drydock cba4f9eaa7b8; 2.1.296 (Claude Code); model
 | tally-renewal-dedupe | B1 | 1 | 1 | $0.1100 (n=1) | 6m18s (n=1) |
 | tally-role-permissions | D | 1 | 1 | $0.1609 (n=1) | 6m15s (n=1) |
 | tally-role-permissions | B1 | 1 | 1 | $0.1393 (n=1) | 3m49s (n=1) |
+| tally-seat-limits | D | 1 | 1 | $0.0774 (n=1) | 4m13s (n=1) |
 | tally-seat-limits | B1 | 1 | 1 | $0.0678 (n=1) | 6m19s (n=1) |
 | tally-snapshot-v3 | D | 1 | 1 | $0.1019 (n=1) | 4m24s (n=1) |
 | tally-snapshot-v3 | B1 | 1 | 1 | $0.0664 (n=1) | 2m51s (n=1) |
@@ -70,6 +71,7 @@ D against B1, task by task (counted runs):
 | tally-proration | iteration | 1 of 1 | 1 of 1 | $0.2975 | $0.3018 | 9m8s | 4m39s |
 | tally-renewal-dedupe | test-fix loop | 1 of 1 | 1 of 1 | $0.1863 | $0.1100 | 5m9s | 6m18s |
 | tally-role-permissions | security review | 1 of 1 | 1 of 1 | $0.1609 | $0.1393 | 6m15s | 3m49s |
+| tally-seat-limits | iteration | 1 of 1 | 1 of 1 | $0.0774 | $0.0678 | 4m13s | 6m19s |
 | tally-snapshot-v3 | iteration | 1 of 1 | 1 of 1 | $0.1019 | $0.0664 | 4m24s | 2m51s |
 | tally-soft-delete-customers | iteration | 1 of 1 | 1 of 1 | $0.1704 | $0.2624 | 4m9s | 3m52s |
 | tally-tenant-isolation | security review | 1 of 1 | 1 of 1 | $0.3015 | $0.2571 | 5m15s | 4m5s |
@@ -83,12 +85,12 @@ D against B1, task by task (counted runs):
 | Class | D accepted | B1 accepted |
 |---|---|---|
 | high-risk | 2 of 2 | 2 of 2 |
-| iteration | 9 of 9 | 9 of 9 |
+| iteration | 10 of 10 | 10 of 10 |
 | security review | 6 of 6 | 6 of 6 |
 | test-fix loop | 4 of 4 | 4 of 4 |
 | tested refactor | 1 of 1 | 1 of 1 |
 
-D was accepted more often than B1 on 0 task(s), less often on 0 and as often on 22 (22 tasks run by both, at least 1 counted run(s) per arm and task).
+D was accepted more often than B1 on 0 task(s), less often on 0 and as often on 23 (23 tasks run by both, at least 1 counted run(s) per arm and task).
 This is a pilot: decision P34 asks for at least 20 tasks with 3 counted runs of each arm before any claim, so no test is computed.
 
 Every run:
@@ -122,6 +124,7 @@ Every run:
 | tally-role-permissions | B1 | 1 | accepted | $0.1393 | 3m49s | 1 | 60 / 50140 / 2508535 / 108416 |  |  |
 | tally-role-permissions | D | 1 | accepted | $0.1609 | 6m15s | 4 | 78 / 80864 / 2278141 / 211655 | REVISE, SHIP |  |
 | tally-seat-limits | B1 | 1 | accepted | $0.0678 | 6m19s | 1 | 48 / 31771 / 1867453 / 89118 |  |  |
+| tally-seat-limits | D | 1 | accepted | $0.0774 | 4m13s | 4 | 72 / 50552 / 1686729 / 176463 | REVISE, SHIP |  |
 | tally-snapshot-v3 | B1 | 1 | accepted | $0.0664 | 2m51s | 1 | 36 / 37899 / 1257406 / 88467 |  |  |
 | tally-snapshot-v3 | D | 1 | accepted | $0.1019 | 4m24s | 2 | 54 / 58962 / 1806922 / 126705 | SHIP |  |
 | tally-soft-delete-customers | B1 | 1 | accepted | $0.2624 | 3m52s | 1 | 68 / 44410 / 3144906 / 122702 |  |  |
