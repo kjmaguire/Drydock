@@ -14,6 +14,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/sandbox"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -356,7 +357,7 @@ func (c *Core) testSandbox(ctx context.Context, projectID string) ([]SandboxTest
 		return steps, err
 	}
 	defer os.RemoveAll(dir)
-	task := fmt.Sprintf("sandbox-test-%s-%d", projectID, time.Now().UnixNano())
+	task := ids.New("sandbox-test-" + projectID)
 	defer func() { _ = m.Remove(context.WithoutCancel(ctx), task) }()
 	var box *sandbox.Box
 	if !step("start (pulls missing images, starts the services)", func() (string, error) {

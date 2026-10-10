@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/workflow"
 	"gopkg.in/yaml.v3"
@@ -88,7 +89,8 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return res, err
 	}
-	logPath := filepath.Join(logDir, fmt.Sprintf("%s-%d.log", spec.Name, time.Now().UnixNano()))
+	// a random name: on Windows the clock advances in ticks, so two runs of one check could share a time-based name
+	logPath := filepath.Join(logDir, ids.New(spec.Name)+".log")
 	logf, err := os.Create(logPath)
 	if err != nil {
 		return res, err

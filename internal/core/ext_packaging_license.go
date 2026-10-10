@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -358,7 +359,7 @@ func (p *packaging) reconcile(ctx context.Context) {
 		n := p.suspendRuns(ctx)
 		if n > 0 {
 			c.publish(ctx, "license.runs_suspended", "", map[string]any{"runs": n, "state": st.status.State})
-			p.notify(ctx, fmt.Sprintf("license-suspended:%s:%d", st.status.State, time.Now().UnixNano()),
+			p.notify(ctx, fmt.Sprintf("license-suspended:%s:%s", st.status.State, ids.New("n")),
 				fmt.Sprintf("The license is %s, so %d running workflow run(s) were stopped cleanly. Their checkpoints are kept and they resume when a valid license is imported.", st.status.State, n), false)
 		}
 	} else if c.Engine != nil {
@@ -366,7 +367,7 @@ func (p *packaging) reconcile(ctx context.Context) {
 			c.logf("resume suspended runs: %v", err)
 		} else if n > 0 {
 			c.publish(ctx, "license.runs_resumed", "", map[string]any{"runs": n})
-			p.notify(ctx, fmt.Sprintf("license-resumed:%d", time.Now().UnixNano()), fmt.Sprintf("The license is valid again: %d suspended workflow run(s) resumed from their checkpoints.", n), false)
+			p.notify(ctx, "license-resumed:"+ids.New("n"), fmt.Sprintf("The license is valid again: %d suspended workflow run(s) resumed from their checkpoints.", n), false)
 		}
 	}
 	p.announce(ctx, st)

@@ -259,9 +259,8 @@ func (c *Core) Close() {
 }
 
 func (c *Core) logf(format string, a ...any) {
-	msg := fmt.Sprintf(format, a...)
-	fmt.Fprintf(os.Stderr, "drydock: %s\n", msg)
-	c.fileLog(msg) // also <data>/logs, scrubbed (ext_packaging.go)
+	// <data>/logs gets the line scrubbed (ext_packaging.go), and so does stderr: a CI log or a terminal is a log too
+	fmt.Fprintf(os.Stderr, "drydock: %s\n", c.fileLog(fmt.Sprintf(format, a...)))
 }
 
 // Human is the identity every human action carries. Only "human:"-prefixed identities can accept tasks and approve merges.

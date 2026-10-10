@@ -189,11 +189,19 @@ func (p *packaging) delSetting(ctx context.Context, key string) error {
 
 var appLogs sync.Map // *Core -> *applog.Writer
 
-// fileLog appends one scrubbed line to <data>/logs/drydock.log (rotating). The scanner is needed to scrub, so lines logged
+// fileLog appends one scrubbed line to <data>/logs/drydock.log (rotating) and returns the line as a log may show it, for the
+// copy on stderr: scrubbed, or a notice when it could not be scanned. The scanner is needed to scrub, so lines logged
 // before it exists (adapter detection at startup) stay on stderr only.
-func (c *Core) fileLog(msg string) {
-	if c.Scanner == nil || c.cfg.DataDir == "" {
-		return
+func (c *Core) fileLog(msg string) string {
+	if c.Scanner == nil {
+		return msg
+	}
+	shown, _, err := scrub.Text(context.Background(), c.Scanner, msg)
+	if err != nil {
+		shown = "[log line withheld: it could not be scanned for secrets]"
+	}
+	if c.cfg.DataDir == "" {
+		return shown
 	}
 	v, ok := appLogs.Load(c)
 	if !ok {
@@ -205,6 +213,7 @@ func (c *Core) fileLog(msg string) {
 		v, _ = appLogs.LoadOrStore(c, w)
 	}
 	v.(*applog.Writer).Write(msg)
+	return shown
 }
 
 // ---- notices: a SYSTEM message and, when the human must act, a Needs-you item, in every project's #alerts ----

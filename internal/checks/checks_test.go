@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,6 +46,37 @@ func TestPassingTestRun(t *testing.T) {
 	}
 	if b, err := os.ReadFile(res.LogRef); err != nil || !strings.Contains(string(b), "ok") {
 		t.Fatalf("full log must be on disk: %v", err)
+	}
+}
+
+// Two runs of one check at the same moment (two tasks running their tests) keep their own logs. The log's name used to be
+// the check's name and the clock, which on Windows advances in ticks, so both runs could write one file.
+func TestTwoRunsOfOneCheckKeepTheirOwnLogs(t *testing.T) {
+	logs, dir := t.TempDir(), t.TempDir()
+	want := []string{"linux", "windows"}
+	results := make([]Result, len(want))
+	errs := make([]error, len(want))
+	var wg sync.WaitGroup
+	for i, goos := range want {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = Run(context.Background(), proc.New(), Spec{Name: "env", Argv: []string{"go", "env", "GOOS"}, Dir: dir,
+				Env: []string{"GOOS=" + goos}, LogDir: logs}, nil)
+		}()
+	}
+	wg.Wait()
+	for i, goos := range want {
+		if errs[i] != nil {
+			t.Fatal(errs[i])
+		}
+		b, err := os.ReadFile(results[i].LogRef)
+		if err != nil || !strings.Contains(string(b), goos) || strings.Contains(string(b), want[1-i]) {
+			t.Fatalf("run %d's log %s holds %q (%v), want its own output %q only", i, results[i].LogRef, b, err, goos)
+		}
+	}
+	if results[0].LogRef == results[1].LogRef {
+		t.Fatalf("both runs wrote %s", results[0].LogRef)
 	}
 }
 

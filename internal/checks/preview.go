@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 )
 
@@ -158,7 +159,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return nil, res, err
 	}
-	logPath := filepath.Join(logDir, fmt.Sprintf("preview-%d.log", time.Now().UnixNano()))
+	logPath := filepath.Join(logDir, ids.New("preview")+".log")
 	logf, err := os.Create(logPath)
 	if err != nil {
 		return nil, res, err

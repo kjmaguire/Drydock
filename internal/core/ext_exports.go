@@ -3,8 +3,8 @@ package core
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/room"
 )
 
@@ -23,7 +23,7 @@ func init() {
 				Title   string `json:"title"`
 				Summary string `json:"summary"`
 			}) (any, error) {
-				r := room.ExportRequest{Scope: "human:" + c.cfg.User, ReceiptID: fmt.Sprintf("ui-%d", time.Now().UnixNano()), FromSeq: p.FromSeq, ToSeq: p.ToSeq,
+				r := room.ExportRequest{Scope: "human:" + c.cfg.User, ReceiptID: ids.New("ui"), FromSeq: p.FromSeq, ToSeq: p.ToSeq,
 					Title: p.Title, Summary: p.Summary, By: room.Human(c.cfg.User)}
 				var ex room.Export
 				var err error

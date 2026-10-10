@@ -2,12 +2,12 @@ package checks
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 )
 
@@ -31,7 +31,7 @@ func runInProcess(ctx context.Context, pm proc.Manager, spec Spec, onLine func(s
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return res, err
 	}
-	logPath := filepath.Join(logDir, fmt.Sprintf("%s-%d.log", spec.Name, time.Now().UnixNano()))
+	logPath := filepath.Join(logDir, ids.New(spec.Name)+".log")
 	if err := os.WriteFile(logPath, []byte(res.Output), 0o644); err != nil {
 		return res, err
 	}

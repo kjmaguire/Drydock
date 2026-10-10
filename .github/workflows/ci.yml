@@ -35,7 +35,17 @@ jobs:
         # a self-hosted runner may have a signed-in claude: the paid real-agent tests run only in verify.yml, on request
         env:
           DRYDOCK_NO_REAL_AGENTS: "1"
-        run: go test ./... -count=1 -timeout 25m
+        # the output is kept in a file as well, so a failure can be listed on its own below
+        run: |
+          go test ./... -count=1 -timeout 25m | Tee-Object -FilePath "$env:RUNNER_TEMP/go-test.log"
+          exit $LASTEXITCODE
+      - name: Show the failed tests
+        # the core package logs thousands of lines, which bury a failing test in the log above
+        if: failure()
+        run: |
+          $log = "$env:RUNNER_TEMP/go-test.log"
+          if (-not (Test-Path $log)) { "no test log"; exit 0 }
+          Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+_test\.go:\d+:' | ForEach-Object { $_.Line }
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
   repomap-cgo:

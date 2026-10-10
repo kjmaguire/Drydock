@@ -364,7 +364,11 @@ func TestLicenseTokenNeverLeaks(t *testing.T) {
 	if _, err := a.importLicense(token); err != nil {
 		t.Fatal(err)
 	}
+	stderr := captureStderr(t)
 	a.c.TestLog("debugging: user pasted %s into the box", token) // even if some code path logged it, the scrubbed log must not keep it
+	if out := stderr(); !strings.Contains(out, "debugging: user pasted") || strings.Contains(out, strings.Split(token, ".")[0]) || strings.Contains(out, strings.Split(token, ".")[1]) {
+		t.Fatalf("stderr must show the line without the token: %q", out)
+	}
 	logs, _ := filepath.Glob(filepath.Join(dataDir, "logs", "drydock.log*"))
 	if len(logs) == 0 {
 		t.Fatal("no application log was written")
