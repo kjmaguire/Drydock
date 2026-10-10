@@ -109,7 +109,13 @@ func (c *Core) Methods() map[string]Method {
 			return c.TestConnection(ctx, p.Adapter, p.Prompt)
 		}),
 		"adapter.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.DescribeAdapters(ctx), nil }),
-		"agent.create": bind(func(ctx context.Context, p AgentSpec) (any, error) { return c.CreateAgent(ctx, p) }),
+		"agent.create": bind(func(ctx context.Context, p struct {
+			AgentSpec
+			// Skills are project skills the new agent is given (the Skills page shows who gets each).
+			Skills []string `json:"skills"`
+		}) (any, error) {
+			return c.createAgentWithSkills(ctx, p.AgentSpec, p.Skills)
+		}),
 		"agent.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {

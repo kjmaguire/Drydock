@@ -8,16 +8,14 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AgentGallery } from './agent-gallery.tsx';
+import { skillLines } from './team.ts';
 
 const wrapCss = css({ display: 'grid', gap: t.s4, '& ul': { margin: '4px 0 0', paddingLeft: '18px' } });
 const optsCss = css({ display: 'grid', gap: t.s1 });
 
 /** What an apply did, in sentences for the person. */
 export function appliedLines(r: PrebuiltApplied): string[] {
-  const out: string[] = [];
-  if (r.skills.assigned.length) out.push(`Skills: ${r.skills.assigned.join(', ')}.`);
-  for (const x of r.skills.pending) out.push(`Skill ${x.name ?? x.id} waits for your decision: ${x.reason}`);
-  for (const x of r.skills.failed) out.push(`Skill ${x.name ?? x.id} not installed: ${x.reason}`);
+  const out = skillLines(r.skills);
   if (r.mcp.granted.length) out.push(`Connectors: ${r.mcp.granted.join(', ')}.`);
   for (const x of r.mcp.skipped) out.push(`Connector ${x.id ?? x.name} not connected: ${x.reason}`);
   return [...out, ...r.notes];

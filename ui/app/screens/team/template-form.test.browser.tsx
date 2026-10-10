@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { AgentTemplate, AgentTemplateInput } from '../../api/libraryClient.ts';
+import type { AgentTemplate, AgentTemplateInput, SkillChoice } from '../../api/libraryClient.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
@@ -18,9 +18,24 @@ const claude: AdapterInfo = {
 const codex: AdapterInfo = { id: 'codex', detection: { adapter: 'codex', installed: false, status: 'not_installed' }, capabilities: {} as AdapterInfo['capabilities'] };
 const server = { id: 'docs', display: 'Docs server', transport: 'stdio', secretEnv: [], hasToken: false } as unknown as McpLibraryServer;
 const saved = (x: AgentTemplateInput): AgentTemplate => ({ ...x, id: x.id ?? 'tpl_new', createdAt: 1, updatedAt: 1 });
+const tplOf = (name: string): AgentTemplate => ({
+  id: 'tpl_1',
+  name,
+  role: 'backend',
+  purpose: '',
+  adapter: 'claude',
+  model: '',
+  effort: '',
+  permissionMode: '',
+  providerId: '',
+  mcpServers: [],
+  skills: [],
+  createdAt: 1,
+  updatedAt: 1,
+});
 
 function setup(client: Partial<Client>, props: { initial?: AgentTemplate; adapters?: AdapterInfo[] } = {}) {
-  const s = testServices({ projectList: async () => [], licenseStatus: async () => lic(), appInfo: async () => ({}) as never, ...client });
+  const s = testServices({ projectList: async () => [], licenseStatus: async () => lic(), appInfo: async () => ({}) as never, agentTemplateSkillChoices: async () => [], ...client });
   s.workspace.start();
   const done: AgentTemplate[] = [];
   let cancelled = 0;
@@ -61,6 +76,7 @@ describe('TemplateForm', () => {
         permissionMode: 'plan',
         providerId: '',
         mcpServers: ['docs'],
+        skills: [],
         practices: true,
       },
     ]);
@@ -68,7 +84,7 @@ describe('TemplateForm', () => {
 
   it('edits an existing template with its values and id, and an adapter without model selection sends none', async () => {
     const calls: AgentTemplateInput[] = [];
-    const initial: AgentTemplate = { id: 'tpl_1', name: 'Old', role: 'tester', purpose: '', adapter: 'codex', model: 'x', effort: 'y', permissionMode: '', providerId: 'prov', mcpServers: [], createdAt: 1, updatedAt: 1 };
+    const initial: AgentTemplate = { id: 'tpl_1', name: 'Old', role: 'tester', purpose: '', adapter: 'codex', model: 'x', effort: 'y', permissionMode: '', providerId: 'prov', mcpServers: [], skills: [], createdAt: 1, updatedAt: 1 };
     const { r } = setup({ agentTemplateSave: async (x) => (calls.push(x), saved(x)) }, { initial });
     const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
     expect(form.getAttribute('aria-label')).toBe('Edit Old');
@@ -76,7 +92,59 @@ describe('TemplateForm', () => {
     expect(byLabel<HTMLInputElement>(form, 'Model').disabled).toBe(true);
     await r.act(() => byText(form, 'button', 'Save template').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
-    expect(calls[0]).toEqual({ id: 'tpl_1', name: 'Old', role: 'tester', purpose: '', adapter: 'codex', model: '', effort: '', permissionMode: '', providerId: 'prov', mcpServers: [] });
+    expect(calls[0]).toEqual({ id: 'tpl_1', name: 'Old', role: 'tester', purpose: '', adapter: 'codex', model: '', effort: '', permissionMode: '', providerId: 'prov', mcpServers: [], skills: [] });
+  });
+
+  const wrangler = { registry: 'cloudflare-skills', name: 'wrangler', ref: 'a18ffe2a99448ebff262fc87915b0fd14bab9b70' };
+  const choices: SkillChoice[] = [
+    { ...wrangler, description: 'Wrangler config', from: ['project gocalc', 'prebuilt Cloudflare Engineer'] },
+    { registry: 'anthropic-skills', name: 'frontend-design', ref: '683bc88e56f3e09ba94f7055977f3d3aa499f202', description: '', from: ['prebuilt UI Engineer'] },
+    { registry: 'vercel-agent-skills', name: 'web-design-guidelines', ref: '063bee94c3f4df8453406c830b0a7df0f2860278', description: 'UI review', from: ['prebuilt UI Engineer'] },
+  ];
+
+  it('keeps the skills of the template it edits: saving sends them back', async () => {
+    const calls: AgentTemplateInput[] = [];
+    const initial: AgentTemplate = { ...tplOf('Edge'), skills: [wrangler] };
+    const { r } = setup({ agentTemplateSave: async (x) => (calls.push(x), saved(x)), agentTemplateSkillChoices: async () => choices }, { initial, adapters: [claude] });
+    const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
+    const field = form.querySelector<HTMLElement>('[data-testid="template-skills"]')!;
+    expect(field.textContent).toContain('wrangler');
+    expect(field.textContent).toContain('cloudflare-skills, pinned at a18ffe2a9944');
+    type(byLabel(form, 'Template name'), 'Edge worker');
+    r.root.flush();
+    await r.act(() => byText(form, 'button', 'Save template').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]!.skills).toEqual([wrangler]);
+    expect(calls[0]!.name).toBe('Edge worker');
+  });
+
+  it('adds a skill from those Drydock knows and removes one', async () => {
+    const calls: AgentTemplateInput[] = [];
+    const initial: AgentTemplate = { ...tplOf('Edge'), skills: [wrangler] };
+    const { r } = setup({ agentTemplateSave: async (x) => (calls.push(x), saved(x)), agentTemplateSkillChoices: async () => choices }, { initial, adapters: [claude] });
+    const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
+    const pickList = await waitFor(() => byLabel<HTMLSelectElement>(form, 'Add a skill'), r);
+    // a skill the template already has is not offered again
+    expect(Array.from(pickList.options).map((o) => o.textContent)).toEqual([
+      'frontend-design (anthropic-skills), from prebuilt UI Engineer',
+      'web-design-guidelines (vercel-agent-skills), from prebuilt UI Engineer',
+    ]);
+    type(pickList, `vercel-agent-skills/web-design-guidelines@${choices[2]!.ref}`);
+    r.root.flush();
+    await r.act(() => byText(form, 'button', 'Add skill').click());
+    await r.act(() => byText(form, 'button', 'Remove wrangler').click());
+    expect(Array.from(byLabel<HTMLSelectElement>(form, 'Add a skill').options).map((o) => o.value)).toEqual([
+      `cloudflare-skills/wrangler@${wrangler.ref}`,
+      `anthropic-skills/frontend-design@${choices[1]!.ref}`,
+    ]);
+    await r.act(() => byText(form, 'button', 'Save template').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]!.skills).toEqual([{ registry: 'vercel-agent-skills', name: 'web-design-guidelines', ref: choices[2]!.ref }]);
+  });
+
+  it('says when there is no other skill to add', async () => {
+    const { r } = setup({ agentTemplateSkillChoices: async () => [choices[0]!] }, { initial: { ...tplOf('Edge'), skills: [wrangler] }, adapters: [claude] });
+    await waitFor(() => expect(r.container.textContent).toContain('No other skill to add'), r);
   });
 
   it('shows the core refusal and does not finish', async () => {

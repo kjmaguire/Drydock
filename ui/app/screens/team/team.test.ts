@@ -40,10 +40,21 @@ describe('team helpers', () => {
     expect(routesForUpdate([], [{ model: 'haiku', tier: 'cheap' }])).toEqual([]);
   });
 
-  it('says who joined from a template, what was granted and what was not', () => {
+  it('says who joined from a template, what was granted and what was not, and what its skills did', () => {
     const agent = { name: 'Payments dev' } as Agent;
-    expect(appliedNote({ agent, granted: ['docs'], skipped: [] })).toBe('Payments dev joined the team, with docs.');
-    expect(appliedNote({ agent, granted: [], skipped: ['gh: not connected'] })).toBe('Payments dev joined the team. Not granted: gh: not connected.');
+    const none = { assigned: [], shared: [], pending: [], failed: [] };
+    expect(appliedNote({ agent, granted: ['docs'], skipped: [], skills: none })).toBe('Payments dev joined the team, with docs.');
+    expect(appliedNote({ agent, granted: [], skipped: ['gh: not connected'], skills: none })).toBe('Payments dev joined the team. Not granted: gh: not connected.');
+    expect(
+      appliedNote({
+        agent,
+        granted: [],
+        skipped: [],
+        skills: { assigned: ['wrangler'], shared: ['go-style'], pending: [{ name: 'durable-objects', reason: 'blocked: injection' }], failed: [{ name: 'x', reason: 'not found' }] },
+      }),
+    ).toBe(
+      'Payments dev joined the team. Skills: wrangler. Already with the whole team: go-style. Skill durable-objects waits for your decision: blocked: injection Skill x not installed: not found',
+    );
   });
 
   it('applies the Claude preset only while the fields are empty or still hold the last preset', () => {

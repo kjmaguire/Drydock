@@ -32,6 +32,14 @@ export function readDrag(e: DragLike): Dragged | undefined {
 }
 
 /** The note after a template was applied: who joined where, what was granted and what was not. */
-export function joinedNote(agentName: string, projectName: string, granted: readonly string[], skipped: readonly string[], serverName: (id: string) => string): string {
-  return `${agentName} joined ${projectName}${granted.length ? `, with ${granted.map(serverName).join(', ')}` : ''}${skipped.length ? `. Not granted: ${skipped.join('; ')}` : ''}.`;
+export function joinedNote(
+  agentName: string,
+  projectName: string,
+  granted: readonly string[],
+  skipped: readonly string[],
+  serverName: (id: string) => string,
+  skills: readonly string[] = [],
+): string {
+  const head = `${agentName} joined ${projectName}${granted.length ? `, with ${granted.map(serverName).join(', ')}` : ''}${skipped.length ? `. Not granted: ${skipped.join('; ')}` : ''}.`;
+  return [head, ...skills].join(' ');
 }

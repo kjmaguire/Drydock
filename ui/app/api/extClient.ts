@@ -149,6 +149,8 @@ export interface ExtClient {
   skillRegistryRemove(id: string): Promise<void>;
   skillCandidates(registryId: string, ref?: string): Promise<{ commit: string; skills: SkillCandidate[] }>;
   skillImport(projectId: string, registryId: string, name: string, ref?: string): Promise<Skill>;
+  /** Who receives a skill: the whole team (its roles, plus `agents`) or only the chosen `agents`. */
+  skillAudience(projectId: string, name: string, audience: 'team' | 'agents', agents: string[]): Promise<Skill>;
   skillDeliveries(projectId: string, taskId?: string): Promise<SkillDelivery[]>;
   skillCoverage(projectId: string, taskId?: string): Promise<SkillCoverage>;
   // memory
@@ -299,6 +301,7 @@ export function createExtClient(t: Transport): ExtClient {
       return { commit: r.commit, skills: arr(r.skills) };
     },
     skillImport: (projectId, registryId, name, ref = '') => call('skill.import', { projectId, registryId, name, ref }),
+    skillAudience: (projectId, name, audience, agents) => call('skill.audience', { projectId, name, audience, agents }),
     skillDeliveries: async (projectId, taskId = '') => arr(await call<SkillDelivery[] | null>('skill.deliveries', { projectId, taskId })),
     skillCoverage: (projectId, taskId = '') => call('skill.coverage', { projectId, taskId }),
 

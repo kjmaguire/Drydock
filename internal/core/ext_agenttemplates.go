@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,6 +72,7 @@ func startAgentTemplates(ctx context.Context, c *Core) (map[string]Method, func(
 		}) (any, error) {
 			return t.fromAgent(ctx, p.AgentID)
 		}),
+		"agenttemplate.skillChoices": bind(func(ctx context.Context, _ struct{}) (any, error) { return t.skillChoices(ctx) }),
 		"agenttemplate.apply": bind(func(ctx context.Context, p struct {
 			TemplateID string `json:"templateId"`
 			ProjectID  string `json:"projectId"`
@@ -184,10 +186,14 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 			return AgentTemplate{}, err
 		}
 	} else {
-		if _, err := t.get(ctx, in.ID); err != nil {
+		old, err := t.get(ctx, in.ID)
+		if err != nil {
 			return AgentTemplate{}, err
 		}
-		err := t.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		if in.Skills == nil { // a caller that does not send the skills keeps them (an edit dropped them before)
+			sj, _ = json.Marshal(old.Skills)
+		}
+		err = t.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `UPDATE agent_templates SET name=?,role=?,purpose=?,adapter=?,model=?,effort=?,permission_mode=?,provider_id=?,mcp_servers=?,practices=?,skills=?,updated_at=? WHERE id=?`,
 				in.Name, in.Role, in.Purpose, in.Adapter, in.Model, in.Effort, in.PermissionMode, in.ProviderID, string(mj), practices, string(sj), now, in.ID)
 			return err
@@ -250,6 +256,86 @@ func (t *agentTemplates) cleanSkills(ctx context.Context, in []agentcatalog.Skil
 		out = append(out, r)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// SkillChoice is a registry skill, pinned to a commit, that a template can carry: one a prebuilt agent comes with or one a
+// project here imported.
+type SkillChoice struct {
+	agentcatalog.SkillRef
+	Description string `json:"description"`
+	// From says where Drydock knows the skill from: the prebuilt agents that come with it and the projects that imported it.
+	From []string `json:"from"`
+}
+
+// skillChoices lists the registry skills a template can carry, one per registry, name and commit: those the prebuilt agents
+// come with and those imported into a project here (blocked or rejected ones left out), from allowlisted registries only.
+func (t *agentTemplates) skillChoices(ctx context.Context) ([]SkillChoice, error) {
+	out := []SkillChoice{}
+	k := t.c.Knowledge()
+	if k == nil {
+		return out, nil
+	}
+	regs, err := k.Skills.Registries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{}
+	for _, r := range regs {
+		allowed[r.ID] = true
+	}
+	at := map[string]int{}
+	add := func(ref agentcatalog.SkillRef, desc, from string) {
+		if !allowed[ref.Registry] || !commitPinRe.MatchString(ref.Ref) || skills.ValidateName(ref.Name) != nil {
+			return
+		}
+		key := ref.Registry + "/" + ref.Name + "@" + ref.Ref
+		i, ok := at[key]
+		if !ok {
+			i = len(out)
+			at[key] = i
+			out = append(out, SkillChoice{SkillRef: ref, From: []string{}})
+		}
+		if out[i].Description == "" {
+			out[i].Description = desc
+		}
+		if !slices.Contains(out[i].From, from) {
+			out[i].From = append(out[i].From, from)
+		}
+	}
+	rows, err := t.c.DB.Reader().QueryContext(ctx, `SELECT s.registry_id, s.name, s.pinned_commit, s.description, p.name FROM skills s JOIN projects p ON p.id = s.project_id
+		WHERE s.origin = 'registry' AND s.status IN ('offered', 'accepted') ORDER BY s.name, p.name`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var ref agentcatalog.SkillRef
+		var desc, project string
+		if err := rows.Scan(&ref.Registry, &ref.Name, &ref.Ref, &desc, &project); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		add(ref, desc, "project "+project)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	entries, err := agentcatalog.Builtin()
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		for _, r := range e.Skills {
+			add(r, "", "prebuilt "+e.Name)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Registry < out[j].Registry
+	})
 	return out, nil
 }
 

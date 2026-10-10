@@ -12,7 +12,9 @@ import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
+import { noSkillChanges, type SkillChanges } from '../skills/skills.ts';
 import { ClaudePracticesPanel, ModelEffortFields, RouteModelsField, claudePractices } from './fields.tsx';
+import { SkillsField } from './skills-field.tsx';
 import { PURPOSE_HELP, ROLE_SUGGESTIONS, adapterOption, appliedNote, routesForUpdate } from './team.ts';
 
 const full = css({ gridColumn: '1 / -1' });
@@ -40,6 +42,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
   let model = '';
   let effort = '';
   let practices = true;
+  let skills: SkillChanges = noSkillChanges();
   const set = (f: () => void) => {
     f();
     void handle.update();
@@ -64,12 +67,14 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
       effort: a?.capabilities?.effortControl === true ? effort.trim() : '',
     };
     if (adapterId === 'claude') spec.practices = practices;
+    if (skills.add.length > 0) spec.skills = skills.add;
     const ok = await act.run('create', async () => {
       await s.client.agentCreate(spec);
       return true;
     });
     if (!ok) return;
     name = role = purpose = model = effort = '';
+    skills = noSkillChanges();
     void handle.update();
     handle.props.onCreated();
   };
@@ -132,6 +137,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
             )}
           </Field>
         </div>
+        <SkillsField projectId={handle.props.projectId} role={role} changes={skills} onChange={(c) => set(() => (skills = c))} />
         <ClaudePracticesPanel info={info} on={practices} onChange={(v) => set(() => (practices = v))} />
         <div mix={formActions}>
           <Button
@@ -244,6 +250,7 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
   let effort = a0.effort;
   let practices = a0.practices !== false;
   let routes: RouteModel[] = a0.routeModels ?? [];
+  let skills: SkillChanges = noSkillChanges();
   let confirmRemove = false;
   let savedAs = '';
   const set = (f: () => void) => {
@@ -267,6 +274,8 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
     if (agent.adapter === 'claude') u.practices = practices;
     const rm = routesForUpdate(routes, agent.routeModels);
     if (rm) u.routeModels = rm;
+    if (skills.add.length > 0) u.addSkills = skills.add;
+    if (skills.remove.length > 0) u.removeSkills = skills.remove;
     return finish('save', () => s.client.agentUpdate(u));
   };
 
@@ -321,6 +330,7 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
         </div>
         <ClaudePracticesPanel info={info} on={practices} onChange={(v) => set(() => (practices = v))} />
         <RouteModelsField routes={routes} onRoutes={(r) => set(() => (routes = r))} suggestions={adapter?.capabilities?.models ?? []} />
+        <SkillsField projectId={agent.projectId} agentId={agent.id} role={role} changes={skills} onChange={(c) => set(() => (skills = c))} />
         <div mix={formActions}>
           <Button type="submit" variant="primary" disabled={busy || ro.readOnly || !name.trim() || !role.trim()} title={ro.readOnly ? ro.reason : undefined}>
             {act.busy === 'save' ? 'Saving...' : 'Save changes'}

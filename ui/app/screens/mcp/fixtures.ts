@@ -48,6 +48,7 @@ export const tpl = (over: Partial<AgentTemplate> = {}): AgentTemplate => ({
   permissionMode: '',
   providerId: '',
   mcpServers: ['tst'],
+  skills: [],
   createdAt: 1,
   updatedAt: 1,
   ...over,

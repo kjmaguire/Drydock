@@ -276,6 +276,17 @@ func Scan(ctx context.Context, sc security.SecretScanner, raw string) (Verdict, 
 	return v, nil
 }
 
+// Reaches reports whether skill k goes to the agent agentID, whose role is role: a skill for the whole team to every agent its
+// roles match and to each agent it is given to, a skill for chosen agents only to those. It does not look at the status (only
+// accepted skills are ever delivered, Eligible).
+func Reaches(k Skill, agentID, role string) bool {
+	given := agentID != "" && contains(k.Agents, agentID)
+	if k.Audience == AudienceAgents {
+		return given
+	}
+	return given || RolesMatch(k.Roles, role)
+}
+
 // RolesMatch reports whether a skill applies to a role: no roles listed means every role.
 func RolesMatch(roles []string, role string) bool {
 	if len(roles) == 0 {

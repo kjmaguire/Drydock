@@ -1,6 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
+import type { Skill } from '../../api/extTypes.ts';
 import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts';
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
@@ -49,6 +50,7 @@ function show(agents: Agent[], client: Partial<Client> = {}, adapters = [claude,
     taskList: async () => [],
     adapterList: async () => adapters,
     agentTemplateList: async () => [],
+    skillList: async () => [],
     ...client,
   });
   s.workspace.start();
@@ -246,14 +248,15 @@ describe('Team: purpose, model and effort', () => {
   });
 });
 
-const template: AgentTemplate = { id: 'tpl_1', name: 'Payments dev', role: 'backend', purpose: 'Own payments.', adapter: 'claude', model: 'sonnet', effort: 'high', permissionMode: '', providerId: '', mcpServers: ['docs'], createdAt: 1, updatedAt: 1 };
+const template: AgentTemplate = { id: 'tpl_1', name: 'Payments dev', role: 'backend', purpose: 'Own payments.', adapter: 'claude', model: 'sonnet', effort: 'high', permissionMode: '', providerId: '', mcpServers: ['docs'], skills: [], createdAt: 1, updatedAt: 1 };
+const noSkills = { assigned: [], shared: [], pending: [], failed: [] };
 
 describe('Team: templates', () => {
   it('adds an agent from a template and says what it was granted', async () => {
     const calls: unknown[][] = [];
     const { r, listed } = show([], {
       agentTemplateList: async () => [template],
-      agentTemplateApply: async (...a) => (calls.push(a), { agent: agent({ name: 'Payments dev' }), granted: ['docs'], skipped: [] }),
+      agentTemplateApply: async (...a) => (calls.push(a), { agent: agent({ name: 'Payments dev' }), granted: ['docs'], skipped: [], skills: noSkills }),
     });
     const name = await waitFor(() => byLabel(r.container, 'Name (optional)'), r);
     type(name, ' Billing ');
@@ -363,5 +366,129 @@ describe('Claude best practices', () => {
     await r.act(() => byText(dialog, 'button', 'Add Team Lead').click());
     await waitFor(() => expect(applied).toEqual(['team-lead:prj_1']), r);
     await waitFor(() => expect(listed()).toBeGreaterThan(before), r);
+  });
+});
+
+const sk = (name: string, over: Partial<Skill> = {}): Skill => ({
+  id: `skl_${name}`,
+  projectId: 'prj_1',
+  name,
+  description: `${name} rules`,
+  globs: [],
+  roles: [],
+  origin: 'repo',
+  contentHash: 'h',
+  status: 'accepted',
+  audience: 'team',
+  agents: [],
+  created: '',
+  updated: '',
+  ...over,
+});
+
+/** The checkbox of a skill in the Skills section inside root, with the line that says who gets it. */
+function skillBox(root: ParentNode, name: string) {
+  const field = must(root.querySelector<HTMLElement>('[data-testid="agent-skills"]'), 'no Skills section');
+  const label = must(
+    Array.from(field.querySelectorAll('label')).find((l) => l.querySelector('code')?.textContent === name),
+    `no skill ${name} (have ${Array.from(field.querySelectorAll('code')).map((c) => c.textContent).join(', ')})`,
+  );
+  return { input: must(label.querySelector<HTMLInputElement>('input'), 'no checkbox'), who: label.querySelector('small')?.textContent ?? '' };
+}
+
+describe('Team: skills', () => {
+  const skills = [
+    sk('everyone'),
+    sk('react', { roles: ['Frontend'] }),
+    sk('wrangler', { audience: 'agents', agents: ['agt_9'] }),
+    sk('waiting', { status: 'offered' }),
+    sk('flagged', { status: 'blocked' }),
+  ];
+  const edge = agent({ id: 'agt_9', name: 'Edge' });
+
+  it('the new-agent form gives the ticked skills; a skill the whole team gets for the role is included and cannot be unticked', async () => {
+    const calls: unknown[] = [];
+    const { r } = show([edge], { skillList: async () => skills, agentCreate: async (spec) => (calls.push(spec), { ...agent(), ...spec } as Agent) });
+    await waitAdapters(r);
+    const form = must(r.container.querySelector<HTMLElement>('[data-testid="agent-form"]'), 'no form');
+    await waitFor(() => skillBox(form, 'wrangler'), r);
+    type(byLabel(form, 'Agent name'), 'Pay');
+    type(byLabel(form, 'Role'), 'backend');
+    r.root.flush();
+    // only accepted skills are listed; the others wait on the Skills page
+    expect(Array.from(form.querySelectorAll('[data-testid="agent-skills"] code')).map((c) => c.textContent)).toEqual(['everyone', 'react', 'wrangler']);
+    expect(form.querySelector('[data-testid="agent-skills"]')?.textContent).toContain('One skill waits for your decision on the Skills page.');
+    const everyone = skillBox(form, 'everyone');
+    expect(everyone.input.checked && everyone.input.disabled).toBe(true);
+    expect(everyone.who).toBe('Included: it goes to the whole team.');
+    expect(skillBox(form, 'react').who).toBe('Now it goes to every Frontend agent.');
+    expect(skillBox(form, 'wrangler').who).toBe('Now it goes to only Edge.');
+    expect(skillBox(form, 'react').input.disabled || skillBox(form, 'react').input.checked).toBe(false);
+    // tick two, change your mind about one
+    await r.act(() => skillBox(form, 'react').input.click());
+    await r.act(() => skillBox(form, 'wrangler').input.click());
+    await r.act(() => skillBox(form, 'wrangler').input.click());
+    expect(skillBox(form, 'react').input.checked).toBe(true);
+    await r.act(() => byText(form, 'button', 'Create agent').click());
+    await waitFor(() => expect(calls).toEqual([{ projectId: 'prj_1', name: 'Pay', role: 'backend', purpose: '', adapter: 'claude', model: '', effort: '', practices: true, skills: ['react'] }]), r);
+    // the form is cleared, skills included
+    await waitFor(() => expect(skillBox(form, 'react').input.checked).toBe(false), r);
+    // a frontend agent gets react with the team
+    type(byLabel(form, 'Role'), 'Frontend ');
+    r.root.flush();
+    expect(skillBox(form, 'react').input.checked && skillBox(form, 'react').input.disabled).toBe(true);
+  });
+
+  it('sends no skills when none is ticked, and says when the project has no accepted skill', async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { r } = show([], { skillList: async () => [sk('later', { status: 'offered' })], agentCreate: async (spec) => (calls.push(spec as never), agent()) });
+    await waitAdapters(r);
+    const form = must(r.container.querySelector<HTMLElement>('[data-testid="agent-form"]'), 'no form');
+    await waitFor(() => expect(form.querySelector('[data-testid="agent-skills"]')?.textContent).toContain('No skill is accepted in this project yet.'), r);
+    type(byLabel(form, 'Agent name'), 'Q');
+    type(byLabel(form, 'Role'), 'qa');
+    r.root.flush();
+    await r.act(() => byText(form, 'button', 'Create agent').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect('skills' in calls[0]!).toBe(false);
+  });
+
+  it('the editor shows the skills the agent has and sends only what changed', async () => {
+    const calls: unknown[] = [];
+    const pay = agent();
+    const mine = [
+      sk('everyone', { agents: ['agt_1'] }), // included by role and given: left alone
+      sk('react', { roles: ['Frontend'], agents: ['agt_1'] }),
+      sk('wrangler', { audience: 'agents', agents: ['agt_9', 'agt_1'] }),
+      sk('docs', { audience: 'agents', agents: [] }),
+      sk('flagged', { status: 'blocked', audience: 'agents', agents: ['agt_1'] }), // not shown, never taken away
+    ];
+    const { r } = show([pay, edge], { skillList: async () => mine, agentUpdate: async (u) => (calls.push(u), pay) });
+    const card = await waitAgent(r, 'Pay');
+    await r.act(() => byText(card, 'button', 'Edit Pay').click());
+    const ed = await waitFor(() => must(editor(r), 'no editor'), r);
+    await waitFor(() => skillBox(ed, 'docs'), r);
+    expect(skillBox(ed, 'react').input.checked).toBe(true);
+    expect(skillBox(ed, 'react').who).toBe('Now it goes to every Frontend agent.');
+    expect(skillBox(ed, 'wrangler').input.checked).toBe(true);
+    expect(skillBox(ed, 'wrangler').who).toBe('Now it goes to only Edge.');
+    expect(skillBox(ed, 'docs').input.checked).toBe(false);
+    expect(skillBox(ed, 'docs').who).toBe('Now it goes to nobody: no agent is chosen yet.');
+    expect(skillBox(ed, 'everyone').input.disabled).toBe(true);
+    await r.act(() => skillBox(ed, 'wrangler').input.click());
+    await r.act(() => skillBox(ed, 'docs').input.click());
+    await r.act(() => byText(ed, 'button', 'Save changes').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toEqual({
+      id: 'agt_1',
+      name: 'Pay',
+      role: 'backend',
+      purpose: 'Own the payments service.',
+      model: 'sonnet',
+      effort: 'high',
+      practices: true,
+      addSkills: ['docs'],
+      removeSkills: ['wrangler'],
+    });
   });
 });

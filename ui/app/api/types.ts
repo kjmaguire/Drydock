@@ -254,6 +254,8 @@ export interface AgentSpec {
   permissionMode?: string;
   purpose?: string;
   practices?: boolean;
+  /** Project skills the new agent is given. */
+  skills?: string[];
 }
 
 /** Only the fields that are set change. The adapter cannot change: make a new agent for a different CLI. */
@@ -268,6 +270,9 @@ export interface AgentUpdate {
   practices?: boolean;
   /** Replaces the routed models; an empty list turns routing off. */
   routeModels?: RouteModel[];
+  /** Project skills to give the agent, and to take away from it. */
+  addSkills?: string[];
+  removeSkills?: string[];
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */

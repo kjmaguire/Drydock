@@ -48,6 +48,15 @@ const (
 	OriginRegistry = "registry"
 )
 
+// Audiences: who receives an accepted skill (SetAudience).
+const (
+	// AudienceTeam is every agent whose role matches the skill's drydock.roles (every agent when it names none), agents added
+	// later included, plus each agent the skill is given to (Assign).
+	AudienceTeam = "team"
+	// AudienceAgents is only the agents the skill is given to.
+	AudienceAgents = "agents"
+)
+
 // maxRepoSkills bounds one repository scan.
 const maxRepoSkills = 200
 
@@ -117,12 +126,13 @@ type Skill struct {
 	Body                string    `json:"body,omitempty"`
 	// Notes say what the parser tolerated and ignored (front matter keys outside the format, a renamed registry skill).
 	Notes []string `json:"notes"`
-	// Agents are the agents this skill is assigned to. Empty: it reaches every agent whose role matches (drydock.roles);
-	// otherwise only these agents receive it.
+	// Audience says who receives the skill once accepted: AudienceTeam or AudienceAgents.
+	Audience string `json:"audience"`
+	// Agents are the agents the skill is given to: on top of the team for AudienceTeam, the only ones for AudienceAgents.
 	Agents []string `json:"agents"`
 }
 
-const skillCols = `id,project_id,name,description,body,license,compatibility,globs,roles,origin,registry_id,source_path,pinned_commit,content_hash,has_scripts,allowed_tools_ignored,status,risk,flags,block_reason,decided_by,decided_at,created_at,updated_at,parse_notes`
+const skillCols = `id,project_id,name,description,body,license,compatibility,globs,roles,origin,registry_id,source_path,pinned_commit,content_hash,has_scripts,allowed_tools_ignored,status,risk,flags,block_reason,decided_by,decided_at,created_at,updated_at,parse_notes,audience`
 
 func scanSkill(sc interface{ Scan(...any) error }, withBody bool) (Skill, error) {
 	var k Skill
@@ -130,7 +140,7 @@ func scanSkill(sc interface{ Scan(...any) error }, withBody bool) (Skill, error)
 	var scripts, ati int
 	var decided, created, updated int64
 	if err := sc.Scan(&k.ID, &k.ProjectID, &k.Name, &k.Description, &body, &k.License, &k.Compatibility, &globs, &roles, &k.Origin, &k.RegistryID, &k.SourcePath, &k.PinnedCommit,
-		&k.ContentHash, &scripts, &ati, &k.Status, &k.Risk, &flags, &k.BlockReason, &k.DecidedBy, &decided, &created, &updated, &notes); err != nil {
+		&k.ContentHash, &scripts, &ati, &k.Status, &k.Risk, &flags, &k.BlockReason, &k.DecidedBy, &decided, &created, &updated, &notes, &k.Audience); err != nil {
 		return k, err
 	}
 	_ = json.Unmarshal([]byte(notes), &k.Notes)
@@ -219,9 +229,9 @@ func (s *Service) Get(ctx context.Context, projectID, name string) (Skill, error
 }
 
 // Eligible returns the accepted skills that reach an agent, with bodies, by name. This is the only set that is ever written
-// into a worktree or served to an agent. A skill assigned to one or more agents (Assign) reaches exactly those agents, whatever
-// its drydock.roles say: the human picked them. A skill assigned to nobody reaches every agent whose role matches. An empty
-// agentID (no agent known) receives only unassigned skills.
+// into a worktree or served to an agent. A skill for the whole team (AudienceTeam) reaches every agent whose role matches its
+// drydock.roles and every agent it is given to; a skill for chosen agents (AudienceAgents) reaches exactly the agents it is
+// given to, whatever its roles say. An empty agentID (no agent known) receives only what its role gets from team skills.
 func (s *Service) Eligible(ctx context.Context, projectID, agentID, role string) ([]Skill, error) {
 	assigned, err := s.Assignments(ctx, projectID)
 	if err != nil {
@@ -240,12 +250,8 @@ func (s *Service) Eligible(ctx context.Context, projectID, agentID, role string)
 		}
 		if to := assigned[k.Name]; len(to) > 0 {
 			k.Agents = to
-			if agentID != "" && contains(to, agentID) {
-				out = append(out, k)
-			}
-			continue
 		}
-		if RolesMatch(k.Roles, role) {
+		if Reaches(k, agentID, role) {
 			out = append(out, k)
 		}
 	}
@@ -300,9 +306,10 @@ func (s *Service) upsert(ctx context.Context, projectID string, r record) (Skill
 		case errors.Is(e, sql.ErrNoRows):
 			changed = true
 			id := ids.New("skl")
-			_, e = tx.ExecContext(ctx, `INSERT INTO skills(`+skillCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			_, e = tx.ExecContext(ctx, `INSERT INTO skills(`+skillCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				id, projectID, r.ps.Name, r.ps.Description, body, r.license, r.ps.Compatibility, string(globs), string(roles), r.origin, r.registry, r.source, r.pinned,
-				r.hash, b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, now, string(notes))
+				r.hash, b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, now, string(notes),
+				AudienceTeam)
 			return e
 		case e != nil:
 			return e

@@ -100,8 +100,7 @@ type SkillsInstalled struct {
 	// Shared skills were already accepted in the project for every agent whose role matches, this one included; they were
 	// left as they were so the rest of the team keeps them.
 	Shared []string `json:"shared"`
-	// Pending skills are in the project (and assigned to the agent when they are its own) but wait for the human: blocked by the
-	// scan, rejected earlier, or delivered by role to others.
+	// Pending skills are in the project and given to the agent but wait for the human: blocked by the scan or rejected earlier.
 	Pending []Skipped `json:"pending"`
 	// Failed skills could not be installed (network, registry, license, a repository skill of the same name).
 	Failed []Skipped `json:"failed"`
@@ -406,20 +405,29 @@ func (c *Core) installSkillsFor(ctx context.Context, ag Agent, refs []agentcatal
 				continue
 			}
 		}
-		// a skill that already reached the team by role keeps doing so: assigning it here would take it from everyone else
-		if existed && len(before.Agents) == 0 && cur.Status == skills.StatusAccepted && before.Status == skills.StatusAccepted {
-			if skills.RolesMatch(cur.Roles, ag.Role) {
-				res.Shared = append(res.Shared, ref.Name)
-			} else {
-				res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "this project gives it to other roles (" + strings.Join(cur.Roles, ", ") + "); assign it on the Skills page if this agent should have it too"})
+		// Who gets it is left as the project has it whenever the skill already reached agents: a whole-team skill whose roles
+		// match the newcomer is shared as it is, and otherwise the newcomer is given it as well, which takes it from nobody. A
+		// skill that reached nobody before this choice (new to the project, or never accepted) comes with this agent, so it goes
+		// to this agent (and to any agent it was already given to); the human can give it to the team on the Skills page.
+		reached := existed && before.Status == skills.StatusAccepted
+		switch {
+		case reached && cur.Audience != skills.AudienceAgents && cur.Status == skills.StatusAccepted && skills.RolesMatch(cur.Roles, ag.Role):
+			res.Shared = append(res.Shared, ref.Name)
+			continue
+		case reached || cur.Audience == skills.AudienceAgents:
+			if cur, err = k.Skills.Assign(ctx, c.Human(), ag.ProjectID, ref.Name, ag.ID, true); err != nil {
+				res.Failed = append(res.Failed, Skipped{Name: ref.Name, Reason: err.Error()})
+				continue
 			}
-			continue
+			k.audit(ctx, "skill.assign", ref.Name, map[string]any{"project": ag.ProjectID, "agent": ag.ID, "on": true, "via": via})
+		default:
+			given := append(append([]string{}, cur.Agents...), ag.ID)
+			if cur, err = k.Skills.SetAudience(ctx, c.Human(), ag.ProjectID, ref.Name, skills.AudienceAgents, given); err != nil {
+				res.Failed = append(res.Failed, Skipped{Name: ref.Name, Reason: err.Error()})
+				continue
+			}
+			k.audit(ctx, "skill.audience", ref.Name, map[string]any{"project": ag.ProjectID, "audience": skills.AudienceAgents, "agents": cur.Agents, "via": via})
 		}
-		if _, err := k.Skills.Assign(ctx, c.Human(), ag.ProjectID, ref.Name, ag.ID, true); err != nil {
-			res.Failed = append(res.Failed, Skipped{Name: ref.Name, Reason: err.Error()})
-			continue
-		}
-		k.audit(ctx, "skill.assign", ref.Name, map[string]any{"project": ag.ProjectID, "agent": ag.ID, "on": true, "via": via})
 		switch cur.Status {
 		case skills.StatusAccepted:
 			res.Assigned = append(res.Assigned, ref.Name)

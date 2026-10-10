@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -22,7 +24,14 @@ import (
 func init() {
 	RegisterExtension(Extension{Name: "agentmgmt", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		return map[string]Method{
-			"agent.update":  bind(func(ctx context.Context, p AgentUpdate) (any, error) { return c.UpdateAgent(ctx, p) }),
+			"agent.update": bind(func(ctx context.Context, p struct {
+				AgentUpdate
+				// AddSkills and RemoveSkills give the agent project skills or take them away (Skills page: who gets each).
+				AddSkills    []string `json:"addSkills"`
+				RemoveSkills []string `json:"removeSkills"`
+			}) (any, error) {
+				return c.updateAgentWithSkills(ctx, p.AgentUpdate, p.AddSkills, p.RemoveSkills)
+			}),
 			"agent.archive": bind(func(ctx context.Context, p idParam) (any, error) { return c.ArchiveAgent(ctx, p.ID) }),
 			"claude.practices": bind(func(ctx context.Context, p struct {
 				Role string `json:"role"`
@@ -31,6 +40,100 @@ func init() {
 			}),
 		}, nil, nil
 	}})
+}
+
+// createAgentWithSkills makes an agent and gives it the named skills of its project. The names are checked first, so an
+// unknown skill refuses the call before the agent exists. Giving a skill never makes it deliverable: only accepted skills
+// reach an agent, and a whole-team skill keeps reaching the rest of the team.
+func (c *Core) createAgentWithSkills(ctx context.Context, s AgentSpec, skillNames []string) (Agent, error) {
+	names, err := c.projectSkillNames(ctx, s.ProjectID, skillNames, false)
+	if err != nil {
+		return Agent{}, err
+	}
+	ag, err := c.CreateAgent(ctx, s)
+	if err != nil {
+		return Agent{}, err
+	}
+	if err := c.giveSkills(ctx, ag, names, true); err != nil {
+		return ag, fmt.Errorf("the agent %s was created, but %w", ag.Name, err)
+	}
+	return ag, nil
+}
+
+// updateAgentWithSkills changes an agent and then gives it the add skills and takes the remove skills away. The names to
+// add are checked first; a skill to remove that the project no longer has is skipped (it reaches nobody).
+func (c *Core) updateAgentWithSkills(ctx context.Context, u AgentUpdate, add, remove []string) (Agent, error) {
+	if len(add) == 0 && len(remove) == 0 {
+		return c.UpdateAgent(ctx, u)
+	}
+	cur, err := c.agent(ctx, u.ID)
+	if err != nil {
+		return Agent{}, fmt.Errorf("agent %s: %w", u.ID, err)
+	}
+	addN, err := c.projectSkillNames(ctx, cur.ProjectID, add, false)
+	if err != nil {
+		return Agent{}, err
+	}
+	removeN, err := c.projectSkillNames(ctx, cur.ProjectID, remove, true)
+	if err != nil {
+		return Agent{}, err
+	}
+	for _, n := range addN {
+		if slices.Contains(removeN, n) {
+			return Agent{}, fmt.Errorf("skill %s is both added and removed", n)
+		}
+	}
+	ag, err := c.UpdateAgent(ctx, u)
+	if err != nil {
+		return Agent{}, err
+	}
+	if err := c.giveSkills(ctx, ag, addN, true); err != nil {
+		return ag, err
+	}
+	if err := c.giveSkills(ctx, ag, removeN, false); err != nil {
+		return ag, err
+	}
+	return ag, nil
+}
+
+// projectSkillNames trims and de-duplicates skill names and checks that each is a skill of the project; with skipMissing a
+// name the project does not have is dropped instead of refused.
+func (c *Core) projectSkillNames(ctx context.Context, projectID string, in []string, skipMissing bool) ([]string, error) {
+	out := []string{}
+	for _, n := range in {
+		n = strings.TrimSpace(n)
+		if n == "" || slices.Contains(out, n) {
+			continue
+		}
+		k := c.Knowledge()
+		if k == nil {
+			return nil, errors.New("skills are not available")
+		}
+		if _, err := k.Skills.Get(ctx, projectID, n); err != nil {
+			if skipMissing && errors.Is(err, skills.ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// giveSkills gives the agent each named skill (on) or takes it away, with an audit entry for each.
+func (c *Core) giveSkills(ctx context.Context, ag Agent, names []string, on bool) error {
+	k := c.Knowledge()
+	for _, n := range names {
+		if _, err := k.Skills.Assign(ctx, c.Human(), ag.ProjectID, n, ag.ID, on); err != nil {
+			verb := "giving it"
+			if !on {
+				verb = "taking away"
+			}
+			return fmt.Errorf("%s the skill %s failed: %w", verb, n, err)
+		}
+		k.audit(ctx, "skill.assign", n, map[string]any{"project": ag.ProjectID, "agent": ag.ID, "on": on, "via": "agent form"})
+	}
+	return nil
 }
 
 // MaxPurposeRunes bounds the purpose text: it rides in every run's system prompt.

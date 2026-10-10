@@ -485,6 +485,10 @@ export interface Skill {
   hasScripts?: boolean;
   allowedToolsIgnored?: boolean;
   status: 'offered' | 'accepted' | 'rejected' | 'blocked' | string;
+  /** Who receives it once accepted: 'team' (every agent its roles take in, plus `agents`) or 'agents' (only `agents`). */
+  audience: 'team' | 'agents' | string;
+  /** The agents it is given to. */
+  agents: string[] | null;
   risk?: number;
   flags?: string[] | null;
   blockReason?: string;

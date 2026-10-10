@@ -1,6 +1,6 @@
 // Pure helpers for the team page, the agent editor and the template form (no DOM, no services).
 
-import type { AppliedTemplate } from '../../api/libraryClient.ts';
+import type { AppliedTemplate, SkillsInstalled } from '../../api/libraryClient.ts';
 import type { AdapterInfo, Capabilities, RouteModel } from '../../api/types.ts';
 
 export const CAP_LABEL: [keyof Capabilities, string][] = [
@@ -57,9 +57,20 @@ export function routesForUpdate(routes: readonly RouteModel[], original: readonl
   return JSON.stringify(routes) === JSON.stringify(original ?? []) ? undefined : routes.filter((r) => r.model.trim());
 }
 
-/** What a template apply says: who joined, what was granted and what was not. */
+/** What installing an agent's skills did, in sentences (prebuilt agents and templates). */
+export function skillLines(r: SkillsInstalled): string[] {
+  const out: string[] = [];
+  if (r.assigned.length) out.push(`Skills: ${r.assigned.join(', ')}.`);
+  if (r.shared.length) out.push(`Already with the whole team: ${r.shared.join(', ')}.`);
+  for (const x of r.pending) out.push(`Skill ${x.name ?? x.id} waits for your decision: ${x.reason}`);
+  for (const x of r.failed) out.push(`Skill ${x.name ?? x.id} not installed: ${x.reason}`);
+  return out;
+}
+
+/** What a template apply says: who joined, what was granted and what was not, and what its skills did. */
 export function appliedNote(r: AppliedTemplate): string {
-  return `${r.agent.name} joined the team${r.granted.length ? `, with ${r.granted.join(', ')}` : ''}${r.skipped.length ? `. Not granted: ${r.skipped.join('; ')}` : ''}.`;
+  const head = `${r.agent.name} joined the team${r.granted.length ? `, with ${r.granted.join(', ')}` : ''}${r.skipped.length ? `. Not granted: ${r.skipped.join('; ')}` : ''}.`;
+  return [head, ...skillLines(r.skills)].join(' ');
 }
 
 /**

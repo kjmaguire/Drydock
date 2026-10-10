@@ -291,10 +291,10 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 	var worker, reviewer core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
-	// go-style is assigned to the reviewer only: the worker (whose role it names) no longer receives it
+	// go-style goes to the reviewer only (chosen agents): the worker, whose role it names, no longer receives it
 	var assigned skills.Skill
-	a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "go-style", "agentId": reviewer.ID, "on": true}, &assigned)
-	if strings.Join(assigned.Agents, ",") != reviewer.ID {
+	a.call("skill.audience", map[string]any{"projectId": p.ID, "name": "go-style", "audience": skills.AudienceAgents, "agents": []string{reviewer.ID}}, &assigned)
+	if strings.Join(assigned.Agents, ",") != reviewer.ID || assigned.Audience != skills.AudienceAgents {
 		t.Fatalf("%+v", assigned)
 	}
 	var listed []skills.Skill

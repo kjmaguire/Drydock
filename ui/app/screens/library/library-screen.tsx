@@ -4,6 +4,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import {
+  Cpu,
   FolderOpen,
   FolderPlus,
   Globe,
@@ -39,6 +40,7 @@ import { actionsRow, cardHead, confirmCss, subhead, tile, whereCss } from '../mc
 import { OAuthPanel } from '../mcp/oauth-panel.tsx';
 import { McpServerForm } from '../mcp/server-form.tsx';
 import { inputOf, whereOf } from '../mcp/server-input.ts';
+import { skillLines } from '../team/team.ts';
 import { TemplateForm } from '../team/template-form.tsx';
 import { joinedNote, startDrag, type Dragged } from './dnd.ts';
 import { DropZone } from './drop-zone.tsx';
@@ -407,6 +409,16 @@ function TemplateCard(
               ))}
             </ul>
           ) : null}
+          {tp.skills.length > 0 ? (
+            <ul mix={chips} aria-label="Skills it brings">
+              {tp.skills.map((k) => (
+                <li key={k.name} data-plain title={`${k.registry}${k.ref ? ` at ${k.ref.slice(0, 12)}` : ''}`}>
+                  <Icon icon={Cpu} size={12} />
+                  {k.name}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <PutInProject
             projects={projects}
             label={`Put ${tp.name} in project`}
@@ -415,7 +427,7 @@ function TemplateCard(
               const r = await act.run('apply', () => svc.client.agentTemplateApply(tp.id, pid));
               if (r) {
                 const pname = projects.find((p) => p.id === pid)?.name ?? pid;
-                say(joinedNote(r.agent.name, pname, r.granted, r.skipped, nameOf));
+                say(joinedNote(r.agent.name, pname, r.granted, r.skipped, nameOf, skillLines(r.skills)));
                 onChanged();
               }
             }}
@@ -524,7 +536,7 @@ function ProjectPanel(handle: Handle<{ project: Project; servers: readonly McpLi
       if (r) say(`${serverName(item.id)} is now in ${project.name}.`);
     } else {
       const r = await act.run('apply', () => s.client.agentTemplateApply(item.id, project.id));
-      if (r) say(joinedNote(r.agent.name, project.name, r.granted, r.skipped, serverName));
+      if (r) say(joinedNote(r.agent.name, project.name, r.granted, r.skipped, serverName, skillLines(r.skills)));
     }
     reload();
   };

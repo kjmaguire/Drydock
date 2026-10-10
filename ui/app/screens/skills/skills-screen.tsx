@@ -3,8 +3,9 @@
 // requested tool permissions are recorded and ignored.
 
 import { css, on, type Handle } from 'remix/component';
-import { Cpu, FileCode2, GitBranch, Plus, ScanSearch, ShieldAlert, ShieldCheck } from 'lucide';
+import { Cpu, FileCode2, GitBranch, Plus, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
 import type { Skill, SkillCandidate, SkillRegistry, SkillScan } from '../../api/extTypes.ts';
+import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -16,7 +17,8 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, tableCard } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
-import { coverageText, listOr, scanText, skillTone } from './skills.ts';
+import { AudienceEditor } from './audience.tsx';
+import { audienceText, coverageText, listOr, onTeam, scanText, skillTone } from './skills.ts';
 
 const gridCss = css({
   display: 'grid',
@@ -67,18 +69,29 @@ const iconWrap = css({
   color: t.textMuted,
 });
 
-/** A skill from outside is offered, never applied: the human accepts or rejects each one. */
+/** A skill from outside is offered, never applied: the human accepts or rejects each one, and chooses who gets it. */
 export function SkillCard(
   handle: Handle<{
     s: Skill;
     onAccept: () => void;
     onReject: () => void;
     onRelease: () => void;
+    /** The project's team, for who gets the skill. */
+    agents?: readonly Agent[];
+    /** Set who gets the skill; resolves true when it was saved. */
+    onAudience?: (audience: 'team' | 'agents', agents: string[]) => Promise<boolean>;
     busy: boolean;
   }>,
 ) {
+  let editing = false;
+  const set = (f: () => void) => {
+    f();
+    void handle.update();
+  };
   return () => {
-    const { s, onAccept, onReject, onRelease, busy } = handle.props;
+    const { s, onAccept, onReject, onRelease, busy, agents = [], onAudience } = handle.props;
+    const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
+    const who = audienceText(onTeam(s, agents), nameOf);
     return (
       <article mix={skillCss} data-testid="skill" data-skill={s.name} data-status={s.status}>
         <header>
@@ -97,7 +110,9 @@ export function SkillCard(
         </header>
         {s.description ? <p class="desc">{s.description}</p> : null}
         <dl mix={kv}>
-          <dt>Applies to roles</dt>
+          <dt>Goes to</dt>
+          <dd data-testid="skill-audience-text">{s.status === 'accepted' ? who : `${who}, once accepted`}</dd>
+          <dt>Roles it names</dt>
           <dd>{listOr(s.roles)}</dd>
           <dt>Paths</dt>
           <dd>{listOr(s.globs)}</dd>
@@ -160,7 +175,23 @@ export function SkillCard(
               Release {s.name} anyway
             </Button>
           ) : null}
+          {onAudience && !editing && (s.status === 'accepted' || s.status === 'offered') ? (
+            <Button size="sm" variant="ghost" icon={Users} disabled={busy} mix={on('click', () => set(() => (editing = true)))}>
+              Change who gets {s.name}
+            </Button>
+          ) : null}
         </div>
+        {onAudience && editing ? (
+          <AudienceEditor
+            skill={onTeam(s, agents)}
+            agents={agents}
+            busy={busy}
+            onCancel={() => set(() => (editing = false))}
+            onSave={async (audience, chosen) => {
+              if (await onAudience(audience, chosen)) set(() => (editing = false));
+            }}
+          />
+        ) : null}
       </article>
     );
   };
@@ -382,6 +413,7 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
 export function SkillsScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
+  watch(handle, s.project);
   const act = action(handle);
   const pid = () => s.workspace.projectId;
   const on_ = { key: pid, enabled: () => !!pid() };
@@ -461,6 +493,14 @@ export function SkillsScreen(handle: Handle) {
                 onAccept={decide(s.client.skillAccept, sk.name)}
                 onReject={decide(s.client.skillReject, sk.name)}
                 onRelease={decide(s.client.skillRelease, sk.name)}
+                agents={s.project.agentList}
+                onAudience={async (audience, agents) => {
+                  const projectId = pid();
+                  if (!projectId) return false;
+                  const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, sk.name, audience, agents)));
+                  q.reload();
+                  return ok;
+                }}
               />
             ))}
           </div>

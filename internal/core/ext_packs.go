@@ -592,7 +592,8 @@ func (k *Knowledge) methods() map[string]Method {
 			return s, err
 		})
 	}
-	// per-agent assignment: a skill assigned to agents reaches only them; with none it follows its roles
+	// who gets a skill: give it to one agent or take it away (skill.assign), or set the whole audience at once (skill.audience):
+	// the whole team (the roles it names, plus the agents given it) or only the chosen agents
 	m["skill.assign"] = bind(func(ctx context.Context, p struct {
 		ProjectID string `json:"projectId"`
 		Name      string `json:"name"`
@@ -602,6 +603,18 @@ func (k *Knowledge) methods() map[string]Method {
 		s, err := k.Skills.Assign(ctx, h(), p.ProjectID, p.Name, p.AgentID, p.On)
 		if err == nil {
 			k.audit(ctx, "skill.assign", p.Name, map[string]any{"project": p.ProjectID, "agent": p.AgentID, "on": p.On})
+		}
+		return s, err
+	})
+	m["skill.audience"] = bind(func(ctx context.Context, p struct {
+		ProjectID string   `json:"projectId"`
+		Name      string   `json:"name"`
+		Audience  string   `json:"audience"`
+		Agents    []string `json:"agents"`
+	}) (any, error) {
+		s, err := k.Skills.SetAudience(ctx, h(), p.ProjectID, p.Name, p.Audience, p.Agents)
+		if err == nil {
+			k.audit(ctx, "skill.audience", p.Name, map[string]any{"project": p.ProjectID, "audience": s.Audience, "agents": s.Agents})
 		}
 		return s, err
 	})

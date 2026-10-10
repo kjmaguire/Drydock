@@ -1,13 +1,13 @@
-// Define a team member once: the CLI, model, effort, role, purpose and the library servers it should get. The Library
-// screen shows this form for a new template and for editing one.
+// Define a team member once: the CLI, model, effort, role, purpose, the library servers it should get and the registry skills
+// it brings. The Library screen shows this form for a new template and for editing one.
 
 import { css, on, type Handle } from 'remix/component';
-import { Server } from 'lucide';
-import type { AgentTemplate } from '../../api/libraryClient.ts';
+import { Cpu, Server } from 'lucide';
+import type { AgentTemplate, SkillChoice } from '../../api/libraryClient.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
-import type { AdapterInfo } from '../../api/types.ts';
+import type { AdapterInfo, SkillRef } from '../../api/types.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
-import { action, services, watch } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -36,6 +36,23 @@ const serversCss = css({
   '& p': { margin: '0', fontSize: t.textSm },
 });
 
+const skillRows = css({
+  display: 'grid',
+  gap: t.s1,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  '& li': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0', fontSize: t.textMd },
+  '& li span': { color: t.textMuted, fontSize: t.textSm },
+  '& li button': { marginLeft: 'auto' },
+});
+const addRow = css({ display: 'flex', alignItems: 'end', gap: t.s2, flexWrap: 'wrap', '& > :first-child': { flex: '1', minWidth: '220px' } });
+
+const keyOf = (r: SkillRef): string => `${r.registry}/${r.name}@${r.ref}`;
+
+/** One option line for a skill a template can carry: its name, its registry and where Drydock knows it from. */
+export const choiceText = (c: SkillChoice): string => `${c.name} (${c.registry})${c.from.length ? `, from ${c.from.join(', ')}` : ''}`;
+
 export function TemplateForm(handle: Handle<TemplateFormProps>) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -51,9 +68,19 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
   let mode = init?.permissionMode ?? '';
   let practices = init?.practices !== false;
   let servers: string[] = init?.mcpServers ?? [];
+  let skills: SkillRef[] = init?.skills ?? [];
+  let pick = '';
   const set = (f: () => void) => {
     f();
     void handle.update();
+  };
+  const choices = query(handle, { load: () => s.client.agentTemplateSkillChoices() });
+  // a template carries one entry per skill name (the core keeps the first)
+  const available = (): SkillChoice[] => (choices.data ?? []).filter((c) => !skills.some((k) => k.name === c.name));
+  const addSkill = () => {
+    const list = available();
+    const c = list.find((x) => keyOf(x) === pick) ?? list[0];
+    if (c) set(() => ((skills = [...skills, { registry: c.registry, name: c.name, ref: c.ref }]), (pick = '')));
   };
   const adapters = () => sortAdapters(handle.props.adapters); // ready adapters first, as on the Team page
   const adapterId = () => picked || adapters()[0]?.id || '';
@@ -79,6 +106,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
         permissionMode: mode,
         providerId: initial?.providerId ?? '',
         mcpServers: servers,
+        skills,
         ...(adapter === 'claude' ? { practices } : {}),
       }),
     );
@@ -171,6 +199,53 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
               <span>{srv.display}</span> <code>{srv.id}</code>
             </label>
           ))}
+        </fieldset>
+        <fieldset mix={serversCss} data-testid="template-skills">
+          <legend>
+            <Icon icon={Cpu} size={14} />
+            Skills it brings into a project
+          </legend>
+          <p mix={muted}>
+            Registry skills pinned to a commit. Putting the template into a project installs them there and gives them to the new agent; a skill the
+            whole team already has stays with the team.
+          </p>
+          {skills.length === 0 ? <p mix={muted}>No skills.</p> : null}
+          {skills.length > 0 ? (
+            <ul mix={skillRows} aria-label="Skills the template brings">
+              {skills.map((k) => (
+                <li key={k.name}>
+                  <code>{k.name}</code>
+                  <span>
+                    {k.registry}, {k.ref ? `pinned at ${k.ref.slice(0, 12)}` : 'the newest commit when it is put into a project'}
+                  </span>
+                  <Button size="sm" variant="ghost" aria-label={`Remove ${k.name}`} mix={on('click', () => set(() => (skills = skills.filter((x) => x.name !== k.name))))}>
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ErrorNote error={choices.error} what="Skills to add" />
+          {available().length > 0 ? (
+            <div mix={addRow}>
+              <Field label="Add a skill">
+                {(id) => (
+                  <select id={id} value={pick || keyOf(available()[0]!)} mix={on('change', (e) => set(() => (pick = e.currentTarget.value)))}>
+                    {available().map((c) => (
+                      <option key={keyOf(c)} value={keyOf(c)} title={c.description || undefined} selected={keyOf(c) === (pick || keyOf(available()[0]!))}>
+                        {choiceText(c)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Button size="sm" mix={on('click', () => addSkill())}>
+                Add skill
+              </Button>
+            </div>
+          ) : choices.data ? (
+            <p mix={muted}>No other skill to add: import one on a project's Skills page, or put in a prebuilt agent that comes with skills.</p>
+          ) : null}
         </fieldset>
         <div mix={formActions}>
           <Button type="submit" variant="primary" disabled={!!act.busy || ro.readOnly || !name.trim() || !role.trim() || !adapter} title={ro.readOnly ? ro.reason : undefined}>

@@ -121,7 +121,7 @@ func populate(t testing.TB, db *storage.DB, dataDir string) {
 	x(`INSERT INTO requirement_links(requirement_id,version,task_id,criterion,criterion_hash,created_at) VALUES('req_aaaaaaaaaaaa',1,'task_aaaaaaaaaaaa','Given a When b Then c','ch',?)`, now)
 	x(`INSERT INTO milestones(id,project_id,title,created_at,updated_at) VALUES('ms_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','M1',?,?)`, now, now)
 	x(`INSERT INTO milestone_tasks(milestone_id,task_id) VALUES('ms_aaaaaaaaaaaa','task_aaaaaaaaaaaa')`)
-	x(`INSERT INTO skills(id,project_id,name,body,origin,content_hash,status,decided_by,decided_at,created_at,updated_at) VALUES('skl_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','style','Be nice','repo','h','accepted','human:oldname',5,?,?)`, now, now)
+	x(`INSERT INTO skills(id,project_id,name,body,origin,content_hash,status,decided_by,decided_at,created_at,updated_at,audience) VALUES('skl_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','style','Be nice','repo','h','accepted','human:oldname',5,?,?,'agents')`, now, now)
 	x(`INSERT INTO agent_skills(project_id,agent_id,skill_name,assigned_by,assigned_at) VALUES('prj_aaaaaaaaaaaa','agt_aaaaaaaaaaaa','style','human:oldname',?)`, now)
 	x(`INSERT INTO settings(key,value) VALUES('devloop:prj_aaaaaaaaaaaa',?)`, `{"maxParallel":3,"autoSchedule":true,"workerChecks":true,"ciMode":"none","ciNoneBy":"human:oldname","ciNoneAt":5,"respond":true,"e2e":{"enabled":true,"command":["npm","test"]},"preview":{"enabled":true}}`)
 	x(`INSERT INTO settings(key,value) VALUES('license.token','SECRET-LICENSE-TOKEN')`)
@@ -438,7 +438,7 @@ func TestImportCreatesANewProjectWithRemappedIdsAndSafeDefaults(t *testing.T) {
 	if got := one(`SELECT status||'|'||source FROM memory WHERE project_id=?`, pid); got != "proposed|import:accepted" {
 		t.Errorf("memory %q", got)
 	}
-	if got := one(`SELECT status||'|'||decided_by||'|'||decided_at FROM skills WHERE project_id=?`, pid); got != "offered||0" {
+	if got := one(`SELECT status||'|'||decided_by||'|'||decided_at||'|'||audience FROM skills WHERE project_id=?`, pid); got != "offered||0|agents" {
 		t.Errorf("skill %q", got)
 	}
 	if got := one(`SELECT s.skill_name||'|'||a.name FROM agent_skills s JOIN agents a ON a.id=s.agent_id WHERE s.project_id=?`, pid); got != "style|Ada" {
@@ -643,7 +643,7 @@ func TestOlderSchemaIsMigratedForwardOnImport(t *testing.T) {
 		for _, q := range []string{`ALTER TABLE agent_templates DROP COLUMN practices`, `DROP TABLE agent_templates`, `DROP TABLE agent_mcp_access`, `DROP TABLE project_mcp_servers`, `DROP TABLE mcp_library`, `DROP TABLE integration_outbox`, `DROP TABLE integration_rule_matches`, `DROP TABLE integration_rules`, `DROP TABLE external_items`,
 			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN practices`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DROP TABLE IF EXISTS room_attachments`, `ALTER TABLE agents DROP COLUMN route_models`, `ALTER TABLE projects DROP COLUMN brief`,
 			`DROP TABLE chats_fts`, `DROP TABLE chat_messages_fts`, `DROP TABLE chat_turns`, `DROP TABLE chat_messages`, `DROP TABLE chats`,
-			`DROP TABLE agent_skills`, `DROP TABLE lead_interventions`, `ALTER TABLE skills DROP COLUMN parse_notes`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 106, 107, 108)`} {
+			`ALTER TABLE skills DROP COLUMN audience`, `DROP TABLE agent_skills`, `DROP TABLE lead_interventions`, `ALTER TABLE skills DROP COLUMN parse_notes`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 106, 107, 108, 109)`} {
 			if _, err := raw.Exec(q); err != nil {
 				t.Fatalf("%s: %v", q, err)
 			}

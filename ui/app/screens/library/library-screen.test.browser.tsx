@@ -134,7 +134,7 @@ describe('Library page', () => {
   it('dropping a template on a project adds the team member, and the note says what was granted and what was not', async () => {
     const calls: Calls = [];
     const r = show({
-      agentTemplateApply: rec(calls, () => ({ agent: { ...pay, name: 'Payments dev' }, granted: ['tst'], skipped: ['docs: there is no MCP server "docs" in the library'] })) as never,
+      agentTemplateApply: rec(calls, () => ({ agent: { ...pay, name: 'Payments dev' }, granted: ['tst'], skipped: ['docs: there is no MCP server "docs" in the library'], skills: { assigned: ['wrangler'], shared: [], pending: [], failed: [] } })) as never,
     });
     const card = await one(r, '[data-testid="lib-template"]');
     const beta = await zone(r, 'lib-project', 'Beta');
@@ -144,6 +144,7 @@ describe('Library page', () => {
       expect(note(r)).toContain('Payments dev joined Beta');
       expect(note(r)).toContain('Test server');
       expect(note(r)).toContain('Not granted: docs');
+      expect(note(r)).toContain('Skills: wrangler.');
     }, r);
   });
 
@@ -153,7 +154,7 @@ describe('Library page', () => {
     const adds: Calls = [];
     const r = show({
       mcpServerGrant: rec(grants, () => projServer()) as never,
-      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [] })) as never,
+      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [], skills: { assigned: [], shared: [], pending: [], failed: [] } })) as never,
       mcpServerAdd: rec(adds, () => projServer()) as never,
     });
     const template = await one(r, '[data-testid="lib-template"]');
@@ -181,7 +182,7 @@ describe('Library page', () => {
     const grants: Calls = [];
     const r = show({
       mcpServerAdd: rec(adds, () => projServer()) as never,
-      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [] })) as never,
+      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [], skills: { assigned: [], shared: [], pending: [], failed: [] } })) as never,
       mcpServerGrant: rec(grants, () => projServer()) as never,
     });
     const card = await one(r, '[data-testid="lib-mcp"]');

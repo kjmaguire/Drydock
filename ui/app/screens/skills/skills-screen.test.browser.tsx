@@ -2,6 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Skill, SkillRegistry } from '../../api/extTypes.ts';
+import type { Agent } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { SkillsScreen } from './skills-screen.tsx';
 
@@ -17,6 +18,8 @@ const skill = (over: Partial<Skill>): Skill => ({
   origin: 'repository',
   contentHash: 'h',
   status: 'offered',
+  audience: 'team',
+  agents: [],
   created: '',
   updated: '',
   body: 'Keep functions small. <script>window.__xss=1</script>',
@@ -194,5 +197,84 @@ describe('SkillsScreen', () => {
     await waitFor(() => byText(r.container, 'a', 't1'), r);
     expect(byText(r.container, 'a', 't1').getAttribute('href')).toBe('/task/t1');
     expect(r.$('table[aria-label="Skill deliveries"]')!.textContent).toContain('rule_file, full');
+  });
+
+  const member = (id: string, name: string, role: string) => ({ id, projectId: 'prj_1', name, role, adapter: 'claude', model: '', effort: '', providerId: '', status: 'STOPPED' }) as Agent;
+  const team = [member('agt_a', 'Ada', 'backend'), member('agt_b', 'Bob', 'frontend'), member('agt_q', 'Quinn', 'qa')];
+  function withTeam(client: Partial<Client>) {
+    const s = servicesWith({ agentList: async () => team, roomList: async () => [], roomUnread: async () => [], needsYouList: async () => [], presenceList: async () => [], taskList: async () => [], ...client });
+    s.project.start();
+    return s;
+  }
+  const audienceOf = (r: { container: HTMLElement }, name: string) =>
+    r.container.querySelector<HTMLElement>(`[data-skill="${name}"] [data-testid="skill-audience-text"]`)?.textContent ?? '';
+
+  it('says who gets each skill: the whole team or its roles, agents given it on top, or only chosen agents', async () => {
+    const r = mount(
+      <SkillsScreen />,
+      withTeam({
+        skillList: async () => [
+          skill({ status: 'accepted', roles: ['Backend'], agents: ['agt_q'] }),
+          skill({ id: 'e', name: 'everywhere', status: 'accepted', roles: [] }),
+          skill({ id: 'w', name: 'wrangler', status: 'accepted', audience: 'agents', agents: ['agt_b', 'agt_removed'] }),
+          skill({ id: 'n', name: 'new-one', status: 'offered', roles: [] }),
+        ],
+      }),
+    );
+    await waitFor(() => expect(audienceOf(r, 'go-style')).toBe('Every Backend agent, and Quinn'), r);
+    expect(audienceOf(r, 'everywhere')).toBe('The whole team');
+    expect(audienceOf(r, 'wrangler')).toBe('Only Bob'); // a removed agent is not named
+    expect(audienceOf(r, 'new-one')).toBe('The whole team, once accepted');
+  });
+
+  it('gives a team skill to one more agent, or narrows it to chosen agents starting from those who have it', async () => {
+    const calls: unknown[][] = [];
+    const r = mount(
+      <SkillsScreen />,
+      withTeam({
+        skillList: async () => [skill({ status: 'accepted', roles: ['Backend'] })],
+        skillAudience: async (...a) => (calls.push(a), skill({ status: 'accepted' })),
+      }),
+    );
+    await waitFor(() => expect(audienceOf(r, 'go-style')).toBe('Every Backend agent'), r);
+    await r.act(() => byText(r.container, 'button', 'Change who gets go-style').click());
+    const ed = await waitFor(() => r.container.querySelector<HTMLElement>('[data-testid="skill-audience"]')!, r);
+    // the whole team: Ada (backend) gets it with the team and cannot be unticked; Quinn is given it on top
+    expect(byLabel<HTMLInputElement>(ed, /^Ada/).disabled).toBe(true);
+    await r.act(() => byLabel<HTMLInputElement>(ed, /^Quinn/).click());
+    await r.act(() => byText(ed, 'button', 'Save who gets go-style').click());
+    await waitFor(() => expect(calls).toEqual([['prj_1', 'go-style', 'team', ['agt_q']]]), r);
+    await waitFor(() => expect(r.container.querySelector('[data-testid="skill-audience"]')).toBe(null), r);
+
+    // only chosen agents: starts from Ada, who has it now; Bob is added, Ada taken off
+    await r.act(() => byText(r.container, 'button', 'Change who gets go-style').click());
+    const ed2 = await waitFor(() => r.container.querySelector<HTMLElement>('[data-testid="skill-audience"]')!, r);
+    await r.act(() => byLabel<HTMLInputElement>(ed2, /^Only the agents I choose/).click());
+    expect(byLabel<HTMLInputElement>(ed2, /^Ada/).checked).toBe(true);
+    expect(byLabel<HTMLInputElement>(ed2, /^Ada/).disabled).toBe(false);
+    await r.act(() => byLabel<HTMLInputElement>(ed2, /^Bob/).click());
+    await r.act(() => byLabel<HTMLInputElement>(ed2, /^Ada/).click());
+    await r.act(() => byText(ed2, 'button', 'Save who gets go-style').click());
+    await waitFor(() => expect(calls[1]).toEqual(['prj_1', 'go-style', 'agents', ['agt_b']]), r);
+  });
+
+  it('warns before saving a skill for chosen agents with nobody chosen, and shows the core refusal', async () => {
+    const r = mount(
+      <SkillsScreen />,
+      withTeam({
+        skillList: async () => [skill({ status: 'accepted', audience: 'agents', agents: ['agt_a'] })],
+        skillAudience: async () => {
+          throw new Error('skills: agent agt_x is not on this project\'s team');
+        },
+      }),
+    );
+    await waitFor(() => expect(audienceOf(r, 'go-style')).toBe('Only Ada'), r);
+    await r.act(() => byText(r.container, 'button', 'Change who gets go-style').click());
+    const ed = await waitFor(() => r.container.querySelector<HTMLElement>('[data-testid="skill-audience"]')!, r);
+    await r.act(() => byLabel<HTMLInputElement>(ed, /^Ada/).click());
+    expect(ed.textContent).toContain('No agent is chosen: nobody will get it.');
+    await r.act(() => byText(ed, 'button', 'Save who gets go-style').click());
+    await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('not on this project'), r);
+    expect(r.container.querySelector('[data-testid="skill-audience"]')).toBeTruthy(); // still open to fix
   });
 });
