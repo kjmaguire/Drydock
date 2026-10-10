@@ -1,0 +1,163 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /api/customers.csv` returns the caller's customers as RFC 4180 CSV with the specified header, row order, RFC 3339 UTC timestamps, formula-injection escaping, and response headers. It returns 401 without a valid `X-API-Key`.\n- Tests cover the auth failure, the tenant isolation, the escaping rules, and the headers, and they pass in the sandbox.\n- Existing exported functions and signatures are unchanged, and the diff touches only the handler, its route registration, and tests.",
+    "data": {},
+    "created": 1791596190545
+  },
+  {
+    "id": 2,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 480ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/build-1791596190738849456.log",
+    "data": {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/workspace",
+        "-e",
+        "DRYDOCK_CMD=go build ./...",
+        "-e",
+        "CI=1",
+        "-e",
+        "NO_COLOR=1",
+        "-e",
+        "FORCE_COLOR=0",
+        "drydock-task_a187b7bfa0d2-ws",
+        "sh",
+        "-c",
+        "exec timeout -k 5 600 sh -c \"$DRYDOCK_CMD\""
+      ],
+      "durationMs": 481,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596191220
+  },
+  {
+    "id": 3,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 260ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/test-1791596191221894456.log",
+    "data": {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/workspace",
+        "-e",
+        "DRYDOCK_CMD=go test ./...",
+        "-e",
+        "CI=1",
+        "-e",
+        "NO_COLOR=1",
+        "-e",
+        "FORCE_COLOR=0",
+        "drydock-task_a187b7bfa0d2-ws",
+        "sh",
+        "-c",
+        "exec timeout -k 5 600 sh -c \"$DRYDOCK_CMD\""
+      ],
+      "durationMs": 260,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596191483
+  },
+  {
+    "id": 4,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 250ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/lint-1791596191484517297.log",
+    "data": {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/workspace",
+        "-e",
+        "DRYDOCK_CMD=go vet ./...",
+        "-e",
+        "CI=1",
+        "-e",
+        "NO_COLOR=1",
+        "-e",
+        "FORCE_COLOR=0",
+        "drydock-task_a187b7bfa0d2-ws",
+        "sh",
+        "-c",
+        "exec timeout -k 5 600 sh -c \"$DRYDOCK_CMD\""
+      ],
+      "durationMs": 247,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596191732
+  },
+  {
+    "id": 5,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/secrets-1791596191745159137.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 11,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596191745
+  },
+  {
+    "id": 6,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "2 file(s), +78 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/evidence/task.diff",
+    "data": {
+      "Files": 2,
+      "Insertions": 78,
+      "Deletions": 0,
+      "base": "e4711d0e12bc5583c990545a528f221dc95b2c59",
+      "commit": "76205248f767306b680c0f77366848a4906dc8fe"
+    },
+    "created": 1791596191869
+  },
+  {
+    "id": 7,
+    "taskId": "task_a187b7bfa0d2",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 76205248f7",
+    "ref": "76205248f767306b680c0f77366848a4906dc8fe",
+    "data": {},
+    "created": 1791596191869
+  }
+]
