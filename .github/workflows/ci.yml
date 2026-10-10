@@ -1,5 +1,5 @@
-# Windows is the only product target, so this is the only CI platform (decision P1). It has not run yet: GitHub Actions is
-# unavailable for this private repository (decision P2). Until it runs, nothing marked "Windows" in the docs is proven.
+# Windows is the only product target, so this is the only CI platform (decision P1). The repository is public since
+# 2026-10-10, so GitHub-hosted Windows runners are free and these jobs run on every pull request (decision P2 resolved).
 # Every job runs on windows-latest unless the repository variable WINDOWS_RUNS_ON names other runner labels as JSON, for
 # example ["self-hosted","windows","x64"] for a runner on the owner's PC (docs/windows-runner.md).
 name: ci
@@ -24,6 +24,12 @@ jobs:
           git config --global user.name "Drydock CI"
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
+      - name: Placeholder for the built UI
+        # the ui package embeds ui/dist (Windows only), which only `npm run build` makes; the app job builds the real one
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ui/dist | Out-Null
+          Set-Content ui/dist/index.html '<!doctype html><title>Drydock</title>'
       - run: go vet ./...
       - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are never used here)
         # a self-hosted runner may have a signed-in claude: the paid real-agent tests run only in verify.yml, on request

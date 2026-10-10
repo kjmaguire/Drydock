@@ -21,9 +21,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
-    # on a push it runs only when WINDOWS_RUNS_ON points at a runner of your own: a 20 to 40 minute Windows job on every
-    # push would spend GitHub-hosted minutes; started by hand it always runs
-    if: github.event_name == 'workflow_dispatch' || vars.WINDOWS_RUNS_ON != ''
+    # runs on every push: the repository is public, so GitHub-hosted Windows runners cost nothing (a 15 to 40 minute job)
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 120
     defaults:
@@ -45,6 +43,18 @@ jobs:
           $flags = @()
           if ($env:WITH_CLAUDE -eq 'true') { $flags += '--with-claude' }
           ./drydock-verify.exe @flags
+      - name: Show the failed steps' logs
+        if: failure()
+        working-directory: dist-windows/verify
+        run: |
+          $dir = Get-ChildItem -Directory -Filter 'drydock-verify-*' | Sort-Object Name | Select-Object -Last 1
+          if (-not $dir) { "no results folder"; exit 0 }
+          $report = Get-Content (Join-Path $dir.FullName 'drydock-verify-report.json') -Raw | ConvertFrom-Json
+          foreach ($s in $report.steps | Where-Object { $_.status -eq 'fail' }) {
+            Write-Host "::group::$($s.id): $($s.reason)"
+            Get-Content (Join-Path $dir.FullName $s.log) -Tail 400
+            Write-Host "::endgroup::"
+          }
       - name: Keep the results
         if: always()
         uses: actions/upload-artifact@v7

@@ -20,7 +20,8 @@ func main() {
 		fmt.Println("pty.New:", err)
 		os.Exit(2)
 	}
-	defer p.Close()
+	// p is closed once, below: go-pty's ConPTY Close is not idempotent, and a second Close (this probe had a deferred one
+	// too) corrupted the heap on exit (0xc0000374, windows-probes run 2026-10-10)
 	if err := p.Resize(120, 30); err != nil {
 		fmt.Println("resize:", err)
 	}

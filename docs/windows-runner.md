@@ -1,8 +1,9 @@
 # Proving Drydock on Windows
 
-Drydock is Windows-only, but nothing in it has run on Windows yet: GitHub Actions starts no hosted runner for this private
-repository (decision P2), so `.github/workflows/ci.yml` and `windows-probes.yml` have never executed. There are two ways to
-get the proof on the owner's Windows PC without GitHub-hosted runners:
+Drydock is Windows-only. **Since 2026-10-10 the repository is public, so GitHub-hosted Windows runners cost nothing** and
+every push runs `.github/workflows/ci.yml` (vet and every Go test, the UI tests, the app build) and `verify.yml` (the
+verification bundle below) on `windows-latest`; `windows-probes.yml` runs the Phase 0 probes when they change or by hand.
+That is the first way to get the proof. The other two need the owner's PC:
 
 1. **Run the verification bundle by hand.** A zip of Drydock's own tests compiled for Windows, plus a program that runs them
    and writes a report. Nothing to install except Git; no Go needed. See [By hand](#by-hand-the-verification-bundle).
@@ -10,7 +11,11 @@ get the proof on the owner's Windows PC without GitHub-hosted runners:
    workflow (CI, the Phase 0 probes, and `verify.yml`, which builds and runs the bundle) runs there on each push.
    See [A self-hosted runner](#a-self-hosted-runner-on-your-pc).
 
-Both produce the same report: `drydock-verify-report.md` (for people) and `drydock-verify-report.json`, zipped with every
+**Do not attach a self-hosted runner to a public repository.** A pull request from anyone's fork runs the workflows, so it
+could run its own code on the runner's PC (GitHub's own advice). With the repository public, use the GitHub-hosted runners;
+keep option 2 for a private repository only.
+
+The bundle writes the same report wherever it runs: `drydock-verify-report.md` (for people) and `drydock-verify-report.json`, zipped with every
 step's log into `drydock-verify-<date>.zip`.
 
 ## What the bundle checks
