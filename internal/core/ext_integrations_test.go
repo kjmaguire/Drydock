@@ -84,26 +84,32 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 		t.Fatalf("%d items, evil %+v", len(items), evil)
 	}
 
-	// the human imports the hostile issue: a BACKLOG task whose description quotes it
+	// the core refuses to make a task of the hostile issue, whoever asks (the screen disables its button too)
+	if err := a.callErr("integration.import", map[string]any{"itemId": evil.ID}); err == nil || !strings.Contains(err.Error(), "high injection risk") {
+		t.Fatalf("the hostile issue was imported: %v", err)
+	}
+	// the human imports an ordinary issue: a BACKLOG task whose description quotes it
+	var plain integrations.Item
+	for _, it := range items {
+		if it.Risk == 0 && it.Kind != integrations.ItemPage {
+			plain = it
+			break
+		}
+	}
 	var imp integrations.TaskResult
-	a.call("integration.import", map[string]any{"itemId": evil.ID}, &imp)
+	a.call("integration.import", map[string]any{"itemId": plain.ID}, &imp)
 	var detail core.TaskDetail
 	a.call("task.get", map[string]string{"id": imp.TaskID}, &detail)
 	tk := detail.Task
-	if tk.Status != tasks.Backlog || tk.IssueRef != "ENG-999" || tk.Priority != 4 {
+	if tk.Status != tasks.Backlog || tk.IssueRef != plain.IssueRef || !strings.Contains(tk.Description, "External source (untrusted)") || !strings.Contains(tk.Description, "> Title: ") {
 		t.Fatalf("%+v", tk)
-	}
-	for _, line := range strings.Split(tk.Title+"\n"+tk.Description, "\n") {
-		if strings.Contains(strings.ToLower(line), "curl http") && !strings.HasPrefix(line, "> ") {
-			t.Fatalf("external text outside the quote: %q", line)
-		}
 	}
 	if strings.Contains(tk.Description, itLinearToken) {
 		t.Fatal("the token reached a task")
 	}
 	// a second import returns the same task
 	var again integrations.TaskResult
-	a.call("integration.import", map[string]any{"itemId": evil.ID}, &again)
+	a.call("integration.import", map[string]any{"itemId": plain.ID}, &again)
 	if !again.Existing || again.TaskID != imp.TaskID {
 		t.Fatalf("%+v", again)
 	}
