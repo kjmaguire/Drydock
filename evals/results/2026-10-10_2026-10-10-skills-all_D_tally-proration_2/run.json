@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-proration",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "fe27086a67db06d48c195a8018b85dc7a52cf10e",
+  "startedAt": "2026-10-10T22:20:23.431708284Z",
+  "wallMs": 476443,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1255,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2412,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.080s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.020s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.040s\nok  \texample.com/tally/internal/snapshot\t0.073s\nok  \texample.com/tally/internal/store\t0.006s\nok  \texample.com/tally/internal/subscriptions\t0.015s\nok  \texample.com/tally/internal/webhooks\t0.005s\n"
+      }
+    ],
+    "durationMs": 3672
+  },
+  "costUsd": 0.29405742,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 114,
+    "output": 102504,
+    "cacheRead": 4475226,
+    "cacheWrite": 276161
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_e496f43fc1cd",
+      "feedback": "1) internal/api/subscriptions.go, updateSubscription (the err check after s.subs.Update): any error with sub.ID set is logged and answered with 200, but Update applies the plan change before invoiceUpgrade runs. If CreateInvoice fails (store/billing.go:253-286 returns ErrNotFound, ErrCustomerOrgMismatch or invalid), the change applies with no invoice and the client gets 200, and the comment 'The invoice stays open' is false. Fix: create the upgrade invoice before applying the change, or return an error status when no invoice was stored. Keep the 200 only when the invoice exists and only the charge failed (decline or gateway error). Add a test for the CreateInvoice-failure path. 2) Confirm that a quantity-only change on a metered plan should now return 422 incompatible_plan (subscriptions.go:131-135). That is a behavior change from the current API. If it is not intended, limit the metered check to plan changes. 3) Optional: Update computes the upgrade or downgrade from `old`, read before UpdateSubscription, and the closure does not recheck state. Concurrent PATCHes can therefore compute from a stale value."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_e496f43fc1cd"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_f52cf555ad1c"
+}
