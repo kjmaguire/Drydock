@@ -15,6 +15,9 @@ import (
 	"github.com/kjmaguire/drydock/internal/contract"
 )
 
+// repoRoot is the root of Drydock's source tree above the test's folder. The tests that use it read the sources; the
+// Windows verification bundle carries only test binaries (its folder has a go.mod of its own that fences it off from any
+// module around it), so there they skip. Every go test of the repository runs them, on Windows too.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	d, err := os.Getwd()
@@ -22,12 +25,15 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
+		if b, err := os.ReadFile(filepath.Join(d, "go.mod")); err == nil {
+			if first, _, _ := strings.Cut(string(b), "\n"); strings.TrimSpace(first) != "module github.com/kjmaguire/drydock" {
+				t.Skipf("%s is not Drydock's source tree (a verification bundle carries no sources), and this test reads them", d)
+			}
 			return d
 		}
 		p := filepath.Dir(d)
 		if p == d {
-			t.Fatal("no go.mod above the test's directory")
+			t.Skip("no source tree above the test's folder (a verification bundle carries no sources), and this test reads them")
 		}
 		d = p
 	}
