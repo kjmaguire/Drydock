@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `store` gets `TiersMode`, `Tier`, and `Plan.TiersMode`/`Plan.Tiers`. `POST /v1/plans` accepts and validates tiers on metered plans, returns 422 `invalid_tiers` for bad input, and plan responses show tiers in minor units.\n- `billing.TieredAmount` implements graduated and volume pricing as specified, including zero quantity and inclusive `up_to`.\n- On renewal, a tiered plan's ended-period usage produces one invoice line (quantity 1, unit amount = `TieredAmount`, description starting with the plan name), and no invoice when there is no usage.",
+    "data": {},
+    "created": 1791609770821
+  },
+  {
+    "id": 2,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 640ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/build-1791609770875420697.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 643,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609771519
+  },
+  {
+    "id": 3,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 660ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/test-1791609771520910968.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 664,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609772186
+  },
+  {
+    "id": 4,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 720ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/lint-1791609772188549221.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 720,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609772909
+  },
+  {
+    "id": 5,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/secrets-1791609772928015857.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609772928
+  },
+  {
+    "id": 6,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "11 file(s), +321 -12",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/evidence/task.diff",
+    "data": {
+      "Files": 11,
+      "Insertions": 321,
+      "Deletions": 12,
+      "base": "6fe89c3e00a252db27a6822098cd3991bd432f56",
+      "commit": "13bcf59a4b338264d94de3b84cfa3f1620f4a970"
+    },
+    "created": 1791609773061
+  },
+  {
+    "id": 7,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 13bcf59a4b",
+    "ref": "13bcf59a4b338264d94de3b84cfa3f1620f4a970",
+    "data": {},
+    "created": 1791609773062
+  },
+  {
+    "id": 8,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- the `up_to` fix is in place and verified. `POST /v1/plans` now returns 422 `invalid_tiers` for a non-whole or non-numeric `up_to`. The other criteria were already met per the reviewer and I didn't change them.",
+    "data": {},
+    "created": 1791609847087
+  },
+  {
+    "id": 9,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 710ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/build-1791609847158659397.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 705,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609847864
+  },
+  {
+    "id": 10,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 720ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/test-1791609847865612195.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 715,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609848581
+  },
+  {
+    "id": 11,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 650ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/lint-1791609848587453248.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 650,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609849238
+  },
+  {
+    "id": 12,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/checks/secrets-1791609849269371119.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 25,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609849269
+  },
+  {
+    "id": 13,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "11 file(s), +342 -12",
+    "ref": "/tmp/drydock-trial-975724517/tally-tiered-pricing-D-2/data/runs/run_de3a87dc42ee/evidence/task.diff",
+    "data": {
+      "Files": 11,
+      "Insertions": 342,
+      "Deletions": 12,
+      "base": "6fe89c3e00a252db27a6822098cd3991bd432f56",
+      "commit": "070902f68a9511e26bd9a1b6f323fdc6c0564989"
+    },
+    "created": 1791609849436
+  },
+  {
+    "id": 14,
+    "taskId": "task_a82bcc42bd43",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 070902f68a",
+    "ref": "070902f68a9511e26bd9a1b6f323fdc6c0564989",
+    "data": {},
+    "created": 1791609849436
+  }
+]
