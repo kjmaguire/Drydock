@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-api-key-hashing",
+  "taskClass": "security review",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "213167645beba8c49a148832bd2ca3bb8788a5c0",
+  "startedAt": "2026-10-10T05:34:59.546825481Z",
+  "wallMs": 158462,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 863,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1507,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.034s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.004s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.005s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.007s\nok  \texample.com/tally/internal/snapshot\t0.010s\nok  \texample.com/tally/internal/store\t0.008s\nok  \texample.com/tally/internal/subscriptions\t0.010s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2374
+  },
+  "costUsd": 0.05340192000000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 56,
+    "output": 32051,
+    "cacheRead": 2088202,
+    "cacheWrite": 82444
+  },
+  "sessions": 1,
+  "modelTurns": 40,
+  "toolUses": {
+    "Bash": 13,
+    "Edit": 22,
+    "Read": 4
+  }
+}

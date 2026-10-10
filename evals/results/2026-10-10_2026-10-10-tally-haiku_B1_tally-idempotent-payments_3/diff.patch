@@ -1,0 +1,854 @@
+diff --git a/start/README.md b/result/README.md
+index 7aa8d92..b322456 100644
+--- a/start/README.md
++++ b/result/README.md
+@@ -33,6 +33,9 @@ happened. Its own staff work in the organization as members with roles. Go stand
+   through them. `next_cursor` is absent on the last page.
+ - Times are RFC 3339 in UTC. Amounts are integers in the currency's minor unit; fields ending in `_formatted` are for people.
+ - Every response carries an `X-Request-Id` (the caller's, when it sent a sensible one).
++- `POST /v1/invoices/{id}/pay` takes an `Idempotency-Key` header (1 to 255 printable ASCII characters). A retry with the same
++  key, invoice and body gets the first response back, marked `Idempotent-Replayed: true`, for 24 hours; a response with a
++  status of 500 or more is not kept, so a retry pays again. Keys belong to an organization.
+ 
+ ## Working on Tally
+ 
+diff --git a/result/internal/api/idempotency.go b/result/internal/api/idempotency.go
+new file mode 100644
+index 0000000..5b09f10
+--- /dev/null
++++ b/result/internal/api/idempotency.go
+@@ -0,0 +1,99 @@
++package api
++
++import (
++	"bytes"
++	"net/http"
++
++	"example.com/tally/internal/store"
++)
++
++// idempotencyKey returns the request's Idempotency-Key, or "" when it has none. A key that is not 1 to 255 printable ASCII
++// characters, or that is sent more than once, answers 400 and returns false.
++func idempotencyKey(w http.ResponseWriter, r *http.Request) (string, bool) {
++	keys := r.Header.Values("Idempotency-Key")
++	if len(keys) == 0 {
++		return "", true
++	}
++	if len(keys) > 1 || !validIdempotencyKey(keys[0]) {
++		writeError(w, http.StatusBadRequest, "invalid_idempotency_key", "Idempotency-Key is 1 to 255 printable ASCII characters")
++		return "", false
++	}
++	return keys[0], true
++}
++
++func validIdempotencyKey(k string) bool {
++	if len(k) < 1 || len(k) > 255 {
++		return false
++	}
++	for i := 0; i < len(k); i++ {
++		if k[i] < 0x20 || k[i] > 0x7e {
++			return false
++		}
++	}
++	return true
++}
++
++// withIdempotencyKey runs h for a request that carries key, at most once for each key of the organization. The first request
++// with a key is handled and its response is kept, unless it is a server error, which is not kept so that a retry is tried
++// again. A later request with the key gets the kept response back, marked Idempotent-Replayed, when it is for the same
++// invoice with the same payment method (fingerprint); with another invoice or body it answers 422. A request that arrives
++// while the first is still being handled answers 409 at once.
++func (s *Server) withIdempotencyKey(w http.ResponseWriter, r *http.Request, orgID, key, invoiceID, fingerprint string, h func(http.ResponseWriter)) {
++	rec, reserved := s.store.ReserveIdempotencyKey(orgID, key, store.IdempotencyKey{InvoiceID: invoiceID, Fingerprint: fingerprint}, s.clock.Now())
++	if !reserved {
++		switch {
++		case rec.InvoiceID != invoiceID || rec.Fingerprint != fingerprint:
++			writeError(w, http.StatusUnprocessableEntity, "idempotency_key_reused", "this Idempotency-Key was used for another invoice or another request")
++		case !rec.Done:
++			writeError(w, http.StatusConflict, "request_in_progress", "a request with this Idempotency-Key is still being handled")
++		default:
++			if rec.ContentType != "" {
++				w.Header().Set("Content-Type", rec.ContentType)
++			}
++			w.Header().Set("Idempotent-Replayed", "true")
++			w.WriteHeader(rec.Status)
++			_, _ = w.Write(rec.Body)
++		}
++		return
++	}
++	completed := false
++	defer func() {
++		if !completed { // h panicked: there is no response to keep
++			s.store.ReleaseIdempotencyKey(orgID, key)
++		}
++	}()
++	c := &capture{header: http.Header{}}
++	h(c)
++	completed = true
++	if c.status == 0 {
++		c.status = http.StatusOK
++	}
++	s.store.CompleteIdempotencyKey(orgID, key, c.status, c.header.Get("Content-Type"), c.body.Bytes(), s.clock.Now())
++	for k, vs := range c.header {
++		w.Header()[k] = vs
++	}
++	w.WriteHeader(c.status)
++	_, _ = w.Write(c.body.Bytes())
++}
++
++// capture is an http.ResponseWriter that holds the response instead of sending it.
++type capture struct {
++	header http.Header
++	status int
++	body   bytes.Buffer
++}
++
++func (c *capture) Header() http.Header { return c.header }
++
++func (c *capture) WriteHeader(status int) {
++	if c.status == 0 {
++		c.status = status
++	}
++}
++
++func (c *capture) Write(b []byte) (int, error) {
++	if c.status == 0 {
++		c.status = http.StatusOK
++	}
++	return c.body.Write(b)
++}
+diff --git a/result/internal/api/idempotency_test.go b/result/internal/api/idempotency_test.go
+new file mode 100644
+index 0000000..3688c17
+--- /dev/null
++++ b/result/internal/api/idempotency_test.go
+@@ -0,0 +1,235 @@
++package api_test
++
++import (
++	"bytes"
++	"context"
++	"fmt"
++	"net/http"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/payments"
++)
++
++var customers atomic.Int64
++
++// invoiceFor creates a customer and an open invoice of 40.00 in org and returns the invoice's ID.
++func invoiceFor(e *apitest.Env, org apitest.Org) string {
++	c := e.CreateCustomer(org, "Jane", fmt.Sprintf("jane%d@example.com", customers.Add(1)))
++	var inv struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", org.Key, map[string]any{"customer_id": c.ID, "currency": "USD",
++		"lines": []map[string]any{{"description": "Team", "quantity": 1, "unit_amount": 4000}}}, &inv)
++	return inv.ID
++}
++
++// payWithKey pays invoice id with the body {"payment_method": pm} and the Idempotency-Key key ("" for none).
++func payWithKey(e *apitest.Env, org apitest.Org, id, key, pm string) *apitest.Response {
++	h := http.Header{}
++	if key != "" {
++		h.Set("Idempotency-Key", key)
++	}
++	return e.DoWith("POST", "/v1/invoices/"+id+"/pay", org.Key, map[string]string{"payment_method": pm}, h)
++}
++
++// errorCode is the "error" field of an error response.
++func errorCode(t *testing.T, resp *apitest.Response) string {
++	t.Helper()
++	m := resp.Map(t)
++	code, _ := m["error"].(string)
++	return code
++}
++
++// flakyGateway fails its first fail charges with ErrUnavailable, then passes charges on.
++type flakyGateway struct {
++	payments.Gateway
++	fail int
++}
++
++func (f *flakyGateway) Charge(ctx context.Context, req payments.ChargeRequest) (payments.ChargeResult, error) {
++	if f.fail > 0 {
++		f.fail--
++		return payments.ChargeResult{}, payments.ErrUnavailable
++	}
++	return f.Gateway.Charge(ctx, req)
++}
++
++func TestIdempotentPayIsReplayed(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	first := payWithKey(e, e.Acme, id, "pay-1", "pm_card_visa")
++	if first.Code != http.StatusOK || first.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("first: %s", first)
++	}
++	again := payWithKey(e, e.Acme, id, "pay-1", "pm_card_visa")
++	if again.Code != first.Code || !bytes.Equal(again.Body, first.Body) || again.Header.Get("Idempotent-Replayed") != "true" {
++		t.Fatalf("retry = %s (Idempotent-Replayed %q), want the first response %s", again, again.Header.Get("Idempotent-Replayed"), first)
++	}
++	if ct := again.Header.Get("Content-Type"); ct != "application/json" {
++		t.Fatalf("replay Content-Type = %q", ct)
++	}
++	if n := len(e.Gateway.Charges()); n != 1 {
++		t.Fatalf("%d charges", n)
++	}
++	if ps := e.Store.Payments(e.Acme.ID, id); len(ps) != 1 {
++		t.Fatalf("%d payments recorded", len(ps))
++	}
++}
++
++func TestKeptErrorsAreReplayedToo(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	declined := payWithKey(e, e.Acme, id, "decline-1", "pm_card_declined")
++	if declined.Code != http.StatusPaymentRequired {
++		t.Fatalf("declined: %s", declined)
++	}
++	again := payWithKey(e, e.Acme, id, "decline-1", "pm_card_declined")
++	if again.Code != http.StatusPaymentRequired || again.Header.Get("Idempotent-Replayed") != "true" || !bytes.Equal(again.Body, declined.Body) {
++		t.Fatalf("retry of a declined payment: %s", again)
++	}
++	if n := len(e.Gateway.Calls()); n != 1 {
++		t.Fatalf("%d gateway calls, want 1", n)
++	}
++
++	missing := payWithKey(e, e.Acme, "inv_nope", "missing-1", "pm_card_visa")
++	if missing.Code != http.StatusNotFound {
++		t.Fatalf("missing invoice: %s", missing)
++	}
++	if again := payWithKey(e, e.Acme, "inv_nope", "missing-1", "pm_card_visa"); again.Code != http.StatusNotFound || again.Header.Get("Idempotent-Replayed") != "true" {
++		t.Fatalf("retry of a 404: %s", again)
++	}
++}
++
++func TestServerErrorsAreNotKept(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	e.Payments.Gateway = &flakyGateway{Gateway: e.Gateway, fail: 1}
++
++	down := payWithKey(e, e.Acme, id, "retry-1", "pm_card_visa")
++	if down.Code != http.StatusServiceUnavailable || errorCode(t, down) != "gateway_unavailable" {
++		t.Fatalf("gateway down: %s", down)
++	}
++	retry := payWithKey(e, e.Acme, id, "retry-1", "pm_card_visa")
++	if retry.Code != http.StatusOK || retry.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("retry after a 503 should pay again: %s", retry)
++	}
++	if n := len(e.Gateway.Charges()); n != 1 {
++		t.Fatalf("%d charges", n)
++	}
++	if again := payWithKey(e, e.Acme, id, "retry-1", "pm_card_visa"); again.Code != http.StatusOK || again.Header.Get("Idempotent-Replayed") != "true" {
++		t.Fatalf("request after the payment: %s", again)
++	}
++	if n := len(e.Gateway.Charges()); n != 1 {
++		t.Fatalf("%d charges after the replay", n)
++	}
++}
++
++func TestIdempotencyKeyReusedForAnotherRequest(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	other := invoiceFor(e, e.Acme)
++	if resp := payWithKey(e, e.Acme, id, "reuse-1", "pm_card_declined"); resp.Code != http.StatusPaymentRequired {
++		t.Fatalf("first: %s", resp)
++	}
++	for _, c := range []struct{ invoice, pm string }{{other, "pm_card_declined"}, {id, "pm_card_visa"}} {
++		resp := payWithKey(e, e.Acme, c.invoice, "reuse-1", c.pm)
++		if resp.Code != http.StatusUnprocessableEntity || errorCode(t, resp) != "idempotency_key_reused" {
++			t.Fatalf("reuse for invoice %s with %s: %s", c.invoice, c.pm, resp)
++		}
++	}
++	if n := len(e.Gateway.Calls()); n != 1 {
++		t.Fatalf("%d gateway calls", n)
++	}
++}
++
++func TestIdempotencyKeysBelongToAnOrganization(t *testing.T) {
++	e := apitest.New(t)
++	acme, globex := invoiceFor(e, e.Acme), invoiceFor(e, e.Globex)
++	if resp := payWithKey(e, e.Acme, acme, "shared", "pm_card_visa"); resp.Code != http.StatusOK {
++		t.Fatalf("acme: %s", resp)
++	}
++	resp := payWithKey(e, e.Globex, globex, "shared", "pm_card_visa")
++	if resp.Code != http.StatusOK || resp.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("globex with the same key: %s", resp)
++	}
++	if n := len(e.Gateway.Charges()); n != 2 {
++		t.Fatalf("%d charges, want one per organization", n)
++	}
++}
++
++func TestInvalidIdempotencyKeys(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	body := map[string]string{"payment_method": "pm_card_visa"}
++	for _, values := range [][]string{{""}, {"héllo"}, {"a\x01b"}, {"tab\there"}, {strings.Repeat("k", 256)}, {"a", "b"}} {
++		resp := e.DoWith("POST", "/v1/invoices/"+id+"/pay", e.Acme.Key, body, http.Header{"Idempotency-Key": values})
++		if resp.Code != http.StatusBadRequest || errorCode(t, resp) != "invalid_idempotency_key" {
++			t.Fatalf("key %q: %s", values, resp)
++		}
++	}
++	if n := len(e.Gateway.Charges()); n != 0 {
++		t.Fatalf("%d charges for rejected keys", n)
++	}
++	// 1 to 255 printable ASCII characters are fine, the space included.
++	for _, key := range []string{"x", strings.Repeat("k", 255), "a b~!"} {
++		if resp := payWithKey(e, e.Acme, invoiceFor(e, e.Acme), key, "pm_card_visa"); resp.Code != http.StatusOK {
++			t.Fatalf("key %q: %s", key, resp)
++		}
++	}
++}
++
++func TestIdempotencyKeyRequestInProgress(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	started, release := make(chan struct{}), make(chan struct{})
++	e.Gateway.OnCharge = func(payments.ChargeRequest) {
++		close(started)
++		<-release
++	}
++	first := make(chan *apitest.Response, 1)
++	go func() { first <- payWithKey(e, e.Acme, id, "double-click", "pm_card_visa") }()
++	<-started
++
++	if resp := payWithKey(e, e.Acme, id, "double-click", "pm_card_visa"); resp.Code != http.StatusConflict || errorCode(t, resp) != "request_in_progress" {
++		t.Fatalf("same key while in progress: %s", resp)
++	}
++	if resp := payWithKey(e, e.Acme, id, "other-key", "pm_card_visa"); resp.Code != http.StatusConflict || errorCode(t, resp) != "payment_in_progress" {
++		t.Fatalf("another key for the invoice while in progress: %s", resp)
++	}
++	if resp := payWithKey(e, e.Acme, id, "", "pm_card_visa"); resp.Code != http.StatusConflict || errorCode(t, resp) != "payment_in_progress" {
++		t.Fatalf("no key while in progress: %s", resp)
++	}
++	close(release)
++	if resp := <-first; resp.Code != http.StatusOK {
++		t.Fatalf("first request: %s", resp)
++	}
++	if resp := payWithKey(e, e.Acme, id, "double-click", "pm_card_visa"); resp.Code != http.StatusOK || resp.Header.Get("Idempotent-Replayed") != "true" {
++		t.Fatalf("retry after the first finished: %s", resp)
++	}
++	if n := len(e.Gateway.Charges()); n != 1 {
++		t.Fatalf("%d charges", n)
++	}
++}
++
++func TestIdempotencyKeyExpiresAfterADay(t *testing.T) {
++	e := apitest.New(t)
++	id := invoiceFor(e, e.Acme)
++	if resp := payWithKey(e, e.Acme, id, "day", "pm_card_declined"); resp.Code != http.StatusPaymentRequired {
++		t.Fatalf("first: %s", resp)
++	}
++	e.Clock.Advance(24*time.Hour - time.Minute)
++	if resp := payWithKey(e, e.Acme, id, "day", "pm_card_declined"); resp.Header.Get("Idempotent-Replayed") != "true" {
++		t.Fatalf("within 24 hours: %s", resp)
++	}
++	e.Clock.Advance(time.Minute)
++	if resp := payWithKey(e, e.Acme, id, "day", "pm_card_declined"); resp.Code != http.StatusPaymentRequired || resp.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("after 24 hours the key is new: %s", resp)
++	}
++	if n := len(e.Gateway.Calls()); n != 2 {
++		t.Fatalf("%d gateway calls, want 2", n)
++	}
++}
+diff --git a/start/internal/api/invoices.go b/result/internal/api/invoices.go
+index 843d000..392368a 100644
+--- a/start/internal/api/invoices.go
++++ b/result/internal/api/invoices.go
+@@ -149,19 +149,32 @@ func (s *Server) getInvoiceLines(w http.ResponseWriter, r *http.Request, p auth.
+ }
+ 
+ // payInvoice charges an invoice: {"payment_method": "pm_..."}, or the customer's default payment method when it is absent.
++// With an Idempotency-Key header, a retry of the request gets the first response back instead of charging again.
+ func (s *Server) payInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	key, ok := idempotencyKey(w, r)
++	if !ok {
++		return
++	}
+ 	var in struct {
+ 		PaymentMethod string `json:"payment_method"`
+ 	}
+ 	if r.ContentLength != 0 && !decode(w, r, &in) {
+ 		return
+ 	}
+-	inv, pay, err := s.pay.Pay(r.Context(), p.OrgID, r.PathValue("id"), in.PaymentMethod)
+-	if err != nil {
+-		s.payError(w, err)
++	invoiceID := r.PathValue("id")
++	charge := func(w http.ResponseWriter) {
++		inv, pay, err := s.pay.Pay(r.Context(), p.OrgID, invoiceID, in.PaymentMethod)
++		if err != nil {
++			s.payError(w, err)
++			return
++		}
++		writeJSON(w, http.StatusOK, map[string]any{"invoice": s.viewInvoice(inv), "payment": pay})
++	}
++	if key == "" {
++		charge(w)
+ 		return
+ 	}
+-	writeJSON(w, http.StatusOK, map[string]any{"invoice": s.viewInvoice(inv), "payment": pay})
++	s.withIdempotencyKey(w, r, p.OrgID, key, invoiceID, in.PaymentMethod, charge)
+ }
+ 
+ func (s *Server) payError(w http.ResponseWriter, err error) {
+@@ -173,6 +186,8 @@ func (s *Server) payError(w http.ResponseWriter, err error) {
+ 		writeError(w, http.StatusConflict, "already_paid", err.Error())
+ 	case errors.Is(err, payments.ErrInvoiceVoid):
+ 		writeError(w, http.StatusConflict, "invoice_void", err.Error())
++	case errors.Is(err, payments.ErrPaymentInProgress):
++		writeError(w, http.StatusConflict, "payment_in_progress", err.Error())
+ 	case errors.Is(err, payments.ErrNoPaymentMethod):
+ 		writeError(w, http.StatusUnprocessableEntity, "no_payment_method", err.Error())
+ 	case errors.Is(err, payments.ErrUnavailable):
+diff --git a/start/internal/payments/payments.go b/result/internal/payments/payments.go
+index a311174..138a122 100644
+--- a/start/internal/payments/payments.go
++++ b/result/internal/payments/payments.go
+@@ -44,6 +44,8 @@ var (
+ 	ErrAlreadyPaid     = errors.New("the invoice is already paid")
+ 	ErrInvoiceVoid     = errors.New("the invoice is void")
+ 	ErrNoPaymentMethod = errors.New("no payment method to charge")
++	// ErrPaymentInProgress means a charge for the invoice is under way; the invoice is not charged again by this request.
++	ErrPaymentInProgress = errors.New("a payment for the invoice is already in progress")
+ )
+ 
+ // Publisher sends events to the organization's webhook endpoints (webhooks.Service).
+@@ -62,8 +64,14 @@ type Service struct {
+ // Pay charges an open invoice's total to paymentMethod, or to the customer's default payment method when it is empty, and
+ // marks the invoice paid. An invoice whose total is zero or less is marked paid without a charge. A declined charge is
+ // recorded as a failed payment and returned as a *DeclineError; when the gateway is unavailable nothing is recorded and the
+-// error wraps ErrUnavailable.
++// error wraps ErrUnavailable. While one payment of an invoice is under way, another returns ErrPaymentInProgress at once,
++// so an invoice is never charged twice.
+ func (s *Service) Pay(ctx context.Context, orgID, invoiceID, paymentMethod string) (store.Invoice, store.Payment, error) {
++	end, ok := s.Store.BeginPayment(orgID, invoiceID)
++	if !ok {
++		return store.Invoice{}, store.Payment{}, ErrPaymentInProgress
++	}
++	defer end()
+ 	inv, ok := s.Store.Invoice(orgID, invoiceID)
+ 	if !ok {
+ 		return store.Invoice{}, store.Payment{}, store.ErrNotFound
+diff --git a/start/internal/payments/payments_test.go b/result/internal/payments/payments_test.go
+index 78a21d3..0fa520c 100644
+--- a/start/internal/payments/payments_test.go
++++ b/result/internal/payments/payments_test.go
+@@ -111,3 +111,44 @@ func TestPayVoidAndFree(t *testing.T) {
+ 		t.Fatalf("void: %v", err)
+ 	}
+ }
++
++func TestPayInProgressIsNotChargedAgain(t *testing.T) {
++	s, gw, _, inv := setup(t, store.Line{Description: "x", Quantity: 1, UnitAmount: 500})
++	started, release := make(chan struct{}), make(chan struct{})
++	gw.OnCharge = func(ChargeRequest) {
++		close(started)
++		<-release
++	}
++	done := make(chan error, 1)
++	go func() {
++		_, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa")
++		done <- err
++	}()
++	<-started
++	if _, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa"); !errors.Is(err, ErrPaymentInProgress) {
++		t.Fatalf("second pay while the first is charging: %v", err)
++	}
++	close(release)
++	if err := <-done; err != nil {
++		t.Fatal(err)
++	}
++	if n := len(gw.Charges()); n != 1 {
++		t.Fatalf("%d charges", n)
++	}
++	if _, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa"); !errors.Is(err, ErrAlreadyPaid) {
++		t.Fatalf("pay after the first finished: %v", err)
++	}
++}
++
++func TestPayLockIsReleasedAfterAFailure(t *testing.T) {
++	s, _, _, inv := setup(t, store.Line{Description: "x", Quantity: 1, UnitAmount: 500})
++	if _, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_declined"); err == nil {
++		t.Fatal("declined charge succeeded")
++	}
++	if _, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_gateway_down"); !errors.Is(err, ErrUnavailable) {
++		t.Fatalf("gateway down: %v", err)
++	}
++	if paid, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa"); err != nil || paid.Status != store.InvoicePaid {
++		t.Fatalf("pay after failures: %+v, %v", paid, err)
++	}
++}
+diff --git a/start/internal/snapshot/snapshot_test.go b/result/internal/snapshot/snapshot_test.go
+index 5bc2a37..f400b28 100644
+--- a/start/internal/snapshot/snapshot_test.go
++++ b/result/internal/snapshot/snapshot_test.go
+@@ -80,3 +80,29 @@ func TestLoadRefusesUnknownVersions(t *testing.T) {
+ 		t.Fatalf("missing file: %v", err)
+ 	}
+ }
++
++func TestIdempotencyKeysSurviveARestart(t *testing.T) {
++	now := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
++	st := store.New()
++	o, _ := st.CreateOrg("A", store.OrgTeam, "UTC", 0, now)
++	req := store.IdempotencyKey{InvoiceID: "in_000001", Fingerprint: "pm_card_declined"}
++	_, _ = st.ReserveIdempotencyKey(o.ID, "pay-1", req, now)
++	st.CompleteIdempotencyKey(o.ID, "pay-1", 402, "application/json", []byte(`{"error":"payment_declined"}`), now)
++	_, _ = st.ReserveIdempotencyKey(o.ID, "pay-2", req, now) // still being handled: not saved
++
++	path := filepath.Join(t.TempDir(), "tally.json")
++	if err := Save(st, path, now); err != nil {
++		t.Fatal(err)
++	}
++	got, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	rec, reserved := got.ReserveIdempotencyKey(o.ID, "pay-1", req, now)
++	if reserved || rec.Status != 402 || string(rec.Body) != `{"error":"payment_declined"}` {
++		t.Fatalf("after a restart: %+v, %v", rec, reserved)
++	}
++	if _, reserved := got.ReserveIdempotencyKey(o.ID, "pay-2", req, now); !reserved {
++		t.Fatal("a request that was being handled was saved")
++	}
++}
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..d136007 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -4,6 +4,7 @@ import (
+ 	"encoding/json"
+ 	"sort"
+ 	"strings"
++	"sync"
+ 	"time"
+ )
+ 
+@@ -348,6 +349,26 @@ func (s *Store) UpdateInvoice(orgID, id string, f func(*Invoice) error) (Invoice
+ 	return copyInvoice(inv), nil
+ }
+ 
++// BeginPayment marks an invoice as being charged, so that no other payment of it starts until the returned function is
++// called. It reports false, and marks nothing, when a charge for the invoice is already under way.
++func (s *Store) BeginPayment(orgID, invoiceID string) (func(), bool) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	k := orgKey{orgID, invoiceID}
++	if s.paying[k] {
++		return nil, false
++	}
++	s.paying[k] = true
++	var once sync.Once
++	return func() {
++		once.Do(func() {
++			s.mu.Lock()
++			defer s.mu.Unlock()
++			delete(s.paying, k)
++		})
++	}, true
++}
++
+ // copyInvoice is a deep copy, so callers cannot change stored lines.
+ func copyInvoice(inv Invoice) Invoice {
+ 	inv.Lines = append([]Line(nil), inv.Lines...)
+diff --git a/result/internal/store/idempotency.go b/result/internal/store/idempotency.go
+new file mode 100644
+index 0000000..4bfa7bd
+--- /dev/null
++++ b/result/internal/store/idempotency.go
+@@ -0,0 +1,87 @@
++package store
++
++import "time"
++
++// IdempotencyTTL is how long a kept response is replayed. After it, the key counts as new.
++const IdempotencyTTL = 24 * time.Hour
++
++// idempotencyPruneEvery is how often expired records are removed.
++const idempotencyPruneEvery = time.Hour
++
++// IdempotencyKey is what Tally keeps for a request that carried an Idempotency-Key: the request it was for and, once it
++// is done, the response it got. A record is Done only after its response was kept; until then the request is still being
++// handled. Records belong to an organization.
++type IdempotencyKey struct {
++	OrgID       string    `json:"org_id"`
++	Key         string    `json:"key"`
++	InvoiceID   string    `json:"invoice_id"`
++	Fingerprint string    `json:"fingerprint"` // what the request's body said, for the same-body check
++	Done        bool      `json:"done"`
++	Status      int       `json:"status,omitempty"`
++	ContentType string    `json:"content_type,omitempty"`
++	Body        []byte    `json:"body,omitempty"`
++	At          time.Time `json:"at"` // when the response was kept
++}
++
++// ReserveIdempotencyKey claims key for the request req describes, unless the key is already in use in the organization.
++// When the key is free, or its kept response has expired, it is claimed and reserved is true. Otherwise the record that
++// holds the key is returned with reserved false: its request is still being handled (not Done) or it has a kept response.
++func (s *Store) ReserveIdempotencyKey(orgID, key string, req IdempotencyKey, now time.Time) (rec IdempotencyKey, reserved bool) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.pruneIdempotencyLocked(now)
++	k := orgKey{orgID, key}
++	if old, ok := s.idem[k]; ok && (!old.Done || now.Sub(old.At) < IdempotencyTTL) {
++		return copyIdempotencyKey(old), false
++	}
++	req.OrgID, req.Key = orgID, key
++	req.Done, req.Status, req.ContentType, req.Body, req.At = false, 0, "", nil, time.Time{}
++	s.idem[k] = req
++	return copyIdempotencyKey(req), true
++}
++
++// CompleteIdempotencyKey keeps the response to a reserved key's request, so that it is replayed until the key expires. A
++// server error (status 500 or more) is not kept: the key is freed, so that a retry is tried again.
++func (s *Store) CompleteIdempotencyKey(orgID, key string, status int, contentType string, body []byte, now time.Time) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	k := orgKey{orgID, key}
++	rec, ok := s.idem[k]
++	if !ok || rec.Done {
++		return
++	}
++	if status >= 500 {
++		delete(s.idem, k)
++		return
++	}
++	rec.Done, rec.Status, rec.ContentType, rec.Body, rec.At = true, status, contentType, append([]byte(nil), body...), now.UTC()
++	s.idem[k] = rec
++}
++
++// ReleaseIdempotencyKey frees a reserved key whose request produced no response to keep, so that a retry is handled anew.
++func (s *Store) ReleaseIdempotencyKey(orgID, key string) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	k := orgKey{orgID, key}
++	if rec, ok := s.idem[k]; ok && !rec.Done {
++		delete(s.idem, k)
++	}
++}
++
++// pruneIdempotencyLocked removes expired records, at most once an hour. The caller holds the lock.
++func (s *Store) pruneIdempotencyLocked(now time.Time) {
++	if now.Sub(s.idemPruned) < idempotencyPruneEvery {
++		return
++	}
++	s.idemPruned = now
++	for k, rec := range s.idem {
++		if rec.Done && now.Sub(rec.At) >= IdempotencyTTL {
++			delete(s.idem, k)
++		}
++	}
++}
++
++func copyIdempotencyKey(k IdempotencyKey) IdempotencyKey {
++	k.Body = append([]byte(nil), k.Body...)
++	return k
++}
+diff --git a/result/internal/store/idempotency_test.go b/result/internal/store/idempotency_test.go
+new file mode 100644
+index 0000000..3c82478
+--- /dev/null
++++ b/result/internal/store/idempotency_test.go
+@@ -0,0 +1,116 @@
++package store
++
++import (
++	"bytes"
++	"testing"
++	"time"
++)
++
++func TestIdempotencyKeyLifecycle(t *testing.T) {
++	s := New()
++	req := IdempotencyKey{InvoiceID: "inv_1", Fingerprint: "pm_card_visa"}
++	rec, reserved := s.ReserveIdempotencyKey("org_a", "k1", req, t0)
++	if !reserved || rec.Done {
++		t.Fatalf("first reserve: %+v, %v", rec, reserved)
++	}
++	if rec, reserved := s.ReserveIdempotencyKey("org_a", "k1", req, t0); reserved || rec.Done {
++		t.Fatalf("reserve while pending: %+v, %v", rec, reserved)
++	}
++	if rec, reserved := s.ReserveIdempotencyKey("org_b", "k1", req, t0); !reserved {
++		t.Fatalf("the same key in another organization: %+v", rec)
++	}
++
++	body := []byte(`{"error":"x"}`)
++	s.CompleteIdempotencyKey("org_a", "k1", 402, "application/json", body, t0)
++	body[0] = 'X' // the store kept its own copy
++	rec, reserved = s.ReserveIdempotencyKey("org_a", "k1", req, t0.Add(time.Hour))
++	if reserved || !rec.Done || rec.Status != 402 || rec.ContentType != "application/json" || !bytes.Equal(rec.Body, []byte(`{"error":"x"}`)) {
++		t.Fatalf("after completion: %+v, %v", rec, reserved)
++	}
++	rec.Body[0] = 'Y' // nor does the caller change it
++	if rec, _ := s.ReserveIdempotencyKey("org_a", "k1", req, t0); rec.Body[0] != '{' {
++		t.Fatalf("the kept body was changed: %s", rec.Body)
++	}
++
++	if _, reserved := s.ReserveIdempotencyKey("org_a", "k2", req, t0); !reserved {
++		t.Fatal("k2 reserved")
++	}
++	s.ReleaseIdempotencyKey("org_a", "k2")
++	if _, reserved := s.ReserveIdempotencyKey("org_a", "k2", req, t0); !reserved {
++		t.Fatal("k2 after release")
++	}
++	s.CompleteIdempotencyKey("org_a", "k2", 503, "", nil, t0)
++	if _, reserved := s.ReserveIdempotencyKey("org_a", "k2", req, t0); !reserved {
++		t.Fatal("a key whose response was a server error is not kept")
++	}
++}
++
++func TestIdempotencyKeyExpires(t *testing.T) {
++	s := New()
++	req := IdempotencyKey{InvoiceID: "inv_1"}
++	s.ReserveIdempotencyKey("org_a", "k", req, t0)
++	s.CompleteIdempotencyKey("org_a", "k", 200, "", []byte("{}"), t0)
++	if _, reserved := s.ReserveIdempotencyKey("org_a", "k", req, t0.Add(IdempotencyTTL-time.Second)); reserved {
++		t.Fatal("expired one second early")
++	}
++	if _, reserved := s.ReserveIdempotencyKey("org_a", "k", req, t0.Add(IdempotencyTTL)); !reserved {
++		t.Fatal("not expired after the TTL")
++	}
++}
++
++func TestIdempotencyKeysAreRemovedOnceExpired(t *testing.T) {
++	s := New()
++	req := IdempotencyKey{InvoiceID: "inv_1"}
++	s.ReserveIdempotencyKey("org_a", "old", req, t0)
++	s.CompleteIdempotencyKey("org_a", "old", 200, "", []byte("{}"), t0)
++	later := t0.Add(IdempotencyTTL + time.Hour)
++	s.ReserveIdempotencyKey("org_a", "new", req, later)
++	if _, ok := s.idem[orgKey{"org_a", "old"}]; ok {
++		t.Fatal("the expired key is still held")
++	}
++	if _, ok := s.idem[orgKey{"org_a", "new"}]; !ok {
++		t.Fatal("the new key is not held")
++	}
++}
++
++func TestIdempotencyKeysSurviveExport(t *testing.T) {
++	s := New()
++	req := IdempotencyKey{InvoiceID: "inv_1", Fingerprint: "pm_card_declined"}
++	s.ReserveIdempotencyKey("org_a", "done", req, t0)
++	s.CompleteIdempotencyKey("org_a", "done", 402, "application/json", []byte(`{"error":"payment_declined"}`), t0)
++	s.ReserveIdempotencyKey("org_a", "pending", req, t0)
++
++	loaded, err := FromState(s.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	rec, reserved := loaded.ReserveIdempotencyKey("org_a", "done", req, t0)
++	if reserved || !rec.Done || rec.Status != 402 || string(rec.Body) != `{"error":"payment_declined"}` {
++		t.Fatalf("kept response after a reload: %+v, %v", rec, reserved)
++	}
++	if _, reserved := loaded.ReserveIdempotencyKey("org_a", "pending", req, t0); !reserved {
++		t.Fatal("a request that was being handled is still held after a reload")
++	}
++}
++
++func TestBeginPayment(t *testing.T) {
++	s := New()
++	end, ok := s.BeginPayment("org_a", "inv_1")
++	if !ok {
++		t.Fatal("first begin refused")
++	}
++	if _, ok := s.BeginPayment("org_a", "inv_1"); ok {
++		t.Fatal("second begin for the same invoice allowed")
++	}
++	if _, ok := s.BeginPayment("org_b", "inv_1"); !ok {
++		t.Fatal("another organization's invoice with the same ID refused")
++	}
++	if _, ok := s.BeginPayment("org_a", "inv_2"); !ok {
++		t.Fatal("another invoice refused")
++	}
++	end()
++	end() // calling it again does nothing
++	if _, ok := s.BeginPayment("org_a", "inv_1"); !ok {
++		t.Fatal("begin after end refused")
++	}
++}
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..7605820 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -22,6 +22,7 @@ type State struct {
+ 	WebhookEndpoints []WebhookEndpoint `json:"webhook_endpoints"`
+ 	Events           []Event           `json:"events"`
+ 	Deliveries       []Delivery        `json:"deliveries"`
++	IdempotencyKeys  []IdempotencyKey  `json:"idempotency_keys,omitempty"`
+ }
+ 
+ // Export returns a copy of everything in the store.
+@@ -69,6 +70,11 @@ func (s *Store) Export() State {
+ 	for _, d := range s.delivs {
+ 		st.Deliveries = append(st.Deliveries, copyDelivery(d))
+ 	}
++	for _, k := range s.idem {
++		if k.Done { // a request still being handled does not survive a restart
++			st.IdempotencyKeys = append(st.IdempotencyKeys, copyIdempotencyKey(k))
++		}
++	}
+ 	sort.Slice(st.Orgs, func(i, j int) bool { return st.Orgs[i].ID < st.Orgs[j].ID })
+ 	sort.Slice(st.Users, func(i, j int) bool { return st.Users[i].ID < st.Users[j].ID })
+ 	sort.Slice(st.Members, func(i, j int) bool {
+@@ -88,6 +94,12 @@ func (s *Store) Export() State {
+ 	sort.Slice(st.WebhookEndpoints, func(i, j int) bool { return st.WebhookEndpoints[i].ID < st.WebhookEndpoints[j].ID })
+ 	sort.Slice(st.Events, func(i, j int) bool { return st.Events[i].ID < st.Events[j].ID })
+ 	sort.Slice(st.Deliveries, func(i, j int) bool { return st.Deliveries[i].ID < st.Deliveries[j].ID })
++	sort.Slice(st.IdempotencyKeys, func(i, j int) bool {
++		if st.IdempotencyKeys[i].OrgID != st.IdempotencyKeys[j].OrgID {
++			return st.IdempotencyKeys[i].OrgID < st.IdempotencyKeys[j].OrgID
++		}
++		return st.IdempotencyKeys[i].Key < st.IdempotencyKeys[j].Key
++	})
+ 	return st
+ }
+ 
+@@ -190,5 +202,10 @@ func FromState(st State) (*Store, error) {
+ 		}
+ 		s.delivs[d.ID] = copyDelivery(d)
+ 	}
++	for _, k := range st.IdempotencyKeys {
++		if k.Done {
++			s.idem[orgKey{k.OrgID, k.Key}] = copyIdempotencyKey(k)
++		}
++	}
+ 	return s, nil
+ }
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..3c6ee5e 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -51,10 +51,17 @@ type Store struct {
+ 	endpoints map[string]WebhookEndpoint
+ 	events    map[string]Event
+ 	delivs    map[string]Delivery
++
++	idem       map[orgKey]IdempotencyKey // Idempotency-Key records: pending, and done while their response may be replayed
++	idemPruned time.Time                 // when expired records were last removed
++	paying     map[orgKey]bool           // invoices a charge is under way for (see BeginPayment)
+ }
+ 
+ type memberKey struct{ org, user string }
+ 
++// orgKey is an ID or key that is unique within one organization.
++type orgKey struct{ org, key string }
++
+ // New returns an empty store.
+ func New() *Store {
+ 	return &Store{
+@@ -63,6 +70,7 @@ func New() *Store {
+ 		customers: map[string]Customer{}, customersByEmail: map[string]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
++		idem: map[orgKey]IdempotencyKey{}, paying: map[orgKey]bool{},
+ 	}
+ }
+ 
