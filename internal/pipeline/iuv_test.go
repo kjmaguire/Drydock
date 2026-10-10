@@ -3,10 +3,11 @@ package pipeline_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -87,7 +88,7 @@ func (e *env) await(t *testing.T, id workflow.RunID, want workflow.RunStatus) wo
 	defer cancel()
 	info, err := e.eng.Await(ctx, id, func(r workflow.RunInfo) bool { return r.Status == want || r.Status.Terminal() })
 	if err != nil {
-		t.Fatalf("await %s: %v (the run is %s%s%s)", want, err, info.Status, describePending(e.eng, id), describeRunning(e.eng, id))
+		t.Fatalf("await %s: %v\n%s", want, err, stuckReport(e.eng, id))
 	}
 	if info.Status != want {
 		t.Fatalf("run ended %s (%s), wanted %s", info.Status, info.FailedReason, want)
@@ -95,37 +96,64 @@ func (e *env) await(t *testing.T, id workflow.RunID, want workflow.RunStatus) wo
 	return info
 }
 
-// describeRunning names the run's node executions that have started and not finished, for a failure message.
-func describeRunning(eng *workflow.Engine, id workflow.RunID) string {
-	rows, err := eng.Executions(context.Background(), id)
-	if err != nil {
-		return ""
-	}
+// stuckReport says where a run is when a test's wait for it ran out: its status and reason, read afresh (Await returns an
+// empty RunInfo when its deadline ends a query), every node execution with its state and age, the open requests, and the
+// goroutines in Drydock's code, which show where a driver is blocked when the run is stuck rather than slow.
+func stuckReport(eng *workflow.Engine, id workflow.RunID) string {
+	ctx := context.Background()
 	var b strings.Builder
-	for _, r := range rows {
-		if r.Status == "started" {
-			b.WriteString(" " + string(r.NodeID) + "#" + strconv.Itoa(r.Step) + " started " + time.Since(time.UnixMilli(r.Started)).Round(time.Second).String() + " ago")
+	if info, err := eng.Status(ctx, id); err != nil {
+		fmt.Fprintf(&b, "the run's status could not be read: %v", err)
+	} else {
+		fmt.Fprintf(&b, "the run is %s", info.Status)
+		if info.FailedReason != "" {
+			fmt.Fprintf(&b, " (%s)", info.FailedReason)
 		}
 	}
-	if b.Len() == 0 {
-		return ""
+	if rows, err := eng.Executions(ctx, id); err != nil {
+		fmt.Fprintf(&b, "; its node executions could not be read: %v", err)
+	} else {
+		b.WriteString("; node executions:")
+		if len(rows) == 0 {
+			b.WriteString(" none")
+		}
+		for _, r := range rows {
+			fmt.Fprintf(&b, "\n  %s#%d attempt %d %s, started %s ago", r.NodeID, r.Step, r.Attempt, r.Status, time.Since(time.UnixMilli(r.Started)).Round(time.Second))
+			if r.Finished > 0 {
+				fmt.Fprintf(&b, ", took %s", time.Duration(r.Finished-r.Started)*time.Millisecond)
+			}
+			if r.Error != "" {
+				fmt.Fprintf(&b, ": %s", r.Error)
+			}
+		}
 	}
-	return "; still running:" + b.String()
+	if p, err := eng.Pending(ctx, id); err == nil {
+		b.WriteString("\nopen requests:")
+		if len(p) == 0 {
+			b.WriteString(" none")
+		}
+		for _, r := range p {
+			b.WriteString(" [" + string(r.NodeID) + " " + r.Spec.Kind + ": " + r.Spec.Title + "]")
+		}
+	}
+	b.WriteString("\ngoroutines in Drydock's code:\n" + drydockGoroutines())
+	return b.String()
 }
 
-// describePending names the run's open requests for a failure message, so that a run waiting for a human where a test
-// expected it to go on says what it asks.
-func describePending(eng *workflow.Engine, id workflow.RunID) string {
-	p, err := eng.Pending(context.Background(), id)
-	if err != nil || len(p) == 0 {
-		return ""
+// drydockGoroutines dumps the stacks of the goroutines that are in Drydock's code, leaving out the caller's.
+func drydockGoroutines() string {
+	buf := make([]byte, 8<<20)
+	buf = buf[:goruntime.Stack(buf, true)]
+	var out []string
+	for i, g := range strings.Split(string(buf), "\n\n") {
+		if i > 0 && strings.Contains(g, "kjmaguire/drydock/internal/") {
+			out = append(out, g)
+		}
 	}
-	var b strings.Builder
-	b.WriteString("; it waits for:")
-	for _, r := range p {
-		b.WriteString(" [" + string(r.NodeID) + " " + r.Spec.Kind + ": " + r.Spec.Title + "]")
+	if len(out) == 0 {
+		return "(none)"
 	}
-	return b.String()
+	return strings.Join(out, "\n\n")
 }
 
 func (e *env) answer(t *testing.T, id workflow.RunID, decision, by, dataJSON string) error {

@@ -282,7 +282,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		st.Step = step
 		st.LastNodes = append([]NodeID(nil), ready...)
 		cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: info.ID, Workflow: g.Name, Step: step, Kind: CheckpointStep, Parent: parent, State: st, Created: storage.Now()}
-		if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusRunning, newRequests: reqs, owner: e.cfg.Owner}); err != nil {
+		if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusRunning, newRequests: reqs, owner: e.cfg.Owner, ttl: e.cfg.LeaseTTL}); err != nil {
 			if errors.Is(err, ErrLeaseHeld) {
 				e.onStopped(info) // fenced out: another owner took over; do not touch the run
 				return
@@ -407,7 +407,7 @@ func (e *Engine) finish(ctx context.Context, info RunInfo, g *Graph, st *RunStat
 	st.Status = StatusCompleted
 	st.Result = raw
 	cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: info.ID, Workflow: g.Name, Step: st.Step, Kind: CheckpointStep, Parent: *parent, State: *st, Created: storage.Now()}
-	if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusCompleted, result: raw, owner: e.cfg.Owner}); err != nil {
+	if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusCompleted, result: raw, owner: e.cfg.Owner, ttl: e.cfg.LeaseTTL}); err != nil {
 		if !errors.Is(err, ErrLeaseHeld) {
 			e.fail(ctx, info, "commit completion: "+err.Error())
 		}
@@ -803,7 +803,7 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	newCP := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: run, Workflow: g.Name, Step: st.Step, Kind: CheckpointResponseEntry, Parent: cp.ID, State: st, Created: storage.Now()}
 
 	err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		if err := fence(ctx, tx, run, e.cfg.Owner); err != nil {
+		if err := fence(ctx, tx, run, e.cfg.Owner, e.cfg.LeaseTTL); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE approvals SET status=?, decision=?, response=?, decided_by=?, resolved_at=?, version=version+1

@@ -234,7 +234,7 @@ func (e *tpl) await(id workflow.RunID, want workflow.RunStatus) workflow.RunInfo
 	defer cancel()
 	info, err := e.eng.Await(ctx, id, func(r workflow.RunInfo) bool { return r.Status == want || r.Status.Terminal() })
 	if err != nil {
-		e.t.Fatalf("await %s: %v (the run is %s%s%s)", want, err, info.Status, describePending(e.eng, id), describeRunning(e.eng, id))
+		e.t.Fatalf("await %s: %v\n%s", want, err, stuckReport(e.eng, id))
 	}
 	if info.Status != want {
 		e.t.Fatalf("run ended %s (%s), wanted %s", info.Status, info.FailedReason, want)
@@ -299,4 +299,17 @@ var _ = strings.Contains
 
 func gitWT(t tasks.Task) git.Worktree {
 	return git.Worktree{Path: t.Worktree, Branch: t.Branch, Base: t.BaseBranch, TaskID: t.ID}
+}
+
+// When a wait runs out, the report names where the run is: its status, its node executions and its open requests.
+func TestStuckReportSaysWhereTheRunIs(t *testing.T) {
+	e := newTpl(t, featureScripts(), tplOpts{})
+	id := e.start(pipeline.WorkflowFeature, featureRoles())
+	e.await(id, workflow.StatusWaitingHuman)
+	r := stuckReport(e.eng, id)
+	for _, want := range []string{"the run is WAITING_HUMAN", "; node executions:\n", " attempt 1 done, started ", "open requests: [specreview review: ", "goroutines in Drydock's code:\n"} {
+		if !strings.Contains(r, want) {
+			t.Fatalf("the report lacks %q:\n%s", want, r)
+		}
+	}
 }

@@ -232,14 +232,21 @@ func (s *store) releaseLease(ctx context.Context, run RunID, owner string) {
 	})
 }
 
-// fence verifies, inside tx, that owner still holds an unexpired lease; a zombie driver can never commit.
-func fence(ctx context.Context, tx *sql.Tx, run RunID, owner string) error {
-	var exp int64
-	err := tx.QueryRowContext(ctx, `SELECT expires_at FROM run_leases WHERE run_id=? AND owner=?`, string(run), owner).Scan(&exp)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && exp < storage.Now()) {
+// fence verifies, inside tx, that owner still holds the run's lease, and extends it by ttl: a zombie driver (one whose
+// lease another owner took) can never commit. A lease that ran out while its driver was stalled (a busy machine, a laptop
+// asleep) and that nobody took is still the owner's, so it is extended rather than refused; refusing it stopped the driver
+// and left the run RUNNING with nobody driving it. Taking a lease over needs it expired (acquireLease), and both happen in
+// write transactions, so a run never has two owners.
+func fence(ctx context.Context, tx *sql.Tx, run RunID, owner string, ttl time.Duration) error {
+	res, err := tx.ExecContext(ctx, `UPDATE run_leases SET expires_at=MAX(expires_at, ?) WHERE run_id=? AND owner=?`,
+		time.Now().Add(ttl).UnixMilli(), string(run), owner)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrLeaseHeld
 	}
-	return err
+	return nil
 }
 
 // --- commits ---
@@ -250,7 +257,8 @@ type stepCommit struct {
 	result      json.RawMessage
 	failed      string
 	newRequests []approvalInsert
-	owner       string
+	owner       string        // when set, the commit is fenced by this owner's lease
+	ttl         time.Duration // how far the fence extends the lease
 }
 
 type approvalInsert struct {
@@ -264,7 +272,7 @@ type approvalInsert struct {
 func (s *store) commit(ctx context.Context, c stepCommit) error {
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		if c.owner != "" {
-			if err := fence(ctx, tx, c.cp.RunID, c.owner); err != nil {
+			if err := fence(ctx, tx, c.cp.RunID, c.owner, c.ttl); err != nil {
 				return err
 			}
 		}

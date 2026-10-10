@@ -391,7 +391,7 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 			return r.Status == workflow.StatusCompleted || r.Status == workflow.StatusWaitingHuman || r.Status.Terminal()
 		})
 		if err != nil {
-			t.Fatalf("%s: the approved run did not finish: %v (the run is %s%s%s)", tk.Title, err, info.Status, describePending(e.eng, rid), describeRunning(e.eng, rid))
+			t.Fatalf("%s: the approved run did not finish: %v\n%s", tk.Title, err, stuckReport(e.eng, rid))
 		}
 		return info
 	}
