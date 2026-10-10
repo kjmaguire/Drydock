@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every ID-bearing endpoint and store path answers another organization's ID exactly like an unknown ID (`404 {\"error\":\"not_found\"}`). Email lookups and email uniqueness are scoped per organization.\n- The invoice-lines leak is fixed, along with the other instances I found: cross-org `customer_id` on subscriptions and invoices (the invoice path also revealed existence through `customer_org_mismatch`), the global email index behind `?email=`, and webhook endpoint deletion by ID alone.\n- New tests cover each instance. `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791671306405
+  },
+  {
+    "id": 2,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 600ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-2/data/runs/run_1d752b0d5108/checks/build_a005760310a5.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 603,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671307053
+  },
+  {
+    "id": 3,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 700ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-2/data/runs/run_1d752b0d5108/checks/test_5f5440fac12e.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 701,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671307757
+  },
+  {
+    "id": 4,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 550ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-2/data/runs/run_1d752b0d5108/checks/lint_a5903e2b3007.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 548,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671308307
+  },
+  {
+    "id": 5,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-2/data/runs/run_1d752b0d5108/checks/secrets_c131a7b9f80d.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671308328
+  },
+  {
+    "id": 6,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +328 -30",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-2/data/runs/run_1d752b0d5108/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 328,
+      "Deletions": 30,
+      "base": "8990f27bb476e3aff54431f14975a183339438ce",
+      "commit": "8a9d51b82c8b1ed7fdc12fb6c9cf7c0a2bef8e99"
+    },
+    "created": 1791671308461
+  },
+  {
+    "id": 7,
+    "taskId": "task_8a3191780d77",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 8a9d51b82c",
+    "ref": "8a9d51b82c8b1ed7fdc12fb6c9cf7c0a2bef8e99",
+    "data": {},
+    "created": 1791671308462
+  }
+]
