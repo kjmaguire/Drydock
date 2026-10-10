@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "4d161a0630ba51323b15e8aea5c6fd52f79eb51f",
+  "startedAt": "2026-10-10T21:43:17.104844378Z",
+  "wallMs": 422495,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 3341,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 5065,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t3.288s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.006s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.009s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.009s\nok  \texample.com/tally/internal/payments\t0.009s\nok  \texample.com/tally/internal/reports\t0.010s\nok  \texample.com/tally/internal/snapshot\t0.026s\nok  \texample.com/tally/internal/store\t0.015s\nok  \texample.com/tally/internal/subscriptions\t0.032s\nok  \texample.com/tally/internal/webhooks\t0.014s\n"
+      }
+    ],
+    "durationMs": 8410
+  },
+  "costUsd": 0.17522952,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 82,
+    "output": 77685,
+    "cacheRead": 2616930,
+    "cacheWrite": 241101
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_6763466ba623",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe change is mostly sound. I checked the store and handler against `createCustomer` and `UpdateCustomer`: the email normalization, the \"pm_\" check, the org-scoped email-taken rule, the event publishing, and the all-under-one-lock creation all match. Two problems need fixing before this ships.\n\n1. **The BOM test never sends a BOM.** `internal/api/api_test.go`, the `body :=` literal in `TestImportCustomers`, starts with `\"\\\\xef\\\\xbb\\\\xbf Notes ...`. In a Go double-quoted string, `\\\\` is a literal backslash, so the body begins with the seven ASCII characters `\\xef\\xbb\\xbf`. That text is just an ignored column, so the test passes without touching the BOM path. The requirement that a UTF-8 BOM is ignored has no coverage. Fix: change `\\\\xef\\\\xbb\\\\xbf` to `\\xef\\xbb\\xbf`, and check that the header still parses as `name` and `email`.\n\n2. **Lines of only commas are skipped, but the spec only skips blank lines.** `blankRecord` in `internal/api/customers.go` (`parseCustomerCSV` / `readRecord`) treats any record whose fields are all empty as blank. A line such as `,,,` is not blank. It is a record with no name, so the spec requires `missing_name` for it. The current code silently drops it, so a file with such a line returns 201 where the spec requires 422. The test at `api_test.go`, the `bad :=` literal, pins this behavior on the `\",,,\\n\" // 10: blank, skipped` line, so that expectation and the following line numbers need to change with it. Fix: treat a record as blank only when it has o\n...[truncated]"
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_6763466ba623",
+      "feedback": "internal/store/customers.go, emailTaken (added in this diff): it checks only the single ID stored in the global customersByEmail index, and that index is overwritten by other organizations with the same email (CreateCustomer line 27 and ImportCustomers line 67 write it unconditionally). So when org A already has jane@example.com and org B later creates the same address, org A's import of jane@example.com returns no email_taken and creates a duplicate in org A, violating the requirement that an email may not be used by an existing customer of the organization. Fix: in checkImport, build the set of normalized emails of customers where OrgID == orgID by scanning s.customers once per call, and use that set for the email_taken check instead of emailTaken. Add a test where two organizations share an email and the import in the first is refused with email_taken."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_6763466ba623"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_d2cf1aa1117d"
+}

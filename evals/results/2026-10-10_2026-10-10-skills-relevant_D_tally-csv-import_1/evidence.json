@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV, validates every record, and returns the 201, 200 (dry run), 400, 413 or 422 responses the spec describes. Nothing is created unless all records pass.\n- Each created customer goes through the same path as `POST /v1/customers`, so it sends `customer.created`.\n- Table-driven tests cover the header, CSV parsing, row validation, duplicates, the row limit and dry run. `go build`, `go test` and `go vet` pass.",
+    "data": {},
+    "created": 1791668777701
+  },
+  {
+    "id": 2,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.01s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/build_cea57c12b265.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1011,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668778890
+  },
+  {
+    "id": 3,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 940ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/test_9f19ab346cfc.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 939,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668779831
+  },
+  {
+    "id": 4,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 730ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/lint_c41088745749.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 727,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668780561
+  },
+  {
+    "id": 5,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/secrets_6aa75c0fa949.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668780585
+  },
+  {
+    "id": 6,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +458 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 458,
+      "Deletions": 0,
+      "base": "30fa82f574cfaab5eac51974a0474272ead41d94",
+      "commit": "07a7206a92f46120ea8b6f4a0b395cf7d3ece3b2"
+    },
+    "created": 1791668780883
+  },
+  {
+    "id": 7,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 07a7206a92",
+    "ref": "07a7206a92f46120ea8b6f4a0b395cf7d3ece3b2",
+    "data": {},
+    "created": 1791668780884
+  },
+  {
+    "id": 8,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Changes**",
+    "data": {},
+    "created": 1791668875926
+  },
+  {
+    "id": 9,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.34s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/build_e414629cf8c1.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1341,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668877326
+  },
+  {
+    "id": 10,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.11s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/test_bf3291375c7d.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1106,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668878435
+  },
+  {
+    "id": 11,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 820ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/lint_420d4710790f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 821,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668879262
+  },
+  {
+    "id": 12,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/checks/secrets_43f956ecabd6.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 30,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668879294
+  },
+  {
+    "id": 13,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +479 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-csv-import-D-1/data/runs/run_a75b358157b0/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 479,
+      "Deletions": 0,
+      "base": "30fa82f574cfaab5eac51974a0474272ead41d94",
+      "commit": "3f29d22093454fe8993858d07db97a9b2b28cc71"
+    },
+    "created": 1791668879423
+  },
+  {
+    "id": 14,
+    "taskId": "task_4a23898ee20d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 3f29d22093",
+    "ref": "3f29d22093454fe8993858d07db97a9b2b28cc71",
+    "data": {},
+    "created": 1791668879424
+  }
+]

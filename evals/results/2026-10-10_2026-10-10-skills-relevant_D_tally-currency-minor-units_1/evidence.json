@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `money` gets `Currency.MinorUnits()` (USD/EUR/GBP 2, JPY 0, KWD 3). `ParseMajor` accepts at most that many decimals and pads fewer. `Format` writes exactly that many decimals, with the symbol and sign rules from the task.\n- Plan `price` and `price_formatted`, and invoice `total_formatted`, show the right decimals for JPY and KWD. Plan `price` uses no thousands separator and is built without floats.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, with new unit tests in `internal/money` and API tests for JPY and KWD plans and invoices.",
+    "data": {},
+    "created": 1791668867388
+  },
+  {
+    "id": 2,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 820ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-1/data/runs/run_d6e51531caf8/checks/build_39622cdcc859.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 820,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668868572
+  },
+  {
+    "id": 3,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 990ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-1/data/runs/run_d6e51531caf8/checks/test_f77dcd541836.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 990,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668869566
+  },
+  {
+    "id": 4,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.15s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-1/data/runs/run_d6e51531caf8/checks/lint_7008bd4a3436.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1148,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668870718
+  },
+  {
+    "id": 5,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-1/data/runs/run_d6e51531caf8/checks/secrets_a4086b7d60a9.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 26,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668870749
+  },
+  {
+    "id": 6,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +167 -10",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-1/data/runs/run_d6e51531caf8/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 167,
+      "Deletions": 10,
+      "base": "308a56390a3e35cbf34b3eaa85e7f2f626dc3a45",
+      "commit": "f30e0755a8f2ce5095ff59db782bc94f4d18d9d3"
+    },
+    "created": 1791668870968
+  },
+  {
+    "id": 7,
+    "taskId": "task_901af2b32c67",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f30e0755a8",
+    "ref": "f30e0755a8f2ce5095ff59db782bc94f4d18d9d3",
+    "data": {},
+    "created": 1791668870969
+  }
+]

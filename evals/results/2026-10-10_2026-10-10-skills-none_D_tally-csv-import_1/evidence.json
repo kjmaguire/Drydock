@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV, validates every record, and is all-or-nothing: 201 with the created customers, 200 for `dry_run=true`, or the 400/413/422 errors in the spec.\n- Each created customer goes through the same path as `POST /v1/customers` and emits `customer.created`.\n- Table-driven tests cover the header, CSV parsing, row validation, limits, and dry run, and `go build`, `go test` and `go vet` pass.",
+    "data": {},
+    "created": 1791668794838
+  },
+  {
+    "id": 2,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 520ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/build_3c6e245389e4.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 519,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668795435
+  },
+  {
+    "id": 3,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 570ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/test_86d24e574d17.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 565,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668796001
+  },
+  {
+    "id": 4,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 520ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/lint_6347be5c0eb7.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 515,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668796518
+  },
+  {
+    "id": 5,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/secrets_bb474d232562.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668796537
+  },
+  {
+    "id": 6,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +316 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 316,
+      "Deletions": 0,
+      "base": "4d161a0630ba51323b15e8aea5c6fd52f79eb51f",
+      "commit": "d9d9b1bf8c7e58222107f2d6499171623e9f7365"
+    },
+    "created": 1791668796916
+  },
+  {
+    "id": 7,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit d9d9b1bf8c",
+    "ref": "d9d9b1bf8c7e58222107f2d6499171623e9f7365",
+    "data": {},
+    "created": 1791668796917
+  },
+  {
+    "id": 8,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Not fully met yet. The reviewer's fix is in and `go build`, `go test` and `go vet` pass. The CSV import itself was already in place from the previous attempt, and I did not re-check the rest of the spec in this pass.",
+    "data": {},
+    "created": 1791668869373
+  },
+  {
+    "id": 9,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.18s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/build_c301520477e7.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1176,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668870661
+  },
+  {
+    "id": 10,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.53s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/test_0142d59e2fef.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1529,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668872193
+  },
+  {
+    "id": 11,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.27s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/lint_c40acf467d2c.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1268,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668873464
+  },
+  {
+    "id": 12,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/checks/secrets_7dcecca5efd2.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 30,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668873499
+  },
+  {
+    "id": 13,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +330 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-1/data/runs/run_babb1ad79a6b/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 330,
+      "Deletions": 0,
+      "base": "4d161a0630ba51323b15e8aea5c6fd52f79eb51f",
+      "commit": "08f375586c0d5430efc6c1f3bcf00c1c94ff1552"
+    },
+    "created": 1791668874042
+  },
+  {
+    "id": 14,
+    "taskId": "task_21eafbc318ab",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 08f375586c",
+    "ref": "08f375586c0d5430efc6c1f3bcf00c1c94ff1552",
+    "data": {},
+    "created": 1791668874046
+  }
+]

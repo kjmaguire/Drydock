@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Billing periods are anchored to `StartedAt`, or `TrialEnd` for trials, and clamped to month end. `AddInterval` keeps its signature but no longer drifts. `RenewDue` renews each missed period in order, with one invoice per period, each starting where the previous one ended.\n- New tests in `internal/billing` cover month-end clamping, the Feb 29 yearly case, and the anchor. New tests in `internal/subscriptions` cover catch-up over three missed periods and a trial that ends on Jan 31. The existing tests pass.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791669345113
+  },
+  {
+    "id": 2,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 980ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-1/data/runs/run_f0acee721fd6/checks/build_c3dc3d844c92.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 978,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669346136
+  },
+  {
+    "id": 3,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 720ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-1/data/runs/run_f0acee721fd6/checks/test_817c8edf3ece.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 724,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669346863
+  },
+  {
+    "id": 4,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 440ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-1/data/runs/run_f0acee721fd6/checks/lint_c29b0d6eec02.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 443,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669347309
+  },
+  {
+    "id": 5,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-1/data/runs/run_f0acee721fd6/checks/secrets_f2cb5d54d76a.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 14,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669347325
+  },
+  {
+    "id": 6,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +209 -28",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-month-end-renewals-D-1/data/runs/run_f0acee721fd6/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 209,
+      "Deletions": 28,
+      "base": "4be786f7dd263c34fac4ef0f1bf56bf157afb111",
+      "commit": "e8ac4acd2bd1c08c65e2e2e786a99c20de17d276"
+    },
+    "created": 1791669347467
+  },
+  {
+    "id": 7,
+    "taskId": "task_6f444064c8b4",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit e8ac4acd2b",
+    "ref": "e8ac4acd2bd1c08c65e2e2e786a99c20de17d276",
+    "data": {},
+    "created": 1791669347468
+  }
+]
