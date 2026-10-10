@@ -1,0 +1,339 @@
+diff --git a/start/README.md b/result/README.md
+index 6e3dff8..67a45f7 100644
+--- a/start/README.md
++++ b/result/README.md
+@@ -6,6 +6,8 @@ The billing API of a small multi-tenant SaaS product. Standard library only.
+ - `internal/billing`: invoice totals. All amounts are integer cents.
+ - `internal/api`: the JSON HTTP API. Every request under `/api/` needs an `X-API-Key` header. A key belongs to one account,
+   and the API only ever shows that account's data: another account's customer or invoice is "not found".
++  Each key is rate-limited in a rolling 60 seconds: 60 requests on a free plan, 600 on a pro plan. Past that the API answers
++  429 `rate_limited` with a `Retry-After` header. `/healthz` is not limited.
+ - `cmd/server`: runs the API on `:8080` (or `$PORT`) with demo data.
+ 
+ Other services and the dashboard depend on the exported functions of `internal/store`, `internal/billing` and `internal/api`:
+diff --git a/start/internal/api/api.go b/result/internal/api/api.go
+index 0fb8ce1..71d7210 100644
+--- a/start/internal/api/api.go
++++ b/result/internal/api/api.go
+@@ -5,6 +5,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
++	"strconv"
+ 	"time"
+ 
+ 	"example.com/saasapi/internal/billing"
+@@ -19,14 +20,15 @@ type Options struct {
+ 
+ // Server serves the API.
+ type Server struct {
+-	store *store.Store
+-	now   func() time.Time
+-	mux   *http.ServeMux
++	store   *store.Store
++	now     func() time.Time
++	mux     *http.ServeMux
++	limiter *rateLimiter
+ }
+ 
+ // New returns a server over a store.
+ func New(st *store.Store, opt Options) *Server {
+-	s := &Server{store: st, now: opt.Now, mux: http.NewServeMux()}
++	s := &Server{store: st, now: opt.Now, mux: http.NewServeMux(), limiter: newRateLimiter()}
+ 	if s.now == nil {
+ 		s.now = time.Now
+ 	}
+@@ -48,14 +50,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.Serve
+ // handler is an endpoint that runs for a known account.
+ type handler func(w http.ResponseWriter, r *http.Request, acct store.Account)
+ 
+-// authed resolves the X-API-Key header to its account, or answers 401.
++// authed resolves the X-API-Key header to its account, or answers 401. It then rate-limits the key, or answers 429.
+ func (s *Server) authed(h handler) http.HandlerFunc {
+ 	return func(w http.ResponseWriter, r *http.Request) {
+-		acct, ok := s.store.AccountForKey(r.Header.Get("X-API-Key"))
++		key := r.Header.Get("X-API-Key")
++		acct, ok := s.store.AccountForKey(key)
+ 		if !ok {
+ 			writeError(w, http.StatusUnauthorized, "unauthorized")
+ 			return
+ 		}
++		if wait, ok := s.limiter.allow(key, limitFor(acct.Plan), s.now()); !ok {
++			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(wait)))
++			writeError(w, http.StatusTooManyRequests, "rate_limited")
++			return
++		}
+ 		h(w, r, acct)
+ 	}
+ }
+diff --git a/result/internal/api/ratelimit.go b/result/internal/api/ratelimit.go
+new file mode 100644
+index 0000000..008cbde
+--- /dev/null
++++ b/result/internal/api/ratelimit.go
+@@ -0,0 +1,60 @@
++package api
++
++import (
++	"sync"
++	"time"
++
++	"example.com/saasapi/internal/store"
++)
++
++// rateWindow is the rolling window in which a key's requests are counted.
++const rateWindow = 60 * time.Second
++
++// limitFor returns how many requests per rateWindow a key of an account on plan p may make.
++func limitFor(p store.Plan) int {
++	if p == store.PlanPro {
++		return 600
++	}
++	return 60
++}
++
++// rateLimiter counts each API key's allowed requests in a rolling window. It is safe for concurrent use.
++// Its clock must not run backwards.
++type rateLimiter struct {
++	mu      sync.Mutex
++	allowed map[string][]time.Time // API key -> times of its allowed requests, oldest first
++}
++
++func newRateLimiter() *rateLimiter {
++	return &rateLimiter{allowed: map[string][]time.Time{}}
++}
++
++// allow counts a request by key at time t if fewer than limit of the key's requests were allowed in (t-rateWindow, t].
++// Otherwise it counts nothing and returns how long until the oldest counted request leaves the window.
++func (rl *rateLimiter) allow(key string, limit int, t time.Time) (retryIn time.Duration, ok bool) {
++	rl.mu.Lock()
++	defer rl.mu.Unlock()
++	cutoff := t.Add(-rateWindow)
++	// Drop requests that have left the window; they can never count again.
++	kept := rl.allowed[key][:0]
++	for _, at := range rl.allowed[key] {
++		if at.After(cutoff) {
++			kept = append(kept, at)
++		}
++	}
++	if len(kept) >= limit {
++		rl.allowed[key] = kept
++		return kept[0].Add(rateWindow).Sub(t), false
++	}
++	rl.allowed[key] = append(kept, t)
++	return 0, true
++}
++
++// retryAfterSeconds rounds d up to whole seconds, with a minimum of 1.
++func retryAfterSeconds(d time.Duration) int {
++	secs := int((d + time.Second - 1) / time.Second)
++	if secs < 1 {
++		return 1
++	}
++	return secs
++}
+diff --git a/result/internal/api/ratelimit_test.go b/result/internal/api/ratelimit_test.go
+new file mode 100644
+index 0000000..3a5c75f
+--- /dev/null
++++ b/result/internal/api/ratelimit_test.go
+@@ -0,0 +1,199 @@
++package api_test
++
++import (
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"strconv"
++	"sync"
++	"testing"
++	"time"
++
++	"example.com/saasapi/internal/api"
++	"example.com/saasapi/internal/store"
++)
++
++// newClockedServer is newServer with a clock the test can move: set *clock to change the server's time.
++func newClockedServer(t *testing.T) (*api.Server, *time.Time) {
++	t.Helper()
++	st := store.New()
++	st.AddAccount(store.Account{ID: "acc_acme", Name: "Acme", Plan: store.PlanFree})
++	st.AddAccount(store.Account{ID: "acc_globex", Name: "Globex", Plan: store.PlanPro})
++	st.AddKey("key-acme", "acc_acme")
++	st.AddKey("key-acme-2", "acc_acme")
++	st.AddKey("key-globex", "acc_globex")
++	clock := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	return api.New(st, api.Options{Now: func() time.Time { return clock }}), &clock
++}
++
++// listCustomers makes one authenticated request with key.
++func listCustomers(t *testing.T, srv *api.Server, key string) *httptest.ResponseRecorder {
++	t.Helper()
++	return do(t, srv, "GET", "/api/customers", key, "")
++}
++
++// spend makes n requests with key and fails unless each one is allowed.
++func spend(t *testing.T, srv *api.Server, key string, n int) {
++	t.Helper()
++	for i := range n {
++		if r := listCustomers(t, srv, key); r.Code != http.StatusOK {
++			t.Fatalf("request %d with %s: status %d", i+1, key, r.Code)
++		}
++	}
++}
++
++func TestAFreeKeyGetsSixtyRequestsAMinute(t *testing.T) {
++	srv, _ := newClockedServer(t)
++	spend(t, srv, "key-acme", 60)
++	r := listCustomers(t, srv, "key-acme")
++	if r.Code != http.StatusTooManyRequests {
++		t.Fatalf("61st request: status %d", r.Code)
++	}
++	if body := r.Body.String(); body != `{"error":"rate_limited"}`+"\n" {
++		t.Fatalf("body %q", body)
++	}
++	if got := r.Header().Get("Retry-After"); got != "60" {
++		t.Fatalf("Retry-After %q, want 60", got)
++	}
++}
++
++func TestAProKeyGetsSixHundredRequestsAMinute(t *testing.T) {
++	srv, _ := newClockedServer(t)
++	spend(t, srv, "key-globex", 600)
++	if r := listCustomers(t, srv, "key-globex"); r.Code != http.StatusTooManyRequests {
++		t.Fatalf("601st request: status %d", r.Code)
++	}
++}
++
++func TestEachKeyHasItsOwnLimitEvenWithinOneAccount(t *testing.T) {
++	srv, _ := newClockedServer(t)
++	spend(t, srv, "key-acme", 60)
++	spend(t, srv, "key-acme-2", 60)
++	if r := listCustomers(t, srv, "key-acme-2"); r.Code != http.StatusTooManyRequests {
++		t.Fatalf("second key past its limit: status %d", r.Code)
++	}
++}
++
++func TestTheWindowSlidesOneRequestAtATime(t *testing.T) {
++	srv, clock := newClockedServer(t)
++	t0 := *clock
++	spend(t, srv, "key-acme", 60)
++
++	// Still inside (t0, t0+59s]: the first request has not left the window.
++	*clock = t0.Add(59 * time.Second)
++	if r := listCustomers(t, srv, "key-acme"); r.Code != http.StatusTooManyRequests {
++		t.Fatalf("at +59s: status %d", r.Code)
++	}
++
++	// At t0+60s the requests from t0 leave the window (t0, t0+60s], so the key may go again.
++	*clock = t0.Add(60 * time.Second)
++	spend(t, srv, "key-acme", 60)
++	if r := listCustomers(t, srv, "key-acme"); r.Code != http.StatusTooManyRequests {
++		t.Fatalf("61st in the new window: status %d", r.Code)
++	}
++}
++
++func TestRejectedRequestsDoNotCount(t *testing.T) {
++	srv, clock := newClockedServer(t)
++	t0 := *clock
++	spend(t, srv, "key-acme", 60)
++
++	*clock = t0.Add(30 * time.Second)
++	for range 5 {
++		if r := listCustomers(t, srv, "key-acme"); r.Code != http.StatusTooManyRequests {
++			t.Fatalf("rejected request: status %d", r.Code)
++		}
++	}
++
++	// If the five rejections had counted, only 55 requests would be allowed here.
++	*clock = t0.Add(60 * time.Second)
++	spend(t, srv, "key-acme", 60)
++}
++
++func TestRetryAfterIsRoundedUpToWholeSeconds(t *testing.T) {
++	srv, clock := newClockedServer(t)
++	t0 := *clock
++	spend(t, srv, "key-acme", 60)
++
++	// The oldest request leaves in 1.5s; rounded up that is 2.
++	*clock = t0.Add(58*time.Second + 500*time.Millisecond)
++	r := listCustomers(t, srv, "key-acme")
++	if r.Code != http.StatusTooManyRequests {
++		t.Fatalf("status %d", r.Code)
++	}
++	if got := r.Header().Get("Retry-After"); got != "2" {
++		t.Fatalf("Retry-After %q, want 2", got)
++	}
++}
++
++func TestRetryAfterIsAtLeastOneSecond(t *testing.T) {
++	srv, clock := newClockedServer(t)
++	t0 := *clock
++	spend(t, srv, "key-acme", 60)
++
++	// The oldest request leaves in 1ms, which still answers 1.
++	*clock = t0.Add(60*time.Second - time.Millisecond)
++	r := listCustomers(t, srv, "key-acme")
++	if got := r.Header().Get("Retry-After"); got != "1" {
++		t.Fatalf("Retry-After %q, want 1", got)
++	}
++}
++
++func TestRetryAfterCountsFromTheOldestRequest(t *testing.T) {
++	srv, clock := newClockedServer(t)
++	t0 := *clock
++	spend(t, srv, "key-acme", 1)
++	*clock = t0.Add(20 * time.Second)
++	spend(t, srv, "key-acme", 59)
++
++	// The window is full at t0+30s. The oldest request, from t0, leaves at t0+60s: 30 seconds away.
++	*clock = t0.Add(30 * time.Second)
++	r := listCustomers(t, srv, "key-acme")
++	if got, _ := strconv.Atoi(r.Header().Get("Retry-After")); got != 30 {
++		t.Fatalf("Retry-After %q, want 30", r.Header().Get("Retry-After"))
++	}
++}
++
++func TestUnauthenticatedRequestsAreNotCountedAndHealthzIsNotLimited(t *testing.T) {
++	srv, _ := newClockedServer(t)
++	for range 100 {
++		if r := listCustomers(t, srv, "nope"); r.Code != http.StatusUnauthorized {
++			t.Fatalf("unknown key: status %d", r.Code)
++		}
++		if r := do(t, srv, "GET", "/healthz", "", ""); r.Code != http.StatusOK {
++			t.Fatalf("healthz: status %d", r.Code)
++		}
++	}
++	spend(t, srv, "key-acme", 60)
++}
++
++func TestConcurrentRequestsNeverExceedTheLimit(t *testing.T) {
++	srv, _ := newClockedServer(t)
++	var mu sync.Mutex
++	allowed := 0
++	var wg sync.WaitGroup
++	for range 200 {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			if r := listCustomers(t, srv, "key-acme"); r.Code == http.StatusOK {
++				mu.Lock()
++				allowed++
++				mu.Unlock()
++			}
++		}()
++	}
++	wg.Wait()
++	if allowed != 60 {
++		t.Fatalf("%d of 200 concurrent requests allowed, want 60", allowed)
++	}
++}
++
++func TestRateLimitedBodyIsJSON(t *testing.T) {
++	srv, _ := newClockedServer(t)
++	spend(t, srv, "key-acme", 60)
++	var body map[string]string
++	if err := json.Unmarshal(listCustomers(t, srv, "key-acme").Body.Bytes(), &body); err != nil || body["error"] != "rate_limited" {
++		t.Fatalf("body %v %v", body, err)
++	}
++}

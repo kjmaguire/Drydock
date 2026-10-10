@@ -1,0 +1,208 @@
+diff --git a/start/internal/api/api.go b/result/internal/api/api.go
+index 0fb8ce1..e649c0e 100644
+--- a/start/internal/api/api.go
++++ b/result/internal/api/api.go
+@@ -2,9 +2,13 @@
+ package api
+ 
+ import (
++	"bytes"
++	"encoding/csv"
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
++	"strconv"
++	"strings"
+ 	"time"
+ 
+ 	"example.com/saasapi/internal/billing"
+@@ -36,6 +40,7 @@ func New(st *store.Store, opt Options) *Server {
+ 	s.mux.HandleFunc("GET /api/customers", s.authed(s.listCustomers))
+ 	s.mux.HandleFunc("POST /api/customers", s.authed(s.createCustomer))
+ 	s.mux.HandleFunc("GET /api/customers/{id}", s.authed(s.getCustomer))
++	s.mux.HandleFunc("GET /api/customers.csv", s.authed(s.exportCustomers))
+ 	s.mux.HandleFunc("GET /api/invoices", s.authed(s.listInvoices))
+ 	s.mux.HandleFunc("POST /api/invoices", s.authed(s.createInvoice))
+ 	s.mux.HandleFunc("GET /api/invoices/{id}", s.authed(s.getInvoice))
+@@ -91,6 +96,41 @@ func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request, acct store.
+ 	writeJSON(w, http.StatusOK, c)
+ }
+ 
++// exportCustomers answers the account's customers as an RFC 4180 CSV file, one row per customer by ID.
++func (s *Server) exportCustomers(w http.ResponseWriter, r *http.Request, acct store.Account) {
++	// Build the whole file first, so a failure can still be answered with an error status.
++	var buf bytes.Buffer
++	cw := csv.NewWriter(&buf)
++	cw.UseCRLF = true
++	_ = cw.Write([]string{"id", "name", "email", "plan", "created_at"})
++	for _, c := range s.store.Customers(acct.ID) {
++		_ = cw.Write([]string{
++			csvSafe(c.ID),
++			csvSafe(c.Name),
++			csvSafe(c.Email),
++			csvSafe(string(c.Plan)),
++			c.CreatedAt.UTC().Format(time.RFC3339),
++		})
++	}
++	cw.Flush()
++	if err := cw.Error(); err != nil {
++		writeError(w, http.StatusInternalServerError, "internal")
++		return
++	}
++	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
++	w.Header().Set("Content-Disposition", `attachment; filename="customers.csv"`)
++	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
++	_, _ = w.Write(buf.Bytes())
++}
++
++// csvSafe stops spreadsheet formula injection: a value that starts with = + - or @ gets a single quote in front.
++func csvSafe(v string) string {
++	if v == "" || !strings.ContainsAny(v[:1], "=+-@") {
++		return v
++	}
++	return "'" + v
++}
++
+ // invoiceView is an invoice with its totals.
+ type invoiceView struct {
+ 	store.Invoice
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index bdb8a35..eba73d9 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -1,6 +1,7 @@
+ package api_test
+ 
+ import (
++	"encoding/csv"
+ 	"encoding/json"
+ 	"net/http"
+ 	"net/http/httptest"
+@@ -99,3 +100,127 @@ func TestAnInvoiceHasItsTotals(t *testing.T) {
+ 		t.Fatalf("cross-account invoice: %d", r.Code)
+ 	}
+ }
++
++func TestCustomersCSVNeedsAValidKey(t *testing.T) {
++	srv, _ := newServer(t)
++	for _, key := range []string{"", "nope"} {
++		if r := do(t, srv, "GET", "/api/customers.csv", key, ""); r.Code != http.StatusUnauthorized {
++			t.Fatalf("key %q: status %d", key, r.Code)
++		}
++	}
++}
++
++func TestCustomersCSVHasHeadersAndOneRowPerCustomerInUTC(t *testing.T) {
++	srv, st := newServer(t)
++	cest := time.FixedZone("CEST", 2*60*60)
++	if _, err := st.CreateCustomer("acc_acme", "Jane Doe", "jane@example.com", store.PlanPro, time.Date(2026, 1, 2, 12, 0, 0, 0, cest)); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := st.CreateCustomer("acc_acme", "Bob", "bob@example.com", store.PlanFree, time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)); err != nil {
++		t.Fatal(err)
++	}
++	r := do(t, srv, "GET", "/api/customers.csv", "key-acme", "")
++	if r.Code != http.StatusOK {
++		t.Fatalf("status %d %s", r.Code, r.Body)
++	}
++	if got := r.Header().Get("Content-Type"); got != "text/csv; charset=utf-8" {
++		t.Fatalf("Content-Type %q", got)
++	}
++	if got := r.Header().Get("Content-Disposition"); got != `attachment; filename="customers.csv"` {
++		t.Fatalf("Content-Disposition %q", got)
++	}
++	want := "id,name,email,plan,created_at\r\n" +
++		"cus_00001,Jane Doe,jane@example.com,pro,2026-01-02T10:00:00Z\r\n" +
++		"cus_00002,Bob,bob@example.com,free,2026-03-04T05:06:07Z\r\n"
++	if r.Body.String() != want {
++		t.Fatalf("body:\n%q\nwant:\n%q", r.Body.String(), want)
++	}
++}
++
++func TestCustomersCSVWithNoCustomersIsJustTheHeader(t *testing.T) {
++	srv, _ := newServer(t)
++	r := do(t, srv, "GET", "/api/customers.csv", "key-acme", "")
++	if r.Code != http.StatusOK || r.Body.String() != "id,name,email,plan,created_at\r\n" {
++		t.Fatalf("status %d body %q", r.Code, r.Body)
++	}
++}
++
++func TestCustomersCSVOnlyHasTheCallersCustomersSortedByID(t *testing.T) {
++	srv, st := newServer(t)
++	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	if _, err := st.CreateCustomer("acc_globex", "Hank", "hank@globex.test", store.PlanFree, now); err != nil {
++		t.Fatal(err)
++	}
++	for _, name := range []string{"Ann", "Ben", "Cy"} {
++		if _, err := st.CreateCustomer("acc_acme", name, name+"@acme.test", store.PlanFree, now); err != nil {
++			t.Fatal(err)
++		}
++	}
++	rows := parseCSV(t, do(t, srv, "GET", "/api/customers.csv", "key-acme", "").Body.String())
++	if len(rows) != 4 {
++		t.Fatalf("rows %v", rows)
++	}
++	for i, name := range []string{"Ann", "Ben", "Cy"} {
++		if rows[i+1][1] != name {
++			t.Fatalf("row %d: %v", i+1, rows[i+1])
++		}
++	}
++	if strings.Contains(do(t, srv, "GET", "/api/customers.csv", "key-acme", "").Body.String(), "Hank") {
++		t.Fatal("another account's customer is exported")
++	}
++}
++
++func TestCustomersCSVQuotesFieldsWithCommasQuotesAndLineBreaks(t *testing.T) {
++	srv, st := newServer(t)
++	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	if _, err := st.CreateCustomer("acc_acme", "Doe, \"Jane\"\nLtd", "jane@example.com", store.PlanFree, now); err != nil {
++		t.Fatal(err)
++	}
++	body := do(t, srv, "GET", "/api/customers.csv", "key-acme", "").Body.String()
++	if !strings.Contains(body, "cus_00001,\"Doe, \"\"Jane\"\"\r\nLtd\",jane@example.com,free,") {
++		t.Fatalf("not RFC 4180 quoted: %q", body)
++	}
++	rows := parseCSV(t, body)
++	if rows[1][1] != "Doe, \"Jane\"\nLtd" {
++		t.Fatalf("name round trip: %q", rows[1][1])
++	}
++}
++
++func TestCustomersCSVPrefixesFormulaLikeFieldsWithAQuote(t *testing.T) {
++	srv, st := newServer(t)
++	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	cases := []struct{ name, email, wantName, wantEmail string }{
++		{"=HYPERLINK(\"http://x.test\",\"click\")", "=1@x.test", "'=HYPERLINK(\"http://x.test\",\"click\")", "'=1@x.test"},
++		{"+1+1", "+plus@x.test", "'+1+1", "'+plus@x.test"},
++		{"-2", "-minus@x.test", "'-2", "'-minus@x.test"},
++		{"@SUM(A1)", "@at@x.test", "'@SUM(A1)", "'@at@x.test"},
++		{"Ann = Bob", "a=b@x.test", "Ann = Bob", "a=b@x.test"},
++		{"O'Brien", "obrien@x.test", "O'Brien", "obrien@x.test"},
++	}
++	for _, c := range cases {
++		if _, err := st.CreateCustomer("acc_acme", c.name, c.email, store.PlanFree, now); err != nil {
++			t.Fatal(err)
++		}
++	}
++	rows := parseCSV(t, do(t, srv, "GET", "/api/customers.csv", "key-acme", "").Body.String())
++	if len(rows) != len(cases)+1 {
++		t.Fatalf("rows %d", len(rows))
++	}
++	for i, c := range cases {
++		if rows[i+1][1] != c.wantName || rows[i+1][2] != c.wantEmail {
++			t.Fatalf("case %d: got name %q email %q, want %q %q", i, rows[i+1][1], rows[i+1][2], c.wantName, c.wantEmail)
++		}
++	}
++}
++
++// parseCSV reads a CSV body with the standard library's RFC 4180 reader, and fails the test on bad CSV.
++func parseCSV(t *testing.T, body string) [][]string {
++	t.Helper()
++	r := csv.NewReader(strings.NewReader(body))
++	r.FieldsPerRecord = 5
++	rows, err := r.ReadAll()
++	if err != nil {
++		t.Fatalf("parse %q: %v", body, err)
++	}
++	return rows
++}

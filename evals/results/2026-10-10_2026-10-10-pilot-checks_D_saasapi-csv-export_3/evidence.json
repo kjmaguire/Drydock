@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /api/customers.csv` returns the caller's customers as CRLF RFC 4180 CSV: header `id,name,email,plan,created_at`, rows sorted by id, `created_at` in UTC RFC 3339, the two specified response headers, and 401 without a valid key.\n- Name and email fields starting with `=`, `+`, `-` or `@` get a leading `'`, and quoting is correct for commas, quotes and line breaks. Tests cover this, cross-account isolation, auth, headers and the exact body.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and the existing exported functions are unchanged.",
+    "data": {},
+    "created": 1791597722964
+  },
+  {
+    "id": 2,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 420ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/build-1791597723004008705.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 423,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597723427
+  },
+  {
+    "id": 3,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 130ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/test-1791597723429837092.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 127,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597723557
+  },
+  {
+    "id": 4,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 130ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/lint-1791597723558711883.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 129,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597723688
+  },
+  {
+    "id": 5,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/secrets-1791597723703998732.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 13,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597723704
+  },
+  {
+    "id": 6,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "2 file(s), +93 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/evidence/task.diff",
+    "data": {
+      "Files": 2,
+      "Insertions": 93,
+      "Deletions": 0,
+      "base": "36159b9d2ab91c43ead0f71e5880bc7e83a4146c",
+      "commit": "466184af3d2beee6da2cb40fb17577aee07a2f98"
+    },
+    "created": 1791597723843
+  },
+  {
+    "id": 7,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 466184af3d",
+    "ref": "466184af3d2beee6da2cb40fb17577aee07a2f98",
+    "data": {},
+    "created": 1791597723844
+  },
+  {
+    "id": 8,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /api/customers.csv` returns the caller's customers as CRLF RFC 4180 CSV, with the required header, id ordering, UTC RFC 3339 timestamps, the two response headers, and 401 without a valid key. Formula-leading fields get a `'` prefix, and the tests cover quoting, cross-account isolation, auth, headers and the exact body. `go build`, `go test` and `go vet` pass, and the existing exported functions are unchanged.",
+    "data": {},
+    "created": 1791597767754
+  },
+  {
+    "id": 9,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 440ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/build-1791597767795416953.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 438,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597768234
+  },
+  {
+    "id": 10,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 130ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/test-1791597768236552161.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 129,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597768366
+  },
+  {
+    "id": 11,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 150ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/lint-1791597768368073773.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 147,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597768515
+  },
+  {
+    "id": 12,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/secrets-1791597768529640440.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 12,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597768529
+  },
+  {
+    "id": 13,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "2 file(s), +95 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/evidence/task.diff",
+    "data": {
+      "Files": 2,
+      "Insertions": 95,
+      "Deletions": 0,
+      "base": "36159b9d2ab91c43ead0f71e5880bc7e83a4146c",
+      "commit": "fc448ed7ed6f0049986db89438c2ba1ada22ac61"
+    },
+    "created": 1791597768691
+  },
+  {
+    "id": 14,
+    "taskId": "task_f11a86b5744b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit fc448ed7ed",
+    "ref": "fc448ed7ed6f0049986db89438c2ba1ada22ac61",
+    "data": {},
+    "created": 1791597768692
+  }
+]
