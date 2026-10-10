@@ -411,7 +411,8 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bundle := filepath.Join(dir, "bundle")
-	mustWrite(t, filepath.Join(bundle, "house-style", "SKILL.md"), "---\nname: house-style\ndescription: How code is written in this house\n---\nKeep it plain.\n")
+	// the declared name differs from the directory, as in some registries: the directory's name wins, as on import
+	mustWrite(t, filepath.Join(bundle, "house-style", "SKILL.md"), "---\nname: vendor-house-style\ndescription: How code is written in this house\n---\nKeep it plain.\nname: not front matter\n")
 	repo := filepath.Join(dir, "repo")
 	if _, err := Prepare(ctx, root, x, mustMkdir(t, repo)); err != nil {
 		t.Fatal(err)
@@ -422,7 +423,7 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 		SkillsDir: bundle, Skills: "relevant"}
 	rec, _ := d.Run(ctx, x, repo, func(tree string) AcceptResult {
 		worktree = tree
-		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "drydock-skills", "house-style.md")); err != nil || !strings.Contains(string(b), "Keep it plain.") {
+		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "drydock-skills", "house-style.md")); err != nil || !strings.Contains(string(b), "Keep it plain.\nname: not front matter") {
 			t.Errorf("the on-demand file: %v %s", err, b)
 		}
 		return Accept(ctx, root, x, tree)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -155,6 +156,9 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		var res skills.ScanResult
 		if err := call("skill.scan", map[string]string{"projectId": p.ID}, &res); err != nil {
 			return fail(Failed, err.Error())
+		}
+		if res.Offered != len(rec.SkillNames) || len(res.Errors) > 0 {
+			return fail(Failed, fmt.Sprintf("the skills scan offered %d of %d skills (blocked %d): %s", res.Offered, len(rec.SkillNames), res.Blocked, strings.Join(res.Errors, "; ")))
 		}
 		for _, name := range rec.SkillNames {
 			if err := call("skill.accept", map[string]string{"projectId": p.ID, "name": name}, nil); err != nil {
@@ -334,6 +338,9 @@ func (d Drydock) waitCompleted(ctx context.Context, call func(string, any, any) 
 // eventPage is how many events the harness asks the core for at a time (the core's own maximum; tests make it small).
 var eventPage = 2000
 
+// nameLine is the first name: line of a SKILL.md front matter.
+var nameLine = regexp.MustCompile(`(?m)\A(---\r?\n(?:.*\r?\n)*?name:[ \t]*)\S.*$`)
+
 // readsSkill reports whether an agent.output event is a Read of a skill's on-demand file.
 func readsSkill(e json.RawMessage) bool {
 	var ev struct {
@@ -353,7 +360,9 @@ func readsSkill(e json.RawMessage) bool {
 	return strings.Contains(filepath.ToSlash(ev.Data.Data.Args.FilePath), "/"+skills.OnDemandDir+"/")
 }
 
-// copySkills copies each <name>/SKILL.md of src into dst and returns the names, sorted.
+// copySkills copies each <name>/SKILL.md of src into dst and returns the names, sorted. A repository skill's front matter
+// name must be its directory's name; registry skills are stored under their directory's name whatever they declare
+// (skills.ParseRegistrySkill), so a different declared name is replaced by the directory's.
 func copySkills(src, dst string) ([]string, error) {
 	entries, err := os.ReadDir(src)
 	if err != nil {
@@ -368,6 +377,7 @@ func copySkills(src, dst string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		b = []byte(nameLine.ReplaceAllString(string(b), "${1}"+e.Name()))
 		if err := os.MkdirAll(filepath.Join(dst, e.Name()), 0o755); err != nil {
 			return nil, err
 		}
