@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -22,8 +23,14 @@ func fakeACPService(t *testing.T, script fakeacp.Script, mut ...func(*connection
 	t.Helper()
 	dir := t.TempDir()
 	self, _ := os.Executable()
-	if err := os.Symlink(self, filepath.Join(dir, "fakeacp-bin")); err != nil {
-		t.Skipf("cannot symlink the stand-in agent: %v", err)
+	bin := filepath.Join(dir, "fakeacp-bin")
+	if runtime.GOOS == "windows" {
+		bin += ".exe" // Windows finds programs on PATH by extension (PATHEXT)
+	}
+	if err := os.Symlink(self, bin); err != nil {
+		if err := copyFile(self, bin); err != nil {
+			t.Fatalf("cannot install the stand-in agent: %v", err)
+		}
 	}
 	b, _ := json.Marshal(script)
 	sp := filepath.Join(dir, "script.json")

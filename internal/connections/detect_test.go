@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -336,15 +337,27 @@ func TestLastFailedTestDegrades(t *testing.T) {
 }
 
 func TestProbeTimeoutDoesNotHang(t *testing.T) {
-	sh, err := exec.LookPath("sh")
-	if err != nil {
-		t.Skip("no sh here to write a hanging CLI")
-	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte("#!"+sh+"\nsleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
+	if runtime.GOOS == "windows" {
+		// a .cmd shim (how npm installs CLIs) whose child never answers: the probe must kill the whole tree
+		ping, err := exec.LookPath("ping")
+		if err != nil {
+			t.Skip("no ping here to write a hanging CLI")
+		}
+		if err := os.WriteFile(filepath.Join(dir, "claude.cmd"), []byte("@\""+ping+"\" -n 31 127.0.0.1 >nul\r\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir)
+	} else {
+		sh, err := exec.LookPath("sh")
+		if err != nil {
+			t.Skip("no sh here to write a hanging CLI")
+		}
+		if err := os.WriteFile(filepath.Join(dir, "claude"), []byte("#!"+sh+"\nsleep 30\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+filepath.Dir(sh))
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+filepath.Dir(sh))
 	began := time.Now()
 	c := check(t, "claude", connections.Options{Timeout: 400 * time.Millisecond})
 	if c.Status != agents.StatusDegraded || c.Reason != connections.ReasonVersionProbe || !strings.Contains(strings.Join(c.Problems, " "), "did not answer") {
