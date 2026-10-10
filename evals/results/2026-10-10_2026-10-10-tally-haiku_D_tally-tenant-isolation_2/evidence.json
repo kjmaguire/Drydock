@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /v1/invoices/{id}/lines` returns 404 `not_found` for another organization's invoice. Every other route that takes an ID or a customer, plan or endpoint reference now answers a foreign ID exactly like an unknown one. This covers four confirmed instances, plus the `?email=` lookup.\n- New tests in `internal/api/tenancy_test.go` cover each instance, and check that foreign objects are left unchanged.\n- `go build`, `go vet` and `go test` pass. Exported names and signatures are unchanged; the only addition is `Store.DeleteOrgWebhookEndpoint`.",
+    "data": {},
+    "created": 1791609640359
+  },
+  {
+    "id": 2,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 810ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-tenant-isolation-D-2/data/runs/run_9818c72086d9/checks/build-1791609640422773216.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 808,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609641231
+  },
+  {
+    "id": 3,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 760ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-tenant-isolation-D-2/data/runs/run_9818c72086d9/checks/test-1791609641232691343.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 762,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609641995
+  },
+  {
+    "id": 4,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 500ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-tenant-isolation-D-2/data/runs/run_9818c72086d9/checks/lint-1791609641997206028.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 501,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609642498
+  },
+  {
+    "id": 5,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-tenant-isolation-D-2/data/runs/run_9818c72086d9/checks/secrets-1791609642523774929.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 23,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609642524
+  },
+  {
+    "id": 6,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "9 file(s), +241 -24",
+    "ref": "/tmp/drydock-trial-3658036079/tally-tenant-isolation-D-2/data/runs/run_9818c72086d9/evidence/task.diff",
+    "data": {
+      "Files": 9,
+      "Insertions": 241,
+      "Deletions": 24,
+      "base": "33d83ae17e45f38de75c727a4e8b966173d31440",
+      "commit": "a09b0fbc21717d421f2ebaf10aa5ab3ebaa05118"
+    },
+    "created": 1791609642720
+  },
+  {
+    "id": 7,
+    "taskId": "task_c7fe5ef31665",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit a09b0fbc21",
+    "ref": "a09b0fbc21717d421f2ebaf10aa5ab3ebaa05118",
+    "data": {},
+    "created": 1791609642721
+  }
+]

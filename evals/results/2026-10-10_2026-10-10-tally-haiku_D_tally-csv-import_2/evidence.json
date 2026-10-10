@@ -1,0 +1,283 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 550ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/build-1791609637135637737.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 552,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609637687
+  },
+  {
+    "id": 2,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "test",
+    "passed": false,
+    "summary": "test failed (exit 1) in 700ms: TestImportCustomersInvalidRows",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/test-1791609637691522520.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 702,
+      "errored": false,
+      "exitCode": 1,
+      "failing": [
+        "TestImportCustomersInvalidRows"
+      ],
+      "skipped": false
+    },
+    "created": 1791609638394
+  },
+  {
+    "id": 3,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `TestImportCustomersInvalidRows` passes, and the test file is unchanged. The fix is in the import code.\n- `go build ./...`, `go test ./...` and `go vet ./...` all pass.\n- The 422 `invalid_rows` answer lists every bad record in file order, one error code each, including the `,,` record at row 10.",
+    "data": {},
+    "created": 1791609664145
+  },
+  {
+    "id": 4,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 480ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/build-1791609664185980246.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 476,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609664662
+  },
+  {
+    "id": 5,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 440ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/test-1791609664663738336.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 438,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609665101
+  },
+  {
+    "id": 6,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 370ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/lint-1791609665103634271.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 372,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609665475
+  },
+  {
+    "id": 7,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/secrets-1791609665495782958.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609665496
+  },
+  {
+    "id": 8,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +494 -0",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 494,
+      "Deletions": 0,
+      "base": "96f732b7e6c8e4780ebf797a78a9223700061aa1",
+      "commit": "cce9660cb89972af74e2dae9f32beb85c07b78ad"
+    },
+    "created": 1791609665626
+  },
+  {
+    "id": 9,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit cce9660cb8",
+    "ref": "cce9660cb89972af74e2dae9f32beb85c07b78ad",
+    "data": {},
+    "created": 1791609665627
+  },
+  {
+    "id": 10,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 610ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/build-1791609798911720723.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 605,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609799517
+  },
+  {
+    "id": 11,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 700ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/test-1791609799520864449.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 701,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609800222
+  },
+  {
+    "id": 12,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 630ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/lint-1791609800223996485.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 634,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609800858
+  },
+  {
+    "id": 13,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/checks/secrets-1791609800913456567.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 51,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609800914
+  },
+  {
+    "id": 14,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +628 -11",
+    "ref": "/tmp/drydock-trial-2183624454/tally-csv-import-D-2/data/runs/run_e0d1513fab3d/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 628,
+      "Deletions": 11,
+      "base": "96f732b7e6c8e4780ebf797a78a9223700061aa1",
+      "commit": "c19c4ca200b3bd5632d1d85b3c199076058e0338"
+    },
+    "created": 1791609801053
+  },
+  {
+    "id": 15,
+    "taskId": "task_845e0cecaadb",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit c19c4ca200",
+    "ref": "c19c4ca200b3bd5632d1d85b3c199076058e0338",
+    "data": {},
+    "created": 1791609801054
+  }
+]

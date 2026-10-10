@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-month-end-renewals",
+  "taskClass": "test-fix loop",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "8ad0f309c3495cd877482cc369f1070329801b3b",
+  "startedAt": "2026-10-10T05:17:08.205624725Z",
+  "wallMs": 406869,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1054,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2582,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.086s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.006s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.008s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.015s\nok  \texample.com/tally/internal/reports\t0.011s\nok  \texample.com/tally/internal/snapshot\t0.030s\nok  \texample.com/tally/internal/store\t0.007s\nok  \texample.com/tally/internal/subscriptions\t0.045s\nok  \texample.com/tally/internal/webhooks\t0.009s\n"
+      }
+    ],
+    "durationMs": 3640
+  },
+  "costUsd": 0.10714457,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 84,
+    "output": 88207,
+    "cacheRead": 2285527,
+    "cacheWrite": 200887
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_ee466cb44433",
+      "feedback": "1) Plan interval change regresses (internal/subscriptions/subscriptions.go:180-188). Update (line 88) lets a subscription move to a plan with a different interval, but renew derives the period index from the anchor and the new interval, without regard to CurrentPeriodEnd. Monthly anchored Jan 31 2026 with CurrentPeriodEnd Feb 28 2026, switched to yearly: at the Feb 28 renewal n=1, so the renewed period is Jan 31 2027 to Jan 31 2028 and invoiced in advance. The period Feb 28 2026 to Jan 31 2027 is neither billed nor covered. The old code billed from the renewal time. Fix: when the stored CurrentPeriodEnd is not on the new plan's anchor schedule, start the next period at CurrentPeriodEnd and end it at billing.AddInterval(start, plan.Interval), then resume the anchor schedule. Add a test that switches monthly to yearly mid-cycle and checks that periods are contiguous and each is invoiced. 2) Optional: subscriptions already drifted by the old code will have a gap on their first renewal, since n is the first anchored start at or after the stored end. Consider a note or migration. Other tests and the anchor math look correct."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_ee466cb44433"
+    }
+  ],
+  "coreTaskId": "task_8711413cc2cc"
+}
