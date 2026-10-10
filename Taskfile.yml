@@ -37,6 +37,17 @@ tasks:
     cmds:
       - go test ./...
 
+  verify:bundle:
+    desc: Build the Windows verification bundle (dist-windows/drydock-windows-verify.zip; see docs/windows-runner.md)
+    cmds:
+      - go run ./cmd/drydock-winbundle -goos windows -out dist-windows/verify
+
+  verify:linux:
+    desc: Build the same bundle for Linux and run it here (proves the orchestration on the development host)
+    cmds:
+      - go run ./cmd/drydock-winbundle -goos linux -out dist-windows/linux -with-go=false
+      - dist-windows/linux/drydock-verify
+
   build:dev:
     desc: Build the UI and the development server (cmd/drydock-dev serves ui/dist over HTTP + SSE)
     deps: [ui:build]

@@ -1,5 +1,7 @@
 # Windows is the only product target, so this is the only CI platform (decision P1). It has not run yet: GitHub Actions is
 # unavailable for this private repository (decision P2). Until it runs, nothing marked "Windows" in the docs is proven.
+# Every job runs on windows-latest unless the repository variable WINDOWS_RUNS_ON names other runner labels as JSON, for
+# example ["self-hosted","windows","x64"] for a runner on the owner's PC (docs/windows-runner.md).
 name: ci
 on:
   push:
@@ -9,7 +11,7 @@ permissions:
   contents: read
 jobs:
   go:
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -23,13 +25,16 @@ jobs:
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
       - run: go vet ./...
-      - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are skipped when absent)
+      - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are never used here)
+        # a self-hosted runner may have a signed-in claude: the paid real-agent tests run only in verify.yml, on request
+        env:
+          DRYDOCK_NO_REAL_AGENTS: "1"
         run: go test ./... -count=1 -timeout 25m
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
   repomap-cgo:
     # Decision D5: tree-sitter needs CGO. The repo map ships only if this job is green.
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -42,7 +47,7 @@ jobs:
           CGO_ENABLED: "1"
         run: go run .
   ui:
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -62,7 +67,7 @@ jobs:
         working-directory: ui
   app:
     needs: [go, ui]
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

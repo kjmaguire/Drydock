@@ -1,0 +1,54 @@
+# Builds the Windows verification bundle on the runner (cmd/drydock-winbundle) and runs it there (cmd/drydock-verify):
+# machine facts, the core running a whole task, a terminal through the core, the process cleanup, and the tests of every
+# package with Windows-specific code. The results zip (report and logs) is kept as an artifact.
+# It runs on windows-latest unless the repository variable WINDOWS_RUNS_ON names other runner labels as JSON, for example
+# ["self-hosted","windows","x64"] for a runner on the owner's PC (docs/windows-runner.md).
+name: verify
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths-ignore: ["docs/**", "**/*.md"]
+  workflow_dispatch:
+    inputs:
+      with_claude:
+        description: "Also run the real Claude Code tests (they use the runner account's claude sign-in and cost roughly one dollar)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    # on a push it runs only when WINDOWS_RUNS_ON points at a runner of your own: a 20 to 40 minute Windows job on every
+    # push would spend GitHub-hosted minutes; started by hand it always runs
+    if: github.event_name == 'workflow_dispatch' || vars.WINDOWS_RUNS_ON != ''
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the bundle (Go is installed here, so none is copied into it)
+        run: go run ./cmd/drydock-winbundle -goos windows -out dist-windows/verify -with-go=false
+      - name: Run drydock-verify
+        working-directory: dist-windows/verify
+        env:
+          WITH_CLAUDE: ${{ inputs.with_claude }}
+        run: |
+          $flags = @()
+          if ($env:WITH_CLAUDE -eq 'true') { $flags += '--with-claude' }
+          ./drydock-verify.exe @flags
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: drydock-verify-results
+          path: dist-windows/verify/drydock-verify-*.zip
+          if-no-files-found: warn
