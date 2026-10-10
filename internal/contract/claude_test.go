@@ -2,6 +2,8 @@ package contract_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -307,14 +309,126 @@ func TestClaudeReportsEachTurnsOwnUsage(t *testing.T) {
 	if m1 == 0 || t2 == 0 {
 		t.Fatalf("the results carry no token counts to compare: %v / %v", keys(first.result), keys(second.result))
 	}
-	if m2 != t2 {
-		if m2 == m1+t2 {
-			t.Errorf("the second result's modelUsage counts the whole process (%v tokens = turn 1's %v + turn 2's %v) and its total_cost_usd ($%.6f) includes turn 1's $%.6f: "+
-				"Drydock's parser records every result as one turn, so a process that answers several turns is over-counted", m2, m1, t2, c2, c1)
-		} else {
-			t.Errorf("the second result's modelUsage (%v tokens) is neither turn 2's usage (%v) nor the process total (%v)", m2, t2, m1+t2)
+	switch {
+	case m2 == m1+t2 && c2 >= c1:
+		// running totals, as measured with 2.1.296: the parser must record the difference
+	case m2 == t2:
+		t.Fatalf("the second result's modelUsage (%v tokens) is now the turn's own: the parser's running-total rule "+
+			"(internal/agents/claude/parser.go, turnCost and turnModel) would under-count every later turn; change it before adopting this version", m2)
+	default:
+		t.Fatalf("the second result's modelUsage (%v tokens) is neither turn 2's usage (%v) nor the process total (%v)", m2, t2, m1+t2)
+	}
+	// Drydock's own parser, fed this real stream, records each turn once
+	var us []workflow.UsageChunk
+	for _, c := range p.chunks {
+		if c.Kind == workflow.ChunkUsage {
+			var u workflow.UsageChunk
+			if err := c.Decode(&u); err != nil {
+				t.Fatal(err)
+			}
+			us = append(us, u)
 		}
 	}
+	if len(us) != 2 {
+		t.Fatalf("the parser produced %d usage records for two turns", len(us))
+	}
+	got := float64(us[1].InputTokens + us[1].OutputTokens + us[1].CachedTokens + us[1].CacheWriteTokens)
+	if got != t2 || math.Abs(us[1].CostUSD-(c2-c1)) > 1e-9 || math.Abs(us[0].CostUSD+us[1].CostUSD-c2) > 1e-9 {
+		t.Errorf("the parser recorded turn 2 as %v tokens and $%.6f; the CLI's own figures are %v tokens and $%.6f (process total $%.6f)", got, us[1].CostUSD, t2, c2-c1, c2)
+	}
+}
+
+// CLAUDE-USAGE-03 (paid): one session, two processes; the second resumes the first.
+func TestClaudeResumedSessionReportsItsWholeTotals(t *testing.T) {
+	exe, maxUSD := paidClaude(t, 0.01)
+	dir := t.TempDir()
+	session := uuidV4(t)
+	extra := []string{"--tools", "", "--max-budget-usd", usd(maxUSD)}
+	first := startClaude(t, "CLAUDE-USAGE-03", exe, dir, childEnv(), drydockClaude().Args(agents.RunSpec{Model: "haiku", ExtraArgs: append([]string{"--session-id", session}, extra...)})...)
+	one := first.turn("Reply with the single word ONE.")
+	first.close()
+	baseline := lastTotals(t, first.chunks)
+	second := startClaude(t, "CLAUDE-USAGE-03", exe, dir, childEnv(), drydockClaude().Args(agents.RunSpec{Model: "haiku", ResumeID: session, ExtraArgs: extra})...)
+	second.parser.SetBaseline(baseline) // what the adapter does for a ResumeID session with a stored baseline
+	two := second.turn("Reply with the single word TWO.")
+	second.close()
+	modelTokens := func(r event) float64 {
+		var n float64
+		for _, raw := range r.obj("modelUsage") {
+			m, _ := raw.(map[string]any)
+			for _, f := range []string{"inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"} {
+				v, _ := event(m).num(f)
+				n += v
+			}
+		}
+		return n
+	}
+	turnTokens := func(r event) float64 {
+		var n float64
+		for _, f := range []string{"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"} {
+			v, _ := r.obj("usage").num(f)
+			n += v
+		}
+		return n
+	}
+	c1, _ := one.result.num("total_cost_usd")
+	c2, _ := two.result.num("total_cost_usd")
+	m1, m2, t2 := modelTokens(one.result), modelTokens(two.result), turnTokens(two.result)
+	t.Logf("%sprocess 1: $%.6f, %v tokens; process 2 (--resume): $%.6f, modelUsage %v tokens, its own usage %v tokens", contract.NotePrefix, c1, m1, c2, m2, t2)
+	switch {
+	case m2 == m1+t2 && c2 > c1:
+		// the session's totals, as measured with 2.1.296: the baseline must be subtracted
+	case m2 == t2:
+		t.Fatalf("a resumed process now reports only its own totals (%v tokens): with the stored baseline the parser would under-count; drop the baseline (internal/chats/turn.go) before adopting this version", m2)
+	default:
+		t.Fatalf("the resumed process's modelUsage (%v) is neither its own usage (%v) nor the session's total (%v)", m2, t2, m1+t2)
+	}
+	var us []workflow.UsageChunk
+	for _, c := range second.chunks {
+		if c.Kind == workflow.ChunkUsage {
+			var u workflow.UsageChunk
+			if err := c.Decode(&u); err != nil {
+				t.Fatal(err)
+			}
+			us = append(us, u)
+		}
+	}
+	if len(us) != 1 {
+		t.Fatalf("%d usage records for one turn", len(us))
+	}
+	got := float64(us[0].InputTokens + us[0].OutputTokens + us[0].CachedTokens + us[0].CacheWriteTokens)
+	if got != t2 || math.Abs(us[0].CostUSD-(c2-c1)) > 1e-9 {
+		t.Errorf("the parser recorded the resumed turn as %v tokens and $%.6f; its own share is %v tokens and $%.6f", got, us[0].CostUSD, t2, c2-c1)
+	}
+}
+
+// lastTotals is the running totals the parser reported with its last usage record.
+func lastTotals(t *testing.T, chunks []workflow.Chunk) json.RawMessage {
+	t.Helper()
+	var out json.RawMessage
+	for _, c := range chunks {
+		if c.Kind == workflow.ChunkUsage {
+			var u workflow.UsageChunk
+			if err := c.Decode(&u); err != nil {
+				t.Fatal(err)
+			}
+			out = u.Totals
+		}
+	}
+	if len(out) == 0 {
+		t.Fatal("the parser reported no running totals")
+	}
+	return out
+}
+
+func uuidV4(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	b[6], b[8] = b[6]&0x0f|0x40, b[8]&0x3f|0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // CLAUDE-PROMPTFILE-01 (paid).
@@ -684,8 +798,11 @@ func TestClaudeStrictMCPConfigLoadsOnlyTheGivenServer(t *testing.T) {
 	if len(others) > 0 {
 		t.Errorf("--strict-mcp-config let other configured MCP servers join (a repository's .mcp.json or the user's own): %v", others)
 	}
+	// installed plugins' servers still start (measured with 2.1.296); what matters is that none of their tools is offered,
+	// which the tools check below asserts
 	if len(plugins) > 0 {
-		t.Errorf("--strict-mcp-config let %d MCP servers from installed plugins join (%s)", len(plugins), strings.Join(plugins[:min(len(plugins), 5)], ", "))
+		t.Logf("%s%d MCP servers from installed plugins started despite --strict-mcp-config (%s); their tools are denied by %s", contract.NotePrefix,
+			len(plugins), strings.Join(plugins[:min(len(plugins), 5)], ", "), claude.PluginToolsDenied)
 	}
 	tools := stringList(tr.init.list("tools"))
 	var foreign []string

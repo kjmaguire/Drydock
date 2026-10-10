@@ -123,6 +123,9 @@ well, with the chat id as `agentId`.
    new message. A fork's first turn and every turn of an adapter that cannot resume start the same way (`fallback: true`).
 4. Output is stored as it arrives: assistant text blocks, tool calls, refusals, warnings. Usage adds up; the CLI's session id is
    recorded; the process is stopped. With no title yet, the first line of the first message (60 characters) becomes the title.
+   Claude Code reports a resumed session's cost and tokens including every earlier process of that session, so the chat keeps
+   the session's running totals (`chats.cli_usage`) and the next turn starts its parser from them: each turn is counted once
+   (contract CLAUDE-USAGE-03; a new or fallback session starts from zero).
 5. `chat.stop` cancels the turn: streamed text so far is kept as an assistant message and "Stopped by you." is added; the session
    (when it started) is kept, so the next message continues it. The CLI is killed before it saves the partial answer to its own
    session (observed with claude 2.1.296), so when the next turn resumes that session Drydock puts a note in front of the new

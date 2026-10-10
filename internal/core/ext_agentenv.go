@@ -123,7 +123,7 @@ func isolationOf(a Agent, workerChecks, sandbox bool) Isolation {
 	switch a.Adapter {
 	case "claude":
 		in.Summary = "Claude Code's own permission checks keep it to its working folder and hold shell commands for approval, which a background run cannot give. This is not an operating-system sandbox."
-		in.Details = append(in.Details, "Your own Claude Code user settings still apply to it, as they do when you run Claude Code yourself: the skills, plugins and hooks in your user folder. The project's own Claude settings files are not loaded; its CLAUDE.md and rules are given to it as instructions.")
+		in.Details = append(in.Details, "Your own Claude Code user settings still apply to it, as they do when you run Claude Code yourself: the skills, plugins and hooks in your user folder. Your plugins' MCP servers may start, but their tools are refused: Drydock's gateway is its only route to MCP tools. The project's own Claude settings files are not loaded; its CLAUDE.md and rules are given to it as instructions.")
 		in.Details = append(in.Details, "Measured with Claude Code 2.1.295 on Linux in acceptEdits mode: reading or writing a file outside the working folder and running a shell command on one were all refused. Not measured on Windows.")
 		if workerChecks {
 			in.Summary = "Claude Code's own permission checks keep it to its working folder, but this project lets it run its checks (build, test, lint) without approval when it works on a task. Those commands run the project's code, which it can change, so through them it can run any program with your rights. This is not an operating-system sandbox."

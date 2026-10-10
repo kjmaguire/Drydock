@@ -291,7 +291,8 @@ type attemptOut struct {
 	cost           float64
 	costKnown      bool
 	usageSeen      bool
-	partial        string // streamed text that no complete message has covered yet
+	totals         json.RawMessage // the adapter's running totals of the session after the last result (UsageChunk.Totals)
+	partial        string          // streamed text that no complete message has covered yet
 }
 
 // resumeFailed reports whether the attempt failed the way a CLI fails when it cannot resume: before any session or output.
@@ -318,6 +319,9 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	var o attemptOut
 	spec := agents.RunSpec{AgentID: c.ID, Role: "chat", Cwd: c.Cwd, Model: c.Model, Effort: c.Effort, PermissionMode: c.PermissionMode,
 		ResumeID: resumeID, AllowedTools: append([]string(nil), c.AllowedTools...)}
+	if resumeID != "" {
+		spec.UsageBaseline = s.sessionUsage(ctx, c.ID, resumeID)
+	}
 	m, err := s.d.Runtime.Spawn(ctx, rt.Config{AgentID: c.ID, ProjectID: c.ProjectID, Adapter: c.Adapter, Spec: spec, Provider: c.Adapter, Tier: "premium"})
 	if err != nil {
 		o.err = err
@@ -424,6 +428,9 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 			var u workflow.UsageChunk
 			if ch.Decode(&u) == nil {
 				o.usageSeen = true
+				if len(u.Totals) > 0 {
+					o.totals = u.Totals
+				}
 				o.in += u.InputTokens
 				o.out += u.OutputTokens
 				if u.CostUSD > 0 {
@@ -447,6 +454,15 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 		o.sessionID = res.SessionID
 	}
 	return o
+}
+
+// sessionUsage is the stored running usage totals of the chat's CLI session, when that session is the one being resumed.
+func (s *Service) sessionUsage(ctx context.Context, chatID, sessionID string) json.RawMessage {
+	var sid, usage string
+	if err := s.d.DB.Reader().QueryRowContext(ctx, `SELECT session_id, cli_usage FROM chats WHERE id=?`, chatID).Scan(&sid, &usage); err != nil || sid != sessionID || usage == "" {
+		return nil
+	}
+	return json.RawMessage(usage)
 }
 
 // store saves a message of this turn; storage failures are logged and do not end the turn.
@@ -545,6 +561,16 @@ func (t *turnRun) finish(ctx context.Context, o attemptOut, resumed, transcript 
 		}
 		q := `UPDATE chats SET status=?, last_error=?, session_id=?, tokens_in=tokens_in+?, tokens_out=tokens_out+?, cost_unknown_turns=cost_unknown_turns+?, updated_at=?, version=version+1`
 		args := []any{chatStatus, errMsg, session, o.in, o.out, unknown, now}
+		// the session's running usage totals, for the turn that resumes it (Service.sessionUsage)
+		switch {
+		case session == "":
+			q += `, cli_usage=''`
+		case len(o.totals) > 0:
+			q += `, cli_usage=?`
+			args = append(args, string(o.totals))
+		case session != c.SessionID:
+			q += `, cli_usage=''` // a new session that reported no totals
+		}
 		if o.costKnown {
 			q += `, cost_usd=COALESCE(cost_usd,0)+?`
 			args = append(args, o.cost)

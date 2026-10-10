@@ -49,6 +49,10 @@ type UsageChunk struct {
 	ContextUsed      int64   `json:"contextUsed,omitempty"`
 	ContextSize      int64   `json:"contextSize,omitempty"`
 	Source           string  `json:"source"`
+	// Totals are the adapter's running totals of the CLI session after this turn, opaque to everything else. A later process
+	// that resumes the session passes them back (agents.RunSpec.UsageBaseline), so it records only its own share when the CLI
+	// reports totals that include the session's earlier processes.
+	Totals json.RawMessage `json:"totals,omitempty"`
 }
 
 // DoneChunk ends a turn.

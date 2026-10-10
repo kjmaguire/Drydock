@@ -150,7 +150,7 @@ The registered server name is `drydock` in every CLI. Facts from [cli §1-§8]:
 
 | CLI | Mechanism (per-run, no user-level config touched) | Notes |
 |---|---|---|
-| Claude Code | `--mcp-config <run>/mcp.json --strict-mcp-config`; tool filter `--allowedTools mcp__drydock__*`; approvals via `--permission-prompt-tool mcp__drydock__permission_prompt` | stdio, http (`streamable-http` alias), sse (deprecated), ws. `-p` waits up to `MCP_TIMEOUT` 30 s. |
+| Claude Code | `--mcp-config <run>/mcp.json --strict-mcp-config`, plus `--disallowedTools mcp__plugin_*` because `--strict-mcp-config` does not keep installed plugins' MCP servers out (contract CLAUDE-MCP-01: they still start, their tools are refused); tool filter `--allowedTools mcp__drydock__*`; approvals via `--permission-prompt-tool mcp__drydock__permission_prompt` | stdio, http (`streamable-http` alias), sse (deprecated), ws. `-p` waits up to `MCP_TIMEOUT` 30 s. |
 | Codex | ACP `session/new.mcpServers` (stdio, http; `sse:false`); or `-c mcp_servers.drydock.url=... -c mcp_servers.drydock.bearer_token_env_var=DRYDOCK_MCP_TOKEN -c mcp_servers.drydock.enabled_tools=[...]` | stdio + streamable HTTP only. |
 | Gemini CLI | ACP `session/new.mcpServers`; or `settings.json` `mcpServers.drydock` with `httpUrl`+`headers` (or `command`/`args`/`env`) plus `--allowed-mcp-server-names drydock`, `includeTools` | `url` is SSE, `httpUrl` is streamable HTTP. |
 | OpenCode | ACP `session/new.mcpServers`; or `OPENCODE_CONFIG_CONTENT` inline config `mcp.drydock` as `type: local` (`command[]`, `environment`) or `type: remote` (`url`, headers) | `timeout` default 5000 ms; tools are prefixed by server name. |

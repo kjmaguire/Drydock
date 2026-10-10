@@ -4,6 +4,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -67,7 +68,10 @@ type RunSpec struct {
 	Env            []string // extra environment (KEY=VALUE); the process environment is inherited
 	MCPConfigPath  string   // path of the single gateway entry (docs/mcp.md)
 	ResumeID       string   // CLI session id to resume
-	SystemAppend   string   // appended to the CLI's system prompt where supported
+	// UsageBaseline is the session's running usage totals as the adapter reported them at the end of its last process
+	// (workflow.UsageChunk.Totals), for a ResumeID session; nil means the session's totals start at zero.
+	UsageBaseline json.RawMessage
+	SystemAppend  string // appended to the CLI's system prompt where supported
 	// PracticesVersion is set by the runtime when SystemAppend carries the Claude best-practices text (0 when it does not), so the
 	// run records which wording the agent was given.
 	PracticesVersion int

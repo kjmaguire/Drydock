@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -216,6 +217,31 @@ func TestChatCreateSendStreamsStoresAndRecordsTheSession(t *testing.T) {
 	var fallback int
 	if err := e.c.DB.Reader().QueryRow(`SELECT agent_run_id, fallback FROM chat_turns WHERE chat_id=?`, c.ID).Scan(&runID, &fallback); err != nil || !strings.HasPrefix(runID, "arun_") || fallback != 0 {
 		t.Fatalf("turn row %q %d %v", runID, fallback, err)
+	}
+}
+
+// Claude Code reports a resumed session's totals including its earlier processes (contract CLAUDE-USAGE-03); the scripted
+// stand-in does the same with DRYDOCK_FAKE_STATE_DIR. Each turn of a chat must still be counted once.
+func TestAResumedChatSessionCountsEachTurnOnce(t *testing.T) {
+	t.Setenv("DRYDOCK_FAKE_STATE_DIR", t.TempDir())
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "ok"}}}, nil)
+	p, _ := e.setup("resumeusage")
+	c := e.create(map[string]any{"projectId": p.ID})
+	for i, q := range []string{"first", "second", "third"} {
+		ev := e.send(c.ID, q)
+		u, _ := ev["usage"].(map[string]any)
+		if u["inputTokens"].(float64) != 10 || math.Abs(u["costUsd"].(float64)-0.0002) > 1e-12 || (i > 0) != (ev["resumed"] == true) {
+			t.Fatalf("turn %d is not counted once: %v", i+1, ev)
+		}
+	}
+	d := e.get(c.ID)
+	if d.Chat.TokensIn != 30 || d.Chat.CostUSD == nil || math.Abs(*d.Chat.CostUSD-0.0006) > 1e-12 {
+		t.Fatalf("three turns: tokens %d cost %v", d.Chat.TokensIn, d.Chat.CostUSD)
+	}
+	// the session's totals are kept for the turn that resumes it
+	var stored string
+	if err := e.c.DB.Reader().QueryRow(`SELECT cli_usage FROM chats WHERE id=?`, c.ID).Scan(&stored); err != nil || !strings.Contains(stored, `"costUsd":0.0006`) {
+		t.Fatalf("stored session totals %q %v", stored, err)
 	}
 }
 

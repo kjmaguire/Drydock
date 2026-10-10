@@ -121,7 +121,57 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 		session = resume
 	}
 	a := &agent{out: out, script: sc, session: session, allowed: splitRules(flagValue(args, "--allowedTools")), interrupt: make(chan struct{}, 1)}
+	a.loadState()
+	// `claude -p "<prompt>"`, as a user (and the trial harness's plain arm) runs it: one turn on that prompt, then exit. The
+	// adapter's own form is -p followed by flags, with the prompts on stdin.
+	if prompt := flagValue(args, "-p"); prompt != "" && !strings.HasPrefix(prompt, "-") {
+		a.exit = make(chan int, 1)
+		a.running = true
+		a.runTurn(prompt)
+		select {
+		case code := <-a.exit:
+			return code
+		default:
+			return 0
+		}
+	}
 	return a.loop(in)
+}
+
+// With DRYDOCK_FAKE_STATE_DIR set, a session's running totals outlive the process, as Claude Code's do: a process that
+// resumes the session (--resume) reports totals that include the earlier processes (contract CLAUDE-USAGE-03).
+func (a *agent) statePath() string {
+	dir := os.Getenv("DRYDOCK_FAKE_STATE_DIR")
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, a.session+".json")
+}
+
+func (a *agent) loadState() {
+	p := a.statePath()
+	if p == "" {
+		return
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	var st struct {
+		Turns int     `json:"turns"`
+		Cost  float64 `json:"cost"`
+	}
+	if json.Unmarshal(b, &st) == nil {
+		a.turns, a.cost = st.Turns, st.Cost
+	}
+}
+
+// saveState records the running totals; the caller holds a.mu.
+func (a *agent) saveState() {
+	if p := a.statePath(); p != "" {
+		b, _ := json.Marshal(map[string]any{"turns": a.turns, "cost": a.cost})
+		_ = os.WriteFile(p, b, 0o644)
+	}
 }
 
 // flagValue returns the value after flag in args ("" when absent).
@@ -198,6 +248,10 @@ type agent struct {
 	queue     []string
 	closed    bool
 	exit      chan int
+	// Like Claude Code (contract CLAUDE-USAGE-02), each result's total_cost_usd and modelUsage are running totals of the
+	// process, and usage is the turn's own: cost and turns are what this process has reported so far.
+	cost  float64
+	turns int
 }
 
 func (a *agent) emit(v any) {
@@ -402,11 +456,22 @@ loop:
 	}
 	if interrupted {
 		a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "[Request interrupted by user]"}}}})
-		a.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": a.session, "total_cost_usd": 0.0001, "usage": map[string]any{"input_tokens": 5, "output_tokens": 2}})
+		a.mu.Lock()
+		a.cost += 0.0001
+		total := a.cost
+		a.saveState()
+		a.mu.Unlock()
+		a.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": a.session, "total_cost_usd": total, "usage": map[string]any{"input_tokens": 5, "output_tokens": 2}})
 	} else {
+		a.mu.Lock()
+		a.turns++
+		a.cost += 0.0002
+		n, total := a.turns, a.cost
+		a.saveState()
+		a.mu.Unlock()
 		a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": lastText, "stop_reason": "end_turn", "session_id": a.session,
-			"permission_denials": denials, "total_cost_usd": 0.0002, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
-			"modelUsage": map[string]any{"fake-1": map[string]any{"inputTokens": 10, "outputTokens": 5, "cacheReadInputTokens": 100, "cacheCreationInputTokens": 0, "costUSD": 0.0002, "contextWindow": 200000}}})
+			"permission_denials": denials, "total_cost_usd": total, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
+			"modelUsage": map[string]any{"fake-1": map[string]any{"inputTokens": 10 * n, "outputTokens": 5 * n, "cacheReadInputTokens": 100 * n, "cacheCreationInputTokens": 0, "costUSD": 0.0002 * float64(n), "contextWindow": 200000}}})
 	}
 	a.mu.Lock()
 	a.running = false

@@ -38,7 +38,8 @@ send a few words to the cheapest model (haiku).
 | CLAUDE-EFFORT-01 | Each effort Drydock offers is accepted. Claude Code only *warns* about an unknown effort and runs at its default, so an ignored effort would change cost and quality unseen. The check also notes efforts the CLI offers that Drydock does not. | free |
 | CLAUDE-STREAM-01 | The stream-json events have the shape the parser reads: `system/init` (session id, model, tools), `assistant` text and `tool_use` blocks, `user` `tool_result` blocks, `stream_event` text deltas, and the `result` (subtype, stop reason, session id). The same output is fed through Drydock's parser. The conformance suite against the real CLI is the second test. | paid |
 | CLAUDE-USAGE-01 | The result has `total_cost_usd` and `modelUsage` keyed by model id with the token counts and `costUSD` the parser reads, and they add up. | paid |
-| CLAUDE-USAGE-02 | When one process answers several turns, each result covers only its own turn. Drydock records every result as one turn's usage. | paid |
+| CLAUDE-USAGE-02 | When one process answers several turns, each result's `total_cost_usd` and `modelUsage` are running totals of the process and `usage` is the turn's own; Drydock's parser records the difference, so each turn is counted once (checked on the real stream). | paid |
+| CLAUDE-USAGE-03 | A session resumed in a new process (`--resume`) reports totals that include its earlier processes; started from the session's last totals (`RunSpec.UsageBaseline`, kept per chat in `chats.cli_usage`), the parser records only the new turn. | paid |
 | CLAUDE-PROMPTFILE-01 | A 12-line `--append-system-prompt-file` reaches the model through its last line. Drydock passes purpose, practices and project memory this way. | paid |
 | CLAUDE-RO-01 | The adapter's read-only argv (`--permission-mode default --disallowedTools Edit,Write,MultiEdit,NotebookEdit,Bash`) keeps the requested model (every `modelUsage` key is haiku) and writes nothing. | paid |
 | CLAUDE-PLAN-01 | Drydock's own code asks for plan mode only together with `ReadOnly` (a static scan of every non-test Go file), and the adapter maps a read-only spec to the default mode. A paid observation records which model answers plan mode started with haiku. | static + paid |
@@ -188,3 +189,36 @@ What the first run found:
 - CLAUDE-MCPWAIT-01: a 130-second MCP call's result arrived in the same turn (2m14s) with the three variables set.
 - The version watch: Claude Code 2.1.296 is installed and newest while the pin is 2.1.295; the Claude ACP bridge (0.89.0) and
   Codex (0.162.1) have newer releases than their pins.
+
+### The fixes, and the run after them
+
+The three failures were Drydock's, and are fixed:
+
+- **CLAUDE-USAGE-02:** the parser (`internal/agents/claude/parser.go`) keeps what a process's earlier results reported and records
+  each result as the difference; the scripted stand-in (`internal/agents/fakeagent`) now reports running totals the same way. The
+  contract checks both halves on the real stream: the CLI still reports running totals (if it starts reporting each turn's own,
+  the parser would under-count, so the check fails then too) and the parser's two usage records add up to the CLI's total.
+- **CLAUDE-MCP-01:** every session that is not restricted gets `--disallowedTools mcp__plugin_*` (`claude.PluginToolsDenied`):
+  installed plugins' MCP servers still start, as when you run Claude Code yourself, but none of their tools is offered, so the
+  agent's only MCP tools are the gateway's. Measured: with the rule, 31 plugin servers started, 0 of their tools were offered
+  and the gateway's server stayed connected; `--safe-mode`, which does keep plugins out, also drops the `--mcp-config` server, so
+  it cannot be used. Restricted (sandboxed) sessions load no plugin at all.
+- **CLAUDE-SESSION-01:** the adapter strips `CLAUDE_CODE_REMOTE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET` and
+  `CLAUDE_CODE_MESSAGING_TOKEN` (decision P30's commit).
+- **CLAUDE-USAGE-03 (new, found while fixing USAGE-02):** the running totals belong to the *session*, not the process: a
+  turn resumed in a new process reported 17,824 tokens (8,880 from the first process plus 8,944 of its own) and twice the cost,
+  so every chat turn after the first was counted together with all the turns before it. The parser now reports its running
+  totals with each usage record (`UsageChunk.Totals`), a chat keeps them with its session id, and the next turn starts its
+  parser from them. Measured again afterwards: 5,294 = 2,615 + 2,679 tokens, the turn recorded once.
+- **Also seen:** with `--disallowedTools mcp__plugin_*` a turn's context fell from about 8,850 to about 2,600 tokens on this
+  machine: the 31 plugin servers' tool definitions were sent with every turn of every agent before.
+- **The gateway itself:** Claude Code starts a session even when an MCP server fails and only says so in `system/init`
+  (`"status":"failed"`). A session given Drydock's gateway now stops its turn with a clear error when the gateway did not
+  connect, instead of working on without Drydock's tools (found when the trial harness's own binary could not serve the
+  gateway's stdio shim).
+
+`go run ./cmd/drydock-contract --cli claude --skip-slow --budget-usd 1.00` afterwards: **16 passed, 0 failed, 4 skipped**
+(MCPWAIT-01 left out by `--skip-slow` after passing in the first run, the ACP prompt turn with no credentials (D1), WIN-ARGV-01
+off Windows), $0.036 reported. The real-Claude tests of the gateway (`TestRealClaudeTransports/stdio-shim`,
+`TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig/acceptEdits`) passed with the plugin rule in place.
+

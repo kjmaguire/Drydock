@@ -171,6 +171,13 @@ func (a *Adapter) Detect(ctx context.Context) (agents.Detection, error) {
 // ReadOnlyDenied are the Claude Code tools a read-only session may never use: everything that writes files or runs commands.
 var ReadOnlyDenied = []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}
 
+// PluginToolsDenied keeps the tools of MCP servers from the user's installed Claude Code plugins out of a session.
+// --strict-mcp-config keeps the user's and the repository's MCP configuration out but not plugins' servers: measured with
+// 2.1.296, 31 plugin servers joined and their tools were offered (contract CLAUDE-MCP-01). With this rule they still start,
+// as when the user runs Claude Code, but the agent cannot call them, so its only tools beyond the CLI's own are the
+// gateway's. --safe-mode, which drops plugins, also drops the gateway's --mcp-config server. Restricted mode loads no plugin.
+const PluginToolsDenied = "mcp__plugin_*"
+
 // Args builds the argv (after the executable) for a session, with the system prompt addition inline. Start passes it in a
 // file instead (argsWith).
 func (a *Adapter) Args(spec agents.RunSpec) []string { return a.argsWith(spec, "") }
@@ -182,6 +189,18 @@ func (a *Adapter) Args(spec agents.RunSpec) []string { return a.argsWith(spec, "
 func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 	args := append([]string(nil), a.BaseArgs...)
 	args = append(args, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages")
+	// one deny list: a read-only session's writing tools, and installed plugins' MCP tools for every session that loads
+	// plugins (restricted mode loads none)
+	var denied []string
+	if spec.ReadOnly {
+		denied = append(denied, ReadOnlyDenied...)
+	}
+	if !spec.Sandboxed {
+		denied = append(denied, PluginToolsDenied)
+	}
+	if len(denied) > 0 {
+		args = append(args, "--disallowedTools", strings.Join(denied, ","))
+	}
 	if spec.Model != "" {
 		args = append(args, "--model", spec.Model)
 	}
@@ -189,9 +208,9 @@ func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 		args = append(args, "--effort", spec.Effort)
 	}
 	if spec.ReadOnly {
-		// default mode refuses, in a headless session, every tool nobody approved; the deny list also beats any allow rule in
-		// the human's own settings (deny wins), so nothing in the session can write
-		args = append(args, "--permission-mode", "default", "--disallowedTools", strings.Join(ReadOnlyDenied, ","))
+		// default mode refuses, in a headless session, every tool nobody approved; the deny list (above) also beats any allow
+		// rule in the human's own settings (deny wins), so nothing in the session can write
+		args = append(args, "--permission-mode", "default")
 	} else if spec.Sandboxed {
 		// restricted mode refuses bypassPermissions, and with no command tools on this machine there is nothing else to approve:
 		// file edits in the working folder are the job
@@ -250,6 +269,12 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 		return nil, err
 	}
 	s := &session{proc: p, parser: NewParser(), out: make(chan workflow.Chunk, 256), acks: map[string]chan bool{}, exited: make(chan struct{})}
+	if spec.MCPConfigPath != "" {
+		s.parser.RequireGateway(GatewayServer)
+	}
+	if spec.ResumeID != "" {
+		s.parser.SetBaseline(spec.UsageBaseline)
+	}
 	go func() { s.ei = <-p.Wait(); removePromptFile(promptFile); close(s.exited) }()
 	go s.readStdout()
 	go s.readStderr()
@@ -400,7 +425,7 @@ func (s *session) Stop(ctx context.Context) error {
 // The user's own login is found through the home folder, CLAUDE_* and ANTHROPIC_* (including CLAUDE_CODE_OAUTH_TOKEN and
 // ANTHROPIC_API_KEY): Drydock passes them through untouched and never reads them.
 func (a *Adapter) childEnv(parent []string) []string {
-	parent = withoutEnclosingSession(parent)
+	parent = WithoutEnclosingSession(parent)
 	if !a.ScrubEnv {
 		return parent
 	}
@@ -418,7 +443,9 @@ func (a *Adapter) childEnv(parent []string) []string {
 var enclosingSessionEnv = map[string]bool{"CLAUDECODE": true, "CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_CHILD_SESSION": true,
 	"CLAUDE_CODE_REMOTE_SESSION_ID": true, "CLAUDE_CODE_MESSAGING_SOCKET": true, "CLAUDE_CODE_MESSAGING_TOKEN": true}
 
-func withoutEnclosingSession(env []string) []string {
+// WithoutEnclosingSession is env without enclosingSessionEnv. The trial harness (cmd/drydock-trial) starts its plain Claude
+// Code arm with it too, so both arms run outside the session that started them.
+func WithoutEnclosingSession(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, kv := range env {
 		if k, _, _ := strings.Cut(kv, "="); !enclosingSessionEnv[strings.ToUpper(k)] {

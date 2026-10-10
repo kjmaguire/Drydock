@@ -12,9 +12,11 @@ node: {min: "22"}
 adapters:
   claude:
     min: "2.1.205"
-    recommended: "2.1.295"
+    recommended: "2.1.296"
     entries:
+      - {version: "2.1.296", class: verified_linux, date: 2026-10-10, platform: linux, transport: headless, method: "contract suite (go run ./cmd/drydock-contract --cli claude, decision P33): 16 passed, 0 failed, 4 skipped (MCPWAIT-01 passed in the run before), after the parser counts each turn once (CLAUDE-USAGE-02) and plugin MCP tools are denied (CLAUDE-MCP-01); the real-Claude sandbox test (P30) and the real-CLI MCP and core tests ran on it"}
       - {version: "2.1.295", class: verified_linux, date: 2026-10-09, platform: linux, transport: headless, method: "conformance suite against the real CLI on the sandbox's own login (TestClaudeAdapterAgainstTheRealCLI: start, stream, usage, Read tool visibility, interrupt, permission request, stop); the real-CLI MCP, purpose and best-practices tests of internal/core and internal/mcp run on it too"}
+      - {version: "0.89.0", class: inspected, date: 2026-10-10, platform: linux, transport: acp, bridge: "@agentclientprotocol/claude-agent-acp@0.89.0", method: "contract ACP-INIT-01 against the newest release (go run ./cmd/drydock-contract --cli claude-agent-acp --check-updates --latest): ACP initialize passed; no prompt sent (the bridge stays disabled, decision D1)"}
       - {version: "0.88.0", class: inspected, date: 2026-10-09, platform: linux, transport: acp, bridge: "@agentclientprotocol/claude-agent-acp@0.88.0", method: "ACP initialize through the pinned bridge with CLAUDE_CODE_EXECUTABLE set; it answers protocolVersion 1 and reports agent version 0.88.0; no prompt sent (the bridge stays disabled, decision D1)"}
       - {version: "2.1.294", class: verified_linux, date: 2026-10-08, platform: linux, transport: headless, method: "conformance suite against the real CLI on the sandbox's own login: start, stream, usage, Read tool visibility, interrupt, stop; Test connection with one prompt and a cancel. stream-json with -p needs --verbose (checked)."}
   codex:

@@ -103,7 +103,7 @@ func TestDrydockNeverStartsClaudeInPlanMode(t *testing.T) {
 	if i := slices.Index(args, "--permission-mode"); i < 0 || args[i+1] != "default" {
 		t.Fatalf("a read-only spec must run in the default mode: %v", args)
 	}
-	if i := slices.Index(args, "--disallowedTools"); i < 0 || args[i+1] != strings.Join(claude.ReadOnlyDenied, ",") {
+	if i := slices.Index(args, "--disallowedTools"); i < 0 || !strings.HasPrefix(args[i+1], strings.Join(claude.ReadOnlyDenied, ",")) {
 		t.Fatalf("a read-only spec must deny the writing tools: %v", args)
 	}
 	// What the scan cannot see: a mode the human picks at run time. Say whether the adapter still offers plan mode for that.

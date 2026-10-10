@@ -227,3 +227,82 @@ func TestAResultWithTwoModelsIsLabeledWithTheCostliest(t *testing.T) {
 		}
 	}
 }
+
+// Claude Code 2.1.296 reports total_cost_usd and modelUsage as running totals of the process and usage as the turn's own
+// (contract CLAUDE-USAGE-02): the numbers below are the shape of a real two-turn process (8,854 then 8,924 tokens, the second
+// result's modelUsage saying 17,778). Each turn must be recorded once.
+func TestEachResultOfAProcessIsRecordedAsItsOwnTurn(t *testing.T) {
+	p := NewParser()
+	usageOf := func(line string) workflow.UsageChunk {
+		t.Helper()
+		cs, _ := p.Parse([]byte(line))
+		for _, c := range cs {
+			if c.Kind == workflow.ChunkUsage {
+				var u workflow.UsageChunk
+				if err := c.Decode(&u); err != nil {
+					t.Fatal(err)
+				}
+				return u
+			}
+		}
+		t.Fatalf("no usage in %s", line)
+		return workflow.UsageChunk{}
+	}
+	first := usageOf(`{"type":"result","subtype":"success","total_cost_usd":0.0040,"usage":{"input_tokens":10,"output_tokens":4,"cache_read_input_tokens":0,"cache_creation_input_tokens":8840},
+		"modelUsage":{"claude-haiku-5-5":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":0,"cacheCreationInputTokens":8840,"costUSD":0.0040,"contextWindow":200000}}}`)
+	second := usageOf(`{"type":"result","subtype":"success","total_cost_usd":0.0050,"usage":{"input_tokens":12,"output_tokens":4,"cache_read_input_tokens":8840,"cache_creation_input_tokens":68},
+		"modelUsage":{"claude-haiku-5-5":{"inputTokens":22,"outputTokens":8,"cacheReadInputTokens":8840,"cacheCreationInputTokens":8908,"costUSD":0.0050,"contextWindow":200000}}}`)
+	if first.InputTokens+first.OutputTokens+first.CachedTokens+first.CacheWriteTokens != 8854 || first.CostUSD != 0.0040 {
+		t.Fatalf("first turn %+v", first)
+	}
+	if second.InputTokens != 12 || second.OutputTokens != 4 || second.CachedTokens != 8840 || second.CacheWriteTokens != 68 || second.Model != "claude-haiku-5-5" {
+		t.Fatalf("the second turn is counted with the first: %+v", second)
+	}
+	if d := second.CostUSD - 0.0010; d > 1e-12 || d < -1e-12 {
+		t.Fatalf("second turn cost %v, want 0.0010", second.CostUSD)
+	}
+	// a total that went down cannot be a running total: it is taken as the turn's own
+	third := usageOf(`{"type":"result","subtype":"success","total_cost_usd":0.0007,"usage":{"input_tokens":3,"output_tokens":2},
+		"modelUsage":{"claude-haiku-5-5":{"inputTokens":3,"outputTokens":2,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"costUSD":0.0007,"contextWindow":200000}}}`)
+	if third.CostUSD != 0.0007 || third.InputTokens != 3 || third.OutputTokens != 2 {
+		t.Fatalf("third %+v", third)
+	}
+	// a new process starts from zero
+	if fresh := NewParser(); fresh.turnCost(0.0050) != 0.0050 {
+		t.Fatal("a new parser has no earlier turns")
+	}
+}
+
+// Claude Code 2.1.296 starts a session even when an MCP server fails, and says so only in system/init. A session that was
+// given Drydock's gateway must not work on without it.
+func TestAGatewayThatFailedToConnectStopsTheTurn(t *testing.T) {
+	initWith := func(status string) string {
+		return `{"type":"system","subtype":"init","session_id":"s1","model":"claude-haiku-5-5","tools":["Read"],"mcp_servers":[{"name":"drydock","status":"` + status + `"},{"name":"plugin:pdf","status":"connected"}]}`
+	}
+	fatal := func(p *Parser, line string) *workflow.ErrorChunk {
+		cs, _ := p.Parse([]byte(line))
+		for _, c := range cs {
+			if c.Kind == workflow.ChunkError {
+				var e workflow.ErrorChunk
+				if err := c.Decode(&e); err != nil {
+					t.Fatal(err)
+				}
+				return &e
+			}
+		}
+		return nil
+	}
+	p := NewParser()
+	p.RequireGateway(GatewayServer)
+	if e := fatal(p, initWith("failed")); e == nil || !e.Fatal || !strings.Contains(e.Message, "gateway did not connect") {
+		t.Fatalf("a failed gateway: %+v", e)
+	}
+	p = NewParser()
+	p.RequireGateway(GatewayServer)
+	if e := fatal(p, initWith("connected")); e != nil {
+		t.Fatalf("a connected gateway is not an error: %+v", e)
+	}
+	if e := fatal(NewParser(), initWith("failed")); e != nil {
+		t.Fatalf("a session without the gateway's configuration does not check it: %+v", e)
+	}
+}

@@ -51,10 +51,20 @@ func All() []Contract {
 		},
 		{
 			ID: "CLAUDE-USAGE-02", CLI: "claude", Adapter: "claude",
-			Assumption: "When one claude process answers several turns, each result's total_cost_usd and modelUsage cover that turn only.",
-			Why:        "The parser turns every result into one usage row and the runtime adds the rows up, so totals that grow with each result would count earlier turns again (an interrupted turn and its follow-up, watchdog nudges, kept sessions).",
+			Assumption: "When one claude process answers several turns, each result's total_cost_usd and modelUsage are running totals of the process and usage is the turn's own; Drydock's parser records the difference, so each turn is counted once.",
+			Why:        "The parser turns every result into one usage row and the runtime adds the rows up (an interrupted turn and its follow-up, watchdog nudges, kept sessions). Measured with 2.1.296: turn 2's modelUsage said 17,778 tokens = 8,854 + 8,924. If the CLI starts reporting each turn's own totals, the parser's rule would under-count, so the check fails then too.",
 			Files:      []string{"internal/agents/claude/parser.go", "internal/agents/runtime/runtime.go"},
 			Tests:      []TestRef{{Package: pkgContract, Test: "TestClaudeReportsEachTurnsOwnUsage", EstUSD: 0.01, Env: real}},
+		},
+		{
+			ID: "CLAUDE-USAGE-03", CLI: "claude", Adapter: "claude",
+			Assumption: "A session resumed in a new process (--resume) reports total_cost_usd and modelUsage including its earlier processes; started from the session's last totals (RunSpec.UsageBaseline), Drydock's parser records only the new turn.",
+			Why:        "Chats resume their CLI session in a new process for every turn. Measured with 2.1.296: the resumed turn reported 17,824 tokens = 8,880 from the first process + 8,944 its own, and twice the cost, so without the baseline every chat turn after the first was counted with all the ones before it.",
+			Files:      []string{"internal/agents/claude/parser.go", "internal/chats/turn.go"},
+			Tests: []TestRef{
+				{Package: pkgContract, Test: "TestClaudeResumedSessionReportsItsWholeTotals", EstUSD: 0.01, Env: real},
+				{Package: pkgCore, Test: "TestAResumedChatSessionCountsEachTurnOnce"},
+			},
 		},
 		{
 			ID: "CLAUDE-PROMPTFILE-01", CLI: "claude", Adapter: "claude",
@@ -137,8 +147,8 @@ func All() []Contract {
 		},
 		{
 			ID: "CLAUDE-MCP-01", CLI: "claude", Adapter: "claude",
-			Assumption: "--mcp-config with --strict-mcp-config loads only the configured server, so the agent sees only the gateway's tools.",
-			Why:        "Every agent reaches tools and project data only through Drydock's gateway (docs/mcp.md); servers from the user's or the repository's configuration must not join.",
+			Assumption: "With --mcp-config and --strict-mcp-config the user's and the repository's MCP servers stay out, and with Drydock's --disallowedTools mcp__plugin_* no tool of an installed plugin's server is offered, so the agent sees only the gateway's tools.",
+			Why:        "Every agent reaches tools and project data only through Drydock's gateway (docs/mcp.md). Measured with 2.1.296: --strict-mcp-config does not keep plugins' servers out (31 joined, their tools offered); the deny rule keeps their tools out while the gateway stays connected, and --safe-mode would drop the gateway too.",
 			Files:      []string{"internal/agents/claude/adapter.go", "docs/mcp.md"},
 			Tests: []TestRef{
 				{Package: pkgContract, Test: "TestClaudeStrictMCPConfigLoadsOnlyTheGivenServer", EstUSD: 0.02, Env: real},

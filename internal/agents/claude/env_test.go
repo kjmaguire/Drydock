@@ -155,7 +155,7 @@ func TestAReadOnlySessionIsDefaultModeWithWritingToolsDenied(t *testing.T) {
 		t.Fatalf("a read-only session must not use plan mode: %v", args)
 	}
 	// a human's own choice of plan mode (a chat) is kept
-	if line := strings.Join((&Adapter{}).Args(agents.RunSpec{PermissionMode: "plan"}), " "); !strings.Contains(line, "--permission-mode plan") || strings.Contains(line, "disallowedTools") {
+	if line := strings.Join((&Adapter{}).Args(agents.RunSpec{PermissionMode: "plan"}), " "); !strings.Contains(line, "--permission-mode plan") || strings.Contains(line, "Edit,Write") || !strings.Contains(line, "--disallowedTools "+PluginToolsDenied) {
 		t.Fatalf("plain plan mode: %v", line)
 	}
 }

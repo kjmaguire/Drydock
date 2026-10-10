@@ -111,11 +111,12 @@
     },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "Recommended and verified: 2.1.295 (conformance suite against the real CLI). You install the CLI yourself."
+      "note": "Recommended and verified: 2.1.296 (the contract suite, decision P33: 16 passed, 0 failed, on Linux). You install the CLI yourself."
     },
     "cli:codex": {
       "role": "Codex: runs OpenAI's models as an agent.",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
+      "hold": "0.162.1 is not adopted yet: decision P33 adopts a CLI version only after the contract suite passes on it, and no contract runs Codex itself here (no Codex login); the ACP handshake runs through the codex-acp bridge, which bundles its own Codex."
     },
     "cli:gemini": {
       "role": "Gemini CLI: runs Google's models as an agent.",
@@ -134,7 +135,8 @@
       "note": "Pinned at 3.0.70 (min and recommended), the newest release on 2026-10-09: version and ACP initialize checked live on Linux; no prompt turn was run (no sign-in here). You install it yourself with npm i -g cline (Node 22+; its launcher is a Node script). Decisions P29."
     },
     "bridge:@agentclientprotocol/claude-agent-acp": {
-      "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today."
+      "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
+      "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1)."
     },
     "bridge:@agentclientprotocol/codex-acp": {
       "role": "The ACP bridge Drydock starts with npx for Codex."

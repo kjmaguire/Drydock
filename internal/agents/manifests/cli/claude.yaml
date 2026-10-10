@@ -12,7 +12,7 @@ install:                                         # display only; Drydock never e
   - {shell: cmd, command: 'winget install Anthropic.ClaudeCode', note: no auto-update}
   - {shell: cmd, command: 'npm install -g @anthropic-ai/claude-code', requires: [{tool: node, min: "22"}]}
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "2.1.205", recommended: "2.1.295"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
+versions: {min: "2.1.205", recommended: "2.1.296"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
 auth:
   login: {argv: [auth, login], variants: [[--claudeai], [--console], [--sso], [--email]], terminal: true}
   probe: {argv: [auth, status, --json], parse: json, ready_when: '$.loggedIn == true'}   # logged-out exit code unverified: parse the JSON
@@ -22,7 +22,9 @@ transports:
   primary: headless
   headless:
     # --verbose is mandatory with -p and stream-json output (verified against 2.1.294: "requires --verbose").
-    argv: [-p, --input-format, stream-json, --output-format, stream-json, --verbose, --include-partial-messages]
+    # --disallowedTools mcp__plugin_*: --strict-mcp-config does not keep installed plugins' MCP servers out (contract
+    # CLAUDE-MCP-01, 2.1.296), so their tools are denied; a sandboxed (--restricted) session loads no plugin and omits it.
+    argv: [-p, --input-format, stream-json, --output-format, stream-json, --verbose, --include-partial-messages, --disallowedTools, "mcp__plugin_*"]
     optional:
       model: [--model, "{{model}}"]
       effort: [--effort, "{{effort}}"]
@@ -36,7 +38,7 @@ transports:
     interrupt: {via: stdin_control, message: interrupt}
   acp:
     enabled: false
-    argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.88.0"]
+    argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.89.0"]
     env: {CLAUDE_CODE_EXECUTABLE: "{{resolved_binary}}"}
     requires: [{tool: node, min: "22"}]
     enable_when: written_confirmation_recorded
