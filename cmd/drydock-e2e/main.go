@@ -25,6 +25,9 @@
 //
 // The harness also installs an in-memory credential store (a test double) so provider keys can be entered in the e2e.
 // The DRYDOCK_E2E line is printed last, after the server listens.
+//
+// cmd/drydock-verify drives the same harness over HTTP for its core smoke test (no browser) and starts it with
+// -exit-on-stdin-close, so closing the pipe stops it cleanly on Windows too.
 package main
 
 import (
@@ -89,14 +92,15 @@ func main() {
 	green := flag.Int("green-repos", 0, "number of fresh repositories whose baseline tests pass and that carry a repository skill (for the test-first templates and the Skills page)")
 	port := flag.Int("port", 0, "port on 127.0.0.1 (0 = any)")
 	licensed := flag.Bool("licensed", false, "TEST HARNESS MODE: embed a throwaway license key so the app starts read-only until a printed test token is imported")
+	stdinStop := flag.Bool("exit-on-stdin-close", false, "also stop cleanly when standard input closes (cmd/drydock-verify uses this: on Windows a parent cannot send a child SIGTERM)")
 	flag.Parse()
 
-	if err := run(*ui, *fixture, *repos, *green, *port, *licensed); err != nil {
+	if err := run(*ui, *fixture, *repos, *green, *port, *licensed, *stdinStop); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(uiDir, fixture string, nRepos, nGreen, port int, licensed bool) error {
+func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bool) error {
 	root, err := os.MkdirTemp("", "drydock-e2e-")
 	if err != nil {
 		return err
@@ -232,6 +236,12 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed bool) error {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	if stdinStop {
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			sig <- os.Interrupt
+		}()
+	}
 	<-sig
 	return shutdown(context.Background())
 }
