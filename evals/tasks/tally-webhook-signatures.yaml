@@ -1,0 +1,39 @@
+# A precise wire format, a rotation window, and a verification function with exact error cases.
+id: tally-webhook-signatures
+title: "Timestamped webhook signatures with secret rotation"
+suite: tally
+fixture: testdata/fixtures/tally
+class: security review
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Our webhook signature (Tally-Signature: the hex HMAC of the body) cannot stop replayed deliveries and the secret cannot be
+  rotated. Replace it with this scheme; our customers' SDKs will implement it, with your Verify function as the reference.
+
+  - Every delivery carries Tally-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<body>" keyed with the endpoint's
+    secret>, where t is the time of the delivery attempt on the service's clock.
+  - POST /v1/webhook-endpoints/{id}/rotate-secret gives the endpoint a new secret ("whsec_" followed by 32 random hex
+    characters) and answers 200 with the endpoint, showing the new secret. For 24 hours after a rotation, deliveries carry two
+    v1 entries, the new secret's first and the previous secret's second: t=...,v1=<new>,v1=<previous>. After 24 hours, only the
+    new one. Rotating again within those 24 hours drops the oldest secret at once: at most the current secret and the one
+    before it are ever used.
+  - webhooks.SignatureHeader(secrets []string, t time.Time, body []byte) string builds that header (secrets: current first).
+    webhooks.Sign keeps its signature and meaning.
+  - webhooks.Verify(payload []byte, header string, secrets []string, tolerance time.Duration, now time.Time) error returns nil
+    when the header's timestamp is within tolerance of now (in either direction) and at least one of its v1 entries equals
+    the signature of payload (that is, of "<t>.<payload>") with at least one of secrets, compared in constant time.
+    - A tolerance of 0 means 5 minutes.
+    - The header is comma-separated key=value pairs in any order, with optional spaces around each pair. Unknown keys (such
+      as v0) are ignored; there may be several v1 entries.
+    - Errors, matched with errors.Is: ErrMalformedHeader (an empty header, a pair without "=", or a t that is not an
+      integer), ErrNoTimestamp (no t), ErrTimestampTolerance (t too far from now), ErrNoSignature (no v1 entry),
+      ErrSignatureMismatch (no v1 entry matches). They are checked in that order.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-webhook-signatures
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

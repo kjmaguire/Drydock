@@ -1,0 +1,397 @@
+diff --git a/internal/api/api_test.go b/internal/api/api_test.go
+index 27a057f..b232f3e 100644
+--- a/internal/api/api_test.go
++++ b/internal/api/api_test.go
+@@ -3,10 +3,13 @@ package api_test
+ import (
+ 	"context"
+ 	"encoding/csv"
++	"fmt"
+ 	"net/http"
++	"net/http/httptest"
+ 	"net/url"
+ 	"regexp"
+ 	"strings"
++	"sync"
+ 	"testing"
+ 	"time"
+ 
+@@ -437,3 +440,82 @@ func TestOrgSettings(t *testing.T) {
+ 		t.Fatalf("a member changes the org: %s", r)
+ 	}
+ }
++
++func TestSeatLimits(t *testing.T) {
++	e := apitest.New(t)
++	free := e.NewOrg("Initech", store.OrgFree, "UTC")
++	viewer, _ := e.AddMember(free, "viewer@initech.example", store.RoleViewer)
++	var org struct {
++		Seats struct {
++			Used  int
++			Limit *int
++		}
++	}
++	for _, email := range []string{"a@people.example", "b@people.example"} {
++		e.MustDo(http.StatusCreated, "POST", "/v1/invites", free.Key, map[string]string{"email": email, "role": "member"}, nil)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/org", free.Key, nil, &org)
++	if org.Seats.Used != 3 || org.Seats.Limit == nil || *org.Seats.Limit != 3 {
++		t.Fatalf("seats = %+v", org.Seats)
++	}
++	r := e.Do("POST", "/v1/invites", free.Key, map[string]string{"email": "c@people.example", "role": "admin"})
++	if m := r.Map(t); r.Code != http.StatusPaymentRequired || m["error"] != "seat_limit_reached" || m["limit"] != 3.0 || m["used"] != 3.0 {
++		t.Fatalf("invite over the limit: %s", r)
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", free.Key, map[string]string{"email": "v@people.example", "role": "viewer"}, nil)
++	if r := e.Do("PATCH", "/v1/members/"+viewer.ID, free.Key, map[string]string{"role": "member"}); r.Code != http.StatusPaymentRequired {
++		t.Fatalf("promote a viewer without a free seat: %s", r)
++	}
++	msgs := e.Mail.Messages()
++	token, _ := url.QueryUnescape(regexp.MustCompile(`token=([^\s]+)`).FindStringSubmatch(msgs[0].Body)[1])
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites/accept", "", map[string]string{"token": token, "name": "A"}, nil)
++
++	e.AddMember(e.Acme, "m1@acme.example", store.RoleMember)
++	e.AddMember(e.Acme, "m2@acme.example", store.RoleMember)
++	e.AddMember(e.Acme, "m3@acme.example", store.RoleMember)
++	r = e.Do("PATCH", "/v1/org", e.Acme.Key, map[string]any{"plan": "free", "name": "Renamed"})
++	if m := r.Map(t); r.Code != http.StatusConflict || m["error"] != "over_seat_limit" || m["limit"] != 3.0 || m["used"] != 4.0 {
++		t.Fatalf("downgrade below the seats used: %s", r)
++	}
++	var o store.Org
++	e.MustDo(http.StatusOK, "GET", "/v1/org", e.Acme.Key, nil, &o)
++	if o.Plan != store.OrgTeam || o.Name != "Acme" {
++		t.Fatalf("a refused downgrade changed the org: %+v", o)
++	}
++	var g struct{ Seats map[string]any }
++	e.MustDo(http.StatusOK, "GET", "/v1/org", e.Globex.Key, nil, &g)
++	if v, ok := g.Seats["limit"]; !ok || v != nil || g.Seats["used"] != 1.0 {
++		t.Fatalf("business seats = %v", g.Seats)
++	}
++}
++
++func TestConcurrentInvitesTakeOneSeat(t *testing.T) {
++	e := apitest.New(t)
++	for i := range 8 {
++		e.AddMember(e.Acme, fmt.Sprintf("m%d@acme.example", i), store.RoleMember)
++	}
++	codes := make(chan int, 10)
++	var wg sync.WaitGroup
++	for i := range 10 {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			req := httptest.NewRequest("POST", "/v1/invites", strings.NewReader(fmt.Sprintf(`{"email":"r%d@people.example","role":"member"}`, i)))
++			req.Header.Set("Authorization", "Bearer "+e.Acme.Key)
++			rec := httptest.NewRecorder()
++			e.Server.ServeHTTP(rec, req)
++			codes <- rec.Code
++		}()
++	}
++	wg.Wait()
++	close(codes)
++	created := 0
++	for c := range codes {
++		if c == http.StatusCreated {
++			created++
++		}
++	}
++	if created != 1 {
++		t.Fatalf("%d invites took the last seat", created)
++	}
++}
+diff --git a/internal/api/respond.go b/internal/api/respond.go
+index f27c62b..3c36102 100644
+--- a/internal/api/respond.go
++++ b/internal/api/respond.go
+@@ -35,7 +35,13 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+ 
+ // storeError answers for an error from the store or a service.
+ func (s *Server) storeError(w http.ResponseWriter, err error) {
++	var seat *store.SeatLimitError
++	var over *store.OverSeatLimitError
+ 	switch {
++	case errors.As(err, &seat):
++		writeJSON(w, http.StatusPaymentRequired, map[string]any{"error": "seat_limit_reached", "message": err.Error(), "limit": seat.Limit, "used": seat.Used})
++	case errors.As(err, &over):
++		writeJSON(w, http.StatusConflict, map[string]any{"error": "over_seat_limit", "message": err.Error(), "limit": over.Limit, "used": over.Used})
+ 	case errors.Is(err, store.ErrNotFound):
+ 		writeError(w, http.StatusNotFound, "not_found", "no such object")
+ 	case errors.Is(err, store.ErrEmailTaken):
+diff --git a/internal/api/team.go b/internal/api/team.go
+index 1a95c1a..a45a869 100644
+--- a/internal/api/team.go
++++ b/internal/api/team.go
+@@ -18,13 +18,33 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request, p auth.Principal)
+ 	writeJSON(w, http.StatusOK, map[string]any{"user": u, "org": o, "role": p.Role, "api_key_id": p.KeyID})
+ }
+ 
++// orgView is the organization with the seats its plan has and uses.
++type orgView struct {
++	store.Org
++	Seats seatsView `json:"seats"`
++}
++
++// seatsView is how many seats an organization uses, and its plan's limit (null when unlimited).
++type seatsView struct {
++	Used  int  `json:"used"`
++	Limit *int `json:"limit"`
++}
++
++func (s *Server) viewOrg(o store.Org) orgView {
++	v := orgView{Org: o, Seats: seatsView{Used: s.store.SeatsUsed(o.ID)}}
++	if limit, limited := o.Plan.SeatLimit(); limited {
++		v.Seats.Limit = &limit
++	}
++	return v
++}
++
+ func (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+ 	o, ok := s.store.Org(p.OrgID)
+ 	if !ok {
+ 		writeError(w, http.StatusNotFound, "not_found", "no such organization")
+ 		return
+ 	}
+-	writeJSON(w, http.StatusOK, o)
++	writeJSON(w, http.StatusOK, s.viewOrg(o))
+ }
+ 
+ func (s *Server) updateOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+@@ -60,7 +80,7 @@ func (s *Server) updateOrg(w http.ResponseWriter, r *http.Request, p auth.Princi
+ 		s.storeError(w, err)
+ 		return
+ 	}
+-	writeJSON(w, http.StatusOK, o)
++	writeJSON(w, http.StatusOK, s.viewOrg(o))
+ }
+ 
+ // memberView is a member with the user's details.
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 71ce935..2316ada 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -27,6 +27,22 @@ var (
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
+ )
+ 
++// SeatLimitError is returned when a change needs a seat and the organization's plan has none free: Used seats of Limit are
++// taken.
++type SeatLimitError struct{ Limit, Used int }
++
++func (e *SeatLimitError) Error() string {
++	return fmt.Sprintf("the plan's seat limit is reached: %d of %d seats used", e.Used, e.Limit)
++}
++
++// OverSeatLimitError is returned when a plan change would leave the organization using more seats (Used) than the new plan
++// has (Limit).
++type OverSeatLimitError struct{ Limit, Used int }
++
++func (e *OverSeatLimitError) Error() string {
++	return fmt.Sprintf("the organization uses %d seats and the plan has %d", e.Used, e.Limit)
++}
++
+ // Store holds everything.
+ type Store struct {
+ 	mu  sync.Mutex
+@@ -131,14 +147,16 @@ func (s *Store) Org(id string) (Org, bool) {
+ 	return o, ok
+ }
+ 
+-// UpdateOrg changes an organization with f, which may refuse with an error.
++// UpdateOrg changes an organization with f, which may refuse with an error. A change of plan to one with fewer seats than
++// the organization uses is refused with an *OverSeatLimitError.
+ func (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	o, ok := s.orgs[id]
++	old, ok := s.orgs[id]
+ 	if !ok {
+ 		return Org{}, ErrNotFound
+ 	}
++	o := old
+ 	if err := f(&o); err != nil {
+ 		return Org{}, err
+ 	}
+@@ -146,10 +164,53 @@ func (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {
+ 	if err := checkOrg(o); err != nil {
+ 		return Org{}, err
+ 	}
++	if o.Plan != old.Plan {
++		if limit, limited := o.Plan.SeatLimit(); limited {
++			if used := s.seatsUsed(id); used > limit {
++				return Org{}, &OverSeatLimitError{Limit: limit, Used: used}
++			}
++		}
++	}
+ 	s.orgs[id] = o
+ 	return o, nil
+ }
+ 
++// SeatsUsed returns how many of its plan's seats an organization uses: its members and its pending invites (neither
++// accepted nor revoked) whose role is not viewer. Viewers are free.
++func (s *Store) SeatsUsed(orgID string) int {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.seatsUsed(orgID)
++}
++
++func (s *Store) seatsUsed(orgID string) int {
++	n := 0
++	for _, m := range s.members {
++		if m.OrgID == orgID && m.Role != RoleViewer {
++			n++
++		}
++	}
++	for _, inv := range s.invites {
++		if inv.OrgID == orgID && inv.AcceptedAt == nil && inv.RevokedAt == nil && inv.Role != RoleViewer {
++			n++
++		}
++	}
++	return n
++}
++
++// takeSeat returns an *SeatLimitError when the organization has no seat free. The caller holds the lock, so the seat stays
++// free until the caller's change is stored.
++func (s *Store) takeSeat(orgID string) error {
++	limit, limited := s.orgs[orgID].Plan.SeatLimit()
++	if !limited {
++		return nil
++	}
++	if used := s.seatsUsed(orgID); used >= limit {
++		return &SeatLimitError{Limit: limit, Used: used}
++	}
++	return nil
++}
++
+ // ---- users and members
+ 
+ // CreateUser adds a user. Email addresses are unique, ignoring case.
+@@ -191,7 +252,8 @@ func (s *Store) UserByEmail(email string) (User, bool) {
+ 	return s.users[id], true
+ }
+ 
+-// AddMember makes a user a member of an organization.
++// AddMember makes a user a member of an organization. It does not check the plan's seat limit (the admin tool may go
++// over it); the API adds members through invites, which do.
+ func (s *Store) AddMember(orgID, userID string, role Role, now time.Time) (Member, error) {
+ 	if !role.Valid() {
+ 		return Member{}, invalid("unknown role %q", role)
+@@ -244,7 +306,8 @@ func (s *Store) Members(orgID string) []Member {
+ 	return out
+ }
+ 
+-// SetMemberRole changes a member's role.
++// SetMemberRole changes a member's role. Making a viewer anything else takes a seat: without a free one, it is refused with
++// a *SeatLimitError.
+ func (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {
+ 	if !role.Valid() {
+ 		return Member{}, invalid("unknown role %q", role)
+@@ -256,6 +319,11 @@ func (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {
+ 	if !ok {
+ 		return Member{}, ErrNotFound
+ 	}
++	if m.Role == RoleViewer && role != RoleViewer {
++		if err := s.takeSeat(orgID); err != nil {
++			return Member{}, err
++		}
++	}
+ 	m.Role = role
+ 	s.members[k] = m
+ 	return m, nil
+@@ -364,7 +432,8 @@ func (s *Store) TouchAPIKey(id string, now time.Time) {
+ 
+ // ---- invites
+ 
+-// CreateInvite invites an email address to join an organization with a role.
++// CreateInvite invites an email address to join an organization with a role. An invite for a role other than viewer holds
++// a seat until it is accepted or revoked: without a free seat, it is refused with a *SeatLimitError.
+ func (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {
+ 	email = strings.TrimSpace(email)
+ 	if !validEmail(email) {
+@@ -383,6 +452,11 @@ func (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, n
+ 			return Invite{}, ErrAlreadyMember
+ 		}
+ 	}
++	if role != RoleViewer {
++		if err := s.takeSeat(orgID); err != nil {
++			return Invite{}, err
++		}
++	}
+ 	inv := Invite{ID: s.newID("inv"), OrgID: orgID, Email: email, Role: role, Token: NewToken("invite_"), InvitedBy: invitedBy, CreatedAt: now.UTC()}
+ 	s.invites[inv.ID] = inv
+ 	return inv, nil
+@@ -430,7 +504,8 @@ func (s *Store) RevokeInvite(orgID, id string, now time.Time) (Invite, error) {
+ }
+ 
+ // AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),
+-// makes them a member with the invite's role and gives them a first API key.
++// makes them a member with the invite's role and gives them a first API key. It never fails for lack of a seat: the invite
++// holds one.
+ func (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+diff --git a/internal/store/store_test.go b/internal/store/store_test.go
+index d2ef746..df87ba2 100644
+--- a/internal/store/store_test.go
++++ b/internal/store/store_test.go
+@@ -255,3 +255,39 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestSeats(t *testing.T) {
++	s := New()
++	o, _ := s.CreateOrg("A", OrgFree, "UTC", 0, t0)
++	for i, role := range []Role{RoleOwner, RoleViewer, RoleMember} {
++		u, _ := s.CreateUser(string(rune('a'+i))+"@example.com", "U", t0)
++		_, _ = s.AddMember(o.ID, u.ID, role, t0)
++	}
++	if _, err := s.CreateInvite(o.ID, "v@example.com", RoleViewer, "", t0); err != nil {
++		t.Fatal(err)
++	}
++	inv, err := s.CreateInvite(o.ID, "x@example.com", RoleBilling, "", t0)
++	if err != nil || s.SeatsUsed(o.ID) != 3 {
++		t.Fatalf("invite = %v, seats used %d", err, s.SeatsUsed(o.ID))
++	}
++	var seat *SeatLimitError
++	if _, err := s.CreateInvite(o.ID, "y@example.com", RoleMember, "", t0); !errors.As(err, &seat) || seat.Limit != 3 || seat.Used != 3 {
++		t.Fatalf("an invite over the limit: %v", err)
++	}
++	if _, _, _, err := s.AcceptInvite(inv.Token, "X", t0); err != nil {
++		t.Fatalf("accepting an invite at the limit: %v", err)
++	}
++	var over *OverSeatLimitError
++	if _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgBusiness; return nil }); err != nil {
++		t.Fatal(err)
++	}
++	for _, e := range []string{"p@example.com", "q@example.com", "r@example.com", "s@example.com", "t@example.com", "u@example.com", "w@example.com", "z@example.com"} {
++		_, _ = s.CreateInvite(o.ID, e, RoleMember, "", t0)
++	}
++	if _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgTeam; o.Name = "B"; return nil }); !errors.As(err, &over) || over.Limit != 10 || over.Used != 11 {
++		t.Fatalf("a downgrade over the limit: %v", err)
++	}
++	if got, _ := s.Org(o.ID); got.Plan != OrgBusiness || got.Name != "A" {
++		t.Fatalf("a refused downgrade changed the org: %+v", got)
++	}
++}
+diff --git a/internal/store/types.go b/internal/store/types.go
+index 7ed511c..8a6b92f 100644
+--- a/internal/store/types.go
++++ b/internal/store/types.go
+@@ -20,6 +20,17 @@ const (
+ // Valid reports whether p is a known plan.
+ func (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }
+ 
++// SeatLimit returns how many seats the plan has; limited is false when it has no limit (business).
++func (p OrgPlan) SeatLimit() (limit int, limited bool) {
++	switch p {
++	case OrgFree:
++		return 3, true
++	case OrgTeam:
++		return 10, true
++	}
++	return 0, false
++}
++
+ // Org is a tenant: a company that bills its customers through Tally.
+ type Org struct {
+ 	ID       string  `json:"id"`

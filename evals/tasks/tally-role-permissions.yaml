@@ -1,0 +1,47 @@
+# An exact permission matrix with special rules: easy to get most of it right and miss a cell.
+id: tally-role-permissions
+title: "Enforce member roles"
+suite: tally
+fixture: testdata/fixtures/tally
+class: security review
+risk: high
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Today every member except a viewer can do almost anything in their organization. Enforce these roles exactly. A refused
+  request is 403 {"error":"forbidden"} and changes nothing. The role is read on every request, so a role change applies to
+  the member's existing API keys at once.
+
+  | What (endpoints) | owner | admin | billing | member | viewer |
+  |---|---|---|---|---|---|
+  | Read customers, plans, subscriptions, invoices, payments (every GET of those, including /v1/customers/export.csv) | yes | yes | yes | yes | yes |
+  | Create, update or delete customers | yes | yes | yes | yes | no |
+  | Create or update plans | yes | yes | yes | no | no |
+  | Create, update or cancel subscriptions; report usage | yes | yes | yes | yes | no |
+  | Create, pay or void invoices | yes | yes | yes | no | no |
+  | Revenue report (GET /v1/reports/revenue) | yes | yes | yes | no | no |
+  | Webhook endpoints, their deliveries, and events (every /v1/webhook-endpoints and /v1/events request) | yes | yes | no | no | no |
+  | Read the organization (GET /v1/org), members and pending invites | yes | yes | yes | yes | yes |
+  | Update the organization (PATCH /v1/org) | yes | yes | no | no | no |
+  | Invite, revoke invites, change roles, remove members | yes | yes | no | no | no |
+
+  Rules for members and roles:
+  - Only an owner may give someone the owner or admin role, or change the role of, or remove, an owner or an admin.
+  - Nobody may change their own role (403), but anyone may leave: DELETE /v1/members/{their own user_id} is allowed for every
+    role.
+  - An organization always keeps at least one owner: demoting or removing its only owner is 409 {"error":"last_owner"}, also
+    when the owner does it to themselves.
+
+  API keys:
+  - Every member, viewers included, may create keys for themselves (POST /v1/api-keys) and revoke their own keys.
+  - Owners and admins may also revoke anyone's key in the organization; anyone else revoking a key that is not theirs gets 403.
+  - GET /v1/api-keys lists every key of the organization for owners and admins, and only the caller's own keys for everyone
+    else.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-role-permissions
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

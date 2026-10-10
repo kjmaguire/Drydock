@@ -1,0 +1,31 @@
+# A reported leak and the same class of bug elsewhere: the fix that only touches the reported endpoint is not enough.
+id: tally-tenant-isolation
+title: "Close cross-organization data leaks"
+suite: tally
+fixture: testdata/fixtures/tally
+class: security review
+risk: high
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  A customer's security team reported that, with their own API key, they could read another organization's invoice lines:
+  GET /v1/invoices/{id}/lines with the ID of another organization's invoice answered 200 with its lines.
+
+  Fix that, then audit the whole API for the same class of bug and fix every instance you find. The rules:
+
+  - No request may read, change or delete another organization's data, or reveal that it exists.
+  - An ID that belongs to another organization is answered exactly like an ID that does not exist: 404 {"error":"not_found"}
+    for the object in the path, and the same answer as for an unknown ID when it is named in the body or the query (for
+    example a customer_id when creating an invoice or a subscription).
+  - A lookup by value (such as GET /v1/customers?email=) only ever finds the caller's organization's objects, and two
+    organizations can each have a customer with the same email address without affecting each other in any way.
+
+  Add tests that would have caught each instance.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-tenant-isolation
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

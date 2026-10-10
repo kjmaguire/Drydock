@@ -1,0 +1,35 @@
+# Concurrency with cancellation, waiting, no leaked goroutines and an exact contract for what is left over.
+id: tally-graceful-shutdown
+title: "Shut the job runner down without losing work"
+suite: tally
+fixture: testdata/fixtures/tally
+class: high-risk
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  jobs.Runner cannot shut down cleanly: Stop closes the queue and returns at once, running jobs are cut off when the process
+  exits, a job enqueued after Stop panics the server, and a job that panics kills the process. Implement:
+
+  - func (r *Runner) Shutdown(ctx context.Context) error:
+    - from the moment it is called, Enqueue returns ErrStopped (a new exported error), never panics, and queues nothing;
+    - jobs that have not started are not started;
+    - it waits for the running jobs to finish; when ctx ends first, it cancels the context of every running job, waits for them
+      to return, and returns ctx.Err(); it returns nil when every running job finished before ctx ended;
+    - a second call, or Stop after Shutdown, returns at once (nil once the first call has finished);
+    - when it returns, none of the runner's goroutines is left.
+  - Stop() keeps its signature and does what Shutdown does with a 30 second timeout.
+  - func (r *Runner) Pending() []Job returns the jobs that still need to run, in the order they were enqueued: before Shutdown,
+    the queued jobs not started yet; after Shutdown, the jobs that were never started followed by the jobs whose context
+    Shutdown canceled and that returned an error. The caller saves them.
+  - Every job runs with a context that Shutdown can cancel. A job that panics is recovered: the worker logs it and goes on with
+    the next job; the job is not run again.
+  - cmd/tally calls Shutdown on SIGTERM, before saving the snapshot.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-graceful-shutdown
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

@@ -1,0 +1,31 @@
+# Counting rules across members and invites, three entry points, and a limit that must hold under concurrency.
+id: tally-seat-limits
+title: "Enforce seat limits of Tally plans"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Tally's own plans limit how many people an organization may have: free 3 seats, team 10, business unlimited. Nothing
+  enforces it. Implement:
+
+  - Seats used = members whose role is not viewer, plus pending invites (neither accepted nor revoked) whose role is not
+    viewer. Viewers are free.
+  - POST /v1/invites for a role other than viewer when seats used is already at or over the limit: 402
+    {"error":"seat_limit_reached","limit": <n>,"used": <n>}. Accepting an invite never fails for lack of a seat: the invite
+    holds one.
+  - PATCH /v1/members/{user_id} that changes a viewer to another role needs a free seat: the same 402 otherwise.
+  - PATCH /v1/org that changes "plan" to one whose limit is below the seats used: 409 {"error":"over_seat_limit",
+    "limit": <n>,"used": <n>}, and nothing changes.
+  - GET /v1/org shows "seats": {"used": <n>, "limit": <n, or null when unlimited>}.
+  - The limit holds under concurrency: with one seat left, of several invites sent at the same time exactly one succeeds.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-seat-limits
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

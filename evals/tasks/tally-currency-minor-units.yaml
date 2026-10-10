@@ -1,0 +1,32 @@
+# A money bug: the 2-decimal assumption lives in more than one place.
+id: tally-currency-minor-units
+title: "Currencies with 0 and 3 decimals"
+suite: tally
+fixture: testdata/fixtures/tally
+class: test-fix loop
+risk: medium
+size: small
+expected_roles: [backend, reviewer]
+prompt: |
+  We started billing in Japanese yen and Kuwaiti dinars, and amounts are wrong: a plan priced at "1000" JPY is stored as
+  100000 and shown as "¥1,000.00", and KWD prices with three decimals are refused. Tally assumes that every currency has two
+  decimals. Fix every place that converts between major units (what people type and read) and minor units (what Tally
+  stores):
+
+  - Decimals per currency (ISO 4217): USD, EUR and GBP 2, JPY 0, KWD 3. Add func (c Currency) MinorUnits() int.
+  - money.ParseMajor accepts at most the currency's decimals, and pads fewer ("12.5" USD is 1250, "7" KWD is 7000); for JPY,
+    no decimal point at all. More decimals than allowed is an error matching ErrInvalidAmount. Signs, spaces inside the
+    number, thousands separators and empty strings stay invalid.
+  - money.Format writes exactly the currency's decimals: "$1,234.50", "€0.99", "£12.00", "¥1,000", "KWD 1.250" (KWD and a
+    space, then the number); a negative amount as "-$5.00", "-¥5", "-KWD 0.005".
+  - Plan answers show "price" in major units with the currency's decimals and no thousands separator ("12.50", "1000",
+    "1.250") and "price_formatted"; invoice answers show "total_formatted"; everything else that shows or reads major units
+    follows the same rules.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-currency-minor-units
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600
