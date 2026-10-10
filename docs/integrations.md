@@ -183,3 +183,26 @@ vendor's hosted server accepts this flow as-is is unverified.
 
 Room exports (room-protocol s8) are exposed too: `room.export {kind: minutes | adr_candidates | pr_description}`, `room.exports`,
 `room.exportGet`, `room.exportVerify`, `room.adrCandidates`; the room header has an Export menu with a Markdown download.
+
+## As built: outside text and live checks (2026-10-10, decision P37)
+
+- **The core refuses a high-risk item.** `Import` returns `ErrNotImportable` for an item whose risk score is at or over the
+  threshold, whoever calls it; before, only the screen disabled the button. Rules already skipped such items.
+- **GitHub issues get the same cleaning** (`Sanitizer.OutsideTask`, see [`github.md`](github.md) section 8) and the same refusal.
+- **Imported work waits for a human.** A task with an issue reference (from a connection, a rule or a GitHub issue) is never
+  moved from BACKLOG to READY by the scheduler (`tasks.PromoteReady`), even with automatic scheduling on, and the team lead
+  is not asked about it while it is in BACKLOG. Rule 4 above ("the human moves them on") was not true with automatic
+  scheduling on before this.
+- **Live checks.** `TestLiveLinear`, `TestLiveNotion`, `TestLiveSentry` and `TestLiveAikido` (`internal/integrations/live_test.go`)
+  run against the real services when `DRYDOCK_LIVE_<VENDOR>_TOKEN` is set: Test connection, one sync, every item parsed with
+  an id, a title and a reference, no schema drift, and the token nowhere in the database, body files or events. They read
+  only: nothing is imported and nothing is written back. Scope variables: `DRYDOCK_LIVE_LINEAR_TEAM`, `DRYDOCK_LIVE_SENTRY_ORG`,
+  `DRYDOCK_LIVE_SENTRY_PROJECT`, `DRYDOCK_LIVE_AIKIDO_WORKSPACE`, `DRYDOCK_LIVE_NOTION_QUERY`, and
+  `DRYDOCK_LIVE_<VENDOR>_BASE_URL` for a self-hosted server. `DRYDOCK_LIVE_REPORT=<file>` writes what was found (tool
+  names, counts, missing tools; no item text). The check itself is tested against the Linear fixture. **Not run yet:** this
+  environment has no vendor credentials, so every vendor fact above is still unverified until the owner runs them:
+
+  ```sh
+  DRYDOCK_LIVE_LINEAR_TOKEN=lin_api_... DRYDOCK_LIVE_REPORT=live.json go test ./internal/integrations -run TestLive -v
+  ```
+
