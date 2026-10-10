@@ -1,0 +1,756 @@
+diff --git a/start/internal/api/invoices.go b/result/internal/api/invoices.go
+index 843d000..6ec427f 100644
+--- a/start/internal/api/invoices.go
++++ b/result/internal/api/invoices.go
+@@ -54,19 +54,8 @@ func (s *Server) viewInvoice(inv store.Invoice) invoiceView {
+ 	return newInvoiceView(inv, nil)
+ }
+ 
+-func findCustomer(cs []store.Customer, id string) *store.Customer {
+-	for i := range cs {
+-		if cs[i].ID == id {
+-			return &cs[i]
+-		}
+-	}
+-	return nil
+-}
+-
+-func invoiceViewKey(v invoiceView) cursor { return cursor{T: v.CreatedAt, ID: v.ID} }
+-
+ // listInvoices lists the organization's invoices, oldest first, optionally only those of ?customer_id=, ?subscription_id=
+-// or with ?status=.
++// or with ?status=. Only the page's invoices are built into views.
+ func (s *Server) listInvoices(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+ 	pg, ok := parsePage(w, r)
+ 	if !ok {
+@@ -78,14 +67,22 @@ func (s *Server) listInvoices(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 		writeError(w, http.StatusBadRequest, "invalid_status", "status is open, paid or void")
+ 		return
+ 	}
+-	invs := s.store.ListInvoices(p.OrgID, store.InvoiceFilter{CustomerID: q.Get("customer_id"), SubscriptionID: q.Get("subscription_id"), Status: status})
+-	customers := s.store.Customers(p.OrgID)
++	f := store.InvoiceFilter{CustomerID: q.Get("customer_id"), SubscriptionID: q.Get("subscription_id"), Status: status}
++	var after cursor // the zero cursor starts at the first invoice
++	if pg.after != nil {
++		after = *pg.after
++	}
++	invs, more := s.store.ListInvoicesAfter(p.OrgID, f, after.T, after.ID, pg.limit)
+ 	views := make([]invoiceView, 0, len(invs))
+ 	for _, inv := range invs {
+-		views = append(views, newInvoiceView(inv, findCustomer(customers, inv.CustomerID)))
++		views = append(views, s.viewInvoice(inv))
++	}
++	next := ""
++	if more {
++		last := invs[len(invs)-1]
++		next = encodeCursor(cursor{T: last.CreatedAt, ID: last.ID})
+ 	}
+-	items, next := pageOf(views, invoiceViewKey, pg)
+-	writeJSON(w, http.StatusOK, list{Items: items, NextCursor: next})
++	writeJSON(w, http.StatusOK, list{Items: views, NextCursor: next})
+ }
+ 
+ func (s *Server) createInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+diff --git a/result/internal/api/invoices_list_test.go b/result/internal/api/invoices_list_test.go
+new file mode 100644
+index 0000000..6c8c01a
+--- /dev/null
++++ b/result/internal/api/invoices_list_test.go
+@@ -0,0 +1,317 @@
++package api_test
++
++import (
++	"encoding/base64"
++	"encoding/json"
++	"fmt"
++	"net/http"
++	"reflect"
++	"sort"
++	"strings"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/money"
++	"example.com/tally/internal/store"
++)
++
++// listedInvoice is the part of an invoice in a list answer that these tests read.
++type listedInvoice struct {
++	ID         string `json:"id"`
++	CustomerID string `json:"customer_id"`
++	Customer   *struct {
++		ID   string `json:"id"`
++		Name string `json:"name"`
++	} `json:"customer"`
++}
++
++type invoicePage struct {
++	Items      []listedInvoice `json:"items"`
++	NextCursor string          `json:"next_cursor"`
++}
++
++// invoiceCursor is the cursor that starts a page just after inv, as the API writes them.
++func invoiceCursor(inv store.Invoice) string {
++	b, _ := json.Marshal(map[string]any{"t": inv.CreatedAt, "id": inv.ID})
++	return base64.RawURLEncoding.EncodeToString(b)
++}
++
++// withQuery adds a query parameter to a path that may already have a query.
++func withQuery(path, param string) string {
++	if strings.Contains(path, "?") {
++		return path + "&" + param
++	}
++	return path + "?" + param
++}
++
++// walkInvoices follows next_cursor from path, with pages of limit, and returns the invoices it sees.
++func walkInvoices(t *testing.T, e *apitest.Env, key, path string, limit int) []listedInvoice {
++	t.Helper()
++	var all []listedInvoice
++	first := withQuery(path, fmt.Sprintf("limit=%d", limit))
++	p := first
++	for pages := 0; ; pages++ {
++		if pages > 100000 {
++			t.Fatalf("paging %s does not end", path)
++		}
++		var page invoicePage
++		e.MustDo(http.StatusOK, "GET", p, key, nil, &page)
++		if len(page.Items) > limit {
++			t.Fatalf("%s returned %d items for limit %d", path, len(page.Items), limit)
++		}
++		all = append(all, page.Items...)
++		if page.NextCursor == "" {
++			return all
++		}
++		p = withQuery(first, "cursor="+page.NextCursor)
++	}
++}
++
++// expectedInvoiceIDs is the answer a list should give, computed from the store's export: the invoices of org that match
++// the filter, oldest first, ties by ID.
++func expectedInvoiceIDs(e *apitest.Env, orgID string, match func(store.Invoice) bool) []string {
++	var invs []store.Invoice
++	for _, inv := range e.Store.Export().Invoices {
++		if inv.OrgID == orgID && match(inv) {
++			invs = append(invs, inv)
++		}
++	}
++	sort.Slice(invs, func(i, j int) bool {
++		if !invs[i].CreatedAt.Equal(invs[j].CreatedAt) {
++			return invs[i].CreatedAt.Before(invs[j].CreatedAt)
++		}
++		return invs[i].ID < invs[j].ID
++	})
++	ids := []string{}
++	for _, inv := range invs {
++		ids = append(ids, inv.ID)
++	}
++	return ids
++}
++
++func listedIDs(invs []listedInvoice) []string {
++	ids := []string{}
++	for _, inv := range invs {
++		ids = append(ids, inv.ID)
++	}
++	return ids
++}
++
++func TestListInvoicesPagesFollowTheList(t *testing.T) {
++	e := apitest.New(t)
++	base := apitest.Start
++	ann, err := e.Store.CreateCustomer(e.Acme.ID, "Ann", "ann@example.com", base)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bob, err := e.Store.CreateCustomer(e.Acme.ID, "Bob", "bob@example.com", base)
++	if err != nil {
++		t.Fatal(err)
++	}
++	other, err := e.Store.CreateCustomer(e.Globex.ID, "Gil", "gil@example.com", base)
++	if err != nil {
++		t.Fatal(err)
++	}
++	create := func(org apitest.Org, c store.Customer, sub string, at time.Time) store.Invoice {
++		inv, err := e.Store.CreateInvoice(store.Invoice{OrgID: org.ID, CustomerID: c.ID, SubscriptionID: sub, Currency: money.USD,
++			Lines: []store.Line{{Description: "Seats", Quantity: 2, UnitAmount: 500}}}, at)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return inv
++	}
++	// Creation order is not time order, several invoices share a time, and Globex's invoices interleave.
++	for i, m := range []int{3, 1, 2, 2, 0, 4, 1, 3, 0, 2} {
++		c := ann
++		if i%2 == 1 {
++			c = bob
++		}
++		sub := ""
++		if i%3 == 0 {
++			sub = "sub_1"
++		}
++		inv := create(e.Acme, c, sub, base.Add(time.Duration(m)*time.Minute))
++		if i == 2 {
++			if _, err := e.Store.UpdateInvoice(e.Acme.ID, inv.ID, func(x *store.Invoice) error { x.Status = store.InvoicePaid; return nil }); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if i == 5 {
++			if _, err := e.Store.UpdateInvoice(e.Acme.ID, inv.ID, func(x *store.Invoice) error { x.Status = store.InvoiceVoid; return nil }); err != nil {
++				t.Fatal(err)
++			}
++		}
++		create(e.Globex, other, "", base.Add(time.Duration(m)*time.Minute))
++	}
++	// Bob is deleted (his invoices show no customer) and Ann is renamed (her invoices show the new name).
++	if err := e.Store.DeleteCustomer(e.Acme.ID, bob.ID); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := e.Store.UpdateCustomer(e.Acme.ID, ann.ID, func(c *store.Customer) error { c.Name = "Ann Lee"; return nil }); err != nil {
++		t.Fatal(err)
++	}
++
++	filters := map[string]func(store.Invoice) bool{
++		"":                                   func(store.Invoice) bool { return true },
++		"?status=open":                       func(inv store.Invoice) bool { return inv.Status == store.InvoiceOpen },
++		"?status=paid":                       func(inv store.Invoice) bool { return inv.Status == store.InvoicePaid },
++		"?status=void":                       func(inv store.Invoice) bool { return inv.Status == store.InvoiceVoid },
++		"?customer_id=" + ann.ID:             func(inv store.Invoice) bool { return inv.CustomerID == ann.ID },
++		"?customer_id=" + other.ID:           func(inv store.Invoice) bool { return inv.CustomerID == other.ID },
++		"?subscription_id=sub_1":             func(inv store.Invoice) bool { return inv.SubscriptionID == "sub_1" },
++		"?subscription_id=sub_1&status=open": func(inv store.Invoice) bool { return inv.SubscriptionID == "sub_1" && inv.Status == store.InvoiceOpen },
++	}
++	for query, match := range filters {
++		want := expectedInvoiceIDs(e, e.Acme.ID, match)
++		for _, limit := range []int{1, 2, 3, 100} {
++			if got := listedIDs(walkInvoices(t, e, e.Acme.Key, "/v1/invoices"+query, limit)); !reflect.DeepEqual(got, want) {
++				t.Fatalf("pages of %d for %q = %v, want %v", limit, query, got, want)
++			}
++		}
++	}
++
++	// Views: a deleted customer is null, a renamed one shows its name.
++	for _, inv := range walkInvoices(t, e, e.Acme.Key, "/v1/invoices", 100) {
++		switch inv.CustomerID {
++		case bob.ID:
++			if inv.Customer != nil {
++				t.Fatalf("invoice %s of a deleted customer shows %+v", inv.ID, inv.Customer)
++			}
++		case ann.ID:
++			if inv.Customer == nil || inv.Customer.Name != "Ann Lee" {
++				t.Fatalf("invoice %s shows customer %+v, want Ann Lee", inv.ID, inv.Customer)
++			}
++		}
++	}
++
++	e.MustDo(http.StatusBadRequest, "GET", "/v1/invoices?status=lost", e.Acme.Key, nil, nil)
++	e.MustDo(http.StatusBadRequest, "GET", "/v1/invoices?cursor=zz", e.Acme.Key, nil, nil)
++	e.MustDo(http.StatusBadRequest, "GET", "/v1/invoices?limit=101", e.Acme.Key, nil, nil)
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?customer_id="+other.ID, e.Acme.Key, nil, nil)
++}
++
++func TestListInvoicesFollowsNewInvoices(t *testing.T) {
++	e := apitest.New(t)
++	base := apitest.Start
++	c, err := e.Store.CreateCustomer(e.Acme.ID, "Ann", "ann@example.com", base)
++	if err != nil {
++		t.Fatal(err)
++	}
++	add := func(at time.Time) store.Invoice {
++		inv, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: money.USD,
++			Lines: []store.Line{{Description: "Seats", Quantity: 1, UnitAmount: 100}}}, at)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return inv
++	}
++	for m := 0; m < 5; m++ {
++		add(base.Add(time.Duration(m) * time.Minute))
++	}
++	var first invoicePage
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?limit=2", e.Acme.Key, nil, &first)
++	if len(first.Items) != 2 || first.NextCursor == "" {
++		t.Fatalf("first page = %+v", first)
++	}
++	// Invoices created between two requests: one after everything, and one that sorts before the cursor.
++	newest := add(base.Add(time.Hour))
++	early := add(base.Add(30 * time.Second))
++	var rest invoicePage
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?limit=100&cursor="+first.NextCursor, e.Acme.Key, nil, &rest)
++	want := expectedInvoiceIDs(e, e.Acme.ID, func(store.Invoice) bool { return true })
++	cut := 0
++	for want[cut] != first.Items[len(first.Items)-1].ID {
++		cut++
++	}
++	if got := listedIDs(rest.Items); !reflect.DeepEqual(got, want[cut+1:]) || rest.Items[len(rest.Items)-1].ID != newest.ID || rest.NextCursor != "" {
++		t.Fatalf("rest = %v (next %q), want %v ending with %s (and not %s)", got, rest.NextCursor, want[cut+1:], newest.ID, early.ID)
++	}
++	if got := walkInvoices(t, e, e.Acme.Key, "/v1/invoices", 2); !reflect.DeepEqual(listedIDs(got), want) {
++		t.Fatalf("a walk after the new invoices = %v, want %v", listedIDs(got), want)
++	}
++}
++
++// largeOrg fills e with the target workload: Acme has 60,000 invoices for 5,000 customers and Globex has 60,000 of its own.
++// It returns Acme's invoices, oldest first.
++func largeOrg(t testing.TB, e *apitest.Env) []store.Invoice {
++	t.Helper()
++	base := apitest.Start
++	customers := make([]store.Customer, 5000)
++	for i := range customers {
++		c, err := e.Store.CreateCustomer(e.Acme.ID, fmt.Sprintf("Customer %d", i), fmt.Sprintf("c%d@acme.example", i), base)
++		if err != nil {
++			t.Fatal(err)
++		}
++		customers[i] = c
++	}
++	gil, err := e.Store.CreateCustomer(e.Globex.ID, "Gil", "gil@globex.example", base)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var acme []store.Invoice
++	for i := 0; i < 60000; i++ {
++		at := base.Add(time.Duration(i) * time.Second)
++		sub := ""
++		if i%3 == 0 {
++			sub = fmt.Sprintf("sub_%d", i%50)
++		}
++		inv, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: customers[i%len(customers)].ID, SubscriptionID: sub, Currency: money.USD,
++			Lines: []store.Line{{Description: "Seats", Quantity: int64(1 + i%5), UnitAmount: 1000}}}, at)
++		if err != nil {
++			t.Fatal(err)
++		}
++		acme = append(acme, inv)
++		if i%7 == 0 {
++			if _, err := e.Store.UpdateInvoice(e.Acme.ID, inv.ID, func(x *store.Invoice) error { x.Status = store.InvoicePaid; return nil }); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if i%11 == 0 {
++			if _, err := e.Store.UpdateInvoice(e.Acme.ID, inv.ID, func(x *store.Invoice) error { x.Status = store.InvoiceVoid; return nil }); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if _, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Globex.ID, CustomerID: gil.ID, Currency: money.USD,
++			Lines: []store.Line{{Description: "Seats", Quantity: 1, UnitAmount: 1000}}}, at.Add(500*time.Millisecond)); err != nil {
++			t.Fatal(err)
++		}
++	}
++	return acme
++}
++
++// TestListInvoicesLargeOrganizationPagesAreFast checks the brief's target: a page of GET /v1/invoices answers within 250
++// milliseconds for an organization with 60,000 invoices and 5,000 customers, with another organization's invoices in the store
++// too. Each request is timed three times and the fastest counts, to keep a busy machine from failing it.
++func TestListInvoicesLargeOrganizationPagesAreFast(t *testing.T) {
++	if testing.Short() {
++		t.Skip("builds 120,000 invoices")
++	}
++	e := apitest.New(t)
++	acme := largeOrg(t, e)
++	deep := invoiceCursor(acme[50000])
++	paths := []string{
++		"/v1/invoices",
++		"/v1/invoices?limit=100",
++		"/v1/invoices?cursor=" + deep,
++		"/v1/invoices?status=open&cursor=" + deep,
++		"/v1/invoices?status=void&limit=100",
++		"/v1/invoices?status=paid&limit=100",
++		"/v1/invoices?customer_id=" + acme[0].CustomerID,
++		"/v1/invoices?customer_id=" + acme[0].CustomerID + "&cursor=" + deep,
++		"/v1/invoices?subscription_id=sub_1&limit=100",
++		"/v1/invoices?subscription_id=sub_1&status=open&cursor=" + deep,
++	}
++	for _, p := range paths {
++		fastest := time.Duration(1<<63 - 1)
++		for i := 0; i < 3; i++ {
++			start := time.Now()
++			e.MustDo(http.StatusOK, "GET", p, e.Acme.Key, nil, nil)
++			fastest = min(fastest, time.Since(start))
++		}
++		t.Logf("GET %s: %v", p, fastest)
++		if fastest > 250*time.Millisecond {
++			t.Errorf("GET %s took %v", p, fastest)
++		}
++	}
++}
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..72998b1 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -1,7 +1,8 @@
+ package store
+ 
+ import (
+-	"encoding/json"
++	"math"
++	"slices"
+ 	"sort"
+ 	"strings"
+ 	"time"
+@@ -274,9 +275,27 @@ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 	inv.PaidAt, inv.VoidedAt = nil, nil
+ 	inv = copyInvoice(inv)
+ 	s.invoices[inv.ID] = inv
++	s.indexInvoice(inv)
+ 	return copyInvoice(inv), nil
+ }
+ 
++// indexInvoice adds a stored invoice to its organization's list. It is usually the newest, so this normally appends.
++// The caller holds the lock.
++func (s *Store) indexInvoice(inv Invoice) {
++	ids := s.invoicesByOrg[inv.OrgID]
++	i := sort.Search(len(ids), func(i int) bool { return invoiceAfter(inv.CreatedAt, inv.ID, s.invoices[ids[i]]) })
++	s.invoicesByOrg[inv.OrgID] = slices.Insert(ids, i, inv.ID)
++}
++
++// invoiceAfter reports whether inv comes after the invoice created at t with ID id, in an organization's list (oldest
++// first, ties by ID).
++func invoiceAfter(t time.Time, id string, inv Invoice) bool {
++	if !t.Equal(inv.CreatedAt) {
++		return t.Before(inv.CreatedAt)
++	}
++	return id < inv.ID
++}
++
+ // Invoice returns one of an organization's invoices.
+ func (s *Store) Invoice(orgID, id string) (Invoice, bool) {
+ 	s.mu.Lock()
+@@ -306,29 +325,40 @@ type InvoiceFilter struct {
+ // ListInvoices returns an organization's invoices that match f, oldest first (ties by ID).
+ func (s *Store) ListInvoices(orgID string, f InvoiceFilter) []Invoice {
+ 	s.mu.Lock()
+-	all := make([]Invoice, 0, len(s.invoices))
+-	for _, inv := range s.invoices {
+-		all = append(all, inv)
++	defer s.mu.Unlock()
++	out, _ := s.matchingInvoices(orgID, f, time.Time{}, "", math.MaxInt)
++	return out
++}
++
++// ListInvoicesAfter returns up to limit of an organization's invoices that match f, oldest first (ties by ID), starting
++// after the invoice with ID afterID, which was created at afterT. An afterID of "" starts at the first invoice. more
++// reports whether a matching invoice follows the last one returned.
++func (s *Store) ListInvoicesAfter(orgID string, f InvoiceFilter, afterT time.Time, afterID string, limit int) (invs []Invoice, more bool) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.matchingInvoices(orgID, f, afterT, afterID, limit)
++}
++
++// matchingInvoices is ListInvoicesAfter for a caller that holds the lock. It finds where the page starts by binary search,
++// so the cost follows the organization's own invoices, not the store's.
++func (s *Store) matchingInvoices(orgID string, f InvoiceFilter, afterT time.Time, afterID string, limit int) ([]Invoice, bool) {
++	ids := s.invoicesByOrg[orgID]
++	start := 0
++	if afterID != "" {
++		start = sort.Search(len(ids), func(i int) bool { return invoiceAfter(afterT, afterID, s.invoices[ids[i]]) })
+ 	}
+-	s.mu.Unlock()
+ 	out := []Invoice{}
+-	for _, inv := range all {
+-		c := cloneInvoice(inv)
+-		if c.OrgID != orgID {
++	for _, id := range ids[start:] {
++		inv := s.invoices[id]
++		if (f.CustomerID != "" && inv.CustomerID != f.CustomerID) || (f.SubscriptionID != "" && inv.SubscriptionID != f.SubscriptionID) || (f.Status != "" && inv.Status != f.Status) {
+ 			continue
+ 		}
+-		if (f.CustomerID != "" && c.CustomerID != f.CustomerID) || (f.SubscriptionID != "" && c.SubscriptionID != f.SubscriptionID) || (f.Status != "" && c.Status != f.Status) {
+-			continue
++		if len(out) == limit {
++			return out, true
+ 		}
+-		out = append(out, c)
++		out = append(out, copyInvoice(inv))
+ 	}
+-	sort.Slice(out, func(i, j int) bool {
+-		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+-			return out[i].CreatedAt.Before(out[j].CreatedAt)
+-		}
+-		return out[i].ID < out[j].ID
+-	})
+-	return out
++	return out, false
+ }
+ 
+ // UpdateInvoice changes an invoice with f, which may refuse with an error. Only its status, timestamps and lines change.
+@@ -360,19 +390,6 @@ func copyInvoice(inv Invoice) Invoice {
+ 	return inv
+ }
+ 
+-// cloneInvoice is a deep copy through JSON, which cannot miss a field added later.
+-func cloneInvoice(inv Invoice) Invoice {
+-	b, err := json.Marshal(inv)
+-	if err != nil {
+-		return copyInvoice(inv)
+-	}
+-	var out Invoice
+-	if err := json.Unmarshal(b, &out); err != nil {
+-		return copyInvoice(inv)
+-	}
+-	return out
+-}
+-
+ // ---- payments
+ 
+ // CreatePayment records a payment attempt for one of the organization's invoices.
+diff --git a/result/internal/store/invoices_list_test.go b/result/internal/store/invoices_list_test.go
+new file mode 100644
+index 0000000..23d07b8
+--- /dev/null
++++ b/result/internal/store/invoices_list_test.go
+@@ -0,0 +1,213 @@
++package store
++
++import (
++	"fmt"
++	"reflect"
++	"sort"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/money"
++)
++
++// wantInvoiceIDs is the answer a list should give, computed without the store's own list code: the invoices of the
++// organization that match f, sorted by creation time then ID.
++func wantInvoiceIDs(s *Store, orgID string, f InvoiceFilter) []string {
++	var matching []Invoice
++	for _, inv := range s.Export().Invoices {
++		if inv.OrgID != orgID || (f.CustomerID != "" && inv.CustomerID != f.CustomerID) ||
++			(f.SubscriptionID != "" && inv.SubscriptionID != f.SubscriptionID) || (f.Status != "" && inv.Status != f.Status) {
++			continue
++		}
++		matching = append(matching, inv)
++	}
++	sort.Slice(matching, func(i, j int) bool {
++		if !matching[i].CreatedAt.Equal(matching[j].CreatedAt) {
++			return matching[i].CreatedAt.Before(matching[j].CreatedAt)
++		}
++		return matching[i].ID < matching[j].ID
++	})
++	ids := []string{}
++	for _, inv := range matching {
++		ids = append(ids, inv.ID)
++	}
++	return ids
++}
++
++// walkInvoicePages follows ListInvoicesAfter from the start, pages of limit, and returns the IDs it sees.
++func walkInvoicePages(t *testing.T, s *Store, orgID string, f InvoiceFilter, limit int) []string {
++	t.Helper()
++	ids := []string{}
++	var afterT time.Time
++	afterID := ""
++	for pages := 0; ; pages++ {
++		if pages > 10000 {
++			t.Fatal("paging does not end")
++		}
++		page, more := s.ListInvoicesAfter(orgID, f, afterT, afterID, limit)
++		if len(page) > limit || (more && len(page) == 0) {
++			t.Fatalf("page of %d for limit %d (more %v)", len(page), limit, more)
++		}
++		for _, inv := range page {
++			ids = append(ids, inv.ID)
++		}
++		if !more {
++			return ids
++		}
++		last := page[len(page)-1]
++		afterT, afterID = last.CreatedAt, last.ID
++	}
++}
++
++func TestListInvoicesPagesMatchWholeList(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	b := newOrg(t, s, "B")
++	ca, _ := s.CreateCustomer(a.ID, "Ann", "ann@example.com", t0)
++	cb, _ := s.CreateCustomer(b.ID, "Ben", "ben@example.com", t0)
++	// Creation order is not time order, several invoices share a time, and the organizations' invoices interleave.
++	minutes := []int{5, 1, 3, 3, 0, 5, 2, 3, 1, 4, 0, 4}
++	for i, m := range minutes {
++		org, c := a, ca
++		if i%3 == 2 {
++			org, c = b, cb
++		}
++		inv := Invoice{OrgID: org.ID, CustomerID: c.ID, Currency: money.EUR, Lines: []Line{{Description: "x", Quantity: 1, UnitAmount: 100}}}
++		if i%4 != 3 {
++			inv.SubscriptionID = fmt.Sprintf("sub_%d", i%2)
++		}
++		created, err := s.CreateInvoice(inv, t0.Add(time.Duration(m)*time.Minute))
++		if err != nil {
++			t.Fatal(err)
++		}
++		if i == 4 {
++			if _, err := s.UpdateInvoice(org.ID, created.ID, func(x *Invoice) error { x.Status = InvoicePaid; return nil }); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if i == 7 {
++			if _, err := s.UpdateInvoice(org.ID, created.ID, func(x *Invoice) error { x.Status = InvoiceVoid; return nil }); err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	filters := []InvoiceFilter{
++		{}, {CustomerID: ca.ID}, {CustomerID: cb.ID}, {CustomerID: "cus_nope"}, {SubscriptionID: "sub_0"}, {SubscriptionID: "sub_1"},
++		{Status: InvoiceOpen}, {Status: InvoicePaid}, {Status: InvoiceVoid}, {CustomerID: ca.ID, Status: InvoiceOpen},
++		{SubscriptionID: "sub_1", Status: InvoicePaid},
++	}
++	for _, org := range []Org{a, b} {
++		for _, f := range filters {
++			want := wantInvoiceIDs(s, org.ID, f)
++			if got := s.ListInvoices(org.ID, f); !reflect.DeepEqual(invoiceIDs(got), want) {
++				t.Fatalf("ListInvoices(%+v) = %v, want %v", f, invoiceIDs(got), want)
++			}
++			for limit := 1; limit <= len(want)+1; limit++ {
++				if got := walkInvoicePages(t, s, org.ID, f, limit); !reflect.DeepEqual(got, want) {
++					t.Fatalf("pages of %d for %+v = %v, want %v", limit, f, got, want)
++				}
++			}
++		}
++	}
++}
++
++func invoiceIDs(invs []Invoice) []string {
++	ids := []string{}
++	for _, inv := range invs {
++		ids = append(ids, inv.ID)
++	}
++	return ids
++}
++
++func TestListInvoicesAfterSeesInsertsBetweenPages(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Ann", "ann@example.com", t0)
++	add := func(at time.Time) Invoice {
++		inv, err := s.CreateInvoice(Invoice{OrgID: a.ID, CustomerID: c.ID, Currency: money.EUR, Lines: []Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, at)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return inv
++	}
++	for m := 0; m < 4; m++ {
++		add(t0.Add(time.Duration(10+m) * time.Minute))
++	}
++	first, more := s.ListInvoicesAfter(a.ID, InvoiceFilter{}, time.Time{}, "", 2)
++	if !more || len(first) != 2 {
++		t.Fatalf("first page = %d items, more %v", len(first), more)
++	}
++	last := first[1]
++	// One invoice lands before the cursor (a clock that moved back), one after everything.
++	add(t0.Add(5 * time.Minute))
++	after := add(t0.Add(time.Hour))
++	page, more := s.ListInvoicesAfter(a.ID, InvoiceFilter{}, last.CreatedAt, last.ID, 10)
++	if more {
++		t.Fatalf("the rest should fit one page: %v", invoiceIDs(page))
++	}
++	all := wantInvoiceIDs(s, a.ID, InvoiceFilter{})
++	pos := 0
++	for all[pos] != last.ID {
++		pos++
++	}
++	// The rest of the list, which is everything after the cursor's position, the invoice that landed before it excluded.
++	if want := all[pos+1:]; !reflect.DeepEqual(invoiceIDs(page), want) || page[len(page)-1].ID != after.ID {
++		t.Fatalf("rest after the cursor = %v, want %v ending with %s", invoiceIDs(page), want, after.ID)
++	}
++	if !reflect.DeepEqual(walkInvoicePages(t, s, a.ID, InvoiceFilter{}, 1), all) {
++		t.Fatal("a walk after the inserts does not match the whole list")
++	}
++}
++
++func TestListInvoicesFollowsStatusChanges(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Ann", "ann@example.com", t0)
++	inv, err := s.CreateInvoice(Invoice{OrgID: a.ID, CustomerID: c.ID, Currency: money.EUR, Lines: []Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := s.UpdateInvoice(a.ID, inv.ID, func(x *Invoice) error { x.Status = InvoiceVoid; return nil }); err != nil {
++		t.Fatal(err)
++	}
++	if got := s.ListInvoices(a.ID, InvoiceFilter{Status: InvoiceOpen}); len(got) != 0 {
++		t.Fatalf("open invoices after voiding = %v", invoiceIDs(got))
++	}
++	if got := walkInvoicePages(t, s, a.ID, InvoiceFilter{Status: InvoiceVoid}, 1); !reflect.DeepEqual(got, []string{inv.ID}) {
++		t.Fatalf("void invoices = %v", got)
++	}
++}
++
++func TestFromStateRebuildsInvoiceOrder(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	b := newOrg(t, s, "B")
++	ca, _ := s.CreateCustomer(a.ID, "Ann", "ann@example.com", t0)
++	cb, _ := s.CreateCustomer(b.ID, "Ben", "ben@example.com", t0)
++	for i := 0; i < 20; i++ {
++		org, c := a, ca
++		if i%2 == 1 {
++			org, c = b, cb
++		}
++		if _, err := s.CreateInvoice(Invoice{OrgID: org.ID, CustomerID: c.ID, Currency: money.EUR, Lines: []Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, t0.Add(time.Duration((i*7)%5)*time.Minute)); err != nil {
++			t.Fatal(err)
++		}
++	}
++	st := s.Export()
++	for i, j := 0, len(st.Invoices)-1; i < j; i, j = i+1, j-1 {
++		st.Invoices[i], st.Invoices[j] = st.Invoices[j], st.Invoices[i]
++	}
++	loaded, err := FromState(st)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, org := range []Org{a, b} {
++		want := wantInvoiceIDs(s, org.ID, InvoiceFilter{})
++		if got := invoiceIDs(loaded.ListInvoices(org.ID, InvoiceFilter{})); !reflect.DeepEqual(got, want) {
++			t.Fatalf("loaded list = %v, want %v", got, want)
++		}
++		if got := walkInvoicePages(t, loaded, org.ID, InvoiceFilter{}, 3); !reflect.DeepEqual(got, want) {
++			t.Fatalf("loaded pages = %v, want %v", got, want)
++		}
++	}
++}
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..2381777 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -165,6 +165,13 @@ func FromState(st State) (*Store, error) {
+ 			return nil, err
+ 		}
+ 		s.invoices[inv.ID] = copyInvoice(inv)
++		s.invoicesByOrg[inv.OrgID] = append(s.invoicesByOrg[inv.OrgID], inv.ID)
++	}
++	for _, ids := range s.invoicesByOrg {
++		sort.Slice(ids, func(i, j int) bool {
++			a, b := s.invoices[ids[i]], s.invoices[ids[j]]
++			return invoiceAfter(a.CreatedAt, a.ID, b)
++		})
+ 	}
+ 	for _, p := range st.Payments {
+ 		if err := dup("payment", p.ID, seen); err != nil {
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..e88d829 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -51,6 +51,10 @@ type Store struct {
+ 	endpoints map[string]WebhookEndpoint
+ 	events    map[string]Event
+ 	delivs    map[string]Delivery
++
++	// invoicesByOrg lists each organization's invoice IDs, oldest first (ties by ID), so that listing one organization's
++	// invoices does not visit the others'.
++	invoicesByOrg map[string][]string
+ }
+ 
+ type memberKey struct{ org, user string }
+@@ -63,6 +67,7 @@ func New() *Store {
+ 		customers: map[string]Customer{}, customersByEmail: map[string]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
++		invoicesByOrg: map[string][]string{},
+ 	}
+ }
+ 

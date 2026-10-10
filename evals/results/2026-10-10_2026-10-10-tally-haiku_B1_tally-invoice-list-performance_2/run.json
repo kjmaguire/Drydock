@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-invoice-list-performance",
+  "taskClass": "tested refactor",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "9bcfdddbdbf70ae20ddae6507d4420a5c03691a4",
+  "startedAt": "2026-10-10T05:14:31.837286554Z",
+  "wallMs": 313115,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1013,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3639,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t2.582s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.008s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.004s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.010s\nok  \texample.com/tally/internal/reports\t0.003s\nok  \texample.com/tally/internal/snapshot\t0.011s\nok  \texample.com/tally/internal/store\t0.004s\nok  \texample.com/tally/internal/subscriptions\t0.007s\nok  \texample.com/tally/internal/webhooks\t0.006s\n"
+      }
+    ],
+    "durationMs": 4680
+  },
+  "costUsd": 0.21351952,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 50,
+    "output": 58037,
+    "cacheRead": 2236026,
+    "cacheWrite": 120538
+  },
+  "sessions": 1,
+  "modelTurns": 40,
+  "toolUses": {
+    "Bash": 18,
+    "Edit": 14,
+    "Read": 4,
+    "Write": 3
+  }
+}

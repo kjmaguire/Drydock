@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-invite-tokens",
+  "taskClass": "security review",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "c5ccee2dee598db3ae0aa066a4d45570649621d7",
+  "startedAt": "2026-10-10T05:17:32.011779938Z",
+  "wallMs": 156626,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 875,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1630,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.016s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.005s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.007s\nok  \texample.com/tally/internal/reports\t0.005s\nok  \texample.com/tally/internal/snapshot\t0.013s\nok  \texample.com/tally/internal/store\t0.003s\nok  \texample.com/tally/internal/subscriptions\t0.005s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2513
+  },
+  "costUsd": 0.04203148,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 42,
+    "output": 30907,
+    "cacheRead": 1030858,
+    "cacheWrite": 81326
+  },
+  "sessions": 2,
+  "reviews": [
+    {
+      "verdict": "SHIP",
+      "by": "agt_ed1e3a15810a"
+    }
+  ],
+  "coreTaskId": "task_899c4a11446b"
+}

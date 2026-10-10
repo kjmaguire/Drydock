@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `Runner` gets `Shutdown(ctx)`, `Pending()` and `ErrStopped`. `Stop()` runs Shutdown with a 30s timeout. Workers recover panics, every job gets a cancelable context, and Enqueue after shutdown returns `ErrStopped` instead of panicking.\n- `cmd/tally` calls `Shutdown` on SIGTERM before `snapshot.Save`.\n- New tests in `internal/jobs/jobs_test.go` cover the shutdown paths, pending order, panic recovery and goroutine cleanup. `go build ./...`, `go vet ./...` and `go test ./...` all pass.",
+    "data": {},
+    "created": 1791609555484
+  },
+  {
+    "id": 2,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 720ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-2/data/runs/run_123569a9e001/checks/build-1791609555603790744.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 719,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609556323
+  },
+  {
+    "id": 3,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1s",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-2/data/runs/run_123569a9e001/checks/test-1791609556325973951.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 995,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609557322
+  },
+  {
+    "id": 4,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 830ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-2/data/runs/run_123569a9e001/checks/lint-1791609557324620704.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 830,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609558155
+  },
+  {
+    "id": 5,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-2/data/runs/run_123569a9e001/checks/secrets-1791609558179841625.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609558181
+  },
+  {
+    "id": 6,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +460 -14",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-2/data/runs/run_123569a9e001/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 460,
+      "Deletions": 14,
+      "base": "7d94b5eb76efc0393965453a50c12ba79a53d884",
+      "commit": "2b62305c0caf8aae932556f719f038a6ecf24738"
+    },
+    "created": 1791609558347
+  },
+  {
+    "id": 7,
+    "taskId": "task_a7fa05f1530b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 2b62305c0c",
+    "ref": "2b62305c0caf8aae932556f719f038a6ecf24738",
+    "data": {},
+    "created": 1791609558348
+  }
+]
