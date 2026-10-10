@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `RenewDue` creates and charges at most one renewal invoice per (subscription, period start), including when several calls run at once. The period is claimed atomically in the store, and a stale renewal changes nothing.\n- A renewal whose gateway call is unavailable still moves the subscription to its next period. The invoice stays open and the status is unchanged. The error is returned, and the other subscriptions are still processed.\n- `go build ./...`, `go vet ./...` and `go test ./...` pass, with new tests covering concurrent calls, gateway-down retries, and continuation after a failure. E\n...[truncated]",
+    "data": {},
+    "created": 1791609942447
+  },
+  {
+    "id": 2,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 2.14s",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-3/data/runs/run_b87b214bd83c/checks/build-1791609942565684032.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 2135,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609944701
+  },
+  {
+    "id": 3,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.74s",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-3/data/runs/run_b87b214bd83c/checks/test-1791609944703610586.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1735,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609946438
+  },
+  {
+    "id": 4,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.38s",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-3/data/runs/run_b87b214bd83c/checks/lint-1791609946441535488.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1382,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609947824
+  },
+  {
+    "id": 5,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-3/data/runs/run_b87b214bd83c/checks/secrets-1791609947845763401.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609947846
+  },
+  {
+    "id": 6,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +291 -45",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-3/data/runs/run_b87b214bd83c/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 291,
+      "Deletions": 45,
+      "base": "c8ef60f66712b60e2e85e88d57ccb53fc3bd15c7",
+      "commit": "96b5b1be532419a5b3b28467caf73a7becba8282"
+    },
+    "created": 1791609948183
+  },
+  {
+    "id": 7,
+    "taskId": "task_f2755200ebed",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 96b5b1be53",
+    "ref": "96b5b1be532419a5b3b28467caf73a7becba8282",
+    "data": {},
+    "created": 1791609948185
+  }
+]
