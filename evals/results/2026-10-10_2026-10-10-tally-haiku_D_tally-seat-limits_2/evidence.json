@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seats are enforced in the store, under its lock: an invite to a non-viewer role and a viewer-to-member role change return 402 `seat_limit_reached` when no seat is free, and a plan change below the seats used returns 409 `over_seat_limit` and changes nothing. `GET /v1/org` reports `seats`.\n- `go build ./...`, `go vet ./...` and `go test ./...` pass, with new tests for each rule, including a concurrent invite race with one seat left where exactly one invite succeeds.",
+    "data": {},
+    "created": 1791610207542
+  },
+  {
+    "id": 2,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 550ms",
+    "ref": "/tmp/drydock-trial-3752278835/tally-seat-limits-D-2/data/runs/run_4b0fa0521755/checks/build-1791610207579073523.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 550,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610208129
+  },
+  {
+    "id": 3,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 710ms",
+    "ref": "/tmp/drydock-trial-3752278835/tally-seat-limits-D-2/data/runs/run_4b0fa0521755/checks/test-1791610208131796835.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 707,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610208839
+  },
+  {
+    "id": 4,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 460ms",
+    "ref": "/tmp/drydock-trial-3752278835/tally-seat-limits-D-2/data/runs/run_4b0fa0521755/checks/lint-1791610208840787263.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 464,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610209305
+  },
+  {
+    "id": 5,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-3752278835/tally-seat-limits-D-2/data/runs/run_4b0fa0521755/checks/secrets-1791610209321513924.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 14,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610209321
+  },
+  {
+    "id": 6,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +253 -4",
+    "ref": "/tmp/drydock-trial-3752278835/tally-seat-limits-D-2/data/runs/run_4b0fa0521755/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 253,
+      "Deletions": 4,
+      "base": "ab94da71697d0b625251a0a759692be091952373",
+      "commit": "7681cb0333e11734dae995a9ad23120a8243055f"
+    },
+    "created": 1791610209437
+  },
+  {
+    "id": 7,
+    "taskId": "task_1ebc14c5793b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 7681cb0333",
+    "ref": "7681cb0333e11734dae995a9ad23120a8243055f",
+    "data": {},
+    "created": 1791610209438
+  }
+]
