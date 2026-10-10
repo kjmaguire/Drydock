@@ -1,0 +1,840 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..794fd14 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -437,3 +437,156 @@ func TestOrgSettings(t *testing.T) {
+ 		t.Fatalf("a member changes the org: %s", r)
+ 	}
+ }
++
++func TestDeleteAndRestoreCustomer(t *testing.T) {
++	e := apitest.New(t)
++	jane := e.CreateCustomer(e.Acme, "Jane Doe", "jane@example.com")
++	john := e.CreateCustomer(e.Acme, "John Roe", "john@example.com")
++	p := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	var inv struct {
++		ID       string `json:"id"`
++		Customer *struct {
++			ID, Name, Email string
++			Deleted         bool
++		} `json:"customer"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": jane.ID, "currency": "USD",
++		"lines": []map[string]any{{"description": "Setup", "quantity": 1, "unit_amount": 500}}}, &inv)
++
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+jane.ID, e.Acme.Key, nil, nil)
++	if n := len(e.Store.Events(e.Acme.ID, "customer.deleted")); n != 1 {
++		t.Fatalf("customer.deleted events = %d", n)
++	}
++	for _, c := range []struct {
++		method string
++		body   any
++	}{{"GET", nil}, {"PATCH", map[string]string{"name": "Changed"}}, {"DELETE", nil}} {
++		if r := e.Do(c.method, "/v1/customers/"+jane.ID, e.Acme.Key, c.body); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++			t.Fatalf("%s on a deleted customer: %s", c.method, r)
++		}
++	}
++	if r := e.Do("POST", "/v1/customers/"+john.ID+"/restore", e.Acme.Key, nil); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("restoring a customer that is not deleted: %s", r)
++	}
++	if r := e.Do("DELETE", "/v1/customers/"+jane.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {
++		t.Fatalf("deleting twice: %s", r)
++	}
++
++	var page struct {
++		Items []store.Customer `json:"items"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/customers", e.Acme.Key, nil, &page)
++	if len(page.Items) != 1 || page.Items[0].ID != john.ID {
++		t.Fatalf("list = %+v", page.Items)
++	}
++	page.Items = nil
++	e.MustDo(http.StatusOK, "GET", "/v1/customers?q=jane", e.Acme.Key, nil, &page)
++	if len(page.Items) != 0 {
++		t.Fatalf("search finds the deleted customer: %+v", page.Items)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/customers?email=jane@example.com", e.Acme.Key, nil, &page)
++	if len(page.Items) != 0 {
++		t.Fatalf("email lookup finds the deleted customer: %+v", page.Items)
++	}
++	rows, err := csv.NewReader(strings.NewReader(string(e.MustDo(http.StatusOK, "GET", "/v1/customers/export.csv", e.Acme.Key, nil, nil).Body))).ReadAll()
++	if err != nil || len(rows) != 2 || rows[1][0] != john.ID {
++		t.Fatalf("csv = %v, %v", rows, err)
++	}
++
++	if r := e.Do("POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": jane.ID, "currency": "USD",
++		"lines": []map[string]any{{"description": "x", "quantity": 1, "unit_amount": 1}}}); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("invoice for a deleted customer: %s", r)
++	}
++	if r := e.Do("POST", "/v1/subscriptions", e.Acme.Key, map[string]any{"customer_id": jane.ID, "plan_id": p.ID}); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("subscription for a deleted customer: %s", r)
++	}
++
++	// Its invoice still names it, marked as deleted.
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+inv.ID, e.Acme.Key, nil, &inv)
++	if inv.Customer == nil || inv.Customer.ID != jane.ID || inv.Customer.Name != "Jane Doe" || !inv.Customer.Deleted {
++		t.Fatalf("invoice customer = %+v", inv.Customer)
++	}
++	var raw struct {
++		Customer map[string]any `json:"customer"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+inv.ID, e.Acme.Key, nil, &raw)
++	if len(raw.Customer) != 4 || raw.Customer["deleted"] != true {
++		t.Fatalf("invoice customer JSON = %v", raw.Customer)
++	}
++	var invs struct {
++		Items []struct {
++			Customer map[string]any `json:"customer"`
++		} `json:"items"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?customer_id="+jane.ID, e.Acme.Key, nil, &invs)
++	if len(invs.Items) != 1 || invs.Items[0].Customer["deleted"] != true {
++		t.Fatalf("invoice list = %+v", invs)
++	}
++
++	// Its email address is free again, and restoring it then conflicts.
++	again := e.CreateCustomer(e.Acme, "Jane Again", "jane@example.com")
++	if r := e.Do("POST", "/v1/customers/"+jane.ID+"/restore", e.Acme.Key, nil); r.Code != http.StatusConflict || r.Map(t)["error"] != "email_taken" {
++		t.Fatalf("restore over another customer's email: %s", r)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+again.ID, e.Acme.Key, nil, nil)
++	var restored store.Customer
++	e.MustDo(http.StatusOK, "POST", "/v1/customers/"+jane.ID+"/restore", e.Acme.Key, nil, &restored)
++	if restored.ID != jane.ID || restored.Email != "jane@example.com" || restored.DeletedAt != nil {
++		t.Fatalf("restored = %+v", restored)
++	}
++	if n := len(e.Store.Events(e.Acme.ID, "customer.updated")); n == 0 {
++		t.Fatal("restoring sent no customer.updated event")
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/customers/"+jane.ID, e.Acme.Key, nil, &restored)
++	if r := e.Do("GET", "/v1/customers/"+jane.ID, e.Globex.Key, nil); r.Code != http.StatusNotFound {
++		t.Fatalf("restored customer seen by another org: %s", r)
++	}
++
++	// Restoring works up to 30 days after a deletion; after that the customer is purged, and its invoice names no one.
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+jane.ID, e.Acme.Key, nil, nil)
++	e.Clock.Advance(30 * 24 * time.Hour)
++	if r := e.Do("POST", "/v1/customers/"+jane.ID+"/restore", e.Acme.Key, nil); r.Code != http.StatusOK {
++		t.Fatalf("restore at 30 days: %s", r)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+jane.ID, e.Acme.Key, nil, nil)
++	e.Clock.Advance(31 * 24 * time.Hour)
++	if r := e.Do("POST", "/v1/customers/"+jane.ID+"/restore", e.Acme.Key, nil); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("restore at 31 days: %s", r)
++	}
++	if n := e.Store.PurgeDeletedCustomers(e.Clock.Now()); n != 2 { // jane, and again, deleted above
++		t.Fatalf("purged %d customers, want 2", n)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+inv.ID, e.Acme.Key, nil, &inv)
++	if inv.Customer != nil {
++		t.Fatalf("invoice of a purged customer names it: %+v", inv.Customer)
++	}
++}
++
++func TestDeleteCustomerWithActiveSubscription(t *testing.T) {
++	e := apitest.New(t)
++	jane := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	p := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	var sub store.Subscription
++	e.MustDo(http.StatusCreated, "POST", "/v1/subscriptions", e.Acme.Key, map[string]any{"customer_id": jane.ID, "plan_id": p.ID}, &sub)
++	r := e.Do("DELETE", "/v1/customers/"+jane.ID, e.Acme.Key, nil)
++	if r.Code != http.StatusConflict || r.Map(t)["error"] != "has_active_subscriptions" {
++		t.Fatalf("delete with an active subscription: %s", r)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/customers/"+jane.ID, e.Acme.Key, nil, nil)
++	e.MustDo(http.StatusOK, "POST", "/v1/subscriptions/"+sub.ID+"/cancel", e.Acme.Key, nil, nil)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+jane.ID, e.Acme.Key, nil, nil)
++}
++
++// A customer's email is looked up within its own organization only.
++func TestCustomerEmailLookupStaysInOrganization(t *testing.T) {
++	e := apitest.New(t)
++	mine := e.CreateCustomer(e.Acme, "Acme Jane", "shared@example.com")
++	e.CreateCustomer(e.Globex, "Globex Jane", "shared@example.com")
++	var page struct {
++		Items []store.Customer `json:"items"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/customers?email=shared@example.com", e.Acme.Key, nil, &page)
++	if len(page.Items) != 1 || page.Items[0].ID != mine.ID {
++		t.Fatalf("Acme's email lookup = %+v", page.Items)
++	}
++}
+diff --git a/start/internal/api/customers.go b/result/internal/api/customers.go
+index fec0df7..c6aeb06 100644
+--- a/start/internal/api/customers.go
++++ b/result/internal/api/customers.go
+@@ -107,9 +107,10 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request, p auth.P
+ 	writeJSON(w, http.StatusOK, c)
+ }
+ 
++// deleteCustomer soft-deletes a customer: it is hidden from the API until it is restored, and its invoices keep it.
+ func (s *Server) deleteCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+ 	id := r.PathValue("id")
+-	if err := s.store.DeleteCustomer(p.OrgID, id); err != nil {
++	if err := s.store.SoftDeleteCustomer(p.OrgID, id, s.clock.Now()); err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
+@@ -117,6 +118,17 @@ func (s *Server) deleteCustomer(w http.ResponseWriter, r *http.Request, p auth.P
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+ 
++// restoreCustomer undoes a deletion made within the last 30 days. Restoring is announced as customer.updated.
++func (s *Server) restoreCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	c, err := s.store.RestoreCustomer(p.OrgID, r.PathValue("id"), s.clock.Now())
++	if err != nil {
++		s.storeError(w, err)
++		return
++	}
++	s.publish(r.Context(), p.OrgID, "customer.updated", c)
++	writeJSON(w, http.StatusOK, c)
++}
++
+ // exportCustomers answers the organization's customers as CSV, oldest first.
+ func (s *Server) exportCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+ 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+diff --git a/start/internal/api/invoices.go b/result/internal/api/invoices.go
+index 843d000..8ba26d9 100644
+--- a/start/internal/api/invoices.go
++++ b/result/internal/api/invoices.go
+@@ -22,18 +22,19 @@ type invoiceView struct {
+ 	Customer       *customerRef `json:"customer"`
+ }
+ 
+-// customerRef is the customer shown on an invoice; null when the customer was deleted.
++// customerRef is the customer shown on an invoice. It is null when the customer was purged; a deleted customer is marked so.
+ type customerRef struct {
+-	ID    string `json:"id"`
+-	Name  string `json:"name"`
+-	Email string `json:"email"`
++	ID      string `json:"id"`
++	Name    string `json:"name"`
++	Email   string `json:"email"`
++	Deleted bool   `json:"deleted,omitempty"`
+ }
+ 
+ func newInvoiceView(inv store.Invoice, c *store.Customer) invoiceView {
+ 	t := billing.Compute(inv)
+ 	v := invoiceView{Invoice: inv, Totals: t, TotalFormatted: money.Format(t.Total, inv.Currency), Description: describe(inv.Lines)}
+ 	if c != nil {
+-		v.Customer = &customerRef{ID: c.ID, Name: c.Name, Email: c.Email}
++		v.Customer = &customerRef{ID: c.ID, Name: c.Name, Email: c.Email, Deleted: c.DeletedAt != nil}
+ 	}
+ 	return v
+ }
+@@ -48,7 +49,7 @@ func describe(lines []store.Line) string {
+ }
+ 
+ func (s *Server) viewInvoice(inv store.Invoice) invoiceView {
+-	if c, ok := s.store.Customer(inv.OrgID, inv.CustomerID); ok {
++	if c, ok := s.store.CustomerWithDeleted(inv.OrgID, inv.CustomerID); ok {
+ 		return newInvoiceView(inv, &c)
+ 	}
+ 	return newInvoiceView(inv, nil)
+@@ -79,7 +80,7 @@ func (s *Server) listInvoices(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 		return
+ 	}
+ 	invs := s.store.ListInvoices(p.OrgID, store.InvoiceFilter{CustomerID: q.Get("customer_id"), SubscriptionID: q.Get("subscription_id"), Status: status})
+-	customers := s.store.Customers(p.OrgID)
++	customers := s.store.CustomersWithDeleted(p.OrgID)
+ 	views := make([]invoiceView, 0, len(invs))
+ 	for _, inv := range invs {
+ 		views = append(views, newInvoiceView(inv, findCustomer(customers, inv.CustomerID)))
+diff --git a/start/internal/api/respond.go b/result/internal/api/respond.go
+index f27c62b..c26a3ad 100644
+--- a/start/internal/api/respond.go
++++ b/result/internal/api/respond.go
+@@ -40,6 +40,8 @@ func (s *Server) storeError(w http.ResponseWriter, err error) {
+ 		writeError(w, http.StatusNotFound, "not_found", "no such object")
+ 	case errors.Is(err, store.ErrEmailTaken):
+ 		writeError(w, http.StatusConflict, "email_taken", err.Error())
++	case errors.Is(err, store.ErrActiveSubscriptions):
++		writeError(w, http.StatusConflict, "has_active_subscriptions", err.Error())
+ 	case errors.Is(err, store.ErrAlreadyMember):
+ 		writeError(w, http.StatusConflict, "already_member", err.Error())
+ 	case errors.Is(err, store.ErrConflict):
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..e44216e 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -104,6 +104,7 @@ func (s *Server) routes() {
+ 	m.HandleFunc("GET /v1/customers/{id}", s.authed(s.getCustomer))
+ 	m.HandleFunc("PATCH /v1/customers/{id}", s.authed(s.updateCustomer))
+ 	m.HandleFunc("DELETE /v1/customers/{id}", s.authed(s.deleteCustomer))
++	m.HandleFunc("POST /v1/customers/{id}/restore", s.authed(s.restoreCustomer))
+ 
+ 	m.HandleFunc("GET /v1/plans", s.authed(s.listPlans))
+ 	m.HandleFunc("POST /v1/plans", s.authed(s.createPlan))
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..a0d8ae8 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -108,9 +108,13 @@ func (s *Store) CreateSubscription(sub Subscription, now time.Time) (Subscriptio
+ 	}
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	if _, ok := s.customers[sub.CustomerID]; !ok {
++	c, ok := s.customers[sub.CustomerID]
++	if !ok || c.DeletedAt != nil {
+ 		return Subscription{}, ErrNotFound
+ 	}
++	if c.OrgID != sub.OrgID {
++		return Subscription{}, ErrCustomerOrgMismatch
++	}
+ 	if p, ok := s.plans[sub.PlanID]; !ok || p.OrgID != sub.OrgID {
+ 		return Subscription{}, ErrNotFound
+ 	}
+@@ -261,7 +265,7 @@ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 		return Invoice{}, ErrNotFound
+ 	}
+ 	c, ok := s.customers[inv.CustomerID]
+-	if !ok {
++	if !ok || c.DeletedAt != nil {
+ 		return Invoice{}, ErrNotFound
+ 	}
+ 	if c.OrgID != inv.OrgID {
+diff --git a/start/internal/store/customers.go b/result/internal/store/customers.go
+index 73ff6bc..1c4601a 100644
+--- a/start/internal/store/customers.go
++++ b/result/internal/store/customers.go
+@@ -6,6 +6,13 @@ import (
+ 	"time"
+ )
+ 
++// customerRetentionDays is how long a deleted customer can be restored before it is purged.
++const customerRetentionDays = 30
++
++// deletedBefore returns the cut-off for deleted customers at now: a customer deleted before it has been deleted for more
++// than customerRetentionDays, so it can no longer be restored and PurgeDeletedCustomers removes it.
++func deletedBefore(now time.Time) time.Time { return now.UTC().AddDate(0, 0, -customerRetentionDays) }
++
+ // CreateCustomer adds a customer to an organization. A customer's email address is unique within the organization,
+ // ignoring case.
+ func (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Customer, error) {
+@@ -18,8 +25,8 @@ func (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Custom
+ 	if _, ok := s.orgs[orgID]; !ok {
+ 		return Customer{}, ErrNotFound
+ 	}
+-	key := normEmail(email)
+-	if id, ok := s.customersByEmail[key]; ok && s.customers[id].OrgID == orgID {
++	key := emailKey{orgID, normEmail(email)}
++	if _, ok := s.customersByEmail[key]; ok {
+ 		return Customer{}, ErrEmailTaken
+ 	}
+ 	c := Customer{ID: s.newID("cus"), OrgID: orgID, Name: name, Email: email, CreatedAt: now.UTC()}
+@@ -28,8 +35,19 @@ func (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Custom
+ 	return c, nil
+ }
+ 
+-// Customer returns one of an organization's customers.
++// Customer returns one of an organization's customers. A deleted customer is not found.
+ func (s *Store) Customer(orgID, id string) (Customer, bool) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	c, ok := s.customers[id]
++	if !ok || c.OrgID != orgID || c.DeletedAt != nil {
++		return Customer{}, false
++	}
++	return copyCustomer(c), true
++}
++
++// CustomerWithDeleted returns one of an organization's customers, deleted ones included (for the invoices that name them).
++func (s *Store) CustomerWithDeleted(orgID, id string) (Customer, bool) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	c, ok := s.customers[id]
+@@ -39,21 +57,33 @@ func (s *Store) Customer(orgID, id string) (Customer, bool) {
+ 	return copyCustomer(c), true
+ }
+ 
+-// CustomerByID returns a customer of any organization (background jobs and the admin tool).
++// CustomerByID returns a live customer of any organization (background jobs and the admin tool).
+ func (s *Store) CustomerByID(id string) (Customer, bool) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	c, ok := s.customers[id]
+-	return copyCustomer(c), ok
++	if !ok || c.DeletedAt != nil {
++		return Customer{}, false
++	}
++	return copyCustomer(c), true
+ }
+ 
+-// Customers returns an organization's customers, oldest first.
++// Customers returns an organization's customers that are not deleted, oldest first.
+ func (s *Store) Customers(orgID string) []Customer {
++	return s.customersWhere(orgID, func(c Customer) bool { return c.DeletedAt == nil })
++}
++
++// CustomersWithDeleted returns all of an organization's customers, deleted ones included, oldest first.
++func (s *Store) CustomersWithDeleted(orgID string) []Customer {
++	return s.customersWhere(orgID, func(Customer) bool { return true })
++}
++
++func (s *Store) customersWhere(orgID string, keep func(Customer) bool) []Customer {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	out := []Customer{}
+ 	for _, c := range s.customers {
+-		if c.OrgID == orgID {
++		if c.OrgID == orgID && keep(c) {
+ 			out = append(out, copyCustomer(c))
+ 		}
+ 	}
+@@ -61,7 +91,8 @@ func (s *Store) Customers(orgID string) []Customer {
+ 	return out
+ }
+ 
+-// SearchCustomers returns an organization's customers whose name or email contains q, ignoring case, oldest first.
++// SearchCustomers returns an organization's customers that are not deleted and whose name or email contains q, ignoring
++// case, oldest first.
+ func (s *Store) SearchCustomers(orgID, q string) []Customer {
+ 	q = strings.ToLower(strings.TrimSpace(q))
+ 	out := []Customer{}
+@@ -73,30 +104,32 @@ func (s *Store) SearchCustomers(orgID, q string) []Customer {
+ 	return out
+ }
+ 
+-// FindCustomerByEmail returns the organization's customer with this email address, ignoring case.
++// FindCustomerByEmail returns the organization's customer with this email address, ignoring case. Deleted customers are
++// not found.
+ func (s *Store) FindCustomerByEmail(orgID, email string) (Customer, bool) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	id, ok := s.customersByEmail[normEmail(email)]
++	id, ok := s.customersByEmail[emailKey{orgID, normEmail(email)}]
+ 	if !ok {
+ 		return Customer{}, false
+ 	}
+ 	return copyCustomer(s.customers[id]), true
+ }
+ 
+-// UpdateCustomer changes a customer with f, which may refuse with an error. The ID and organization cannot change.
++// UpdateCustomer changes a customer with f, which may refuse with an error. The ID, organization and deletion cannot
++// change, and a deleted customer is not found.
+ func (s *Store) UpdateCustomer(orgID, id string, f func(*Customer) error) (Customer, error) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	old, ok := s.customers[id]
+-	if !ok || old.OrgID != orgID {
++	if !ok || old.OrgID != orgID || old.DeletedAt != nil {
+ 		return Customer{}, ErrNotFound
+ 	}
+ 	c := copyCustomer(old)
+ 	if err := f(&c); err != nil {
+ 		return Customer{}, err
+ 	}
+-	c.ID, c.OrgID, c.CreatedAt = old.ID, old.OrgID, old.CreatedAt
++	c.ID, c.OrgID, c.CreatedAt, c.DeletedAt = old.ID, old.OrgID, old.CreatedAt, nil
+ 	c.Name, c.Email = strings.TrimSpace(c.Name), strings.TrimSpace(c.Email)
+ 	if c.Name == "" || !validEmail(c.Email) {
+ 		return Customer{}, invalid("a customer needs a name and a valid email address")
+@@ -104,18 +137,19 @@ func (s *Store) UpdateCustomer(orgID, id string, f func(*Customer) error) (Custo
+ 	if c.DefaultPaymentMethod != "" && !strings.HasPrefix(c.DefaultPaymentMethod, "pm_") {
+ 		return Customer{}, invalid("a payment method looks like pm_...")
+ 	}
+-	if newKey := normEmail(c.Email); newKey != normEmail(old.Email) {
+-		if other, ok := s.customersByEmail[newKey]; ok && s.customers[other].OrgID == orgID {
++	if newKey := (emailKey{orgID, normEmail(c.Email)}); newKey != (emailKey{orgID, normEmail(old.Email)}) {
++		if _, ok := s.customersByEmail[newKey]; ok {
+ 			return Customer{}, ErrEmailTaken
+ 		}
+-		delete(s.customersByEmail, normEmail(old.Email))
++		delete(s.customersByEmail, emailKey{orgID, normEmail(old.Email)})
+ 		s.customersByEmail[newKey] = c.ID
+ 	}
+ 	s.customers[id] = c
+ 	return copyCustomer(c), nil
+ }
+ 
+-// DeleteCustomer removes a customer.
++// DeleteCustomer removes a customer outright, with no way back. The API deletes customers with SoftDeleteCustomer; this is
++// for undoing a customer that was just created.
+ func (s *Store) DeleteCustomer(orgID, id string) error {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+@@ -124,12 +158,77 @@ func (s *Store) DeleteCustomer(orgID, id string) error {
+ 		return ErrNotFound
+ 	}
+ 	delete(s.customers, id)
+-	if s.customersByEmail[normEmail(c.Email)] == id {
+-		delete(s.customersByEmail, normEmail(c.Email))
++	s.unindexCustomer(c, id)
++	return nil
++}
++
++// SoftDeleteCustomer deletes a customer at now. It is hidden from the organization until it is restored (RestoreCustomer)
++// or purged (PurgeDeletedCustomers), and its email address is free for another customer. A customer with a subscription
++// that is not canceled cannot be deleted: the error is ErrActiveSubscriptions. Deleting a deleted customer is ErrNotFound.
++func (s *Store) SoftDeleteCustomer(orgID, id string, now time.Time) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	c, ok := s.customers[id]
++	if !ok || c.OrgID != orgID || c.DeletedAt != nil {
++		return ErrNotFound
+ 	}
++	for _, sub := range s.subs {
++		if sub.CustomerID == id && sub.Status != Canceled {
++			return ErrActiveSubscriptions
++		}
++	}
++	t := now.UTC()
++	c.DeletedAt = &t
++	s.customers[id] = c
++	s.unindexCustomer(c, id)
+ 	return nil
+ }
+ 
++// RestoreCustomer undoes SoftDeleteCustomer at now, for a customer deleted no more than 30 days before. Otherwise, and for a
++// customer that is not deleted, it is ErrNotFound. When another customer of the organization now uses the email address,
++// it is ErrEmailTaken.
++func (s *Store) RestoreCustomer(orgID, id string, now time.Time) (Customer, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	c, ok := s.customers[id]
++	if !ok || c.OrgID != orgID || c.DeletedAt == nil || c.DeletedAt.Before(deletedBefore(now)) {
++		return Customer{}, ErrNotFound
++	}
++	key := emailKey{orgID, normEmail(c.Email)}
++	if _, ok := s.customersByEmail[key]; ok {
++		return Customer{}, ErrEmailTaken
++	}
++	c.DeletedAt = nil
++	s.customers[id] = c
++	s.customersByEmail[key] = id
++	return copyCustomer(c), nil
++}
++
++// PurgeDeletedCustomers removes the customers deleted more than 30 days before now, for good, and returns how many it
++// removed. Their invoices and payments stay, and the invoices no longer name a customer.
++func (s *Store) PurgeDeletedCustomers(now time.Time) int {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	cutoff := deletedBefore(now)
++	n := 0
++	for id, c := range s.customers {
++		if c.DeletedAt != nil && c.DeletedAt.Before(cutoff) {
++			delete(s.customers, id)
++			s.unindexCustomer(c, id)
++			n++
++		}
++	}
++	return n
++}
++
++// unindexCustomer drops the email address of customer id from the index, if the index points to it. The caller holds the lock.
++func (s *Store) unindexCustomer(c Customer, id string) {
++	key := emailKey{c.OrgID, normEmail(c.Email)}
++	if s.customersByEmail[key] == id {
++		delete(s.customersByEmail, key)
++	}
++}
++
+ func copyCustomer(c Customer) Customer {
+ 	if c.Metadata != nil {
+ 		m := make(map[string]string, len(c.Metadata))
+@@ -138,6 +237,10 @@ func copyCustomer(c Customer) Customer {
+ 		}
+ 		c.Metadata = m
+ 	}
++	if c.DeletedAt != nil {
++		t := *c.DeletedAt
++		c.DeletedAt = &t
++	}
+ 	return c
+ }
+ 
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..2ae1706 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -145,7 +145,9 @@ func FromState(st State) (*Store, error) {
+ 			return nil, err
+ 		}
+ 		s.customers[c.ID] = copyCustomer(c)
+-		s.customersByEmail[normEmail(c.Email)] = c.ID
++		if c.DeletedAt == nil {
++			s.customersByEmail[emailKey{c.OrgID, normEmail(c.Email)}] = c.ID
++		}
+ 	}
+ 	for _, p := range st.Plans {
+ 		if err := dup("plan", p.ID, seen); err != nil {
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..c4270cf 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -25,6 +25,8 @@ var (
+ 	ErrAlreadyMember = fmt.Errorf("%w: already a member", ErrConflict)
+ 	// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
++	// ErrActiveSubscriptions is returned when deleting a customer that has a subscription which is not canceled.
++	ErrActiveSubscriptions = fmt.Errorf("%w: the customer has a subscription that is not canceled", ErrConflict)
+ )
+ 
+ // Store holds everything.
+@@ -41,7 +43,7 @@ type Store struct {
+ 	invites      map[string]Invite
+ 
+ 	customers        map[string]Customer
+-	customersByEmail map[string]string // lower-case email -> customer ID
++	customersByEmail map[emailKey]string // a live customer's address -> its ID; deleted customers are not indexed
+ 
+ 	plans     map[string]Plan
+ 	subs      map[string]Subscription
+@@ -55,12 +57,15 @@ type Store struct {
+ 
+ type memberKey struct{ org, user string }
+ 
++// emailKey is a customer's email address within its organization, lower-case.
++type emailKey struct{ org, email string }
++
+ // New returns an empty store.
+ func New() *Store {
+ 	return &Store{
+ 		orgs: map[string]Org{}, users: map[string]User{}, usersByEmail: map[string]string{}, members: map[memberKey]Member{},
+ 		apiKeys: map[string]APIKey{}, keysByToken: map[string]string{}, invites: map[string]Invite{},
+-		customers: map[string]Customer{}, customersByEmail: map[string]string{},
++		customers: map[string]Customer{}, customersByEmail: map[emailKey]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
+ 	}
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..6b468fd 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -255,3 +255,222 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestSoftDeleteCustomer(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	jane, _ := s.CreateCustomer(a.ID, "Jane Doe", "jane@example.com", t0)
++	john, _ := s.CreateCustomer(a.ID, "John Roe", "john@example.com", t0.Add(time.Minute))
++	del := t0.Add(time.Hour)
++	if err := s.SoftDeleteCustomer(a.ID, jane.ID, del); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.SoftDeleteCustomer(a.ID, jane.ID, del); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("deleting twice: %v", err)
++	}
++	if _, ok := s.Customer(a.ID, jane.ID); ok {
++		t.Fatal("deleted customer is still visible")
++	}
++	if _, ok := s.CustomerByID(jane.ID); ok {
++		t.Fatal("deleted customer is still visible by ID")
++	}
++	if got, ok := s.CustomerWithDeleted(a.ID, jane.ID); !ok || got.DeletedAt == nil || !got.DeletedAt.Equal(del) {
++		t.Fatalf("CustomerWithDeleted = %+v, %v", got, ok)
++	}
++	if got := s.Customers(a.ID); len(got) != 1 || got[0].ID != john.ID {
++		t.Fatalf("Customers = %+v", got)
++	}
++	if got := s.CustomersWithDeleted(a.ID); len(got) != 2 || got[0].ID != jane.ID {
++		t.Fatalf("CustomersWithDeleted = %+v", got)
++	}
++	if got := s.SearchCustomers(a.ID, "jane"); len(got) != 0 {
++		t.Fatalf("SearchCustomers finds the deleted customer: %+v", got)
++	}
++	if _, ok := s.FindCustomerByEmail(a.ID, "jane@example.com"); ok {
++		t.Fatal("FindCustomerByEmail finds the deleted customer")
++	}
++	if _, err := s.UpdateCustomer(a.ID, jane.ID, func(c *Customer) error { c.Name = "Changed"; return nil }); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("updating a deleted customer: %v", err)
++	}
++	if err := s.DeleteCustomer(a.ID, jane.ID); err != nil {
++		t.Fatalf("removing a deleted customer outright: %v", err)
++	}
++	if _, ok := s.CustomerWithDeleted(a.ID, jane.ID); ok {
++		t.Fatal("removed customer is still there")
++	}
++
++	// Its email address is free again.
++	again, err := s.CreateCustomer(a.ID, "Jane Again", "JANE@example.com", t0)
++	if err != nil {
++		t.Fatalf("email of a deleted customer is not free: %v", err)
++	}
++	if err := s.SoftDeleteCustomer(a.ID, again.ID, del); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := s.CreateCustomer(a.ID, "Jane Third", "jane@example.com", t0); err != nil {
++		t.Fatalf("email of a deleted customer is not free: %v", err)
++	}
++}
++
++func TestSoftDeleteRefusesActiveSubscriptions(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	p, err := s.CreatePlan(Plan{OrgID: a.ID, Name: "Pro", Currency: money.USD, UnitAmount: 100, Interval: Monthly, Active: true}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, st := range []SubStatus{Trialing, Active, PastDue} {
++		sub, err := s.CreateSubscription(Subscription{OrgID: a.ID, CustomerID: c.ID, PlanID: p.ID, Quantity: 1, Status: st}, t0)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := s.SoftDeleteCustomer(a.ID, c.ID, t0); !errors.Is(err, ErrActiveSubscriptions) || !errors.Is(err, ErrConflict) {
++			t.Fatalf("deleting a customer with a %s subscription: %v", st, err)
++		}
++		if _, ok := s.Customer(a.ID, c.ID); !ok {
++			t.Fatal("refused deletion hid the customer")
++		}
++		if _, err := s.UpdateSubscription(a.ID, sub.ID, func(x *Subscription) error { x.Status = Canceled; return nil }); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := s.SoftDeleteCustomer(a.ID, c.ID, t0); err != nil {
++		t.Fatalf("deleting a customer whose subscriptions are all canceled: %v", err)
++	}
++}
++
++func TestDeletedCustomerCannotGetNewInvoicesOrSubscriptions(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	p, _ := s.CreatePlan(Plan{OrgID: a.ID, Name: "Pro", Currency: money.USD, UnitAmount: 100, Interval: Monthly, Active: true}, t0)
++	if err := s.SoftDeleteCustomer(a.ID, c.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	inv := Invoice{OrgID: a.ID, CustomerID: c.ID, Currency: money.USD, Lines: []Line{{Description: "x", Quantity: 1, UnitAmount: 100}}}
++	if _, err := s.CreateInvoice(inv, t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("invoice for a deleted customer: %v", err)
++	}
++	if _, err := s.CreateSubscription(Subscription{OrgID: a.ID, CustomerID: c.ID, PlanID: p.ID, Quantity: 1, Status: Active}, t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("subscription for a deleted customer: %v", err)
++	}
++}
++
++func TestRestoreCustomer(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	if _, err := s.RestoreCustomer(a.ID, c.ID, t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("restoring a customer that is not deleted: %v", err)
++	}
++	if err := s.SoftDeleteCustomer(a.ID, c.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	b := newOrg(t, s, "B")
++	if _, err := s.RestoreCustomer(b.ID, c.ID, t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("restoring through another org: %v", err)
++	}
++	// Restorable up to 30 days after the deletion, not after.
++	if _, err := s.RestoreCustomer(a.ID, c.ID, t0.AddDate(0, 0, 31)); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("restoring after 31 days: %v", err)
++	}
++	if _, err := s.RestoreCustomer(a.ID, c.ID, t0.AddDate(0, 0, 30)); err != nil {
++		t.Fatalf("restoring after 30 days: %v", err)
++	}
++	if got, ok := s.Customer(a.ID, c.ID); !ok || got.DeletedAt != nil {
++		t.Fatalf("restored customer = %+v, %v", got, ok)
++	}
++	if got, ok := s.FindCustomerByEmail(a.ID, "jane@example.com"); !ok || got.ID != c.ID {
++		t.Fatalf("restored customer is not found by email: %+v %v", got, ok)
++	}
++
++	// Someone else took the address in the meantime.
++	if err := s.SoftDeleteCustomer(a.ID, c.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	other, _ := s.CreateCustomer(a.ID, "Jane Two", "Jane@Example.com", t0)
++	if _, err := s.RestoreCustomer(a.ID, c.ID, t0); !errors.Is(err, ErrEmailTaken) {
++		t.Fatalf("restoring over another customer's email: %v", err)
++	}
++	if err := s.SoftDeleteCustomer(a.ID, other.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := s.RestoreCustomer(a.ID, c.ID, t0); err != nil {
++		t.Fatalf("restoring once the address is free: %v", err)
++	}
++}
++
++func TestPurgeDeletedCustomers(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	old, _ := s.CreateCustomer(a.ID, "Old", "old@example.com", t0)
++	recent, _ := s.CreateCustomer(a.ID, "Recent", "recent@example.com", t0)
++	live, _ := s.CreateCustomer(a.ID, "Live", "live@example.com", t0)
++	if err := s.SoftDeleteCustomer(a.ID, old.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	now := t0.AddDate(0, 0, 40)
++	if err := s.SoftDeleteCustomer(a.ID, recent.ID, now.AddDate(0, 0, -5)); err != nil {
++		t.Fatal(err)
++	}
++	if n := s.PurgeDeletedCustomers(now); n != 1 {
++		t.Fatalf("PurgeDeletedCustomers removed %d, want 1", n)
++	}
++	if _, ok := s.CustomerWithDeleted(a.ID, old.ID); ok {
++		t.Fatal("purged customer is still there")
++	}
++	if _, ok := s.CustomerWithDeleted(a.ID, recent.ID); !ok {
++		t.Fatal("customer deleted 5 days ago was purged")
++	}
++	if _, ok := s.Customer(a.ID, live.ID); !ok {
++		t.Fatal("live customer was purged")
++	}
++	if n := s.PurgeDeletedCustomers(now); n != 0 {
++		t.Fatalf("second purge removed %d", n)
++	}
++}
++
++func TestCustomerEmailsArePerOrganization(t *testing.T) {
++	s := New()
++	a, b := newOrg(t, s, "A"), newOrg(t, s, "B")
++	ca, _ := s.CreateCustomer(a.ID, "Jane A", "jane@example.com", t0)
++	cb, _ := s.CreateCustomer(b.ID, "Jane B", "jane@example.com", t0.Add(time.Minute))
++	if got, ok := s.FindCustomerByEmail(a.ID, "jane@example.com"); !ok || got.ID != ca.ID {
++		t.Fatalf("org A finds %+v, %v", got, ok)
++	}
++	if got, ok := s.FindCustomerByEmail(b.ID, "jane@example.com"); !ok || got.ID != cb.ID {
++		t.Fatalf("org B finds %+v, %v", got, ok)
++	}
++	if err := s.SoftDeleteCustomer(b.ID, cb.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	if got, ok := s.FindCustomerByEmail(a.ID, "jane@example.com"); !ok || got.ID != ca.ID {
++		t.Fatalf("deleting org B's customer hid org A's: %+v, %v", got, ok)
++	}
++}
++
++func TestSoftDeleteSurvivesSnapshot(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	if err := s.SoftDeleteCustomer(a.ID, c.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	back, err := FromState(s.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := back.CustomerWithDeleted(a.ID, c.ID); !ok {
++		t.Fatal("deleted customer lost in the snapshot")
++	}
++	if _, ok := back.FindCustomerByEmail(a.ID, "jane@example.com"); ok {
++		t.Fatal("deleted customer's email is indexed after the snapshot")
++	}
++	if _, err := back.CreateCustomer(a.ID, "Jane Again", "jane@example.com", t0); err != nil {
++		t.Fatalf("email of a deleted customer is not free after the snapshot: %v", err)
++	}
++	if _, err := back.RestoreCustomer(a.ID, c.ID, t0); !errors.Is(err, ErrEmailTaken) {
++		t.Fatalf("restore after the snapshot: %v", err)
++	}
++}
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..b5f1f76 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -103,6 +103,8 @@ type Customer struct {
+ 	DefaultPaymentMethod string            `json:"default_payment_method,omitempty"`
+ 	Metadata             map[string]string `json:"metadata,omitempty"`
+ 	CreatedAt            time.Time         `json:"created_at"`
++	// DeletedAt is set when the customer is deleted. A deleted customer is hidden from the API until it is restored or purged.
++	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+ }
+ 
+ // Interval is how often a plan bills.

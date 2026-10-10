@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-invoice-list-performance",
+  "taskClass": "tested refactor",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "d4a4dc4b4d8cec5abe6772a482471b4496f78fea",
+  "startedAt": "2026-10-10T04:57:18.146754523Z",
+  "wallMs": 275045,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 776,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 4301,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t3.412s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.006s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.013s\nok  \texample.com/tally/internal/reports\t0.011s\nok  \texample.com/tally/internal/snapshot\t0.015s\nok  \texample.com/tally/internal/store\t0.023s\nok  \texample.com/tally/internal/subscriptions\t0.008s\nok  \texample.com/tally/internal/webhooks\t0.005s\n"
+      }
+    ],
+    "durationMs": 5082
+  },
+  "costUsd": 0.17631940000000002,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 58,
+    "output": 45908,
+    "cacheRead": 2592252,
+    "cacheWrite": 110467
+  },
+  "sessions": 1,
+  "modelTurns": 37,
+  "toolUses": {
+    "Bash": 17,
+    "Edit": 12,
+    "Read": 4,
+    "Write": 3
+  }
+}

@@ -1,0 +1,435 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..1018782 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -270,18 +270,33 @@ func TestSubscriptionsAndInvoices(t *testing.T) {
+ 	}
+ 
+ 	var report struct {
+-		Days []struct {
+-			Date     string
+-			Currency string
+-			Amount   int64
+-		}
++		TimeZone string `json:"time_zone"`
++		Group    string `json:"group"`
++		Buckets  []struct {
++			Start    string           `json:"start"`
++			Amounts  map[string]int64 `json:"amounts"`
++			Payments int              `json:"payments"`
++		} `json:"buckets"`
+ 	}
+ 	e.MustDo(http.StatusOK, "GET", "/v1/reports/revenue?from=2026-01-01&to=2026-01-31", e.Acme.Key, nil, &report)
+-	if len(report.Days) != 1 || report.Days[0].Date != "2026-01-15" || report.Days[0].Amount != 4000 {
++	if report.TimeZone != "America/New_York" || report.Group != "day" || len(report.Buckets) != 31 {
+ 		t.Fatalf("report = %+v", report)
+ 	}
+-	if r := e.Do("GET", "/v1/reports/revenue?from=2026-02-01&to=2026-01-01", e.Acme.Key, nil); r.Code != http.StatusBadRequest {
+-		t.Fatalf("bad range: %s", r)
++	if b := report.Buckets[14]; b.Start != "2026-01-15" || b.Amounts["USD"] != 4000 || b.Payments != 1 {
++		t.Fatalf("bucket of the payment = %+v", b)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/reports/revenue?from=2026-01-01&to=2026-01-31&group=month", e.Acme.Key, nil, &report)
++	if len(report.Buckets) != 1 || report.Buckets[0].Start != "2026-01-01" || report.Buckets[0].Amounts["USD"] != 4000 {
++		t.Fatalf("monthly report = %+v", report)
++	}
++	for _, c := range []struct{ query, code string }{
++		{"from=2026-02-01&to=2026-01-01", "invalid_range"},
++		{"from=2026-01-01", "invalid_date"},
++		{"from=2026-01-01&to=2026-01-31&group=quarter", "invalid_group"},
++	} {
++		if r := e.Do("GET", "/v1/reports/revenue?"+c.query, e.Acme.Key, nil); r.Code != http.StatusBadRequest || r.Map(t)["error"] != c.code {
++			t.Fatalf("%s: %s", c.query, r)
++		}
+ 	}
+ }
+ 
+diff --git a/start/internal/api/reports.go b/result/internal/api/reports.go
+index 5bbb656..016a0d1 100644
+--- a/start/internal/api/reports.go
++++ b/result/internal/api/reports.go
+@@ -8,10 +8,11 @@ import (
+ 	"example.com/tally/internal/reports"
+ )
+ 
+-// revenueReport answers the money taken per day: ?from=YYYY-MM-DD&to=YYYY-MM-DD (both included).
++// revenueReport answers the money taken per day, week or month in the organization's time zone:
++// ?from=YYYY-MM-DD&to=YYYY-MM-DD (both included)&group=day|week|month (default day).
+ func (s *Server) revenueReport(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+ 	q := r.URL.Query()
+-	days, err := reports.Revenue(s.store, p.OrgID, q.Get("from"), q.Get("to"))
++	report, err := reports.RevenueReport(s.store, p.OrgID, q.Get("from"), q.Get("to"), reports.Group(q.Get("group")))
+ 	switch {
+ 	case errors.Is(err, reports.ErrInvalidDate):
+ 		writeError(w, http.StatusBadRequest, "invalid_date", err.Error())
+@@ -19,9 +20,12 @@ func (s *Server) revenueReport(w http.ResponseWriter, r *http.Request, p auth.Pr
+ 	case errors.Is(err, reports.ErrInvalidRange):
+ 		writeError(w, http.StatusBadRequest, "invalid_range", err.Error())
+ 		return
++	case errors.Is(err, reports.ErrInvalidGroup):
++		writeError(w, http.StatusBadRequest, "invalid_group", err.Error())
++		return
+ 	case err != nil:
+ 		s.storeError(w, err)
+ 		return
+ 	}
+-	writeJSON(w, http.StatusOK, map[string]any{"days": days})
++	writeJSON(w, http.StatusOK, report)
+ }
+diff --git a/start/internal/reports/reports.go b/result/internal/reports/reports.go
+index dadb37a..e2ebcac 100644
+--- a/start/internal/reports/reports.go
++++ b/result/internal/reports/reports.go
+@@ -19,44 +19,59 @@ type DayRevenue struct {
+ 	Payments int            `json:"payments"`
+ }
+ 
++// Group is how a report groups days into buckets.
++type Group string
++
++// Groups. A week starts on Monday; a month is a calendar month.
++const (
++	ByDay   Group = "day"
++	ByWeek  Group = "week"
++	ByMonth Group = "month"
++)
++
++// Bucket is one day, week or month of a report: what the organization took in it, per currency.
++type Bucket struct {
++	Start    string                   `json:"start"` // YYYY-MM-DD, the first day of the bucket
++	Amounts  map[money.Currency]int64 `json:"amounts"`
++	Payments int                      `json:"payments"`
++}
++
++// Report is an organization's revenue over a range of days, grouped into buckets, in the organization's time zone.
++type Report struct {
++	TimeZone string   `json:"time_zone"`
++	Group    Group    `json:"group"`
++	Buckets  []Bucket `json:"buckets"`
++}
++
+ // Errors.
+ var (
+ 	ErrInvalidDate  = errors.New("invalid date")
+ 	ErrInvalidRange = errors.New("invalid date range")
++	ErrInvalidGroup = errors.New("invalid group")
+ )
+ 
+ // MaxDays is the longest range a report covers.
+ const MaxDays = 366
+ 
+ // Revenue adds up the organization's succeeded payments per day and currency, from the day from to the day to (YYYY-MM-DD,
+-// both included). Days are UTC days. The result is in date order, currencies in alphabetical order within a day; days
+-// without payments are left out.
++// both included). Days are days in the organization's time zone. The result is in date order, currencies in alphabetical
++// order within a day; days without payments are left out.
+ func Revenue(st *store.Store, orgID, from, to string) ([]DayRevenue, error) {
+-	start, err := time.Parse(time.DateOnly, from)
++	start, last, err := span(from, to)
+ 	if err != nil {
+-		return nil, fmt.Errorf("%w: from %q", ErrInvalidDate, from)
++		return nil, err
+ 	}
+-	last, err := time.Parse(time.DateOnly, to)
++	loc, err := zone(st, orgID)
+ 	if err != nil {
+-		return nil, fmt.Errorf("%w: to %q", ErrInvalidDate, to)
+-	}
+-	if last.Before(start) {
+-		return nil, fmt.Errorf("%w: to is before from", ErrInvalidRange)
+-	}
+-	if last.Sub(start) >= MaxDays*24*time.Hour {
+-		return nil, fmt.Errorf("%w: at most %d days", ErrInvalidRange, MaxDays)
++		return nil, err
+ 	}
+-	end := last.AddDate(0, 0, 1)
+ 	type key struct {
+ 		day string
+ 		cur money.Currency
+ 	}
+ 	sums := map[key]*DayRevenue{}
+-	for _, p := range st.Payments(orgID, "") {
+-		if p.Status != store.PaymentSucceeded || p.CreatedAt.Before(start) || !p.CreatedAt.Before(end) {
+-			continue
+-		}
+-		k := key{p.CreatedAt.UTC().Format(time.DateOnly), p.Currency}
++	for _, p := range paid(st, orgID, loc, start, last) {
++		k := key{p.day.Format(time.DateOnly), p.Currency}
+ 		d, ok := sums[k]
+ 		if !ok {
+ 			d = &DayRevenue{Date: k.day, Currency: k.cur}
+@@ -77,3 +92,117 @@ func Revenue(st *store.Store, orgID, from, to string) ([]DayRevenue, error) {
+ 	})
+ 	return out, nil
+ }
++
++// RevenueReport adds up the organization's succeeded payments from the day from to the day to (YYYY-MM-DD, both included),
++// grouped by day, week or month. A payment belongs to the day, in the organization's time zone, when it was made. The
++// buckets run from the one holding from to the one holding to, in order, and include those without payments. An empty
++// group means ByDay.
++func RevenueReport(st *store.Store, orgID, from, to string, group Group) (Report, error) {
++	start, last, err := span(from, to)
++	if err != nil {
++		return Report{}, err
++	}
++	if group == "" {
++		group = ByDay
++	}
++	if group != ByDay && group != ByWeek && group != ByMonth {
++		return Report{}, fmt.Errorf("%w: %q", ErrInvalidGroup, group)
++	}
++	loc, err := zone(st, orgID)
++	if err != nil {
++		return Report{}, err
++	}
++
++	out := Report{TimeZone: loc.String(), Group: group}
++	index := map[string]int{}
++	for b := bucketStart(start, group); !b.After(bucketStart(last, group)); b = nextBucket(b, group) {
++		index[b.Format(time.DateOnly)] = len(out.Buckets)
++		out.Buckets = append(out.Buckets, Bucket{Start: b.Format(time.DateOnly), Amounts: map[money.Currency]int64{}})
++	}
++	for _, p := range paid(st, orgID, loc, start, last) {
++		bk := &out.Buckets[index[bucketStart(p.day, group).Format(time.DateOnly)]]
++		bk.Amounts[p.Currency] += p.Amount
++		bk.Payments++
++	}
++	return out, nil
++}
++
++// dayPayment is a succeeded payment and the day it belongs to.
++type dayPayment struct {
++	store.Payment
++	day time.Time // the civil day in the organization's time zone, as a UTC midnight
++}
++
++// paid returns the organization's succeeded payments whose day, in loc, is from start to last (both included).
++func paid(st *store.Store, orgID string, loc *time.Location, start, last time.Time) []dayPayment {
++	var out []dayPayment
++	for _, p := range st.Payments(orgID, "") {
++		if p.Status != store.PaymentSucceeded {
++			continue
++		}
++		y, m, d := p.CreatedAt.In(loc).Date()
++		day := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
++		if day.Before(start) || day.After(last) {
++			continue
++		}
++		out = append(out, dayPayment{Payment: p, day: day})
++	}
++	return out
++}
++
++// span reads from and to, both included, as UTC midnights. They are days on the calendar, not instants, so their
++// length in hours is meaningless; only the calendar arithmetic on them is used.
++func span(from, to string) (time.Time, time.Time, error) {
++	start, err := time.Parse(time.DateOnly, from)
++	if err != nil {
++		return time.Time{}, time.Time{}, fmt.Errorf("%w: from %q", ErrInvalidDate, from)
++	}
++	last, err := time.Parse(time.DateOnly, to)
++	if err != nil {
++		return time.Time{}, time.Time{}, fmt.Errorf("%w: to %q", ErrInvalidDate, to)
++	}
++	if last.Before(start) {
++		return time.Time{}, time.Time{}, fmt.Errorf("%w: to is before from", ErrInvalidRange)
++	}
++	if last.Sub(start) >= MaxDays*24*time.Hour {
++		return time.Time{}, time.Time{}, fmt.Errorf("%w: at most %d days", ErrInvalidRange, MaxDays)
++	}
++	return start, last, nil
++}
++
++// zone is the location of the organization's time zone. An organization that does not exist has no payments, so its
++// reports are in UTC.
++func zone(st *store.Store, orgID string) (*time.Location, error) {
++	name := "UTC"
++	if o, ok := st.Org(orgID); ok {
++		name = o.TimeZone
++	}
++	loc, err := time.LoadLocation(name)
++	if err != nil {
++		return nil, fmt.Errorf("time zone %q: %w", name, err)
++	}
++	return loc, nil
++}
++
++// bucketStart is the first day of the bucket that holds day.
++func bucketStart(day time.Time, g Group) time.Time {
++	switch g {
++	case ByWeek:
++		monday := (int(day.Weekday()) + 6) % 7 // Sunday is 6 days after Monday
++		return day.AddDate(0, 0, -monday)
++	case ByMonth:
++		return time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, time.UTC)
++	}
++	return day
++}
++
++// nextBucket is the first day of the bucket after the one starting at b.
++func nextBucket(b time.Time, g Group) time.Time {
++	switch g {
++	case ByWeek:
++		return b.AddDate(0, 0, 7)
++	case ByMonth:
++		return b.AddDate(0, 1, 0)
++	}
++	return b.AddDate(0, 0, 1)
++}
+diff --git a/start/internal/reports/reports_test.go b/result/internal/reports/reports_test.go
+index 218e1f2..d81309b 100644
+--- a/start/internal/reports/reports_test.go
++++ b/result/internal/reports/reports_test.go
+@@ -2,6 +2,7 @@ package reports
+ 
+ import (
+ 	"errors"
++	"reflect"
+ 	"testing"
+ 	"time"
+ 
+@@ -64,3 +65,144 @@ func TestRevenueRange(t *testing.T) {
+ 		t.Fatalf("a full year: %v, %v", got, err)
+ 	}
+ }
++
++// zonedOrg is an organization in tz with an invoice to take payments on, and a function that records a payment.
++func zonedOrg(t *testing.T, tz string) (*store.Store, string, func(int64, money.Currency, store.PaymentStatus, time.Time)) {
++	t.Helper()
++	st := store.New()
++	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	o, err := st.CreateOrg("Z", store.OrgTeam, tz, 0, at)
++	if err != nil {
++		t.Fatal(err)
++	}
++	c, _ := st.CreateCustomer(o.ID, "Jane", "jane@example.com", at)
++	inv, _ := st.CreateInvoice(store.Invoice{OrgID: o.ID, CustomerID: c.ID, Currency: money.USD, Lines: []store.Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, at)
++	pay := func(amount int64, cur money.Currency, status store.PaymentStatus, when time.Time) {
++		if _, err := st.CreatePayment(store.Payment{OrgID: o.ID, InvoiceID: inv.ID, Amount: amount, Currency: cur, Status: status}, when); err != nil {
++			t.Fatal(err)
++		}
++	}
++	return st, o.ID, pay
++}
++
++func TestRevenueUsesOrgTimeZone(t *testing.T) {
++	ny, err := time.LoadLocation("America/New_York")
++	if err != nil {
++		t.Fatal(err)
++	}
++	st, orgID, pay := zonedOrg(t, "America/New_York")
++	// 23:30 on 2 March in New York is 04:30 UTC on 3 March.
++	pay(1000, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 2, 23, 30, 0, 0, ny))
++	got, err := Revenue(st, orgID, "2026-03-02", "2026-03-02")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(got) != 1 || got[0] != (DayRevenue{Date: "2026-03-02", Currency: money.USD, Amount: 1000, Payments: 1}) {
++		t.Fatalf("Revenue = %+v", got)
++	}
++}
++
++func TestRevenueReportDaylightSaving(t *testing.T) {
++	ny, _ := time.LoadLocation("America/New_York")
++	// Clocks go forward on 8 March 2026 in New York, so that day is 23 hours long.
++	st, orgID, pay := zonedOrg(t, "America/New_York")
++	pay(100, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 7, 12, 0, 0, 0, ny))
++	pay(200, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 8, 0, 30, 0, 0, ny))
++	pay(300, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 8, 23, 30, 0, 0, ny))
++	pay(400, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 9, 0, 30, 0, 0, ny))
++	r, err := RevenueReport(st, orgID, "2026-03-07", "2026-03-09", ByDay)
++	if err != nil {
++		t.Fatal(err)
++	}
++	want := []Bucket{
++		{Start: "2026-03-07", Amounts: map[money.Currency]int64{money.USD: 100}, Payments: 1},
++		{Start: "2026-03-08", Amounts: map[money.Currency]int64{money.USD: 500}, Payments: 2},
++		{Start: "2026-03-09", Amounts: map[money.Currency]int64{money.USD: 400}, Payments: 1},
++	}
++	if r.TimeZone != "America/New_York" || r.Group != ByDay || len(r.Buckets) != len(want) {
++		t.Fatalf("report = %+v", r)
++	}
++	for i := range want {
++		if !reflect.DeepEqual(r.Buckets[i], want[i]) {
++			t.Fatalf("bucket %d = %+v, want %+v", i, r.Buckets[i], want[i])
++		}
++	}
++}
++
++func TestRevenueReportGroups(t *testing.T) {
++	ny, _ := time.LoadLocation("America/New_York")
++	st, orgID, pay := zonedOrg(t, "America/New_York")
++	pay(100, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 7, 12, 0, 0, 0, ny))  // Saturday, week of 2 March
++	pay(200, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 8, 23, 30, 0, 0, ny)) // Sunday, week of 2 March
++	pay(50, money.EUR, store.PaymentSucceeded, time.Date(2026, 3, 9, 0, 30, 0, 0, ny))   // Monday, week of 9 March
++	pay(999, money.USD, store.PaymentFailed, time.Date(2026, 3, 9, 1, 0, 0, 0, ny))
++	pay(1000, money.USD, store.PaymentSucceeded, time.Date(2026, 3, 14, 10, 0, 0, 0, ny))
++	pay(5, money.USD, store.PaymentSucceeded, time.Date(2026, 2, 28, 10, 0, 0, 0, ny)) // before the range
++
++	t.Run("week", func(t *testing.T) {
++		r, err := RevenueReport(st, orgID, "2026-03-04", "2026-03-15", ByWeek)
++		if err != nil {
++			t.Fatal(err)
++		}
++		want := []Bucket{
++			{Start: "2026-03-02", Amounts: map[money.Currency]int64{money.USD: 300}, Payments: 2},
++			{Start: "2026-03-09", Amounts: map[money.Currency]int64{money.USD: 1000, money.EUR: 50}, Payments: 2},
++		}
++		if !reflect.DeepEqual(r.Buckets, want) {
++			t.Fatalf("weeks = %+v", r.Buckets)
++		}
++	})
++	t.Run("month", func(t *testing.T) {
++		r, err := RevenueReport(st, orgID, "2026-02-20", "2026-04-02", ByMonth)
++		if err != nil {
++			t.Fatal(err)
++		}
++		want := []Bucket{
++			{Start: "2026-02-01", Amounts: map[money.Currency]int64{money.USD: 5}, Payments: 1},
++			{Start: "2026-03-01", Amounts: map[money.Currency]int64{money.USD: 1300, money.EUR: 50}, Payments: 4},
++			{Start: "2026-04-01", Amounts: map[money.Currency]int64{}, Payments: 0},
++		}
++		if !reflect.DeepEqual(r.Buckets, want) {
++			t.Fatalf("months = %+v", r.Buckets)
++		}
++	})
++	t.Run("empty days are kept", func(t *testing.T) {
++		r, err := RevenueReport(st, orgID, "2026-03-10", "2026-03-12", "")
++		if err != nil {
++			t.Fatal(err)
++		}
++		if r.Group != ByDay || len(r.Buckets) != 3 {
++			t.Fatalf("report = %+v", r)
++		}
++		for _, b := range r.Buckets {
++			if b.Amounts == nil || len(b.Amounts) != 0 || b.Payments != 0 {
++				t.Fatalf("bucket = %+v", b)
++			}
++		}
++	})
++	t.Run("bad group", func(t *testing.T) {
++		if _, err := RevenueReport(st, orgID, "2026-03-01", "2026-03-05", "quarter"); !errors.Is(err, ErrInvalidGroup) {
++			t.Fatalf("err = %v", err)
++		}
++	})
++}
++
++func TestRevenueReportRange(t *testing.T) {
++	st, orgID, _ := zonedOrg(t, "Europe/Berlin")
++	for _, c := range []struct {
++		from, to string
++		want     error
++	}{
++		{"2026-03-01", "", ErrInvalidDate},
++		{"2026-03-05", "2026-03-01", ErrInvalidRange},
++		{"2026-01-01", "2027-01-02", ErrInvalidRange},
++	} {
++		if _, err := RevenueReport(st, orgID, c.from, c.to, ByDay); !errors.Is(err, c.want) {
++			t.Errorf("RevenueReport(%s, %s) = %v, want %v", c.from, c.to, err, c.want)
++		}
++	}
++	r, err := RevenueReport(st, orgID, "2026-01-01", "2026-12-31", ByMonth)
++	if err != nil || len(r.Buckets) != 12 || r.TimeZone != "Europe/Berlin" {
++		t.Fatalf("a full year: %+v, %v", r, err)
++	}
++}

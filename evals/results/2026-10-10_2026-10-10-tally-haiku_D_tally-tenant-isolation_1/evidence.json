@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every path, body and query ID or email lookup is scoped to the caller's organization. A foreign ID gets the same 404 `{\"error\":\"not_found\"}` as an unknown one, for invoice lines, `customer_id` on invoices and subscriptions, webhook endpoint delete, and `?email=`.\n- The customer email index is per organization, so the same address in two orgs neither leaks nor interferes, including after deletes and snapshot reload.\n- New tests cover each instance and fail on the old code. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791608553487
+  },
+  {
+    "id": 2,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 480ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/build-1791608553532315141.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 482,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608554015
+  },
+  {
+    "id": 3,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 550ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/test-1791608554018155645.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 549,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608554568
+  },
+  {
+    "id": 4,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 600ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/lint-1791608554570770999.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 602,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608555174
+  },
+  {
+    "id": 5,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/secrets-1791608555208348467.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608555208
+  },
+  {
+    "id": 6,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +283 -27",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 283,
+      "Deletions": 27,
+      "base": "c9b49101519f83487c16838de90a7783657a51b3",
+      "commit": "9a29d8e142cf3247f12cd5460c1956f03e7c2e51"
+    },
+    "created": 1791608555325
+  },
+  {
+    "id": 7,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 9a29d8e142",
+    "ref": "9a29d8e142cf3247f12cd5460c1956f03e7c2e51",
+    "data": {},
+    "created": 1791608555326
+  },
+  {
+    "id": 8,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Changes in this pass (uncommitted):**\n- `internal/store/store.go`: restored `ErrCustomerOrgMismatch`, with its original doc comment. It is not returned anywhere, as the reviewer allowed.\n- `internal/api/respond.go`: restored the `ErrCustomerOrgMismatch` → 422 `customer_org_mismatch` case.",
+    "data": {},
+    "created": 1791608617563
+  },
+  {
+    "id": 9,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 770ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/build-1791608617634768267.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 766,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608618401
+  },
+  {
+    "id": 10,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 820ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/test-1791608618403191342.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 817,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608619221
+  },
+  {
+    "id": 11,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 810ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/lint-1791608619223212351.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 813,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608620037
+  },
+  {
+    "id": 12,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/checks/secrets-1791608620072269292.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 30,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608620072
+  },
+  {
+    "id": 13,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +283 -23",
+    "ref": "/tmp/drydock-trial-1900459506/tally-tenant-isolation-D-1/data/runs/run_559ad0ae1122/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 283,
+      "Deletions": 23,
+      "base": "c9b49101519f83487c16838de90a7783657a51b3",
+      "commit": "847136f1cd3a0e4e2d2456fe74cae282836ce23b"
+    },
+    "created": 1791608620293
+  },
+  {
+    "id": 14,
+    "taskId": "task_ec1d216efd47",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 847136f1cd",
+    "ref": "847136f1cd3a0e4e2d2456fe74cae282836ce23b",
+    "data": {},
+    "created": 1791608620294
+  }
+]

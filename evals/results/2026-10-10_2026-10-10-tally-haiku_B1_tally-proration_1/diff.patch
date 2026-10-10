@@ -1,0 +1,770 @@
+diff --git a/start/internal/api/subscriptions.go b/result/internal/api/subscriptions.go
+index 168c46c..b537db8 100644
+--- a/start/internal/api/subscriptions.go
++++ b/result/internal/api/subscriptions.go
+@@ -18,6 +18,8 @@ func (s *Server) subError(w http.ResponseWriter, err error) {
+ 		writeError(w, http.StatusUnprocessableEntity, "plan_inactive", err.Error())
+ 	case errors.Is(err, subscriptions.ErrCanceled):
+ 		writeError(w, http.StatusConflict, "subscription_canceled", err.Error())
++	case errors.Is(err, subscriptions.ErrIncompatiblePlan):
++		writeError(w, http.StatusUnprocessableEntity, "incompatible_plan", err.Error())
+ 	default:
+ 		s.payError(w, err)
+ 	}
+@@ -73,10 +75,14 @@ func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, p au
+ 		return
+ 	}
+ 	sub, err := s.subs.Update(r.Context(), p.OrgID, r.PathValue("id"), subscriptions.UpdateInput{PlanID: in.PlanID, Quantity: in.Quantity})
+-	if err != nil {
++	if err != nil && sub.ID == "" {
+ 		s.subError(w, err)
+ 		return
+ 	}
++	if err != nil {
++		// The change applied; only its charge failed.
++		s.log.Error("upgrade invoice", "subscription", sub.ID, "err", err)
++	}
+ 	writeJSON(w, http.StatusOK, sub)
+ }
+ 
+diff --git a/result/internal/api/subscriptions_proration_test.go b/result/internal/api/subscriptions_proration_test.go
+new file mode 100644
+index 0000000..53e4667
+--- /dev/null
++++ b/result/internal/api/subscriptions_proration_test.go
+@@ -0,0 +1,65 @@
++package api_test
++
++import (
++	"net/http"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++func TestSubscriptionChangesOverTheAPI(t *testing.T) {
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = "pm_card_visa"; return nil })
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	var sub store.Subscription
++	e.MustDo(http.StatusCreated, "POST", "/v1/subscriptions", e.Acme.Key, map[string]any{"customer_id": c.ID, "plan_id": team.ID, "quantity": 2}, &sub)
++
++	// A new subscription has nothing pending, and says so with nulls.
++	m := e.MustDo(http.StatusOK, "GET", "/v1/subscriptions/"+sub.ID, e.Acme.Key, nil, nil).Map(t)
++	if v, ok := m["pending_plan_id"]; !ok || v != nil {
++		t.Fatalf("pending_plan_id = %v (present %v), want null", v, ok)
++	}
++	if v, ok := m["pending_quantity"]; !ok || v != nil {
++		t.Fatalf("pending_quantity = %v (present %v), want null", v, ok)
++	}
++
++	// An upgrade applies and bills at once.
++	e.Clock.Advance(10 * 24 * time.Hour)
++	e.MustDo(http.StatusOK, "PATCH", "/v1/subscriptions/"+sub.ID, e.Acme.Key, map[string]any{"plan_id": pro.ID}, &sub)
++	if sub.PlanID != pro.ID || sub.PendingPlanID != nil {
++		t.Fatalf("after the upgrade = %+v", sub)
++	}
++	var invs struct{ Items []store.Invoice }
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?subscription_id="+sub.ID, e.Acme.Key, nil, &invs)
++	if len(invs.Items) != 2 || len(invs.Items[1].Lines) != 2 || invs.Items[1].Status != store.InvoicePaid {
++		t.Fatalf("invoices = %+v", invs.Items)
++	}
++
++	// A downgrade is pending until the next renewal.
++	e.MustDo(http.StatusOK, "PATCH", "/v1/subscriptions/"+sub.ID, e.Acme.Key, map[string]any{"plan_id": team.ID}, &sub)
++	if sub.PlanID != pro.ID || sub.PendingPlanID == nil || *sub.PendingPlanID != team.ID || sub.PendingQuantity == nil || *sub.PendingQuantity != 2 {
++		t.Fatalf("after the downgrade = %+v", sub)
++	}
++	var got store.Subscription
++	e.MustDo(http.StatusOK, "GET", "/v1/subscriptions/"+sub.ID, e.Acme.Key, nil, &got)
++	if got.PendingPlanID == nil || *got.PendingPlanID != team.ID {
++		t.Fatalf("GET after the downgrade = %+v", got)
++	}
++}
++
++func TestIncompatiblePlanIsUnprocessable(t *testing.T) {
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	euro := e.CreatePlan(e.Acme, "Euro", "EUR", "20.00")
++	var sub store.Subscription
++	e.MustDo(http.StatusCreated, "POST", "/v1/subscriptions", e.Acme.Key, map[string]any{"customer_id": c.ID, "plan_id": team.ID}, &sub)
++	r := e.Do("PATCH", "/v1/subscriptions/"+sub.ID, e.Acme.Key, map[string]any{"plan_id": euro.ID})
++	if r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "incompatible_plan" {
++		t.Fatalf("change to another currency: %s", r)
++	}
++}
+diff --git a/start/internal/money/money.go b/result/internal/money/money.go
+index abb53cc..2592ac3 100644
+--- a/start/internal/money/money.go
++++ b/result/internal/money/money.go
+@@ -5,6 +5,7 @@ package money
+ import (
+ 	"errors"
+ 	"fmt"
++	"math/big"
+ 	"strconv"
+ 	"strings"
+ )
+@@ -86,6 +87,22 @@ func Percent(amount int64, pct int) int64 { return divRound(amount*int64(pct), 1
+ // BasisPoints returns bp basis points (hundredths of a percent) of amount, rounded half away from zero.
+ func BasisPoints(amount int64, bp int) int64 { return divRound(amount*int64(bp), 10000) }
+ 
++// Ratio returns amount times part divided by whole, rounded half away from zero to a whole minor unit. It is exact for any
++// int64 inputs, so the product cannot overflow. whole must be positive.
++func Ratio(amount, part, whole int64) int64 {
++	num := new(big.Int).Mul(big.NewInt(amount), big.NewInt(part))
++	neg := num.Sign() < 0
++	num.Abs(num)
++	// floor(num/whole + 1/2) = floor((2*num + whole) / (2*whole)) for positive values.
++	den := new(big.Int).Mul(big.NewInt(whole), big.NewInt(2))
++	q := new(big.Int).Add(new(big.Int).Mul(num, big.NewInt(2)), big.NewInt(whole))
++	q.Quo(q, den)
++	if neg {
++		q.Neg(q)
++	}
++	return q.Int64()
++}
++
+ // divRound divides and rounds half away from zero.
+ func divRound(num, den int64) int64 {
+ 	if (num < 0) != (den < 0) {
+diff --git a/start/internal/money/money_test.go b/result/internal/money/money_test.go
+index 08962ad..54fc7ac 100644
+--- a/start/internal/money/money_test.go
++++ b/result/internal/money/money_test.go
+@@ -50,6 +50,27 @@ func TestFormat(t *testing.T) {
+ 	}
+ }
+ 
++func TestRatio(t *testing.T) {
++	for _, c := range []struct {
++		amount, part, whole, want int64
++	}{
++		{6000, 21, 31, 4065},   // 4064.52
++		{15000, 21, 31, 10161}, // 10161.29
++		{1, 1, 2, 1},           // half rounds away from zero
++		{-1, 1, 2, -1},
++		{7, 1, 2, 4},
++		{-7, 1, 2, -4},
++		{1, 1, 3, 0},
++		{0, 5, 7, 0},
++		{5000, 31, 31, 5000},
++		{1 << 40, 1 << 40, 1 << 40, 1 << 40}, // the product overflows int64
++	} {
++		if got := Ratio(c.amount, c.part, c.whole); got != c.want {
++			t.Errorf("Ratio(%d, %d, %d) = %d, want %d", c.amount, c.part, c.whole, got, c.want)
++		}
++	}
++}
++
+ func TestRounding(t *testing.T) {
+ 	for _, c := range []struct {
+ 		amount int64
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..e3f6586 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -204,6 +204,14 @@ func copySub(sub Subscription) Subscription {
+ 		t := *sub.CanceledAt
+ 		sub.CanceledAt = &t
+ 	}
++	if sub.PendingPlanID != nil {
++		id := *sub.PendingPlanID
++		sub.PendingPlanID = &id
++	}
++	if sub.PendingQuantity != nil {
++		q := *sub.PendingQuantity
++		sub.PendingQuantity = &q
++	}
+ 	return sub
+ }
+ 
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..3649653 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -164,9 +164,13 @@ type Subscription struct {
+ 	CurrentPeriodStart time.Time  `json:"current_period_start"`
+ 	CurrentPeriodEnd   time.Time  `json:"current_period_end"`
+ 	TrialEnd           *time.Time `json:"trial_end,omitempty"`
+-	CancelAtPeriodEnd  bool       `json:"cancel_at_period_end"`
+-	CanceledAt         *time.Time `json:"canceled_at,omitempty"`
+-	CreatedAt          time.Time  `json:"created_at"`
++	// PendingPlanID and PendingQuantity are a downgrade that takes effect at the next renewal. Both are nil when nothing is
++	// pending, and both are set otherwise.
++	PendingPlanID     *string    `json:"pending_plan_id"`
++	PendingQuantity   *int       `json:"pending_quantity"`
++	CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
++	CanceledAt        *time.Time `json:"canceled_at,omitempty"`
++	CreatedAt         time.Time  `json:"created_at"`
+ }
+ 
+ // Line is one line of an invoice. A negative UnitAmount is a credit.
+diff --git a/result/internal/subscriptions/proration_test.go b/result/internal/subscriptions/proration_test.go
+new file mode 100644
+index 0000000..9e39304
+--- /dev/null
++++ b/result/internal/subscriptions/proration_test.go
+@@ -0,0 +1,341 @@
++package subscriptions_test
++
++import (
++	"context"
++	"errors"
++	"testing"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/billing"
++	"example.com/tally/internal/money"
++	"example.com/tally/internal/payments"
++	"example.com/tally/internal/store"
++	"example.com/tally/internal/subscriptions"
++)
++
++// subscribe starts a monthly subscription at apitest.Start for a new customer whose default payment method is pm (empty for
++// none). Start is the first day of a 31-day period, so ten days in, 21 of its 31 days remain.
++func subscribe(t *testing.T, e *apitest.Env, pm string, plan store.Plan, qty int) store.Subscription {
++	t.Helper()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	if pm != "" {
++		_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = pm; return nil })
++	}
++	sub, err := e.Subs.Create(context.Background(), e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: plan.ID, Quantity: qty})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return sub
++}
++
++func invoicesOf(e *apitest.Env, subID string) []store.Invoice {
++	return e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: subID})
++}
++
++func setPlan(id string) subscriptions.UpdateInput { return subscriptions.UpdateInput{PlanID: &id} }
++
++func setQty(q int) subscriptions.UpdateInput { return subscriptions.UpdateInput{Quantity: &q} }
++
++func TestUpgradeMidPeriodBillsTheProratedDifference(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	sub := subscribe(t, e, "pm_card_visa", team, 3)
++	before := len(e.Gateway.Charges())
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++
++	got, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setPlan(pro.ID))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.PlanID != pro.ID || got.Quantity != 3 || got.Status != store.Active || got.PendingPlanID != nil || got.PendingQuantity != nil {
++		t.Fatalf("subscription = %+v", got)
++	}
++	if !got.CurrentPeriodStart.Equal(sub.CurrentPeriodStart) || !got.CurrentPeriodEnd.Equal(sub.CurrentPeriodEnd) {
++		t.Fatalf("the period changed: %v..%v", got.CurrentPeriodStart, got.CurrentPeriodEnd)
++	}
++	// Old value 6000, new value 15000, 21 of 31 days left: credit -round(6000*21/31) = -4065, charge round(15000*21/31) = 10161.
++	invs := invoicesOf(e, sub.ID)
++	if len(invs) != 2 {
++		t.Fatalf("invoices = %d, want the first and the upgrade", len(invs))
++	}
++	up := invs[1]
++	if up.Status != store.InvoicePaid || len(up.Lines) != 2 {
++		t.Fatalf("upgrade invoice = %+v", up)
++	}
++	if l := up.Lines[0]; l.Description != "Unused time on Team" || l.Quantity != 1 || l.UnitAmount != -4065 {
++		t.Fatalf("credit line = %+v", l)
++	}
++	if l := up.Lines[1]; l.Description != "Remaining time on Pro" || l.Quantity != 1 || l.UnitAmount != 10161 {
++		t.Fatalf("charge line = %+v", l)
++	}
++	cs := e.Gateway.Charges()
++	if len(cs) != before+1 || cs[len(cs)-1].Amount != 6096 || cs[len(cs)-1].PaymentMethod != "pm_card_visa" {
++		t.Fatalf("charges = %+v", cs)
++	}
++}
++
++func TestUpgradeAppliesDiscountAndTax(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	_, _ = e.Store.UpdateOrg(e.Acme.ID, func(o *store.Org) error { o.TaxRateBP = 1000; return nil })
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = "pm_card_visa"; return nil })
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: team.ID, Quantity: 1, DiscountPercent: 10})
++	if err != nil {
++		t.Fatal(err)
++	}
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++	if _, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setPlan(pro.ID)); err != nil {
++		t.Fatal(err)
++	}
++	// Credit -1355, charge 3387: subtotal 2032, discount 203, taxable 1829, tax 183 at 10%, total 2012.
++	up := invoicesOf(e, sub.ID)[1]
++	if tot := billing.Compute(up); tot.Subtotal != 2032 || tot.Discount != 203 || tot.Tax != 183 || tot.Total != 2012 {
++		t.Fatalf("totals = %+v", tot)
++	}
++	if cs := e.Gateway.Charges(); cs[len(cs)-1].Amount != 2012 {
++		t.Fatalf("charges = %+v", cs)
++	}
++}
++
++// setPaymentMethod changes the default payment method of the subscription's customer.
++func setPaymentMethod(e *apitest.Env, sub store.Subscription, pm string) {
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, sub.CustomerID, func(c *store.Customer) error { c.DefaultPaymentMethod = pm; return nil })
++}
++
++func TestDeclinedUpgradeAppliesAndIsPastDue(t *testing.T) {
++	e := apitest.New(t)
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	sub := subscribe(t, e, "pm_card_visa", team, 1)
++	setPaymentMethod(e, sub, "pm_card_declined")
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++
++	got, err := e.Subs.Update(context.Background(), e.Acme.ID, sub.ID, setPlan(pro.ID))
++	if err != nil {
++		t.Fatalf("a declined charge is not an error: %v", err)
++	}
++	if got.PlanID != pro.ID || got.Status != store.PastDue {
++		t.Fatalf("subscription = %+v", got)
++	}
++	up := invoicesOf(e, sub.ID)[1]
++	if up.Status != store.InvoiceOpen || len(e.Store.Payments(e.Acme.ID, up.ID)) != 1 {
++		t.Fatalf("upgrade invoice = %+v", up)
++	}
++}
++
++func TestUpgradeWithoutPaymentMethodStaysOpen(t *testing.T) {
++	e := apitest.New(t)
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	sub := subscribe(t, e, "", team, 1)
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++
++	got, err := e.Subs.Update(context.Background(), e.Acme.ID, sub.ID, setPlan(pro.ID))
++	if err != nil || got.PlanID != pro.ID || got.Status != store.Active {
++		t.Fatalf("subscription = %+v, %v", got, err)
++	}
++	if up := invoicesOf(e, sub.ID)[1]; up.Status != store.InvoiceOpen || len(up.Lines) != 2 {
++		t.Fatalf("upgrade invoice = %+v", up)
++	}
++}
++
++func TestUpgradeGatewayDownKeepsTheChange(t *testing.T) {
++	e := apitest.New(t)
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	sub := subscribe(t, e, "pm_card_visa", team, 1)
++	setPaymentMethod(e, sub, "pm_gateway_down")
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++
++	got, err := e.Subs.Update(context.Background(), e.Acme.ID, sub.ID, setPlan(pro.ID))
++	if !errors.Is(err, payments.ErrUnavailable) || got.ID == "" || got.PlanID != pro.ID {
++		t.Fatalf("subscription = %+v, %v", got, err)
++	}
++	if up := invoicesOf(e, sub.ID)[1]; up.Status != store.InvoiceOpen {
++		t.Fatalf("upgrade invoice = %+v", up)
++	}
++}
++
++func TestDowngradeIsPendingUntilRenewal(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	sub := subscribe(t, e, "pm_card_visa", pro, 2)
++	charges := len(e.Gateway.Charges())
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++
++	got, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, subscriptions.UpdateInput{PlanID: &team.ID, Quantity: intp(1)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.PlanID != pro.ID || got.Quantity != 2 || got.PendingPlanID == nil || *got.PendingPlanID != team.ID ||
++		got.PendingQuantity == nil || *got.PendingQuantity != 1 {
++		t.Fatalf("subscription = %+v", got)
++	}
++	if len(invoicesOf(e, sub.ID)) != 1 || len(e.Gateway.Charges()) != charges {
++		t.Fatalf("a downgrade billed: invoices = %+v", invoicesOf(e, sub.ID))
++	}
++
++	e.Clock.Set(got.CurrentPeriodEnd)
++	if n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RenewDue = %d, %v", n, err)
++	}
++	renewed, _ := e.Store.Subscription(e.Acme.ID, sub.ID)
++	if renewed.PlanID != team.ID || renewed.Quantity != 1 || renewed.PendingPlanID != nil || renewed.PendingQuantity != nil || renewed.Status != store.Active {
++		t.Fatalf("after renewal = %+v", renewed)
++	}
++	invs := invoicesOf(e, sub.ID)
++	if last := invs[len(invs)-1]; len(last.Lines) != 1 || last.Lines[0].UnitAmount != 2000 || last.Lines[0].Quantity != 1 {
++		t.Fatalf("renewal invoice = %+v", last)
++	}
++	if cs := e.Gateway.Charges(); cs[len(cs)-1].Amount != 2000 {
++		t.Fatalf("charges = %+v", cs)
++	}
++}
++
++func TestPendingDowngradeIsClearedByRevertOrUpgrade(t *testing.T) {
++	ctx := context.Background()
++
++	t.Run("revert", func(t *testing.T) {
++		e := apitest.New(t)
++		team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++		pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++		sub := subscribe(t, e, "pm_card_visa", pro, 2)
++		e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++		if _, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setPlan(team.ID)); err != nil {
++			t.Fatal(err)
++		}
++		got, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, subscriptions.UpdateInput{PlanID: &pro.ID, Quantity: intp(2)})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if got.PlanID != pro.ID || got.PendingPlanID != nil || got.PendingQuantity != nil {
++			t.Fatalf("subscription = %+v", got)
++		}
++		if n := len(invoicesOf(e, sub.ID)); n != 1 {
++			t.Fatalf("a revert billed: %d invoices", n)
++		}
++	})
++
++	t.Run("upgrade", func(t *testing.T) {
++		e := apitest.New(t)
++		team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++		pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++		sub := subscribe(t, e, "pm_card_visa", pro, 2)
++		e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++		if _, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setPlan(team.ID)); err != nil {
++			t.Fatal(err)
++		}
++		got, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setQty(4))
++		if err != nil {
++			t.Fatal(err)
++		}
++		if got.PlanID != pro.ID || got.Quantity != 4 || got.PendingPlanID != nil || got.PendingQuantity != nil {
++			t.Fatalf("subscription = %+v", got)
++		}
++		if n := len(invoicesOf(e, sub.ID)); n != 2 {
++			t.Fatalf("the upgrade was not billed: %d invoices", n)
++		}
++	})
++}
++
++func TestEqualValueChangeAppliesWithoutBilling(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	seats := e.CreatePlan(e.Acme, "Seats", "USD", "10.00")
++	sub := subscribe(t, e, "pm_card_visa", team, 2) // 4000
++	e.Clock.Set(e.Clock.Now().AddDate(0, 0, 10))
++
++	got, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, subscriptions.UpdateInput{PlanID: &seats.ID, Quantity: intp(4)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.PlanID != seats.ID || got.Quantity != 4 || got.PendingPlanID != nil {
++		t.Fatalf("subscription = %+v", got)
++	}
++	if n := len(invoicesOf(e, sub.ID)); n != 1 {
++		t.Fatalf("an equal change billed: %d invoices", n)
++	}
++}
++
++func TestTrialingChangesWithoutBilling(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	small, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "Small", Currency: money.USD, UnitAmount: 1000, Interval: store.Monthly, TrialDays: 14}, e.Clock.Now())
++	big, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "Big", Currency: money.USD, UnitAmount: 9000, Interval: store.Monthly}, e.Clock.Now())
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = "pm_card_visa"; return nil })
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: small.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	got, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setPlan(big.ID))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.PlanID != big.ID || got.Status != store.Trialing || len(invoicesOf(e, sub.ID)) != 0 {
++		t.Fatalf("subscription = %+v, invoices = %+v", got, invoicesOf(e, sub.ID))
++	}
++	if n := len(e.Gateway.Charges()); n != 0 {
++		t.Fatalf("a trial change was charged: %d charges", n)
++	}
++}
++
++func TestIncompatiblePlansAreRefused(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	euro := e.CreatePlan(e.Acme, "Euro", "EUR", "20.00")
++	yearly, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "Yearly", Currency: money.USD, UnitAmount: 20000, Interval: store.Yearly}, e.Clock.Now())
++	metered, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "Metered", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())
++	sub := subscribe(t, e, "pm_card_visa", team, 1)
++
++	for _, p := range []store.Plan{euro, yearly, metered} {
++		if _, err := e.Subs.Update(ctx, e.Acme.ID, sub.ID, setPlan(p.ID)); !errors.Is(err, subscriptions.ErrIncompatiblePlan) {
++			t.Fatalf("change to %s: %v, want ErrIncompatiblePlan", p.Name, err)
++		}
++	}
++	if got, _ := e.Store.Subscription(e.Acme.ID, sub.ID); got.PlanID != team.ID {
++		t.Fatalf("a refused change applied: %+v", got)
++	}
++}
++
++func TestQuantityBelowOneIsInvalid(t *testing.T) {
++	e := apitest.New(t)
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	sub := subscribe(t, e, "pm_card_visa", team, 2)
++	if _, err := e.Subs.Update(context.Background(), e.Acme.ID, sub.ID, setQty(0)); !errors.Is(err, store.ErrInvalid) {
++		t.Fatalf("quantity 0: %v", err)
++	}
++	if got, _ := e.Store.Subscription(e.Acme.ID, sub.ID); got.Quantity != 2 {
++		t.Fatalf("a refused change applied: %+v", got)
++	}
++}
++
++func intp(i int) *int { return &i }
++
++func TestPendingDowngradeSurvivesAnExport(t *testing.T) {
++	e := apitest.New(t)
++	team := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	pro := e.CreatePlan(e.Acme, "Pro", "USD", "50.00")
++	sub := subscribe(t, e, "pm_card_visa", pro, 2)
++	if _, err := e.Subs.Update(context.Background(), e.Acme.ID, sub.ID, setPlan(team.ID)); err != nil {
++		t.Fatal(err)
++	}
++	st, err := store.FromState(e.Store.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	got, ok := st.Subscription(e.Acme.ID, sub.ID)
++	if !ok || got.PendingPlanID == nil || *got.PendingPlanID != team.ID || got.PendingQuantity == nil || *got.PendingQuantity != 2 {
++		t.Fatalf("after the export = %+v", got)
++	}
++}
+diff --git a/start/internal/subscriptions/subscriptions.go b/result/internal/subscriptions/subscriptions.go
+index 6d6d997..69b4d2a 100644
+--- a/start/internal/subscriptions/subscriptions.go
++++ b/result/internal/subscriptions/subscriptions.go
+@@ -10,14 +10,16 @@ import (
+ 
+ 	"example.com/tally/internal/billing"
+ 	"example.com/tally/internal/clock"
++	"example.com/tally/internal/money"
+ 	"example.com/tally/internal/payments"
+ 	"example.com/tally/internal/store"
+ )
+ 
+ // Errors.
+ var (
+-	ErrPlanInactive = errors.New("the plan is not active")
+-	ErrCanceled     = errors.New("the subscription is canceled")
++	ErrPlanInactive     = errors.New("the plan is not active")
++	ErrCanceled         = errors.New("the subscription is canceled")
++	ErrIncompatiblePlan = errors.New("the plans differ in currency or interval, or one of them is metered")
+ )
+ 
+ // Service runs subscriptions.
+@@ -84,8 +86,32 @@ type UpdateInput struct {
+ 	Quantity *int
+ }
+ 
+-// Update changes a subscription's plan or quantity. The change applies at once and is billed from the next period on.
++// Update changes a subscription's plan or quantity; nil fields keep their current values. A subscription's value is its
++// plan's unit amount times its quantity, and a change is one of three kinds:
++//
++//   - An upgrade raises the value. It applies at once and is billed at once, with a prorated invoice: a credit for the
++//     unused time on the old plan and a charge for the remaining time on the new one. The current period does not change.
++//     A declined charge makes the subscription past due; the change applies either way.
++//   - A downgrade lowers the value. It does not apply now: it is pending until the next renewal, which bills the new plan
++//     and quantity. An upgrade, or a change back to the current plan and quantity, clears a pending downgrade.
++//   - Any other change keeps the value equal and applies at once without billing. So does any change to a trialing
++//     subscription.
++//
++// Plans in different currencies or intervals, and metered plans, cannot be changed between: ErrIncompatiblePlan.
+ func (s *Service) Update(ctx context.Context, orgID, id string, in UpdateInput) (store.Subscription, error) {
++	now := s.Clock.Now()
++	cur, ok := s.Store.Subscription(orgID, id)
++	if !ok {
++		return store.Subscription{}, store.ErrNotFound
++	}
++	if cur.Status == store.Canceled {
++		return store.Subscription{}, ErrCanceled
++	}
++	oldPlan, ok := s.Store.Plan(orgID, cur.PlanID)
++	if !ok {
++		return store.Subscription{}, store.ErrNotFound
++	}
++	newPlan := oldPlan
+ 	if in.PlanID != nil {
+ 		p, ok := s.Store.Plan(orgID, *in.PlanID)
+ 		if !ok {
+@@ -94,16 +120,45 @@ func (s *Service) Update(ctx context.Context, orgID, id string, in UpdateInput)
+ 		if !p.Active {
+ 			return store.Subscription{}, ErrPlanInactive
+ 		}
++		newPlan = p
+ 	}
+-	sub, err := s.Store.UpdateSubscription(orgID, id, func(sub *store.Subscription) error {
+-		if sub.Status == store.Canceled {
++	planID, qty := cur.PlanID, cur.Quantity
++	if in.PlanID != nil {
++		planID = *in.PlanID
++	}
++	if in.Quantity != nil {
++		qty = *in.Quantity
++	}
++	if qty < 1 {
++		return store.Subscription{}, fmt.Errorf("%w: the quantity must be at least 1", store.ErrInvalid)
++	}
++	changed := planID != cur.PlanID || qty != cur.Quantity
++	if changed && !compatible(oldPlan, newPlan) {
++		return store.Subscription{}, ErrIncompatiblePlan
++	}
++
++	oldValue := int64(cur.Quantity) * oldPlan.UnitAmount
++	newValue := int64(qty) * newPlan.UnitAmount
++	trialing := cur.Status == store.Trialing
++	upgrade := !trialing && newValue > oldValue
++	downgrade := !trialing && newValue < oldValue
++
++	sub, err := s.Store.UpdateSubscription(orgID, id, func(x *store.Subscription) error {
++		// The change was worked out from cur; if the subscription moved since, the prorated amounts would be wrong.
++		if !sameState(*x, cur) {
++			return fmt.Errorf("%w: the subscription changed while it was being updated", store.ErrConflict)
++		}
++		if x.Status == store.Canceled {
+ 			return ErrCanceled
+ 		}
+-		if in.PlanID != nil {
+-			sub.PlanID = *in.PlanID
++		if downgrade {
++			pp, pq := planID, qty
++			x.PendingPlanID, x.PendingQuantity = &pp, &pq
++			return nil
+ 		}
+-		if in.Quantity != nil {
+-			sub.Quantity = *in.Quantity
++		x.PlanID, x.Quantity = planID, qty
++		if upgrade || !changed || trialing {
++			x.PendingPlanID, x.PendingQuantity = nil, nil
+ 		}
+ 		return nil
+ 	})
+@@ -111,6 +166,52 @@ func (s *Service) Update(ctx context.Context, orgID, id string, in UpdateInput)
+ 		return store.Subscription{}, err
+ 	}
+ 	s.publish(ctx, orgID, "subscription.updated", sub)
++	if !upgrade {
++		return sub, nil
++	}
++	return s.billUpgrade(ctx, sub, oldPlan, newPlan, oldValue, newValue, now)
++}
++
++// compatible reports whether a subscription can move from plan a to plan b: they bill in the same currency and interval,
++// and neither is metered.
++func compatible(a, b store.Plan) bool {
++	return a.Currency == b.Currency && a.Interval == b.Interval && a.UsageType == store.Licensed && b.UsageType == store.Licensed
++}
++
++// sameState reports whether two snapshots of a subscription agree on what a change depends on.
++func sameState(a, b store.Subscription) bool {
++	return a.Status == b.Status && a.PlanID == b.PlanID && a.Quantity == b.Quantity &&
++		a.CurrentPeriodStart.Equal(b.CurrentPeriodStart) && a.CurrentPeriodEnd.Equal(b.CurrentPeriodEnd) &&
++		samePtr(a.PendingPlanID, b.PendingPlanID) && samePtr(a.PendingQuantity, b.PendingQuantity)
++}
++
++func samePtr[T comparable](a, b *T) bool {
++	if a == nil || b == nil {
++		return a == b
++	}
++	return *a == *b
++}
++
++// billUpgrade bills an upgrade that has already applied: one invoice with two lines, a credit for the unused time on the
++// old plan and a charge for the remaining time on the new one, each prorated by the share of the current period left. A
++// declined charge makes the subscription past due.
++func (s *Service) billUpgrade(ctx context.Context, sub store.Subscription, oldPlan, newPlan store.Plan, oldValue, newValue int64, now time.Time) (store.Subscription, error) {
++	length := sub.CurrentPeriodEnd.Sub(sub.CurrentPeriodStart)
++	remaining := min(max(sub.CurrentPeriodEnd.Sub(now), 0), length)
++	credit := -money.Ratio(oldValue, int64(remaining), int64(length))
++	charge := money.Ratio(newValue, int64(remaining), int64(length))
++	ps, pe := now, sub.CurrentPeriodEnd
++	paid, err := s.billInvoice(ctx, store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: newPlan.Currency,
++		Lines: []store.Line{
++			{Description: "Unused time on " + oldPlan.Name, Quantity: 1, UnitAmount: credit},
++			{Description: "Remaining time on " + newPlan.Name, Quantity: 1, UnitAmount: charge},
++		}, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe})
++	if err != nil {
++		return sub, err
++	}
++	if !paid {
++		return s.setStatus(ctx, sub, store.PastDue)
++	}
+ 	return sub, nil
+ }
+ 
+@@ -175,6 +276,18 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 		}
+ 		return err
+ 	}
++	// A pending downgrade takes effect now, so this renewal bills the new plan and quantity.
++	pending := sub.PendingPlanID != nil || sub.PendingQuantity != nil
++	if sub.PendingPlanID != nil {
++		if plan, ok = s.Store.Plan(sub.OrgID, *sub.PendingPlanID); !ok {
++			return store.ErrNotFound
++		}
++		sub.PlanID = *sub.PendingPlanID
++	}
++	if sub.PendingQuantity != nil {
++		sub.Quantity = *sub.PendingQuantity
++	}
++	billedPlanID, billedQty := sub.PlanID, sub.Quantity
+ 	start := now
+ 	end := billing.AddInterval(start, plan.Interval)
+ 	paid := true
+@@ -190,6 +303,10 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 	}
+ 	sub, err = s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
+ 		x.CurrentPeriodStart, x.CurrentPeriodEnd = start, end
++		if pending {
++			x.PlanID, x.Quantity = billedPlanID, billedQty
++			x.PendingPlanID, x.PendingQuantity = nil, nil
++		}
+ 		if paid {
+ 			x.Status = store.Active
+ 		} else {
+@@ -221,13 +338,19 @@ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, pla
+ 		}
+ 	}
+ 	ps, pe := start, end
+-	inv, err := s.Store.CreateInvoice(store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
+-		Lines: lines, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe}, s.Clock.Now())
++	return s.billInvoice(ctx, store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
++		Lines: lines, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe})
++}
++
++// billInvoice stores an invoice and charges it to the customer's default payment method, as a renewal invoice is charged. It
++// reports false when the charge was declined.
++func (s *Service) billInvoice(ctx context.Context, in store.Invoice) (bool, error) {
++	inv, err := s.Store.CreateInvoice(in, s.Clock.Now())
+ 	if err != nil {
+ 		return false, err
+ 	}
+-	s.publish(ctx, sub.OrgID, "invoice.created", map[string]any{"invoice_id": inv.ID, "subscription_id": sub.ID})
+-	_, _, err = s.Payments.Pay(ctx, sub.OrgID, inv.ID, "")
++	s.publish(ctx, inv.OrgID, "invoice.created", map[string]any{"invoice_id": inv.ID, "subscription_id": inv.SubscriptionID})
++	_, _, err = s.Payments.Pay(ctx, inv.OrgID, inv.ID, "")
+ 	var decline *payments.DeclineError
+ 	switch {
+ 	case err == nil, errors.Is(err, payments.ErrNoPaymentMethod):

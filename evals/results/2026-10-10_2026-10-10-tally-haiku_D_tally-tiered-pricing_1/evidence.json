@@ -1,0 +1,359 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/plans` accepts `tiers_mode` and `tiers` for metered plans, validates them (422 `invalid_tiers` on any violation), and returns them with amounts in minor units.\n- `billing.TieredAmount` implements graduated and volume pricing, with inclusive `up_to` and zero quantity costing 0. Renewal of a tiered subscription bills one invoice line for the ended period's usage.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and new tests cover the pricing math, plan validation and renewal billing.",
+    "data": {},
+    "created": 1791608590786
+  },
+  {
+    "id": 2,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 610ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/build-1791608590829425892.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 610,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608591440
+  },
+  {
+    "id": 3,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 550ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/test-1791608591442831797.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 545,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608591988
+  },
+  {
+    "id": 4,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 510ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/lint-1791608591991094721.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 508,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608592500
+  },
+  {
+    "id": 5,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/secrets-1791608592518610572.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 15,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608592519
+  },
+  {
+    "id": 6,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +350 -21",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 350,
+      "Deletions": 21,
+      "base": "e8e160750440daf536cb4068fff3b3c12ff64ea1",
+      "commit": "9e9de8504b77f81689c1feb0127d0137670fae15"
+    },
+    "created": 1791608592649
+  },
+  {
+    "id": 7,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 9e9de8504b",
+    "ref": "9e9de8504b77f81689c1feb0127d0137670fae15",
+    "data": {},
+    "created": 1791608592650
+  },
+  {
+    "id": 8,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- What changed**",
+    "data": {},
+    "created": 1791608688088
+  },
+  {
+    "id": 9,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 520ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/build-1791608688133627616.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 517,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608688651
+  },
+  {
+    "id": 10,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 590ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/test-1791608688653542026.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 591,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608689244
+  },
+  {
+    "id": 11,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 660ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/lint-1791608689246322801.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 661,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608689908
+  },
+  {
+    "id": 12,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/secrets-1791608689928869686.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 17,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608689929
+  },
+  {
+    "id": 13,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +407 -21",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 407,
+      "Deletions": 21,
+      "base": "e8e160750440daf536cb4068fff3b3c12ff64ea1",
+      "commit": "81e34d705710da6b3165a49d21b9e0b5dc073eeb"
+    },
+    "created": 1791608690060
+  },
+  {
+    "id": 14,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 81e34d7057",
+    "ref": "81e34d705710da6b3165a49d21b9e0b5dc073eeb",
+    "data": {},
+    "created": 1791608690060
+  },
+  {
+    "id": 15,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 560ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/build-1791608745461166459.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 558,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608746020
+  },
+  {
+    "id": 16,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 410ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/test-1791608746022111399.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 410,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608746433
+  },
+  {
+    "id": 17,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 370ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/lint-1791608746434786275.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 365,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608746800
+  },
+  {
+    "id": 18,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/checks/secrets-1791608746820706806.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608746821
+  },
+  {
+    "id": 19,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +416 -21",
+    "ref": "/tmp/drydock-trial-3058495590/tally-tiered-pricing-D-1/data/runs/run_3fbcd6ff098c/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 416,
+      "Deletions": 21,
+      "base": "e8e160750440daf536cb4068fff3b3c12ff64ea1",
+      "commit": "10f56479be15ba8e54d7f7419de7e61cec773e4a"
+    },
+    "created": 1791608746949
+  },
+  {
+    "id": 20,
+    "taskId": "task_55df363fe7d0",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 10f56479be",
+    "ref": "10f56479be15ba8e54d7f7419de7e61cec773e4a",
+    "data": {},
+    "created": 1791608746949
+  }
+]

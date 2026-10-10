@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-webhook-signatures",
+  "taskClass": "security review",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "ca51c71d05d803d266863270fab43805cf83f405",
+  "startedAt": "2026-10-10T05:01:58.398672294Z",
+  "wallMs": 137935,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 890,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1617,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.009s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.002s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.013s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.010s\nok  \texample.com/tally/internal/snapshot\t0.017s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.008s\nok  \texample.com/tally/internal/webhooks\t0.007s\n"
+      }
+    ],
+    "durationMs": 2529
+  },
+  "costUsd": 0.03813135000000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 32,
+    "output": 28436,
+    "cacheRead": 879455,
+    "cacheWrite": 75578
+  },
+  "sessions": 1,
+  "modelTurns": 16,
+  "toolUses": {
+    "Bash": 14,
+    "Edit": 1
+  }
+}

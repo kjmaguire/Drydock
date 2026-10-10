@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every role/endpoint cell in the table is enforced: a refused request returns 403 `{\"error\":\"forbidden\"}` and changes nothing. Role is read on every request, so existing API keys pick up role changes immediately.\n- Member and role rules hold: no self role change (403), anyone may leave, owners/admins are only changeable by owners, and demoting or removing the last owner returns 409 `{\"error\":\"last_owner\"}`. API key revocation follows the owner/admin and own-key rules, and GET /v1/api-keys is filtered by role.\n- `go build ./...`, `go vet ./...` and `go test ./...` pass, with new tests covering\n...[truncated]",
+    "data": {},
+    "created": 1791608717438
+  },
+  {
+    "id": 2,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 450ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/build-1791608717472541399.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 450,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608717923
+  },
+  {
+    "id": 3,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 470ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/test-1791608717924707730.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 467,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608718393
+  },
+  {
+    "id": 4,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 410ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/lint-1791608718394852214.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 414,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608718809
+  },
+  {
+    "id": 5,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/secrets-1791608718833785209.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608718834
+  },
+  {
+    "id": 6,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +370 -38",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 370,
+      "Deletions": 38,
+      "base": "75add8088a1a3bc8dc8fc4a1146a9c0ed3ce2121",
+      "commit": "5d7ee62a696ca9effed7d329fb00d278bbf2205a"
+    },
+    "created": 1791608718963
+  },
+  {
+    "id": 7,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5d7ee62a69",
+    "ref": "5d7ee62a696ca9effed7d329fb00d278bbf2205a",
+    "data": {},
+    "created": 1791608718963
+  },
+  {
+    "id": 8,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Fix:** A refused request no longer updates the key's last-used time. The touch used to run before the role gate and before the handler's own checks. `authed` now wraps the response writer, runs the handler, and touches the key only if the response was not a 403. That covers the role gate in `authedAs` and the 403s in `team.go`, which the reviewer's suggested fix would have missed.",
+    "data": {},
+    "created": 1791608804924
+  },
+  {
+    "id": 9,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 970ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/build-1791608804999415467.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 966,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608805966
+  },
+  {
+    "id": 10,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 570ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/test-1791608805969237953.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 572,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608806542
+  },
+  {
+    "id": 11,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 430ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/lint-1791608806543689493.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 432,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608806976
+  },
+  {
+    "id": 12,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/checks/secrets-1791608807000094589.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608807000
+  },
+  {
+    "id": 13,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +418 -38",
+    "ref": "/tmp/drydock-trial-1329113674/tally-role-permissions-D-1/data/runs/run_58b4f302ba6c/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 418,
+      "Deletions": 38,
+      "base": "75add8088a1a3bc8dc8fc4a1146a9c0ed3ce2121",
+      "commit": "77f6ef750178026c607e8c9cbe9369606af65f93"
+    },
+    "created": 1791608807120
+  },
+  {
+    "id": 14,
+    "taskId": "task_4bb10c6ab1a1",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 77f6ef7501",
+    "ref": "77f6ef750178026c607e8c9cbe9369606af65f93",
+    "data": {},
+    "created": 1791608807120
+  }
+]
