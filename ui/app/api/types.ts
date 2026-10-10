@@ -579,10 +579,14 @@ export interface GitHubPR {
 
 export interface GitHubCheckRun {
   id: number;
+  /** A check run's name, or a commit status's context. */
   name: string;
-  status: string; // queued | in_progress | completed
-  conclusion: string; // success | failure | cancelled | skipped | timed_out | neutral | action_required
+  status: string; // queued | in_progress | completed (a commit status: pending | completed)
+  conclusion: string; // success | failure | cancelled | skipped | timed_out | neutral | action_required (a commit status: success | failure | error)
   html_url: string;
+  /** check_run, or status (the older commit status API that outside CI services use). Both count as CI. */
+  kind?: 'check_run' | 'status' | string;
+  description?: string;
 }
 
 /** host.CIState has no JSON tags, so the encoder emits the Go field names. */
@@ -591,6 +595,8 @@ export interface GitHubCIState {
   Pending: boolean;
   Failed: GitHubCheckRun[] | null;
   Passed: boolean;
+  /** Required checks that had not reported when the CI gate stopped waiting (only from the gate, not the live view). */
+  Missing?: string[] | null;
 }
 
 export interface GitHubReview {

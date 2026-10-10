@@ -39,6 +39,8 @@ func githubServer(t *testing.T, mu *sync.Mutex, merged *bool) *httptest.Server {
 			json.NewEncoder(w).Encode(map[string]any{"number": 7, "html_url": "https://github.test/o/r/pull/7", "merged": *merged, "head": map[string]string{"ref": "b", "sha": "abc"}, "base": map[string]string{"ref": "main"}})
 		case strings.HasSuffix(p, "/check-runs"):
 			json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "check_runs": []map[string]any{{"id": 1, "name": "ci", "status": "completed", "conclusion": "success", "app": map[string]string{"slug": "github-actions"}}}})
+		case strings.HasSuffix(p, "/status"):
+			json.NewEncoder(w).Encode(map[string]any{"state": "pending", "statuses": []any{}}) // commit statuses: none here
 		case p == "/pulls/7/reviews":
 			json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "state": "COMMENTED", "body": "looks ok", "user": map[string]string{"login": "kyle"}, "author_association": "OWNER", "submitted_at": "2026-10-08T10:00:00Z"}})
 		case p == "/pulls/7/comments", p == "/issues/7/comments":

@@ -115,7 +115,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
     const current = list.find((x) => x.id === taskId);
     return (
       <Page title="Pull Requests" icon={GitPullRequest} subtitle={list.length > 0 ? `${list.length} open from tasks` : undefined}>
-        <Section title="Pull requests of tasks" description="In pull request mode a finished task is pushed and a PR is opened; its CI and reviews are read from GitHub.">
+        <Section title="Pull requests of tasks" description="In pull request mode a finished task is pushed and a PR is opened; its CI and reviews are read from GitHub. It is merged only after its CI passed (unless you decided otherwise: Project settings, CI before merge) and you approved.">
           <ErrorNote error={s.project.tasks.error} what="Could not load tasks" />
           {list.length === 0 ? (
             <Empty title="No task has a pull request" icon={GitPullRequest}>

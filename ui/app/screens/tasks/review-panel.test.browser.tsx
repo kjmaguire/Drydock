@@ -99,6 +99,83 @@ describe('Review panel', () => {
   });
 });
 
+describe('Merge gates of a pull request', () => {
+  const ciQuestion = (payload: Record<string, unknown>) =>
+    detail({
+      pending: [{ id: 'ci-1', nodeId: 'ci', step: 9, spec: { kind: 'question', title: 'No CI ran on pull request #7 within 2 minutes. Check again, merge without CI this time, or stop.', payload } }],
+    });
+  const noCI = { gate: 'ci', pr: 7, url: 'https://github.test/o/r/pull/7', head: 'abc123', reason: 'none', missing: null, running: null, notes: null };
+
+  it('the CI gate offers check again, merge without CI this time, or stop, each bound to the request', async () => {
+    for (const [label, decision, data] of [
+      ['Check CI again', 'answered', {}],
+      ['Merge without CI this time', 'approved', { waive_ci: true }],
+      ['Stop', 'rejected', undefined],
+    ] as const) {
+      const runRespond = recorder(() => undefined);
+      const r = mount(<ReviewPanel detail={ciQuestion(noCI)} onChanged={() => undefined} />, svc({ runRespond }));
+      const gate = r.$('[data-testid="ci-gate"]')!;
+      expect(gate.getAttribute('data-reason')).toBe('none');
+      expect(gate.textContent).toContain('no CI tested');
+      expect(gate.textContent).toContain('recorded with your name');
+      expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'Stop']);
+      expect(Array.from(r.$$('a')).map((a) => a.getAttribute('href'))).toEqual(['https://github.test/o/r/pull/7']);
+      expect(() => byLabel(r.container, 'Your answer')).toThrow(); // not the free-text question
+      await r.act(() => byText(r.container, 'button', label).click());
+      await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', decision, data]]), r);
+      cleanup();
+    }
+  });
+
+  it('the CI gate names the missing required checks, the running ones, and what Drydock did not accept', () => {
+    const r = mount(
+      <ReviewPanel
+        detail={ciQuestion({ ...noCI, reason: 'missing', missing: ['deploy <b>x</b>'], running: ['e2e'], notes: ['agent:a2 asked to merge without CI; only a person can decide that, so CI was checked again'] })}
+        onChanged={() => undefined}
+      />,
+      svc(),
+    );
+    expect(r.$('[aria-label="Required checks that did not report"]')!.textContent).toBe('deploy <b>x</b>'); // GitHub text stays text
+    expect(r.$('[aria-label="Checks still running"]')!.textContent).toBe('e2e');
+    expect(r.$('[data-testid="ci-gate-notes"]')!.textContent).toContain('only a person can decide that');
+    expect(r.$('[data-testid="ci-gate"] b')).toBe(null);
+  });
+
+  it('read-only allows stopping at the CI gate, not checking again or waiving CI', async () => {
+    const r = mount(<ReviewPanel detail={ciQuestion(noCI)} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
+    await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Check CI again').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Merge without CI this time').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop').disabled).toBe(false);
+  });
+
+  it('the merge gate explains the GitHub state and offers check again or stop', async () => {
+    const runRespond = recorder(() => undefined);
+    const d = detail({
+      pending: [
+        {
+          id: 'm-1',
+          nodeId: 'merge',
+          step: 12,
+          spec: {
+            kind: 'question',
+            title: 'Not merged: pull request #7 is behind main, and the branch protection of main wants it up to date before a merge. Check again, or stop.',
+            payload: { gate: 'merge', pr: 7, url: 'https://github.test/o/r/pull/7', state: 'behind', reason: 'pull request #7 is behind main' },
+          },
+        },
+      ],
+    });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="merge-gate"]')!;
+    expect(gate.getAttribute('data-state')).toBe('behind');
+    expect(gate.textContent).toContain('not merge it unseen');
+    expect(gate.textContent).toContain('never asks GitHub to bypass branch protection');
+    expect(buttons(r.container)).toEqual(['Check again', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Check again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-1', 'answered', {}]]), r);
+  });
+});
+
 describe('Spec gate', () => {
   const payload: SpecReviewPayload = {
     phase: 'spec',

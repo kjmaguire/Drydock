@@ -242,6 +242,14 @@ export interface DevSettings {
   workerChecks?: boolean;
   /** Minutes a RUNNING task may go without progress before the team lead is asked about it (0 or absent: 15; at most 1440). */
   leadStallMinutes?: number;
+  /**
+   * The CI gate before a pull request is merged: `required` (the default; absent means it) or `none`, a human's statement
+   * that the repository has no CI. Only the human changes it; an import sets it back to required.
+   */
+  ciMode?: 'required' | 'none';
+  /** Who declared that the repository has no CI, and when (Unix ms). Set by the core when it saves `none`, never by the UI. */
+  ciNoneBy?: string;
+  ciNoneAt?: number;
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }

@@ -75,15 +75,24 @@ func (g GitHub) ClosePR(ctx context.Context, n int) error {
 	return err
 }
 
-// CheckRun is one CI check (for GitHub Actions the check run id is also the job id).
+// CheckRun is one CI result on a commit: a check run (GitHub Actions and other apps; for Actions the check run id is also
+// the job id) or a commit status (the older status API that many outside CI services still use). Both count as CI.
 type CheckRun struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`     // queued | in_progress | completed
-	Conclusion string `json:"conclusion"` // success | failure | cancelled | skipped | timed_out | neutral | action_required
-	URL        string `json:"html_url"`
-	AppSlug    string `json:"-"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`       // a check run's name, or a status's context
+	Status      string `json:"status"`     // queued | in_progress | completed; a status: pending | completed
+	Conclusion  string `json:"conclusion"` // success | failure | cancelled | skipped | timed_out | neutral | action_required; a status: success | failure | error
+	URL         string `json:"html_url"`
+	Kind        string `json:"kind"`                  // KindCheckRun or KindStatus
+	Description string `json:"description,omitempty"` // a status's description (a status has no job log)
+	AppSlug     string `json:"-"`
 }
+
+// The two kinds of CI result.
+const (
+	KindCheckRun = "check_run"
+	KindStatus   = "status"
+)
 
 // CIState summarizes checks for a commit.
 type CIState struct {
@@ -91,9 +100,11 @@ type CIState struct {
 	Pending bool
 	Failed  []CheckRun
 	Passed  bool // every run completed and none failed (and at least one run exists)
+	// Missing are the required checks (CIWait.Required) that had not reported when WaitCI stopped waiting.
+	Missing []string
 }
 
-// Checks lists the check runs of a commit and summarizes them.
+// Checks lists what CI reported on a commit, its check runs and its commit statuses, and summarizes them.
 func (g GitHub) Checks(ctx context.Context, sha string) (CIState, error) {
 	var resp struct {
 		Total int `json:"total_count"`
@@ -111,18 +122,41 @@ func (g GitHub) Checks(ctx context.Context, sha string) (CIState, error) {
 	if _, err := g.API.Do(ctx, "GET", g.p("/commits/%s/check-runs?per_page=100", sha), nil, &resp, ""); err != nil {
 		return CIState{}, err
 	}
+	// the combined status holds the latest status of each context; its own "state" is "pending" when there is none, so only
+	// the list is read
+	var combined struct {
+		Statuses []struct {
+			ID          int64  `json:"id"`
+			Context     string `json:"context"`
+			State       string `json:"state"` // error | failure | pending | success
+			Description string `json:"description"`
+			TargetURL   string `json:"target_url"`
+		} `json:"statuses"`
+	}
+	if _, err := g.API.Do(ctx, "GET", g.p("/commits/%s/status?per_page=100", sha), nil, &combined, ""); err != nil {
+		return CIState{}, err
+	}
 	var s CIState
-	for _, r := range resp.Runs {
-		cr := CheckRun{ID: r.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.URL, AppSlug: r.App.Slug}
+	add := func(cr CheckRun) {
 		s.Runs = append(s.Runs, cr)
-		if r.Status != "completed" {
+		if cr.Status != "completed" {
 			s.Pending = true
-			continue
+			return
 		}
-		switch r.Conclusion {
-		case "failure", "timed_out", "cancelled", "action_required":
+		switch cr.Conclusion {
+		case "failure", "timed_out", "cancelled", "action_required", "error":
 			s.Failed = append(s.Failed, cr)
 		}
+	}
+	for _, r := range resp.Runs {
+		add(CheckRun{ID: r.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.URL, Kind: KindCheckRun, AppSlug: r.App.Slug})
+	}
+	for _, st := range combined.Statuses {
+		cr := CheckRun{ID: st.ID, Name: st.Context, Status: "completed", Conclusion: st.State, URL: st.TargetURL, Kind: KindStatus, Description: st.Description}
+		if st.State == "pending" {
+			cr.Status, cr.Conclusion = "pending", ""
+		}
+		add(cr)
 	}
 	s.Passed = len(s.Runs) > 0 && !s.Pending && len(s.Failed) == 0
 	return s, nil
@@ -239,6 +273,8 @@ const (
 
 // Merge merges the PR. It is human-initiated only (the caller must hold the human's approval); branch protection rules
 // are respected: GitHub refuses a merge that required checks or reviews do not allow, and that error is returned as is.
+// The request carries the merge method, the head guard and the commit title, never anything that asks for administrator
+// rights or a bypass (the pull-request flow also reads MergeState first and does not call Merge on a blocked pull request).
 // shaGuard, if set, makes GitHub refuse the merge when the PR head moved since the human reviewed it.
 func (g GitHub) Merge(ctx context.Context, n int, strategy MergeStrategy, shaGuard, commitTitle string) (string, error) {
 	body := map[string]any{"merge_method": string(strategy)}

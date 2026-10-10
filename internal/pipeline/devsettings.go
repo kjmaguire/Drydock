@@ -35,7 +35,22 @@ type DevSettings struct {
 	// LeadStallMinutes is how long a RUNNING task may go without progress events before the team lead is asked about it
 	// (trigger "stalled"). 0 means the default, 15 minutes. Only matters when the project has an agent with the lead role.
 	LeadStallMinutes int `json:"leadStallMinutes,omitempty"`
+	// CIMode is the pull-request flow's CI gate before a merge (docs/github.md section 5). CIRequired, the default: CI must
+	// pass on the reviewed commit, and when none reports the human is asked (check again, merge without CI this time, or
+	// stop). CINone: a human declared that the repository has no CI, so a commit nothing reports on passes after the review
+	// alone (checks that do report still count). Required after an import.
+	CIMode string `json:"ciMode"`
+	// CINoneBy and CINoneAt (Unix milliseconds) record who declared that the repository has no CI, and when. SaveDevSettings
+	// sets them from its caller's identity, never from the settings it is given; empty while CIMode is CIRequired.
+	CINoneBy string `json:"ciNoneBy,omitempty"`
+	CINoneAt int64  `json:"ciNoneAt,omitempty"`
 }
+
+// The CI modes (DevSettings.CIMode).
+const (
+	CIRequired = "required"
+	CINone     = "none"
+)
 
 // DefaultLeadStallMinutes is the stall time when LeadStallMinutes is not set.
 const DefaultLeadStallMinutes = 15
@@ -67,7 +82,9 @@ type PreviewSetup struct {
 }
 
 // DefaultDevSettings applies to a project that never saved settings.
-func DefaultDevSettings() DevSettings { return DevSettings{MaxParallel: 2, Respond: true} }
+func DefaultDevSettings() DevSettings {
+	return DevSettings{MaxParallel: 2, Respond: true, CIMode: CIRequired}
+}
 
 // Validate normalizes and checks the settings.
 func (s *DevSettings) Validate() error {
@@ -92,6 +109,16 @@ func (s *DevSettings) Validate() error {
 	}
 	if s.LeadStallMinutes < 0 || s.LeadStallMinutes > 1440 {
 		return errors.New("devloop: leadStallMinutes must be 0 (default 15) to 1440")
+	}
+	switch s.CIMode {
+	case "":
+		s.CIMode = CIRequired
+	case CIRequired, CINone:
+	default:
+		return fmt.Errorf("devloop: ciMode must be %q or %q, not %q", CIRequired, CINone, s.CIMode)
+	}
+	if s.CIMode == CIRequired {
+		s.CINoneBy, s.CINoneAt = "", 0
 	}
 	return nil
 }
@@ -118,7 +145,8 @@ func LoadDevSettings(ctx context.Context, db *storage.DB, projectID string) DevS
 }
 
 // SaveDevSettings stores a project's settings. Only a human identity may change them (turning on automatic scheduling or
-// a project command is a human decision).
+// a project command is a human decision, and so is declaring that the repository has no CI). Declaring "no CI" records
+// who declared it (by) and when; saving the declaration again keeps the original record.
 func SaveDevSettings(ctx context.Context, db *storage.DB, projectID string, s DevSettings, by string) error {
 	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
 		return errors.New("devloop: only a human: identity may change a project's development settings")
@@ -126,8 +154,20 @@ func SaveDevSettings(ctx context.Context, db *storage.DB, projectID string, s De
 	if err := s.Validate(); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(s)
 	return db.WriteTx(ctx, func(tx *sql.Tx) error {
+		if s.CIMode == CINone {
+			prev := DefaultDevSettings()
+			var raw string
+			if tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, devKey(projectID)).Scan(&raw) == nil {
+				_ = json.Unmarshal([]byte(raw), &prev)
+			}
+			if prev.CIMode == CINone && prev.CINoneBy != "" {
+				s.CINoneBy, s.CINoneAt = prev.CINoneBy, prev.CINoneAt
+			} else {
+				s.CINoneBy, s.CINoneAt = by, storage.Now()
+			}
+		}
+		b, _ := json.Marshal(s)
 		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, devKey(projectID), string(b))
 		return err
 	})

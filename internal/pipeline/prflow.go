@@ -23,9 +23,13 @@ type PRConfig struct {
 	DeleteBranch  bool // delete the remote branch after merge
 	// CI waiting
 	CIPoll    time.Duration // default 15s
-	CIGrace   time.Duration // how long to wait for checks to appear before declaring "no CI" (default 2m)
-	CIMaxWait time.Duration // default 30m
+	CIGrace   time.Duration // how long a commit may show no CI result before the CI gate asks the human (default 2m)
+	CIMaxWait time.Duration // how long checks may run before the CI gate asks the human (default 30m)
 	LogBytes  int           // max failing-log bytes fed back (default 6000)
+	// MergeTries and MergePoll bound how long the merge step waits for GitHub to work out whether the pull request can be
+	// merged (host.MergeWait: default 4 reads, 2s apart).
+	MergeTries int
+	MergePoll  time.Duration
 }
 
 func (c PRConfig) remote() string {
@@ -168,9 +172,14 @@ func replyAddressed(ctx context.Context, d Deps, t tasks.Task, cfg PRConfig, pr 
 	return n
 }
 
-// CI waits for the PR head's checks and returns a CheckResult. A failing run's log is fetched, truncated (token rule 8) and
-// returned to the worker as feedback; the graph loops back without a human. With no CI runs after the grace period the
-// result passes and says so: Drydock does not pretend a repository has CI when it does not.
+// CI is the merge gate's CI step. It waits for what CI reports on the PR head (check runs and commit statuses, and by name
+// the checks that the base branch's protection requires) and returns a CheckResult. A failing run's log is fetched,
+// truncated (token rule 8) and returned to the worker as feedback; the graph loops back without a human. Nothing passes
+// untested unless a person said so: when no CI reports within the grace period, a required check never reports, or checks
+// are still running at the deadline, the human is asked to check again, merge without CI this time, or stop. Only a human:
+// identity can waive CI, and a waiver covers CI that did not report or did not finish, never a failed check. A project
+// where a human declared that the repository has no CI (DevSettings.CIMode "none") passes a commit nothing reported on;
+// checks that do report are still waited for and still fail it.
 func CI(d Deps, src PRSource) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, d, in)
@@ -189,72 +198,83 @@ func CI(d Deps, src PRSource) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		poll, grace, maxWait, logBytes := cfg.CIPoll, cfg.CIGrace, cfg.CIMaxWait, cfg.LogBytes
-		if poll <= 0 {
-			poll = 15 * time.Second
+		w := host.CIWait{Poll: cfg.CIPoll, Grace: cfg.CIGrace, MaxWait: cfg.CIMaxWait}
+		if w.Poll <= 0 {
+			w.Poll = 15 * time.Second
 		}
-		if grace <= 0 {
-			grace = 2 * time.Minute
+		if w.Grace <= 0 {
+			w.Grace = 2 * time.Minute
 		}
-		if maxWait <= 0 {
-			maxWait = 30 * time.Minute
+		if w.MaxWait <= 0 {
+			w.MaxWait = 30 * time.Minute
 		}
+		logBytes := cfg.LogBytes
 		if logBytes <= 0 {
 			logBytes = 6000
 		}
+		n := prNumber(t.PRRef)
+		var notes []string // what Drydock could not see or did not accept, said with the result
+		ans := ciAnswerFor(ctx, d, in, head)
+		waivedBy := ""
+		switch {
+		case ans.decision == "rejected" && isHuman(ans.by):
+			return workflow.NodeOutput{}, fmt.Errorf("CI of pull request #%d: stopped by %s", n, ans.by)
+		case ans.waive && isHuman(ans.by):
+			waivedBy = ans.by
+		case ans.waive:
+			notes = append(notes, fmt.Sprintf("%s asked to merge without CI; only a person can decide that, so CI was checked again", ans.by))
+		}
 		d.emit(ctx, "github.ci_started", t, map[string]any{"commit": head})
-		start := time.Now()
 		var st host.CIState
-		for {
-			st, err = cfg.GitHub.Checks(ctx, head)
-			if err != nil {
-				if errors.Is(err, host.ErrRateLimited) {
-					// back off and keep waiting; never block local work
-					select {
-					case <-ctx.Done():
-						return workflow.NodeOutput{}, ctx.Err()
-					case <-time.After(poll * 4):
-					}
-					continue
-				}
+		running := false
+		if waivedBy != "" {
+			// the waiver covers CI that did not report or did not finish, not CI that failed: one more look first
+			if st, err = cfg.GitHub.Checks(ctx, head); err != nil {
+				st = host.CIState{}
+				notes = append(notes, "CI could not be read once more before the waiver: "+oneLine(err.Error()))
+			}
+		} else {
+			required, perr := cfg.GitHub.RequiredChecks(ctx, cfg.BaseBranch)
+			if perr != nil {
+				notes = append(notes, fmt.Sprintf("the branch protection of %s could not be read in full (%s), so every check that reported was waited for", cfg.BaseBranch, oneLine(perr.Error())))
+				d.emit(ctx, "github.protection_unread", t, map[string]any{"branch": cfg.BaseBranch, "error": perr.Error()})
+			}
+			w.Required = required
+			st, err = cfg.GitHub.WaitCI(ctx, head, w)
+			if running = errors.Is(err, host.ErrCIStillRunning); err != nil && !running {
 				return workflow.NodeOutput{}, err
-			}
-			if len(st.Runs) == 0 && time.Since(start) > grace {
-				break
-			}
-			if len(st.Runs) > 0 && !st.Pending {
-				break
-			}
-			if time.Since(start) > maxWait {
-				return workflow.NodeOutput{}, fmt.Errorf("CI did not finish within %s", maxWait)
-			}
-			select {
-			case <-ctx.Done():
-				return workflow.NodeOutput{}, ctx.Err()
-			case <-time.After(poll):
 			}
 		}
 		res := workflow.CheckResult{Name: "ci", DiffHash: head}
-		switch {
-		case len(st.Runs) == 0:
-			res.Passed = true
-			res.Output = "no CI runs were reported for this commit within the grace period; treating CI as not configured"
-		case len(st.Failed) == 0:
-			res.Passed = true
-			res.Output = fmt.Sprintf("%d check run(s) passed", len(st.Runs))
-		default:
+		switch dev := LoadDevSettings(ctx, d.Tasks.DB, t.ProjectID); {
+		case len(st.Failed) > 0:
 			res.Passed = false
 			var sb strings.Builder
 			for _, f := range st.Failed {
 				res.FailingTests = append(res.FailingTests, f.Name)
-				log, lerr := cfg.GitHub.FailedLog(ctx, f.ID)
-				if lerr != nil {
-					log = "(the job log could not be fetched: " + lerr.Error() + "; open " + f.URL + ")"
-				}
-				fmt.Fprintf(&sb, "CI job %q concluded %s.\n%s\n", f.Name, f.Conclusion, checks.Truncate(stripLogNoise(log), logBytes, f.URL))
+				fmt.Fprintf(&sb, "CI job %q concluded %s.\n%s\n", f.Name, f.Conclusion, checks.Truncate(stripLogNoise(failedLog(ctx, cfg, f)), logBytes, f.URL))
 			}
 			res.Output = sb.String()
 			res.ExitCode = 1
+		case waivedBy != "":
+			res.Passed = true
+			res.Output = fmt.Sprintf("CI waived by %s for this commit: %s", waivedBy, ciSeen(st))
+			d.emit(ctx, "github.ci_waived", t, map[string]any{"commit": head, "by": waivedBy})
+		case running:
+			return ciQuestion(ctx, d, t, n, head, "running", st, w, notes), nil
+		case len(st.Runs) == 0 && dev.CIMode != CINone:
+			return ciQuestion(ctx, d, t, n, head, "none", st, w, notes), nil
+		case len(st.Missing) > 0 && dev.CIMode != CINone:
+			return ciQuestion(ctx, d, t, n, head, "missing", st, w, notes), nil
+		case len(st.Runs) == 0 || len(st.Missing) > 0:
+			res.Passed = true
+			res.Output = fmt.Sprintf("CI declared absent by %s on %s: %s", nonEmptyStr(dev.CINoneBy, "a person"), day(dev.CINoneAt), ciSeen(st))
+		default:
+			res.Passed = true
+			res.Output = fmt.Sprintf("%d check(s) passed", len(st.Runs))
+		}
+		if res.Passed && len(notes) > 0 {
+			res.Output += ". Note: " + strings.Join(notes, "; ")
 		}
 		passed := res.Passed
 		_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "ci", Passed: &passed, Summary: ciSummary(res, st), Ref: head})
@@ -278,7 +298,137 @@ func ciSummary(r workflow.CheckResult, st host.CIState) string {
 	if r.Passed {
 		return r.Output
 	}
-	return fmt.Sprintf("%d of %d check run(s) failed: %s", len(st.Failed), len(st.Runs), strings.Join(r.FailingTests, ", "))
+	return fmt.Sprintf("%d of %d check(s) failed: %s", len(st.Failed), len(st.Runs), strings.Join(r.FailingTests, ", "))
+}
+
+// failedLog is what the worker is shown of a failed check: the job log of a check run, or the description and link of a
+// commit status (a status has no log Drydock can read).
+func failedLog(ctx context.Context, cfg PRConfig, f host.CheckRun) string {
+	if f.Kind == host.KindStatus {
+		return fmt.Sprintf("(a commit status, so there is no job log: %q; details at %s)", f.Description, f.URL)
+	}
+	log, err := cfg.GitHub.FailedLog(ctx, f.ID)
+	if err != nil {
+		return "(the job log could not be fetched: " + err.Error() + "; open " + f.URL + ")"
+	}
+	return log
+}
+
+// ciSeen says in a few words what CI showed on the commit.
+func ciSeen(st host.CIState) string {
+	running := len(pendingChecks(st))
+	switch {
+	case len(st.Runs) == 0:
+		return "no CI reported on it"
+	case running > 0:
+		return fmt.Sprintf("%d of %d check(s) were still running", running, len(st.Runs))
+	case len(st.Missing) > 0:
+		return fmt.Sprintf("%d check(s) passed, the required check(s) %s did not report", len(st.Runs), strings.Join(st.Missing, ", "))
+	}
+	return fmt.Sprintf("%d check(s) passed", len(st.Runs))
+}
+
+// pendingChecks names the checks that have not finished.
+func pendingChecks(st host.CIState) []string {
+	var out []string
+	for _, r := range st.Runs {
+		if r.Status != "completed" {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+// ciAnswer is the human's answer to the CI node's question about a commit.
+type ciAnswer struct {
+	decision, by string
+	waive        bool // {"waive_ci": true}: merge without CI this time
+}
+
+// ciAnswerFor reads the answer to the CI node's latest question in this run, when that question was about head. The CI node
+// is a check node, and the watchdog's check middleware takes an answer delivered into a check node's inbox as the answer to
+// its own pause; so the CI question is not delivered (RequestSpec.Retry without DeliverAnswer) and is read from its
+// approvals row instead, as the budget gate does.
+func ciAnswerFor(ctx context.Context, d Deps, in workflow.NodeInput, head string) ciAnswer {
+	var status, decision, by string
+	var resp, payload []byte
+	err := d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT status, decision, decided_by, response, payload FROM approvals
+		WHERE run_id=? AND node_id=? AND CAST(payload AS TEXT) LIKE '%"gate":"ci"%' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+		string(in.RunID), string(in.NodeID)).Scan(&status, &decision, &by, &resp, &payload)
+	if err != nil || status != "APPROVED" && status != "REJECTED" {
+		return ciAnswer{}
+	}
+	var q struct {
+		Head string `json:"head"`
+	}
+	if json.Unmarshal(payload, &q) != nil || q.Head != head {
+		return ciAnswer{} // the question was about an earlier commit
+	}
+	var data struct {
+		WaiveCI bool `json:"waive_ci"`
+	}
+	_ = json.Unmarshal(resp, &data)
+	return ciAnswer{decision: decision, by: by, waive: data.WaiveCI && decision != "rejected"}
+}
+
+// ciQuestion asks the human about a commit CI gave no answer for. The node runs again after the answer (Retry) and reads
+// it with ciAnswerFor: "answered" checks CI again, {"waive_ci": true} merges without CI this time, "rejected" stops the run.
+func ciQuestion(ctx context.Context, d Deps, t tasks.Task, n int, head, reason string, st host.CIState, w host.CIWait, notes []string) workflow.NodeOutput {
+	running := pendingChecks(st)
+	var what string
+	switch reason {
+	case "running":
+		what = fmt.Sprintf("CI on pull request #%d is still running after %s (%s).", n, plainDuration(w.MaxWait), strings.Join(running, ", "))
+	case "missing":
+		what = fmt.Sprintf("The required check(s) %s did not report on pull request #%d within %s.", strings.Join(st.Missing, ", "), n, plainDuration(w.Grace))
+	default:
+		what = fmt.Sprintf("No CI ran on pull request #%d within %s.", n, plainDuration(w.Grace))
+	}
+	url := ""
+	ev, _ := d.Tasks.Evidence(ctx, t.ID)
+	for _, e := range ev {
+		if e.Kind == "pr" {
+			url = e.Ref
+		}
+	}
+	p, _ := json.Marshal(map[string]any{"gate": "ci", "pr": n, "url": url, "head": head, "reason": reason, "missing": st.Missing, "running": running, "notes": notes})
+	d.emit(ctx, "github.ci_needs_human", t, map[string]any{"commit": head, "reason": reason})
+	return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, Payload: p,
+		Title: what + " Check again, merge without CI this time, or stop."}}
+}
+
+// plainDuration writes d the way a person says it: "2 minutes", "30 seconds".
+func plainDuration(d time.Duration) string {
+	unit := func(n int64, one string) string {
+		if n == 1 {
+			return "1 " + one
+		}
+		return fmt.Sprintf("%d %ss", n, one)
+	}
+	switch {
+	case d >= time.Hour && d%time.Hour == 0:
+		return unit(int64(d/time.Hour), "hour")
+	case d >= time.Minute && d%time.Minute == 0:
+		return unit(int64(d/time.Minute), "minute")
+	case d >= time.Second && d%time.Second == 0:
+		return unit(int64(d/time.Second), "second")
+	}
+	return d.String()
+}
+
+// day is a Unix-milliseconds time as a date.
+func day(ms int64) string {
+	if ms <= 0 {
+		return "an unknown date"
+	}
+	return time.UnixMilli(ms).UTC().Format("2006-01-02")
+}
+
+// prNumber is the number in a task's PR reference ("owner/repo#12").
+func prNumber(ref string) int {
+	var n int
+	fmt.Sscanf(ref[strings.LastIndex(ref, "#")+1:], "%d", &n)
+	return n
 }
 
 // stripLogNoise drops the timestamp prefix of GitHub Actions log lines to save tokens.
@@ -374,7 +524,10 @@ func PRFeedback(d Deps, src PRSource) workflow.NodeHandler {
 }
 
 // MergePR merges through GitHub after the human approved. A PR that a human already merged on GitHub is accepted as
-// merged. Branch protection is respected: a refusal is returned, never bypassed. Auto-merge is never enabled.
+// merged. Branch protection is respected, never bypassed: GitHub's merge state is read first, and a pull request GitHub
+// reports as blocked (a required review or check is missing), behind its base, conflicting, a draft or not yet worked out
+// is not merged; the human is asked to check again or stop. The merge asks for no administrator rights, a refusal is
+// returned as a question, and auto-merge is never enabled.
 func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, d, in)
@@ -389,9 +542,11 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		var n int
-		fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
-		pr, _, err := cfg.GitHub.GetPR(ctx, n, "")
+		n := prNumber(t.PRRef)
+		if a, ok := delivered(in); ok && a.decision == "rejected" && isHuman(a.by) {
+			return workflow.NodeOutput{}, fmt.Errorf("merge of pull request #%d: stopped by %s", n, a.by)
+		}
+		pr, err := cfg.GitHub.MergeState(ctx, n, host.MergeWait{Tries: cfg.MergeTries, Delay: cfg.MergePoll})
 		if err != nil {
 			return githubTrouble(in, "read the pull request", err)
 		}
@@ -412,6 +567,15 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 				}
 				p, _ := json.Marshal(map[string]any{"pr": n, "reason": reason, "head": pr.Head.SHA, "reviewed": reviewed})
 				return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Title: "Not merged: " + reason, Payload: p}}, nil
+			}
+			// GitHub's own answer to whether it would merge now. One it would not merge is a question for the human, never a
+			// bypass: nothing here asks for administrator rights (GitHub can let an administrator's merge past protection rules
+			// that leave administrators out, so its refusal is not relied on).
+			if why := mergeBlocked(pr, n, cfg.BaseBranch); why != "" {
+				p, _ := json.Marshal(map[string]any{"gate": "merge", "pr": n, "url": pr.URL, "state": pr.MergeStatus(), "reason": why})
+				d.emit(ctx, "github.merge_blocked", t, map[string]any{"number": n, "state": pr.MergeStatus()})
+				return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Payload: p,
+					Title: "Not merged: " + why + ". Check again, or stop."}}, nil
 			}
 			sha, err = cfg.GitHub.Merge(ctx, n, cfg.MergeStrategy, reviewed, "")
 			if err != nil {
@@ -502,12 +666,50 @@ func short(sha string) string {
 	return sha
 }
 
+// mergeBlocked says in plain words why GitHub would not merge the pull request now, or "" when it would.
+func mergeBlocked(pr host.PR, n int, base string) string {
+	switch st := pr.MergeStatus(); st {
+	case "clean", "unstable", "has_hooks":
+		return ""
+	case "blocked":
+		return fmt.Sprintf("pull request #%d is blocked by the branch protection of %s (a required review or a required check is missing or has not passed)", n, base)
+	case "behind":
+		return fmt.Sprintf("pull request #%d is behind %s, and the branch protection of %s wants it up to date before a merge", n, base, base)
+	case "dirty":
+		return fmt.Sprintf("pull request #%d has merge conflicts with %s", n, base)
+	case "draft":
+		return fmt.Sprintf("pull request #%d is a draft", n)
+	case "unknown":
+		return fmt.Sprintf("GitHub has not worked out whether pull request #%d can be merged", n)
+	default:
+		return fmt.Sprintf("GitHub reports the merge state of pull request #%d as %q", n, st)
+	}
+}
+
+// delivered is the latest answer to this node's own question (RequestSpec.DeliverAnswer adds it to the restored inbox as a
+// message from the node itself); ok is false when there is none. humanResponse reads the first decision in the inbox
+// instead, which for the merge node is the approval that started it.
+func delivered(in workflow.NodeInput) (human, bool) {
+	for i := len(in.Inbox) - 1; i >= 0; i-- {
+		var r struct {
+			Decision string `json:"decision"`
+			By       string `json:"by"`
+			Request  string `json:"request"`
+		}
+		if in.Inbox[i].From != in.NodeID || json.Unmarshal(in.Inbox[i].Value, &r) != nil || r.Decision == "" || r.Request == "" {
+			continue
+		}
+		return human{decision: r.Decision, by: r.By}, true
+	}
+	return human{}, false
+}
+
 // githubTrouble turns a GitHub or network failure of a pull-request step (gh signed out, an outage, a remote that refuses
 // the push) into a question for the human instead of a failed run: a failed run strands the task after the agents' work
 // was paid for. Answering runs the same step again (nothing else is redone); rejecting stops the run.
 func githubTrouble(in workflow.NodeInput, step string, err error) (workflow.NodeOutput, error) {
-	if h := humanResponse(in); h.decision == "rejected" && strings.HasPrefix(h.by, "human:") {
-		return workflow.NodeOutput{}, fmt.Errorf("%s: stopped by %s after GitHub failed: %w", step, h.by, err)
+	if a, ok := delivered(in); ok && a.decision == "rejected" && isHuman(a.by) {
+		return workflow.NodeOutput{}, fmt.Errorf("%s: stopped by %s after GitHub failed: %w", step, a.by, err)
 	}
 	msg := err.Error()
 	if len(msg) > 300 {

@@ -1,6 +1,7 @@
 // The human decision panel: every pending request of the task's run, each answered by buttons bound to the request id (never
 // to message text). Spec reviews get the spec gate, budget pauses the resume form, questions a free-text answer, reviews
-// Approve / Request changes, the limit question and watchdog pauses Continue (with guidance) / Stop, anything else
+// Approve / Request changes, the limit question and watchdog pauses Continue (with guidance) / Stop, the pull request's CI
+// gate Check CI again / Merge without CI this time / Stop and its merge gate Check again / Stop, anything else
 // Approve / Reject. Read-only (license) turns off approving and answering; refusing
 // work (reject, request changes, send the spec back) stays available.
 
@@ -19,6 +20,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { BudgetPausePanel } from '../shared/budget-pause.tsx';
 import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../shared/escalation.tsx';
+import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
 
 const panelCss = css({
@@ -111,6 +113,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     const budget = budgetPayload(p);
     const limit = limitPayload(p);
     const pause = limit ? undefined : watchdogPayload(p);
+    const ciGate = ciGatePayload(p);
+    const mergeGate = mergeGatePayload(p);
     const ro = s.workspace.license;
     const sending = state !== 'idle';
     const busy = sending || ro.readOnly;
@@ -165,6 +169,10 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
           <LimitPanel payload={limit} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : pause ? (
           <WatchdogPanel payload={pause} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+        ) : ciGate ? (
+          <CIGatePanel payload={ciGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+        ) : mergeGate ? (
+          <MergeGatePanel payload={mergeGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : spec ? (
           <SpecGate payload={spec} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : p.spec.kind === 'question' ? (
