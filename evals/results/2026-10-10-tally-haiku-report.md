@@ -2,8 +2,8 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 
 | Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|---|
-| D | 66 | 65 | $8.8939 | $0.1368 | $0.0926 ($0.0305 to $0.5487) | 4m9s (1m34s to 9m39s) |
-| B1 | 68 | 65 | $8.6540 | $0.1331 | $0.0784 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
+| D | 68 | 67 | $8.9947 | $0.1342 | $0.0877 ($0.0305 to $0.5487) | 4m8s (1m34s to 9m39s) |
+| B1 | 69 | 66 | $8.6999 | $0.1318 | $0.0681 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
 
 | Task | Arm | Runs | Accepted | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|
@@ -33,10 +33,10 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 | tally-renewal-dedupe | B1 | 3 | 3 | $0.1100 ($0.0630 to $0.1468) | 6m18s (3m34s to 7m15s) |
 | tally-role-permissions | D | 3 | 3 | $0.1864 ($0.1609 to $0.1888) | 6m43s (6m15s to 7m8s) |
 | tally-role-permissions | B1 | 3 | 3 | $0.1500 ($0.1393 to $0.2987) | 4m6s (3m49s to 5m20s) |
-| tally-seat-limits | D | 2 | 2 | $0.0616 ($0.0458 to $0.0774) | 3m22s (2m31s to 4m13s) |
+| tally-seat-limits | D | 3 | 3 | $0.0471 ($0.0458 to $0.0774) | 2m31s (2m26s to 4m13s) |
 | tally-seat-limits | B1 | 3 | 3 | $0.0646 ($0.0450 to $0.0678) | 2m43s (2m23s to 6m19s) |
 | tally-snapshot-v3 | D | 2 | 2 | $0.0783 ($0.0546 to $0.1019) | 3m48s (3m12s to 4m24s) |
-| tally-snapshot-v3 | B1 | 2 | 2 | $0.0967 ($0.0664 to $0.1269) | 3m11s (2m51s to 3m32s) |
+| tally-snapshot-v3 | B1 | 3 | 3 | $0.0664 ($0.0459 to $0.1269) | 2m51s (2m29s to 3m32s) |
 | tally-soft-delete-customers | D | 3 | 3 | $0.1701 ($0.1112 to $0.1704) | 4m9s (3m37s to 4m20s) |
 | tally-soft-delete-customers | B1 | 3 | 3 | $0.2354 ($0.1860 to $0.2624) | 3m14s (3m2s to 3m52s) |
 | tally-tenant-isolation | D | 3 | 3 | $0.2962 ($0.1589 to $0.3015) | 4m46s (4m7s to 5m15s) |
@@ -47,7 +47,7 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 | tally-timezone-reports | B1 | 3 | 3 | $0.0289 ($0.0263 to $0.0324) | 1m51s (1m35s to 2m0s) |
 | tally-webhook-retries | D | 3 | 3 | $0.0648 ($0.0576 to $0.0974) | 3m51s (3m42s to 4m9s) |
 | tally-webhook-retries | B1 | 3 | 3 | $0.0971 ($0.0886 to $0.0999) | 3m12s (3m9s to 3m18s) |
-| tally-webhook-signatures | D | 2 | 2 | $0.0720 ($0.0555 to $0.0885) | 4m7s (3m21s to 4m54s) |
+| tally-webhook-signatures | D | 3 | 3 | $0.0555 ($0.0537 to $0.0885) | 3m21s (3m11s to 4m54s) |
 | tally-webhook-signatures | B1 | 3 | 3 | $0.0442 ($0.0381 to $0.1282) | 2m35s (2m18s to 3m28s) |
 | tally-webhook-ssrf | D | 3 | 3 | $0.0320 ($0.0305 to $0.0333) | 2m4s (2m4s to 2m20s) |
 | tally-webhook-ssrf | B1 | 3 | 2 | $0.0298 ($0.0222 to $0.0324) | 1m47s (1m13s to 1m56s) |
@@ -71,22 +71,22 @@ D against B1, task by task (counted runs):
 | tally-proration | iteration | 2 of 3 | 2 of 3 | $0.2073 | $0.3018 | 5m18s | 4m39s |
 | tally-renewal-dedupe | test-fix loop | 3 of 3 | 3 of 3 | $0.1502 | $0.1100 | 4m41s | 6m18s |
 | tally-role-permissions | security review | 3 of 3 | 3 of 3 | $0.1864 | $0.1500 | 6m43s | 4m6s |
-| tally-seat-limits | iteration | 2 of 2 | 3 of 3 | $0.0616 | $0.0646 | 3m22s | 2m43s |
-| tally-snapshot-v3 | iteration | 2 of 2 | 2 of 2 | $0.0783 | $0.0967 | 3m48s | 3m11s |
+| tally-seat-limits | iteration | 3 of 3 | 3 of 3 | $0.0471 | $0.0646 | 2m31s | 2m43s |
+| tally-snapshot-v3 | iteration | 2 of 2 | 3 of 3 | $0.0783 | $0.0664 | 3m48s | 2m51s |
 | tally-soft-delete-customers | iteration | 3 of 3 | 3 of 3 | $0.1701 | $0.2354 | 4m9s | 3m14s |
 | tally-tenant-isolation | security review | 3 of 3 | 3 of 3 | $0.2962 | $0.2393 | 4m46s | 3m51s |
 | tally-tiered-pricing | iteration | 3 of 3 | 3 of 3 | $0.0870 | $0.0555 | 4m53s | 2m40s |
 | tally-timezone-reports | iteration | 3 of 3 | 3 of 3 | $0.0409 | $0.0289 | 2m41s | 1m51s |
 | tally-webhook-retries | iteration | 3 of 3 | 3 of 3 | $0.0648 | $0.0971 | 3m51s | 3m12s |
-| tally-webhook-signatures | security review | 2 of 2 | 3 of 3 | $0.0720 | $0.0442 | 4m7s | 2m35s |
+| tally-webhook-signatures | security review | 3 of 3 | 3 of 3 | $0.0555 | $0.0442 | 3m21s | 2m35s |
 | tally-webhook-ssrf | security review | 3 of 3 | 2 of 3 | $0.0320 | $0.0298 | 2m4s | 1m47s |
 | tally-zero-line-invoices | test-fix loop | 3 of 3 | 3 of 3 | $0.0374 | $0.0251 | 1m42s | 1m8s |
 
 | Class | D accepted | B1 accepted |
 |---|---|---|
 | high-risk | 6 of 6 | 5 of 6 |
-| iteration | 27 of 28 | 28 of 29 |
-| security review | 17 of 17 | 17 of 18 |
+| iteration | 28 of 29 | 29 of 30 |
+| security review | 18 of 18 | 17 of 18 |
 | test-fix loop | 12 of 12 | 12 of 12 |
 | tested refactor | 3 of 3 | 3 of 3 |
 
@@ -180,8 +180,10 @@ Every run:
 | tally-seat-limits | B1 | 3 | accepted | $0.0450 | 2m43s | 1 | 36 / 35918 / 1137118 / 78146 |  |  |
 | tally-seat-limits | D | 1 | accepted | $0.0774 | 4m13s | 4 | 72 / 50552 / 1686729 / 176463 | REVISE, SHIP |  |
 | tally-seat-limits | D | 2 | accepted | $0.0458 | 2m31s | 2 | 34 / 30761 / 934638 / 105168 | SHIP |  |
+| tally-seat-limits | D | 3 | accepted | $0.0471 | 2m26s | 2 | 46 / 30474 / 1244643 / 96937 | SHIP |  |
 | tally-snapshot-v3 | B1 | 1 | accepted | $0.0664 | 2m51s | 1 | 36 / 37899 / 1257406 / 88467 |  |  |
 | tally-snapshot-v3 | B1 | 2 | accepted | $0.1269 | 3m32s | 1 | 34 / 44220 / 1410678 / 106510 |  |  |
+| tally-snapshot-v3 | B1 | 3 | accepted | $0.0459 | 2m29s | 1 | 48 / 31338 / 1460523 / 78057 |  |  |
 | tally-snapshot-v3 | D | 1 | accepted | $0.1019 | 4m24s | 2 | 54 / 58962 / 1806922 / 126705 | SHIP |  |
 | tally-snapshot-v3 | D | 2 | accepted | $0.0546 | 3m12s | 2 | 40 / 40921 / 1264467 / 107695 | SHIP |  |
 | tally-soft-delete-customers | B1 | 1 | accepted | $0.2624 | 3m52s | 1 | 68 / 44410 / 3144906 / 122702 |  |  |
@@ -219,6 +221,7 @@ Every run:
 | tally-webhook-signatures | B1 | 3 | accepted | $0.0442 | 2m35s | 1 | 30 / 35764 / 954978 / 83821 |  |  |
 | tally-webhook-signatures | D | 1 | accepted | $0.0555 | 3m21s | 2 | 40 / 43935 / 1179272 / 108588 | SHIP |  |
 | tally-webhook-signatures | D | 2 | accepted | $0.0885 | 4m54s | 4 | 82 / 59239 / 2203731 / 183945 | REVISE, SHIP |  |
+| tally-webhook-signatures | D | 3 | accepted | $0.0537 | 3m11s | 2 | 42 / 42133 / 1199404 / 103274 | SHIP |  |
 | tally-webhook-ssrf | B1 | 1 | accepted | $0.0222 | 1m13s | 1 | 18 / 16326 / 411633 / 49745 |  |  |
 | tally-webhook-ssrf | B1 | 2 | rejected | $0.0324 | 1m56s | 1 | 40 / 20546 / 1101084 / 55396 |  | the hidden acceptance check failed |
 | tally-webhook-ssrf | B1 | 3 | accepted | $0.0298 | 1m47s | 1 | 34 / 20787 / 875224 / 53290 |  |  |
