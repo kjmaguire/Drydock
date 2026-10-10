@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "8d9fa953968800c380bdd0bf77bd90c4901bd5f3",
+  "startedAt": "2026-10-10T04:54:34.346856894Z",
+  "wallMs": 164511,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 2201,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3496,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.024s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.007s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.651s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.005s\nok  \texample.com/tally/internal/payments\t0.011s\nok  \texample.com/tally/internal/reports\t0.002s\nok  \texample.com/tally/internal/snapshot\t0.016s\nok  \texample.com/tally/internal/store\t0.010s\nok  \texample.com/tally/internal/subscriptions\t0.007s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 5701
+  },
+  "costUsd": 0.028748410000000005,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 18,
+    "output": 30546,
+    "cacheRead": 385001,
+    "cacheWrite": 48118
+  },
+  "sessions": 1,
+  "modelTurns": 9,
+  "toolUses": {
+    "Bash": 6,
+    "Edit": 1,
+    "Write": 1
+  }
+}

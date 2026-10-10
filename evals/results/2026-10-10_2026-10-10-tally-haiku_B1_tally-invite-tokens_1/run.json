@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-invite-tokens",
+  "taskClass": "security review",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "82ab67eaef6feca76e5a5313b335b0c4edbb93f5",
+  "startedAt": "2026-10-10T04:55:00.493456837Z",
+  "wallMs": 174760,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 826,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1531,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.025s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.010s\nok  \texample.com/tally/internal/payments\t0.009s\nok  \texample.com/tally/internal/reports\t0.003s\nok  \texample.com/tally/internal/snapshot\t0.011s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.007s\nok  \texample.com/tally/internal/webhooks\t0.011s\n"
+      }
+    ],
+    "durationMs": 2361
+  },
+  "costUsd": 0.06456909,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 44,
+    "output": 36191,
+    "cacheRead": 1591379,
+    "cacheWrite": 86790
+  },
+  "sessions": 1,
+  "modelTurns": 25,
+  "toolUses": {
+    "Bash": 23,
+    "Edit": 1
+  }
+}

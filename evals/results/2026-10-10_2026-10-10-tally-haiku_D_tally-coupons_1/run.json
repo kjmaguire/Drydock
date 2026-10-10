@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-coupons",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "f09b2f89c3d15e0ae40a7a4c917cba539f8708f0",
+  "startedAt": "2026-10-10T04:51:25.652427097Z",
+  "wallMs": 478561,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 829,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3187,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.055s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.009s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.021s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.012s\nok  \texample.com/tally/internal/payments\t0.015s\nok  \texample.com/tally/internal/reports\t0.039s\nok  \texample.com/tally/internal/snapshot\t0.024s\nok  \texample.com/tally/internal/store\t0.006s\nok  \texample.com/tally/internal/subscriptions\t0.011s\nok  \texample.com/tally/internal/webhooks\t0.043s\n"
+      }
+    ],
+    "durationMs": 4020
+  },
+  "costUsd": 0.4309945299999999,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 82,
+    "output": 104729,
+    "cacheRead": 3694787,
+    "cacheWrite": 272098
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_3cdeec67683b",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nTwo spec deviations in the create endpoint need fixing. Everything else I checked against the spec holds, including redemption order, the error codes, the once/repeating/forever rules, the amount cap and tax after discount.\n\n1. **Wrong-typed JSON returns 400, not 422.** `internal/api/coupons.go` `createCoupon` uses the shared `decode`, which answers 400 `invalid_json` on any type mismatch (`internal/api/respond.go:27-34`). The spec says anything invalid is 422 `{\"error\":\"invalid\"}`. Examples: `\"percent_off\": \"25\"`, `\"percent_off\": 25.5`, `\"amount_off\": 5`, `\"duration_in_months\": \"3\"`. Fix: decode the coupon body in a way that maps type errors to 422 `invalid` (e.g. decode into `json.RawMessage` fields, or check the decode error and write `invalid`). Add tests for these cases in `TestCreateAndFindCoupons`.\n\n2. **Codes with surrounding whitespace are accepted.** `internal/store/coupons.go` `CreateCoupon` runs `c.Code = strings.TrimSpace(c.Code)` before `checkCoupon`. So `\" SPRING \"` passes validation and is stored as `SPRING`, although the spec allows only 3 to 32 letters, digits, dashes or underscores. Fix: validate the code as submitted, with no trimming before the regex. Also drop the `TrimSpace` in `couponKeyOf` if it is only there for this, and add a test expecting 422 for a padded code.\n\nOptional, not a reason to revise: the handler returns `invalid` before `code_taken` when both apply, which is a reasonable ordering.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"1) internal/api/coupo\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_3cdeec67683b"
+    }
+  ],
+  "coreTaskId": "task_b1d0da6f1a35"
+}
