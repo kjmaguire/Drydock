@@ -251,7 +251,7 @@ func TestScanRepoSkipsSymlinksAndScripts(t *testing.T) {
 	if !k.HasScripts {
 		t.Fatal("scripts are recorded")
 	}
-	plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude"})
+	plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
 	for _, f := range plan.Files {
 		if strings.Contains(f.Path, "scripts") || strings.Contains(f.Content, "echo hi") {
 			t.Fatalf("scripts are never delivered: %+v", f)
@@ -378,7 +378,7 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 0 {
 		t.Fatalf("an offered skill must not be eligible: %+v", el)
 	}
-	if plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Database", Adapter: "claude"}); len(plan.Files) != 0 {
+	if plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Database", Adapter: "claude", Delivery: DeliveryAll}); len(plan.Files) != 0 {
 		t.Fatalf("an offered skill must not be planned: %+v", plan)
 	}
 	if len(e.events("skill.imported")) != 1 || len(e.events("skill.offered")) != 1 || len(e.events("skill.resolved")) != 1 {

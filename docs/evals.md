@@ -410,3 +410,61 @@ commits. The harness now records the commit its binary was built from. The speed
 did not come into play: every run of it was accepted in both arms. The trial ran before decision P36 (2026-10-10): every
 session Drydock starts now carries about 17,600 fewer tokens in each request (the person's skill list, tools no Drydock
 session uses), so D's cost figures above are from the heavier setup; B1 is plain Claude Code and is unchanged. Not re-run.
+
+## 14. Skills: none, all in every turn, or only the relevant ones (2026-10-10, decision P37)
+
+**Question** (the owner's: "do integrations, skills and MCP servers help build a better product, or hurt?"). Every
+accepted skill used to go to Claude in full in every turn, whatever the task. Does that help, cost, or hurt, and does
+giving only the relevant ones lose anything?
+
+**Design.** Arm D only, the `tally` suite (23 tasks, section 13.1), haiku, two repeats each, checks mode, Drydock
+`60019f9be6f2`, Claude Code 2.1.296 (`claude-haiku-5-5` answered every run), after decision P36. Three variants, run at the
+same time in 12 shards on one 4-CPU machine:
+- **none**: the project has no skills.
+- **all**: the twelve skills of the prebuilt agents (Cloudflare, Workers, Wrangler, Durable Objects, React, composition
+  patterns, frontend design, web design and writing guidelines, Microsoft docs and code reference, MCP builder; 87 KB of
+  `SKILL.md`, fetched at the catalog's pinned commits by `drydock-trial fetch-skills`), accepted for both agents and put into
+  every turn as `.claude/rules`. None of them is about a Go billing service: this is what a person gets after installing a
+  few prebuilt agents' skills, on a task they do not cover.
+- **relevant**: the same twelve, with skill delivery `relevant`: none has globs, so all twelve are listed in `AGENTS.md` and
+  their text is in `.claude/drydock-skills` for the agent to read.
+
+Run with `drydock-trial run -arms D -skills-dir <bundle> -d-skills all|relevant`; compared with `drydock-trial compare`
+(`evals/results/2026-10-10-skills-compare.md`, 138 run records next to it).
+
+| Variant | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Prompt tokens per run, median (range) | Wall time per run, median (range) |
+|---|---|---|---|---|---|---|---|
+| none | 46 | 45 | $4.3668 | $0.0970 | $0.0583 ($0.0207 to $0.4096) | 1,345,194 (391,839 to 4,151,216) | 4m0s (1m38s to 18m34s) |
+| all | 46 | 43 | $8.2401 | $0.1916 | $0.1221 ($0.0407 to $0.5641) | 2,359,046 (889,117 to 7,658,851) | 3m51s (1m47s to 13m46s) |
+| relevant | 46 | 45 | $4.3790 | $0.0973 | $0.0586 ($0.0240 to $0.3890) | 1,556,865 (347,963 to 5,072,330) | 3m55s (1m21s to 7m31s) |
+
+Prompt tokens are fresh input plus cache reads and writes over every turn of a run. Over all runs, cache writes were 5.2 M
+(none), 8.6 M (all) and 5.2 M (relevant) tokens; cache reads 67.6 M, 117.8 M and 72.4 M.
+
+**Result.**
+- **All skills in every turn cost 1.9 times as much and did not help.** Cost per accepted task $0.19 against $0.10; every
+  turn re-read the 87 KB. Acceptance was 43 of 46 against 45 of 46: task by task worse on 2 tasks (graceful shutdown 0 of 2
+  against 1 of 2, renewal dedupe 1 of 2 against 2 of 2), better on none, exact sign test p = 0.5, so no claim of harm to
+  quality either.
+- **Relevant cost the same as none** ($4.38 against $4.37; the index added about 16% prompt tokens at the median) and was
+  accepted as often (45 of 46; better on graceful shutdown, worse on proration, p = 1.0).
+- **The agents opened none of the twelve** in the relevant runs (0 reads in 46 runs): right, since none applies.
+- The five runs not accepted: three on the graceful-shutdown rule "a second Shutdown returns at once" (two in all, one in
+  none; plain Claude Code failed the same rule in section 13.2), one proration rule (relevant), one iteration limit (all).
+
+**Follow-up: does an agent open a skill that does apply?** Six API tasks of the suite (coupons, CSV import, soft delete,
+audit log, seat limits, idempotent payments), one run each, relevant delivery, the twelve plus one skill written for this
+codebase (`tally-api`: how Tally's handlers answer errors, read bodies, page lists, scope by organization and are tested;
+written from the fixture's own code, not from the hidden checks; globs `internal/api/**`, `internal/apitest/**`). Trial
+`2026-10-10-skills-probe`. All six accepted; the agents opened `tally-api` in **2 of 6** runs and none of the others. A
+skill made for the codebase, offered only by its name and description, was missed four times out of six.
+
+**Decision (P37).** The default skill delivery is `relevant`, with one change made after the follow-up: a task that names no
+files is scoped to the repository, so a skill whose globs match files of the repository loads into every turn like a rule
+(it was written for this codebase), while a skill whose globs match nothing here, or that has no globs (the registries'
+skills), is listed. With task file hints, only the skills matching them load. `all` stays available per project.
+
+**Caveats.** One model, one suite with precise tickets where skills could hardly help (acceptance near the ceiling), one
+machine under load (wall times include waiting for CPUs). The follow-up is six runs: an observation, not a rate. The
+repository-scope change was made after the follow-up and is covered by tests, not by another paid run. A suite whose
+tickets leave rules to the codebase's skills is what would show whether skills raise acceptance.

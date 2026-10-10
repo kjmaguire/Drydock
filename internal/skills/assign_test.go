@@ -23,11 +23,23 @@ func planned(t *testing.T, e *env, agentID, role, adapter string, hints ...strin
 	if err != nil {
 		t.Fatal(err)
 	}
+	// a skill reaches the agent through a file, the tool, or both (Claude's on-demand files are both): count it once
+	seen := map[string]bool{}
 	var out []string
 	for _, f := range plan.Files {
-		out = append(out, f.Skills...)
+		for _, n := range f.Skills {
+			if !seen[n] {
+				seen[n] = true
+				out = append(out, n)
+			}
+		}
 	}
-	out = append(out, plan.OnDemand...)
+	for _, n := range plan.OnDemand {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
 	sort.Strings(out)
 	return out
 }

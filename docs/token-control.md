@@ -238,11 +238,12 @@ MCP call.
 **Measured and left as they are.** `--exclude-dynamic-system-prompt-sections` made no difference across worktrees (2,786 new
 tokens either way). `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS` saves 147 tokens and removes the CLI's git safety rules. Reordering
 Drydock's appended instructions cannot raise cache reads: the CLI caches the per-session part (environment, instructions,
-prompt) as a whole. The prompt-cache lifetime stays the CLI's default. Not changed, with their cost visible: path-scoped rules
-(Drydock's skills among them) are appended in full, where native Claude Code loads one only when a matching file is touched
-(delivering them on demand could save tokens when a skill does not apply, but an agent might not read it; to be measured
-first); accepted memory is preloaded whole in AGENTS.md (each entry one line, a person accepted every one, and each run's
-context manifest shows its size); the person's own and their plugins' hooks still run (P16), so a SessionStart hook that adds
+prompt) as a whole. The prompt-cache lifetime stays the CLI's default. Changed since by decision P37: skills reach Claude by skill delivery
+`relevant` (the default; only skills whose globs match the task's files, or the repository's, are loaded, the others are
+listed and read on demand; measured in [`evals.md`](evals.md) section 14: putting the prebuilt agents' twelve skills in
+every turn cost 1.9 times as much, `relevant` cost the same as no skills), and accepted memory goes into AGENTS.md newest
+first up to 8 KB, each entry cut to 600 characters, the rest through `search_memory`; each turn's manifest says when what
+Claude gets in every turn is over 32 KB. Not changed, with their cost visible: the person's own and their plugins' hooks still run (P16), so a SessionStart hook that adds
 context adds tokens; installed plugins' MCP servers still start, with their tools denied (CLAUDE-MCP-01).
 
 **Spend nobody asked for, closed.**

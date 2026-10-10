@@ -33,7 +33,7 @@ func acceptedEnv(t *testing.T) *env {
 
 func TestPlanClaudeRulesAreNativePathScopedAndRoleFiltered(t *testing.T) {
 	e := acceptedEnv(t)
-	plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude"})
+	plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +70,14 @@ func TestPlanClaudeRulesAreNativePathScopedAndRoleFiltered(t *testing.T) {
 	e.gitRun("add", "-A")
 	e.gitRun("commit", "-qm", "braces")
 	e.s.ScanRepo(context.Background(), "p1")
-	plan, _ = e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: ""})
+	plan, _ = e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "", Delivery: DeliveryAll})
 	for _, f := range plan.Files {
 		if strings.HasSuffix(f.Path, "braces.md") && !strings.Contains(f.Content, "src/**/*.{ts,tsx}") {
 			t.Fatalf("%s", f.Content)
 		}
 	}
 	// no unassigned-role leak: a role-less run only sees skills without roles
-	plan, _ = e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "", Adapter: "claude"})
+	plan, _ = e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "", Adapter: "claude", Delivery: DeliveryAll})
 	for _, f := range plan.Files {
 		if strings.Contains(f.Path, "d1-migrations") || strings.Contains(f.Path, "test-names") {
 			t.Fatalf("role-scoped skills need a matching role: %v", f.Path)
@@ -136,8 +136,11 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 			t.Fatalf("without hints: %+v", f)
 		}
 	}
-	// "all" and an unknown or empty value keep today's delivery: every skill as a rule
-	for _, d := range []string{DeliveryAll, "", "bogus"} {
+	// "all" keeps every skill as a rule; an unknown or empty value means the default, relevant
+	if DeliveryOf("") != DeliveryRelevant || DeliveryOf("bogus") != DeliveryRelevant {
+		t.Fatal("the default is relevant")
+	}
+	for _, d := range []string{DeliveryAll} {
 		plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: d, Hints: []string{"src/api/users.ts"}})
 		if len(plan.Files) != 3 || plan.Index || plan.Note != "" || len(plan.OnDemand) != 0 {
 			t.Fatalf("%q: %+v", d, plan)
@@ -152,6 +155,25 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	cx, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "codex", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
 	if len(cx.OnDemand) != 1 {
 		t.Fatalf("%+v", cx)
+	}
+}
+
+// A task that names no files is scoped to the repository: with "relevant", a skill whose globs match files of the
+// worktree loads as a rule; one whose globs match nothing there, and one without globs, stay on demand.
+func TestPlanClaudeRelevantWithoutHintsLoadsTheSkillsOfThisRepository(t *testing.T) {
+	e := acceptedEnv(t)
+	wt := t.TempDir()
+	writeFiles(t, wt, map[string]string{"src/api/users.ts": "x", "README.md": "y", "node_modules/m/migrations/1.sql": "ignored"})
+	plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Worktree: wt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	methods := map[string]string{}
+	for _, f := range plan.Files {
+		methods[f.Skills[0]] = f.Method
+	}
+	if methods["api-style"] != MethodClaudeRules || methods["d1-migrations"] != MethodClaudeOnDemand || methods["everywhere"] != MethodClaudeOnDemand {
+		t.Fatalf("api-style matches src/api here, d1-migrations matches nothing outside node_modules, everywhere has no globs: %v", methods)
 	}
 }
 
@@ -225,7 +247,7 @@ func TestContextEngineWritesRulesIntoRealWorktree(t *testing.T) {
 	var delivered []string
 	eng := &ctxeng.Engine{DB: e.db, Memory: memory.Store{DB: e.db}}
 	eng.Files = func(ctx context.Context, projectID, worktree string) ([]ctxeng.ExtraFile, error) {
-		plan, err := e.s.Plan(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_1", Role: "Backend", Adapter: "claude", Worktree: worktree})
+		plan, err := e.s.Plan(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_1", Role: "Backend", Adapter: "claude", Worktree: worktree, Delivery: DeliveryAll})
 		if err != nil {
 			return nil, err
 		}

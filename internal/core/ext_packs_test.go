@@ -274,6 +274,7 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 	gitIn(t, repo, "commit", "-qm", "skills")
 	var p core.Project
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	setSkillDelivery(t, a, p.ID, skills.DeliveryAll)
 	var res skills.ScanResult
 	a.call("skill.scan", map[string]string{"projectId": p.ID}, &res)
 	// repository skills are offered, never accepted automatically (decision P11): the human accepts each one
@@ -465,6 +466,7 @@ func TestTheManifestSaysWhenEveryTurnCarriesTooMuch(t *testing.T) {
 	gitIn(t, repo, "commit", "-qm", "skills")
 	var p core.Project
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	setSkillDelivery(t, a, p.ID, skills.DeliveryAll)
 	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
 	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "vendor-guide"}, nil)
 	var worker, reviewer core.Agent
@@ -493,4 +495,12 @@ func TestTheManifestSaysWhenEveryTurnCarriesTooMuch(t *testing.T) {
 		a.call("task.get", map[string]string{"id": task.ID}, &detail)
 		return detail.Task.Status == tasks.Completed
 	})
+}
+
+func setSkillDelivery(t *testing.T, a *app, projectID, d string) {
+	t.Helper()
+	var s map[string]any
+	a.call("projectdev.get", map[string]any{"projectId": projectID}, &s)
+	s["skillDelivery"] = d
+	a.call("projectdev.set", map[string]any{"projectId": projectID, "settings": s}, nil)
 }

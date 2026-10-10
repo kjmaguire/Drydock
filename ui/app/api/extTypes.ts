@@ -233,7 +233,7 @@ export interface CheckSettings {
   depsOffline: boolean;
 }
 /** The skill delivery a project has when it never chose one (the core's skills.DefaultDelivery). */
-export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'all';
+export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';
 
 export interface DevSettings {
   maxParallel: number;

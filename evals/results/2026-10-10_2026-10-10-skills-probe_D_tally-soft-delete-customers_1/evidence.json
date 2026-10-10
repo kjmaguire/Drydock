@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- DELETE /v1/customers/{id} soft-deletes at the service clock and returns 204, or 409 `has_active_subscriptions` when a subscription is not canceled. A deleted customer returns 404 everywhere in the API, and its email is free for reuse.\n- Invoices and payments stay readable, and the invoice customer shows `deleted: true`. POST /v1/customers/{id}/restore works within 30 days, with 409 `email_taken` on a conflict. `store.PurgeDeletedCustomers(now)` removes customers deleted more than 30 days before `now` and returns the count.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and new \n...[truncated]",
+    "data": {},
+    "created": 1791672290371
+  },
+  {
+    "id": 2,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 470ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-soft-delete-customers/tally-soft-delete-customers-D-1/data/runs/run_b31b20a7e184/checks/build_fd309e3a8370.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 472,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672290909
+  },
+  {
+    "id": 3,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 430ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-soft-delete-customers/tally-soft-delete-customers-D-1/data/runs/run_b31b20a7e184/checks/test_36ebf8d8c7c6.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 432,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672291343
+  },
+  {
+    "id": 4,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 360ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-soft-delete-customers/tally-soft-delete-customers-D-1/data/runs/run_b31b20a7e184/checks/lint_4f1038234694.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 356,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672291701
+  },
+  {
+    "id": 5,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-soft-delete-customers/tally-soft-delete-customers-D-1/data/runs/run_b31b20a7e184/checks/secrets_3c0ed05ae51e.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672291725
+  },
+  {
+    "id": 6,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +394 -37",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-soft-delete-customers/tally-soft-delete-customers-D-1/data/runs/run_b31b20a7e184/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 394,
+      "Deletions": 37,
+      "base": "0f5cdbabf1499a4c36af100377f6a83e1db45387",
+      "commit": "76725b21692992965c5124447666d355cb7f9059"
+    },
+    "created": 1791672291862
+  },
+  {
+    "id": 7,
+    "taskId": "task_a82644d51974",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 76725b2169",
+    "ref": "76725b21692992965c5124447666d355cb7f9059",
+    "data": {},
+    "created": 1791672291863
+  }
+]

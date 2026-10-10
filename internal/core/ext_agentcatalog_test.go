@@ -430,7 +430,7 @@ func TestAgentsAreGivenSkillsWhenMadeAndEdited(t *testing.T) {
 	}
 	var plan skills.Plan
 	a.call("skill.plan", skills.Target{ProjectID: p.ID, AgentID: ag.ID, Role: "reviewer", Adapter: "claude"}, &plan)
-	if len(plan.Files) != 1 || plan.Files[0].Path != ".claude/rules/wrangler.md" {
+	if len(plan.Files) != 1 || strings.Join(plan.Files[0].Skills, ",") != "wrangler" {
 		t.Fatalf("the reviewer's next run: %+v", plan.Files)
 	}
 
