@@ -2,7 +2,7 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 
 | Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|---|
-| D | 68 | 67 | $8.9947 | $0.1342 | $0.0877 ($0.0305 to $0.5487) | 4m8s (1m34s to 9m39s) |
+| D | 69 | 68 | $9.0503 | $0.1331 | $0.0870 ($0.0305 to $0.5487) | 4m7s (1m34s to 9m39s) |
 | B1 | 69 | 66 | $8.6999 | $0.1318 | $0.0681 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
 
 | Task | Arm | Runs | Accepted | Cost per run, median (range) | Wall time per run, median (range) |
@@ -35,7 +35,7 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 | tally-role-permissions | B1 | 3 | 3 | $0.1500 ($0.1393 to $0.2987) | 4m6s (3m49s to 5m20s) |
 | tally-seat-limits | D | 3 | 3 | $0.0471 ($0.0458 to $0.0774) | 2m31s (2m26s to 4m13s) |
 | tally-seat-limits | B1 | 3 | 3 | $0.0646 ($0.0450 to $0.0678) | 2m43s (2m23s to 6m19s) |
-| tally-snapshot-v3 | D | 2 | 2 | $0.0783 ($0.0546 to $0.1019) | 3m48s (3m12s to 4m24s) |
+| tally-snapshot-v3 | D | 3 | 3 | $0.0557 ($0.0546 to $0.1019) | 3m18s (3m12s to 4m24s) |
 | tally-snapshot-v3 | B1 | 3 | 3 | $0.0664 ($0.0459 to $0.1269) | 2m51s (2m29s to 3m32s) |
 | tally-soft-delete-customers | D | 3 | 3 | $0.1701 ($0.1112 to $0.1704) | 4m9s (3m37s to 4m20s) |
 | tally-soft-delete-customers | B1 | 3 | 3 | $0.2354 ($0.1860 to $0.2624) | 3m14s (3m2s to 3m52s) |
@@ -72,7 +72,7 @@ D against B1, task by task (counted runs):
 | tally-renewal-dedupe | test-fix loop | 3 of 3 | 3 of 3 | $0.1502 | $0.1100 | 4m41s | 6m18s |
 | tally-role-permissions | security review | 3 of 3 | 3 of 3 | $0.1864 | $0.1500 | 6m43s | 4m6s |
 | tally-seat-limits | iteration | 3 of 3 | 3 of 3 | $0.0471 | $0.0646 | 2m31s | 2m43s |
-| tally-snapshot-v3 | iteration | 2 of 2 | 3 of 3 | $0.0783 | $0.0664 | 3m48s | 2m51s |
+| tally-snapshot-v3 | iteration | 3 of 3 | 3 of 3 | $0.0557 | $0.0664 | 3m18s | 2m51s |
 | tally-soft-delete-customers | iteration | 3 of 3 | 3 of 3 | $0.1701 | $0.2354 | 4m9s | 3m14s |
 | tally-tenant-isolation | security review | 3 of 3 | 3 of 3 | $0.2962 | $0.2393 | 4m46s | 3m51s |
 | tally-tiered-pricing | iteration | 3 of 3 | 3 of 3 | $0.0870 | $0.0555 | 4m53s | 2m40s |
@@ -85,13 +85,13 @@ D against B1, task by task (counted runs):
 | Class | D accepted | B1 accepted |
 |---|---|---|
 | high-risk | 6 of 6 | 5 of 6 |
-| iteration | 28 of 29 | 29 of 30 |
+| iteration | 29 of 30 | 29 of 30 |
 | security review | 18 of 18 | 17 of 18 |
 | test-fix loop | 12 of 12 | 12 of 12 |
 | tested refactor | 3 of 3 | 3 of 3 |
 
-D was accepted more often than B1 on 2 task(s), less often on 0 and as often on 21 (23 tasks run by both, at least 2 counted run(s) per arm and task).
-This is a pilot: decision P34 asks for at least 20 tasks with 3 counted runs of each arm before any claim, so no test is computed.
+D was accepted more often than B1 on 2 task(s), less often on 0 and as often on 21 (23 tasks run by both, at least 3 counted run(s) per arm and task).
+Exact two-sided sign test over the 2 tasks where the arms differ: p = 0.500 (the chance of a split at least this uneven if neither arm were better; it says nothing about how large a difference is).
 
 Every run:
 
@@ -186,6 +186,7 @@ Every run:
 | tally-snapshot-v3 | B1 | 3 | accepted | $0.0459 | 2m29s | 1 | 48 / 31338 / 1460523 / 78057 |  |  |
 | tally-snapshot-v3 | D | 1 | accepted | $0.1019 | 4m24s | 2 | 54 / 58962 / 1806922 / 126705 | SHIP |  |
 | tally-snapshot-v3 | D | 2 | accepted | $0.0546 | 3m12s | 2 | 40 / 40921 / 1264467 / 107695 | SHIP |  |
+| tally-snapshot-v3 | D | 3 | accepted | $0.0557 | 3m18s | 2 | 44 / 42889 / 1275509 / 107238 | SHIP |  |
 | tally-soft-delete-customers | B1 | 1 | accepted | $0.2624 | 3m52s | 1 | 68 / 44410 / 3144906 / 122702 |  |  |
 | tally-soft-delete-customers | B1 | 2 | accepted | $0.1860 | 3m2s | 1 | 40 / 42220 / 1676258 / 116208 |  |  |
 | tally-soft-delete-customers | B1 | 3 | accepted | $0.2354 | 3m14s | 1 | 48 / 46013 / 2203756 / 123482 |  |  |

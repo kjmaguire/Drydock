@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -129,10 +130,8 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	commit := gitOut(root, "rev-parse", "--short=12", "HEAD")
-	if gitOut(root, "status", "--porcelain", "--untracked-files=no") != "" {
-		commit += "+dirty"
-	}
+	info, _ := debug.ReadBuildInfo()
+	commit := drydockCommit(root, info)
 	if contains(armOrder, trial.ArmDrydock) && *mode == trial.ModeSandbox && *image == "" {
 		eng := sandbox.NewEngine()
 		fmt.Println("building the offline Go image for the sandbox ...")
@@ -342,6 +341,35 @@ func pickTasks(root, suite, list string) ([]trial.Task, error) {
 		ids = strings.Split(list, ",")
 	}
 	return trial.FindTasks(all, ids)
+}
+
+// drydockCommit is the Drydock that arm D runs: the commit this binary was built from (its VCS stamp, "+dirty" when the
+// tree it was built from had uncommitted changes). The repository's HEAD is not it once the repository moves on while a
+// batch runs; it is the answer only for a binary without a stamp (go run).
+func drydockCommit(root string, info *debug.BuildInfo) string {
+	var rev string
+	var modified bool
+	if info != nil {
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				modified = s.Value == "true"
+			}
+		}
+	}
+	if rev == "" {
+		rev = gitOut(root, "rev-parse", "--short=12", "HEAD")
+		modified = gitOut(root, "status", "--porcelain", "--untracked-files=no") != ""
+	}
+	if len(rev) > 12 {
+		rev = rev[:12]
+	}
+	if modified {
+		rev += "+dirty"
+	}
+	return rev
 }
 
 func gitOut(dir string, args ...string) string {

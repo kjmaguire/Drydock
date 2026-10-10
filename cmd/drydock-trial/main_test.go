@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -46,5 +48,31 @@ func TestSelfcheckProvesAHiddenCheck(t *testing.T) {
 	}
 	if err := selfcheck(context.Background(), []string{"-tasks", "saasapi-csv-export"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The record names the Drydock the binary was built from, not wherever the repository has moved since.
+func TestDrydockCommitIsTheBinarysOwn(t *testing.T) {
+	stamped := &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "0123456789abcdef0123456789abcdef01234567"}, {Key: "vcs.modified", Value: "true"}}}
+	if got := drydockCommit(t.TempDir(), stamped); got != "0123456789ab+dirty" {
+		t.Fatalf("stamped binary: %q", got)
+	}
+	stamped.Settings[1].Value = "false"
+	if got := drydockCommit(t.TempDir(), stamped); got != "0123456789ab" {
+		t.Fatalf("stamped binary, clean tree: %q", got)
+	}
+	// no stamp (go run): the repository's HEAD
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=x", "-c", "user.email=x@x.invalid", "commit", "-q", "--allow-empty", "-m", "x"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+	}
+	head, err := exec.Command("git", "-C", repo, "rev-parse", "--short=12", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := drydockCommit(repo, &debug.BuildInfo{}); got != strings.TrimSpace(string(head)) {
+		t.Fatalf("unstamped binary: %q, want the repository's HEAD %s", got, head)
 	}
 }

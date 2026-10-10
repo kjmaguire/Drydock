@@ -360,3 +360,51 @@ engine running (the sandbox pilot showed the sandbox works; it changes where com
 gets at most $3 (B1 `--max-budget-usd`, D a project budget) and 40 minutes. The runs are sharded over parallel processes
 (`drydock-trial run -suite tally -tasks ...`), each with its own core and CLI sessions.
 
+
+### 13.2 Result: haiku, three repeats (2026-10-10)
+
+The report is `evals/results/2026-10-10-tally-haiku-report.md` (`drydock-trial report -trial 2026-10-10-tally-haiku`), with
+the 138 run records next to it. Claude Code 2.1.296; `--model haiku` was answered by `claude-haiku-5-5` in every run of
+both arms. The runs went in 12 parallel shards on one 4-CPU Linux machine, so wall times include waiting for the CPUs.
+
+| Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
+|---|---|---|---|---|---|---|
+| D | 69 | 68 | $9.0503 | $0.1331 | $0.0870 ($0.0305 to $0.5487) | 4m7s (1m34s to 9m39s) |
+| B1 | 69 | 66 | $8.6999 | $0.1318 | $0.0681 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
+
+**The pre-registered comparison.** Task by task, D was accepted more often than B1 on 2 tasks (graceful shutdown and webhook
+SSRF: 3 of 3 against 2 of 3), less often on none, and as often on 21 (every one 3 of 3 in both arms except proration, 2 of 3
+in both). The exact two-sided sign test over the 2 tasks where the arms differ gives p = 0.5. By class: high-risk 6 of 6
+against 5 of 6, security review 18 of 18 against 17 of 18, iteration 29 of 30 each, test-fix loops 12 of 12 each, the
+refactor 3 of 3 each.
+
+**The four rejections**, each re-run three times on the run's own result (each failed the same way every time, so none is
+a flaky check), and each a rule its prompt states:
+- B1, graceful shutdown, repeat 2: a second Shutdown while the first is waiting does not return at once ("a second call
+  ... returns at once").
+- B1, webhook SSRF, repeat 2: `https://[fe80::1%25eth0]/` is accepted (link-local with a zone; the prompt lists fe80::/10).
+- B1 repeat 3 and D repeat 2, proration: an upgrade while a quantity downgrade is pending applies the pending quantity
+  instead of clearing it ("A later upgrade ... clears the pending change"). D's reviewer shipped that run on its first look.
+
+**The review loop.** In 17 of D's 69 runs the reviewer asked for changes at least once (13 runs once, 4 twice), and all 17
+ended accepted; the run D lost was one the reviewer shipped at once. Whether those 17 first versions would have failed the
+hidden check is not known, because a record keeps only the final diff; the next trial should keep the version each review
+saw and run the hidden check on it too.
+
+**What it says.** With haiku and precise tickets, one plain Claude Code session solved this suite almost as reliably as
+Drydock's worker and reviewer: 66 of 69 runs against 68 of 69. Drydock's two extra tasks point the way one would hope (a
+concurrency rule and a security edge case), but two tasks of 23 are no evidence of a difference (p = 0.5). By decision
+P34's rule this trial supports neither "Drydock beats plain Claude Code" nor the opposite: on this suite they did about the
+same. Cost per accepted task was the same ($0.133 against $0.132): a D run costs more at the median ($0.087 against $0.068)
+and takes about a minute longer, and its extra accepted runs paid for that. A suite that can tell the arms apart needs tasks
+one session fails often: tickets that leave rules implicit in the codebase, as real tickets do, instead of stating every
+rule the check holds them to; larger multi-step changes; or a weaker model. The review-loop counterfactual above belongs
+in it.
+
+**Caveats.** One model, one machine, Linux; D ran in checks mode, not in the sandbox. Cost is Claude Code's own estimate
+(`total_cost_usd`, at API prices); every session reported one. Repeats 2 and 3 record Drydock as `babb3c1a149b+dirty`: the
+harness took the repository's HEAD when the batch started, and by then the repository had moved on, with uncommitted
+Windows fixes in internal/checks and internal/core. The binary that ran all 138 runs was built from cba4f9e, and nothing
+under testdata/fixtures/tally, evals/tasks, evals/testdata, internal/trial or cmd/drydock-trial differs between the two
+commits. The harness now records the commit its binary was built from. The speed task's sensitivity to load (section 13.1)
+did not come into play: every run of it was accepted in both arms.
