@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seat limits are enforced inside the store, under its mutex, so invite creation, viewer-to-role changes and plan changes check and write atomically. Accepting an invite never checks seats.\n- The API returns the specified 402 `seat_limit_reached` and 409 `over_seat_limit` bodies. `GET /v1/org` and the `PATCH /v1/org` response carry `seats: {used, limit}`, with `limit: null` for unlimited plans.\n- New tests in `internal/api/seats_test.go` cover each rule, including a concurrent-invite test with one seat left. `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791609034932
+  },
+  {
+    "id": 2,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 460ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/build-1791609034969477792.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 461,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609035431
+  },
+  {
+    "id": 3,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 390ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/test-1791609035433076260.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 393,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609035826
+  },
+  {
+    "id": 4,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 310ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/lint-1791609035828468673.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 311,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609036140
+  },
+  {
+    "id": 5,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/secrets-1791609036157003311.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 14,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609036157
+  },
+  {
+    "id": 6,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +296 -5",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 296,
+      "Deletions": 5,
+      "base": "fcec6dc64f54517c7c9a36edeeedbc910d45f3d2",
+      "commit": "dea71c18291b89c9049abf55636e4f6dd9728888"
+    },
+    "created": 1791609036278
+  },
+  {
+    "id": 7,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit dea71c1829",
+    "ref": "dea71c18291b89c9049abf55636e4f6dd9728888",
+    "data": {},
+    "created": 1791609036279
+  },
+  {
+    "id": 8,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seat limits are enforced inside the store, under its mutex. Invite creation, viewer-to-role changes and plan changes check and write atomically. Accepting an invite never checks seats.\n- The API returns the specified 402 `seat_limit_reached` and 409 `over_seat_limit` bodies. `GET /v1/org` and the `PATCH /v1/org` response carry `seats: {used, limit}`, with `limit: null` for unlimited plans.\n- New tests in `internal/api/seats_test.go` cover each rule, including the concurrent-invite test with one seat left. `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791609105505
+  },
+  {
+    "id": 9,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 530ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/build-1791609105537504069.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 525,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609106063
+  },
+  {
+    "id": 10,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 590ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/test-1791609106065262462.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 585,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609106651
+  },
+  {
+    "id": 11,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 310ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/lint-1791609106652833838.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 310,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609106963
+  },
+  {
+    "id": 12,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/checks/secrets-1791609106983735239.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 19,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609106984
+  },
+  {
+    "id": 13,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +327 -6",
+    "ref": "/tmp/drydock-trial-3526455425/tally-seat-limits-D-1/data/runs/run_a0b6990470c3/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 327,
+      "Deletions": 6,
+      "base": "fcec6dc64f54517c7c9a36edeeedbc910d45f3d2",
+      "commit": "dee840877028aabd855ca619167d19e64fbdfd8f"
+    },
+    "created": 1791609107117
+  },
+  {
+    "id": 14,
+    "taskId": "task_53a0f657aa42",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit dee8408770",
+    "ref": "dee840877028aabd855ca619167d19e64fbdfd8f",
+    "data": {},
+    "created": 1791609107118
+  }
+]

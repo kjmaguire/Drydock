@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "59971a68cfb7f0f15d0a1551b80c7918af92a9f9",
+  "startedAt": "2026-10-10T05:14:16.845119544Z",
+  "wallMs": 139477,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1495,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 12210,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.021s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.010s\n?   \texample.com/tally/internal/clock\t[no test files]\n--- FAIL: TestHiddenSecondShutdownAndStopReturnAtOnce (10.02s)\n    zz_hidden_graceful_shutdown_test.go:383: a second Shutdown while the first was waiting did not return within 10s\nFAIL\nFAIL\texample.com/tally/internal/jobs\t10.707s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.007s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.002s\nok  \texample.com/tally/internal/snapshot\t0.021s\nok  \texample.com/tally/internal/store\t0.012s\nok  \texample.com/tally/internal/subscriptions\t0.017s\nok  \texample.com/tally/internal/webhooks\t0.008s\nFAIL\n"
+      }
+    ],
+    "durationMs": 13718
+  },
+  "costUsd": 0.028939580000000006,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 20,
+    "output": 28883,
+    "cacheRead": 446608,
+    "cacheWrite": 50150
+  },
+  "sessions": 1,
+  "modelTurns": 13,
+  "toolUses": {
+    "Bash": 7,
+    "Edit": 3,
+    "Read": 1,
+    "Write": 1
+  }
+}
