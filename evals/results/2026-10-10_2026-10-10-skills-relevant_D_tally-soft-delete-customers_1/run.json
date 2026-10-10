@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-soft-delete-customers",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "b3131c3b32c8e4313f787d192a9a5a7a10bf1921",
+  "startedAt": "2026-10-10T21:56:52.66498225Z",
+  "wallMs": 395547,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1224,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1560,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.017s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.002s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.006s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.002s\nok  \texample.com/tally/internal/payments\t0.007s\nok  \texample.com/tally/internal/reports\t0.012s\nok  \texample.com/tally/internal/snapshot\t0.016s\nok  \texample.com/tally/internal/store\t0.006s\nok  \texample.com/tally/internal/subscriptions\t0.007s\nok  \texample.com/tally/internal/webhooks\t0.005s\n"
+      }
+    ],
+    "durationMs": 2794
+  },
+  "costUsd": 0.10077403000000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 76,
+    "output": 79296,
+    "cacheRead": 1789899,
+    "cacheWrite": 174805
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_0e309d818351",
+      "feedback": "internal/store/customers.go:184-189 (RestoreCustomer): the email conflict check relies on the global customersByEmail map, which holds only one customer per address across all organizations. If org A has a live customer W with email e, org B later creates Z with e (which overwrites the index entry to Z), then restoring A's deleted customer X with e finds Z in a different org, skips ErrEmailTaken, and leaves A with two live customers with the same address; it also overwrites B's index entry. Fix: in RestoreCustomer, check for a live customer in the same org with the same normEmail by scanning s.customers (OrgID == orgID, DeletedAt == nil), rather than relying only on the map, and do not overwrite another organization's index entry. Add a store test with two organizations sharing an address where restore in the first returns ErrEmailTaken. (The global index predates this change, so it is optional to fix it in CreateCustomer too.)"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_0e309d818351"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_a6733a068218"
+}

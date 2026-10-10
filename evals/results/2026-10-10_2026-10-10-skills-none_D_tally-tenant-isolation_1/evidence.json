@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every API route that takes an object ID in the path, body or query now acts only on the caller's organization, and another org's ID gets the same `404 {\"error\":\"not_found\"}` as an unknown one. Customer emails are unique and looked up per organization.\n- Existing exported names and signatures stay. I added `Store.DeleteOrgWebhookEndpoint`, and `ErrCustomerOrgMismatch` is kept but no longer returned.\n- Checked by new tests in `internal/api/isolation_test.go` and `internal/store/isolation_test.go`. `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791669842175
+  },
+  {
+    "id": 2,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 640ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-1/data/runs/run_35205f433dd7/checks/build_5d5041dfbe9e.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 642,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669842859
+  },
+  {
+    "id": 3,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 530ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-1/data/runs/run_35205f433dd7/checks/test_cb1766ffcd22.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 526,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669843388
+  },
+  {
+    "id": 4,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 480ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-1/data/runs/run_35205f433dd7/checks/lint_459eb6d3cfb4.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 480,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669843871
+  },
+  {
+    "id": 5,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-1/data/runs/run_35205f433dd7/checks/secrets_cd991f610540.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 23,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669843896
+  },
+  {
+    "id": 6,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +343 -31",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-tenant-isolation-D-1/data/runs/run_35205f433dd7/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 343,
+      "Deletions": 31,
+      "base": "670fdecde06a700e29694253976d5d7b0eec934e",
+      "commit": "2130243fa2646f4a7106b78410b458daef54fc75"
+    },
+    "created": 1791669844041
+  },
+  {
+    "id": 7,
+    "taskId": "task_35f4f0fff6bc",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 2130243fa2",
+    "ref": "2130243fa2646f4a7106b78410b458daef54fc75",
+    "data": {},
+    "created": 1791669844042
+  }
+]

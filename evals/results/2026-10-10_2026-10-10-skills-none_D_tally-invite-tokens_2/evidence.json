@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Tokens are 32 `crypto/rand` bytes in unpadded base64url (43 chars). Only the SHA-256 hash is stored. The token appears only in the invite email; POST and GET `/v1/invites` and snapshots never carry it.\n- `/v1/invites/accept` returns 404 `invite_not_found` (unknown or revoked), 410 `invite_used` (already accepted), or 410 `invite_expired` (older than 7 days on the service clock). Otherwise it accepts as before.\n- Re-inviting an address (case-insensitive) revokes the older open invite, so only the newest token works. GET lists only pending invites, each with `expires_at`. Checked by new store \n...[truncated]",
+    "data": {},
+    "created": 1791670210413
+  },
+  {
+    "id": 2,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 730ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/build_259fe3564ba1.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 725,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670211201
+  },
+  {
+    "id": 3,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 730ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/test_cbe6a13cda1a.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 728,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670211966
+  },
+  {
+    "id": 4,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 410ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/lint_7f1354c883de.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 405,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670212374
+  },
+  {
+    "id": 5,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/secrets_4d5e9db20c33.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670212395
+  },
+  {
+    "id": 6,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +370 -12",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 370,
+      "Deletions": 12,
+      "base": "d199b93cd023e5833d3ad1c9e7a76247739c4ae3",
+      "commit": "6d4b136ec76199261c822ae99334e3607f7b1354"
+    },
+    "created": 1791670212544
+  },
+  {
+    "id": 7,
+    "taskId": "task_001a8837a623",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 6d4b136ec7",
+    "ref": "6d4b136ec76199261c822ae99334e3607f7b1354",
+    "data": {},
+    "created": 1791670212545
+  }
+]

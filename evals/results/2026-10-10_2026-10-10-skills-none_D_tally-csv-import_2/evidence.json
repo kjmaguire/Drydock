@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV, checks every record, and creates all customers or none. The store checks duplicate emails under one lock, so the import is atomic. Responses match the spec, and each created customer sends `customer.created` in file order.\n- `?dry_run=true` runs the same checks and returns `200 {\"created\":0,\"would_create\":N}` or the same 422, and creates nothing.\n- Tests in `internal/api/api_test.go` (`TestCustomerImport`) cover the header rules, CSV parsing, every row error code with its line number, the 10,000-row limit, atomicity, dry run, and events. `go build \n...[truncated]",
+    "data": {},
+    "created": 1791670001026
+  },
+  {
+    "id": 2,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 630ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/build_7cd528da8808.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 627,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670001694
+  },
+  {
+    "id": 3,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 530ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/test_a428ae1095af.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 528,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670002225
+  },
+  {
+    "id": 4,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 510ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/lint_ca0d6bcc06e0.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 514,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670002741
+  },
+  {
+    "id": 5,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/secrets_067a28d3b8eb.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 25,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670002769
+  },
+  {
+    "id": 6,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +331 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 331,
+      "Deletions": 0,
+      "base": "21dcda1b5ef5d606dc958353ada5a22749569c79",
+      "commit": "5eb541ce97066551f0254b4aaa40726f8dd5cf65"
+    },
+    "created": 1791670002914
+  },
+  {
+    "id": 7,
+    "taskId": "task_7a730e996732",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5eb541ce97",
+    "ref": "5eb541ce97066551f0254b4aaa40726f8dd5cf65",
+    "data": {},
+    "created": 1791670002915
+  }
+]

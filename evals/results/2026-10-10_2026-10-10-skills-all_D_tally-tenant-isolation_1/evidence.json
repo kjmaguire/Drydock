@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every `/v1` route that takes an object ID, and every body field or query value that names an object, now answers another org's ID exactly like an unknown one. The four instances I found and fixed are listed below.\n- `GET /v1/customers?email=` and the customer email index are per organization. Two orgs can each hold the same email without affecting each other.\n- New tests in `internal/api` and `internal/store` each cover one instance, plus a sweep over every object route with another org's ID. Existing exported names and signatures are unchanged.",
+    "data": {},
+    "created": 1791669967877
+  },
+  {
+    "id": 2,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 820ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-1/data/runs/run_00f61ffb321b/checks/build_ed5c34a59511.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 823,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669968750
+  },
+  {
+    "id": 3,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 840ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-1/data/runs/run_00f61ffb321b/checks/test_4518e6ad4885.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 835,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669969587
+  },
+  {
+    "id": 4,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 660ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-1/data/runs/run_00f61ffb321b/checks/lint_cd3f51c13c50.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 656,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669970251
+  },
+  {
+    "id": 5,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-1/data/runs/run_00f61ffb321b/checks/secrets_9861f56ecd42.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 30,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669970296
+  },
+  {
+    "id": 6,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +341 -26",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-1/data/runs/run_00f61ffb321b/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 341,
+      "Deletions": 26,
+      "base": "a1d66e4893c38d36c9419832fbb4c2cd266e1d8c",
+      "commit": "f31045bcd50014692c76040b15f32f1e093506d4"
+    },
+    "created": 1791669970446
+  },
+  {
+    "id": 7,
+    "taskId": "task_7fa1b9870a7d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f31045bcd5",
+    "ref": "f31045bcd50014692c76040b15f32f1e093506d4",
+    "data": {},
+    "created": 1791669970447
+  }
+]

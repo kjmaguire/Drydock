@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seats are enforced on invites, viewer-to-role member changes and plan changes, with the 402 and 409 bodies from the spec. `GET /v1/org` shows `seats`. The limit holds under concurrent invites.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass. New tests cover each rule, plus a concurrent-invite test that expects exactly one 201.\n- Only `internal/store` and `internal/api` changed. No existing exported name or signature changed.",
+    "data": {},
+    "created": 1791669527229
+  },
+  {
+    "id": 2,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.34s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-1/data/runs/run_4ddfe92e6eb0/checks/build_a091f249b8c4.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1343,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669528652
+  },
+  {
+    "id": 3,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.31s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-1/data/runs/run_4ddfe92e6eb0/checks/test_bfb3347a9140.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1305,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669529959
+  },
+  {
+    "id": 4,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.1s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-1/data/runs/run_4ddfe92e6eb0/checks/lint_46016d879ec4.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1104,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669531065
+  },
+  {
+    "id": 5,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-1/data/runs/run_4ddfe92e6eb0/checks/secrets_72af01571e5d.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669531086
+  },
+  {
+    "id": 6,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +239 -4",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-seat-limits-D-1/data/runs/run_4ddfe92e6eb0/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 239,
+      "Deletions": 4,
+      "base": "b3952e2eafac68f4a10efb0df2bf78a49e9b6396",
+      "commit": "e6624f23bfa364ad6b8281aa8c3fde0e0119147c"
+    },
+    "created": 1791669531355
+  },
+  {
+    "id": 7,
+    "taskId": "task_860645629ad1",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit e6624f23bf",
+    "ref": "e6624f23bfa364ad6b8281aa8c3fde0e0119147c",
+    "data": {},
+    "created": 1791669531356
+  }
+]

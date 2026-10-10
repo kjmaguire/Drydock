@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV body and returns the 201, 200 dry-run, 400, 413, 422 responses exactly as the spec describes, with all-or-nothing creation.\n- Each record is validated like `POST /v1/customers`, and `customer.created` is sent per created customer.\n- Unit tests cover the header, CSV parsing, row validation, limits and dry run, and `go build`, `go test` and `go vet` pass.",
+    "data": {},
+    "created": 1791670128861
+  },
+  {
+    "id": 2,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.51s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/build_00b1784a546d.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1514,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670130500
+  },
+  {
+    "id": 3,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.9s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/test_8be127a26430.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1895,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670132397
+  },
+  {
+    "id": 4,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 690ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/lint_6a1c30752b8e.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 688,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670133107
+  },
+  {
+    "id": 5,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/secrets_b964f0d80407.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 26,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670133135
+  },
+  {
+    "id": 6,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +390 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 390,
+      "Deletions": 0,
+      "base": "a44543a203aeca07bfbed3ddd05ba705b80d9d66",
+      "commit": "b932eb444c5aa6d9eb56829e15326ccaaa5f8ffc"
+    },
+    "created": 1791670133326
+  },
+  {
+    "id": 7,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit b932eb444c",
+    "ref": "b932eb444c5aa6d9eb56829e15326ccaaa5f8ffc",
+    "data": {},
+    "created": 1791670133327
+  },
+  {
+    "id": 8,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Fix (`internal/store/customers.go`, `ImportCustomers`)**\n- The `email_taken` check no longer reads the global `customersByEmail` map. It builds a set of normalized emails from the importing organization's own customers, under the `s.mu` lock the function already holds, and checks rows against that set.\n- A customer of another organization sharing the address can no longer hide an in-org duplicate. The `CreateCustomer` map overwrite is untouched, as the reviewer asked.",
+    "data": {},
+    "created": 1791670205012
+  },
+  {
+    "id": 9,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 600ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/build_e7520d479b4b.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 597,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670205671
+  },
+  {
+    "id": 10,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 560ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/test_102d09353500.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 557,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670206232
+  },
+  {
+    "id": 11,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 450ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/lint_42390be25419.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 452,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670206688
+  },
+  {
+    "id": 12,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/checks/secrets_7ca9e548d3c9.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 27,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670206729
+  },
+  {
+    "id": 13,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +418 -0",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-csv-import-D-2/data/runs/run_09347c9e36d8/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 418,
+      "Deletions": 0,
+      "base": "a44543a203aeca07bfbed3ddd05ba705b80d9d66",
+      "commit": "5e3a83329f7e70b182284f113e1f4075562dab28"
+    },
+    "created": 1791670206886
+  },
+  {
+    "id": 14,
+    "taskId": "task_0e7564b56e7f",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5e3a83329f",
+    "ref": "5e3a83329f7e70b182284f113e1f4075562dab28",
+    "data": {},
+    "created": 1791670206887
+  }
+]

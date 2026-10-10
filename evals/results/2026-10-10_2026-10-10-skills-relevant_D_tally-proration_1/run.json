@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-proration",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "75cf10b484b1a53aaf087f21445e6bfbb1cb90c9",
+  "startedAt": "2026-10-10T21:55:06.837426258Z",
+  "wallMs": 447890,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1273,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 2563,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\n--- FAIL: TestHiddenProrationPendingChangeIsCleared (0.00s)\n    --- FAIL: TestHiddenProrationPendingChangeIsCleared/by_a_later_upgrade_of_the_plan (0.00s)\n        zz_hidden_proration_test.go:446: PATCH plan Pro while quantity 3 is pending: subscription {plan_id plan_000010, quantity 3, status active, period 2026-01-15T10:00:00Z to 2026-02-15T10:00:00Z, pending_plan_id null, pending_quantity null}, want plan_id plan_000010, quantity 5, status active and pending_plan_id and pending_quantity null\nFAIL\nFAIL\texample.com/tally/internal/api\t0.055s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.017s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.011s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.007s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.003s\nok  \texample.com/tally/internal/snapshot\t0.014s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.010s\nok  \texample.com/tally/internal/webhooks\t0.004s\nFAIL\n"
+      }
+    ],
+    "durationMs": 3841
+  },
+  "costUsd": 0.14601179000000003,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 68,
+    "output": 93651,
+    "cacheRead": 1710205,
+    "cacheWrite": 209422
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_5ed104a2006d",
+      "feedback": "internal/api/subscriptions.go:78-84: updateSubscription now returns 200 whenever Update returns an error with a non-empty sub.ID. For an upgrade, Update has already committed the plan change before prorate runs, so a non-decline failure (CreateInvoice error, or a non-decline error from charge in subscriptions.go prorate/charge) yields an upgraded subscription with no prorated invoice and a success response; the error is only logged. Fix this so an upgrade cannot be applied without its invoice: create the prorated invoice before committing the subscription update, or on a prorate error revert the change and return the error through subError/payError. Either way the caller must see the failure. Add a test where the gateway returns a non-decline error on an upgrade and assert that the plan is unchanged or the error is returned. Optional: Update reads cur outside the store update, so concurrent PATCHes can be classified against stale state."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_5ed104a2006d"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_04504ce7cdf3"
+}

@@ -1,0 +1,359 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every endpoint in the role matrix returns 403 `{\"error\":\"forbidden\"}` for roles not listed, and changes nothing. Allowed roles are not refused.\n- Member rules hold: only owners touch owner/admin roles, no self role change, anyone may leave, and removing or demoting the last owner returns 409 `last_owner`. API key revocation follows the owner/admin rule.\n- Role is read per request. New tests cover the matrix, the member rules, invites, and key access. `go build`, `go test` and `go vet` pass.",
+    "data": {},
+    "created": 1791669487671
+  },
+  {
+    "id": 2,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 800ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_4215d87f49ae.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 803,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669488526
+  },
+  {
+    "id": 3,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 790ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_497f85d90f5b.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 786,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669489315
+  },
+  {
+    "id": 4,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 530ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_0e98c5e33561.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 530,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669489848
+  },
+  {
+    "id": 5,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_4bf54994bca7.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 26,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669489878
+  },
+  {
+    "id": 6,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +446 -81",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 446,
+      "Deletions": 81,
+      "base": "3caccbd43d4238dbbc2db2ff0bc5d514e1b7b936",
+      "commit": "6e6c301630b09980938b616b82209f44cbb439f3"
+    },
+    "created": 1791669490033
+  },
+  {
+    "id": 7,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 6e6c301630",
+    "ref": "6e6c301630b09980938b616b82209f44cbb439f3",
+    "data": {},
+    "created": 1791669490034
+  },
+  {
+    "id": 8,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Changes**",
+    "data": {},
+    "created": 1791669631228
+  },
+  {
+    "id": 9,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 650ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_e056940a4858.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 652,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669631916
+  },
+  {
+    "id": 10,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 930ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_dd31691800b5.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 933,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669632852
+  },
+  {
+    "id": 11,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 560ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_5ad5d82bdb2d.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 562,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669633417
+  },
+  {
+    "id": 12,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 40ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_39fc9ffeef92.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 36,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669633456
+  },
+  {
+    "id": 13,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +540 -90",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 540,
+      "Deletions": 90,
+      "base": "3caccbd43d4238dbbc2db2ff0bc5d514e1b7b936",
+      "commit": "3ac7be1119afd90fa27c41b2afb17ea4785ff141"
+    },
+    "created": 1791669633608
+  },
+  {
+    "id": 14,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 3ac7be1119",
+    "ref": "3ac7be1119afd90fa27c41b2afb17ea4785ff141",
+    "data": {},
+    "created": 1791669633609
+  },
+  {
+    "id": 15,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 510ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_2b8cbc02398a.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 512,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669729602
+  },
+  {
+    "id": 16,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 500ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_f0f4384c6081.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 497,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669730101
+  },
+  {
+    "id": 17,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 390ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_2853496ab6ea.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 392,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669730495
+  },
+  {
+    "id": 18,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_fd6f8b8ab272.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669730521
+  },
+  {
+    "id": 19,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +553 -80",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 553,
+      "Deletions": 80,
+      "base": "3caccbd43d4238dbbc2db2ff0bc5d514e1b7b936",
+      "commit": "3efad00a407e886a2e4eeb5b811be1da3a4849f5"
+    },
+    "created": 1791669730643
+  },
+  {
+    "id": 20,
+    "taskId": "task_f752a2df2034",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 3efad00a40",
+    "ref": "3efad00a407e886a2e4eeb5b811be1da3a4849f5",
+    "data": {},
+    "created": 1791669730644
+  }
+]

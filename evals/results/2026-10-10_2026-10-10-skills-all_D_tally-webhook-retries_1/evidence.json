@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Failed webhook deliveries are retried on the schedule in the task (1, 5, 30, 120, 480, 1440 minutes after each failure, 7 attempts total). A 410 disables the endpoint at once, and a delivery that fails for good emails the org owners, at most once per endpoint per 24h.\n- The delivery JSON exposes attempts, last_attempt_at, next_attempt_at, response_status, error and a pending/succeeded/failed status. `RunDue` returns the number of attempts made.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and new tests cover the retry schedule, the 410 path, the 3xx and timeout failures, and \n...[truncated]",
+    "data": {},
+    "created": 1791669898662
+  },
+  {
+    "id": 2,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 720ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-webhook-retries-D-1/data/runs/run_f9275d99b099/checks/build_92bd984e0085.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 718,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669899457
+  },
+  {
+    "id": 3,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 870ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-webhook-retries-D-1/data/runs/run_f9275d99b099/checks/test_70becd356105.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 867,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669900327
+  },
+  {
+    "id": 4,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 570ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-webhook-retries-D-1/data/runs/run_f9275d99b099/checks/lint_7f33763bd18f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 565,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669900896
+  },
+  {
+    "id": 5,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-webhook-retries-D-1/data/runs/run_f9275d99b099/checks/secrets_42b72eb0ec34.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 25,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669900924
+  },
+  {
+    "id": 6,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +285 -16",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-webhook-retries-D-1/data/runs/run_f9275d99b099/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 285,
+      "Deletions": 16,
+      "base": "d576f153710e658f4811fc5b3094fcc306b83a58",
+      "commit": "a7623e70df8473788251da15f7551c2d4fb3b3d5"
+    },
+    "created": 1791669901060
+  },
+  {
+    "id": 7,
+    "taskId": "task_8d7f0ed0f399",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit a7623e70df",
+    "ref": "a7623e70df8473788251da15f7551c2d4fb3b3d5",
+    "data": {},
+    "created": 1791669901060
+  }
+]

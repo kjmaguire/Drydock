@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Plan types gain `TiersMode`, `Tier`, and `Plan.TiersMode`/`Plan.Tiers`. `POST /v1/plans` validates and stores tiers on metered plans, returning 422 `invalid_tiers` on bad input.\n- `billing.TieredAmount` implements graduated and volume pricing. Renewal bills tiered usage as one invoice line, or none when there was no usage.\n- Tests cover the pricing math, plan validation, and renewal billing. `go build ./...`, `go test ./...`, and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791669983444
+  },
+  {
+    "id": 2,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.1s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-1/data/runs/run_67257d1edd1e/checks/build_0d33b097db8b.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1101,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669984613
+  },
+  {
+    "id": 3,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.02s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-1/data/runs/run_67257d1edd1e/checks/test_5c43e9e1a1ca.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1017,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669985635
+  },
+  {
+    "id": 4,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 980ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-1/data/runs/run_67257d1edd1e/checks/lint_09e393a6024a.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 984,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669986621
+  },
+  {
+    "id": 5,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 120ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-1/data/runs/run_67257d1edd1e/checks/secrets_4e35da21bdea.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 124,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669986786
+  },
+  {
+    "id": 6,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "12 file(s), +515 -18",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-1/data/runs/run_67257d1edd1e/evidence/task.diff",
+    "data": {
+      "Files": 12,
+      "Insertions": 515,
+      "Deletions": 18,
+      "base": "66c8b2cb5e7691380af57c280f6c779dbae52be7",
+      "commit": "2cfbf8e20852e35890aed8100641702059328995"
+    },
+    "created": 1791669987049
+  },
+  {
+    "id": 7,
+    "taskId": "task_07240fa835f5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 2cfbf8e208",
+    "ref": "2cfbf8e20852e35890aed8100641702059328995",
+    "data": {},
+    "created": 1791669987050
+  }
+]

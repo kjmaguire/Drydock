@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `Runner.Shutdown(ctx)`, `ErrStopped`, `Pending()`, and panic recovery in workers are implemented as specified, and `Stop()` delegates to `Shutdown` with a 30s timeout.\n- `cmd/tally` calls `Shutdown` on SIGTERM before saving the snapshot.\n- New tests in `internal/jobs` cover the shutdown, pending, and panic cases; `go build ./...`, `go test ./...`, and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791669828453
+  },
+  {
+    "id": 2,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 920ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/build_62f3843a3d3f.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 923,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669829423
+  },
+  {
+    "id": 3,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 810ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/test_8b6958c4c140.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 811,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669830241
+  },
+  {
+    "id": 4,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 430ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/lint_17928d714e6f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 434,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669830677
+  },
+  {
+    "id": 5,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/secrets_ce4c3ff7b110.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 19,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669830699
+  },
+  {
+    "id": 6,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +389 -15",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 389,
+      "Deletions": 15,
+      "base": "8db4b6dc5bd834a6cd146d7043eba27bafa29a5a",
+      "commit": "01ad36f485edd7e631fc0a6700773d4610c31c36"
+    },
+    "created": 1791669830827
+  },
+  {
+    "id": 7,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 01ad36f485",
+    "ref": "01ad36f485edd7e631fc0a6700773d4610c31c36",
+    "data": {},
+    "created": 1791669830828
+  },
+  {
+    "id": 8,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Change in `internal/jobs/jobs.go`**\n- Added an `idle` counter to `Runner`, guarded by `r.mu`. A worker increments it before `cond.Wait()` and decrements it after the wait returns.\n- `Enqueue` now rejects only when `len(r.queue) \u003e= r.queueSize+r.idle`. A zero-queue runner accepts a job while a worker is waiting, and rejects it when all workers are busy.",
+    "data": {},
+    "created": 1791669893746
+  },
+  {
+    "id": 9,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 780ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/build_9eea1257c892.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 784,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669894574
+  },
+  {
+    "id": 10,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 860ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/test_6413325def15.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 861,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669895438
+  },
+  {
+    "id": 11,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 510ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/lint_40b9b3f1f226.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 509,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669895949
+  },
+  {
+    "id": 12,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/checks/secrets_e4e23ed9a91c.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 17,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669895968
+  },
+  {
+    "id": 13,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +429 -15",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/runs/run_1a69f572a1b5/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 429,
+      "Deletions": 15,
+      "base": "8db4b6dc5bd834a6cd146d7043eba27bafa29a5a",
+      "commit": "774e4dc9f8820c4d3d4a07ace2093de4bb58b7d2"
+    },
+    "created": 1791669896149
+  },
+  {
+    "id": 14,
+    "taskId": "task_4dd522e6896b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 774e4dc9f8",
+    "ref": "774e4dc9f8820c4d3d4a07ace2093de4bb58b7d2",
+    "data": {},
+    "created": 1791669896150
+  }
+]

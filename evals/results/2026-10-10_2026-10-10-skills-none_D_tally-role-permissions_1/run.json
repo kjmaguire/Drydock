@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-role-permissions",
+  "taskClass": "security review",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "04ade2fd6f32c58c0607fb7df1982195131b7ccf",
+  "startedAt": "2026-10-10T21:54:34.850776892Z",
+  "wallMs": 316405,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1953,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3996,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.180s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.008s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.017s\nok  \texample.com/tally/internal/payments\t0.034s\nok  \texample.com/tally/internal/reports\t0.029s\nok  \texample.com/tally/internal/snapshot\t0.029s\nok  \texample.com/tally/internal/store\t0.015s\nok  \texample.com/tally/internal/subscriptions\t0.018s\nok  \texample.com/tally/internal/webhooks\t0.013s\n"
+      }
+    ],
+    "durationMs": 5953
+  },
+  "costUsd": 0.07266522,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 60,
+    "output": 64701,
+    "cacheRead": 1083452,
+    "cacheWrite": 147371
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_7a9898145e7d",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe change covers the matrix and most of the member and key rules, but one rule is wrong. The task says the only owner's demotion is `409 last_owner` \"also when the owner does it to themselves.\" The code checks self-change first, so the only owner gets `403` instead.\n\n- **`internal/api/team.go` ~lines 96-101 (`updateMember`):** the `userID == p.UserID` check returns 403 before `SetMemberRole` runs its last-owner check. An owner who is the sole owner and sets their own role to anything but owner must get `409 {\"error\":\"last_owner\"}`. A self-change by an owner when another owner exists stays 403. Fix by letting the self-change path fall through to the store (or checking last-owner first when the target is the caller and the new role is not owner), so the sole owner gets 409.\n- **`internal/api/roles_test.go`, `TestRoleChangeRules` (\"owner changes own role\") and `TestLastOwnerStaysOwner` (\"the only owner changes own role\"):** both assert 403 for the sole owner. Under the spec that should be 409 `last_owner`. Update these expectations, and add a case where an owner with a second owner present gets 403 on a self-change, so both branches are covered.\n\nEverything else I checked matches the task: the role is read from the store on every request (`server.go` ~157-167), the matrix routes carry the right permissions, `createAPIKey` uses the caller's own ID, and the key list and revoke scoping are right.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"1) internal/api/team.go updateMember (~lines 96-101)\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_7a9898145e7d"
+    }
+  ],
+  "coreTaskId": "task_383e9c6ab950"
+}

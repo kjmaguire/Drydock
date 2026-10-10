@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `CheckURL` refuses non-https URLs, URLs with user info, and any host (an IP literal, or every resolved address) in the non-public ranges from the task. Ports and the does-not-resolve check are unchanged.\n- `send` re-resolves the endpoint host with the same Resolver before each delivery. If any address is non-public, it sends no request and records a failed attempt whose error contains \"not public\". The endpoint is not modified.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and new tests cover the refusal list, the allowed cases, and the delivery-time block.",
+    "data": {},
+    "created": 1791670108061
+  },
+  {
+    "id": 2,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 900ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-webhook-ssrf-D-1/data/runs/run_4f02687104de/checks/build_208c6580e730.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 896,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670109042
+  },
+  {
+    "id": 3,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.46s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-webhook-ssrf-D-1/data/runs/run_4f02687104de/checks/test_17a85cec55e2.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1463,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670110507
+  },
+  {
+    "id": 4,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 2.31s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-webhook-ssrf-D-1/data/runs/run_4f02687104de/checks/lint_23ccaedc0f21.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 2313,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670112822
+  },
+  {
+    "id": 5,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 170ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-webhook-ssrf-D-1/data/runs/run_4f02687104de/checks/secrets_3a3e4e5b6c25.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 173,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670113032
+  },
+  {
+    "id": 6,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +156 -7",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-webhook-ssrf-D-1/data/runs/run_4f02687104de/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 156,
+      "Deletions": 7,
+      "base": "8e13f892c52cc66fbac04f62a702630646c0cd0f",
+      "commit": "93ed67408d02507118717cf89f21afc35f1c9cdf"
+    },
+    "created": 1791670113657
+  },
+  {
+    "id": 7,
+    "taskId": "task_6faf82f3b806",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 93ed67408d",
+    "ref": "93ed67408d02507118717cf89f21afc35f1c9cdf",
+    "data": {},
+    "created": 1791670113660
+  }
+]

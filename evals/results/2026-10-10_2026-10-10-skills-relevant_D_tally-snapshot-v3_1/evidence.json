@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Invoices get `number` (\"INV-000001\", ...) per organization at creation, shown in every invoice answer. Snapshot version 3 stores the numbers and each organization's next number. Load reads versions 1–3 and numbers older invoices in creation order. Save always writes version 3 through a temp file and rename.\n- `snapshot.Upgrade(path)` validates the file, copies the original byte for byte to `\u003cpath\u003e.v\u003cold\u003e.bak`, and rewrites it as version 3. Version 3 files are left alone. Versions above 3 fail with `ErrUnsupportedVersion` and stay untouched.\n- Checked by new tests in `internal/store`, `inte\n...[truncated]",
+    "data": {},
+    "created": 1791669929324
+  },
+  {
+    "id": 2,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 700ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/build_376e14797c76.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 704,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669930072
+  },
+  {
+    "id": 3,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 700ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/test_30bd1786d034.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 695,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669930771
+  },
+  {
+    "id": 4,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 550ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/lint_c232f10da8c9.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 545,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669931319
+  },
+  {
+    "id": 5,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/secrets_d8edbb3f5f7f.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 15,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669931339
+  },
+  {
+    "id": 6,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +337 -8",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 337,
+      "Deletions": 8,
+      "base": "46a7a7d005ac4e8b032098cb371939bfc4dd8c6f",
+      "commit": "f1824c9990c52fc0edc468b9faea226b0bc775e2"
+    },
+    "created": 1791669931499
+  },
+  {
+    "id": 7,
+    "taskId": "task_6f646b34bbf8",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f1824c9990",
+    "ref": "f1824c9990c52fc0edc468b9faea226b0bc775e2",
+    "data": {},
+    "created": 1791669931500
+  }
+]

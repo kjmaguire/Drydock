@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Invoices with no lines show `description: \"\"` on list, get, create, pay and void. A licensed plan priced at 0 gets one plan line, is marked paid at once, and a metered renewal with no usage creates no invoice.\n- `TestInvoiceWithoutLines` reproduces the incident. I did not get to see it fail on the unfixed code (see below).\n- `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791670221325
+  },
+  {
+    "id": 2,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 600ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/runs/run_c209e75ef175/checks/build_3ca09bf3cab7.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 600,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670221969
+  },
+  {
+    "id": 3,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 630ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/runs/run_c209e75ef175/checks/test_df29b8ebbaf6.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 631,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670222603
+  },
+  {
+    "id": 4,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 510ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/runs/run_c209e75ef175/checks/lint_1b536933fee5.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 513,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670223119
+  },
+  {
+    "id": 5,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/runs/run_c209e75ef175/checks/secrets_d14d2310b72d.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 14,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670223148
+  },
+  {
+    "id": 6,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +103 -7",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/runs/run_c209e75ef175/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 103,
+      "Deletions": 7,
+      "base": "4f3f0bbba4ffd5592ad8c3abcc19867f41e21ed3",
+      "commit": "7193ff98e65ad2a033a378791738e2d2b3746f66"
+    },
+    "created": 1791670223291
+  },
+  {
+    "id": 7,
+    "taskId": "task_225fbe847f09",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 7193ff98e6",
+    "ref": "7193ff98e65ad2a033a378791738e2d2b3746f66",
+    "data": {},
+    "created": 1791670223292
+  }
+]
