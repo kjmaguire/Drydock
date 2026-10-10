@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { createDockClient, decodeBase64 } from '../../api/dockClient.ts';
 import { FakeTransport } from '../../test/fakes.ts';
-import { diffTotals, formatSize, LogBuffer, parseColor, splitPath, toHex, withAlpha } from './dock-format.ts';
+import { diffTotals, formatSize, LogBuffer, orderedWriter, parseColor, splitPath, toHex, withAlpha } from './dock-format.ts';
 
 describe('the dock client', () => {
   it('decodes terminal output from base64 and turns null lists into empty ones', async () => {
@@ -77,5 +77,54 @@ describe('the log buffer', () => {
     b.prepend('0\n1\n');
     expect(b.lines).toEqual(['0', '1', '2']);
     expect(b.text()).toBe('0\n1\n2');
+  });
+});
+
+describe('terminal input', () => {
+  // a send that the test finishes by hand, recording what was sent and when
+  function slowSend() {
+    const sent: string[] = [];
+    const waiting: (() => void)[] = [];
+    const send = (d: string) => {
+      sent.push(d);
+      return new Promise<void>((res) => waiting.push(res));
+    };
+    const finishNext = async () => {
+      waiting.shift()?.();
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    return { sent, send, finishNext };
+  }
+
+  it('sends one write at a time, in typing order, and batches what was typed meanwhile', async () => {
+    const s = slowSend();
+    const write = orderedWriter(s.send);
+    for (const ch of 'echo') write(ch);
+    expect(s.sent).toEqual(['e']); // nothing else goes while the first write is in flight
+    await s.finishNext();
+    expect(s.sent).toEqual(['e', 'cho']);
+    write('\r');
+    await s.finishNext();
+    expect(s.sent).toEqual(['e', 'cho', '\r']);
+    await s.finishNext();
+    write('x');
+    expect(s.sent).toEqual(['e', 'cho', '\r', 'x']); // idle again: the next key goes at once
+  });
+
+  it('keeps going after a failed write', async () => {
+    const sent: string[] = [];
+    let fail = true;
+    const write = orderedWriter(async (d) => {
+      sent.push(d);
+      if (fail) {
+        fail = false;
+        throw new Error('gone');
+      }
+    });
+    write('a');
+    write('b');
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sent).toEqual(['a', 'b']);
   });
 });

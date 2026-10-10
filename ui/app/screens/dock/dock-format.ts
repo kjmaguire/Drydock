@@ -95,3 +95,30 @@ export function withAlpha(s: string, a: number): string | undefined {
   const c = parseColor(s);
   return c ? `rgba(${c.r}, ${c.g}, ${c.b}, ${a})` : undefined;
 }
+
+/**
+ * Sends a terminal's input in the order it was typed: one write at a time, and everything typed while a write is in flight
+ * goes together in the next. Calls do not keep their order on the way to the core (two in flight at once can arrive
+ * swapped), so a fast typist's "echo" could reach the shell as "ehco". A failed write is dropped and the next one still goes.
+ */
+export function orderedWriter(send: (data: string) => Promise<unknown>): (data: string) => void {
+  let pending = '';
+  let busy = false;
+  const flush = async (): Promise<void> => {
+    if (busy || pending === '') return;
+    busy = true;
+    const data = pending;
+    pending = '';
+    try {
+      await send(data);
+    } catch {
+      // the shell is gone or the call failed: what was typed is lost, as on a dropped connection
+    }
+    busy = false;
+    void flush();
+  };
+  return (data: string) => {
+    pending += data;
+    void flush();
+  };
+}

@@ -11,6 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
+import { orderedWriter } from './dock-format.ts';
 import { errorSlot, panel, toolbar } from './dock-ui.tsx';
 import { loadTerminal, type TerminalView } from './widgets.ts';
 
@@ -156,9 +157,7 @@ function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => voi
         const term: TerminalView = create(node);
         let alive = true;
         let size = '';
-        term.onData((d) => {
-          void client.terminalWrite(id, d).catch(() => {});
-        });
+        term.onData(orderedWriter((d) => client.terminalWrite(id, d)));
         const resize = () => {
           try {
             term.fit();
