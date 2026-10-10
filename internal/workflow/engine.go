@@ -460,6 +460,7 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		return NodeOutput{}, err
 	}
 	attempt := 1
+	interrupted := 0 // attempts of this step whose driver stopped mid-node: the app crashed (started) or was closed (abandoned)
 	var prev *Previous
 	for _, r := range rows {
 		if r.Status == "done" {
@@ -476,7 +477,15 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		if r.Status == "started" {
 			_ = e.st.execAbandon(ctx, info.ID, n.ID, step, r.Attempt)
 		}
+		if r.Status == "started" || r.Status == "abandoned" {
+			interrupted++
+		}
 		prev = &Previous{Attempt: r.Attempt, PartialRef: r.PartialRef, Error: r.Error}
+	}
+	if n.Kind == KindAgentTask {
+		if out, gated, err := e.interruptedTurnGate(ctx, info, n, step, interrupted); gated {
+			return out, err
+		}
 	}
 	maxAttempts := n.MaxAttempts
 	if maxAttempts <= 0 {
@@ -512,7 +521,11 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 			return out, nil
 		}
 		lastErr = err
-		_ = e.st.execFinish(context.Background(), info.ID, n.ID, step, attempt, "failed", nil, err.Error())
+		status := "failed"
+		if ctx.Err() != nil {
+			status = "abandoned" // the driver was stopped mid-node (the app closing, a cancel): cut off, not failed
+		}
+		_ = e.st.execFinish(context.Background(), info.ID, n.ID, step, attempt, status, nil, err.Error())
 		var trip ErrWatchdogTrip
 		if ctx.Err() != nil || errors.As(err, &trip) {
 			return NodeOutput{}, err
@@ -521,6 +534,33 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		attempt++
 	}
 	return NodeOutput{}, lastErr
+}
+
+// AutoRerunsAfterInterruption is how many times an agent turn cut off by a stop (the app closed or crashed, its driver lost)
+// runs again on its own. Cut off once more, the run waits for a human (InterruptedGate): a turn that keeps being cut off
+// would otherwise be paid for again at every start.
+const AutoRerunsAfterInterruption = 1
+
+// InterruptedGate is the "gate" of the approval request an agent turn raises after AutoRerunsAfterInterruption re-runs.
+const InterruptedGate = "interrupted"
+
+// interruptedTurnGate decides, before an agent turn, whether it may start (gated false). A human's rejection of this node's
+// earlier interrupted-turn request ends the run here; a turn cut off more than AutoRerunsAfterInterruption times raises an
+// approval request instead of running (Retry: the node runs again once the human has answered, and reads the answer here).
+func (e *Engine) interruptedTurnGate(ctx context.Context, info RunInfo, n *Node, step, interrupted int) (NodeOutput, bool, error) {
+	var status string
+	err := e.st.db.Reader().QueryRowContext(ctx, `SELECT status FROM approvals WHERE run_id=? AND node_id=? AND status IN ('APPROVED','REJECTED')
+		AND CAST(payload AS TEXT) LIKE '%"gate":"interrupted"%' ORDER BY created_at DESC, rowid DESC LIMIT 1`, string(info.ID), string(n.ID)).Scan(&status)
+	if err == nil && status == "REJECTED" {
+		return NodeOutput{}, true, fmt.Errorf("the %s turn was cut off by stops and the human chose not to run it again", n.ID)
+	}
+	if interrupted <= AutoRerunsAfterInterruption {
+		return NodeOutput{}, false, nil
+	}
+	payload, _ := json.Marshal(map[string]any{"gate": InterruptedGate, "node": n.ID, "step": step, "interruptions": interrupted})
+	e.emit(ctx, "workflow.turn_interrupted", info, map[string]any{"node": n.ID, "step": step, "interruptions": interrupted})
+	return NodeOutput{Request: &RequestSpec{Kind: "approval", Retry: true, Payload: payload,
+		Title: fmt.Sprintf("The %s turn was cut off %d times because Drydock stopped while it ran. Approve to run it again (it is paid for again) or reject to stop the run.", n.ID, interrupted)}}, true, nil
 }
 
 func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, step, attempt int, inbox []Message, st RunState, prev *Previous, partial string) (NodeOutput, error) {

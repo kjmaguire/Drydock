@@ -21,6 +21,9 @@ const (
 	LeadSplit    = "split"
 	LeadEscalate = "escalate"
 	LeadContinue = "continue"
+	// LeadFailed is stored, never decided: the supervision turn failed (an error or the time limit). It counts toward the
+	// bound of interventions per task and run like any other turn.
+	LeadFailed = "failed"
 )
 
 // LeadTrigger is one firing of a trigger, with the evidence the trigger site has.
@@ -57,7 +60,8 @@ type LeadDecision struct {
 type LeadOutcome struct {
 	// Intervened is true when the lead ran and its decision (possibly an escalation after two invalid answers) was recorded
 	// and posted. False: no lead on the team, the per-run bound is used up, a supervision turn is already in flight for the
-	// task, a budget refused the turn, or the turn failed; the trigger site then behaves exactly as without a lead.
+	// task, a budget refused the turn, or the turn failed (stored as action failed, counted toward the bound); the trigger
+	// site then behaves exactly as without a lead.
 	Intervened bool
 	Decision   LeadDecision
 	LeadID     string

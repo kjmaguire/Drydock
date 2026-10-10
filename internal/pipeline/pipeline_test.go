@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/memory"
@@ -308,8 +309,8 @@ func stepOf(rows []workflow.ExecRow, r workflow.ExecRow) int { return r.Step }
 
 // Real Claude Code implements the fixture task end to end (skipped when claude is not installed/authenticated).
 func TestRealClaudeImplementsTheFixtureTask(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	ad := claude.New()

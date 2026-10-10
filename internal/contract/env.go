@@ -54,6 +54,21 @@ func WithoutVars(env []string, names ...string) []string {
 	return out
 }
 
+// RealClaudeSkip is why a test that sends prompts to the real claude, and so spends tokens on the signed-in account, must
+// skip; "" when it may run. Such tests are opt-in: they run only with DRYDOCK_REAL_CLAUDE=1 (cmd/drydock-contract sets it
+// for its paid checks, the Windows verifier for its real-agent step) and never with DRYDOCK_NO_REAL_AGENTS=1, so
+// `go test ./...` on a machine where claude is signed in spends nothing. Checks that send no prompt (detection, a handshake)
+// do not use it.
+func RealClaudeSkip() string {
+	switch {
+	case os.Getenv(EnvNoRealAgents) == "1":
+		return EnvNoRealAgents + "=1"
+	case os.Getenv(EnvRealClaude) != "1":
+		return "it sends prompts to the real claude, which spends tokens on the signed-in account: set " + EnvRealClaude + "=1 to run it"
+	}
+	return ""
+}
+
 // CleanEnv is the process environment without the enclosing Claude Code session's variables.
 func CleanEnv() []string { return WithoutVars(os.Environ(), EnclosingSessionEnv...) }
 

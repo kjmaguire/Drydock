@@ -176,6 +176,10 @@ func TestClaudeEnvWarningNamesTheVariableNeverTheValue(t *testing.T) {
 	if !strings.Contains(joined, "ANTHROPIC_API_KEY") || strings.Contains(joined, "very-secret") {
 		t.Fatalf("warnings %q", joined)
 	}
+	// it says who pays: a headless agent bills the key per token, not the subscription the person is signed in with
+	if !strings.Contains(joined, "billed per token to that API key's account, not to the Claude subscription") {
+		t.Fatalf("the warning does not say who pays: %q", joined)
+	}
 	c = check(t, "claude", connections.Options{Env: []string{"PATH=" + os.Getenv("PATH"), "DRYDOCK_STUB_CLI=1", "DRYDOCK_STUB_TABLE=" + os.Getenv("DRYDOCK_STUB_TABLE")}, Compat: claudeCompat(t)})
 	if len(c.Warnings) != 0 {
 		t.Fatalf("no variable is set, so no warning: %v", c.Warnings)

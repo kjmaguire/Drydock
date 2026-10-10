@@ -11,6 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	"github.com/kjmaguire/drydock/internal/connections"
+	"github.com/kjmaguire/drydock/internal/contract"
 )
 
 // Tests against the REAL CLIs. They run only when the CLI is installed (and, for claude, logged in with the user's own login,
@@ -44,8 +45,8 @@ func TestRealClaudeDetection(t *testing.T) {
 }
 
 func TestRealClaudeConnection(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	svc, err := connections.NewService(connections.Config{})
 	if err != nil {

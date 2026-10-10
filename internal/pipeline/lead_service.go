@@ -22,7 +22,8 @@ import (
 
 // The team lead service: one read-only supervision turn per trigger, a strictly validated JSON answer (one retry, then an
 // escalation to the human), the action applied, the intervention stored, posted in the task room by the lead and published
-// as lead.intervened. Bounds: at most MaxPerRun interventions per task and run, one supervision turn in flight per task.
+// as lead.intervened. Bounds: at most MaxPerRun interventions per task and run, a turn that failed included (it spent tokens
+// too), and one supervision turn in flight per task.
 
 // Bounds of the lead's answer and digest.
 const (
@@ -211,6 +212,9 @@ func (l *Lead) Supervise(ctx context.Context, tr LeadTrigger) LeadOutcome {
 		return ParseLeadDecision(text, LeadCheck{Team: team, Lead: lead, Task: t, Trigger: tr.Kind})
 	})
 	if err != nil {
+		// stored, so it counts toward the bound: a lead whose turns keep failing on a stalled run would otherwise be asked
+		// again at every silence, each time spending tokens; the trigger site still behaves as without a lead
+		l.recordFailed(ctx, t, tr, lead, err)
 		return LeadOutcome{}
 	}
 	out := LeadOutcome{Intervened: true, LeadID: lead.ID, LeadName: lead.Name}
@@ -362,6 +366,32 @@ func (l *Lead) record(ctx context.Context, t tasks.Task, tr LeadTrigger, lead Le
 		_, _ = l.d.Bus.Publish(ctx, events.Event{Type: "lead.intervened", ProjectID: t.ProjectID, TaskID: t.ID, RunID: tr.RunID, AgentID: lead.ID, Data: data})
 	}
 	return id
+}
+
+// recordFailed stores a supervision turn that failed (action failed, the error as its message) and publishes lead.intervened,
+// without a post in the task room. It is stored even when ctx has ended (the app closing mid-turn): the turn spent tokens.
+func (l *Lead) recordFailed(ctx context.Context, t tasks.Task, tr LeadTrigger, lead LeadMember, cause error) {
+	ctx = context.WithoutCancel(ctx)
+	id := ids.New("lint")
+	msg := clip(l.redact("The team lead's turn failed: "+cause.Error()), maxLeadMessage)
+	_ = l.d.Tasks.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO lead_interventions(id,project_id,task_id,run_id,lead_agent_id,trigger_kind,action,message,evidence,created_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?)`, id, t.ProjectID, t.ID, tr.RunID, lead.ID, tr.Kind, LeadFailed, msg, clip(l.redact(tr.Evidence), 1000), storage.Now())
+		return err
+	})
+	if l.d.Bus != nil {
+		data, _ := json.Marshal(map[string]any{"taskId": t.ID, "trigger": tr.Kind, "action": LeadFailed, "interventionId": id, "createdTasks": []string{}})
+		_, _ = l.d.Bus.Publish(ctx, events.Event{Type: "lead.intervened", ProjectID: t.ProjectID, TaskID: t.ID, RunID: tr.RunID, AgentID: lead.ID, Data: data})
+	}
+}
+
+// asked reports whether the lead was already asked about a trigger for the task (and run, unless runID is empty) at or after
+// since (ms), whether its turn succeeded or failed. It reads the stored interventions, so a restart does not ask again.
+func (l *Lead) asked(ctx context.Context, taskID, runID, kind string, since int64) bool {
+	var n int
+	err := l.d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM lead_interventions WHERE task_id=? AND trigger_kind=? AND created_at>=? AND (?='' OR run_id=?)`,
+		taskID, kind, since, runID, runID).Scan(&n)
+	return err == nil && n > 0
 }
 
 func nonNil(s []string) []string {
@@ -725,7 +755,8 @@ func (l *Lead) runRunning(ctx context.Context, runID string) bool {
 
 // Tick runs the monitor's triggers for one project: a RUNNING task without progress events for the project's stall time
 // (trigger stalled), and, while automatic scheduling is on, a READY or BACKLOG task without a worker or reviewer (trigger
-// unassigned). Each silence and each unassigned task is asked about once. Nothing happens without a lead on the team.
+// unassigned). Each silence, and each unassigned task until it changes, is asked about once, also across restarts (the stored
+// interventions say what was asked). Nothing happens without a lead on the team.
 func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error) {
 	res := MonitorResult{Stalled: []string{}, Unassigned: []string{}}
 	team, err := l.d.Team(ctx, projectID)
@@ -760,8 +791,8 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 		seen := l.stalledAt[t.ID] == last
 		l.stalledAt[t.ID] = last
 		l.mu.Unlock()
-		if seen {
-			continue // this silence was already handled
+		if seen || l.asked(ctx, t.ID, t.RunID, TriggerStalled, last) {
+			continue // this silence was already handled (here, or before a restart)
 		}
 		res.Stalled = append(res.Stalled, t.ID)
 		o := l.Supervise(ctx, LeadTrigger{Kind: TriggerStalled, TaskID: t.ID, RunID: t.RunID,
@@ -781,8 +812,8 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 			seen := l.unassigned[t.ID]
 			l.unassigned[t.ID] = true
 			l.mu.Unlock()
-			if seen {
-				continue
+			if seen || l.asked(ctx, t.ID, "", TriggerUnassigned, t.Updated) {
+				continue // asked since the task last changed (here, or before a restart)
 			}
 			res.Unassigned = append(res.Unassigned, t.ID)
 			missing := "a worker and a reviewer"

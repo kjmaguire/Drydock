@@ -152,6 +152,18 @@ func streamGraph(dir string, crash bool) *wf.Graph {
 	return wf.NewGraph("stream").Add(wf.AgentTask("W", h)).Start("W")
 }
 
+// interruptGraph is one agent turn, W, that the parent cuts off (blocking) or lets finish.
+func interruptGraph(dir string, block bool) *wf.Graph {
+	return wf.NewGraph("interrupt").Add(wf.AgentTask("W", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+		effect(dir, "W_start")
+		if block {
+			time.Sleep(time.Hour) // killed by the parent while here
+		}
+		effect(dir, "W_done")
+		return wf.NodeOutput{Value: val("W")}, nil
+	})).Start("W")
+}
+
 func runChild(sc, dir string) {
 	ctx := context.Background()
 	db, err := storage.OpenTemp(ctx, dir)
@@ -169,10 +181,21 @@ func runChild(sc, dir string) {
 		g = partialGraph(dir, true)
 	case "stream":
 		g = streamGraph(dir, true)
+	case "interrupt", "interrupt-again":
+		g = interruptGraph(dir, true)
 	}
 	if err := eng.Register(g); err != nil {
 		fmt.Println("child register:", err)
 		os.Exit(2)
+	}
+	if sc == "interrupt-again" { // the app started again: the run is taken over, not started
+		if n, err := eng.Recover(ctx); err != nil || n != 1 {
+			fmt.Println("child recover:", n, err)
+			os.Exit(2)
+		}
+		fmt.Println("RUN recovered")
+		os.Stdout.Sync()
+		time.Sleep(time.Hour)
 	}
 	id, err := eng.Start(ctx, g.Name, map[string]string{"x": "1"}, wf.StartOptions{})
 	if err != nil {
@@ -809,6 +832,130 @@ func TestRetryRequestRerunsTheNodeAfterTheAnswer(t *testing.T) {
 	}
 	if err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: "approved"}); err == nil {
 		t.Fatal("a second answer to the same request must be refused")
+	}
+}
+
+// An agent turn cut off by a stop runs again once on its own; cut off a second time, the run waits for a human instead of
+// paying for the turn at every start, and the answer decides: approved runs it once more, rejected fails the run.
+func TestAnAgentTurnCutOffTwiceWaitsForAHuman(t *testing.T) {
+	for _, decision := range []string{"approved", "rejected"} {
+		t.Run(decision, func(t *testing.T) {
+			dir := t.TempDir()
+			waitStarts := func(n int) {
+				deadline := time.Now().Add(20 * time.Second)
+				for effects(dir)["W_start"] < n {
+					if time.Now().After(deadline) {
+						t.Fatalf("W started %d times, want %d", effects(dir)["W_start"], n)
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
+			child, run := startChild(t, "interrupt", dir)
+			waitStarts(1)
+			kill(t, child)
+			again, _ := startChild(t, "interrupt-again", dir) // the first re-run is automatic
+			waitStarts(2)
+			kill(t, again)
+
+			e := openEnv(t, dir)
+			if err := e.eng.Register(interruptGraph(dir, false)); err != nil {
+				t.Fatal(err)
+			}
+			if n, err := e.eng.Recover(context.Background()); err != nil || n != 1 {
+				t.Fatalf("recover n=%d err=%v", n, err)
+			}
+			waitStatus(t, e.eng, run, wf.StatusWaitingHuman)
+			if got := effects(dir)["W_start"]; got != 2 {
+				t.Fatalf("the turn ran a third time without a human: %d starts", got)
+			}
+			pend, err := e.eng.Pending(context.Background(), run)
+			if err != nil || len(pend) != 1 || pend[0].Spec.Kind != "approval" || !strings.Contains(pend[0].Spec.Title, "cut off 2 times") ||
+				!strings.Contains(string(pend[0].Spec.Payload), `"gate":"interrupted"`) {
+				t.Fatalf("pending %+v %v", pend, err)
+			}
+			if err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: decision, By: "human:test"}); err != nil {
+				t.Fatal(err)
+			}
+			if decision == "approved" {
+				waitStatus(t, e.eng, run, wf.StatusCompleted)
+				if got := effects(dir); got["W_start"] != 3 || got["W_done"] != 1 {
+					t.Fatalf("approved: %v", got)
+				}
+				return
+			}
+			info := waitStatus(t, e.eng, run, wf.StatusFailed)
+			if !strings.Contains(info.FailedReason, "chose not to run it again") || effects(dir)["W_start"] != 2 {
+				t.Fatalf("rejected: %q %v", info.FailedReason, effects(dir))
+			}
+		})
+	}
+}
+
+// The same when the app is closed normally while the turn runs (the usual case: the window is closed), not killed: an
+// attempt whose driver was stopped is cut off, not failed, and counts the same way.
+func TestAnAgentTurnStoppedTwiceByClosingTheAppWaitsForAHuman(t *testing.T) {
+	dir := t.TempDir()
+	starts := func() int { return effects(dir)["W_start"] }
+	graph := func(block bool) *wf.Graph {
+		return wf.NewGraph("interrupt").Add(wf.AgentTask("W", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+			effect(dir, "W_start")
+			if block {
+				<-ctx.Done() // the app is closed while the turn runs
+				return wf.NodeOutput{}, ctx.Err()
+			}
+			effect(dir, "W_done")
+			return wf.NodeOutput{Value: val("W")}, nil
+		})).Start("W")
+	}
+	var run wf.RunID
+	for i := 1; i <= 2; i++ {
+		db, err := storage.OpenTemp(context.Background(), dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bus := events.NewSQLBus(db, 4096)
+		eng := wf.New(wf.Config{DB: db, Bus: bus, DataDir: dir, LeaseTTL: leaseTTL})
+		if err := eng.Register(graph(true)); err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			if run, err = eng.Start(context.Background(), "interrupt", nil, wf.StartOptions{}); err != nil {
+				t.Fatal(err)
+			}
+		} else if n, err := eng.Recover(context.Background()); err != nil || n != 1 {
+			t.Fatalf("recover n=%d err=%v", n, err) // the first re-run is automatic
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for starts() < i {
+			if time.Now().After(deadline) {
+				t.Fatalf("W started %d times, want %d", starts(), i)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		eng.Close()
+		bus.Close()
+		db.Close()
+	}
+	e := openEnv(t, dir)
+	if err := e.eng.Register(graph(false)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := e.eng.Recover(context.Background()); err != nil || n != 1 {
+		t.Fatalf("recover n=%d err=%v", n, err)
+	}
+	waitStatus(t, e.eng, run, wf.StatusWaitingHuman)
+	if got := starts(); got != 2 {
+		t.Fatalf("the turn ran a third time without a human: %d starts", got)
+	}
+	rows, _ := e.eng.Executions(context.Background(), run)
+	for _, r := range rows {
+		if r.Status != "abandoned" {
+			t.Fatalf("a turn cut off by closing the app is recorded as %q: %+v", r.Status, rows)
+		}
+	}
+	pend, _ := e.eng.Pending(context.Background(), run)
+	if len(pend) != 1 || !strings.Contains(pend[0].Spec.Title, "cut off 2 times") {
+		t.Fatalf("pending %+v", pend)
 	}
 }
 

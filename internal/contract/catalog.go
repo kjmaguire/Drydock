@@ -36,7 +36,7 @@ func All() []Contract {
 			Files:      []string{"internal/agents/claude/parser.go"},
 			Tests: []TestRef{
 				{Package: pkgContract, Test: "TestClaudeStreamJSONEventShapes", EstUSD: 0.02, Env: real},
-				{Package: pkgConformance, Test: "TestClaudeAdapterAgainstTheRealCLI", EstUSD: 0.05},
+				{Package: pkgConformance, Test: "TestClaudeAdapterAgainstTheRealCLI", EstUSD: 0.05, Env: real},
 			},
 		},
 		{
@@ -46,7 +46,7 @@ func All() []Contract {
 			Files:      []string{"internal/agents/claude/parser.go", "internal/agents/runtime/runtime.go"},
 			Tests: []TestRef{
 				{Package: pkgContract, Test: "TestClaudeResultReportsCostAndModelUsage", EstUSD: 0.01, Env: real},
-				{Package: pkgRuntime, Test: "TestRealClaudeTurnWithToolUseAndUsage", EstUSD: 0.02},
+				{Package: pkgRuntime, Test: "TestRealClaudeTurnWithToolUseAndUsage", EstUSD: 0.02, Env: real},
 			},
 		},
 		{
@@ -80,7 +80,7 @@ func All() []Contract {
 			Files:      []string{"internal/agents/claude/adapter.go", "internal/agents/agents.go"},
 			Tests: []TestRef{
 				{Package: pkgContract, Test: "TestClaudeReadOnlySpecKeepsTheModelAndDeniesWrites", EstUSD: 0.03, Env: real},
-				{Package: pkgRuntime, Test: "TestRealClaudeReadOnlySessionKeepsItsModelAndCannotWrite", EstUSD: 0.03},
+				{Package: pkgRuntime, Test: "TestRealClaudeReadOnlySessionKeepsItsModelAndCannotWrite", EstUSD: 0.03, Env: real},
 			},
 		},
 		{
@@ -100,8 +100,8 @@ func All() []Contract {
 			Files:      []string{"internal/agents/claude/adapter.go", "internal/agents/claude/project_memory.go"},
 			Tests: []TestRef{
 				{Package: pkgContract, Test: "TestClaudeUserSettingSourcesSkipRepositoryHooksAndMemory", EstUSD: 0.02, Env: real},
-				{Package: pkgCore, Test: "TestRealClaudeDoesNotRunARepositorysOwnHooks", EstUSD: 0.03},
-				{Package: pkgRuntime, Test: "TestRealClaudeGetsTheProjectInstructionsWithUserSettingsOnly", EstUSD: 0.02},
+				{Package: pkgCore, Test: "TestRealClaudeDoesNotRunARepositorysOwnHooks", EstUSD: 0.03, Env: real},
+				{Package: pkgRuntime, Test: "TestRealClaudeGetsTheProjectInstructionsWithUserSettingsOnly", EstUSD: 0.02, Env: real},
 			},
 		},
 		{
@@ -133,7 +133,7 @@ func All() []Contract {
 			Assumption: "--resume <session id> continues the same session with its history, and an unknown id fails before any turn so Drydock can fall back to a transcript.",
 			Why:        "Chats continue the CLI's own session on every turn (decision P29).",
 			Files:      []string{"internal/chats/turn.go", "internal/agents/claude/adapter.go"},
-			Tests:      []TestRef{{Package: pkgCore, Test: "TestRealClaudeChatResumesFallsBackAndShowsRefusals", EstUSD: 0.10}},
+			Tests:      []TestRef{{Package: pkgCore, Test: "TestRealClaudeChatResumesFallsBackAndShowsRefusals", EstUSD: 0.10, Env: real}},
 		},
 		{
 			ID: "CLAUDE-INTERRUPT-01", CLI: "claude", Adapter: "claude",
@@ -141,8 +141,8 @@ func All() []Contract {
 			Why:        "Stop and the watchdog's steer cancel a turn without losing the session.",
 			Files:      []string{"internal/agents/claude/adapter.go", "internal/agents/runtime/runtime.go"},
 			Tests: []TestRef{
-				{Package: pkgRuntime, Test: "TestRealClaudeInterruptThenContinueSameSession", EstUSD: 0.03},
-				{Package: pkgConformance, Test: "TestClaudeAdapterAgainstTheRealCLI", EstUSD: 0.05},
+				{Package: pkgRuntime, Test: "TestRealClaudeInterruptThenContinueSameSession", EstUSD: 0.03, Env: real},
+				{Package: pkgConformance, Test: "TestClaudeAdapterAgainstTheRealCLI", EstUSD: 0.05, Env: real},
 			},
 		},
 		{
@@ -152,9 +152,23 @@ func All() []Contract {
 			Files:      []string{"internal/agents/claude/adapter.go", "docs/mcp.md"},
 			Tests: []TestRef{
 				{Package: pkgContract, Test: "TestClaudeStrictMCPConfigLoadsOnlyTheGivenServer", EstUSD: 0.02, Env: real},
-				{Package: pkgMCP, Test: "TestRealClaudeTransports", Subtest: "stdio-shim", EstUSD: 0.03},
-				{Package: pkgCore, Test: "TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig", Subtest: "acceptEdits", EstUSD: 0.03},
+				{Package: pkgMCP, Test: "TestRealClaudeTransports", Subtest: "stdio-shim", EstUSD: 0.03, Env: real},
+				{Package: pkgCore, Test: "TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig", Subtest: "acceptEdits", EstUSD: 0.03, Env: real},
 			},
+		},
+		{
+			ID: "CLAUDE-QUIET-01", CLI: "claude", Adapter: "claude",
+			Assumption: "Started as Drydock starts it (--disable-slash-commands, the deny list claude.UnattendedDenied, the environment claude.QuietEnv), Claude Code offers no skills or slash commands, none of the denied tools, and CLAUDE_CODE_DISABLE_CRON and CLAUDE_CODE_DISABLE_WORKFLOWS still remove their tools; a tool nobody reviewed is a warning.",
+			Why:        "Every agent, reviewer, room reply, chat and the team lead would otherwise carry the user's whole skill list (9,200 tokens with ten plugins) and tools that schedule turns nobody asked for, in every request. Measured with 2.1.296: the first request of a session fell from 27,463 to 9,846 tokens.",
+			Files:      []string{"internal/agents/claude/adapter.go", "docs/token-control.md"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestClaudeSessionsStartedByDrydockAreQuiet"}},
+		},
+		{
+			ID: "CLAUDE-TOKENS-01", CLI: "claude", Adapter: "claude",
+			Assumption: "The first request of a session Drydock starts is no larger than the CLI's defaults with the user's settings, and a second session in another worktree of the same repository reads the shared part from the prompt cache.",
+			Why:        "Each task starts new sessions in its own worktree; what they send first, and how much of it comes from the cache, is most of what an idle team costs. A first request past 20,000 tokens (9,846 measured with 2.1.296) is a warning.",
+			Files:      []string{"internal/agents/claude/adapter.go", "docs/token-control.md"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestClaudeSessionTokensAndTheCacheAcrossWorktrees", EstUSD: 0.03, Env: real}},
 		},
 		{
 			ID: "CLAUDE-MCPWAIT-01", CLI: "claude", Adapter: "claude",

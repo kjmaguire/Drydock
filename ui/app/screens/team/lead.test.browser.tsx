@@ -99,6 +99,13 @@ describe('the team lead', () => {
     list = [...list, iv({ id: 'newest', action: 'escalate', createdAt: 1_760_000_200_000 })];
     s.emit({ type: 'lead.intervened', projectId: 'p1', taskId: 't1' });
     await waitFor(() => expect(r.$$('[data-testid="intervention"]').length).toBe(3), r);
+    // a turn that failed is listed too, and says it counts toward the lead's limit
+    list = [...list, iv({ id: 'failed', action: 'failed', message: "The team lead's turn failed: claude exited", reason: '', targetAgent: '', createdAt: 1_760_000_300_000 })];
+    s.emit({ type: 'lead.intervened', projectId: 'p1', taskId: 't1' });
+    await waitFor(() => expect(r.$$('[data-testid="intervention"]').length).toBe(4), r);
+    const failed = r.$('[data-testid="intervention"][data-action="failed"]')!;
+    expect(failed.textContent).toContain('turn failed: claude exited');
+    expect(failed.querySelector('[title*="counts toward"]')).not.toBeNull();
     expect(asked[0]).toEqual(['p1', undefined]);
   });
 

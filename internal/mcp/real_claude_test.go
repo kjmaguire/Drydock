@@ -9,17 +9,19 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/contract"
 )
 
 // TestRealClaudeTransports points the real Claude Code CLI at the gateway with each generated configuration and asks it to
 // read a file through the gateway's read_range tool. The proof that a configuration works is the gateway's own audit event for
-// the call, not the model's words. It is skipped when claude is not installed and logged in (or DRYDOCK_NO_REAL_AGENTS=1). Each
-// subtest costs a few thousandths of a dollar on the cheapest model.
+// the call, not the model's words. It runs only with DRYDOCK_REAL_CLAUDE=1 (it spends tokens) and when claude is installed and
+// logged in. Each subtest costs a few thousandths of a dollar on the cheapest model.
 //
 // Observations on this host (claude 2.1.294, Linux sandbox) are recorded in docs/mcp.md "As built".
 func TestRealClaudeTransports(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	exe, err := exec.LookPath("claude")
 	if err != nil {

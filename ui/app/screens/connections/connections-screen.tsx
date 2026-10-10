@@ -173,7 +173,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
   const s = services(handle);
   let confirming = false;
   let testing = false;
-  let prompt = true;
+  let prompt = false; // the only step that spends tokens: never without the person ticking it
   let report: ConnectionReport | undefined;
   let error: Error | undefined;
   const upd = (f: () => void) => {

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -907,4 +909,146 @@ func keys(e event) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// reviewedTools are the built-in tools a Drydock session is meant to have (some only on one platform, in plan mode or in
+// another CLI version). CLAUDE-QUIET-01 warns about any other tool a session is offered, so each tool a new CLI version adds
+// is either listed here or denied (claude.UnattendedDenied) before the version is adopted.
+var reviewedTools = []string{
+	"Bash", "PowerShell", "Edit", "MultiEdit", "Write", "Read", "Glob", "Grep", "LS", "NotebookEdit", "TodoWrite",
+	"Task", "Agent", "TaskOutput", "TaskStop", "BashOutput", "KillShell", "ToolSearch", "WebFetch", "WebSearch", "LSP",
+	"ListMcpResourcesTool", "ReadMcpResourceTool", "ReadMcpResourceDirTool", "EnterPlanMode", "ExitPlanMode",
+}
+
+// quietNames are the names claude.QuietEnv sets, for a check that wants the CLI's defaults.
+func quietNames() []string {
+	var out []string
+	for _, kv := range claude.QuietEnv {
+		k, _, _ := strings.Cut(kv, "=")
+		out = append(out, k)
+	}
+	return out
+}
+
+// closedPort is the address of a local port nothing listens on (a listener is opened and closed again).
+func closedPort(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	return addr
+}
+
+// CLAUDE-QUIET-01 (free): started as Drydock starts it, Claude Code offers no skills or slash commands and none of the tools
+// every Drydock session denies, and the quiet environment still removes the tools it names. The prompt is /context, which the
+// CLI answers itself when slash commands are off; the API address is a closed local port, so a CLI that did send it to a model
+// could not spend either.
+func TestClaudeSessionsStartedByDrydockAreQuiet(t *testing.T) {
+	exe := installedClaude(t)
+	dir := t.TempDir()
+	gitInit(t, dir)
+	offline := "ANTHROPIC_BASE_URL=http://" + closedPort(t)
+	look := func(env []string, args ...string) (tools, skills, commands []string) {
+		p := startClaude(t, "CLAUDE-QUIET-01", exe, dir, append(env, offline), append(args, "--no-session-persistence")...)
+		tr := p.turnWithin("/context", 120*time.Second)
+		p.close()
+		if c, _ := tr.result.num("total_cost_usd"); c != 0 {
+			t.Errorf("/context cost %v: the CLI sent it to a model", c)
+		}
+		return stringList(tr.init.list("tools")), stringList(tr.init.list("skills")), stringList(tr.init.list("slash_commands"))
+	}
+	plainEnv := contract.WithoutVars(contract.CleanEnv(), append(quietNames(), "DRYDOCK_FAKE_AGENT", "DRYDOCK_FAKE_SCRIPT", mcpServerEnv)...)
+	plainTools, plainSkills, plainCommands := look(plainEnv, streamArgs("--model", "haiku")...)
+	quietTools, _, _ := look(claude.Quiet(plainEnv), streamArgs("--model", "haiku")...)
+	tools, skills, commands := look(childEnv(), drydockClaude().Args(agents.RunSpec{Model: "haiku"})...)
+
+	if len(skills) > 0 || len(commands) > 0 {
+		t.Errorf("--disable-slash-commands no longer keeps the user's skills and commands out of a session: %d skills (%s), %d commands",
+			len(skills), strings.Join(skills[:min(len(skills), 5)], ", "), len(commands))
+	}
+	for _, tool := range tools {
+		if slices.Contains(claude.UnattendedDenied, tool) {
+			t.Errorf("%s is offered although Drydock denies it", tool)
+		}
+	}
+	// the variables whose effect shows in the tool list: when the CLI has the tools, the variable must remove them
+	for name, removes := range map[string][]string{"CLAUDE_CODE_DISABLE_CRON": {"CronCreate", "CronDelete", "CronList"}, "CLAUDE_CODE_DISABLE_WORKFLOWS": {"Workflow"}} {
+		for _, tool := range removes {
+			switch {
+			case !slices.Contains(plainTools, tool):
+				t.Logf("%sthis CLI does not offer %s, so what %s does cannot be seen", contract.NotePrefix, tool, name)
+			case slices.Contains(quietTools, tool):
+				t.Errorf("%s=1 no longer removes %s: the variable was renamed or dropped (see claude.QuietEnv)", name, tool)
+			}
+		}
+	}
+	var unreviewed []string
+	for _, tool := range tools {
+		if !strings.HasPrefix(tool, "mcp__") && !slices.Contains(reviewedTools, tool) {
+			unreviewed = append(unreviewed, tool)
+		}
+	}
+	if len(unreviewed) > 0 {
+		t.Logf("%sDrydock sessions are offered tools nobody reviewed: %s. Deny them (claude.UnattendedDenied) or list them in reviewedTools",
+			contract.WarningPrefix, strings.Join(unreviewed, ", "))
+	}
+	t.Logf("%sa Drydock session is offered %d tools (%s), no skills and no commands; the CLI's defaults here: %d tools, %d skills, %d commands",
+		contract.NotePrefix, len(tools), strings.Join(tools, ", "), len(plainTools), len(plainSkills), len(plainCommands))
+}
+
+// CLAUDE-TOKENS-01 (paid): what the first request of a session Drydock starts sends, against the CLI's defaults, and that a
+// second session in another worktree of the same repository reads the shared part from the prompt cache. Measured with
+// 2.1.296 on haiku with ten plugins installed: 9,846 tokens (27,463 before the quiet setup); the second worktree wrote 2,673
+// new tokens and read the rest from the cache.
+func TestClaudeSessionTokensAndTheCacheAcrossWorktrees(t *testing.T) {
+	exe, maxUSD := paidClaude(t, 0.03)
+	repo := filepath.Join(t.TempDir(), "repo")
+	gitInit(t, repo)
+	writeFile(t, filepath.Join(repo, "main.go"), "package main\n\nfunc main() {}\n")
+	writeFile(t, filepath.Join(repo, "CLAUDE.md"), "# Demo\n\nRun go test ./... before you finish.\n")
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", repo, "-c", "user.email=contract@drydock.invalid", "-c", "user.name=contract"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("add", ".")
+	git("commit", "-qm", "start")
+	wt := []string{filepath.Join(filepath.Dir(repo), "task-one"), filepath.Join(filepath.Dir(repo), "task-two")}
+	git("worktree", "add", "-q", "-b", "task-one", wt[0])
+	git("worktree", "add", "-q", "-b", "task-two", wt[1])
+	type sent struct{ input, written, read float64 }
+	first := func(dir string, env []string, args ...string) sent {
+		p := startClaude(t, "CLAUDE-TOKENS-01", exe, dir, env, append(args, "--no-session-persistence", "--max-budget-usd", usd(maxUSD/3))...)
+		tr := p.turn("Reply with the single word OK.")
+		p.close()
+		u := tr.result.obj("usage")
+		in, _ := u.num("input_tokens")
+		w, _ := u.num("cache_creation_input_tokens")
+		r, _ := u.num("cache_read_input_tokens")
+		return sent{in + w + r, w, r}
+	}
+	plainEnv := contract.WithoutVars(childEnv(), quietNames()...)
+	plain := first(wt[0], plainEnv, streamArgs("--model", "haiku", "--setting-sources", "user", "--disallowedTools", claude.PluginToolsDenied)...)
+	args := drydockClaude().Args(agents.RunSpec{Model: "haiku"})
+	one := first(wt[0], childEnv(), args...)
+	two := first(wt[1], childEnv(), args...)
+	if one.input == 0 || plain.input == 0 {
+		t.Fatalf("no usage reported: plain %+v, Drydock %+v", plain, one)
+	}
+	if one.input > plain.input {
+		t.Errorf("a Drydock session's first request (%.0f tokens) is larger than the CLI's defaults (%.0f)", one.input, plain.input)
+	}
+	if two.read == 0 {
+		t.Errorf("a second session in another worktree read nothing from the prompt cache (wrote %.0f of %.0f tokens): every task now pays its whole context again",
+			two.written, two.input)
+	}
+	if one.input > 20000 {
+		t.Logf("%sa Drydock session's first request grew to %.0f tokens (9,846 measured with 2.1.296): see what this version adds", contract.WarningPrefix, one.input)
+	}
+	t.Logf("%sfirst request: Drydock %.0f tokens, the CLI's defaults with the user's settings %.0f; a second worktree wrote %.0f and read %.0f from the cache",
+		contract.NotePrefix, one.input, plain.input, two.written, two.read)
 }

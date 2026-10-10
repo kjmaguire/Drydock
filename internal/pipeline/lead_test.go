@@ -40,13 +40,15 @@ const (
 
 type leadEnv struct {
 	*env
-	lead    *pipeline.Lead
-	wd      *watchdog.Watchdog
-	logs    map[string]string
-	mu      sync.Mutex
-	posts   []string
-	devs    pipeline.DevSettings
-	nowFunc func() time.Time
+	lead *pipeline.Lead
+	// leadDeps are what lead was built from: a test makes a new service from them to play a restart of the app
+	leadDeps pipeline.LeadDeps
+	wd       *watchdog.Watchdog
+	logs     map[string]string
+	mu       sync.Mutex
+	posts    []string
+	devs     pipeline.DevSettings
+	nowFunc  func() time.Time
 }
 
 // newLeadEnv builds the gocalc repository, the database, the runtime and the lead service, with one scripted agent per entry
@@ -115,7 +117,7 @@ func buildLeadEnv(t *testing.T, scripts map[string]fakeagent.Script, withLead, w
 			return cfgFor(tk.Assignee)
 		},
 	}
-	e.lead = pipeline.NewLead(pipeline.LeadDeps{
+	e.leadDeps = pipeline.LeadDeps{
 		Tasks: e.tasks, Runtime: runtime, Bus: e.bus,
 		Team: func(ctx context.Context, projectID string) ([]pipeline.LeadMember, error) {
 			rows, err := db.Reader().QueryContext(ctx, `SELECT id,name,role,adapter FROM agents WHERE project_id=? ORDER BY created_at,id`, projectID)
@@ -156,7 +158,8 @@ func buildLeadEnv(t *testing.T, scripts map[string]fakeagent.Script, withLead, w
 			}
 			return time.Now()
 		},
-	})
+	}
+	e.lead = pipeline.NewLead(e.leadDeps)
 	e.deps.Lead = e.lead
 	e.eng = workflow.New(workflow.Config{DB: db, Bus: e.bus, DataDir: filepath.Join(e.dir, "data"), LeaseTTL: 3 * time.Second, SafePoint: pipeline.SafePointHook(e.deps)})
 	// the watchdog, wired to the lead the way the core wires it
@@ -501,6 +504,108 @@ func TestLeadStaffsAnUnassignedTask(t *testing.T) {
 	}
 	if res, _ := e.lead.Tick(ctx, "p1"); len(res.Unassigned) != 0 {
 		t.Fatalf("asked twice: %+v", res)
+	}
+}
+
+// A supervision turn that fails (here the lead's process exits mid-turn) is stored as action failed and counts toward the
+// bound: a lead whose turns keep failing is not asked without end. After the bound the trigger site hears it is used up and
+// no further turn starts; the trigger site behaves as without a lead every time, and nothing is posted in the room.
+func TestAFailedLeadTurnCountsTowardTheBound(t *testing.T) {
+	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: {Default: []fakeagent.Step{{Say: "starting"}, {Exit: 3}}}}, true)
+	ctx := context.Background()
+	tr := pipeline.LeadTrigger{Kind: pipeline.TriggerStalled, TaskID: e.task.ID, RunID: "run_x", Evidence: "No progress events for 20 minutes."}
+	for i := 1; i <= pipeline.DefaultLeadMaxPerRun; i++ {
+		if o := e.lead.Supervise(ctx, tr); o.Intervened || o.Exhausted {
+			t.Fatalf("attempt %d: a failed turn must leave the trigger site as without a lead: %+v", i, o)
+		}
+	}
+	if o := e.lead.Supervise(ctx, tr); !o.Exhausted || o.Intervened {
+		t.Fatalf("after %d failed turns the bound must be used up: %+v", pipeline.DefaultLeadMaxPerRun, o)
+	}
+	if n := len(e.prompts(agLead)); n != pipeline.DefaultLeadMaxPerRun {
+		t.Fatalf("lead turns %d, want %d", n, pipeline.DefaultLeadMaxPerRun)
+	}
+	iv := e.interventions(t)
+	if len(iv) != pipeline.DefaultLeadMaxPerRun {
+		t.Fatalf("interventions %+v", iv)
+	}
+	for _, x := range iv {
+		if x.Action != pipeline.LeadFailed || x.Trigger != pipeline.TriggerStalled || !strings.Contains(x.Message, "turn failed") || x.Evidence == "" {
+			t.Fatalf("a failed turn is stored as %+v", x)
+		}
+	}
+	if e.lead.HasLead(ctx, e.task.ID, "run_x", "work") {
+		t.Fatal("HasLead after the bound was used up by failed turns")
+	}
+	if len(e.posts) != 0 {
+		t.Fatalf("a failed turn posted in the room: %v", e.posts)
+	}
+}
+
+// What the monitor asked survives a restart: a new service (the app started again) asks neither about the same silence
+// again (here the lead's turn failed, so the run is still RUNNING and silent) nor about the same unassigned task.
+func TestTheMonitorDoesNotAskAgainAfterARestart(t *testing.T) {
+	e := newWatchedLeadEnv(t, map[string]fakeagent.Script{
+		agWork:   fakeagent.Script{Default: []fakeagent.Step{{Say: "thinking"}, {Block: true}}},
+		agReview: shipper,
+		agLead:   fakeagent.Script{Default: []fakeagent.Step{{Exit: 3}}},
+	})
+	ctx := context.Background()
+	e.devs.LeadStallMinutes = 15
+	id := e.runIUV(t, 3)
+	deadline := time.Now().Add(60 * time.Second)
+	for len(e.prompts(agWork)) == 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	rid := string(id)
+	e.tasks.Patch(ctx, e.task.ID, tasks.Update{RunID: &rid})
+	e.nowFunc = func() time.Time { return time.Now().Add(20 * time.Minute) }
+	if res, err := e.lead.Tick(ctx, "p1"); err != nil || len(res.Stalled) != 1 {
+		t.Fatalf("tick %+v %v", res, err)
+	}
+	if n := len(e.prompts(agLead)); n != 1 {
+		t.Fatalf("lead turns %d", n)
+	}
+	restarted := pipeline.NewLead(e.leadDeps)
+	if res, _ := restarted.Tick(ctx, "p1"); len(res.Stalled) != 0 {
+		t.Fatalf("the same silence was asked about again after a restart: %+v", res)
+	}
+	if n := len(e.prompts(agLead)); n != 1 {
+		t.Fatalf("lead turns after the restart %d", n)
+	}
+}
+
+// An unassigned task the lead was asked about is not asked about again after a restart, until the task changes.
+func TestTheLeadIsAskedOnceAboutAnUnassignedTaskAcrossRestarts(t *testing.T) {
+	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: leadSays(`{"action":"continue","message":"","reason":"a human will staff it"}`)}, true)
+	ctx := context.Background()
+	e.devs.AutoSchedule = true
+	nt, _ := e.tasks.Create(ctx, tasks.CreateReq{ProjectID: "p1", Title: "Add Multiply", Description: "Add Multiply."})
+	if _, err := e.tasks.Transition(ctx, nt.ID, tasks.Ready, tasks.TransitionOpts{By: "system"}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := e.lead.Tick(ctx, "p1"); err != nil || len(res.Unassigned) != 1 || res.Unassigned[0] != nt.ID {
+		t.Fatalf("tick %+v %v", res, err)
+	}
+	asked := len(e.prompts(agLead))
+	if asked != 1 {
+		t.Fatalf("lead turns %d", asked)
+	}
+	if res, _ := pipeline.NewLead(e.leadDeps).Tick(ctx, "p1"); len(res.Unassigned) != 0 {
+		t.Fatalf("asked again after a restart: %+v", res)
+	}
+	if n := len(e.prompts(agLead)); n != asked {
+		t.Fatalf("lead turns %d, want %d", n, asked)
+	}
+	// a change to the task is a new question
+	time.Sleep(5 * time.Millisecond)
+	acc := []string{"Given 2 and 3 When Multiply is called Then it returns 6"}
+	if _, err := e.tasks.Patch(ctx, nt.ID, tasks.Update{Acceptance: &acc}); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := pipeline.NewLead(e.leadDeps).Tick(ctx, "p1"); len(res.Unassigned) != 1 || res.Unassigned[0] != nt.ID {
+		t.Fatalf("a changed task: %+v", res)
 	}
 }
 

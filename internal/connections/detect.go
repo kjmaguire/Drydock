@@ -95,6 +95,14 @@ func (o *Options) defaults() {
 	}
 }
 
+// envBilling says, for the credential variables whose effect is known, who pays when a CLI Drydock starts finds one (warn_env
+// in the manifests). Agents run headless, and a headless Claude Code uses ANTHROPIC_API_KEY when it is set, also when the
+// person is signed in with a subscription (the CLI reports it as apiKeySource; measured with 2.1.296).
+var envBilling = map[string]string{
+	"ANTHROPIC_API_KEY":       "every agent turn is billed per token to that API key's account, not to the Claude subscription you are signed in with. Remove it from the environment to use the subscription",
+	"CLAUDE_CODE_OAUTH_TOKEN": "agent turns use the subscription that token belongs to, which can be another account than the one shown as signed in",
+}
+
 // Detect computes the Detection for a manifest. It never returns an error for a missing or broken CLI: that is a status.
 func Detect(ctx context.Context, m *manifests.Manifest, o Options) (agents.Detection, error) {
 	return Check(ctx, m, o).Detection, nil
@@ -108,7 +116,11 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 
 	for _, k := range m.Auth.WarnEnv {
 		if envHas(o.Env, k) {
-			c.Warnings = append(c.Warnings, fmt.Sprintf("%s is set in the environment, which changes how %s authenticates and bills (the value is never read by Drydock)", k, m.Meta.DisplayName))
+			what := fmt.Sprintf("which changes how %s authenticates and bills", m.Meta.DisplayName)
+			if b, ok := envBilling[strings.ToUpper(k)]; ok {
+				what = b
+			}
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s is set in the environment Drydock starts agents in: %s (the value is never read by Drydock)", k, what))
 		}
 	}
 	if m.Terms != nil && m.Terms.Warning != "" {

@@ -17,6 +17,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/proc"
@@ -298,8 +299,8 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 // The real Claude Code CLI, driven through Core.Runtime.Spawn exactly as a task turn is, uses a server the human added and
 // receives the agent's purpose: both reach it only through what Drydock generates (the gateway entry and --append-system-prompt-file).
 func TestRealClaudeUsesAUserAddedServerAndReceivesThePurpose(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	det, err := claude.New().Detect(context.Background())

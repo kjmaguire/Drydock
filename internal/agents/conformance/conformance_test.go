@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/conformance"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -68,8 +69,8 @@ func TestClaudeAdapterAgainstTheScriptedAgent(t *testing.T) {
 }
 
 func TestClaudeAdapterAgainstTheRealCLI(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "") // never leak the stand-in switch into a real run
 	ad := claude.New()

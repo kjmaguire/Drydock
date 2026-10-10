@@ -50,6 +50,8 @@ send a few words to the cheapest model (haiku).
 | CLAUDE-RESUME-01 | `--resume` continues the same session, and an unknown id fails before any turn so a chat can fall back to its transcript. | paid (existing chat test) |
 | CLAUDE-INTERRUPT-01 | An interrupt on stdin is acknowledged, ends the turn, not the process, and the same session answers the next message. | paid (existing tests) |
 | CLAUDE-MCP-01 | `--mcp-config` with `--strict-mcp-config` loads only the configured server: a repository's `.mcp.json`, the user's own servers and the MCP servers of installed plugins do not join, and the configured server's tools are offered. The existing gateway tests prove a real call works. Started the way Drydock starts agents (`--setting-sources user`). | paid |
+| CLAUDE-QUIET-01 | Started as Drydock starts every session (`--disable-slash-commands`, the deny list `claude.UnattendedDenied`, the environment `claude.QuietEnv`), Claude Code offers no skills and no slash commands, none of the denied tools, and `CLAUDE_CODE_DISABLE_CRON` and `CLAUDE_CODE_DISABLE_WORKFLOWS` still remove their tools (checked against a run with the CLI's defaults). A tool nobody reviewed (not denied, not in the test's list of tools a session is meant to have) is a warning, so each tool a new version adds gets a decision. The prompt is `/context`, which the CLI answers itself with slash commands off, and the API address points at a closed local port, so even a changed CLI cannot spend. Measured with 2.1.296: 12 tools, no skills, no commands, against 41 tools, 68 skills and 105 commands by default. | free |
+| CLAUDE-TOKENS-01 | The first request of a session Drydock starts is no larger than the CLI's defaults with the user's settings, and a second session in another worktree of the same repository reads the shared part from the prompt cache. Measured with 2.1.296 on haiku: 9,971 tokens against 27,590; the second worktree wrote 2,828 and read 7,141. A first request past 20,000 tokens is a warning. | paid |
 | CLAUDE-MCPWAIT-01 | With `CLAUDE_AUTO_BACKGROUND_TASKS=false`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` and `MCP_TOOL_TIMEOUT=3900000` (what the sandbox sets), a 130-second MCP tool call is waited for and its result reaches the model in the same turn. Without them 2.1.296 moves the call to the background after 120 seconds and the turn ends without the result. Slow: about two and a half minutes. | paid, slow |
 | CLAUDE-DENIAL-01 | A write the default mode refuses appears in `result.permission_denials` with the tool name, its id and its input, does not happen, and the parser reports it. | paid |
 | ACP-INIT-01 | For each ACP agent installed (claude-agent-acp, codex-acp, gemini, opencode, goose, cline): `initialize` answers protocol version 1, the agent's name and version, and its authentication methods (the Claude bridge lists none to a client without terminal-auth, as phase 0 recorded; the others must list theirs). A throwaway home folder and a scrubbed environment are used, so no configuration or credential is read. | free |
@@ -89,13 +91,16 @@ first on `PATH`), `--check-updates`, `--skip-slow`, `--timeout` (per test, defau
 
 One test can be run directly, too: `DRYDOCK_REAL_CLAUDE=1 go test ./internal/contract -run TestClaudeStreamJSONEventShapes -v`.
 Without `DRYDOCK_REAL_CLAUDE=1` the paid checks skip; the free checks run wherever `claude` is installed, and the static check
-always runs.
+always runs. The same switch gates every other Go test that sends prompts to the real claude (`contract.RealClaudeSkip`: the
+runtime, core, pipeline, MCP, responder, connections and conformance tests), so `go test ./...` on a machine where claude is
+signed in spends nothing; before 2026-10-10 those tests ran whenever claude was installed and signed in. Tests that send no
+prompt (detection, the ACP handshake) still run wherever the CLI is installed.
 
 Environment the tests read:
 
 | Variable | Meaning |
 |---|---|
-| `DRYDOCK_REAL_CLAUDE=1` | run the paid Claude checks (the runner sets it) |
+| `DRYDOCK_REAL_CLAUDE=1` | run the paid Claude checks and every other test that prompts the real claude (the runner sets it) |
 | `DRYDOCK_NO_REAL_AGENTS=1` | skip every real-CLI test (the runner removes it) |
 | `DRYDOCK_CONTRACT_BUDGET_USD`, `DRYDOCK_CONTRACT_LEDGER` | the run's budget and the file the paid checks book their spend in (set by the runner) |
 | `DRYDOCK_ACP_<NAME>` | the command of an ACP agent when it is not on `PATH` (`CLAUDE_ACP`, `CODEX_ACP`, `GEMINI`, `OPENCODE`, `GOOSE`, `CLINE`; the same variables as the live tests) |

@@ -12,6 +12,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/responder"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -20,8 +21,8 @@ import (
 // A real Claude Code turn, in the room, in read-only mode, on the cheapest model. It runs only when `claude` is installed
 // and logged in on this machine (the user's own login, decision D1) and is skipped, with the reason, otherwise.
 func TestRealClaudeAnswersInTheRoomReadOnly(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "") // the TestMain switch must not leak into a real run
 	ad := claude.New()

@@ -190,3 +190,76 @@ Built in `internal/budget` (migration `00060_budget.sql`), `internal/telemetry` 
 - **Checks (rule 10 and brief s13a).** `secrets` scans only the lines the task **added** (diff against the base, including uncommitted and untracked files) with the gitleaks-backed scanner; a finding fails the check and the output names rule, file and line only. `deps` runs `osv-scanner` as an external tool if it is on PATH (`--offline` per project); not installed gives `skipped: osv-scanner not installed`, recorded as evidence with no verdict plus a `task.check_inconclusive` event (posted in the room with status `skipped`), never a pass and never sent back to an agent. Per-project settings: secrets on, deps off by default. The JSON shape osv-scanner prints was taken from its documentation, not captured from a real run (it is not installed here).
 
 Not built: pre-call reservation and settlement, a `workflow` budget scope, wall-time ceilings, a budget item type in the room inbox, OTLP export, telemetry for Wrapper calls.
+
+## As built: Claude Code sessions and unattended spend (2026-10-10, decision P36)
+
+On the owner's request ("make sure when we add claude code either by API and or CLI that it's not burning tokens"). Adding
+Claude Code spends nothing: detection runs `claude --version` and `claude auth status`, and API providers are checked with
+GET listings only. A subscription login and an API key run the same CLI with the same settings; only who pays differs
+(`connections.md`, Claude-specific rules). What follows is what every session carries, and what could spend without a person
+asking.
+
+**Measured** with Claude Code 2.1.296 on haiku, in a small repository, with the ten plugins this machine's user has installed
+(contract CLAUDE-TOKENS-01 repeats the main figures):
+
+| Setup | First request of a session (tokens) | New tokens a session in a second worktree writes to the cache |
+|---|---|---|
+| Before (the argv of 2026-10-09) | 27,463 | 12,200 |
+| With `QuietEnv` and `--disable-slash-commands` | 14,621 | 2,786 |
+| Also with `UnattendedDenied` (as built) | 9,846 | 2,673 |
+
+Every later request of a session reads this prefix again from the cache (a worker turn with 30 tool calls makes about 30
+requests), so the 17,600 fewer tokens are saved on each request, not once per session.
+
+What every Claude Code session Drydock starts now gets (`internal/agents/claude/adapter.go`; workers, reviewers, the lead,
+room replies, chats and the connection test alike):
+
+- **`QuietEnv`**, replacing any value inherited from the person's environment: no auto memory (a memory folder read into every
+  session and written behind Drydock's own memory), no workflows (multi-agent runs started from inside a turn), no advisor
+  (a second, larger model consulted on the side), no cron (prompts scheduled to run later; durable ones are saved into the
+  repository's `.claude/scheduled_tasks.json`), no background tasks and no automatic backgrounding (a long command is waited
+  for; moved to the background its result was lost and the turn wasted, as the sandbox had already measured), no idle
+  check-in turns (`CLAUDE_CODE_GOAL_CHECKIN_MINUTES=0`), no prompt suggestions or away summaries. Each name and value was read
+  from the CLI's code.
+- **`--disable-slash-commands`**: the skill list of the person's Claude Code (bundled skills, their own, 47 from their
+  plugins, those synced from claude.ai: 9,200 tokens here) is no longer in every request. Drydock's own accepted skills reach
+  Claude as rules in the instructions (`internal/skills`), which this does not touch; automatic compaction is a separate
+  switch in the CLI and keeps working.
+- **`UnattendedDenied`** in the deny list: the tools that schedule or wake turns nobody asked for, reach past the session (the
+  person's other Claude sessions, notifications, files sent to them), search or change their Claude Code setup (plugins,
+  skills, connectors, the MCP registry), or leave the folder Drydock gave the agent (worktrees). A worker is offered 13 tools:
+  Bash, Edit, Write, Read, NotebookEdit, Task, TaskStop, ToolSearch, WebFetch, WebSearch and the three MCP resource tools,
+  plus the gateway's. CLAUDE-QUIET-01 (free) checks all three on every CLI version and warns about any tool nobody reviewed.
+
+The whole Claude contract suite passed with these on 2.1.296: 20 passed, 0 failed, 3 skipped (the disabled ACP bridge, a
+Windows-only check), $0.065 reported, including resume, interrupt, the MCP gateway, restricted (sandbox) mode and the long
+MCP call.
+
+**Measured and left as they are.** `--exclude-dynamic-system-prompt-sections` made no difference across worktrees (2,786 new
+tokens either way). `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS` saves 147 tokens and removes the CLI's git safety rules. Reordering
+Drydock's appended instructions cannot raise cache reads: the CLI caches the per-session part (environment, instructions,
+prompt) as a whole. The prompt-cache lifetime stays the CLI's default. Not changed, with their cost visible: path-scoped rules
+(Drydock's skills among them) are appended in full, where native Claude Code loads one only when a matching file is touched
+(delivering them on demand could save tokens when a skill does not apply, but an agent might not read it; to be measured
+first); accepted memory is preloaded whole in AGENTS.md (each entry one line, a person accepted every one, and each run's
+context manifest shows its size); the person's own and their plugins' hooks still run (P16), so a SessionStart hook that adds
+context adds tokens; installed plugins' MCP servers still start, with their tools denied (CLAUDE-MCP-01).
+
+**Spend nobody asked for, closed.**
+
+- **The team lead** (`internal/pipeline/lead_service.go`): a supervision turn that fails is stored (action `failed`) and counts
+  toward the bound of 3 per task and run; before, a failing lead was asked again at every silence of a stalled run, each turn
+  spending. What the monitor asked is read from the stored interventions, so a restart asks neither about the same silence
+  nor about the same unassigned task again.
+- **Restarts** (`internal/workflow/engine.go`): an agent turn cut off by a stop is re-run once on its own; cut off again, the
+  run asks the person (approve runs it once more, reject fails the run). Before, a turn interrupted at every start was paid
+  for at every start.
+- **Test connection**: "Also send one tiny prompt" is off until the person ticks it; it is the only step that spends.
+- **Drydock's own tests**: every Go test that prompts the real claude now runs only with `DRYDOCK_REAL_CLAUDE=1`
+  (`contract.RealClaudeSkip`; `cmd/drydock-contract` sets it). Before, `go test ./...` sent real prompts whenever claude was
+  installed and signed in, on the owner's machine as on this one.
+- **Billing**: a headless run uses `ANTHROPIC_API_KEY` over a subscription login, and Drydock passes `ANTHROPIC_*` to agents;
+  the Connection's warning now says that every agent turn is then billed per token to that key's account.
+
+Spend that stays by design: a room reply to each human message in a task room (the assignee answers), the lead's monitor
+(only with a lead on the team, bounded as above), automatic scheduling (off by default), stand-ups when a person asks.

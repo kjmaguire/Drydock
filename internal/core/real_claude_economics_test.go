@@ -2,13 +2,13 @@ package core_test
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -17,8 +17,8 @@ import (
 // real database: this is where "cost per accepted task" gets its first measured number. It spends real money (haiku, a few
 // cents to a few tens of cents), so it runs only when DRYDOCK_REAL_CLAUDE=1 and `claude` is installed and logged in.
 func TestRealClaudeLoopThroughTheCoreAndTheEvalReport(t *testing.T) {
-	if os.Getenv("DRYDOCK_REAL_CLAUDE") != "1" {
-		t.Skip("set DRYDOCK_REAL_CLAUDE=1 to run the paid real-Claude end-to-end measurement")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	if _, err := exec.LookPath("claude"); err != nil {
 		t.Skip("claude is not installed")

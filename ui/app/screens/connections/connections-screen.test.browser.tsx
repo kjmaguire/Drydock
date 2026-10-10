@@ -104,20 +104,27 @@ describe('Connections page', () => {
     await r.act(() => byText(c, 'button', 'Test connection...').click());
     expect(tests).toEqual([]);
     expect(c.textContent).toContain('starts the real claude CLI');
-    // the tiny prompt is offered, ticked, with what it costs; unticked, nothing that costs tokens runs
+    // the tiny prompt is offered with what it costs, unticked: a test spends nothing unless the person asks
     const box = byLabel<HTMLInputElement>(c, /^Also send one tiny prompt/);
-    expect(box.checked).toBe(true);
+    expect(box.checked).toBe(false);
     expect(c.textContent).toContain('a fraction of a cent');
-    await r.act(() => byText(c, 'button', 'Cancel').click());
-    expect(c.querySelector('[data-testid="connection-report"]')).toBeNull();
+    await r.act(() => byText(c, 'button', 'Run the test').click());
+    await waitFor(() => {
+      if (!c.querySelector('[data-testid="connection-report"]')) throw new Error('not yet');
+    }, r);
+    expect(tests).toEqual(['claude:false']);
     await r.act(() => byText(c, 'button', 'Test connection...').click());
+    await r.act(() => byText(c, 'button', 'Cancel').click());
+    expect(tests).toEqual(['claude:false']);
+    await r.act(() => byText(c, 'button', 'Test connection...').click());
+    await r.act(() => byLabel<HTMLInputElement>(c, /^Also send one tiny prompt/).click());
     await r.act(() => byText(c, 'button', 'Run the test').click());
     const rep = await waitFor(() => {
       const x = c.querySelector('[data-testid="connection-report"]');
-      if (!x) throw new Error('not yet');
+      if (!x || tests.length < 2) throw new Error('not yet');
       return x;
     }, r);
-    expect(tests).toEqual(['claude:true']);
+    expect(tests).toEqual(['claude:false', 'claude:true']);
     expect(rep.textContent).toContain('The CLI started but did not answer.');
     expect(rep.textContent).toContain('did not pass');
   });

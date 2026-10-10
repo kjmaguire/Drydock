@@ -120,7 +120,12 @@ export function Interventions(handle: Handle<{ projectId: string; taskId?: strin
                 <li key={x.id} mix={itemCss} data-testid="intervention" data-action={x.action} data-trigger={x.trigger}>
                   <div class="head">
                     <strong>{agentName(x.leadAgentId, agents) || 'Team lead'}</strong>
-                    <Badge tone={x.action === 'escalate' || x.action === 'stop' ? 'warn' : 'accent'}>{x.action || 'note'}</Badge>
+                    <Badge
+                      tone={x.action === 'escalate' || x.action === 'stop' || x.action === 'failed' ? 'warn' : 'accent'}
+                      title={x.action === 'failed' ? "The team lead's turn failed (an error or the time limit). It counts toward the lead's limit for this run." : undefined}
+                    >
+                      {x.action || 'note'}
+                    </Badge>
                     <span>on {TRIGGER_LABEL[x.trigger] ?? x.trigger}</span>
                     {x.targetAgent ? <span>to {agentName(x.targetAgent, agents) || x.targetAgent}</span> : null}
                     {!taskId && x.taskId ? (

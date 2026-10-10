@@ -17,6 +17,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/checks"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -565,8 +566,8 @@ func TestPlanAcceptSchedulerAndHumanMergesThroughTheUIMethods(t *testing.T) {
 // its JSON (or, if it needs a retry, the retry is visible in the prompt count). Skipped, with the reason, when claude is
 // not installed and logged in. The plan is rejected at the end: this test creates no tasks.
 func TestRealClaudePlansATinyGoal(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	det, err := claude.New().Detect(context.Background())

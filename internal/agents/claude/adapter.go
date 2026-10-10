@@ -178,6 +178,37 @@ var ReadOnlyDenied = []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bas
 // gateway's. --safe-mode, which drops plugins, also drops the gateway's --mcp-config server. Restricted mode loads no plugin.
 const PluginToolsDenied = "mcp__plugin_*"
 
+// UnattendedDenied are the Claude Code tools no Drydock session uses, denied in every session: they schedule or wake turns
+// nobody asked for (cron, wakeups, monitors, workflows), reach past the session (the user's other Claude sessions,
+// notifications, files sent to the user), search or change the user's Claude Code setup (plugins, skills, connectors, the MCP
+// registry), or take the agent out of the folder Drydock gave it (worktrees). Measured with 2.1.296: with them, the quiet
+// environment (QuietEnv) and --disable-slash-commands a worker is offered 13 tools (Bash, Edit, Write, Read, NotebookEdit,
+// Task, TaskStop, ToolSearch, WebFetch, WebSearch and the three MCP resource tools); a name the CLI does not have is ignored.
+var UnattendedDenied = []string{
+	"CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "Monitor", "Workflow", "RemoteTrigger",
+	"SendMessage", "ListAgents", "PushNotification", "ReadNotifications", "SendUserFile",
+	"ListPlugins", "SearchPlugins", "SuggestPluginInstall", "ListSkills", "SearchSkills", "SuggestSkills",
+	"ListConnectors", "SuggestConnectors", "SearchMcpRegistry", "ShowOnboardingRolePicker", "DesignSync", "ReportFindings",
+	"EnterWorktree", "ExitWorktree",
+}
+
+// QuietEnv switches off, in every Claude Code process Drydock starts, the features that spend tokens nobody asked for or keep
+// a session working after its turn. They replace any value inherited from the human's environment (CLAUDE_* passes through),
+// and a run's own Env still comes after them. Each name and value was read from the CLI's code (2.1.296). Measured there
+// together with --disable-slash-commands and UnattendedDenied, the first request of a session in a small repository fell from
+// 27,463 tokens to 9,846 (docs/token-control.md, "As built: Claude Code sessions").
+var QuietEnv = []string{
+	"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",          // no memory folder loaded into every session or written behind Drydock's memory
+	"CLAUDE_CODE_DISABLE_WORKFLOWS=1",            // no multi-agent workflow started from inside a turn
+	"CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1",         // no second, larger model consulted on the side
+	"CLAUDE_CODE_DISABLE_CRON=1",                 // no prompt scheduled to run later (durable ones are saved into the repository)
+	"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1",     // nothing left running after the turn ends
+	"CLAUDE_AUTO_BACKGROUND_TASKS=false",         // a long command is waited for, not moved to the background and its result lost
+	"CLAUDE_CODE_GOAL_CHECKIN_MINUTES=0",         // no check-in turns on an idle session
+	"CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false", // no suggested next prompt generated after a turn
+	"CLAUDE_CODE_ENABLE_AWAY_SUMMARY=0",          // no recap generated for someone coming back
+}
+
 // Args builds the argv (after the executable) for a session, with the system prompt addition inline. Start passes it in a
 // file instead (argsWith).
 func (a *Adapter) Args(spec agents.RunSpec) []string { return a.argsWith(spec, "") }
@@ -189,8 +220,12 @@ func (a *Adapter) Args(spec agents.RunSpec) []string { return a.argsWith(spec, "
 func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 	args := append([]string(nil), a.BaseArgs...)
 	args = append(args, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages")
-	// one deny list: a read-only session's writing tools, and installed plugins' MCP tools for every session that loads
-	// plugins (restricted mode loads none)
+	// no skills or slash commands of the user's Claude Code (bundled, the user's own, plugins', synced from claude.ai): their
+	// list is read into every request (9,200 tokens with ten plugins, measured with 2.1.296) and no Drydock session uses them.
+	// Drydock's own accepted skills reach Claude as rules in the instructions (internal/skills), which this leaves alone.
+	args = append(args, "--disable-slash-commands")
+	// one deny list: a read-only session's writing tools, installed plugins' MCP tools for every session that loads plugins
+	// (restricted mode loads none), and the tools no Drydock session uses
 	var denied []string
 	if spec.ReadOnly {
 		denied = append(denied, ReadOnlyDenied...)
@@ -198,9 +233,8 @@ func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 	if !spec.Sandboxed {
 		denied = append(denied, PluginToolsDenied)
 	}
-	if len(denied) > 0 {
-		args = append(args, "--disallowedTools", strings.Join(denied, ","))
-	}
+	denied = append(denied, UnattendedDenied...)
+	args = append(args, "--disallowedTools", strings.Join(denied, ","))
 	if spec.Model != "" {
 		args = append(args, "--model", spec.Model)
 	}
@@ -251,7 +285,7 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 	if err != nil {
 		return nil, fmt.Errorf("claude: %w", err)
 	}
-	env := a.childEnv(os.Environ())
+	env := Quiet(a.childEnv(os.Environ()))
 	env = append(env, spec.Env...)
 	text := spec.SystemAppend
 	if a.UserSettingsOnly || spec.Sandboxed { // neither mode loads the project's CLAUDE.md, rules and imports into context
@@ -434,6 +468,23 @@ func (a *Adapter) childEnv(parent []string) []string {
 		names = append(names, a.PassEnv()...)
 	}
 	return proc.ScrubEnv(parent, names, []string{"CLAUDE_", "ANTHROPIC_"})
+}
+
+// Quiet is env with QuietEnv in place of any value of those names it had (names compared as Windows does, ignoring case). Start
+// uses it for every session; the contract suite starts the real CLI with it too.
+func Quiet(env []string) []string {
+	names := make(map[string]bool, len(QuietEnv))
+	for _, kv := range QuietEnv {
+		k, _, _ := strings.Cut(kv, "=")
+		names[k] = true
+	}
+	out := make([]string, 0, len(env)+len(QuietEnv))
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); !names[strings.ToUpper(k)] {
+			out = append(out, kv)
+		}
+	}
+	return append(out, QuietEnv...)
 }
 
 // enclosingSessionEnv are the variables a running Claude Code session sets for the processes it starts. When Drydock itself

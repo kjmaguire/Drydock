@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/sandbox/sandboxtest"
@@ -21,8 +22,8 @@ import (
 // takes longer than two minutes, which shows the CLI waits for a long tool call. Paid (haiku, cents), so it runs only with
 // DRYDOCK_REAL_CLAUDE=1, claude installed and logged in, and a container engine.
 func TestRealClaudeWorksInTheSandbox(t *testing.T) {
-	if os.Getenv("DRYDOCK_REAL_CLAUDE") != "1" {
-		t.Skip("set DRYDOCK_REAL_CLAUDE=1 to run the paid real-Claude sandbox test")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	if _, err := exec.LookPath("claude"); err != nil {
 		t.Skip("claude is not installed")

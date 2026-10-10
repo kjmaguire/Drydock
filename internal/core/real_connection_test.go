@@ -2,7 +2,6 @@ package core_test
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,14 +10,16 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/connections"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 )
 
 // Test connection from the app sends the tiny prompt when asked (on haiku) and its outcome survives a restart: before, the
-// UI never prompted and a restart put the CLI back to "version untested". Runs only with a signed-in real claude.
+// UI never prompted and a restart put the CLI back to "version untested". Runs only with DRYDOCK_REAL_CLAUDE=1 and a
+// signed-in real claude.
 func TestRealTestConnectionPromptsAndIsKeptAcrossARestart(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	if det, err := claude.New().Detect(context.Background()); err != nil || det.Status != agents.StatusReady {

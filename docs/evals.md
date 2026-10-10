@@ -407,4 +407,6 @@ harness took the repository's HEAD when the batch started, and by then the repos
 Windows fixes in internal/checks and internal/core. The binary that ran all 138 runs was built from cba4f9e, and nothing
 under testdata/fixtures/tally, evals/tasks, evals/testdata, internal/trial or cmd/drydock-trial differs between the two
 commits. The harness now records the commit its binary was built from. The speed task's sensitivity to load (section 13.1)
-did not come into play: every run of it was accepted in both arms.
+did not come into play: every run of it was accepted in both arms. The trial ran before decision P36 (2026-10-10): every
+session Drydock starts now carries about 17,600 fewer tokens in each request (the person's skill list, tools no Drydock
+session uses), so D's cost figures above are from the heavier setup; B1 is plain Claude Code and is unchanged. Not re-run.

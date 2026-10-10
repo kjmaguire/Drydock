@@ -11,6 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -22,8 +23,8 @@ import (
 // and tiny prompts. Set DRYDOCK_NO_REAL_AGENTS=1 to skip them explicitly.
 func realClaude(t *testing.T) (*claude.Adapter, string) {
 	t.Helper()
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	// the TestMain fake-agent switch must not leak into a real run
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")

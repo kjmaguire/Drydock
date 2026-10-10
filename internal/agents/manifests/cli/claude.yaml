@@ -22,9 +22,13 @@ transports:
   primary: headless
   headless:
     # --verbose is mandatory with -p and stream-json output (verified against 2.1.294: "requires --verbose").
-    # --disallowedTools mcp__plugin_*: --strict-mcp-config does not keep installed plugins' MCP servers out (contract
-    # CLAUDE-MCP-01, 2.1.296), so their tools are denied; a sandboxed (--restricted) session loads no plugin and omits it.
-    argv: [-p, --input-format, stream-json, --output-format, stream-json, --verbose, --include-partial-messages, --disallowedTools, "mcp__plugin_*"]
+    # --disable-slash-commands keeps the user's skills and slash commands out of every session (contract CLAUDE-QUIET-01).
+    # --disallowedTools: mcp__plugin_* because --strict-mcp-config does not keep installed plugins' MCP servers out (contract
+    # CLAUDE-MCP-01, 2.1.296; a sandboxed --restricted session loads no plugin and omits it), then the tools no Drydock
+    # session uses (claude.UnattendedDenied). The adapter also sets claude.QuietEnv in the environment and adds
+    # --setting-sources user (or --restricted) and --append-system-prompt-file; this argv is checked against the adapter.
+    argv: [-p, --input-format, stream-json, --output-format, stream-json, --verbose, --include-partial-messages, --disable-slash-commands,
+      --disallowedTools, "mcp__plugin_*,CronCreate,CronDelete,CronList,ScheduleWakeup,Monitor,Workflow,RemoteTrigger,SendMessage,ListAgents,PushNotification,ReadNotifications,SendUserFile,ListPlugins,SearchPlugins,SuggestPluginInstall,ListSkills,SearchSkills,SuggestSkills,ListConnectors,SuggestConnectors,SearchMcpRegistry,ShowOnboardingRolePicker,DesignSync,ReportFindings,EnterWorktree,ExitWorktree"]
     optional:
       model: [--model, "{{model}}"]
       effort: [--effort, "{{effort}}"]

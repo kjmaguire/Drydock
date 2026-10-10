@@ -67,11 +67,12 @@ func slowMCPServer() int {
 	return 0
 }
 
-// childEnv is the environment of a claude a check starts: the process environment without the enclosing Claude Code session
-// (see contract.EnclosingSessionEnv) or the repository's fake-agent switches, plus extra.
+// childEnv is the environment of a claude a check starts, as Drydock gives it to agents: the process environment without the
+// enclosing Claude Code session (see contract.EnclosingSessionEnv) or the repository's fake-agent switches, with the quiet
+// values (claude.QuietEnv), plus extra.
 func childEnv(extra ...string) []string {
 	env := contract.WithoutVars(contract.CleanEnv(), "DRYDOCK_FAKE_AGENT", "DRYDOCK_FAKE_SCRIPT", mcpServerEnv)
-	return append(env, extra...)
+	return append(claude.Quiet(env), extra...)
 }
 
 // drydockClaude is the Claude adapter configured as the app builds it (the manifest registry turns on UserSettingsOnly with

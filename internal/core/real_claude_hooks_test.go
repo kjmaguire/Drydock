@@ -11,6 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 )
 
@@ -18,8 +19,8 @@ import (
 // An unattended agent must not run commands that someone else wrote into a repository, so Drydock starts Claude Code with
 // --setting-sources user. This test uses the real CLI: the control run shows the hook really runs when nothing prevents it.
 func TestRealClaudeDoesNotRunARepositorysOwnHooks(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	det, err := claude.New().Detect(context.Background())

@@ -11,6 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/chats"
+	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
 )
 
@@ -19,8 +20,8 @@ import (
 // fresh session given the transcript, which still remembers; a shell command outside the default mode is refused and shown.
 // About four haiku turns at low effort.
 func TestRealClaudeChatResumesFallsBackAndShowsRefusals(t *testing.T) {
-	if os.Getenv("DRYDOCK_NO_REAL_AGENTS") == "1" {
-		t.Skip("DRYDOCK_NO_REAL_AGENTS=1")
+	if why := contract.RealClaudeSkip(); why != "" {
+		t.Skip(why)
 	}
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	// a Claude Code session that runs this test passes its own session id down; the chat must get ids of its own

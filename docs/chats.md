@@ -118,6 +118,9 @@ well, with the chat id as `agentId`.
    (`chat.updated`, then `chat.turn_started`).
 2. The adapter starts through the Agent Runtime in the chat's folder, with the chat's model, effort, mode and allow rules, and
    `ResumeID` = the stored session id when the adapter can resume (Claude `--resume`, ACP `session/load` or `session/resume`).
+   Claude Code starts as for every Drydock session (decision P36): without the person's skills and slash commands, so a message
+   such as `/compact` is answered "isn't available" (automatic compaction still works), with the quiet environment and the
+   tools no Drydock session uses denied. The person's full Claude Code setup is in the embedded terminal.
 3. If the session cannot be resumed (the CLI fails before any session or output), a system note is stored and a fresh session
    gets the last ~12,000 characters of the chat, quoted line by line as "the earlier conversation in this chat", followed by the
    new message. A fork's first turn and every turn of an adapter that cannot resume start the same way (`fallback: true`).
