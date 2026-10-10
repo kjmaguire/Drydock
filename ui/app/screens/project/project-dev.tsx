@@ -1,8 +1,9 @@
-// Per-project verification checks (checks.settings.get/set) and development flow settings (projectdev.get/set). Only the
-// human changes them.
+// Per-project verification checks (checks.settings.get/set) and development flow settings (projectdev.get/set), with the CI
+// gate before a pull request is merged. Only the human changes them.
 
 import { css, on, type Handle } from 'remix/component';
 import type { CheckSettings, DevSettings } from '../../api/extTypes.ts';
+import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -13,6 +14,15 @@ import { SettingRow, SettingsGroup, ToggleRow, errorPad, footerCss, noteRow, sub
 const stackRow = css({ display: 'grid', gap: '6px', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}`, '& label': { fontSize: t.textMd, fontWeight: '500' }, '& textarea': { fontFamily: t.mono, fontSize: t.textSm } });
 const numCss = css({ width: '96px', textAlign: 'right' });
 const warnNote = css({ color: t.warning });
+const choiceCss = css({
+  display: 'grid',
+  gap: t.s3,
+  padding: `${t.s3} ${t.s4}`,
+  borderTop: `1px solid ${t.border}`,
+  '& > p': { margin: '0', fontSize: t.textSm, color: t.textMuted },
+  '& label': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textMd, fontWeight: '500', color: t.text },
+  '& label + p': { margin: '2px 0 0 24px', fontSize: t.textSm, color: t.textMuted },
+});
 
 export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
   const s = services(handle);
@@ -108,14 +118,20 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const e2eId = `e2e-${handle.id}`;
   const prevId = `prev-${handle.id}`;
   const urlId = `url-${handle.id}`;
+  const ciName = `ci-${handle.id}`;
   return () => {
     if (q.data && q.data !== loaded) {
       loaded = q.data;
       load(q.data);
     }
     const d = cur;
+    const ciNone = d?.ciMode === 'none';
     return (
-      <SettingsGroup title="Development flow" label="Development flow" description="How tasks run in this project: how many agents work at once, the scheduler, room replies, and the end-to-end and preview steps.">
+      <SettingsGroup
+        title="Development flow"
+        label="Development flow"
+        description="How tasks run in this project: how many agents work at once, the scheduler, room replies, what CI must do before a merge, and the end-to-end and preview steps."
+      >
         {!d ? (
           <div mix={errorPad}>
             <ErrorNote error={q.error} what="Could not load development settings" />
@@ -174,6 +190,52 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
             {(d.leadStallMinutes ?? 0) > 1440 || (d.leadStallMinutes ?? 0) < 0 ? (
               <p mix={[noteRow, warnNote]} data-testid="stall-note">
                 The team lead's stall time is between 0 (15 minutes) and 1440 minutes.
+              </p>
+            ) : null}
+
+            <h3 mix={subhead}>CI before merge</h3>
+            <div role="radiogroup" aria-label="CI before merge" mix={choiceCss} data-testid="ci-mode">
+              <p>In pull request mode, what CI must do before Drydock merges. Drydock never asks GitHub to bypass branch protection.</p>
+              <div>
+                <label>
+                  <input
+                    type="radio"
+                    name={ciName}
+                    value="required"
+                    checked={!ciNone}
+                    aria-describedby={`${ciName}-required`}
+                    mix={on('change', () => patch({ ciMode: 'required' }))}
+                  />
+                  Required (default)
+                </label>
+                <p id={`${ciName}-required`}>
+                  A pull request is merged only after CI passed on the commit that was reviewed, including the checks its branch protection requires. When no CI
+                  reports within 2 minutes, you are asked to check again, merge without CI this time, or stop.
+                </p>
+              </div>
+              <div>
+                <label>
+                  <input
+                    type="radio"
+                    name={ciName}
+                    value="none"
+                    checked={ciNone}
+                    aria-describedby={`${ciName}-none`}
+                    mix={on('change', () => patch({ ciMode: 'none' }))}
+                  />
+                  This repository has no CI: merge after the review alone
+                </label>
+                <p id={`${ciName}-none`}>
+                  Only for a repository that really has no CI. A pull request nothing reports on is merged after the review and your approval; checks that do report
+                  still have to pass, and GitHub's branch protection still applies. Your name and the time are recorded.
+                </p>
+              </div>
+            </div>
+            {ciNone ? (
+              <p mix={noteRow} data-testid="ci-none-note">
+                {d.ciNoneBy
+                  ? `Declared by ${d.ciNoneBy} on ${formatDateTime(d.ciNoneAt)}.`
+                  : 'Not saved yet: your name and the time are recorded when you save.'}
               </p>
             ) : null}
 

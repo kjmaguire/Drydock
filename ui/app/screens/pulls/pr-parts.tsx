@@ -68,7 +68,7 @@ export function ReviewItem(handle: Handle<{ r: GitHubReview }>) {
   };
 }
 
-/** passed, failed, pending, or "no checks reported" when GitHub returned none (never shown as a pass). */
+/** passed, failed, pending, or "no checks reported" when GitHub returned no check run and no commit status (never a pass). */
 export function ciSummary(ci: GitHubCIState): 'no checks reported' | 'pending' | 'passed' | 'failed' {
   const runs = ci.Runs ?? [];
   return runs.length === 0 ? 'no checks reported' : ci.Pending ? 'pending' : ci.Passed ? 'passed' : 'failed';
@@ -103,13 +103,14 @@ export function CiList(handle: Handle<{ ci: GitHubCIState }>) {
               const ok = done && r.conclusion === 'success';
               const res = done ? r.conclusion || 'completed' : r.status;
               return (
-                <li key={r.id}>
+                <li key={`${r.kind ?? 'check_run'}-${r.id}`} title={r.description || undefined}>
                   <span style={{ display: 'inline-flex', color: done ? (ok ? tone.ok.fg : tone.err.fg) : tone.muted.fg }}>
                     <Icon icon={done ? (ok ? CircleCheck : CircleX) : CircleDashed} size={15} />
                   </span>
                   <span>
                     {r.name}: {res}
                   </span>
+                  {r.kind === 'status' ? <span mix={muted}>commit status</span> : null}
                   {href ? <External href={href}>details</External> : null}
                 </li>
               );
@@ -159,8 +160,10 @@ export function PullRequestPanel(handle: Handle<{ state: PRState }>) {
           {href ? <External href={href}>Open on GitHub</External> : null}
         </div>
         <p mix={muted}>
-          Nothing merges until you approve the task's "Review and merge" in Needs you: Drydock then merges this pull request through GitHub (only the
-          commit that was reviewed; a later push is not merged) and deletes its task branch. Drydock never enables auto-merge.
+          Nothing merges until CI has passed on the commit that was reviewed (unless you decided otherwise in Needs you, or the project says its repository
+          has no CI) and you approve the task's "Review and merge". Drydock then merges this pull request through GitHub (only the commit that was reviewed;
+          a later push is not merged) when GitHub's branch protection allows it (it is never bypassed), and deletes its task branch. Drydock never enables
+          auto-merge.
         </p>
         {pr.body ? (
           <div class="body">

@@ -22,8 +22,9 @@ import (
 )
 
 // githubFixture is a LABELED PROTOCOL FIXTURE of the GitHub REST endpoints the pr_flow uses (this sandbox cannot create
-// real PRs, and the real write path is covered by the opt-in live test). It keeps GitHub-side state and records every
-// call; git itself is real (a bare repository is the remote).
+// real PRs, and the real write path is covered by the opt-in live tests). It keeps GitHub-side state and records every
+// call; git itself is real (a bare repository is the remote). Unless a test says otherwise every pushed commit has one
+// passing check run, the base branch is not protected, and GitHub would merge the pull request (mergeable_state clean).
 type githubFixture struct {
 	mu        sync.Mutex
 	bare      string
@@ -31,15 +32,59 @@ type githubFixture struct {
 	opened    int
 	openBody  string
 	merged    bool
-	mergeSHA  string // sha guard sent by the merge call
+	mergeSHA  string         // sha guard sent by the merge call
+	mergeBody map[string]any // the merge call's request body
+	merges    int            // merge calls
 	deleted   []string
 	replies   map[int64][]string
 	ciSeen    []string
+	looks     map[string]int // check-run reads per commit
 	failFirst bool
-	reviews   func(headMoved bool) []map[string]any // returned for /pulls/7/reviews and /comments
-	inline    func(headMoved bool) []map[string]any
-	firstHead string
-	openFail  int // POST /pulls answers 401 this many times first (gh signed out, a revoked token)
+	noCI      bool // nothing reports on any commit: no check run, no commit status
+	// ci, if set, is what CI shows on the commit-th pushed head (0 is the first) at its look-th read (0 is the first): check
+	// runs and commit statuses
+	ci               func(commit, look int) (runs, statuses []map[string]any)
+	required         []string                              // the checks the protection of main requires (readable in the branch view)
+	protectionHidden bool                                  // main is protected, but which checks it requires only an administrator could read
+	mergeState       string                                // the pull request's mergeable_state (default clean)
+	reviews          func(headMoved bool) []map[string]any // returned for /pulls/7/reviews and /comments
+	inline           func(headMoved bool) []map[string]any
+	firstHead        string
+	openFail         int // POST /pulls answers 401 this many times first (gh signed out, a revoked token)
+}
+
+// ciFor is what CI shows on the commit-th head at its look-th read.
+func (f *githubFixture) ciFor(commit, look int) (runs, statuses []map[string]any) {
+	gha := map[string]string{"slug": "github-actions"}
+	switch {
+	case f.ci != nil:
+		runs, statuses = f.ci(commit, look)
+	case f.failFirst && commit == 0:
+		runs = []map[string]any{{"id": 99, "name": "lint", "status": "completed", "conclusion": "failure", "html_url": "https://github.test/job/99", "app": gha}}
+	case f.failFirst:
+		runs = []map[string]any{{"id": 100, "name": "lint", "status": "completed", "conclusion": "success", "app": gha}}
+	case f.noCI:
+	default:
+		runs = []map[string]any{{"id": 101, "name": "test", "status": "completed", "conclusion": "success", "app": gha}}
+	}
+	if runs == nil {
+		runs = []map[string]any{}
+	}
+	if statuses == nil {
+		statuses = []map[string]any{}
+	}
+	return runs, statuses
+}
+
+// commit is the index of sha among the heads CI was asked about, in order of first sight.
+func (f *githubFixture) commit(sha string) int {
+	for i, s := range f.ciSeen {
+		if s == sha {
+			return i
+		}
+	}
+	f.ciSeen = append(f.ciSeen, sha)
+	return len(f.ciSeen) - 1
 }
 
 func (f *githubFixture) head(t *testing.T) string {
@@ -60,7 +105,16 @@ func (f *githubFixture) handler(t *testing.T) http.Handler {
 		defer f.mu.Unlock()
 		p := strings.TrimPrefix(r.URL.Path, "/repos/o/r")
 		pr := func() map[string]any {
+			state := f.mergeState
+			if state == "" {
+				state = "clean"
+			}
+			var mergeable any = state != "dirty"
+			if state == "unknown" {
+				mergeable = nil // GitHub is still working it out
+			}
 			return map[string]any{"number": 7, "html_url": "https://github.test/o/r/pull/7", "merged": f.merged, "merge_commit_sha": "mergedsha",
+				"draft": state == "draft", "mergeable": mergeable, "mergeable_state": state,
 				"head": map[string]any{"ref": f.branch, "sha": f.head(t)}, "base": map[string]any{"ref": "main"}}
 		}
 		switch {
@@ -81,25 +135,33 @@ func (f *githubFixture) handler(t *testing.T) http.Handler {
 			j(w, pr())
 		case r.Method == "GET" && strings.HasSuffix(p, "/check-runs"):
 			sha := strings.Split(p, "/")[2]
-			idx := -1
-			for i, s := range f.ciSeen {
-				if s == sha {
-					idx = i
-				}
+			if f.looks == nil {
+				f.looks = map[string]int{}
 			}
-			if idx < 0 {
-				f.ciSeen = append(f.ciSeen, sha)
-				idx = len(f.ciSeen) - 1
+			runs, _ := f.ciFor(f.commit(sha), f.looks[sha])
+			f.looks[sha]++
+			j(w, map[string]any{"total_count": len(runs), "check_runs": runs})
+		case r.Method == "GET" && strings.HasSuffix(p, "/status"):
+			// the combined status of the same look (Checks reads it right after the check runs); GitHub's own combined
+			// state is "pending" when there is no status at all
+			sha := strings.Split(p, "/")[2]
+			_, statuses := f.ciFor(f.commit(sha), max(f.looks[sha]-1, 0))
+			j(w, map[string]any{"state": "pending", "statuses": statuses})
+		case r.Method == "GET" && p == "/branches/main":
+			switch {
+			case f.protectionHidden:
+				j(w, map[string]any{"name": "main", "protected": true, "protection": map[string]any{"enabled": true}})
+			case len(f.required) > 0:
+				j(w, map[string]any{"name": "main", "protected": true, "protection": map[string]any{"enabled": true,
+					"required_status_checks": map[string]any{"enforcement_level": "everyone", "contexts": f.required}}})
+			default:
+				j(w, map[string]any{"name": "main", "protected": false})
 			}
-			if f.failFirst && idx == 0 {
-				j(w, map[string]any{"total_count": 1, "check_runs": []map[string]any{{"id": 99, "name": "lint", "status": "completed", "conclusion": "failure", "html_url": "https://github.test/job/99", "app": map[string]string{"slug": "github-actions"}}}})
-				return
-			}
-			if f.failFirst {
-				j(w, map[string]any{"total_count": 1, "check_runs": []map[string]any{{"id": 100, "name": "lint", "status": "completed", "conclusion": "success", "app": map[string]string{"slug": "github-actions"}}}})
-				return
-			}
-			j(w, map[string]any{"total_count": 0, "check_runs": []any{}})
+		case r.Method == "GET" && p == "/branches/main/protection/required_status_checks":
+			w.WriteHeader(403) // only an administrator may read it
+			j(w, map[string]any{"message": "Must have admin rights to Repository."})
+		case r.Method == "GET" && p == "/rules/branches/main":
+			j(w, []any{})
 		case r.Method == "GET" && p == "/actions/jobs/99/logs":
 			fmt.Fprint(w, "2026-10-08T10:00:00.0000000Z ##[group]Run golangci-lint\n2026-10-08T10:00:01.0000000Z calc.go:3: exported function Subtract should have a doc comment (revive)\n")
 		case r.Method == "GET" && p == "/pulls/7/reviews":
@@ -132,6 +194,8 @@ func (f *githubFixture) handler(t *testing.T) http.Handler {
 		case r.Method == "PUT" && p == "/pulls/7/merge":
 			var b map[string]any
 			json.NewDecoder(r.Body).Decode(&b)
+			f.merges++
+			f.mergeBody = b
 			f.mergeSHA, _ = b["sha"].(string)
 			f.merged = true
 			j(w, map[string]any{"sha": "mergedsha", "merged": true})
@@ -160,7 +224,7 @@ func (e *env) prSetup(t *testing.T, f *githubFixture) (pipeline.PRSource, *httpt
 		return pipeline.PRConfig{
 			GitHub:     host.GitHub{API: host.HTTPAPI{BaseURL: srv.URL}, Owner: "o", Repo: "r"},
 			BaseBranch: "main", MergeStrategy: host.MergeSquash, DeleteBranch: true,
-			CIPoll: 10 * time.Millisecond, CIGrace: 60 * time.Millisecond,
+			CIPoll: 10 * time.Millisecond, CIGrace: 60 * time.Millisecond, MergeTries: 2, MergePoll: 5 * time.Millisecond,
 		}, nil
 	}
 	return src, srv
@@ -238,6 +302,11 @@ func TestPRFlowCIFailureLoopsBackThenHumanMergesThroughGitHub(t *testing.T) {
 	defer f.mu.Unlock()
 	if !f.merged || f.mergeSHA != f.head(t) || f.mergeSHA == f.firstHead {
 		t.Fatalf("merge must be guarded by the reviewed head sha: guard=%q head=%q first=%q", f.mergeSHA, f.head(t), f.firstHead)
+	}
+	for k := range f.mergeBody {
+		if k != "merge_method" && k != "sha" {
+			t.Fatalf("the merge request asks for more than a plain guarded merge (%q): %v", k, f.mergeBody)
+		}
 	}
 	if len(f.deleted) != 1 || f.deleted[0] != task.Branch {
 		t.Fatalf("remote branch cleanup: %v", f.deleted)
@@ -376,7 +445,7 @@ func TestPRFlowAGitHubFailureAsksTheHumanAndRetriesOnlyThatStep(t *testing.T) {
 	if err := e.eng.Resume(context.Background(), id, workflow.Response{RequestID: pend[0].ID, Decision: "answered", By: "human:kyle", Data: json.RawMessage(`{"text":"signed in again"}`)}); err != nil {
 		t.Fatal(err)
 	}
-	// the PR opens, CI (none here) passes, and the run waits for the merge approval
+	// the PR opens, CI passes, and the run waits for the merge approval
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		p, _ := e.eng.Pending(context.Background(), id)

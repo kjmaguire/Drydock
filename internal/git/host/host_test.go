@@ -45,10 +45,14 @@ func TestChecksSummary(t *testing.T) {
 				w.WriteHeader(401)
 				return
 			}
-			if !strings.HasSuffix(r.URL.Path, "/commits/abc/check-runs") {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/commits/abc/check-runs"):
+				fmt.Fprintf(w, `{"total_count":1,"check_runs":%s}`, c.runs)
+			case strings.HasSuffix(r.URL.Path, "/commits/abc/status"):
+				fmt.Fprint(w, `{"state":"pending","statuses":[]}`) // no commit status: GitHub still says "pending"
+			default:
 				t.Errorf("path %s", r.URL.Path)
 			}
-			fmt.Fprintf(w, `{"total_count":1,"check_runs":%s}`, c.runs)
 		})
 		s, err := g.Checks(context.Background(), "abc")
 		if err != nil {

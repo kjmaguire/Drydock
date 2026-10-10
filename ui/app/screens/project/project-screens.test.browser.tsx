@@ -177,6 +177,35 @@ describe('Check settings and development flow', () => {
     expect(calls[0]).toMatchObject({ workerChecks: true });
   });
 
+  it('CI before merge is required by default; "no CI" is explained, saved, and then says who declared it and when', async () => {
+    const calls: DevSettings[] = [];
+    const at = Date.UTC(2026, 9, 9, 12, 0);
+    // the core stamps the declaration with the human's identity and the time; the UI never sends its own
+    const r = mountDev(async (_p, x) => (calls.push(x), x.ciMode === 'none' ? { ...x, ciNoneBy: 'human:kyle', ciNoneAt: at } : { ...x, ciNoneBy: undefined, ciNoneAt: undefined }));
+    const required = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Required (default)'), r);
+    const none = byLabel<HTMLInputElement>(r.container, 'This repository has no CI: merge after the review alone');
+    expect(required.checked).toBe(true); // a core that sends no ciMode means required
+    expect(none.checked).toBe(false);
+    expect(r.$('[role="radiogroup"][aria-label="CI before merge"]')).not.toBe(null);
+    expect(document.getElementById(required.getAttribute('aria-describedby')!)!.textContent).toMatch(/only after CI passed[\s\S]*check again, merge without CI this time, or stop/);
+    expect(document.getElementById(none.getAttribute('aria-describedby')!)!.textContent).toMatch(/checks that do report\s+still have to pass/);
+    expect(r.$('[data-testid="ci-none-note"]')).toBe(null);
+
+    await r.act(() => none.click());
+    expect(r.$('[data-testid="ci-none-note"]')!.textContent).toBe('Not saved yet: your name and the time are recorded when you save.');
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ ciMode: 'none' });
+    await waitFor(() => expect(r.$('[data-testid="ci-none-note"]')!.textContent).toContain('Declared by human:kyle on '), r);
+
+    // back to required: the note goes, and required is what is saved
+    await r.act(() => byLabel<HTMLInputElement>(r.container, 'Required (default)').click());
+    expect(r.$('[data-testid="ci-none-note"]')).toBe(null);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(2), r);
+    expect(calls[1]).toMatchObject({ ciMode: 'required' });
+  });
+
   it("the team lead's stall time: empty means 15, a number is saved, out of range is explained", async () => {
     const calls: DevSettings[] = [];
     const r = mountDev(async (_p, x) => (calls.push(x), x));

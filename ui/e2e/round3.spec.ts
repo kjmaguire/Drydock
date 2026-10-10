@@ -70,11 +70,18 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(workerChecks).not.toBeChecked(); // off until the human says so
   await workerChecks.check();
   await expect(page.getByTestId('worker-checks-note')).toContainText('any program with your user');
+  // CI before merge: required until the human declares that the repository has no CI; the core records who and when
+  await expect(page.getByLabel('Required (default)', { exact: true })).toBeChecked();
+  await page.getByLabel('This repository has no CI: merge after the review alone', { exact: true }).check();
+  await expect(page.getByTestId('ci-none-note')).toContainText('recorded when you save');
   await page.getByRole('button', { name: 'Save development settings' }).click();
+  await expect(page.getByTestId('ci-none-note')).toContainText(/^Declared by human:\S+ on /);
   await page.reload();
   await expect(page.getByLabel('Maximum parallel agent turns')).toHaveValue('2');
   await expect(page.getByLabel(/Let Claude workers run this project's own checks/)).toBeChecked();
   await expect(page.getByLabel('Dependency vulnerability scan')).toBeChecked();
+  await expect(page.getByLabel('This repository has no CI: merge after the review alone', { exact: true })).toBeChecked();
+  await expect(page.getByTestId('ci-none-note')).toContainText(/^Declared by human:\S+ on /);
 });
 
 test('knowledge: an expert pack from a local folder is searched with citations; a requirement is uploaded and traced; milestones; skills are offered then accepted; memory', async ({ page }) => {

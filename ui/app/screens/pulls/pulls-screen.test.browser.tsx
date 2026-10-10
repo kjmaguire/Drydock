@@ -122,6 +122,30 @@ describe('Pull requests view pieces', () => {
     expect(r.container.textContent).toContain('failed');
     expect(Array.from(r.$$('a')).map((a) => a.getAttribute('href'))).toEqual(['https://x.example/1']);
   });
+
+  it('commit statuses are CI too, marked as such, next to a check run with the same id', () => {
+    const r = renderPlain(
+      <CiList
+        ci={{
+          Runs: [
+            { id: 7, name: 'build', status: 'completed', conclusion: 'success', html_url: '', kind: 'check_run' },
+            { id: 7, name: 'ci/circleci', status: 'pending', conclusion: '', html_url: 'https://ci.example/7', kind: 'status', description: 'Your tests are queued' },
+          ],
+          Pending: true,
+          Failed: [],
+          Passed: false,
+        }}
+      />,
+    );
+    const rows = Array.from(r.$$('[data-testid="gh-ci"] li'));
+    expect(rows.length).toBe(2);
+    const [run, status] = [rows[0]!, rows[1]!];
+    expect(status.textContent).toContain('ci/circleci: pending');
+    expect(status.textContent).toContain('commit status');
+    expect(status.getAttribute('title')).toBe('Your tests are queued');
+    expect(run.textContent).not.toContain('commit status');
+    expect(r.container.textContent).toContain('pending');
+  });
 });
 
 describe('PullsScreen', () => {
