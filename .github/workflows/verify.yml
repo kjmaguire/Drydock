@@ -7,7 +7,7 @@ name: verify
 on:
   push:
     branches: [main, "claude/**"]
-    paths-ignore: ["docs/**", "**/*.md"]
+    paths-ignore: ["docs/**", "**/*.md", "evals/results/**"] # trial run records change no code
   workflow_dispatch:
     inputs:
       with_claude:

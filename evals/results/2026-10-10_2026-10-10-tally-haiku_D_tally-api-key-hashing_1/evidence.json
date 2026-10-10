@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- API keys are stored only as SHA-256 hashes plus `last4`. The full `tly_` token is returned once, by POST /v1/api-keys and POST /v1/invites/accept, and appears in no list response, snapshot, or log.\n- Requests authenticate by hashing the presented token. Revoked keys and removed members still get 401. Legacy plain-text snapshot keys keep working, and the next snapshot writes no plain-text token. `last_used_at` is written at most once per minute per key.\n- Tests cover token format, hash-only storage, one-time reveal, legacy migration, revocation, and the 60-second throttle. `go build ./...`, `\n...[truncated]",
+    "data": {},
+    "created": 1791608005715
+  },
+  {
+    "id": 2,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 910ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-api-key-hashing-D-1/data/runs/run_b86541214cc1/checks/build-1791608005854882199.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 910,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608006765
+  },
+  {
+    "id": 3,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.84s",
+    "ref": "/tmp/drydock-trial-1329113674/tally-api-key-hashing-D-1/data/runs/run_b86541214cc1/checks/test-1791608006767557205.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1837,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608008604
+  },
+  {
+    "id": 4,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 750ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-api-key-hashing-D-1/data/runs/run_b86541214cc1/checks/lint-1791608008606409536.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 747,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608009355
+  },
+  {
+    "id": 5,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 90ms",
+    "ref": "/tmp/drydock-trial-1329113674/tally-api-key-hashing-D-1/data/runs/run_b86541214cc1/checks/secrets-1791608009442954275.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 86,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608009443
+  },
+  {
+    "id": 6,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "9 file(s), +355 -18",
+    "ref": "/tmp/drydock-trial-1329113674/tally-api-key-hashing-D-1/data/runs/run_b86541214cc1/evidence/task.diff",
+    "data": {
+      "Files": 9,
+      "Insertions": 355,
+      "Deletions": 18,
+      "base": "8d5278f4997e494620f44f980dffbcdd49804e8c",
+      "commit": "67dbdef8ff8eca5a503cf4a7c098106b1f6adc81"
+    },
+    "created": 1791608009659
+  },
+  {
+    "id": 7,
+    "taskId": "task_144a52a27f4d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 67dbdef8ff",
+    "ref": "67dbdef8ff8eca5a503cf4a7c098106b1f6adc81",
+    "data": {},
+    "created": 1791608009660
+  }
+]
