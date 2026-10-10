@@ -38,6 +38,9 @@ type Runtime struct {
 	// system prompt (cfg.Spec.SystemAppend), so every path that starts an agent (workflow turns, room replies, templates)
 	// carries the agent's purpose without each one having to remember it.
 	Instructions func(ctx context.Context, agentID, role string) (text string, practicesVersion int)
+
+	wmu     sync.Mutex
+	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
 }
 
 // MCPAttachment is what the MCP hook reports for one session. It never carries the run's bearer token.
@@ -83,6 +86,7 @@ type Managed struct {
 
 	releaseMCP func()
 	mcpOnce    sync.Once
+	recorded   chan struct{} // closed when watchExit has recorded the end (the run row and agent.stopped)
 }
 
 // releaseMCPRun ends the session's gateway run (idempotent).
@@ -128,7 +132,7 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
 		return nil, err
 	}
-	m := &Managed{rt: r, cfg: cfg, RunID: runID, Sess: sess, releaseMCP: att.Release}
+	m := &Managed{rt: r, cfg: cfg, RunID: runID, Sess: sess, releaseMCP: att.Release, recorded: make(chan struct{})}
 	if r.DB != nil {
 		_ = r.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `INSERT INTO agent_runs(id,agent_id,task_id,session_id,pid,cwd,status,started_at) VALUES(?,?,?,?,?,?,?,?)`,
@@ -137,8 +141,35 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		})
 	}
 	r.publish(ctx, "agent.started", cfg, m.RunID, map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort, "instructions": cfg.Spec.SystemAppend != "", "practices": cfg.Spec.PracticesVersion})
+	r.wmu.Lock()
+	if r.running == nil {
+		r.running = map[*Managed]struct{}{}
+	}
+	r.running[m] = struct{}{}
+	r.wmu.Unlock()
 	go m.watchExit()
 	return m, nil
+}
+
+// Wait blocks until every session started so far has ended and its end is recorded (the agent_runs row and agent.stopped),
+// or ctx ends. It stops nothing: stop the sessions first. Close the database only after it returns: the exit watcher writes
+// after the process is gone, so closing earlier can lose that write, and on Windows the open file keeps the data folder from
+// being removed.
+func (r *Runtime) Wait(ctx context.Context) error {
+	r.wmu.Lock()
+	pending := make([]chan struct{}, 0, len(r.running))
+	for m := range r.running {
+		pending = append(pending, m.recorded)
+	}
+	r.wmu.Unlock()
+	for _, ch := range pending {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func (r *Runtime) publish(ctx context.Context, typ string, cfg Config, runID string, data map[string]any) {
@@ -188,6 +219,12 @@ func (r *Runtime) CloseStale(ctx context.Context) (int, error) {
 }
 
 func (m *Managed) watchExit() {
+	defer func() { // last: the end is written and announced
+		m.rt.wmu.Lock()
+		delete(m.rt.running, m)
+		m.rt.wmu.Unlock()
+		close(m.recorded)
+	}()
 	ei := <-m.Sess.Wait()
 	defer m.releaseMCPRun() // the process is gone (clean exit, crash or kill): its gateway run and token die with it
 	status := "STOPPED"

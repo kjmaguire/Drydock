@@ -47,7 +47,7 @@ jobs:
         run: |
           $log = "$env:RUNNER_TEMP/go-test.log"
           if (-not (Test-Path $log)) { "no test log"; exit 0 }
-          Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+_test\.go:\d+:' | ForEach-Object { $_.Line }
+          Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+\.go:\d+:' | ForEach-Object { $_.Line }
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
   trial-suite:

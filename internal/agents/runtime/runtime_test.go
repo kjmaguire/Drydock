@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,15 +45,25 @@ func newHarness(t *testing.T, script fakeagent.Script) *harness {
 		t.Fatal(err)
 	}
 	bus := events.NewSQLBus(db, 4096)
-	t.Cleanup(func() { bus.Close(); db.Close() })
+	ad := &claude.Adapter{Exe: os.Args[0]}
+	r := &rt.Runtime{PM: proc.New(), Bus: bus, DB: db, Adapters: map[string]agents.Adapter{"claude": ad}, NudgeWait: 5 * time.Second}
+	t.Cleanup(func() {
+		// the exit watchers record the runs' ends after the processes are gone: close the database after them (on Windows
+		// a write still in flight keeps drydock.db open and the temporary folder cannot be removed)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := r.Wait(ctx); err != nil {
+			t.Errorf("an agent session was still running when the test ended: %v", err)
+		}
+		bus.Close()
+		db.Close()
+	})
 	b, _ := json.Marshal(script)
 	sp := filepath.Join(dir, "script.json")
 	os.WriteFile(sp, b, 0o644)
 	t.Setenv("DRYDOCK_FAKE_AGENT", "1")
 	t.Setenv("DRYDOCK_FAKE_SCRIPT", sp)
 	t.Setenv("DRYDOCK_FAKE_PROMPT_LOG", filepath.Join(dir, "prompts.log"))
-	ad := &claude.Adapter{Exe: os.Args[0]}
-	r := &rt.Runtime{PM: proc.New(), Bus: bus, DB: db, Adapters: map[string]agents.Adapter{"claude": ad}, NudgeWait: 5 * time.Second}
 	seed(t, db)
 	return &harness{dir: dir, db: db, bus: bus, rt: r, ad: ad}
 }
@@ -80,6 +91,16 @@ func prompts(t *testing.T, dir string) []string {
 		}
 	}
 	return out
+}
+
+// settle waits until the end of every session the test started is recorded (Runtime.Wait).
+func (h *harness) settle(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := h.rt.Wait(ctx); err != nil {
+		t.Fatalf("the ends of the agent runs were not recorded: %v", err)
+	}
 }
 
 func (h *harness) config() rt.Config {
@@ -131,22 +152,8 @@ func TestTurnStreamsRecordsRunUsageAndEvents(t *testing.T) {
 	if err := m.Stop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// the exit watcher writes the run's row, then publishes agent.stopped: wait for both (on the Windows runner the event
-	// came a moment after the row)
-	waitFor(t, func() bool {
-		var st string
-		h.db.Reader().QueryRow(`SELECT status FROM agent_runs WHERE id=?`, m.RunID).Scan(&st)
-		if st != "STOPPED" {
-			return false
-		}
-		evs, _ := h.bus.Replay(ctx, 0, events.Filter{AgentID: "a1"}, 0)
-		for _, e := range evs {
-			if e.Type == "agent.stopped" {
-				return true
-			}
-		}
-		return false
-	})
+	// the exit watcher writes the run's row, then publishes agent.stopped, after the process is gone
+	h.settle(t)
 
 	// usage recorded under the tier, as reported
 	var n int
@@ -221,7 +228,7 @@ func TestAgentCrashIsReported(t *testing.T) {
 	if err == nil {
 		t.Fatal("a crash mid-turn must surface as an error")
 	}
-	time.Sleep(300 * time.Millisecond)
+	h.settle(t)
 	var status string
 	var code int
 	h.db.Reader().QueryRow(`SELECT status, exit_code FROM agent_runs WHERE id=?`, m.RunID).Scan(&status, &code)
@@ -231,6 +238,53 @@ func TestAgentCrashIsReported(t *testing.T) {
 	evs, _ := h.bus.Replay(ctx, 0, events.Filter{Types: []string{"agent.failed"}}, 0)
 	if len(evs) == 0 {
 		t.Fatal("no agent.failed event")
+	}
+}
+
+// Once Wait returns, the end of every stopped session is in the database and announced: no polling needed, and the
+// database can be closed.
+func TestWaitReturnsOnceTheEndsAreRecorded(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{})
+	ctx := context.Background()
+	var ms []*rt.Managed
+	for i := 0; i < 2; i++ {
+		m, err := h.rt.Spawn(ctx, h.config())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer m.Stop(ctx)
+		ms = append(ms, m)
+	}
+	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	if err := h.rt.Wait(short); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Wait returned %v while both sessions were still running", err)
+	}
+	for _, m := range ms {
+		var st string
+		h.db.Reader().QueryRow(`SELECT status FROM agent_runs WHERE id=?`, m.RunID).Scan(&st)
+		if st != "WORKING" {
+			t.Fatalf("run %s is %q before it was stopped", m.RunID, st)
+		}
+		if err := m.Stop(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.settle(t)
+	stopped := map[string]bool{}
+	evs, _ := h.bus.Replay(ctx, 0, events.Filter{Types: []string{"agent.stopped"}}, 0)
+	for _, e := range evs {
+		var d struct{ AgentRun string }
+		json.Unmarshal(e.Data, &d)
+		stopped[d.AgentRun] = true
+	}
+	for _, m := range ms {
+		var st string
+		var ended int64
+		h.db.Reader().QueryRow(`SELECT status, ended_at FROM agent_runs WHERE id=?`, m.RunID).Scan(&st, &ended)
+		if st != "STOPPED" || ended == 0 || !stopped[m.RunID] {
+			t.Fatalf("run %s right after Wait: status %q, ended_at %d, agent.stopped %v", m.RunID, st, ended, stopped[m.RunID])
+		}
 	}
 }
 
