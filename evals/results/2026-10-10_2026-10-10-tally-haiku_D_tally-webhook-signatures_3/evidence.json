@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `webhooks.SignatureHeader` and `webhooks.Verify` implement the `t=…,v1=…` scheme with the five specified errors and tolerance rules. Deliveries send `Tally-Signature` stamped with the attempt time, plus the previous secret as a second `v1` entry for 24 hours after a rotation.\n- `POST /v1/webhook-endpoints/{id}/rotate-secret` returns 200 with the endpoint and a new `whsec_` + 32 hex secret. Rotating again keeps at most the current secret and one previous one.\n- New tests cover the header format, every `Verify` error and tolerance edge, and the rotation window including rotate-twice. `go b\n...[truncated]",
+    "data": {},
+    "created": 1791611459265
+  },
+  {
+    "id": 2,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 450ms",
+    "ref": "/tmp/drydock-trial-2942862489/tally-webhook-signatures-D-3/data/runs/run_f3ea774289fa/checks/build-1791611459306620969.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 448,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791611459755
+  },
+  {
+    "id": 3,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 380ms",
+    "ref": "/tmp/drydock-trial-2942862489/tally-webhook-signatures-D-3/data/runs/run_f3ea774289fa/checks/test-1791611459757085351.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 379,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791611460137
+  },
+  {
+    "id": 4,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 310ms",
+    "ref": "/tmp/drydock-trial-2942862489/tally-webhook-signatures-D-3/data/runs/run_f3ea774289fa/checks/lint-1791611460138822443.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 313,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791611460452
+  },
+  {
+    "id": 5,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-2942862489/tally-webhook-signatures-D-3/data/runs/run_f3ea774289fa/checks/secrets-1791611460470992059.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791611460471
+  },
+  {
+    "id": 6,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +258 -8",
+    "ref": "/tmp/drydock-trial-2942862489/tally-webhook-signatures-D-3/data/runs/run_f3ea774289fa/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 258,
+      "Deletions": 8,
+      "base": "19193c15b86c1f51c6863cde1b47c31fcf7425ad",
+      "commit": "f22dfe8bde64ce837071cd3e1ac5423408e47043"
+    },
+    "created": 1791611460623
+  },
+  {
+    "id": 7,
+    "taskId": "task_39dbc40b1a30",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f22dfe8bde",
+    "ref": "f22dfe8bde64ce837071cd3e1ac5423408e47043",
+    "data": {},
+    "created": 1791611460624
+  }
+]
