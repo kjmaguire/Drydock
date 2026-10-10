@@ -21,6 +21,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/security"
+	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -273,6 +274,32 @@ func WorkerChecksText(now []string) string {
 	return b.String()
 }
 
+// InstructionBudget is how much instruction text (AGENTS.md and .claude/rules) may go into every Claude turn before the
+// manifest says it is over budget: about 8,000 tokens, close to the whole rest of a quiet session's first request (P36).
+const InstructionBudget = 32 << 10
+
+type mdFile struct {
+	name string
+	size int
+}
+
+// mdFiles lists the .md files directly in dir, sorted by name.
+func mdFiles(dir string) []mdFile {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []mdFile
+	for _, e := range entries {
+		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".md") {
+			if fi, err := e.Info(); err == nil {
+				out = append(out, mdFile{e.Name(), int(fi.Size())})
+			}
+		}
+	}
+	return out
+}
+
 // saveManifest records what this attempt was given and what was deliberately left out.
 func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string) {
 	if d.Context == nil {
@@ -280,10 +307,26 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 	}
 	var m ctxeng.Manifest
 	m.Add("prompt ("+role+")", true, len(prompt), "the task (compact on later passes) and the project brief on every pass; later passes add only the latest failure, feedback or guidance (token rule 16)", 1)
+	every := 0 // what Claude gets in every turn: AGENTS.md (CLAUDE.md imports it) and .claude/rules
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md"} {
 		if st, err := os.Stat(filepath.Join(t.Worktree, name)); err == nil {
 			m.Add("file:"+name, true, int(st.Size()), "generated instruction file: read natively by CLIs that load it; Claude Code gets its text in the system prompt (Drydock starts it with the human's own settings only, which skips project files)", 5)
+			if name == "AGENTS.md" {
+				every += int(st.Size())
+			}
 		}
+	}
+	for _, f := range mdFiles(filepath.Join(t.Worktree, ".claude", "rules")) {
+		m.Add("file:.claude/rules/"+f.name, true, f.size, "skill or rule Claude Code gets in every turn", 5)
+		every += f.size
+	}
+	for _, f := range mdFiles(filepath.Join(t.Worktree, filepath.FromSlash(skills.OnDemandDir))) {
+		m.Add("file:"+skills.OnDemandDir+"/"+f.name, false, f.size, "skill listed in AGENTS.md: the agent reads it with Read when the work needs it (skill delivery: relevant)", 5)
+	}
+	if every > InstructionBudget {
+		m.Add("budget:instructions", true, every, fmt.Sprintf("OVER BUDGET: %d KB of instructions go into every Claude turn, more than the %d KB budget; set the project's skill delivery to relevant, or give fewer skills to this agent", every>>10, InstructionBudget>>10), 0)
+	} else {
+		m.Add("budget:instructions", true, every, fmt.Sprintf("within budget: %d KB of instructions go into every Claude turn (budget %d KB)", (every+1023)>>10, InstructionBudget>>10), 0)
 	}
 	if d.MCPStatus == nil {
 		m.Add("mcp:drydock", false, 0, "MCP gateway not wired in this build: the agent has no search_pack, search_requirements, search_memory, skills or read_range tools", 4)
@@ -293,7 +336,7 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 		m.Add("mcp:drydock", false, 0, "not attached: "+st.Reason, 4)
 	}
 	m.Add("repo map", false, 0, "not built: tree-sitter is gated until the Windows CGO job is green (decision D5)", 9)
-	m.Add("project memory", false, 0, "retrieved on demand (search_memory), not preloaded; accepted memory is already in AGENTS.md", 8)
+	m.Add("project memory", false, 0, "the newest accepted entries are in AGENTS.md up to a budget; the rest is retrieved on demand (search_memory)", 8)
 	m.Add("room history", false, 0, "no messages selected for this task channel", 7)
 	m.Add("previous session transcript", false, 0, "fresh session per attempt; handoff artifacts only (token rules 5 and 16)", 6)
 	_ = d.Context.SaveManifest(ctx, string(in.RunID), string(in.NodeID), in.Attempt, t.ID, agentID, m)

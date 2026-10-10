@@ -209,6 +209,27 @@ func TestDependenciesGateReadiness(t *testing.T) {
 	}
 }
 
+// A task made from outside text (it carries the reference of its source) is never moved to READY by the scheduler: a human
+// moves it on, and then it is an ordinary task.
+func TestImportedTasksWaitForAHumanToMoveThemOn(t *testing.T) {
+	s, _ := newSvc(t)
+	ctx := context.Background()
+	own, _ := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "Ours"})
+	imp, _ := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "ENG-1: from Linear", IssueRef: "ENG-1"})
+	if !imp.Imported() || own.Imported() {
+		t.Fatal(imp.Imported(), own.Imported())
+	}
+	if got, _ := s.PromoteReady(ctx, "p1"); len(got) != 1 || got[0] != own.ID {
+		t.Fatalf("only our own task is promoted, got %v", got)
+	}
+	if cur, _ := s.Get(ctx, imp.ID); cur.Status != Backlog {
+		t.Fatalf("%s", cur.Status)
+	}
+	if _, err := s.Transition(ctx, imp.ID, Ready, TransitionOpts{By: "human:k"}); err != nil {
+		t.Fatalf("a human moves it on: %v", err)
+	}
+}
+
 func TestBlockedVersusWaitingHuman(t *testing.T) {
 	s, _ := newSvc(t)
 	ctx := context.Background()

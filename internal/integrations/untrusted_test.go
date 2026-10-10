@@ -2,6 +2,7 @@ package integrations_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -72,6 +73,20 @@ func TestInjectionInAnIssueNeverReachesAnAgentPromptUnquotedAndChangesNothing(t 
 		t.Fatalf("hostile markup survived: %q", d.Body)
 	}
 
+	// the core refuses to turn it into a task, whoever asks (the screen also disables the button)
+	if _, err := h.svc.Import(ctx, human, evil.ID, ""); !errors.Is(err, integrations.ErrNotImportable) || !contains(err.Error(), "high injection risk") {
+		t.Fatalf("a high-risk item was imported: %v", err)
+	}
+	if n := len(h.taskList()); n != 0 {
+		t.Fatalf("%d tasks", n)
+	}
+	// the score is a heuristic: hostile text it underrates still gets the framing below. Pretend it scored under the threshold.
+	if err := h.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE external_items SET risk=? WHERE id=?`, integrations.RiskThreshold-1, evil.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 	// the human imports it. The agent prompt is built from the task title and description (pipeline: "Task: <title>\n\n<description>").
 	res, err := h.svc.Import(ctx, human, evil.ID, "")
 	if err != nil {

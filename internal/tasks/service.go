@@ -50,6 +50,10 @@ type Task struct {
 	DependsOn      []string `json:"dependsOn,omitempty"`
 }
 
+// Imported reports whether the task was made from text outside Drydock (an issue, an error report, a finding): such a task
+// carries the reference of its source.
+func (t Task) Imported() bool { return t.IssueRef != "" }
+
 // Evidence is one attached proof (brief section 12: a task enters REVIEW only with evidence).
 type Evidence struct {
 	ID      int64           `json:"id"`
@@ -641,7 +645,9 @@ func (s *Service) Reviews(ctx context.Context, taskID string) ([]ReviewRecord, e
 	return out, rows.Err()
 }
 
-// PromoteReady moves BACKLOG tasks whose dependencies are all COMPLETED to READY. Returns the promoted ids.
+// PromoteReady moves BACKLOG tasks whose dependencies are all COMPLETED to READY. Returns the promoted ids. A task imported
+// from outside (an issue, an error report, a finding: IssueRef is set) stays in BACKLOG until a human moves it on, so text
+// from outside never starts paid work by itself, even with automatic scheduling on.
 func (s *Service) PromoteReady(ctx context.Context, projectID string) ([]string, error) {
 	backlog, err := s.List(ctx, Filter{ProjectID: projectID, Statuses: []Status{Backlog}})
 	if err != nil {
@@ -649,6 +655,9 @@ func (s *Service) PromoteReady(ctx context.Context, projectID string) ([]string,
 	}
 	var promoted []string
 	for _, t := range backlog {
+		if t.Imported() {
+			continue
+		}
 		if _, err := s.Transition(ctx, t.ID, Ready, TransitionOpts{By: "system", Reason: "dependencies met"}); err == nil {
 			promoted = append(promoted, t.ID)
 		}

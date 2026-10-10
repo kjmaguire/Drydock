@@ -263,7 +263,7 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 			exc[it.Source] = it.Reason
 		}
 	}
-	if !inc["file:AGENTS.md"] || !inc["prompt (work)"] || !strings.Contains(exc["repo map"], "D5") || exc["previous session transcript"] == "" {
+	if !inc["file:AGENTS.md"] || !inc["prompt (work)"] || !inc["budget:instructions"] || !strings.Contains(exc["repo map"], "D5") || exc["previous session transcript"] == "" {
 		t.Fatalf("manifest %+v", mf.Items)
 	}
 	// without the MCP wiring (this harness sets none) the manifest says so instead of staying silent

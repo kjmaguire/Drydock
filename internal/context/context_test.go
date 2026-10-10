@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,5 +171,56 @@ func TestManifestRoundTripAndMemorySearch(t *testing.T) {
 	}
 	if hits, _ := ms.Search(ctx, "p1", "proposed only", 3); len(hits) != 0 {
 		t.Fatal("search covers accepted memory only")
+	}
+}
+
+// Accepted memory goes into AGENTS.md newest first up to MemoryBudget, each entry cut to MemoryEntryMax characters; the rest
+// is named in the manifest as left out and AGENTS.md points to search_memory.
+func TestAcceptedMemoryIsCappedNewestFirst(t *testing.T) {
+	e, ms := newEngine(t)
+	ctx := context.Background()
+	long := strings.Repeat("word ", 400) // 2,000 characters
+	if _, err := ms.Add(ctx, memory.Entry{ProjectID: "p1", Kind: memory.Decision, Title: "Oldest decision", Body: "OLDEST " + long}, true); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		ms.Add(ctx, memory.Entry{ProjectID: "p1", Kind: memory.Convention, Title: fmt.Sprintf("Convention %02d", i), Body: long}, true)
+	}
+	ms.Add(ctx, memory.Entry{ProjectID: "p1", Kind: memory.Rejected, Title: "Newest rejected approach", Body: "Do not retry the cache."}, true)
+	files, m, err := e.Generate(ctx, "p1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents := files["AGENTS.md"]
+	if !strings.Contains(agents, "**Newest rejected approach**: Do not retry the cache.") || strings.Contains(agents, "OLDEST") {
+		t.Fatalf("the newest entries go in, the oldest is left out:\n%s", agents)
+	}
+	if !strings.Contains(agents, "... (cut; search_memory has the whole entry)") || strings.Contains(agents, long) {
+		t.Fatal("a long entry is cut")
+	}
+	var memBytes, in, out int
+	for _, l := range strings.Split(agents, "\n") {
+		if strings.HasPrefix(l, "- **") {
+			memBytes += len(l) + 1
+		}
+	}
+	for _, it := range m.Items {
+		if !strings.HasPrefix(it.Source, "memory:") {
+			continue
+		}
+		if it.Included {
+			in++
+		} else {
+			out++
+			if !strings.Contains(it.Reason, "over the memory budget") {
+				t.Errorf("%+v", it)
+			}
+		}
+	}
+	if memBytes > MemoryBudget || in+out != 22 || out == 0 || in < 10 {
+		t.Fatalf("memory lines %d bytes (budget %d), %d in, %d out", memBytes, MemoryBudget, in, out)
+	}
+	if !strings.Contains(agents, fmt.Sprintf("%d older memory entries are not listed here: search_memory finds them.", out)) {
+		t.Fatalf("AGENTS.md does not say where the rest is:\n%s", agents)
 	}
 }

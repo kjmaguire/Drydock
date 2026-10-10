@@ -2,7 +2,7 @@
 // gate before a pull request is merged. Only the human changes them.
 
 import { css, on, type Handle } from 'remix/component';
-import type { CheckSettings, DevSettings } from '../../api/extTypes.ts';
+import { DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -119,6 +119,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const prevId = `prev-${handle.id}`;
   const urlId = `url-${handle.id}`;
   const ciName = `ci-${handle.id}`;
+  const skName = `skills-${handle.id}`;
   return () => {
     if (q.data && q.data !== loaded) {
       loaded = q.data;
@@ -126,6 +127,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
     }
     const d = cur;
     const ciNone = d?.ciMode === 'none';
+    const skills = d?.skillDelivery ?? DEFAULT_SKILL_DELIVERY;
     return (
       <SettingsGroup
         title="Development flow"
@@ -192,6 +194,45 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                 The team lead's stall time is between 0 (15 minutes) and 1440 minutes.
               </p>
             ) : null}
+
+            <h3 mix={subhead}>Skills for Claude agents</h3>
+            <div role="radiogroup" aria-label="Skills for Claude agents" mix={choiceCss} data-testid="skill-delivery">
+              <p>How a Claude agent gets the skills it has been given. Other agent CLIs always get the matching ones at the start and the rest on request.</p>
+              <div>
+                <label>
+                  <input
+                    type="radio"
+                    name={skName}
+                    value="relevant"
+                    checked={skills === 'relevant'}
+                    aria-describedby={`${skName}-relevant`}
+                    mix={on('change', () => patch({ skillDelivery: 'relevant' }))}
+                  />
+                  Only the ones the task needs{DEFAULT_SKILL_DELIVERY === 'relevant' ? ' (default)' : ''}
+                </label>
+                <p id={`${skName}-relevant`}>
+                  A skill whose paths match the files of the task is loaded into every turn. The others are listed by name and purpose, and the agent opens one when
+                  its work needs it. Fewer tokens in every turn; a skill the agent does not think of opening is not used.
+                </p>
+              </div>
+              <div>
+                <label>
+                  <input
+                    type="radio"
+                    name={skName}
+                    value="all"
+                    checked={skills === 'all'}
+                    aria-describedby={`${skName}-all`}
+                    mix={on('change', () => patch({ skillDelivery: 'all' }))}
+                  />
+                  All of them, in every turn{DEFAULT_SKILL_DELIVERY === 'all' ? ' (default)' : ''}
+                </label>
+                <p id={`${skName}-all`}>
+                  Every skill the agent has goes into every turn, whatever the task touches. Large skills that have nothing to do with a task cost tokens on every
+                  request, and the run's context record says when the total is over budget.
+                </p>
+              </div>
+            </div>
 
             <h3 mix={subhead}>CI before merge</h3>
             <div role="radiogroup" aria-label="CI before merge" mix={choiceCss} data-testid="ci-mode">

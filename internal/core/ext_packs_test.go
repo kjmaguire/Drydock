@@ -2,12 +2,14 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/packs"
@@ -412,10 +414,79 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 	if strings.Contains(diff, "drydock-skills") || strings.Contains(diff, "AGENTS.md") {
 		t.Fatalf("generated files must stay out of the diff:\n%s", diff)
 	}
+	items := manifestItems(t, a, task.ID)
+	if it := items["file:.claude/drydock-skills/go-style.md"]; it.Included || it.Bytes == 0 || !strings.Contains(it.Reason, "reads it with Read") {
+		t.Fatalf("%+v", it)
+	}
+	if it := items["budget:instructions"]; !strings.Contains(it.Reason, "within budget") {
+		t.Fatalf("%+v", it)
+	}
 	var ds []skills.Delivery
 	a.call("skill.deliveries", map[string]string{"projectId": p.ID, "taskId": task.ID}, &ds)
 	if len(ds) != 1 || ds[0].Method != skills.MethodClaudeOnDemand || ds[0].Fidelity != skills.FidelityOnDemand {
 		t.Fatalf("%+v", ds)
+	}
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
+	a.waitFor("completion", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return detail.Task.Status == tasks.Completed
+	})
+}
+
+// manifestItems returns the context manifest items of a task's worker turns, by source.
+func manifestItems(t *testing.T, a *app, taskID string) map[string]ctxeng.Item {
+	t.Helper()
+	out := map[string]ctxeng.Item{}
+	rows, err := a.c.DB.Reader().Query(`SELECT items FROM context_manifests WHERE task_id=?`, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var items string
+		rows.Scan(&items)
+		var its []ctxeng.Item
+		json.Unmarshal([]byte(items), &its)
+		for _, it := range its {
+			out[it.Source] = it
+		}
+	}
+	return out
+}
+
+// A turn's manifest records the skills Claude gets in every turn and how much that is, and says so when it is over budget.
+func TestTheManifestSaysWhenEveryTurnCarriesTooMuch(t *testing.T) {
+	a := open(t, "")
+	repo := newRepo(t)
+	big := strings.Repeat("A long vendor skill line about a product this task never touches.\n", 600) // about 40 KB
+	os.MkdirAll(filepath.Join(repo, ".aet", "skills", "vendor-guide"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".aet", "skills", "vendor-guide", "SKILL.md"), []byte("---\nname: vendor-guide\ndescription: A vendor's guide\n---\n"+big), 0o644)
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-qm", "skills")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
+	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "vendor-guide"}, nil)
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	var detail core.TaskDetail
+	a.waitFor("the human request", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return len(detail.Pending) == 1
+	})
+	items := manifestItems(t, a, task.ID)
+	rule, budget := items["file:.claude/rules/vendor-guide.md"], items["budget:instructions"]
+	if !rule.Included || rule.Bytes < 35000 {
+		t.Fatalf("the rule file: %+v (all: %+v)", rule, items)
+	}
+	if budget.Bytes < rule.Bytes || !strings.Contains(budget.Reason, "OVER BUDGET") || !strings.Contains(budget.Reason, "skill delivery to relevant") {
+		t.Fatalf("%+v", budget)
 	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
 	a.waitFor("completion", func() bool {

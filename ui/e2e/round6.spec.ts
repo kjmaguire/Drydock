@@ -43,7 +43,10 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
 
   // find its tools by really starting it; the human decides which tool only reads
   await card.getByRole('button', { name: 'Find tools' }).click();
-  await expect(card.getByTestId('mcp-tool')).toHaveCount(3);
+  await expect(card.getByTestId('mcp-tool')).toHaveCount(4);
+  // the fixture's poisoned tool is held back, the others are not
+  await expect(card.getByTestId('mcp-tool-flagged')).toHaveCount(1);
+  await expect(card.locator('[data-testid="mcp-tool"][data-tool="format"]').getByTestId('mcp-tool-flagged')).toHaveText('held back');
   await card.getByLabel('echo only reads').click();
   await expect(card.getByLabel('echo only reads')).toBeChecked();
 

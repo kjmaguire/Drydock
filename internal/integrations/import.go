@@ -48,6 +48,10 @@ func (s *Service) Import(ctx context.Context, by, itemID, projectOverride string
 	if project == "" {
 		return TaskResult{}, errf(ErrBadRequest, "this connection has no Drydock project; choose one first")
 	}
+	// the screen disables the button for such an item; this refuses it for any other caller as well
+	if it.Risk >= RiskThreshold {
+		return TaskResult{}, errf(ErrNotImportable, "%s has a high injection risk (%s): it is not turned into a task", it.IssueRef, strings.Join(it.RiskFlags, ", "))
+	}
 	tr, err := s.createTask(ctx, by, it, project, nil)
 	if errors.Is(err, ErrAlreadyImported) {
 		return tr, nil
@@ -274,4 +278,48 @@ func safeFacts(it Item) string {
 		return ""
 	}
 	return "Facts: " + strings.Join(parts, ", ") + "."
+}
+
+// OutsideTask is the task text for one piece of outside text a human chose to import without a connection (a GitHub issue):
+// the same cleaning as a connection's items (invisible characters removed, secrets redacted, instruction-like titles
+// withheld, sizes capped) and the same quoted block.
+type OutsideTask struct {
+	Title       string
+	Description string
+	Risk        int
+	Flags       []string
+}
+
+// OutsideTask cleans an item's title and body and renders its task title and description. origin names the source
+// ("GitHub issue"), ref its reference ("#12"), by who imported it.
+func (s Sanitizer) OutsideTask(ctx context.Context, origin, ref, url, by, title, body string) OutsideTask {
+	t := s.Line(ctx, title, MaxTitleRunes)
+	b := s.Text(ctx, body, MaxQuoteRunes)
+	out := OutsideTask{Risk: t.Risk + b.Risk}
+	seen := map[string]bool{}
+	for _, f := range append(append([]string(nil), t.Flags...), b.Flags...) {
+		if !seen[f] {
+			seen[f] = true
+			out.Flags = append(out.Flags, f)
+		}
+	}
+	warnings := riskWarnings(out.Flags)
+	if n := t.Redactions + b.Redactions; n > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d secret(s) in the text were replaced by [REDACTED:<rule>]", n))
+	}
+	if b.Truncated {
+		warnings = append(warnings, fmt.Sprintf("the text was cut to %d characters", MaxQuoteRunes))
+	}
+	out.Title = ref + ": " + t.Text
+	if len(titleFlagsOf(t.Text)) > 0 {
+		out.Title = ref + ": (title withheld: instruction-like text; see the quoted source below)"
+		warnings = append(warnings, "the title contained instruction-like text and was replaced")
+	}
+	out.Title = oneLine(out.Title, MaxTaskTitleRunes)
+	src := "Title: " + t.Text
+	if strings.TrimSpace(b.Text) != "" {
+		src += "\n\n" + b.Text
+	}
+	out.Description = fmt.Sprintf("Imported from %s %s by %s.\n\n", origin, ref, by) + QuotedBlock(origin+" "+ref, url, warnings, src)
+	return out
 }

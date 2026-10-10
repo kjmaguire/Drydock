@@ -235,6 +235,17 @@ function McpCard(handle: Handle<{ s: McpLibraryServer; projects: readonly Projec
                     <tr key={tool.name} data-testid="mcp-tool" data-tool={tool.name}>
                       <td>
                         <code>{tool.name}</code>
+                        {tool.flags?.length ? (
+                          <Badge tone="warn" title={`Instruction-like text found: ${tool.flags.join(', ')}`} testId="mcp-tool-flagged">
+                            held back
+                          </Badge>
+                        ) : null}
+                        {tool.flags?.length ? (
+                          <div mix={faint}>
+                            Its description reads like instructions to the agent ({tool.flags.join(', ')}). Drydock does not grant it to agents; the description is
+                            shown here as data.
+                          </div>
+                        ) : null}
                         {tool.description ? <div>{tool.description}</div> : null}
                       </td>
                       <td>

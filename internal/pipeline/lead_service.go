@@ -808,6 +808,9 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 			if t.Assignee != "" && t.Reviewer != "" {
 				continue
 			}
+			if t.Status == tasks.Backlog && t.Imported() {
+				continue // imported work waits for a human to move it on; the lead is not paid to look at it before that
+			}
 			l.mu.Lock()
 			seen := l.unassigned[t.ID]
 			l.unassigned[t.ID] = true

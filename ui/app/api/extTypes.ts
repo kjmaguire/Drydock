@@ -232,6 +232,9 @@ export interface CheckSettings {
   deps: boolean;
   depsOffline: boolean;
 }
+/** The skill delivery a project has when it never chose one (the core's skills.DefaultDelivery). */
+export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'all';
+
 export interface DevSettings {
   maxParallel: number;
   autoSchedule: boolean;
@@ -250,6 +253,12 @@ export interface DevSettings {
   /** Who declared that the repository has no CI, and when (Unix ms). Set by the core when it saves `none`, never by the UI. */
   ciNoneBy?: string;
   ciNoneAt?: number;
+  /**
+   * How a Claude agent gets the project's skills: `all` puts every skill that reaches it into every turn; `relevant` puts in
+   * only those whose paths match the task's files and lists the others for the agent to open when the work needs them.
+   * Absent means DEFAULT_SKILL_DELIVERY.
+   */
+  skillDelivery?: 'all' | 'relevant';
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }

@@ -150,6 +150,12 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 	if !names["echo"] || !names["envlen"] || !names["post_note"] || lib.DiscoveredAt == 0 {
 		t.Fatalf("discovered %+v", lib.Tools)
 	}
+	// the tool whose description reads like instructions is flagged when it is listed (tool poisoning); the others are not
+	for _, tl := range lib.Tools {
+		if (len(tl.Flags) > 0) != (tl.Name == "format") {
+			t.Fatalf("flags of %s: %v", tl.Name, tl.Flags)
+		}
+	}
 	// a project can only grant a server it has
 	if err := a.callErr("mcpserver.access.set", map[string]any{"projectId": p.ID, "serverId": "tst", "agents": []core.MCPAccess{{AgentID: worker.ID}}}); err == nil {
 		t.Fatal("a grant for a server the project does not have was accepted")
@@ -160,7 +166,8 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 		t.Fatalf("added %+v", srv)
 	}
 	a.call("mcpserver.access.set", map[string]any{"projectId": p.ID, "serverId": "tst", "agents": []core.MCPAccess{{AgentID: worker.ID}}}, &srv)
-	if len(srv.Agents) != 1 || srv.Agents[0].AgentID != worker.ID || strings.Join(srv.Agents[0].Tools, ",") != "*" {
+	// a grant that names no tools gets the tools known now, by name, without the flagged one: never "*"
+	if len(srv.Agents) != 1 || srv.Agents[0].AgentID != worker.ID || strings.Join(srv.Agents[0].Tools, ",") != "echo,envlen,post_note" {
 		t.Fatalf("access %+v", srv.Agents)
 	}
 	if err := a.callErr("mcpserver.access.set", map[string]any{"projectId": p.ID, "serverId": "tst", "agents": []core.MCPAccess{{AgentID: "agt_other"}}}); err == nil {
@@ -242,6 +249,11 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 		return len(detail.Pending) == 1
 	})
 
+	for _, n := range toolsSeen {
+		if n == "tst__format" {
+			t.Errorf("the flagged tool reached the worker: %v", toolsSeen)
+		}
+	}
 	for _, want := range []string{"tst__echo", "tst__envlen", "tst__post_note", "read_range"} {
 		found := false
 		for _, n := range toolsSeen {

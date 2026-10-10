@@ -8,6 +8,11 @@ export interface McpToolInfo {
   inputSchema?: Record<string, unknown>;
   /** What the server CLAIMS. Drydock never trusts it; the human decides which tools are read-only. */
   readOnlyHint: boolean;
+  /**
+   * Instruction-like patterns Drydock found in the tool's name, description or input schema when it listed the tools (tool
+   * poisoning). A flagged tool is left out of the grants Drydock makes.
+   */
+  flags?: string[];
 }
 
 export interface McpAccess {

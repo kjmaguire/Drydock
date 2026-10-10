@@ -1,6 +1,7 @@
 // Package memory is project memory: architecture decisions, conventions, API contracts, rejected approaches, known
-// issues and preferences. It is queried on demand (never injected whole) and is the source of the generated instruction
-// files. Entries start as proposals; a human accepts them.
+// issues and preferences. Accepted entries go into the generated instruction files up to a budget, newest first
+// (internal/context.MemoryBudget); the rest is queried on demand with search_memory. Entries start as proposals; a human
+// accepts them.
 package memory
 
 import (

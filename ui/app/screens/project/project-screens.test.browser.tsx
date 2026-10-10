@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { CheckSettings, DevSettings } from '../../api/extTypes.ts';
+import { DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
 import type { Project } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
@@ -204,6 +204,23 @@ describe('Check settings and development flow', () => {
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(2), r);
     expect(calls[1]).toMatchObject({ ciMode: 'required' });
+  });
+
+  it('skills for Claude agents: the default is shown when the core sends none, each choice is explained and saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const relevant = await waitFor(() => byLabel<HTMLInputElement>(r.container, /^Only the ones the task needs/), r);
+    const all = byLabel<HTMLInputElement>(r.container, /^All of them, in every turn/);
+    expect(r.$('[role="radiogroup"][aria-label="Skills for Claude agents"]')).not.toBe(null);
+    expect(relevant.checked).toBe(DEFAULT_SKILL_DELIVERY === 'relevant');
+    expect(all.checked).toBe(DEFAULT_SKILL_DELIVERY === 'all');
+    expect((DEFAULT_SKILL_DELIVERY === 'all' ? all : relevant).parentElement!.textContent).toContain('(default)');
+    expect(document.getElementById(relevant.getAttribute('aria-describedby')!)!.textContent).toMatch(/listed by name and purpose[\s\S]*opens one when\s+its work needs it/);
+    expect(document.getElementById(all.getAttribute('aria-describedby')!)!.textContent).toMatch(/whatever the task touches[\s\S]*over budget/);
+    await r.act(() => (DEFAULT_SKILL_DELIVERY === 'all' ? relevant : all).click());
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ skillDelivery: DEFAULT_SKILL_DELIVERY === 'all' ? 'relevant' : 'all' });
   });
 
   it("the team lead's stall time: empty means 15, a number is saved, out of range is explained", async () => {

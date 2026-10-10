@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
+	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -689,6 +691,12 @@ func (s *mcpServers) discover(ctx context.Context, id string) (MCPLibraryServer,
 		return MCPLibraryServer{}, fmt.Errorf("could not list the tools of %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
+	flagged := 0
+	for i := range tools {
+		if tools[i].Flags = toolFlags(tools[i]); len(tools[i].Flags) > 0 {
+			flagged++
+		}
+	}
 	tj, _ := json.Marshal(tools)
 	now := storage.Now()
 	err = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
@@ -698,7 +706,7 @@ func (s *mcpServers) discover(ctx context.Context, id string) (MCPLibraryServer,
 	if err != nil {
 		return MCPLibraryServer{}, err
 	}
-	s.c.publish(ctx, "mcp.server_discovered", "", map[string]any{"id": id, "tools": len(tools)})
+	s.c.publish(ctx, "mcp.server_discovered", "", map[string]any{"id": id, "tools": len(tools), "flagged": flagged})
 	out, err := s.load(ctx, id)
 	return out.MCPLibraryServer, err
 }
@@ -770,8 +778,35 @@ func (s *mcpServers) setEnabled(ctx context.Context, project, server string, on 
 	return v, err
 }
 
-// grants validates and normalizes one agent's grant.
-func (s *mcpServers) checkGrant(ctx context.Context, project string, g MCPAccess) (string, error) {
+// toolFlags scores a listed tool's name, description and input schema with the same patterns as outside text
+// (integrations.Score) and returns the flags when the score reaches integrations.RiskThreshold. A server's tool list is
+// read by the model like instructions, so a description that tells it to ignore its rules, claims approval or hides markup
+// is a way in (tool poisoning).
+func toolFlags(t mcp.ToolInfo) []string {
+	schema, _ := json.Marshal(t.InputSchema)
+	risk, flags := integrations.Score(t.Name+"\n"+t.Description+"\n"+string(schema), hiddenRunes(t.Description+string(schema)))
+	if risk < integrations.RiskThreshold {
+		return nil
+	}
+	return flags
+}
+
+// hiddenRunes counts invisible and bidirectional-control characters.
+func hiddenRunes(s string) int {
+	n := 0
+	for _, r := range s {
+		if unicode.Is(unicode.Cf, r) {
+			n++
+		}
+	}
+	return n
+}
+
+// grants validates and normalizes one agent's grant. A grant that names no tools gets the server's tools as they are known
+// now, by name, without the flagged ones (the server's tools are listed first if they were never listed): a tool the server
+// adds later, or one whose description reads like instructions, is not granted until a human names it. Before, such a grant
+// was "*", every tool the server would ever offer.
+func (s *mcpServers) checkGrant(ctx context.Context, project, server string, g MCPAccess) (string, error) {
 	a, err := s.c.agent(ctx, g.AgentID)
 	if err != nil || a.ProjectID != project || a.Archived {
 		return "", fmt.Errorf("agent %s is not on this project's team", g.AgentID)
@@ -781,10 +816,37 @@ func (s *mcpServers) checkGrant(ctx context.Context, project string, g MCPAccess
 		return "", err
 	}
 	if len(tools) == 0 {
-		tools = []string{"*"}
+		if tools, err = s.grantable(ctx, server); err != nil {
+			return "", err
+		}
 	}
 	tj, _ := json.Marshal(tools)
 	return string(tj), nil
+}
+
+// grantable is the server's known tools without the flagged ones, listing them first when they were never listed.
+func (s *mcpServers) grantable(ctx context.Context, server string) ([]string, error) {
+	r, err := s.load(ctx, server)
+	if err != nil {
+		return nil, err
+	}
+	if r.DiscoveredAt == 0 {
+		lib, err := s.discover(ctx, server)
+		if err != nil {
+			return nil, fmt.Errorf("Drydock grants a server's tools by name and could not list them: %w", err)
+		}
+		r.MCPLibraryServer = lib
+	}
+	var out []string
+	for _, t := range r.Tools {
+		if len(t.Flags) == 0 {
+			out = append(out, t.Name)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s offers no tool Drydock can grant: it lists none, or every tool's description reads like instructions", r.Display)
+	}
+	return out, nil
 }
 
 func (s *mcpServers) setAccess(ctx context.Context, project, server string, grants []MCPAccess) (MCPServerView, error) {
@@ -798,7 +860,7 @@ func (s *mcpServers) setAccess(ctx context.Context, project, server string, gran
 	type row struct{ agent, tools string }
 	var rows []row
 	for _, g := range grants {
-		tj, err := s.checkGrant(ctx, project, g)
+		tj, err := s.checkGrant(ctx, project, server, g)
 		if err != nil {
 			return MCPServerView{}, err
 		}

@@ -100,6 +100,9 @@ type ToolInfo struct {
 	Description  string         `json:"description,omitempty"`
 	InputSchema  map[string]any `json:"inputSchema,omitempty"`
 	ReadOnlyHint bool           `json:"readOnlyHint"`
+	// Flags are the instruction-like patterns Drydock found in the tool's name, description or input schema when it listed
+	// the tools (tool poisoning). A flagged tool is left out of the grants Drydock makes; a human can still name it.
+	Flags []string `json:"flags,omitempty"`
 }
 
 // ToolList is Tools with the descriptions, input schemas and the servers' read-only claims. It makes a fresh tools/list.

@@ -123,22 +123,7 @@ func (e *Engine) generate(ctx context.Context, projectID, worktree string, exist
 	if err != nil {
 		return nil, m, err
 	}
-	sections := []struct{ kind, title string }{
-		{memory.Decision, "Architecture decisions"}, {memory.Convention, "Conventions"}, {memory.APIContract, "API contracts"},
-		{memory.Rejected, "Rejected approaches (do not retry)"}, {memory.KnownIssue, "Known issues"}, {memory.Preference, "Preferences"},
-	}
-	for _, sec := range sections {
-		var lines []string
-		for _, en := range entries {
-			if en.Kind == sec.kind {
-				lines = append(lines, fmt.Sprintf("- **%s**: %s", en.Title, oneLine(en.Body)))
-				m.Add("memory:"+en.ID, true, len(en.Title)+len(en.Body), sec.title, 30)
-			}
-		}
-		if len(lines) > 0 {
-			sb.WriteString("\n## " + sec.title + "\n\n" + strings.Join(lines, "\n") + "\n")
-		}
-	}
+	sb.WriteString(memorySections(entries, &m))
 	if e.Sections != nil {
 		extra, err := e.Sections(ctx, projectID, worktree)
 		if err != nil {
@@ -179,6 +164,71 @@ func (e *Engine) generate(ctx context.Context, projectID, worktree string, exist
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// Accepted memory goes into AGENTS.md, and so into every turn, only up to a budget: the newest entries first, each cut to
+// MemoryEntryMax characters. What does not fit stays in the memory store, where the agent's search_memory tool finds it,
+// and AGENTS.md says so. Before this, every accepted entry went in whole, oldest first, with no limit.
+const (
+	MemoryBudget   = 8 << 10 // bytes of memory lines in AGENTS.md (about 2,000 tokens)
+	MemoryEntryMax = 600     // characters of one entry's body
+)
+
+var memoryKinds = []struct{ kind, title string }{
+	{memory.Decision, "Architecture decisions"}, {memory.Convention, "Conventions"}, {memory.APIContract, "API contracts"},
+	{memory.Rejected, "Rejected approaches (do not retry)"}, {memory.KnownIssue, "Known issues"}, {memory.Preference, "Preferences"},
+}
+
+// memorySections renders the accepted entries (oldest first, as the store lists them) as AGENTS.md sections within
+// MemoryBudget and records each entry in the manifest, included or not.
+func memorySections(entries []memory.Entry, m *Manifest) string {
+	line := func(en memory.Entry) string {
+		body := oneLine(en.Body)
+		if r := []rune(body); len(r) > MemoryEntryMax {
+			body = string(r[:MemoryEntryMax]) + "... (cut; search_memory has the whole entry)"
+		}
+		return fmt.Sprintf("- **%s**: %s", oneLine(en.Title), body)
+	}
+	known := map[string]bool{}
+	for _, k := range memoryKinds {
+		known[k.kind] = true
+	}
+	take := map[string]bool{}
+	used, left := 0, 0
+	for i := len(entries) - 1; i >= 0; i-- { // newest first
+		en := entries[i]
+		if !known[en.Kind] {
+			continue
+		}
+		if n := len(line(en)) + 1; used+n <= MemoryBudget {
+			take[en.ID] = true
+			used += n
+		} else {
+			left++
+		}
+	}
+	var sb strings.Builder
+	for _, sec := range memoryKinds {
+		var lines []string
+		for _, en := range entries {
+			if en.Kind != sec.kind {
+				continue
+			}
+			if !take[en.ID] {
+				m.Add("memory:"+en.ID, false, len(en.Title)+len(en.Body), sec.title+": over the memory budget, found with search_memory", 30)
+				continue
+			}
+			lines = append(lines, line(en))
+			m.Add("memory:"+en.ID, true, len(en.Title)+len(en.Body), sec.title, 30)
+		}
+		if len(lines) > 0 {
+			sb.WriteString("\n## " + sec.title + "\n\n" + strings.Join(lines, "\n") + "\n")
+		}
+	}
+	if left > 0 {
+		fmt.Fprintf(&sb, "\n%d older memory entries are not listed here: search_memory finds them.\n", left)
+	}
+	return sb.String()
+}
 
 func hash(s string) string {
 	h := sha256.Sum256([]byte(s))

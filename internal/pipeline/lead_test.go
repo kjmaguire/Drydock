@@ -609,6 +609,24 @@ func TestTheLeadIsAskedOnceAboutAnUnassignedTaskAcrossRestarts(t *testing.T) {
 	}
 }
 
+// An imported task in BACKLOG waits for a human to move it on: the lead is not asked about it (that is a paid turn for every
+// issue an import rule brings in); once a human moves it to READY it is an ordinary unassigned task.
+func TestTheLeadIsNotAskedAboutImportedWorkBeforeAHumanMovesItOn(t *testing.T) {
+	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: leadSays(`{"action":"continue","message":"","reason":"a human will staff it"}`)}, true)
+	ctx := context.Background()
+	e.devs.AutoSchedule = true
+	imp, _ := e.tasks.Create(ctx, tasks.CreateReq{ProjectID: "p1", Title: "ENG-7: from Linear", Description: "quoted", IssueRef: "ENG-7"})
+	if res, err := e.lead.Tick(ctx, "p1"); err != nil || len(res.Unassigned) != 0 || len(e.prompts(agLead)) != 0 {
+		t.Fatalf("tick %+v %v, lead turns %d", res, err, len(e.prompts(agLead)))
+	}
+	if _, err := e.tasks.Transition(ctx, imp.ID, tasks.Ready, tasks.TransitionOpts{By: "human:k"}); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := e.lead.Tick(ctx, "p1"); len(res.Unassigned) != 1 || res.Unassigned[0] != imp.ID {
+		t.Fatalf("after a human moved it on: %+v", res)
+	}
+}
+
 // No lead on the team: nothing changes (no supervision turn, the human is asked as before, the monitor does nothing).
 func TestWithoutALeadNothingChanges(t *testing.T) {
 	e := newLeadEnv(t, map[string]fakeagent.Script{agWork: wrongWorker(), agReview: shipper}, false)
