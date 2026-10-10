@@ -2,15 +2,15 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 
 | Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|---|
-| D | 63 | 62 | $8.5073 | $0.1372 | $0.0885 ($0.0305 to $0.5487) | 4m9s (1m34s to 9m39s) |
-| B1 | 63 | 60 | $7.6200 | $0.1270 | $0.0681 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
+| D | 64 | 63 | $8.5938 | $0.1364 | $0.0877 ($0.0305 to $0.5487) | 4m9s (1m34s to 9m39s) |
+| B1 | 64 | 61 | $7.9455 | $0.1303 | $0.0784 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
 
 | Task | Arm | Runs | Accepted | Cost per run, median (range) | Wall time per run, median (range) |
 |---|---|---|---|---|---|
 | tally-api-key-hashing | D | 3 | 3 | $0.0555 ($0.0513 to $0.0595) | 3m4s (2m58s to 3m16s) |
 | tally-api-key-hashing | B1 | 3 | 3 | $0.0534 ($0.0380 to $0.0661) | 2m38s (2m13s to 3m13s) |
 | tally-audit-log | D | 3 | 3 | $0.4271 ($0.3626 to $0.5487) | 6m48s (6m4s to 9m39s) |
-| tally-audit-log | B1 | 2 | 2 | $0.3075 ($0.2814 to $0.3337) | 4m44s (4m34s to 4m54s) |
+| tally-audit-log | B1 | 3 | 3 | $0.3256 ($0.2814 to $0.3337) | 4m42s (4m34s to 4m54s) |
 | tally-coupons | D | 3 | 3 | $0.3807 ($0.3755 to $0.4310) | 7m40s (5m57s to 7m59s) |
 | tally-coupons | B1 | 2 | 2 | $0.3692 ($0.3137 to $0.4247) | 5m34s (4m31s to 6m38s) |
 | tally-csv-import | D | 3 | 3 | $0.1373 ($0.1311 to $0.1580) | 6m6s (4m44s to 7m4s) |
@@ -41,7 +41,7 @@ Trial 2026-10-10-tally-haiku; Drydock babb3c1a149b+dirty, cba4f9eaa7b8; 2.1.296 
 | tally-soft-delete-customers | B1 | 3 | 3 | $0.2354 ($0.1860 to $0.2624) | 3m14s (3m2s to 3m52s) |
 | tally-tenant-isolation | D | 3 | 3 | $0.2962 ($0.1589 to $0.3015) | 4m46s (4m7s to 5m15s) |
 | tally-tenant-isolation | B1 | 3 | 3 | $0.2393 ($0.2268 to $0.2571) | 3m51s (3m41s to 4m5s) |
-| tally-tiered-pricing | D | 2 | 2 | $0.1219 ($0.0870 to $0.1568) | 5m46s (4m53s to 6m39s) |
+| tally-tiered-pricing | D | 3 | 3 | $0.0870 ($0.0865 to $0.1568) | 4m53s (3m46s to 6m39s) |
 | tally-tiered-pricing | B1 | 3 | 3 | $0.0555 ($0.0455 to $0.1128) | 2m40s (2m27s to 3m13s) |
 | tally-timezone-reports | D | 3 | 3 | $0.0409 ($0.0371 to $0.0460) | 2m41s (2m29s to 2m44s) |
 | tally-timezone-reports | B1 | 3 | 3 | $0.0289 ($0.0263 to $0.0324) | 1m51s (1m35s to 2m0s) |
@@ -59,7 +59,7 @@ D against B1, task by task (counted runs):
 | Task | Class | D accepted | B1 accepted | D cost per run, median | B1 cost per run, median | D wall, median | B1 wall, median |
 |---|---|---|---|---|---|---|---|
 | tally-api-key-hashing | security review | 3 of 3 | 3 of 3 | $0.0555 | $0.0534 | 3m4s | 2m38s |
-| tally-audit-log | iteration | 3 of 3 | 2 of 2 | $0.4271 | $0.3075 | 6m48s | 4m44s |
+| tally-audit-log | iteration | 3 of 3 | 3 of 3 | $0.4271 | $0.3256 | 6m48s | 4m42s |
 | tally-coupons | iteration | 3 of 3 | 2 of 2 | $0.3807 | $0.3692 | 7m40s | 5m34s |
 | tally-csv-import | iteration | 3 of 3 | 3 of 3 | $0.1373 | $0.0485 | 6m6s | 3m1s |
 | tally-currency-minor-units | test-fix loop | 3 of 3 | 3 of 3 | $0.0364 | $0.0265 | 2m4s | 1m29s |
@@ -75,7 +75,7 @@ D against B1, task by task (counted runs):
 | tally-snapshot-v3 | iteration | 2 of 2 | 2 of 2 | $0.0783 | $0.0967 | 3m48s | 3m11s |
 | tally-soft-delete-customers | iteration | 2 of 2 | 3 of 3 | $0.1703 | $0.2354 | 4m14s | 3m14s |
 | tally-tenant-isolation | security review | 3 of 3 | 3 of 3 | $0.2962 | $0.2393 | 4m46s | 3m51s |
-| tally-tiered-pricing | iteration | 2 of 2 | 3 of 3 | $0.1219 | $0.0555 | 5m46s | 2m40s |
+| tally-tiered-pricing | iteration | 3 of 3 | 3 of 3 | $0.0870 | $0.0555 | 4m53s | 2m40s |
 | tally-timezone-reports | iteration | 3 of 3 | 3 of 3 | $0.0409 | $0.0289 | 2m41s | 1m51s |
 | tally-webhook-retries | iteration | 3 of 3 | 3 of 3 | $0.0648 | $0.0971 | 3m51s | 3m12s |
 | tally-webhook-signatures | security review | 2 of 2 | 2 of 2 | $0.0720 | $0.0832 | 4m7s | 2m53s |
@@ -85,7 +85,7 @@ D against B1, task by task (counted runs):
 | Class | D accepted | B1 accepted |
 |---|---|---|
 | high-risk | 6 of 6 | 5 of 6 |
-| iteration | 25 of 26 | 25 of 26 |
+| iteration | 26 of 27 | 26 of 27 |
 | security review | 16 of 16 | 16 of 17 |
 | test-fix loop | 12 of 12 | 12 of 12 |
 | tested refactor | 3 of 3 | 2 of 2 |
@@ -105,6 +105,7 @@ Every run:
 | tally-api-key-hashing | D | 3 | accepted | $0.0595 | 3m4s | 2 | 52 / 34946 / 1748589 / 122512 | SHIP |  |
 | tally-audit-log | B1 | 1 | accepted | $0.3337 | 4m54s | 1 | 50 / 65188 / 2482524 / 147539 |  |  |
 | tally-audit-log | B1 | 2 | accepted | $0.2814 | 4m34s | 1 | 48 / 61351 / 2203504 / 139542 |  |  |
+| tally-audit-log | B1 | 3 | accepted | $0.3256 | 4m42s | 1 | 54 / 66219 / 2742172 / 145884 |  |  |
 | tally-audit-log | D | 1 | accepted | $0.3626 | 6m4s | 2 | 76 / 81896 / 3461075 / 195771 | SHIP |  |
 | tally-audit-log | D | 2 | accepted | $0.5487 | 9m39s | 4 | 154 / 104249 / 7196711 / 275253 | REVISE, SHIP |  |
 | tally-audit-log | D | 3 | accepted | $0.4271 | 6m48s | 2 | 80 / 93243 / 4006361 / 211116 | SHIP |  |
@@ -195,6 +196,7 @@ Every run:
 | tally-tiered-pricing | B1 | 3 | accepted | $0.0455 | 2m27s | 1 | 46 / 32743 / 1419430 / 74511 |  |  |
 | tally-tiered-pricing | D | 1 | accepted | $0.1568 | 6m39s | 6 | 100 / 87220 / 2678349 / 256922 | REVISE, REVISE, SHIP |  |
 | tally-tiered-pricing | D | 2 | accepted | $0.0870 | 4m53s | 4 | 72 / 59586 / 2174797 / 177391 | REVISE, SHIP |  |
+| tally-tiered-pricing | D | 3 | accepted | $0.0865 | 3m46s | 2 | 58 / 50939 / 2037754 / 115811 | SHIP |  |
 | tally-timezone-reports | B1 | 1 | accepted | $0.0263 | 1m35s | 1 | 24 / 20836 / 543552 / 52403 |  |  |
 | tally-timezone-reports | B1 | 2 | accepted | $0.0289 | 2m0s | 1 | 26 / 23849 / 622056 / 53946 |  |  |
 | tally-timezone-reports | B1 | 3 | accepted | $0.0324 | 1m51s | 1 | 28 / 24410 / 757214 / 63328 |  |  |
