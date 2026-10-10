@@ -234,7 +234,7 @@ func (e *tpl) await(id workflow.RunID, want workflow.RunStatus) workflow.RunInfo
 	defer cancel()
 	info, err := e.eng.Await(ctx, id, func(r workflow.RunInfo) bool { return r.Status == want || r.Status.Terminal() })
 	if err != nil {
-		e.t.Fatalf("await %s: %v (the run is %s%s)", want, err, info.Status, describePending(e.eng, id))
+		e.t.Fatalf("await %s: %v (the run is %s%s%s)", want, err, info.Status, describePending(e.eng, id), describeRunning(e.eng, id))
 	}
 	if info.Status != want {
 		e.t.Fatalf("run ended %s (%s), wanted %s", info.Status, info.FailedReason, want)

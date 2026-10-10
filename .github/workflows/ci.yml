@@ -36,8 +36,10 @@ jobs:
         env:
           DRYDOCK_NO_REAL_AGENTS: "1"
         # the output is kept in a file as well, so a failure can be listed on its own below
+        # the trial suite's hidden-check self-check runs in its own job (below): it builds and tests every task's fixture
+        # twice at once, and on one runner it starved the other packages' tests
         run: |
-          go test ./... -count=1 -timeout 25m | Tee-Object -FilePath "$env:RUNNER_TEMP/go-test.log"
+          go test ./... -count=1 -timeout 25m -skip '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' | Tee-Object -FilePath "$env:RUNNER_TEMP/go-test.log"
           exit $LASTEXITCODE
       - name: Show the failed tests
         # the core package logs thousands of lines, which bury a failing test in the log above
@@ -48,6 +50,23 @@ jobs:
           Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+_test\.go:\d+:' | ForEach-Object { $_.Line }
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
+  trial-suite:
+    # every trial task's hidden check fails on the fixture and passes on its reference solution (docs/evals.md section 13)
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Git identity for tests
+        run: |
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: Self-check of every task of every suite
+        run: go test ./internal/trial -count=1 -timeout 30m -run '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' -v
   repomap-cgo:
     # Decision D5: tree-sitter needs CGO. The repo map ships only if this job is green.
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
