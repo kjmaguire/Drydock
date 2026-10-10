@@ -60,9 +60,9 @@ bundles are never committed.
 
 It needs Git for Windows on PATH and nothing else. It installs nothing and changes no setting: temporary folders go under
 `%TEMP%` and are removed, everything listens on 127.0.0.1 only, and the package tests get CI's git settings (an identity
-and `core.autocrlf false`) through `GIT_CONFIG_*` environment variables rather than by editing any git config. One caution:
-the Credential Manager test deletes Drydock's own key-encryption entry when it finishes, so do not run the bundle on a PC
-where a Drydock build already keeps provider keys.
+and `core.autocrlf false`) through `GIT_CONFIG_*` environment variables rather than by editing any git config. The
+Credential Manager test stores and deletes its own test entry; it leaves Drydock's key-encryption entry alone when a Drydock
+build on the PC already has one (that entry decrypts the provider keys the build keeps) and deletes only one it created.
 
 **On the development host** the same bundle can be built for Linux, which is how the orchestration itself is proven:
 

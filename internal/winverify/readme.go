@@ -102,9 +102,9 @@ func Readme(m *Manifest) string {
 	w("- Creates temporary folders under %%TEMP%% (or $TMPDIR) and removes them at the end.")
 	w("- Starts and stops test programs, the scripted Drydock core and one shell (the terminal check). Everything listens on")
 	w("  127.0.0.1 only, so no firewall question is expected.")
-	w("- The Credential Manager test stores and then deletes test entries under the name \"drydock\". It also deletes")
-	w("  Drydock's own key-encryption entry when it finishes: do not run this bundle on a computer where a Drydock build")
-	w("  already keeps provider keys.")
+	w("- The Credential Manager test stores and then deletes a test entry under the name \"drydock\". It leaves Drydock's")
+	w("  own key-encryption entry alone when a Drydock build on this computer already has one (it decrypts the provider keys")
+	w("  that build keeps), and deletes only one it created itself.")
 	w("- Writes the results folder and its zip next to %s.", exe)
 	text := b.String()
 	if m.GOOS == "windows" {

@@ -11,7 +11,9 @@ import (
 )
 
 // TestWindowsCredentialManagerRoundTrip runs only on Windows against the real Credential Manager: a small secret
-// stays in the store, a secret over 2560 bytes goes through the encrypted SQLite fallback.
+// stays in the store, a secret over 2560 bytes goes through the encrypted SQLite fallback. It runs on people's own PCs (the
+// verification bundle, docs/windows-runner.md), so it never deletes Drydock's key-encryption entry unless it created it:
+// that entry decrypts the provider keys an installed Drydock keeps.
 func TestWindowsCredentialManagerRoundTrip(t *testing.T) {
 	cred, err := NewCredentialStore()
 	if err != nil {
@@ -25,7 +27,14 @@ func TestWindowsCredentialManagerRoundTrip(t *testing.T) {
 	v := NewVault(cred, db)
 	ctx := context.Background()
 	ref := "test/drydock-wincred-roundtrip"
-	t.Cleanup(func() { _ = v.Delete(ctx, ref); _ = cred.Delete(credService, kekUser) })
+	_, kekErr := cred.Get(credService, kekUser)
+	kekExisted := kekErr == nil
+	t.Cleanup(func() {
+		_ = v.Delete(ctx, ref)
+		if !kekExisted {
+			_ = cred.Delete(credService, kekUser)
+		}
+	})
 	for _, size := range []int{32, MaxCredentialBytes, MaxCredentialBytes + 1, 6000} {
 		val := strings.Repeat("k", size)
 		if err := v.Put(ctx, ref, val); err != nil {
