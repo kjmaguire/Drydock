@@ -72,8 +72,20 @@ func TestBackupNowListVerifyAndTamperDetection(t *testing.T) {
 	if res.Backup.Name == "" || res.Backup.Size == 0 || res.Backup.SHA256 == "" {
 		t.Fatalf("backup %+v", res)
 	}
+	// the list holds the manual backup, once; the first scheduled check (5 seconds after start) may have taken a backup of
+	// its own before it on a slow machine (the Windows runner did)
 	dir, list := a.backups()
-	if len(list) != 1 || list[0].Name != res.Backup.Name || !strings.HasPrefix(dir, a.dataDir()) {
+	manual, found := 0, false
+	for _, b := range list {
+		switch {
+		case b.Label == "manual":
+			manual++
+		case b.Label != "scheduled":
+			t.Errorf("a %s backup in the list: %+v", b.Label, b)
+		}
+		found = found || b.Name == res.Backup.Name
+	}
+	if !found || manual != 1 || !strings.HasPrefix(dir, a.dataDir()) {
 		t.Fatalf("list %v in %s", list, dir)
 	}
 	var v struct {
