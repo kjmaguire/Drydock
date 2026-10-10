@@ -1,0 +1,594 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Each (subscription, period start) pair gets at most one renewal invoice and one charge, and the gateway-down case moves the period on without re-invoicing. **Partly met:** this holds within one server process, not across instances (see below).\n- Gateway outage keeps the invoice open and the status unchanged, and RenewDue processes every subscription before returning the joined errors. **Met.**\n- Tests cover overlapping runs, gateway outage, continuing past failures, a declined renewal, and the store's atomic step. `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791670655096
+  },
+  {
+    "id": 2,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 670ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/build_e0f3b4b5d6e0.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 673,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670655809
+  },
+  {
+    "id": 3,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 570ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/test_8ec0abf8b3b7.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 571,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670656388
+  },
+  {
+    "id": 4,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 520ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/lint_431a40ff092b.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 518,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670656910
+  },
+  {
+    "id": 5,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/secrets_4b8142c865d4.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670656929
+  },
+  {
+    "id": 6,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +279 -48",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 279,
+      "Deletions": 48,
+      "base": "9866fe9575a640e17545e2edd3e8121ff19321e5",
+      "commit": "b4c077fbb7656d2152d936ee9b2efb4c7cb9c885"
+    },
+    "created": 1791670657080
+  },
+  {
+    "id": 7,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit b4c077fbb7",
+    "ref": "b4c077fbb7656d2152d936ee9b2efb4c7cb9c885",
+    "data": {},
+    "created": 1791670657081
+  },
+  {
+    "id": 8,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 620ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/build_131542a14138.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 623,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670733843
+  },
+  {
+    "id": 9,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 760ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/test_51dfc5a4ea56.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 761,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670734608
+  },
+  {
+    "id": 10,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 890ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/lint_4c8feda6dbb6.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 893,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670735504
+  },
+  {
+    "id": 11,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/secrets_0579429b6d26.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 24,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670735541
+  },
+  {
+    "id": 12,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +279 -48",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 279,
+      "Deletions": 48,
+      "base": "9866fe9575a640e17545e2edd3e8121ff19321e5",
+      "commit": "b4c077fbb7656d2152d936ee9b2efb4c7cb9c885"
+    },
+    "created": 1791670735650
+  },
+  {
+    "id": 13,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit b4c077fbb7",
+    "ref": "b4c077fbb7656d2152d936ee9b2efb4c7cb9c885",
+    "data": {},
+    "created": 1791670735651
+  },
+  {
+    "id": 14,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- \n- Partly met.** Each (subscription, period start) pair gets at most one renewal invoice and one charge within one store. The claim is written in the same locked step as the period move and the invoice, and it survives export and reload. It does not hold across processes. Two instances loading separate snapshots can still each invoice the same period.\n- Met.** Gateway outage keeps the invoice open and the status unchanged, and `RenewDue` processes every subscription before returning the joined errors. I did not change this path.",
+    "data": {},
+    "created": 1791670873719
+  },
+  {
+    "id": 15,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.06s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/build_5c49614164b4.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1057,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670874890
+  },
+  {
+    "id": 16,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.21s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/test_b4bcf0a42e1d.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1206,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670876099
+  },
+  {
+    "id": 17,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 800ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/lint_5b030b7deb82.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 796,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670876901
+  },
+  {
+    "id": 18,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/secrets_c7e81300a869.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 29,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670876935
+  },
+  {
+    "id": 19,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +402 -49",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 402,
+      "Deletions": 49,
+      "base": "9866fe9575a640e17545e2edd3e8121ff19321e5",
+      "commit": "361ad1127c52d3354034b26677b7a46a5cc8d13d"
+    },
+    "created": 1791670877100
+  },
+  {
+    "id": 20,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 361ad1127c",
+    "ref": "361ad1127c52d3354034b26677b7a46a5cc8d13d",
+    "data": {},
+    "created": 1791670877101
+  },
+  {
+    "id": 21,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- What changed**",
+    "data": {},
+    "created": 1791671083655
+  },
+  {
+    "id": 22,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.12s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/build_ff79f3b0b56f.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1120,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671084823
+  },
+  {
+    "id": 23,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 590ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/test_d21d423f5940.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 587,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671085412
+  },
+  {
+    "id": 24,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 430ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/lint_9fc5e32bd9b4.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 425,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671085839
+  },
+  {
+    "id": 25,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/secrets_f62c99d58a31.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 28,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671085869
+  },
+  {
+    "id": 26,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "9 file(s), +768 -54",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/evidence/task.diff",
+    "data": {
+      "Files": 9,
+      "Insertions": 768,
+      "Deletions": 54,
+      "base": "9866fe9575a640e17545e2edd3e8121ff19321e5",
+      "commit": "6dd9f1508c60d896b63f62f2f39251e229b464a2"
+    },
+    "created": 1791671086090
+  },
+  {
+    "id": 27,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 6dd9f1508c",
+    "ref": "6dd9f1508c60d896b63f62f2f39251e229b464a2",
+    "data": {},
+    "created": 1791671086090
+  },
+  {
+    "id": 28,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 2.62s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/build_9ddc129486cd.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 2620,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671228442
+  },
+  {
+    "id": 29,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.12s",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/test_4cc3fd88d0c6.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1117,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671229574
+  },
+  {
+    "id": 30,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 910ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/lint_f48fea838ba8.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 905,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671230481
+  },
+  {
+    "id": 31,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/checks/secrets_31a90da0ceb5.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 29,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671230512
+  },
+  {
+    "id": 32,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "9 file(s), +811 -54",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-2/data/runs/run_894c47d4c352/evidence/task.diff",
+    "data": {
+      "Files": 9,
+      "Insertions": 811,
+      "Deletions": 54,
+      "base": "9866fe9575a640e17545e2edd3e8121ff19321e5",
+      "commit": "ad073fa41ed5d66ec064863908d1b6331dcdbca3"
+    },
+    "created": 1791671230762
+  },
+  {
+    "id": 33,
+    "taskId": "task_56c0b012bce5",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit ad073fa41e",
+    "ref": "ad073fa41ed5d66ec064863908d1b6331dcdbca3",
+    "data": {},
+    "created": 1791671230763
+  }
+]

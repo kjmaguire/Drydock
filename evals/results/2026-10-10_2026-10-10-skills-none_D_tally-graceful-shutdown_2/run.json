@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "a0feff1117cf98ccdac3e19ee990ced37be5ce9c",
+  "startedAt": "2026-10-10T22:23:32.33771649Z",
+  "wallMs": 257206,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1250,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 12681,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.029s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.016s\n?   \texample.com/tally/internal/clock\t[no test files]\n--- FAIL: TestHiddenSecondShutdownAndStopReturnAtOnce (10.00s)\n    zz_hidden_graceful_shutdown_test.go:383: a second Shutdown while the first was waiting did not return within 10s\nFAIL\nFAIL\texample.com/tally/internal/jobs\t10.623s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.008s\nok  \texample.com/tally/internal/reports\t0.013s\nok  \texample.com/tally/internal/snapshot\t0.019s\nok  \texample.com/tally/internal/store\t0.016s\nok  \texample.com/tally/internal/subscriptions\t0.018s\nok  \texample.com/tally/internal/webhooks\t0.023s\nFAIL\n"
+      }
+    ],
+    "durationMs": 13935
+  },
+  "costUsd": 0.05105904,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 58,
+    "output": 48952,
+    "cacheRead": 672584,
+    "cacheWrite": 99257
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_be9e0832db87",
+      "feedback": "1) jobs.go Shutdown, the select at the `workersDone` / `ctx.Done()` branch (~line 150): if all workers have already finished and ctx is already done (or both channels become ready together), Go picks a case at random. A call with no running jobs can therefore return ctx.Err() instead of nil, which breaks the spec rule that Shutdown returns nil when every running job finished before ctx ended. Fix: check `workersDone` non-blockingly before entering the select, or return nil from the ctx branch when `workersDone` is already closed.\n\n2) cmd/tally/main.go:88-90: Pending() is only logged as \"job not run\" and then discarded. The task says \"The caller saves them\", and the title is \"without losing work\". Pending jobs need to be persisted or handed to the snapshot save path, or the task's stated caller responsibility is unmet. If there is no store slot for jobs, say so explicitly in the code and summary rather than only logging.\n\n3) jobs.go NewRunner / Enqueue (~lines 59, 99-101): the old implementation used an unbuffered channel for queueSize 0, so Enqueue succeeded when a worker was idle. The new `len(r.queue) \u003e= r.capacity` check makes queueSize 0 always return ErrQueueFull. This is a behaviour change to an existing constructor argument. Either keep the handoff semantics for capacity 0 or document the change.\n\nEverything else checks out: ErrStopped, the worker drain-on-stop that leaves unstarted jobs queued, cancel-on-deadline with `canceled` tracking, panic recovery with no re-run, the second Shutdown/Stop path, and the tests for ordering, cancel, panic and goroutine leaks."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_be9e0832db87"
+    }
+  ],
+  "coreTaskId": "task_4664d6759cd2"
+}

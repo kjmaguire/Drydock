@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `PATCH /v1/subscriptions/{id}` follows the spec: upgrades apply at once and bill a two-line proration invoice, downgrades set `pending_plan_id`/`pending_quantity` and apply at renewal, equal-value and trialing changes apply without billing, incompatible plans get 422, canceled subscriptions get 409.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, with new tests covering each branch: upgrade lines and amounts (including discount and tax), declined charge leading to past_due, no payment method leaving the invoice open, pending downgrade applied at renewal, pending cleared by upgra\n...[truncated]",
+    "data": {},
+    "created": 1791671194951
+  },
+  {
+    "id": 2,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 600ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-2/data/runs/run_61049223c132/checks/build_a2952393e01e.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 598,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671195582
+  },
+  {
+    "id": 3,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 540ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-2/data/runs/run_61049223c132/checks/test_8ff6b0ed592d.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 542,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671196127
+  },
+  {
+    "id": 4,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 520ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-2/data/runs/run_61049223c132/checks/lint_05603e601f42.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 523,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671196653
+  },
+  {
+    "id": 5,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-2/data/runs/run_61049223c132/checks/secrets_d3038e79800d.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671196677
+  },
+  {
+    "id": 6,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +445 -12",
+    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-2/data/runs/run_61049223c132/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 445,
+      "Deletions": 12,
+      "base": "d75b4ff9cdefe2ce27d76a34a6d66440494efc91",
+      "commit": "25aa275ed2d442d307a4d48abf8dfe2b24f5165a"
+    },
+    "created": 1791671196836
+  },
+  {
+    "id": 7,
+    "taskId": "task_fab797a7a650",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 25aa275ed2",
+    "ref": "25aa275ed2d442d307a4d48abf8dfe2b24f5165a",
+    "data": {},
+    "created": 1791671196836
+  }
+]
