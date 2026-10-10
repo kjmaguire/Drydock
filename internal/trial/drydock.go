@@ -210,23 +210,40 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		art.Evidence, _ = json.MarshalIndent(det.Evidence, "", "  ")
 	}
 	for _, rv := range det.Reviews {
-		rec.Reviews = append(rec.Reviews, Review{Verdict: rv.Verdict, By: rv.Reviewer})
+		rec.Reviews = append(rec.Reviews, Review{Verdict: rv.Verdict, By: rv.Reviewer, Feedback: clip(rv.Feedback, 4000)})
 	}
 	var usage []core.UsageRow
 	if err := call("usage.list", map[string]any{"taskId": task.ID, "limit": 1000}, &usage); err == nil {
 		d.addUsage(&rec, usage)
 		art.Usage, _ = json.MarshalIndent(usage, "", "  ")
 	}
+	// every event of the task, in pages: the core returns at most 2,000 per call (and 500 when asked for more)
 	var evs []json.RawMessage
-	if err := call("events.replay", map[string]any{"taskId": task.ID, "limit": 5000}, &evs); err == nil {
-		art.Events, _ = json.MarshalIndent(evs, "", "  ")
-		for _, e := range evs {
-			var head struct {
-				Type string `json:"type"`
-			}
-			if json.Unmarshal(e, &head) == nil && head.Type == "sandbox.command" {
-				rec.SandboxCommands++
-			}
+	for after := uint64(0); ; {
+		var page []json.RawMessage
+		if err := call("events.replay", map[string]any{"taskId": task.ID, "after": after, "limit": eventPage}, &page); err != nil {
+			rec.Notes = append(rec.Notes, "the task's events could not be read in full: "+err.Error())
+			break
+		}
+		evs = append(evs, page...)
+		if len(page) < eventPage {
+			break
+		}
+		var last struct {
+			Seq uint64 `json:"seq"`
+		}
+		if json.Unmarshal(page[len(page)-1], &last) != nil || last.Seq <= after {
+			break
+		}
+		after = last.Seq
+	}
+	art.Events, _ = json.MarshalIndent(evs, "", "  ")
+	for _, e := range evs {
+		var head struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(e, &head) == nil && head.Type == "sandbox.command" {
+			rec.SandboxCommands++
 		}
 	}
 	return rec, art
@@ -269,6 +286,16 @@ func (d Drydock) waitCompleted(ctx context.Context, call func(string, any, any) 
 		}
 	}
 	return false
+}
+
+// eventPage is how many events the harness asks the core for at a time (the core's own maximum; tests make it small).
+var eventPage = 2000
+
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 // waitSandboxGone waits until no container of the task is left, or for at most limit.

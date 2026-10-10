@@ -272,3 +272,31 @@ stdio shim as `<executable> mcp-shim`, and the harness binary did not serve it, 
 finished "not verified". The harness was fixed, the run discarded, and the product now stops a turn whose gateway failed to
 connect instead of letting it work blind (P33).
 
+**Pilot results (2026-10-10; a pilot, not a headline: four tasks, k = 3, one model).** Generated reports:
+`evals/results/2026-10-10-pilot-checks-report.md` and `evals/results/2026-10-10-pilot-report.md`; every run's record is next to
+them. Drydock commit 895299e, Claude Code 2.1.296, model `haiku` (reported `claude-haiku-5-5`), Linux.
+
+The planned arm D ran the worker in the per-task sandbox. That trial (`2026-10-10-pilot`) stopped after one pair because this
+environment's container engine stopped at its session time limit: on CSV export both arms were accepted (D $0.0227 in 1m49s,
+B1 $0.0150 in 53s). The pilot was then run in full with D's worker running the project's own checks on the machine instead
+(P24, trial `2026-10-10-pilot-checks`):
+
+| Arm | Runs | Accepted | Cost, all runs | Cost per accepted task | Cost per run, median (range) | Wall time per run, median (range) |
+|---|---|---|---|---|---|---|
+| D | 12 | 12 | $0.3255 | $0.0271 | $0.0229 ($0.0135 to $0.0501) | 1m22s (46s to 3m9s) |
+| B1 | 12 | 12 | $0.1972 | $0.0164 | $0.0165 ($0.0061 to $0.0292) | 1m8s (29s to 3m55s) |
+
+Per task, D's median cost per run against B1's: CSV export $0.0235 against $0.0154, invoice pages $0.0407 against $0.0231,
+invoice rules $0.0142 against $0.0086, rate limit $0.0223 against $0.0188. D's reviewer asked for changes in 2 of 12 runs
+(CSV export #3, invoice pages #3); both then passed. Whether those first versions would have failed the hidden check, and what
+the reviewer objected to, was not recorded: the harness exported only the first 500 events of a task. It now reads them all
+and keeps each review's feedback in `run.json`.
+
+**What this says.** On four small, fully specified tasks, one plain haiku session already passed every hidden check, so
+Drydock's worker-plus-reviewer loop cost more (about 1.4 times per run at the median, 1.65 times over all runs) and took a
+little longer without changing the outcome. **What it does not say:** anything about a quality difference (no task here
+defeated the plain session, so there was nothing to catch), larger or vaguer tasks, other models, or what the sandbox, the CI
+gate and the human approval protect against, which an acceptance rate does not measure. To learn where Drydock earns its cost,
+the suite needs tasks a single session fails often enough to tell the arms apart: multi-file features, fixes that break
+something elsewhere, requirements whose obvious implementation passes the visible tests and not the hidden ones; at least 20
+of them (section 6.1), three repeats each, and a stronger model as well as haiku.

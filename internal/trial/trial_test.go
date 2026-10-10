@@ -295,6 +295,8 @@ func TestTheDrydockArmAcceptsOrRejectsOnTheHiddenCheck(t *testing.T) {
 			if _, err := Prepare(ctx, root, x, mustMkdir(t, repo)); err != nil {
 				t.Fatal(err)
 			}
+			defer func(n int) { eventPage = n }(eventPage)
+			eventPage = 7
 			d := Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: "haiku", CeilingUSD: 2, Wall: 5 * time.Minute, Mode: ModeChecks,
 				Poll: 200 * time.Millisecond, Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}}}
 			var diff string
@@ -310,6 +312,12 @@ func TestTheDrydockArmAcceptsOrRejectsOnTheHiddenCheck(t *testing.T) {
 			}
 			if len(art.Events) == 0 || len(art.Usage) == 0 {
 				t.Fatal("no events or usage exported")
+			}
+			// the export holds the whole task, up to its review and the merge approval, read in pages (it once stopped at the
+			// core's 500): the page size is small here, so this run needed many pages
+			var all []json.RawMessage
+			if err := json.Unmarshal(art.Events, &all); err != nil || len(all) <= 3*eventPage || !strings.Contains(string(art.Events), `"task.review"`) {
+				t.Fatalf("the exported events stop early: %d events with pages of %d (%v)", len(all), eventPage, err)
 			}
 			if c.want == Accepted {
 				if b, _ := os.ReadFile(filepath.Join(repo, "internal", "billing", "invoice.go")); !strings.Contains(string(b), "roundDiv") {

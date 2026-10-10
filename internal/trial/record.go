@@ -78,10 +78,11 @@ type Tokens struct {
 	CacheWrite int64 `json:"cacheWrite"`
 }
 
-// Review is one of D's review verdicts.
+// Review is one of D's review verdicts, with what the reviewer said.
 type Review struct {
-	Verdict string `json:"verdict"`
-	By      string `json:"by"`
+	Verdict  string `json:"verdict"`
+	By       string `json:"by"`
+	Feedback string `json:"feedback,omitempty"`
 }
 
 // Counted reports whether the run counts towards acceptance figures.
