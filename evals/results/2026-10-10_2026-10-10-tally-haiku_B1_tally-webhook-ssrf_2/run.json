@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-webhook-ssrf",
+  "taskClass": "security review",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "1de530d384b8c287f37d621ea52caa8e66fcfd59",
+  "startedAt": "2026-10-10T05:25:59.772376384Z",
+  "wallMs": 115805,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 834,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 1413,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\n--- FAIL: TestHiddenSSRFCreate (0.00s)\n    zz_hidden_webhook_ssrf_test.go:182: POST /v1/webhook-endpoints with url \"https://[fe80::1%25eth0]/\": want 422 {\"error\":\"invalid_url\"}, got 201 {\"id\":\"we_000007\",\"org_id\":\"org_000001\",\"url\":\"https://[fe80::1%25eth0]/\",\"events\":[\"*\"],\"secret\":\"whsec_78bccce09d1c0cc60c7f82531f1de765\",\"enabled\":true,\"created_at\":\"2026-01-15T10:00:00Z\"}\n    zz_hidden_webhook_ssrf_test.go:186: refused URLs created endpoints: [url https://[fe80::1%25eth0]/, events [*], enabled true, disabled_reason \"\"]\n    zz_hidden_webhook_ssrf_test.go:195: 24 endpoints after creating 23 with public URLs\nFAIL\nFAIL\texample.com/tally/internal/api\t0.015s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.004s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.002s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.006s\nok  \texample.com/tally/internal/snapshot\t0.007s\nok  \texample.com/tally/internal/store\t0.004s\nok  \texample.com/tally/internal/subscriptions\t0.009s\nok  \texample.com/tally/internal/webhooks\t0.005s\nFAIL\n"
+      }
+    ],
+    "durationMs": 2251
+  },
+  "costUsd": 0.03236704,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 40,
+    "output": 20546,
+    "cacheRead": 1101084,
+    "cacheWrite": 55396
+  },
+  "sessions": 1,
+  "modelTurns": 20,
+  "toolUses": {
+    "Bash": 11,
+    "Edit": 7,
+    "Read": 1
+  }
+}
