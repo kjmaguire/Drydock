@@ -64,6 +64,12 @@ type Record struct {
 	ToolUses map[string]int `json:"toolUses,omitempty"`
 	// SandboxCommands counts the commands D's worker ran in its sandbox.
 	SandboxCommands int `json:"sandboxCommands,omitempty"`
+	// Skills is how D's agents received the skills of the run's bundle: "" (no skills), "all" or "relevant" (DevSettings.
+	// SkillDelivery), with the bundle's skill names in SkillNames. SkillReads counts the times an agent opened a skill's
+	// on-demand file with Read (only "relevant" has those files).
+	Skills     string   `json:"skills,omitempty"`
+	SkillNames []string `json:"skillNames,omitempty"`
+	SkillReads int      `json:"skillReads,omitempty"`
 	// CoreTaskID is D's task in its core (its events and usage files name it).
 	CoreTaskID string `json:"coreTaskId,omitempty"`
 	// SawHiddenFiles is set when one of B1's tool calls named the harness's hidden checks (it runs with this machine's whole

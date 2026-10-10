@@ -42,7 +42,7 @@ type SectionsFunc func(ctx context.Context, projectID, worktree string) ([]Secti
 type FilesFunc func(ctx context.Context, projectID, worktree string) ([]ExtraFile, error)
 
 // extraDirs are the directories whose stale generated files are removed when the set of extra files changes.
-var extraDirs = []string{".claude/rules", ".agents/skills"}
+var extraDirs = []string{".claude/rules", ".claude/drydock-skills", ".agents/skills"}
 
 func hasMarker(content string) bool {
 	head := content

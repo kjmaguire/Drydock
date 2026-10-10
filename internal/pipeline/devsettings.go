@@ -44,6 +44,11 @@ type DevSettings struct {
 	// sets them from its caller's identity, never from the settings it is given; empty while CIMode is CIRequired.
 	CINoneBy string `json:"ciNoneBy,omitempty"`
 	CINoneAt int64  `json:"ciNoneAt,omitempty"`
+	// SkillDelivery is how a Claude agent receives the project's skills: "all" puts every skill that reaches it into every
+	// turn; "relevant" puts in only the skills whose globs match the task's files and lists the others in AGENTS.md for the
+	// agent to read when the work needs them (skills.DeliveryAll, skills.DeliveryRelevant). Empty means the default
+	// (skills.DefaultDelivery). Other CLIs always get the relevant ones at the start and the rest from the skills tool.
+	SkillDelivery string `json:"skillDelivery,omitempty"`
 }
 
 // The CI modes (DevSettings.CIMode).
@@ -119,6 +124,11 @@ func (s *DevSettings) Validate() error {
 	}
 	if s.CIMode == CIRequired {
 		s.CINoneBy, s.CINoneAt = "", 0
+	}
+	switch s.SkillDelivery {
+	case "", "all", "relevant":
+	default:
+		return fmt.Errorf("devloop: skillDelivery must be \"all\" or \"relevant\", not %q", s.SkillDelivery)
 	}
 	return nil
 }

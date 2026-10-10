@@ -85,6 +85,76 @@ func TestPlanClaudeRulesAreNativePathScopedAndRoleFiltered(t *testing.T) {
 	}
 }
 
+// With DeliveryRelevant, Claude gets in its instructions only the skills whose globs match the task's files; every other skill
+// is one index line (name, description, globs, file) and a file outside .claude/rules that it reads when the work needs it.
+func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
+	e := acceptedEnv(t)
+	ctx := context.Background()
+	plan, err := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant, Hints: []string{"src/api/users.ts"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]PlannedFile{}
+	for _, f := range plan.Files {
+		byPath[f.Path] = f
+	}
+	if len(plan.Files) != 3 {
+		t.Fatalf("api-style as a rule, d1-migrations and everywhere on demand: %v", plan.Files)
+	}
+	rule := byPath[".claude/rules/api-style.md"]
+	if rule.Method != MethodClaudeRules || rule.Fidelity != FidelityRunStart || !strings.Contains(rule.Content, "Return typed errors.") {
+		t.Fatalf("%+v", rule)
+	}
+	for _, name := range []string{"d1-migrations", "everywhere"} {
+		f := byPath[OnDemandDir+"/"+name+".md"]
+		if f.Method != MethodClaudeOnDemand || f.Fidelity != FidelityOnDemand || !strings.Contains(f.Content, "drydock:generated skill="+name) {
+			t.Fatalf("%s: %+v", name, f)
+		}
+		if strings.HasPrefix(f.Content, "---") {
+			t.Fatalf("an on-demand file has no front matter: it is read, not loaded:\n%s", f.Content)
+		}
+	}
+	if !strings.Contains(byPath[OnDemandDir+"/d1-migrations.md"].Content, d1Skill) {
+		t.Fatal("the on-demand file carries the whole skill")
+	}
+	if strings.Join(plan.OnDemand, ",") != "d1-migrations,everywhere" || !plan.Index {
+		t.Fatalf("%+v", plan)
+	}
+	for _, want := range []string{"Read tool", "**d1-migrations** (`.claude/drydock-skills/d1-migrations.md`): D1 migration rules (for migrations/**/*.sql, wrangler.jsonc)",
+		"**everywhere** (`.claude/drydock-skills/everywhere.md`): Applies to all paths"} {
+		if !strings.Contains(plan.Note, want) {
+			t.Errorf("index lacks %q:\n%s", want, plan.Note)
+		}
+	}
+	if strings.Contains(plan.Note, "api-style") || strings.Contains(plan.Note, d1Skill) {
+		t.Fatalf("the index lists only on-demand skills, never a body:\n%s", plan.Note)
+	}
+	// no file hints: nothing can be matched, so every skill is on demand
+	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant})
+	for _, f := range plan.Files {
+		if f.Method != MethodClaudeOnDemand {
+			t.Fatalf("without hints: %+v", f)
+		}
+	}
+	// "all" and an unknown or empty value keep today's delivery: every skill as a rule
+	for _, d := range []string{DeliveryAll, "", "bogus"} {
+		plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: d, Hints: []string{"src/api/users.ts"}})
+		if len(plan.Files) != 3 || plan.Index || plan.Note != "" || len(plan.OnDemand) != 0 {
+			t.Fatalf("%q: %+v", d, plan)
+		}
+		for _, f := range plan.Files {
+			if f.Method != MethodClaudeRules {
+				t.Fatalf("%q: %+v", d, f)
+			}
+		}
+	}
+	// other CLIs ignore the setting
+	cx, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "codex", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
+	if len(cx.OnDemand) != 1 {
+		t.Fatalf("%+v", cx)
+	}
+}
+
 func TestPlanForCLIsWithoutNativeScoping(t *testing.T) {
 	e := acceptedEnv(t)
 	ctx := context.Background()

@@ -33,7 +33,12 @@ func TestProjectMemoryReadsClaudeMdItsImportsAndTheRules(t *testing.T) {
 	write(t, filepath.Join(dir, ".claude", "rules", "b-color.md"), "The team color is TURQUOISE.")
 	write(t, filepath.Join(dir, ".claude", "rules", "a-style.md"), "Short functions.")
 	write(t, filepath.Join(dir, ".claude", "settings.json"), `{"hooks":{"PreToolUse":[]},"permissions":{"allow":["Bash(*)"]}}`)
+	// skills read on demand (skills.OnDemandDir) are not instructions: the agent reads them when the work needs them
+	write(t, filepath.Join(dir, ".claude", "drydock-skills", "big.md"), "ON-DEMAND-SKILL-TEXT")
 	got := projectMemory(dir)
+	if strings.Contains(got, "ON-DEMAND-SKILL-TEXT") {
+		t.Fatalf("an on-demand skill was loaded:\n%s", got)
+	}
 	for _, want := range []string{"Release codename: PELICAN-9.", "Use tabs.", "The team color is TURQUOISE.", "Short functions.", "## CLAUDE.md", "## .claude/rules/a-style.md"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in:\n%s", want, got)

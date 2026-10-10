@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/sandbox"
+	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
@@ -39,14 +41,23 @@ type Drydock struct {
 	Poll time.Duration
 	// Adapters replace the core's agent adapters: test doubles only (the harness's own tests use the scripted stand-in).
 	Adapters map[string]agents.Adapter
+	// SkillsDir (optional) holds skills as <name>/SKILL.md. They are committed into the task's repository under .aet/skills
+	// before the run, accepted by the harness as the human would, and reach both agents; Skills says how (skills.DeliveryAll or
+	// skills.DeliveryRelevant). Without SkillsDir the project has no skills.
+	SkillsDir string
+	Skills    string
 }
 
 // Detail describes the arm for the record.
 func (d Drydock) Detail() string {
+	s := "Drydock: worker + independent reviewer (Claude Code), plain workflow, commands in the per-task sandbox (P30, image " + d.SandboxImage + ")"
 	if d.Mode == ModeChecks {
-		return "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)"
+		s = "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)"
 	}
-	return "Drydock: worker + independent reviewer (Claude Code), plain workflow, commands in the per-task sandbox (P30, image " + d.SandboxImage + ")"
+	if d.SkillsDir != "" {
+		s += ", the bundle's skills delivered " + skills.DeliveryOf(d.Skills)
+	}
+	return s
 }
 
 // Artifacts are the files a D run leaves next to its run.json.
@@ -83,6 +94,16 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		if err := commitAll(ctx, repo, "Drydock sandbox definition"); err != nil {
 			return fail(Failed, err.Error())
 		}
+	}
+	if d.SkillsDir != "" {
+		names, err := copySkills(d.SkillsDir, filepath.Join(repo, ".aet", "skills"))
+		if err != nil {
+			return fail(Failed, "the skills: "+err.Error())
+		}
+		if err := commitAll(ctx, repo, "The team's skills"); err != nil {
+			return fail(Failed, err.Error())
+		}
+		rec.Skills, rec.SkillNames = skills.DeliveryOf(d.Skills), names
 	}
 	c, err := core.Open(ctx, core.Config{DataDir: d.DataDir, User: "trial", LeaseTTL: 30 * time.Second, Adapters: d.Adapters})
 	if err != nil {
@@ -126,6 +147,25 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 			return fail(Failed, err.Error())
 		}
 		s["workerChecks"] = true
+		if err := call("projectdev.set", map[string]any{"projectId": p.ID, "settings": s}, nil); err != nil {
+			return fail(Failed, err.Error())
+		}
+	}
+	if d.SkillsDir != "" {
+		var res skills.ScanResult
+		if err := call("skill.scan", map[string]string{"projectId": p.ID}, &res); err != nil {
+			return fail(Failed, err.Error())
+		}
+		for _, name := range rec.SkillNames {
+			if err := call("skill.accept", map[string]string{"projectId": p.ID, "name": name}, nil); err != nil {
+				return fail(Failed, err.Error())
+			}
+		}
+		var s map[string]any
+		if err := call("projectdev.get", map[string]any{"projectId": p.ID}, &s); err != nil {
+			return fail(Failed, err.Error())
+		}
+		s["skillDelivery"] = rec.Skills
 		if err := call("projectdev.set", map[string]any{"projectId": p.ID, "settings": s}, nil); err != nil {
 			return fail(Failed, err.Error())
 		}
@@ -245,6 +285,9 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		if json.Unmarshal(e, &head) == nil && head.Type == "sandbox.command" {
 			rec.SandboxCommands++
 		}
+		if head.Type == "agent.output" && readsSkill(e) {
+			rec.SkillReads++
+		}
 	}
 	return rec, art
 }
@@ -290,6 +333,55 @@ func (d Drydock) waitCompleted(ctx context.Context, call func(string, any, any) 
 
 // eventPage is how many events the harness asks the core for at a time (the core's own maximum; tests make it small).
 var eventPage = 2000
+
+// readsSkill reports whether an agent.output event is a Read of a skill's on-demand file.
+func readsSkill(e json.RawMessage) bool {
+	var ev struct {
+		Data struct {
+			Kind string `json:"kind"`
+			Data struct {
+				Name string `json:"name"`
+				Args struct {
+					FilePath string `json:"file_path"`
+				} `json:"args"`
+			} `json:"data"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(e, &ev) != nil || ev.Data.Kind != "tool_call" || ev.Data.Data.Name != "Read" {
+		return false
+	}
+	return strings.Contains(filepath.ToSlash(ev.Data.Data.Args.FilePath), "/"+skills.OnDemandDir+"/")
+}
+
+// copySkills copies each <name>/SKILL.md of src into dst and returns the names, sorted.
+func copySkills(src, dst string) ([]string, error) {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, e.Name(), "SKILL.md"))
+		if err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(filepath.Join(dst, e.Name()), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(dst, e.Name(), "SKILL.md"), b, 0o644); err != nil {
+			return nil, err
+		}
+		names = append(names, e.Name())
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("%s has no <name>/SKILL.md", src)
+	}
+	sort.Strings(names)
+	return names, nil
+}
 
 func clip(s string, n int) string {
 	if len(s) <= n {

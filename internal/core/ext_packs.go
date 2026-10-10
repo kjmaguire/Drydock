@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/packs"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/requirements"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
@@ -205,7 +206,7 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 
 // worktreeTarget finds the task and agent a worktree belongs to.
 func (k *Knowledge) worktreeTarget(ctx context.Context, projectID, worktree string) skills.Target {
-	t := skills.Target{ProjectID: projectID, Worktree: worktree}
+	t := skills.Target{ProjectID: projectID, Worktree: worktree, Delivery: pipeline.LoadDevSettings(ctx, k.c.DB, projectID).SkillDelivery}
 	if worktree == "" {
 		return t
 	}
@@ -263,7 +264,11 @@ func (k *Knowledge) wireContext() {
 			return nil, err
 		}
 		if plan.Note != "" {
-			out = append(out, ctxeng.Section{Title: "Skills", Body: plan.Note, Source: "skills:note", Reason: "this CLI has no native path-scoped rules: skills arrive on demand", Priority: 36})
+			reason := "this CLI has no native path-scoped rules: skills arrive on demand"
+			if plan.Index {
+				reason = "skills Claude reads when the work needs them (skill delivery: relevant)"
+			}
+			out = append(out, ctxeng.Section{Title: "Skills", Body: plan.Note, Source: "skills:index", Reason: reason, Priority: 36})
 		}
 		return out, nil
 	}

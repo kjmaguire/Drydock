@@ -26,6 +26,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/sandbox"
 	"github.com/kjmaguire/drydock/internal/sandbox/sandboxtest"
+	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/trial"
 )
 
@@ -47,6 +48,10 @@ func main() {
 		err = report(os.Args[2:])
 	case "selfcheck":
 		err = selfcheck(ctx, os.Args[2:])
+	case "compare":
+		err = compare(os.Args[2:])
+	case "fetch-skills":
+		err = fetchSkills(ctx, os.Args[2:])
 	default:
 		usage()
 	}
@@ -57,7 +62,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: drydock-trial run|report|selfcheck [flags] (-h for the flags)")
+	fmt.Fprintln(os.Stderr, "usage: drydock-trial run|report|compare|selfcheck|fetch-skills [flags] (-h for the flags)")
 	os.Exit(2)
 }
 
@@ -100,7 +105,22 @@ func run(ctx context.Context, args []string) error {
 	total := fs.Float64("total-usd", 10, "stop starting runs once what this invocation spent plus one more ceiling would pass this")
 	firstRep := fs.Int("first-repeat", 1, "number of the first repeat (to add repeats to a trial in a later batch)")
 	startBefore := fs.Duration("start-before", 0, "start no run once this long has passed since the command started (0: no limit)")
+	skillsDir := fs.String("skills-dir", "", "D only: skills (<name>/SKILL.md) the project gets, accepted for both agents (see fetch-skills)")
+	skillMode := fs.String("d-skills", "", "D only, with -skills-dir: how Claude gets them, all (every turn) or relevant (matching ones; the rest on demand)")
 	_ = fs.Parse(args)
+	if (*skillsDir == "") != (*skillMode == "") {
+		return errors.New("-skills-dir and -d-skills go together")
+	}
+	if *skillMode != "" && *skillMode != skills.DeliveryAll && *skillMode != skills.DeliveryRelevant {
+		return fmt.Errorf("-d-skills is all or relevant, not %q", *skillMode)
+	}
+	if *skillsDir != "" {
+		abs, err := filepath.Abs(*skillsDir)
+		if err != nil {
+			return err
+		}
+		*skillsDir = abs
+	}
 	began := time.Now()
 
 	root, err := repoRoot()
@@ -170,7 +190,7 @@ func run(ctx context.Context, args []string) error {
 					return finish(outDir, *name)
 				}
 				dir := filepath.Join(*work, fmt.Sprintf("%s-%s-%d", t.ID, arm, rep))
-				rec, extra := runOne(ctx, root, dir, t, arm, *model, *ceiling, *wall, *mode, *image, *bin)
+				rec, extra := runOne(ctx, root, dir, t, arm, *model, *ceiling, *wall, *mode, *image, *bin, *skillsDir, *skillMode)
 				rec.Schema, rec.Trial, rec.Commit, rec.Repeat, rec.CLI = 1, *name, commit, rep, cli
 				rec.Host = runtime.GOOS + "/" + runtime.GOARCH
 				where, err := rec.Write(outDir, extra)
@@ -213,7 +233,7 @@ func finish(outDir, name string) error {
 	return nil
 }
 
-func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model string, ceiling float64, wall time.Duration, mode, image, bin string) (trial.Record, map[string][]byte) {
+func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model string, ceiling float64, wall time.Duration, mode, image, bin, skillsDir, skillMode string) (trial.Record, map[string][]byte) {
 	started := time.Now()
 	extra := map[string][]byte{}
 	repo := filepath.Join(dir, "repo")
@@ -247,7 +267,8 @@ func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model stri
 			extra["diff.patch"] = []byte(d)
 		}
 	case trial.ArmDrydock:
-		d := trial.Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: model, CeilingUSD: ceiling, Wall: wall, Mode: mode, SandboxImage: image}
+		d := trial.Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: model, CeilingUSD: ceiling, Wall: wall, Mode: mode, SandboxImage: image,
+			SkillsDir: skillsDir, Skills: skillMode}
 		var art trial.Artifacts
 		rec, art = d.Run(ctx, t, repo, func(tree string) trial.AcceptResult {
 			if diff, err := trial.ResultDiff(ctx, root, t, tree); err == nil {
@@ -289,6 +310,67 @@ func report(args []string) error {
 		}
 	}
 	fmt.Print(trial.Report(keep))
+	return nil
+}
+
+// compare prints arm D's variants side by side: one trial per variant (for example skills delivered all or relevant).
+func compare(args []string) error {
+	fs := flag.NewFlagSet("compare", flag.ExitOnError)
+	dir := fs.String("dir", "evals/results", "where the run records are (relative to the repository)")
+	names := fs.String("trials", "", "comma-separated trial names, the first is the baseline")
+	out := fs.String("out", "", "also write the comparison to this file (relative to -dir)")
+	_ = fs.Parse(args)
+	if *names == "" {
+		return errors.New("-trials is required")
+	}
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+	recs, err := trial.LoadRecords(filepath.Join(root, *dir))
+	if err != nil {
+		return err
+	}
+	var groups []trial.Group
+	for _, n := range strings.Split(*names, ",") {
+		g := trial.Group{Name: strings.TrimSpace(n)}
+		for _, r := range recs {
+			if r.Trial == g.Name {
+				g.Recs = append(g.Recs, r)
+			}
+		}
+		groups = append(groups, g)
+	}
+	md := trial.Compare(groups)
+	if *out != "" {
+		if err := os.WriteFile(filepath.Join(root, *dir, *out), []byte(md), 0o644); err != nil {
+			return err
+		}
+	}
+	fmt.Print(md)
+	return nil
+}
+
+// fetchSkills writes the prebuilt agents' skills, at their pinned commits, into a directory for -skills-dir.
+func fetchSkills(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("fetch-skills", flag.ExitOnError)
+	out := fs.String("out", "", "directory to write <name>/SKILL.md into (outside this repository: the texts are third-party)")
+	_ = fs.Parse(args)
+	if *out == "" {
+		return errors.New("-out is required")
+	}
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+	if insideRepo(root, *out) {
+		return errors.New("-out must be outside the repository: the skills are third-party texts under their own licenses")
+	}
+	names, err := trial.FetchPrebuiltSkills(ctx, skills.NewGitHubFetcher(), *out)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%d skills: %s\n", len(names), strings.Join(names, ", "))
 	return nil
 }
 

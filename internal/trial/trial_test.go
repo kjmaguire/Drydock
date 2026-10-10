@@ -390,6 +390,73 @@ func TestTheDrydockArmAcceptsOrRejectsOnTheHiddenCheck(t *testing.T) {
 	}
 }
 
+// With a skills bundle, D commits the skills into the task's repository, accepts them for both agents as the human would,
+// sets how Claude receives them, and counts the agents' reads of the on-demand files.
+func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the whole product loop")
+	}
+	root := repoRoot(t)
+	x := task(t, "saasapi-invoice-rules")
+	ctx := context.Background()
+	for _, kv := range fakeScript(t, fakeagent.Script{
+		Rules: []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
+		Default: []fakeagent.Step{
+			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/.claude/drydock-skills/house-style.md"}`), Result: "the skill"},
+			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/internal/billing/invoice.go"}`), Result: "code"},
+			{Write: &fakeagent.WriteSpec{Path: "internal/billing/invoice.go", Content: solution(t, x.ID, "internal/billing/invoice.go")}}, {Say: "done"}},
+	}) {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, "bundle")
+	mustWrite(t, filepath.Join(bundle, "house-style", "SKILL.md"), "---\nname: house-style\ndescription: How code is written in this house\n---\nKeep it plain.\n")
+	repo := filepath.Join(dir, "repo")
+	if _, err := Prepare(ctx, root, x, mustMkdir(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+	var worktree string
+	d := Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: "haiku", CeilingUSD: 2, Wall: 5 * time.Minute, Mode: ModeChecks,
+		Poll: 200 * time.Millisecond, Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}},
+		SkillsDir: bundle, Skills: "relevant"}
+	rec, _ := d.Run(ctx, x, repo, func(tree string) AcceptResult {
+		worktree = tree
+		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "drydock-skills", "house-style.md")); err != nil || !strings.Contains(string(b), "Keep it plain.") {
+			t.Errorf("the on-demand file: %v %s", err, b)
+		}
+		return Accept(ctx, root, x, tree)
+	})
+	if rec.Outcome != Accepted || rec.Skills != "relevant" || strings.Join(rec.SkillNames, ",") != "house-style" || rec.SkillReads != 1 {
+		t.Fatalf("%s (%s) skills %q %v reads %d", rec.Outcome, rec.Reason, rec.Skills, rec.SkillNames, rec.SkillReads)
+	}
+	if worktree == "" || !strings.Contains(rec.ArmDetail, "delivered relevant") {
+		t.Fatal(rec.ArmDetail)
+	}
+}
+
+// Compare puts D's variants side by side and tests each against the first.
+func TestCompareShowsVariantsTaskByTask(t *testing.T) {
+	r := func(trial, task, outcome string, cost float64, reads int) Record {
+		return Record{Trial: trial, Arm: ArmDrydock, TaskID: task, Outcome: outcome, CostUSD: cost, SkillReads: reads, WallMs: 60000,
+			Tokens: Tokens{Input: 10, CacheRead: 1000, CacheWrite: 90}}
+	}
+	md := Compare([]Group{
+		{Name: "none", Recs: []Record{r("none", "a", Accepted, 0.1, 0), r("none", "b", Accepted, 0.1, 0), {Trial: "none", Arm: ArmB1, TaskID: "a", Outcome: Rejected}}},
+		{Name: "all", Recs: []Record{r("all", "a", Rejected, 0.2, 0), r("all", "b", Accepted, 0.2, 0)}},
+		{Name: "relevant", Recs: []Record{r("relevant", "a", Accepted, 0.1, 2), r("relevant", "b", Accepted, 0.1, 1)}},
+	})
+	for _, want := range []string{
+		"| none | 2 | 2 | $0.2000 | $0.1000 |", "| all | 2 | 1 | $0.4000 | $0.4000 |", "| 1100 (1100 to 1100) |", "| 1.5 (1.0 to 2.0) |",
+		"| a | 1 of 1 | 0 of 1 | 1 of 1 |", "all against none: accepted more often on 0 task(s), less often on 1, as often on 1; exact two-sided sign test p = 1.000.",
+		"relevant against none: accepted more often on 0 task(s), less often on 0, as often on 2",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("missing %q in:\n%s", want, md)
+		}
+	}
+}
+
 // The same with the sandbox (P30), against a real container engine; skipped without one.
 func TestTheDrydockArmRunsTheChecksInTheSandbox(t *testing.T) {
 	if testing.Short() {
@@ -539,5 +606,15 @@ func TestPairComparesTheArmsTaskByTask(t *testing.T) {
 		if got := signTest(c.a, c.b); math.Abs(got-c.p) > 1e-12 {
 			t.Errorf("signTest(%d, %d) = %v, want %v", c.a, c.b, got, c.p)
 		}
+	}
+}
+
+func mustWrite(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

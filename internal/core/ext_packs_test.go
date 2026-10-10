@@ -359,3 +359,67 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 		return detail.Task.Status == tasks.Completed
 	})
 }
+
+// With skill delivery "relevant", a Claude worker on a task without file hints gets no skill in its instructions: AGENTS.md
+// lists each one and its text is in .claude/drydock-skills, which stays out of the diff like the other generated files.
+func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testing.T) {
+	a := open(t, "")
+	repo := newRepo(t)
+	os.MkdirAll(filepath.Join(repo, ".aet", "skills", "go-style"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".aet", "skills", "go-style", "SKILL.md"), []byte("---\nname: go-style\ndescription: How Go code is written here\n---\nKeep functions small.\n"), 0o644)
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-qm", "skills")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
+	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "go-style"}, nil)
+	var s map[string]any
+	a.call("projectdev.get", map[string]any{"projectId": p.ID}, &s)
+	s["skillDelivery"] = "sometimes"
+	if err := a.callErr("projectdev.set", map[string]any{"projectId": p.ID, "settings": s}); err == nil {
+		t.Fatal("an unknown skill delivery was saved")
+	}
+	s["skillDelivery"] = skills.DeliveryRelevant
+	a.call("projectdev.set", map[string]any{"projectId": p.ID, "settings": s}, nil)
+
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	var detail core.TaskDetail
+	a.waitFor("the human request", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return len(detail.Pending) == 1
+	})
+	wt := detail.Task.Worktree
+	if rules, _ := filepath.Glob(filepath.Join(wt, ".claude", "rules", "*.md")); len(rules) != 0 {
+		t.Fatalf("no skill is loaded into the turn: %v", rules)
+	}
+	body, err := os.ReadFile(filepath.Join(wt, ".claude", "drydock-skills", "go-style.md"))
+	if err != nil || !strings.Contains(string(body), "Keep functions small.") {
+		t.Fatalf("%v\n%s", err, body)
+	}
+	agents, _ := os.ReadFile(filepath.Join(wt, "AGENTS.md"))
+	if !strings.Contains(string(agents), "**go-style** (`.claude/drydock-skills/go-style.md`): How Go code is written here") || strings.Contains(string(agents), "Keep functions small.") {
+		t.Fatalf("AGENTS.md lists the skill without its text:\n%s", agents)
+	}
+	var diff string
+	a.call("task.diff", map[string]string{"id": task.ID}, &diff)
+	if strings.Contains(diff, "drydock-skills") || strings.Contains(diff, "AGENTS.md") {
+		t.Fatalf("generated files must stay out of the diff:\n%s", diff)
+	}
+	var ds []skills.Delivery
+	a.call("skill.deliveries", map[string]string{"projectId": p.ID, "taskId": task.ID}, &ds)
+	if len(ds) != 1 || ds[0].Method != skills.MethodClaudeOnDemand || ds[0].Fidelity != skills.FidelityOnDemand {
+		t.Fatalf("%+v", ds)
+	}
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
+	a.waitFor("completion", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return detail.Task.Status == tasks.Completed
+	})
+}

@@ -15,11 +15,26 @@ const (
 	MethodNestedFile   = "nested_file"
 	MethodAgentsSkills = "agents_skills"
 	MethodTool         = "tool"
+	// MethodClaudeOnDemand is a skill Claude gets as an index line in AGENTS.md and a file it reads when the work needs it
+	// (DeliveryRelevant).
+	MethodClaudeOnDemand = "claude_on_demand"
 
 	FidelityExact    = "exact"
 	FidelityRunStart = "run_start"
 	FidelityOnDemand = "on_demand"
 )
+
+// How Claude receives the skills that reach it (DevSettings.SkillDelivery).
+const (
+	// DeliveryAll puts every skill into every turn as a .claude/rules file, whatever the task touches.
+	DeliveryAll = "all"
+	// DeliveryRelevant puts a skill into the turn only when its globs match the task's file hints; every other skill is one
+	// line in AGENTS.md (name, what it is for, where its text is) and Claude reads it with the Read tool when the work needs it.
+	DeliveryRelevant = "relevant"
+)
+
+// OnDemandDir holds the text of the skills Claude reads on demand. It is not .claude/rules, so nothing loads it by itself.
+const OnDemandDir = ".claude/drydock-skills"
 
 // GeneratedMarker marks generated files (the same string internal/context looks for).
 const GeneratedMarker = "drydock:generated"
@@ -37,6 +52,8 @@ type Target struct {
 	// Hints are the files the task is expected to touch (task file hints); run-start selection for CLIs without native
 	// scoping uses them.
 	Hints []string
+	// Delivery is DeliveryAll or DeliveryRelevant for Claude; empty means DefaultDelivery.
+	Delivery string
 }
 
 // PlannedFile is one file to write into the worktree.
@@ -53,11 +70,14 @@ type PlannedFile struct {
 // Plan is the delivery plan for a worktree.
 type Plan struct {
 	Files []PlannedFile
-	// OnDemand lists eligible skills that no file carries; the agent gets them from the skills tool.
+	// OnDemand lists eligible skills the agent fetches when it needs them: from the skills tool, or for Claude from its file in
+	// OnDemandDir.
 	OnDemand []string
 	// Note is a sentence for the generated AGENTS.md telling a CLI without native scoping to call the skills tool; empty for
-	// Claude or when there are no skills.
+	// Claude or when there are no skills. For Claude with DeliveryRelevant it is the index of the skills read on demand.
 	Note string
+	// Index is true when Note is Claude's index of on-demand skills.
+	Index bool
 }
 
 // family maps an adapter id to its delivery family.
@@ -88,9 +108,20 @@ func (s *Service) Plan(ctx context.Context, t Target) (Plan, error) {
 	}
 	switch family(t.Adapter) {
 	case "claude":
+		var index []Skill
 		for _, k := range eligible {
-			p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: FidelityExact, Hash: k.ContentHash})
+			switch {
+			case DeliveryOf(t.Delivery) == DeliveryAll:
+				p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: FidelityExact, Hash: k.ContentHash})
+			case len(k.Globs) > 0 && len(t.Hints) > 0 && PathsMatch(k.Globs, t.Hints):
+				p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: FidelityRunStart, Hash: k.ContentHash})
+			default:
+				p.Files = append(p.Files, PlannedFile{Path: OnDemandDir + "/" + k.Name + ".md", Content: onDemandFile(k), Skills: []string{k.Name}, Method: MethodClaudeOnDemand, Fidelity: FidelityOnDemand, Hash: k.ContentHash})
+				p.OnDemand = append(p.OnDemand, k.Name)
+				index = append(index, k)
+			}
 		}
+		p.Note, p.Index = claudeIndex(index), len(index) > 0
 	case "gemini", "goose":
 		file := "GEMINI.md"
 		if family(t.Adapter) == "goose" {
@@ -132,6 +163,58 @@ func (s *Service) Plan(ctx context.Context, t Target) (Plan, error) {
 	}
 	sort.Strings(p.OnDemand)
 	return p, nil
+}
+
+// DefaultDelivery is how Claude receives skills when the project has not chosen.
+const DefaultDelivery = DeliveryAll
+
+// DeliveryOf returns the delivery in force for a setting value.
+func DeliveryOf(v string) string {
+	switch v {
+	case DeliveryAll, DeliveryRelevant:
+		return v
+	}
+	return DefaultDelivery
+}
+
+// claudeIndex is the AGENTS.md text listing the skills Claude reads on demand: one line each, with the file to read. Empty
+// when there are none.
+func claudeIndex(ks []Skill) string {
+	if len(ks) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("This project's skills are not loaded into your instructions. Each line below names a skill, says what it is for and where " +
+		"its text is. Before you work on something a skill covers, read that file with the Read tool and follow it; skip the ones " +
+		"that have nothing to do with your task.\n")
+	for _, k := range ks {
+		d := oneLineText(k.Description)
+		if d == "" {
+			d = "no description"
+		}
+		if len(d) > 300 {
+			d = d[:300] + "..."
+		}
+		if len(k.Globs) > 0 {
+			d += " (for " + strings.Join(k.Globs, ", ") + ")"
+		}
+		b.WriteString("\n- **" + k.Name + "** (`" + OnDemandDir + "/" + k.Name + ".md`): " + d)
+	}
+	return b.String()
+}
+
+func oneLineText(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// onDemandFile renders a skill Claude reads on demand: a generator marker, the description, then the skill body.
+func onDemandFile(k Skill) string {
+	var b strings.Builder
+	b.WriteString(marker("skill="+k.Name, "source="+provenance(k), "sha256="+shortHash(k.ContentHash)) + "\n\n")
+	b.WriteString("# Skill: " + k.Name + "\n\n")
+	if d := oneLineText(k.Description); d != "" {
+		b.WriteString("_" + d + "_\n\n")
+	}
+	b.WriteString(strings.TrimSpace(k.Body) + "\n")
+	return b.String()
 }
 
 func skillsNote(onDemand bool) string {
