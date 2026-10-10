@@ -30,10 +30,11 @@ func TestChildEnvIsScrubbedAndTakesNamesToPassFromTheHuman(t *testing.T) {
 		t.Fatalf("without ScrubEnv the environment is inherited whole: %v", open)
 	}
 	// started from inside a Claude Code session: the agent is never made part of it, scrubbed or not
-	inner := append(append([]string(nil), parent...), "CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=outer", "CLAUDE_CODE_ENTRYPOINT=cli")
+	inner := append(append([]string(nil), parent...), "CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=outer", "CLAUDE_CODE_ENTRYPOINT=cli",
+		"CLAUDE_CODE_REMOTE_SESSION_ID=outer-remote", "CLAUDE_CODE_MESSAGING_SOCKET=/tmp/outer.sock", "CLAUDE_CODE_MESSAGING_TOKEN=outer-token")
 	for _, a := range []*Adapter{{}, {ScrubEnv: true}} {
 		env := a.childEnv(inner)
-		for _, drop := range []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT"} {
+		for _, drop := range []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_REMOTE_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN"} {
 			if has(env, drop) {
 				t.Fatalf("%s reached the agent (scrub %v)", drop, a.ScrubEnv)
 			}

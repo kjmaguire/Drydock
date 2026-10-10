@@ -51,7 +51,8 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ws = k.Workspace()
 	}
 	ws.Tasks, ws.Room, ws.Handoffs = mcpTasks{c}, mcpRoom{c}, mcpHandoffs{c}
-	ws.Chats = mcpChats{c} // ext_chats.go; allowed only to chat sessions that read history (planChatMCP)
+	ws.Chats = mcpChats{c}     // ext_chats.go; allowed only to chat sessions that read history (planChatMCP)
+	ws.Sandbox = mcpSandbox{c} // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
 	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}})
 	if err != nil {
 		return nil, nil, err
@@ -255,6 +256,11 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 	if !pl.Attach {
 		return rt.MCPAttachment{Reason: pl.Reason}, nil
 	}
+	if cfg.Spec.Sandboxed {
+		// a sandboxed worker turn (pipeline prepareWorker) runs its commands in the task's container through these tools
+		pl.Policy.Allow[mcp.WorkspaceServerID] = append(pl.Policy.Allow[mcp.WorkspaceServerID], SandboxTools...)
+		pl.Tools = append(pl.Tools, SandboxTools...)
+	}
 	gw := c.MCPGateway()
 	if gw == nil {
 		return rt.MCPAttachment{Reason: "the MCP gateway is not running"}, nil
@@ -303,6 +309,9 @@ func (c *Core) mcpStatus(ctx context.Context, t tasks.Task, agentID, phase strin
 	pl := c.planMCP(ctx, agentID, t.ProjectID, t.ID, ag.Adapter, role, ag.Model, t.Worktree)
 	if !pl.Attach {
 		return pipeline.MCPStatus{Reason: pl.Reason}
+	}
+	if phase == "work" && ag.Adapter == "claude" && c.sandboxSwitch(ctx, t.ProjectID).Enabled {
+		pl.Tools = append(pl.Tools, SandboxTools...) // what mcpAttach adds for a sandboxed worker turn
 	}
 	return pipeline.MCPStatus{Attached: true, Tools: pl.Tools}
 }

@@ -48,6 +48,11 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 	cfg.Spec.Cwd = t.Worktree
 	if o.ReadOnly {
 		cfg.Spec.PermissionMode, cfg.Spec.ReadOnly = "plan", true
+	} else if td.sandboxed(ctx, t) {
+		// a role that writes in the worktree (the test writer, the spec writer) runs sandboxed like the implementer
+		if err := td.sandboxTurn(ctx, t, &cfg); err != nil {
+			return turnOut{}, fmt.Errorf("the task's sandbox: %w", err)
+		}
 	}
 	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase)
 	prompt := o.Prompt
@@ -491,6 +496,11 @@ func (td TemplateDeps) redCheck() workflow.NodeHandler {
 			return workflow.NodeOutput{}, errors.New("no test command detected for this project: red/green evidence needs one (add a Taskfile test target, go.mod or a package.json test script)")
 		}
 		spec.LogDir = filepath.Join(td.DataDir, "runs", string(in.RunID), "checks")
+		wrapped, err := td.sandboxChecks(ctx, t, []checks.Spec{spec})
+		if err != nil {
+			return sandboxTrouble(in, err)
+		}
+		spec = wrapped[0]
 		res, err := checks.Run(ctx, td.PM, spec, func(line string) {
 			in.Emit(workflow.NewChunk(workflow.ChunkLog, workflow.TextDelta{Text: line}))
 		})
@@ -565,7 +575,12 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 		applyRoute(ctx, &cfg)
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
-		td.addWorkerTools(ctx, t, &cfg)
+		if q, err := td.prepareWorker(ctx, in, t, &cfg); q != nil || err != nil {
+			if q == nil {
+				return workflow.NodeOutput{}, err
+			}
+			return *q, err
+		}
 		// the accepted spec and the architect's notes go with every implementation pass, not only the first
 		prompt := WorkPrompt(t, clean, td.promptContext(ctx, t, td.gated(in)))
 		if red.Red {
@@ -621,6 +636,16 @@ func (td TemplateDeps) verifyTDD() workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		dev := td.dev(ctx, t.ProjectID)
+		if dev.E2E.Enabled && td.sandboxed(ctx, t) {
+			// the e2e check would run the project's code on this machine; in a sandboxed project the worker runs end-to-end tests
+			// in the container itself (sandbox_run), and this check says it was not run
+			reason := "the project runs its commands in a sandbox, and this e2e check does not run there yet; the worker runs end-to-end tests in the sandbox with sandbox_run"
+			if err := td.addEvidenceOnce(ctx, t.ID, tasks.Evidence{Kind: "e2e", Summary: "e2e skipped: " + reason}); err != nil {
+				return workflow.NodeOutput{}, err
+			}
+			td.emit(ctx, "task.check_inconclusive", t, map[string]any{"kind": "e2e", "status": "skipped", "reason": reason})
+			return out, nil
+		}
 		res, err := checks.RunE2E(ctx, td.PM, t.Worktree, checks.E2EOptions{Enabled: dev.E2E.Enabled, Command: dev.E2E.Command,
 			Timeout: time.Duration(dev.E2E.TimeoutSec) * time.Second, LogDir: filepath.Join(td.DataDir, "runs", string(in.RunID), "checks"),
 			Env: []string{"PLAYWRIGHT_JSON_OUTPUT_NAME=test-results/e2e-report.json"}}, func(line string) {

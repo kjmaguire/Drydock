@@ -780,6 +780,9 @@ func (a *agentsDev) methods() map[string]Method {
 			if t.Worktree == "" {
 				return nil, errors.New("the task has no worktree yet")
 			}
+			if c.sandboxSwitch(ctx, t.ProjectID).Enabled {
+				return nil, errSandboxedHere
+			}
 			res, err := a.previews.run(ctx, t, pipeline.LoadDevSettings(ctx, c.DB, t.ProjectID))
 			if err != nil {
 				return nil, err
@@ -836,6 +839,9 @@ func (a *agentsDev) runE2E(ctx context.Context, taskID string) (checks.E2EResult
 	}
 	if t.Worktree == "" {
 		return checks.E2EResult{}, errors.New("the task has no worktree yet")
+	}
+	if c.sandboxSwitch(ctx, t.ProjectID).Enabled {
+		return checks.E2EResult{}, errSandboxedHere
 	}
 	dev := pipeline.LoadDevSettings(ctx, c.DB, t.ProjectID)
 	logDir := filepath.Join(c.cfg.DataDir, "runs", "e2e", t.ID)

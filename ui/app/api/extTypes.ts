@@ -850,3 +850,55 @@ export interface IntegrationSyncResult {
   skipped?: string;
   ruleResults?: { ruleId: string; itemId: string; outcome: string; taskId?: string }[] | null;
 }
+
+// --- the per-task sandbox (internal/core/ext_sandbox.go, docs/sandbox.md) ---
+export interface SandboxSwitch {
+  enabled: boolean;
+  by?: string;
+  at?: number;
+}
+export interface SandboxEngine {
+  client: string;
+  version: string;
+  os: string;
+  arch: string;
+}
+export interface SandboxServiceDef {
+  image: string;
+  env?: Record<string, string>;
+  command?: string[];
+}
+export interface SandboxConfig {
+  image: string;
+  setup?: string[];
+  env?: Record<string, string>;
+  services?: Record<string, SandboxServiceDef>;
+  network?: 'allowlist' | 'open' | 'none';
+  allowHosts?: string[];
+  noDefaultHosts?: boolean;
+  volumes?: string[];
+  user?: string;
+  cpus?: number;
+  memory?: string;
+  pids?: number;
+}
+export interface SandboxStatus {
+  switch: SandboxSwitch;
+  engine?: SandboxEngine;
+  engineError?: string;
+  found: boolean;
+  branch?: string;
+  config?: SandboxConfig;
+  configError?: string;
+  hosts?: string[];
+  /** A definition to start from, when the project has none. */
+  starter?: string;
+  egressError?: string;
+  configPath: string;
+}
+export interface SandboxTestStep {
+  name: string;
+  ok: boolean;
+  detail?: string;
+  durationMs: number;
+}

@@ -115,7 +115,13 @@ func goLatest(ctx context.Context, mod string) (version, date string) {
 	}
 	var m struct{ Version, Time string }
 	_ = json.Unmarshal([]byte(out), &m)
-	return strings.TrimPrefix(m.Version, "v"), day(m.Time)
+	return releaseOf(m.Version), day(m.Time)
+}
+
+// releaseOf is a module proxy version as the project's releases name it: no "v", and no "+incompatible", which the proxy adds
+// to projects that tag major versions above 1 without a /vN module path (github.com/docker/cli is v29.9.0+incompatible).
+func releaseOf(v string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(v, "v"), "+incompatible")
 }
 
 var (
@@ -173,6 +179,7 @@ func tools(ctx context.Context) []Item {
 		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", ""},
 		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", ""},
 		{"tool:wrangler", "Wrangler", "tool", "", "wrangler"},
+		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", ""},
 	}
 	used := toolUsed()
 	var items []Item

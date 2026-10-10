@@ -51,7 +51,7 @@ worker can edit in the same turn (section 5).
 ## 5. The risk you are accepting, and what to decide
 
 Running tests means running code the agent wrote (and `npm run test` runs whatever the agent put in `package.json`), with your user's
-rights. There is no operating-system sandbox on Windows in v1 (docs/security.md). That exposure already exists, because Drydock's own
+rights. There is no operating-system sandbox on Windows in v1 (docs/security.md); the per-task container of [`sandbox.md`](sandbox.md) (P30) is the way to run them away from your machine. That exposure already exists, because Drydock's own
 checks run the same commands after the turn; allowing them during the turn changes when they run, not what runs. What it does add is
 an agent that can iterate on its own output, and the chance that a model passes a flag you did not foresee (Tier 2 only).
 

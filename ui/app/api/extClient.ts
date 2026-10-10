@@ -14,6 +14,9 @@ import type {
   CheckSettings,
   DecisionRow,
   DevSettings,
+  SandboxStatus,
+  SandboxSwitch,
+  SandboxTestStep,
   EvalsExportResult,
   EvalsOptions,
   EvalsReportResult,
@@ -93,6 +96,10 @@ export interface ExtClient {
   checksSettingsSet(projectId: string, s: CheckSettings): Promise<CheckSettings>;
   projectdevGet(projectId: string): Promise<DevSettings>;
   projectdevSet(projectId: string, s: DevSettings): Promise<DevSettings>;
+  // the per-task sandbox
+  sandboxStatus(projectId: string): Promise<SandboxStatus>;
+  sandboxSet(projectId: string, enabled: boolean): Promise<SandboxSwitch>;
+  sandboxTest(projectId: string): Promise<{ steps: SandboxTestStep[] }>;
   telemetryStatus(): Promise<TelemetryStatus>;
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
   telemetryPreview(limit?: number): Promise<TelemetryDocument>;
@@ -222,6 +229,12 @@ export function createExtClient(t: Transport): ExtClient {
     checksSettingsSet: (projectId, s) => call('checks.settings.set', { projectId, ...s }),
     projectdevGet: (projectId) => call('projectdev.get', { projectId }),
     projectdevSet: (projectId, settings) => call('projectdev.set', { projectId, settings }),
+    sandboxStatus: (projectId) => call('sandbox.status', { projectId }),
+    sandboxSet: (projectId, enabled) => call('sandbox.set', { projectId, enabled }),
+    sandboxTest: async (projectId) => {
+      const r = await call<{ steps: SandboxTestStep[] | null }>('sandbox.test', { projectId });
+      return { steps: r.steps ?? [] };
+    },
     telemetryStatus: () => call('telemetry.status'),
     telemetryEnable: (enabled) => call('telemetry.enable', { enabled }),
     telemetryPreview: async (limit = 0) => {

@@ -35,6 +35,9 @@ go.work.sum
 /drydock
 /drydock.exe
 
+# Build outputs of the Taskfile (drydock-dev, drydock.exe, the egress proxies)
+/bin/
+
 # Windows test builds (zip handed out, never committed)
 dist-windows/
 

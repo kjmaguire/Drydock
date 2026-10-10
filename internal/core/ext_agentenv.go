@@ -101,13 +101,19 @@ type Isolation struct {
 	Details []string `json:"details"`
 }
 
-// isolationOf describes a's isolation. workerChecks is the agent's project letting Claude workers run its checks.
-func isolationOf(a Agent, workerChecks bool) Isolation {
+// isolationOf describes a's isolation. workerChecks is the agent's project letting Claude workers run its checks; sandbox is
+// its project running the commands of task work in a container (docs/sandbox.md).
+func isolationOf(a Agent, workerChecks, sandbox bool) Isolation {
 	in := Isolation{Level: "guarded", Details: []string{
 		"On a task its working folder is its own Git worktree, so its changes are separate from every other task and project and are reviewed before they are merged. In the room and in direct messages it answers read-only, from the project folder.",
 		"It starts with a trimmed environment: your other tools' tokens (GitHub, cloud providers) are not handed to it. Settings > Agents lists what is kept and lets you pass named variables on.",
 		"It can only use the MCP servers you granted it in its own project.",
 	}}
+	if sandbox && a.Adapter == "claude" { // task work runs restricted in acceptEdits whatever the agent's own mode
+		in.Summary = "On task work it has no shell on this machine: its commands run in a container made for the task, where only the task's working folder is mounted and the network reaches only the project's allowlist. Claude Code's restricted mode keeps its file tools to the working folder and refuses writes to settings and .git."
+		in.Details = append(in.Details, "The container runs on your container engine (Docker Desktop or similar), not as an operating-system sandbox of this machine: it sees only what is mounted into it, and it is removed when the task ends. In the room and in direct messages the agent still answers read-only, without the container.")
+		return in
+	}
 	switch a.PermissionMode {
 	case "bypassPermissions", "auto", "dontAsk":
 		in.Level = "open"

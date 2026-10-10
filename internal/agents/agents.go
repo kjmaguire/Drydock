@@ -76,7 +76,12 @@ type RunSpec struct {
 	// PermissionMode "plan" for adapters that map it; Claude runs them in its default mode with every writing tool denied
 	// instead, because Claude Code answers a plan-mode session started with --model haiku with Sonnet (since 2.0.17; measured
 	// with 2.1.296: init reports haiku, every message is Sonnet, about 10 to 50 times the cost).
-	ReadOnly  bool
+	ReadOnly bool
+	// Sandboxed marks a worker session whose commands run in the task's container sandbox (docs/sandbox.md) through the
+	// gateway's sandbox tools. Claude starts it with --restricted: no tool that runs commands or code, file tools confined to
+	// the working folder, writes to settings and .git refused, no settings files; the adapter appends the project's CLAUDE.md,
+	// which restricted mode does not load.
+	Sandboxed bool
 	ExtraArgs []string // adapter-specific escape hatch
 }
 

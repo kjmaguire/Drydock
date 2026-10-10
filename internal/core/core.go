@@ -174,6 +174,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTurn:       c.postTurn,
 		MCPStatus:    c.mcpStatus,
 		WorkerChecks: c.workerChecks,
+		Sandbox:      sandboxHook{c}, // ext_sandbox.go
 		Lead:         leadHook{c},
 		ResetWatch:   c.resetWatch,
 		ProjectBrief: c.ProjectBrief,

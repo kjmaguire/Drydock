@@ -37,6 +37,25 @@ tasks:
     cmds:
       - go test ./...
 
+  build:egress:
+    desc: Build the sandbox's egress proxy for Linux containers (ships next to drydock.exe; docs/sandbox.md section 5)
+    env:
+      CGO_ENABLED: "0"
+      GOOS: linux
+    cmds:
+      - GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-amd64 ./cmd/drydock-egress
+      - GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-arm64 ./cmd/drydock-egress
+
+  build:windows:
+    desc: Build drydock.exe with the UI and the egress proxies into bin/ (CGO off, as Wails v3 needs none on Windows)
+    deps: [ui:build, build:egress]
+    env:
+      CGO_ENABLED: "0"
+      GOOS: windows
+      GOARCH: amd64
+    cmds:
+      - go build -tags production -ldflags "-w -s -H windowsgui" -o bin/drydock.exe .
+
   build:dev:
     desc: Build the UI and the development server (cmd/drydock-dev serves ui/dist over HTTP + SSE)
     deps: [ui:build]

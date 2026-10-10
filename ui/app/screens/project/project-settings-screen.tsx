@@ -11,6 +11,7 @@ import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
+import { SandboxPanel } from './project-sandbox.tsx';
 import { MODES, STRATEGIES } from './project.ts';
 import { AttachRepository, BriefPanel } from './project-repo.tsx';
 import { SettingRow, SettingsGroup, errorPad, footerCss } from './settings-kit.tsx';
@@ -135,6 +136,7 @@ export function ProjectSettingsScreen(handle: Handle) {
           <Delivery project={p} />
           <CheckSettingsPanel key={`checks-${p.id}`} projectId={p.id} />
           <DevSettingsPanel key={`dev-${p.id}`} projectId={p.id} />
+          {projectHasRepo(p) ? <SandboxPanel key={`sandbox-${p.id}`} projectId={p.id} /> : null}
         </div>
       </Page>
     );

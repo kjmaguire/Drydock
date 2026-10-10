@@ -192,10 +192,21 @@ func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 		// default mode refuses, in a headless session, every tool nobody approved; the deny list also beats any allow rule in
 		// the human's own settings (deny wins), so nothing in the session can write
 		args = append(args, "--permission-mode", "default", "--disallowedTools", strings.Join(ReadOnlyDenied, ","))
+	} else if spec.Sandboxed {
+		// restricted mode refuses bypassPermissions, and with no command tools on this machine there is nothing else to approve:
+		// file edits in the working folder are the job
+		args = append(args, "--permission-mode", "acceptEdits")
 	} else if spec.PermissionMode != "" {
 		args = append(args, "--permission-mode", spec.PermissionMode)
 	}
-	if a.UserSettingsOnly {
+	switch {
+	case spec.Sandboxed:
+		// a sandboxed worker's commands run in its container through the gateway; restricted mode removes every tool that runs
+		// commands or code here, confines the file tools to the working folder, refuses writes to settings and .git, and ignores
+		// every settings file (so no repository hooks). It does not put the project's CLAUDE.md in the model's context either
+		// (contract CLAUDE-RESTRICTED-02), so Start appends the project memory, as for --setting-sources user
+		args = append(args, "--restricted")
+	case a.UserSettingsOnly:
 		args = append(args, "--setting-sources", "user")
 	}
 	if spec.MCPConfigPath != "" {
@@ -224,7 +235,7 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 	env := a.childEnv(os.Environ())
 	env = append(env, spec.Env...)
 	text := spec.SystemAppend
-	if a.UserSettingsOnly {
+	if a.UserSettingsOnly || spec.Sandboxed { // neither mode loads the project's CLAUDE.md, rules and imports into context
 		if mem := projectMemory(spec.Cwd); mem != "" {
 			text = strings.TrimSpace(text + "\n\n" + mem)
 		}
@@ -402,8 +413,10 @@ func (a *Adapter) childEnv(parent []string) []string {
 
 // enclosingSessionEnv are the variables a running Claude Code session sets for the processes it starts. When Drydock itself
 // was started from inside Claude Code they would make every agent report and append to that outer session (observed with
-// 2.1.296: each turn reported the parent's session id), so an agent never inherits them.
-var enclosingSessionEnv = map[string]bool{"CLAUDECODE": true, "CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_CHILD_SESSION": true}
+// 2.1.296: each turn reported the parent's session id; in a cloud session CLAUDE_CODE_REMOTE_SESSION_ID does the same), and
+// the messaging socket and token would let an agent message the outer session, so an agent never inherits them.
+var enclosingSessionEnv = map[string]bool{"CLAUDECODE": true, "CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_CHILD_SESSION": true,
+	"CLAUDE_CODE_REMOTE_SESSION_ID": true, "CLAUDE_CODE_MESSAGING_SOCKET": true, "CLAUDE_CODE_MESSAGING_TOKEN": true}
 
 func withoutEnclosingSession(env []string) []string {
 	out := make([]string, 0, len(env))

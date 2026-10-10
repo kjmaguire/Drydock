@@ -58,6 +58,9 @@ type Deps struct {
 	// WorkerChecks, if set, reports whether a worker turn on this task may run the project's check commands (the project
 	// switched that on and the agent's CLI honors exact allow rules). Never consulted for a reviewer. Nil: never.
 	WorkerChecks func(ctx context.Context, t tasks.Task, cfg rt.Config) bool
+	// Sandbox, if set, runs the commands of a project that switched its sandbox on in a container per task (docs/sandbox.md):
+	// worker turns get the sandbox tools instead of a shell, and the checks run in the container. Nil: never.
+	Sandbox SandboxHook
 	// GuardPoll is how often a task waiting for an earlier task looks again (default 2 seconds).
 	GuardPoll time.Duration
 	// ProjectBrief, if set, returns the brief the human wrote for the project. It is put, bounded and labelled as the human's,
@@ -187,7 +190,12 @@ func Work(d Deps) workflow.NodeHandler {
 		applyRoute(ctx, &cfg)
 		cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 		cfg.Spec.Cwd = t.Worktree
-		d.addWorkerTools(ctx, t, &cfg)
+		if q, err := d.prepareWorker(ctx, in, t, &cfg); q != nil || err != nil {
+			if q == nil {
+				return workflow.NodeOutput{}, err
+			}
+			return *q, err
+		}
 		prompt := WorkPrompt(t, in, d.promptContext(ctx, t, false))
 		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "work")
 		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
@@ -413,6 +421,9 @@ func Verify(d Deps) workflow.NodeHandler {
 			return workflow.NodeOutput{}, errors.New("no checks detected for this project: add a Taskfile with build/test targets or configure checks")
 		}
 		specs = append(specs, d.extraChecks(ctx, repo, t)...)
+		if specs, err = d.sandboxChecks(ctx, t, specs); err != nil {
+			return sandboxTrouble(in, err)
+		}
 		// a merge that brought the base branch in and was not resolved cannot pass: markers are not code
 		if repo.MergeInProgress(ctx, worktreeOf(t)) {
 			if left := repo.UnresolvedConflicts(ctx, worktreeOf(t)); len(left) > 0 {

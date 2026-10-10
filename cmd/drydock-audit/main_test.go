@@ -28,6 +28,14 @@ func TestClassifyMeasuresTheGap(t *testing.T) {
 	}
 }
 
+func TestReleaseOfDropsTheProxyDecorations(t *testing.T) {
+	for in, want := range map[string]string{"v29.9.0+incompatible": "29.9.0", "v1.60.1": "1.60.1", "2.0.1": "2.0.1"} {
+		if got := releaseOf(in); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestParseSemverReadsGoAndNpmVersions(t *testing.T) {
 	for _, c := range []struct {
 		in         string

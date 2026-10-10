@@ -4,7 +4,8 @@
     "tool:task": "3.54.0",
     "tool:osv-scanner": "2.6.0",
     "tool:go-licenses": "2.0.1",
-    "tool:wrangler": "4.149.0"
+    "tool:wrangler": "4.149.0",
+    "tool:docker": "29.8.2"
   },
   "notes": {
     "go": {
@@ -196,6 +197,10 @@
     "npm:esbuild": {
       "role": "Pulled in by vite and remix test (TypeScript transforms in the test runner); not part of the shipped bundle.",
       "note": "Pinned by an override to 0.28.2, the release that fixes the Windows dev-server file-read advisory (GHSA-g7r4-m6w7-qqqr) that 0.27.x has."
+    },
+    "tool:docker": {
+      "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
+      "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
     }
   }
 }
