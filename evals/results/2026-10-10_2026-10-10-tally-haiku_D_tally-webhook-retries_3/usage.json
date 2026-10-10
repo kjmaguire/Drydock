@@ -1,0 +1,34 @@
+[
+  {
+    "ts": 1791610991493,
+    "taskId": "task_6a24d21ae842",
+    "agentId": "agt_7ee7d16b5eb1",
+    "provider": "claude",
+    "model": "claude-haiku-5-5",
+    "tier": "premium",
+    "inputTokens": 6,
+    "outputTokens": 7868,
+    "cachedTokens": 101793,
+    "cacheWriteTokens": 32882,
+    "reasoningTokens": 6590,
+    "costUsd": 0.011528930000000001,
+    "source": "reported",
+    "cacheHit": false
+  },
+  {
+    "ts": 1791610949930,
+    "taskId": "task_6a24d21ae842",
+    "agentId": "agt_2fb0f8b4934b",
+    "provider": "claude",
+    "model": "claude-haiku-5-5",
+    "tier": "premium",
+    "inputTokens": 34,
+    "outputTokens": 39553,
+    "cachedTokens": 1090213,
+    "cacheWriteTokens": 77134,
+    "reasoningTokens": 22957,
+    "costUsd": 0.046108829999999996,
+    "source": "reported",
+    "cacheHit": false
+  }
+]
