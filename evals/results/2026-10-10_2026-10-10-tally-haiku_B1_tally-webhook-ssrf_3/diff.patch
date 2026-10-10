@@ -1,0 +1,271 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..baab094 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -295,6 +295,10 @@ func TestWebhookEndpoints(t *testing.T) {
+ 	for _, bad := range []map[string]any{
+ 		{"url": "https://does-not-resolve.example/", "events": []string{"*"}},
+ 		{"url": "not a url", "events": []string{"*"}},
++		{"url": "http://hooks.acme.example/", "events": []string{"*"}},
++		{"url": "https://user:pass@hooks.acme.example/", "events": []string{"*"}},
++		{"url": "https://169.254.169.254/latest/meta-data/", "events": []string{"*"}},
++		{"url": "https://[::ffff:127.0.0.1]:8080/admin", "events": []string{"*"}},
+ 	} {
+ 		if r := e.Do("POST", "/v1/webhook-endpoints", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid_url" {
+ 			t.Fatalf("%v: %s", bad, r)
+@@ -303,6 +307,14 @@ func TestWebhookEndpoints(t *testing.T) {
+ 	if r := e.Do("POST", "/v1/webhook-endpoints", e.Acme.Key, map[string]any{"url": "https://hooks.acme.example/", "events": []string{"nope"}}); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid_events" {
+ 		t.Fatalf("bad events: %s", r)
+ 	}
++	if r := e.Do("PATCH", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, map[string]any{"url": "https://10.0.0.7/in"}); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid_url" {
++		t.Fatalf("PATCH to a private address: %s", r)
++	}
++	var kept store.WebhookEndpoint
++	e.MustDo(http.StatusOK, "GET", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, nil, &kept)
++	if kept.URL != ep.URL {
++		t.Fatalf("a refused PATCH changed the URL: %q", kept.URL)
++	}
+ 	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
+ 	if n, err := e.Webhooks.RunDue(context.Background()); err != nil || n != 1 {
+ 		t.Fatalf("RunDue = %d, %v", n, err)
+diff --git a/start/internal/webhooks/webhooks.go b/result/internal/webhooks/webhooks.go
+index 13c4370..774e202 100644
+--- a/start/internal/webhooks/webhooks.go
++++ b/result/internal/webhooks/webhooks.go
+@@ -13,6 +13,7 @@ import (
+ 	"io"
+ 	"net"
+ 	"net/http"
++	"net/netip"
+ 	"net/url"
+ 	"slices"
+ 	"time"
+@@ -77,20 +78,100 @@ var (
+ 	ErrInvalidEvents = errors.New("invalid event types")
+ )
+ 
+-// CheckURL checks a webhook URL before it is saved: an absolute http or https URL whose host resolves.
++// nonPublic are the address ranges an endpoint may not point into: they are our own network, or not reachable on the
++// Internet at all.
++var nonPublic = []netip.Prefix{
++	netip.MustParsePrefix("0.0.0.0/8"),          // this network
++	netip.MustParsePrefix("10.0.0.0/8"),         // private
++	netip.MustParsePrefix("100.64.0.0/10"),      // carrier-grade NAT
++	netip.MustParsePrefix("127.0.0.0/8"),        // loopback
++	netip.MustParsePrefix("169.254.0.0/16"),     // link-local, with the cloud metadata address
++	netip.MustParsePrefix("172.16.0.0/12"),      // private
++	netip.MustParsePrefix("192.168.0.0/16"),     // private
++	netip.MustParsePrefix("224.0.0.0/4"),        // multicast
++	netip.MustParsePrefix("255.255.255.255/32"), // broadcast
++	netip.MustParsePrefix("::/128"),             // unspecified
++	netip.MustParsePrefix("::1/128"),            // loopback
++	netip.MustParsePrefix("fc00::/7"),           // private
++	netip.MustParsePrefix("fe80::/10"),          // link-local
++	netip.MustParsePrefix("ff00::/8"),           // multicast
++}
++
++// isPublic reports whether a is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.
++func isPublic(a netip.Addr) bool {
++	if !a.IsValid() {
++		return false
++	}
++	a = a.WithZone("").Unmap()
++	for _, p := range nonPublic {
++		if p.Contains(a) {
++			return false
++		}
++	}
++	return true
++}
++
++// hostAddrs returns the addresses a host stands for: the address itself when the host is an IP address, else every address
++// the host resolves to.
++func (s *Service) hostAddrs(ctx context.Context, host string) ([]netip.Addr, error) {
++	if a, err := netip.ParseAddr(host); err == nil {
++		return []netip.Addr{a}, nil
++	}
++	ips, err := s.resolver.LookupIPAddr(ctx, host)
++	if err != nil {
++		return nil, err
++	}
++	var addrs []netip.Addr
++	for _, ip := range ips {
++		if a, ok := netip.AddrFromSlice(ip.IP); ok {
++			addrs = append(addrs, a)
++		}
++	}
++	if len(addrs) == 0 {
++		return nil, fmt.Errorf("no addresses for %q", host)
++	}
++	return addrs, nil
++}
++
++// CheckURL checks a webhook URL before it is saved: an absolute https URL with no user name or password, whose host is a
++// public address or resolves only to public addresses.
+ func (s *Service) CheckURL(ctx context.Context, raw string) error {
+ 	u, err := url.Parse(raw)
+-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+-		return fmt.Errorf("%w: use an absolute http or https URL", ErrInvalidURL)
++	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
++		return fmt.Errorf("%w: use an absolute https URL", ErrInvalidURL)
+ 	}
+-	host := u.Hostname()
+-	if net.ParseIP(host) != nil {
+-		return nil
++	if u.User != nil {
++		return fmt.Errorf("%w: the URL may not carry a user name or password", ErrInvalidURL)
+ 	}
+-	addrs, err := s.resolver.LookupIPAddr(ctx, host)
+-	if err != nil || len(addrs) == 0 {
++	host := u.Hostname()
++	addrs, err := s.hostAddrs(ctx, host)
++	if err != nil {
+ 		return fmt.Errorf("%w: the host %q does not resolve", ErrInvalidURL, host)
+ 	}
++	for _, a := range addrs {
++		if !isPublic(a) {
++			return fmt.Errorf("%w: the host %q is not a public address", ErrInvalidURL, host)
++		}
++	}
++	return nil
++}
++
++// checkDestination resolves the endpoint's host again, just before a delivery, and fails when any address it resolves to is
++// not public. DNS answers can change after the URL was saved.
++func (s *Service) checkDestination(ctx context.Context, raw string) error {
++	u, err := url.Parse(raw)
++	if err != nil {
++		return errors.New("the endpoint's URL is invalid")
++	}
++	addrs, err := s.hostAddrs(ctx, u.Hostname())
++	if err != nil {
++		return errors.New("the endpoint's host does not resolve")
++	}
++	for _, a := range addrs {
++		if !isPublic(a) {
++			return errors.New("the endpoint's address is not public")
++		}
++	}
+ 	return nil
+ }
+ 
+@@ -199,6 +280,9 @@ func (s *Service) send(ctx context.Context, ep store.WebhookEndpoint, e store.Ev
+ 	}
+ 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+ 	defer cancel()
++	if err := s.checkDestination(ctx, ep.URL); err != nil {
++		return 0, err.Error()
++	}
+ 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))
+ 	if err != nil {
+ 		return 0, err.Error()
+diff --git a/start/internal/webhooks/webhooks_test.go b/result/internal/webhooks/webhooks_test.go
+index a9062c7..cbd4762 100644
+--- a/start/internal/webhooks/webhooks_test.go
++++ b/result/internal/webhooks/webhooks_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
++	"strings"
+ 	"testing"
+ 
+ 	"example.com/tally/internal/apitest"
+@@ -43,6 +44,97 @@ func TestCheckURL(t *testing.T) {
+ 	}
+ }
+ 
++func TestCheckURLRefusesNonPublicAddresses(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	e.DNS.Set("mixed.acme.example", "93.184.216.34", "10.0.0.5")
++	e.DNS.Set("private.acme.example", "192.168.1.10")
++	e.DNS.Set("v6.acme.example", "2606:2800:220:1::1")
++	e.DNS.Set("v6private.acme.example", "fd00::1")
++	e.DNS.Set("mapped.acme.example", "::ffff:127.0.0.1")
++	for _, ok := range []string{
++		"https://93.184.216.34/",
++		"https://[2606:2800:220:1::1]:9443/in",
++		"https://[::ffff:93.184.216.34]/in",
++		"https://v6.acme.example/",
++	} {
++		if err := e.Webhooks.CheckURL(ctx, ok); err != nil {
++			t.Errorf("CheckURL(%q) = %v", ok, err)
++		}
++	}
++	for _, bad := range []string{
++		"https://user:pass@hooks.acme.example/",
++		"https://user@hooks.acme.example/",
++		"https://:443/x",
++		"http://93.184.216.34/",
++		"https://127.0.0.1/",
++		"https://localhost/",
++		"https://0.0.0.0/",
++		"https://0.1.2.3/",
++		"https://10.0.0.1/",
++		"https://172.16.0.1/",
++		"https://172.31.255.255/",
++		"https://192.168.0.1/",
++		"https://100.64.0.1/",
++		"https://169.254.169.254/latest/meta-data/",
++		"https://224.0.0.1/",
++		"https://255.255.255.255/",
++		"https://[::]/",
++		"https://[::1]/",
++		"https://[fc00::1]/",
++		"https://[fd12:3456::1]/",
++		"https://[fe80::1]/",
++		"https://[ff02::1]/",
++		"https://[::ffff:127.0.0.1]/",
++		"https://[::ffff:169.254.169.254]/",
++		"https://[::ffff:10.1.2.3]/",
++		"https://mixed.acme.example/",
++		"https://private.acme.example/",
++		"https://v6private.acme.example/",
++		"https://mapped.acme.example/",
++	} {
++		if err := e.Webhooks.CheckURL(ctx, bad); !errors.Is(err, webhooks.ErrInvalidURL) {
++			t.Errorf("CheckURL(%q) = %v, want ErrInvalidURL", bad, err)
++		}
++	}
++}
++
++func TestDeliveryRefusesAddressThatBecameNonPublic(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	now := e.Clock.Now()
++	ep, err := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: "https://hooks.acme.example/in", Events: []string{"*"}, Secret: "whsec_a", Enabled: true}, now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// The host was public when the URL was saved; now its DNS answer points into our network.
++	e.DNS.Set("hooks.acme.example", "93.184.216.34", "169.254.169.254")
++	if err := e.Webhooks.Publish(ctx, e.Acme.ID, "customer.created", map[string]string{"id": "cus_1"}); err != nil {
++		t.Fatal(err)
++	}
++	if n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RunDue = %d, %v", n, err)
++	}
++	if reqs := e.HTTP.Requests(); len(reqs) != 0 {
++		t.Fatalf("a request was sent to a non-public address: %+v", reqs)
++	}
++	ds := e.Store.Deliveries(e.Acme.ID, ep.ID)
++	if len(ds) != 1 || ds[0].Status != store.DeliveryFailed || !strings.Contains(ds[0].Error, "not public") {
++		t.Fatalf("deliveries = %+v", ds)
++	}
++	kept, ok := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID)
++	if !ok || kept.URL != ep.URL || !kept.Enabled {
++		t.Fatalf("endpoint changed: %+v", kept)
++	}
++
++	// Once the host points at public addresses again, the next delivery goes out.
++	e.DNS.Set("hooks.acme.example", "93.184.216.34")
++	_ = e.Webhooks.Publish(ctx, e.Acme.ID, "customer.updated", map[string]string{"id": "cus_1"})
++	if n, _ := e.Webhooks.RunDue(ctx); n != 1 || len(e.HTTP.Requests()) != 1 {
++		t.Fatalf("RunDue = %d, requests = %d", n, len(e.HTTP.Requests()))
++	}
++}
++
+ func TestPublishAndDeliver(t *testing.T) {
+ 	e := apitest.New(t)
+ 	ctx := context.Background()

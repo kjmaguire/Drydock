@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Period n is computed from the anchor (StartedAt, or TrialEnd for trial starts) as anchor + n months or years, clamped to the last day of the target month, at the anchor's UTC time. Each period ends where the next starts, and nothing drifts.\n- RenewDue catches up every missed period in order, creating one invoice per period, so the result does not depend on when the job runs.\n- New tests cover month-end, leap-year, drift and catch-up cases. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791610220799
+  },
+  {
+    "id": 2,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 470ms",
+    "ref": "/tmp/drydock-trial-1226246617/tally-month-end-renewals-D-3/data/runs/run_cb099d9e9941/checks/build-1791610220834075903.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 469,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610221303
+  },
+  {
+    "id": 3,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 490ms",
+    "ref": "/tmp/drydock-trial-1226246617/tally-month-end-renewals-D-3/data/runs/run_cb099d9e9941/checks/test-1791610221306530202.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 490,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610221798
+  },
+  {
+    "id": 4,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 700ms",
+    "ref": "/tmp/drydock-trial-1226246617/tally-month-end-renewals-D-3/data/runs/run_cb099d9e9941/checks/lint-1791610221801870298.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 696,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610222498
+  },
+  {
+    "id": 5,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-1226246617/tally-month-end-renewals-D-3/data/runs/run_cb099d9e9941/checks/secrets-1791610222515006041.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 14,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610222515
+  },
+  {
+    "id": 6,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +212 -21",
+    "ref": "/tmp/drydock-trial-1226246617/tally-month-end-renewals-D-3/data/runs/run_cb099d9e9941/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 212,
+      "Deletions": 21,
+      "base": "3d7a1f835a7aa9073440884f6b809beeb0d04f87",
+      "commit": "1ab02c4a8fd75db6f2698d5fe59764fccbd11db1"
+    },
+    "created": 1791610222643
+  },
+  {
+    "id": 7,
+    "taskId": "task_9f4324a40c4e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 1ab02c4a8f",
+    "ref": "1ab02c4a8fd75db6f2698d5fe59764fccbd11db1",
+    "data": {},
+    "created": 1791610222644
+  }
+]

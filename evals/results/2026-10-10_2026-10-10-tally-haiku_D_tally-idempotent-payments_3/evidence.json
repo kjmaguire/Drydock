@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/invoices/{id}/pay` honours `Idempotency-Key` as specified: header validation, per-organization replay with `Idempotent-Replayed: true`, 422 on reuse with a different invoice or body, 409 `request_in_progress` without waiting, 5xx not kept, and a 24-hour replay window. Checked by new tests in `internal/api`.\n- Two pay requests for one invoice never both charge: a concurrent pay gets 409 `payment_in_progress` at once. Checked by new tests in `internal/payments` and `internal/api`, using the fake gateway's `OnCharge` hook to hold a charge open.\n- `go build ./...`, `go vet ./...` and `\n...[truncated]",
+    "data": {},
+    "created": 1791610161899
+  },
+  {
+    "id": 2,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 520ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/build-1791610161947204837.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 516,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610162463
+  },
+  {
+    "id": 3,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 460ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/test-1791610162465778566.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 459,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610162925
+  },
+  {
+    "id": 4,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 490ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/lint-1791610162926848954.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 489,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610163416
+  },
+  {
+    "id": 5,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/secrets-1791610163443293391.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 24,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610163443
+  },
+  {
+    "id": 6,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +461 -2",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 461,
+      "Deletions": 2,
+      "base": "f26f82490219de2738bdd021abffb3a7a8703ef6",
+      "commit": "b3be44958dc597354960de8e737f824aa2ac1a4c"
+    },
+    "created": 1791610163576
+  },
+  {
+    "id": 7,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit b3be44958d",
+    "ref": "b3be44958dc597354960de8e737f824aa2ac1a4c",
+    "data": {},
+    "created": 1791610163577
+  },
+  {
+    "id": 8,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- this fix covers the \"two pay requests for one invoice never both charge\" criterion. The part of the definition I can see is the payments and `internal/api` tests; the full text was truncated in this prompt, so I have not re-checked the rest of it.",
+    "data": {},
+    "created": 1791610287509
+  },
+  {
+    "id": 9,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 550ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/build-1791610287550433172.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 551,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610288102
+  },
+  {
+    "id": 10,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.13s",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/test-1791610288107972780.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1132,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610289240
+  },
+  {
+    "id": 11,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.17s",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/lint-1791610289242467478.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1171,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610290414
+  },
+  {
+    "id": 12,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 60ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/checks/secrets-1791610290478039080.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 61,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610290479
+  },
+  {
+    "id": 13,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +544 -5",
+    "ref": "/tmp/drydock-trial-3039215516/tally-idempotent-payments-D-3/data/runs/run_54286f360abb/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 544,
+      "Deletions": 5,
+      "base": "f26f82490219de2738bdd021abffb3a7a8703ef6",
+      "commit": "184acc0e53574da00f6ae4489663843d0cdc52fa"
+    },
+    "created": 1791610290914
+  },
+  {
+    "id": 14,
+    "taskId": "task_e2410874382a",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 184acc0e53",
+    "ref": "184acc0e53574da00f6ae4489663843d0cdc52fa",
+    "data": {},
+    "created": 1791610290915
+  }
+]

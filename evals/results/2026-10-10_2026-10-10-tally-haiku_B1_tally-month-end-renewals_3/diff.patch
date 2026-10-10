@@ -1,0 +1,367 @@
+diff --git a/start/internal/billing/billing.go b/result/internal/billing/billing.go
+index be8baaf..502cf7d 100644
+--- a/start/internal/billing/billing.go
++++ b/result/internal/billing/billing.go
+@@ -30,10 +30,54 @@ func Compute(inv store.Invoice) Totals {
+ 	return Totals{Subtotal: subtotal, Discount: discount, Tax: tax, Total: taxable + tax}
+ }
+ 
+-// AddInterval returns t moved forward by one billing interval: a month or a year.
+-func AddInterval(t time.Time, iv store.Interval) time.Time {
++// Anchor returns the start of a subscription's first paid period, which its billing periods are counted from: its
++// TrialEnd when it started with a trial, otherwise its StartedAt. The result is in UTC.
++func Anchor(sub store.Subscription) time.Time {
++	if sub.TrialEnd != nil {
++		return sub.TrialEnd.UTC()
++	}
++	return sub.StartedAt.UTC()
++}
++
++// PeriodStart returns when period n (n = 0, 1, 2, ...) starts for a subscription anchored at anchor: n months (monthly) or
++// n years (yearly) after the anchor, on the anchor's day of the month and at its time of day, or on the last day of that
++// month when the month is shorter. Each period is counted from the anchor, so a short month never moves later periods.
++// The result is in UTC.
++func PeriodStart(anchor time.Time, iv store.Interval, n int) time.Time {
++	a := anchor.UTC()
++	step := 1
+ 	if iv == store.Yearly {
+-		return t.AddDate(1, 0, 0)
++		step = 12
+ 	}
+-	return t.AddDate(0, 1, 0)
++	first := time.Date(a.Year(), a.Month()+time.Month(n*step), 1, a.Hour(), a.Minute(), a.Second(), a.Nanosecond(), time.UTC)
++	daysInMonth := time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
++	day := min(a.Day(), daysInMonth)
++	return time.Date(first.Year(), first.Month(), day, a.Hour(), a.Minute(), a.Second(), a.Nanosecond(), time.UTC)
++}
++
++// NextPeriod returns the period that begins at from, the end of the period before it, and where it ends: the first period
++// start of the anchored schedule that is after from. Periods made this way follow the schedule, not the day the renewal
++// happened to run, so each one ends exactly where the next one starts.
++func NextPeriod(anchor time.Time, iv store.Interval, from time.Time) (start, end time.Time) {
++	a := anchor.UTC()
++	from = from.UTC()
++	step := 1
++	if iv == store.Yearly {
++		step = 12
++	}
++	months := (from.Year()-a.Year())*12 + int(from.Month()-a.Month())
++	n := months / step
++	for !PeriodStart(a, iv, n).After(from) {
++		n++
++	}
++	for PeriodStart(a, iv, n-1).After(from) {
++		n--
++	}
++	return from, PeriodStart(a, iv, n)
++}
++
++// AddInterval returns t moved forward by one billing interval: a month or a year. When the later month is shorter, the
++// result is its last day, so January 31 plus one month is February 28 (or 29).
++func AddInterval(t time.Time, iv store.Interval) time.Time {
++	return PeriodStart(t, iv, 1)
+ }
+diff --git a/start/internal/billing/billing_test.go b/result/internal/billing/billing_test.go
+index 42acf0d..b155111 100644
+--- a/start/internal/billing/billing_test.go
++++ b/result/internal/billing/billing_test.go
+@@ -37,3 +37,84 @@ func TestAddInterval(t *testing.T) {
+ 		t.Errorf("yearly: %v", got)
+ 	}
+ }
++
++func utc(y int, m time.Month, d, hh, mm int) time.Time {
++	return time.Date(y, m, d, hh, mm, 0, 0, time.UTC)
++}
++
++func TestAddIntervalClampsToShortMonth(t *testing.T) {
++	if got := AddInterval(utc(2026, 1, 31, 10, 0), store.Monthly); !got.Equal(utc(2026, 2, 28, 10, 0)) {
++		t.Errorf("Jan 31 + 1 month = %v, want Feb 28", got)
++	}
++	if got := AddInterval(utc(2028, 1, 31, 10, 0), store.Monthly); !got.Equal(utc(2028, 2, 29, 10, 0)) {
++		t.Errorf("leap Jan 31 + 1 month = %v, want Feb 29", got)
++	}
++}
++
++func TestPeriodStartMonthly(t *testing.T) {
++	anchor := utc(2026, 1, 31, 10, 30)
++	want := []time.Time{
++		utc(2026, 1, 31, 10, 30), // period 0
++		utc(2026, 2, 28, 10, 30), // Feb has 28 days
++		utc(2026, 3, 31, 10, 30), // back on the 31st: the anchor does not drift
++		utc(2026, 4, 30, 10, 30), // April has 30 days
++		utc(2026, 5, 31, 10, 30),
++		utc(2026, 6, 30, 10, 30),
++		utc(2026, 7, 31, 10, 30),
++		utc(2026, 8, 31, 10, 30),
++		utc(2026, 9, 30, 10, 30),
++		utc(2026, 10, 31, 10, 30),
++		utc(2026, 11, 30, 10, 30),
++		utc(2026, 12, 31, 10, 30),
++		utc(2027, 1, 31, 10, 30), // period 12
++	}
++	for n, w := range want {
++		if got := PeriodStart(anchor, store.Monthly, n); !got.Equal(w) {
++			t.Errorf("period %d = %v, want %v", n, got, w)
++		}
++	}
++}
++
++func TestPeriodStartLeapDayMonthly(t *testing.T) {
++	anchor := utc(2024, 2, 29, 0, 0)
++	if got := PeriodStart(anchor, store.Monthly, 1); !got.Equal(utc(2024, 3, 29, 0, 0)) {
++		t.Errorf("period 1 = %v", got)
++	}
++	if got := PeriodStart(anchor, store.Monthly, 12); !got.Equal(utc(2025, 2, 28, 0, 0)) {
++		t.Errorf("period 12 = %v, want Feb 28 2025", got)
++	}
++	if got := PeriodStart(anchor, store.Monthly, 24); !got.Equal(utc(2026, 2, 28, 0, 0)) {
++		t.Errorf("period 24 = %v, want Feb 28 2026", got)
++	}
++	if got := PeriodStart(anchor, store.Monthly, 48); !got.Equal(utc(2028, 2, 29, 0, 0)) {
++		t.Errorf("period 48 = %v, want Feb 29 2028", got)
++	}
++}
++
++func TestPeriodStartYearly(t *testing.T) {
++	leap := utc(2024, 2, 29, 9, 0)
++	if got := PeriodStart(leap, store.Yearly, 1); !got.Equal(utc(2025, 2, 28, 9, 0)) {
++		t.Errorf("common year = %v, want Feb 28", got)
++	}
++	if got := PeriodStart(leap, store.Yearly, 4); !got.Equal(utc(2028, 2, 29, 9, 0)) {
++		t.Errorf("leap year = %v, want Feb 29", got)
++	}
++	if got := PeriodStart(utc(2026, 3, 14, 9, 30), store.Yearly, 2); !got.Equal(utc(2028, 3, 14, 9, 30)) {
++		t.Errorf("two years = %v", got)
++	}
++}
++
++func TestNextPeriodEndsWhereTheNextStarts(t *testing.T) {
++	anchor := utc(2026, 1, 31, 10, 0)
++	// A period that starts on the schedule ends on the next period's start.
++	start, end := NextPeriod(anchor, store.Monthly, utc(2026, 2, 28, 10, 0))
++	if !start.Equal(utc(2026, 2, 28, 10, 0)) || !end.Equal(utc(2026, 3, 31, 10, 0)) {
++		t.Errorf("period after Feb 28 = [%v, %v)", start, end)
++	}
++	// A start that is not on the schedule (a late renewal) still ends on the schedule, and the period starts where the
++	// previous one ended.
++	start, end = NextPeriod(anchor, store.Monthly, utc(2026, 3, 1, 12, 0))
++	if !start.Equal(utc(2026, 3, 1, 12, 0)) || !end.Equal(utc(2026, 3, 31, 10, 0)) {
++		t.Errorf("period after Mar 1 12:00 = [%v, %v)", start, end)
++	}
++}
+diff --git a/start/internal/subscriptions/subscriptions.go b/result/internal/subscriptions/subscriptions.go
+index 6d6d997..827d2d0 100644
+--- a/start/internal/subscriptions/subscriptions.go
++++ b/result/internal/subscriptions/subscriptions.go
+@@ -57,7 +57,7 @@ func (s *Service) Create(ctx context.Context, orgID string, in CreateInput) (sto
+ 		end := now.AddDate(0, 0, plan.TrialDays)
+ 		sub.Status, sub.TrialEnd, sub.CurrentPeriodEnd = store.Trialing, &end, end
+ 	} else {
+-		sub.Status, sub.CurrentPeriodEnd = store.Active, billing.AddInterval(now, plan.Interval)
++		sub.Status, sub.CurrentPeriodEnd = store.Active, billing.PeriodStart(now, plan.Interval, 1)
+ 	}
+ 	sub, err := s.Store.CreateSubscription(sub, now)
+ 	if err != nil {
+@@ -164,19 +164,31 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 	if !ok {
+ 		return store.ErrNotFound
+ 	}
+-	if sub.CancelAtPeriodEnd {
+-		end := sub.CurrentPeriodEnd
+-		sub, err := s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
+-			x.Status, x.CanceledAt = store.Canceled, &end
+-			return nil
+-		})
+-		if err == nil {
+-			s.publish(ctx, sub.OrgID, "subscription.canceled", sub)
++	// A subscription several periods behind renews each missed period in order, each with its own invoice.
++	for !sub.CurrentPeriodEnd.After(now) {
++		if sub.CancelAtPeriodEnd {
++			end := sub.CurrentPeriodEnd
++			canceled, err := s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
++				x.Status, x.CanceledAt = store.Canceled, &end
++				return nil
++			})
++			if err == nil {
++				s.publish(ctx, sub.OrgID, "subscription.canceled", canceled)
++			}
++			return err
++		}
++		var err error
++		if sub, err = s.renewPeriod(ctx, sub, plan); err != nil {
++			return err
+ 		}
+-		return err
+ 	}
+-	start := now
+-	end := billing.AddInterval(start, plan.Interval)
++	return nil
++}
++
++// renewPeriod starts the period after the subscription's current one and invoices it. The new period begins where the
++// current one ends and ends on the anchored schedule, so it does not depend on when the renewal runs.
++func (s *Service) renewPeriod(ctx context.Context, sub store.Subscription, plan store.Plan) (store.Subscription, error) {
++	start, end := billing.NextPeriod(billing.Anchor(sub), plan.Interval, sub.CurrentPeriodEnd)
+ 	paid := true
+ 	var err error
+ 	switch {
+@@ -186,7 +198,7 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 		paid, err = s.invoicePeriod(ctx, sub, plan, start, end)
+ 	}
+ 	if err != nil {
+-		return err
++		return store.Subscription{}, err
+ 	}
+ 	sub, err = s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
+ 		x.CurrentPeriodStart, x.CurrentPeriodEnd = start, end
+@@ -198,10 +210,10 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 		return nil
+ 	})
+ 	if err != nil {
+-		return err
++		return store.Subscription{}, err
+ 	}
+ 	s.publish(ctx, sub.OrgID, "subscription.updated", sub)
+-	return nil
++	return sub, nil
+ }
+ 
+ // invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.
+diff --git a/start/internal/subscriptions/subscriptions_test.go b/result/internal/subscriptions/subscriptions_test.go
+index a713e2d..33bb035 100644
+--- a/start/internal/subscriptions/subscriptions_test.go
++++ b/result/internal/subscriptions/subscriptions_test.go
+@@ -69,7 +69,7 @@ func TestTrialThenRenewal(t *testing.T) {
+ 		t.Fatalf("RenewDue = %d, %v", n, err)
+ 	}
+ 	got, _ := e.Store.Subscription(e.Acme.ID, sub.ID)
+-	if got.Status != store.Active || !got.CurrentPeriodStart.Equal(trialEnd) || !got.CurrentPeriodEnd.Equal(trialEnd.AddDate(0, 1, 0)) {
++	if got.Status != store.Active || !got.CurrentPeriodStart.Equal(trialEnd) || !got.CurrentPeriodEnd.Equal(time.Date(2026, 2, 28, 10, 0, 0, 0, time.UTC)) {
+ 		t.Fatalf("after the trial = %+v", got)
+ 	}
+ 	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})
+@@ -134,3 +134,123 @@ func TestMeteredBillsUsageInArrears(t *testing.T) {
+ 		t.Fatalf("invoices = %+v (usage at the period's end belongs to the next period)", invs)
+ 	}
+ }
++
++func TestMonthEndAnchorDoesNotDrift(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = "pm_card_visa"; return nil })
++	p := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	e.Clock.Set(time.Date(2026, time.January, 31, 10, 0, 0, 0, time.UTC))
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Each renewal happens exactly when the period ends. The period after a short month is back on the 31st.
++	for _, end := range []time.Time{
++		time.Date(2026, 3, 31, 10, 0, 0, 0, time.UTC),
++		time.Date(2026, 4, 30, 10, 0, 0, 0, time.UTC),
++		time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC),
++	} {
++		e.Clock.Set(sub.CurrentPeriodEnd)
++		if _, err := e.Subs.RenewDue(ctx); err != nil {
++			t.Fatal(err)
++		}
++		sub, _ = e.Store.Subscription(e.Acme.ID, sub.ID)
++		if !sub.CurrentPeriodEnd.Equal(end) {
++			t.Fatalf("period ends %v, want %v", sub.CurrentPeriodEnd, end)
++		}
++	}
++	if got := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(got) != 4 {
++		t.Fatalf("invoices = %d, want 4 (one per period)", len(got))
++	}
++}
++
++func TestLateRenewalCatchesUpEachPeriod(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = "pm_card_visa"; return nil })
++	p := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	e.Clock.Set(time.Date(2026, time.January, 31, 10, 0, 0, 0, time.UTC))
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	// The job did not run for two months. The renewal runs on April 15, after the periods ending Feb 28 and Mar 31.
++	e.Clock.Set(time.Date(2026, time.April, 15, 10, 0, 0, 0, time.UTC))
++	if n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RenewDue = %d, %v", n, err)
++	}
++	got, _ := e.Store.Subscription(e.Acme.ID, sub.ID)
++	if got.Status != store.Active || !got.CurrentPeriodStart.Equal(time.Date(2026, 3, 31, 10, 0, 0, 0, time.UTC)) ||
++		!got.CurrentPeriodEnd.Equal(time.Date(2026, 4, 30, 10, 0, 0, 0, time.UTC)) {
++		t.Fatalf("after the catch-up = %+v", got)
++	}
++	// Each missed period has its own paid invoice, in order, and each was charged.
++	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})
++	wantStarts := []time.Time{
++		time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC),
++		time.Date(2026, 2, 28, 10, 0, 0, 0, time.UTC),
++		time.Date(2026, 3, 31, 10, 0, 0, 0, time.UTC),
++	}
++	if len(invs) != len(wantStarts) {
++		t.Fatalf("invoices = %d, want %d", len(invs), len(wantStarts))
++	}
++	for _, want := range wantStarts {
++		found := false
++		for _, inv := range invs {
++			if inv.PeriodStart != nil && inv.PeriodStart.Equal(want) {
++				found = true
++				if inv.Status != store.InvoicePaid || inv.PeriodEnd == nil || !inv.PeriodEnd.After(want) {
++					t.Errorf("invoice for %v = %+v", want, inv)
++				}
++			}
++		}
++		if !found {
++			t.Errorf("no invoice for the period starting %v", want)
++		}
++	}
++	if cs := e.Gateway.Charges(); len(cs) != 3 {
++		t.Fatalf("charges = %d, want 3", len(cs))
++	}
++	if n, err := e.Subs.RenewDue(ctx); err != nil || n != 0 {
++		t.Fatalf("RenewDue again = %d, %v", n, err)
++	}
++}
++
++func TestLateMeteredRenewalBillsEachPeriodsUsage(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	p, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "API calls", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())
++	e.Clock.Set(time.Date(2026, time.January, 31, 10, 0, 0, 0, time.UTC))
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, u := range []struct {
++		q  int64
++		at time.Time
++	}{{5, time.Date(2026, 2, 10, 10, 0, 0, 0, time.UTC)}, {7, time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)}} {
++		e.Clock.Set(u.at)
++		if _, err := e.Store.AddUsage(e.Acme.ID, sub.ID, u.q, u.at, u.at); err != nil {
++			t.Fatal(err)
++		}
++	}
++	e.Clock.Set(time.Date(2026, time.April, 15, 10, 0, 0, 0, time.UTC))
++	if _, err := e.Subs.RenewDue(ctx); err != nil {
++		t.Fatal(err)
++	}
++	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})
++	quantities := map[time.Time]int64{}
++	for _, inv := range invs {
++		if len(inv.Lines) != 1 || inv.PeriodStart == nil {
++			t.Fatalf("invoice = %+v", inv)
++		}
++		quantities[*inv.PeriodStart] = inv.Lines[0].Quantity
++	}
++	if len(invs) != 2 || quantities[time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC)] != 5 || quantities[time.Date(2026, 2, 28, 10, 0, 0, 0, time.UTC)] != 7 {
++		t.Fatalf("invoices by period start = %v (%d invoices)", quantities, len(invs))
++	}
++}
