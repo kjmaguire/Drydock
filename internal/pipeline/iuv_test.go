@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +93,24 @@ func (e *env) await(t *testing.T, id workflow.RunID, want workflow.RunStatus) wo
 		t.Fatalf("run ended %s (%s), wanted %s", info.Status, info.FailedReason, want)
 	}
 	return info
+}
+
+// describeRunning names the run's node executions that have started and not finished, for a failure message.
+func describeRunning(eng *workflow.Engine, id workflow.RunID) string {
+	rows, err := eng.Executions(context.Background(), id)
+	if err != nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range rows {
+		if r.Status == "started" {
+			b.WriteString(" " + string(r.NodeID) + "#" + strconv.Itoa(r.Step) + " started " + time.Since(time.UnixMilli(r.Started)).Round(time.Second).String() + " ago")
+		}
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "; still running:" + b.String()
 }
 
 // describePending names the run's open requests for a failure message, so that a run waiting for a human where a test

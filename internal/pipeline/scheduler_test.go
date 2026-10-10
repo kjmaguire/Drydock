@@ -384,13 +384,14 @@ func TestParallelTasksUseSeparateWorktreesRespectTheLimitAndNeedHumanMerges(t *t
 		if err := e.eng.Resume(context.Background(), rid, workflow.Response{RequestID: p[0].ID, Decision: "approved", By: "human:kyle"}); err != nil {
 			t.Fatal(err)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		// as long as the other waits here: on a loaded Windows runner the merge (sync, checks, merge) took over a minute
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 		info, err := e.eng.Await(ctx, rid, func(r workflow.RunInfo) bool {
 			return r.Status == workflow.StatusCompleted || r.Status == workflow.StatusWaitingHuman || r.Status.Terminal()
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s: the approved run did not finish: %v (the run is %s%s%s)", tk.Title, err, info.Status, describePending(e.eng, rid), describeRunning(e.eng, rid))
 		}
 		return info
 	}
