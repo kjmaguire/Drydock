@@ -822,17 +822,22 @@ func TestARunIsRecoveredWhenTheAppRestartsWithinTheLease(t *testing.T) {
 	defer cancel()
 	for {
 		rows, _ := probe.eng.Executions(ctx, run)
-		started := false
+		started, aDone := false, false
 		for _, r := range rows {
 			if r.NodeID == "B" && r.Status == "started" {
 				started = true
 			}
+			// A runs beside B; its finish must be on disk before the crash, or recovery rightly runs it again (a slow disk
+			// on the Windows runner showed that)
+			if r.NodeID == "A" && r.Status == "done" {
+				aDone = true
+			}
 		}
-		if started && effects(dir)["B_start"] == 1 {
+		if started && aDone && effects(dir)["B_start"] == 1 {
 			break
 		}
 		if ctx.Err() != nil {
-			t.Fatal("timed out waiting for B to start")
+			t.Fatal("timed out waiting for B to start and A to finish")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

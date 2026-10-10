@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-currency-minor-units",
+  "taskClass": "test-fix loop",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "9d4620860d66d705e1139fab170cd84b0caa2232",
+  "startedAt": "2026-10-10T04:54:13.535273005Z",
+  "wallMs": 78529,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1763,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3098,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.048s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.010s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.022s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.017s\nok  \texample.com/tally/internal/snapshot\t0.033s\nok  \texample.com/tally/internal/store\t0.008s\nok  \texample.com/tally/internal/subscriptions\t0.009s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 4900
+  },
+  "costUsd": 0.02639893,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 26,
+    "output": 14768,
+    "cacheRead": 608373,
+    "cacheWrite": 64643
+  },
+  "sessions": 1,
+  "modelTurns": 14,
+  "toolUses": {
+    "Bash": 13
+  }
+}
