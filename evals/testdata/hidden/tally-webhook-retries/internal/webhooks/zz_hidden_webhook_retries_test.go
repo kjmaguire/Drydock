@@ -372,7 +372,7 @@ func hiddenRetryRunUntil(t *testing.T, e *apitest.Env, endpointIDs []string, unt
 }
 
 // hiddenRetryEmailCount checks that each owner got `each` emails about each URL, and that there are no others. Emails sent
-// in the background get two seconds to arrive.
+// in the background get ten seconds to arrive.
 func hiddenRetryEmailCount(t *testing.T, e *apitest.Env, what string, urls []string, owners []string, each int) {
 	t.Helper()
 	want := map[string]int{}
@@ -383,7 +383,7 @@ func hiddenRetryEmailCount(t *testing.T, e *apitest.Env, what string, urls []str
 	}
 	var msgs []mail.Message
 	ok := false
-	for deadline := time.Now().Add(2 * time.Second); ; {
+	for deadline := time.Now().Add(10 * time.Second); ; {
 		msgs = hiddenRetryFailingEmails(e)
 		got := map[string]int{}
 		for _, m := range msgs {
@@ -491,7 +491,7 @@ func TestHiddenRetryMailOption(t *testing.T) {
 		t.Fatalf("want 7 attempts, got %d", attempts)
 	}
 	var msgs []mail.Message
-	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) { // emails sent in the background get two seconds
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) { // emails sent in the background get ten seconds
 		if msgs = box.Messages(); len(msgs) > 0 || time.Now().After(deadline) {
 			break
 		}

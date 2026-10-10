@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	_ "time/tzdata" // apitest's organizations use IANA time zones; do not depend on the machine's zoneinfo
 
 	"example.com/tally/internal/apitest"
 )

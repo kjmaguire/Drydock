@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	_ "time/tzdata" // apitest's organizations use IANA time zones; do not depend on the machine's zoneinfo
 
 	"example.com/tally/internal/apitest"
 )
@@ -43,7 +44,9 @@ func hiddenMERAt(y int, m time.Month, d, hh, mm, ss int) time.Time {
 
 func hiddenMERFmt(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
-func hiddenMERPeriod(start, end time.Time) string { return hiddenMERFmt(start) + " to " + hiddenMERFmt(end) }
+func hiddenMERPeriod(start, end time.Time) string {
+	return hiddenMERFmt(start) + " to " + hiddenMERFmt(end)
+}
 
 // hiddenMERPeriods turns boundaries b0, b1, ..., bn into the periods [b0, b1], [b1, b2], ...
 func hiddenMERPeriods(bounds []time.Time) []string {

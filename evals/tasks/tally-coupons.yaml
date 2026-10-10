@@ -1,0 +1,39 @@
+# Many interacting business rules: validation, redemption limits, duration windows and amount caps.
+id: tally-coupons
+title: "Coupons"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  Discounts today are a bare discount_percent on each subscription. Sales needs real coupons.
+
+  - POST /v1/coupons creates one: {"code", "percent_off" (1 to 100) or "amount_off" (major units, as a string) with
+    "currency", "duration": "once", "repeating" or "forever", "duration_in_months" (1 to 36, required for repeating and
+    refused otherwise), "max_redemptions" (optional, at least 1), "redeem_by" (optional, RFC 3339)}. Exactly one of
+    percent_off and amount_off. A code is 3 to 32 letters, digits, dashes or underscores and unique in the organization
+    ignoring case: 409 {"error":"code_taken"}. Anything else invalid: 422 {"error":"invalid"}. The answer (201) shows the
+    coupon with amount_off in minor units and "times_redeemed".
+  - GET /v1/coupons lists the organization's coupons, oldest first; GET /v1/coupons/{code} finds one ignoring case.
+  - POST /v1/subscriptions/{id}/coupon {"code"} applies a coupon to a subscription (200 with the subscription, which shows
+    "coupon": "<code>"). Refused: no such coupon in the organization, 404 not_found; redeem_by has passed, 422
+    {"error":"coupon_expired"}; as many subscriptions as max_redemptions already have it, 422 {"error":"coupon_exhausted"};
+    amount_off in another currency than the subscription's plan, 422 {"error":"currency_mismatch"}; the subscription already
+    has a coupon, 409 {"error":"coupon_already_applied"}; the subscription is canceled, 409. The time of applying is the
+    redemption time.
+  - A coupon discounts the subscription's invoices created after it was applied: duration once, only the first of them;
+    repeating, those whose period starts less than duration_in_months months after the redemption; forever, all of them.
+    percent_off is a percentage of the subtotal rounded half away from zero, like discount_percent; amount_off takes that amount
+    off the subtotal but never more than the subtotal. Tax is computed after the discount. While a coupon applies to an
+    invoice, the subscription's discount_percent does not.
+  - Invoice answers show "coupon": the code that discounted it, or "" when none, and the discount in "discount" as today.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-coupons
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

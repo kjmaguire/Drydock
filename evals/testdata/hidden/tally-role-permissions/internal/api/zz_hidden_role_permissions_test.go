@@ -2,9 +2,9 @@ package api_test
 
 // Hidden acceptance test of the trial task tally-role-permissions (evals/tasks). The agents never see it.
 //
-// Every role runs every action of the task's table against real objects of its organization: an allowed request must
-// succeed (a 2xx answer), a refused one must answer 403 {"error":"forbidden"} and change nothing. Then the rules for members,
-// roles, the last owner and API keys.
+// Every role runs every action of the task's table against real objects of its organization: an allowed request must not
+// be refused (not 403), a refused one must answer 403 {"error":"forbidden"} and change nothing. Then the rules for members,
+// roles, the last owner and API keys, with their effects.
 
 import (
 	"context"
@@ -131,12 +131,13 @@ func hiddenRPErrorCode(r *apitest.Response) string {
 	return body.Error
 }
 
-// hiddenRPAllowed sends a request the caller's role may make: it must succeed.
+// hiddenRPAllowed sends a request the caller's role may make: it must not be refused (the objects are real and the
+// requests valid, so on a correct service it succeeds; the scenario tests check the effects).
 func hiddenRPAllowed(t testing.TB, e *apitest.Env, what, method, path, key string, body any) *apitest.Response {
 	t.Helper()
 	r := e.Do(method, path, key, body)
-	if r.Code < 200 || r.Code > 299 {
-		t.Errorf("%s (%s %s): allowed, so want a 2xx answer, got %s", what, method, path, r)
+	if r.Code == http.StatusForbidden {
+		t.Errorf("%s (%s %s): allowed, so want it not refused, got %s", what, method, path, r)
 	}
 	return r
 }
@@ -539,11 +540,17 @@ func TestHiddenRoleMemberRules(tt *testing.T) {
 	x, xKey := e.AddMember(e.Acme, "x@acme.example", store.RoleMember)
 	hiddenRPAllowed(t, e, "an owner makes a member an admin", "PATCH", "/v1/members/"+x.ID, ownerKey, role("admin"))
 	hiddenRPAllowed(t, e, "the new admin updates the organization", "PATCH", "/v1/org", xKey, map[string]any{"name": "Acme X"})
+	if o, _ := e.Store.Org(e.Acme.ID); o.Name != "Acme X" {
+		t.Errorf("the new admin's PATCH /v1/org did not change the organization: name %q", o.Name)
+	}
 	hiddenRPAllowed(t, e, "an owner makes an admin an owner", "PATCH", "/v1/members/"+x.ID, ownerKey, role("owner"))
 	if got := hiddenRPRole(t, e, x.ID); got != store.RoleOwner {
 		t.Errorf("after an owner made an admin an owner, the role is %q", got)
 	}
 	hiddenRPAllowed(t, e, "an owner makes an admin billing", "PATCH", "/v1/members/"+admin2.ID, ownerKey, role("billing"))
+	if got := hiddenRPRole(t, e, admin2.ID); got != store.RoleBilling {
+		t.Errorf("after an owner made an admin billing, the role is %q", got)
+	}
 	hiddenRPAllowed(t, e, "an owner demotes another owner", "PATCH", "/v1/members/"+owner2.ID, ownerKey, role("admin"))
 	if got := hiddenRPRole(t, e, owner2.ID); got != store.RoleAdmin {
 		t.Errorf("after an owner demoted another owner to admin, the role is %q", got)

@@ -314,12 +314,17 @@ func TestHiddenPlanChangeNeedsTheSeats(t *testing.T) {
 		u, _ := e.AddMember(e.Acme, fmt.Sprintf("m%d@acme.example", i), store.RoleMember)
 		members = append(members, u)
 	}
-	var before store.Org
+	type hiddenOrg struct {
+		Name      string        `json:"name"`
+		Plan      store.OrgPlan `json:"plan"`
+		TimeZone  string        `json:"time_zone"`
+		TaxRateBP int           `json:"tax_rate_bp"`
+	}
+	var before, after hiddenOrg
 	e.MustDo(http.StatusOK, "GET", "/v1/org", key, nil, &before)
 	hiddenWantLimitError(t, "PATCH /v1/org to the free plan with 5 seats used",
 		e.Do("PATCH", "/v1/org", key, map[string]any{"plan": "free", "name": "Acme Renamed", "tax_rate_bp": 500}),
 		http.StatusConflict, "over_seat_limit", 3, 5)
-	var after store.Org
 	e.MustDo(http.StatusOK, "GET", "/v1/org", key, nil, &after)
 	if after != before {
 		t.Fatalf("a refused plan change changed the organization: %+v, was %+v", after, before)

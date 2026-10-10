@@ -300,3 +300,63 @@ gate and the human approval protect against, which an acceptance rate does not m
 the suite needs tasks a single session fails often enough to tell the arms apart: multi-file features, fixes that break
 something elsewhere, requirements whose obvious implementation passes the visible tests and not the hidden ones; at least 20
 of them (section 6.1), three repeats each, and a stronger model as well as haiku.
+
+### 13.1 The hard suite: `tally`, 23 tasks (built 2026-10-10)
+
+Built on the owner's request ("build the harder trial with 20+ tasks") after the pilot could not tell the arms apart.
+
+**The fixture.** `testdata/fixtures/tally`: a multi-tenant billing platform for SaaS companies in standard-library Go, about
+6,000 lines in 13 packages (store, money, billing, payments with a fake gateway, subscriptions and renewals, webhooks with
+signing and delivery, jobs, mail, reports, snapshots with a migration, auth, a 40-endpoint JSON API, and `apitest`, which
+builds the whole service with fakes), with its own tests (about 70). It holds the bugs some tasks are about, planted the way
+such bugs appear in real code: an email index shared across tenants, an unscoped lookup copied into one handler, a
+delete without the tenant, an error message that confirms another tenant's object exists, `AddDate` at month ends, a
+renewal that bills before it moves the period, an invoice view that indexes `lines[0]`, a list that JSON-copies every row
+before paging, and a 2-decimal assumption in money parsing and formatting.
+
+**The tasks** (`evals/tasks/tally-*.yaml`, suite `tally`): 6 security reviews (tenant isolation, a role matrix, SSRF in
+webhook URLs, timestamped webhook signatures with rotation, hashed API keys with a stored-data migration, invite tokens),
+10 iterations (proration, tiered pricing, coupons, webhook retries, soft delete, audit log, CSV import, seat limits,
+invoice numbers with snapshot version 3, time-zone reports), 4 test-fix loops (month-end renewals, duplicate renewal
+invoices, currency minor units, an incident from a log line), 2 high-risk changes (idempotent payments, graceful
+shutdown) and 1 tested refactor (making the invoice list fast without changing a byte). Each prompt is a precise ticket: what
+to build and every rule the hidden check holds it to, nothing the check does not test. 7 are high risk, 16 medium; 7
+large, 14 medium, 2 small.
+
+**The hidden checks** (`evals/testdata/hidden/tally-*`) go through the HTTP API and the Go names the prompt gives, with
+the fake clock instead of sleeps and deterministic concurrency (a held gateway charge, channels). Each is proven to fail
+on the untouched fixture and to pass on a reference solution (`evals/testdata/solutions/tally-*.patch`) together with the
+fixture's own tests: `drydock-trial selfcheck -suite tally`, and `internal/trial`'s tests (which CI also runs on Windows).
+
+**How the checks were reviewed.** Five agents wrote the checks and solutions, one per area, from one brief: test what the
+prompt says, all of it, and nothing it does not; accept every reasonable reading where the prompt is silent; no sleeps to
+move time; pass on Windows too. Each ran its reference solution with single requirements taken out (deliberately broken
+variants: 65 for the four billing tasks alone, nine for graceful shutdown) to show the check catches each one, and with
+alternative designs to show it accepts them. Every concurrency check passed 20 repeats on its solution (most with all four
+CPUs kept busy) and failed on the fixture every time; the speed check passed 3 repeats under full load. Decisions taken on
+their reports, before the freeze:
+
+- The tiered-pricing prompt said "No usage: no invoice, as today", which is not true of the fixture (it bills an empty
+  invoice: the zero-line task's bug); "as today" was removed. The currency check no longer requires exact prices above 2^53
+  minor units: the prompt does not ask for it, and the fixture itself formats prices through floats.
+- Strict where the prompt is explicit: a webhook delivery's JSON shows `"next_attempt_at": null` (the prompt: it "shows"
+  it, "null when no attempt is planned"); a renewal with a working card is charged exactly once (the prompt says at most
+  once, and never charging would break renewals); the audit log's `changes` name exactly the fields whose value changed.
+- Where two rules of a prompt overlap, both answers pass (the only owner demoting themselves: 403 or 409); boundaries the
+  prompts leave open (exactly 7 days, 24 hours, 30 days, 60 seconds) are not tested.
+- The invoice-list speed check judges each request by the fastest of up to 10 tries against the prompt's 250 milliseconds,
+  so load does not fail a fast implementation (about 1 ms a page). One that still sorts every invoice on each request (100
+  to 240 ms a page here, not "well under 100") may pass or fail with the machine's load; both arms run under the same load.
+
+**Pre-registration.** The suite, its hidden checks and solutions, and the harness were committed before the first run of
+this trial; no task, check or solution is changed after a run of it has started (a fix to a check would start a new
+trial). The analysis is fixed here too: per arm, acceptance and cost per accepted task with medians and ranges; per task,
+D's acceptance against B1's (the report's task-by-task table); and, because the suite meets decision P34's size (at least
+20 tasks with 3 counted runs per arm), an exact two-sided sign test over the tasks where the arms' acceptance differs. A
+claim is made only from that table and test.
+
+**Conditions.** Model `haiku` first, three repeats; arm D in checks mode (P24), because this environment has no container
+engine running (the sandbox pilot showed the sandbox works; it changes where commands run, not the review loop). A run
+gets at most $3 (B1 `--max-budget-usd`, D a project budget) and 40 minutes. The runs are sharded over parallel processes
+(`drydock-trial run -suite tally -tasks ...`), each with its own core and CLI sessions.
+

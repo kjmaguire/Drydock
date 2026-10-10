@@ -79,6 +79,20 @@ func TestTheSuiteLoadsEveryTaskWithItsHiddenCheck(t *testing.T) {
 	if strings.Join(ids, ",") != "saasapi-csv-export,saasapi-invoice-pages,saasapi-invoice-rules,saasapi-rate-limit" {
 		t.Fatalf("pilot tasks %v", ids)
 	}
+	tally, err := InSuite(ts, "tally")
+	if err != nil || len(tally) < ClaimTasks {
+		t.Fatalf("the tally suite has %d tasks (%v); decision P34 needs %d", len(tally), err, ClaimTasks)
+	}
+	classes := map[string]bool{}
+	for _, x := range tally {
+		classes[x.Class] = true
+		if x.Fixture != "testdata/fixtures/tally" || !strings.HasPrefix(x.ID, "tally-") {
+			t.Errorf("%s: fixture %s", x.ID, x.Fixture)
+		}
+	}
+	if len(classes) < 4 {
+		t.Errorf("the tally suite covers only the classes %v", classes)
+	}
 	if _, err := InSuite(ts, "nope"); err == nil {
 		t.Fatal("an unknown suite is not an error")
 	}
