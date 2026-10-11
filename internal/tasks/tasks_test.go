@@ -329,3 +329,33 @@ func TestResyncReopensWithoutSpendingAnIteration(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateRefusesWhatATaskCannotBe(t *testing.T) {
+	s, _ := newSvc(t)
+	ctx := context.Background()
+	if _, err := s.DB.Writer().Exec(`INSERT INTO projects(id,name,repo_path,created_at) VALUES('p2','other','/y',1)`); err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.Create(ctx, CreateReq{ProjectID: "p2", Title: "elsewhere"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, req := range map[string]CreateReq{
+		"no project":            {Title: "x"},
+		"blank title":           {ProjectID: "p1", Title: "  "},
+		"title too long":        {ProjectID: "p1", Title: strings.Repeat("t", MaxTitleLen+1)},
+		"too many iterations":   {ProjectID: "p1", Title: "x", MaxIterations: MaxIterationsCap + 1},
+		"priority out of range": {ProjectID: "p1", Title: "x", Priority: MaxPriority + 1},
+		"unknown dependency":    {ProjectID: "p1", Title: "x", DependsOn: []string{"task_nope"}},
+		"other project's task":  {ProjectID: "p1", Title: "x", DependsOn: []string{other.ID}},
+	} {
+		if _, err := s.Create(ctx, req); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	var n int
+	_ = s.DB.Reader().QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id='p1'`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d refused tasks were stored anyway", n)
+	}
+}

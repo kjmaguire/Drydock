@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/fts"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
@@ -109,19 +110,14 @@ func (s Store) Search(ctx context.Context, projectID, query string, k int) ([]En
 	}
 	return s.query(ctx, `SELECT m.id,m.project_id,m.kind,m.title,m.body,m.status,m.source,m.created_at,m.updated_at
 		FROM memory_fts f JOIN memory m ON m.rowid=f.rowid
-		WHERE memory_fts MATCH ? AND m.project_id=? AND m.status='accepted' ORDER BY bm25(memory_fts) LIMIT ?`, match, projectID, k)
+		WHERE memory_fts MATCH ? AND m.project_id=? AND m.status='accepted' ORDER BY bm25(memory_fts, 4.0, 1.0) LIMIT ?`, match, projectID, k)
 }
 
-// ftsQuery turns free text into a safe FTS5 query (OR of quoted terms).
+// ftsQuery turns free text into a safe FTS5 query: any of its terms, common words left out (fts.BuildMatch, as the expert
+// packs search).
 func ftsQuery(q string) string {
-	var terms []string
-	for _, w := range strings.Fields(q) {
-		w = strings.Trim(w, `"'.,;:!?()[]{}<>`)
-		if len(w) >= 2 {
-			terms = append(terms, `"`+strings.ReplaceAll(w, `"`, ``)+`"`)
-		}
-	}
-	return strings.Join(terms, " OR ")
+	_, anyTerm, _ := fts.BuildMatch(q)
+	return anyTerm
 }
 
 func (s Store) query(ctx context.Context, q string, args ...any) ([]Entry, error) {

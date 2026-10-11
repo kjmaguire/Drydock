@@ -95,7 +95,9 @@ type Core struct {
 	taskStarts sync.Map
 	// limits are the rate limits the agent CLIs reported (agentlimits.go); the turn router reads them
 	limits agentLimits
-	cancel context.CancelFunc
+	// methods is the registry Call dispatches through, built once after the extensions started (nil before)
+	methods atomic.Pointer[map[string]Method]
+	cancel  context.CancelFunc
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.
@@ -243,6 +245,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if err := c.startExtensions(bg); err != nil {
 		c.logf("extensions: %v", err)
 	}
+	// the method registry is complete once the extensions have started: build it once for Call
+	m := c.Methods()
+	c.methods.Store(&m)
 	if n, err := c.Engine.Recover(ctx); err != nil {
 		c.logf("recover: %v", err)
 	} else if n > 0 {

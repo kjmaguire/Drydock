@@ -397,52 +397,51 @@ func (s *store) allExecs(ctx context.Context, run RunID) ([]ExecRow, error) {
 
 // --- approvals ---
 
-func (s *store) approval(ctx context.Context, id RequestID) (ApprovalRow, error) {
+const approvalCols = `id,run_id,node_id,task_id,kind,title,payload,action_hash,status,decision,created_at,resolved_at`
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanApproval(r rowScanner) (ApprovalRow, error) {
 	var a ApprovalRow
 	var payload []byte
 	var resolved sql.NullInt64
-	err := s.db.Reader().QueryRowContext(ctx, `SELECT id,run_id,node_id,task_id,kind,title,payload,action_hash,status,decision,created_at,resolved_at
-		FROM approvals WHERE id=?`, string(id)).
-		Scan(&a.ID, &a.RunID, &a.NodeID, &a.TaskID, &a.Kind, &a.Title, &payload, &a.ActionHash, &a.Status, &a.Decision, &a.Created, &resolved)
-	if errors.Is(err, sql.ErrNoRows) {
-		return a, fmt.Errorf("workflow: approval %s not found", id)
-	}
+	err := r.Scan(&a.ID, &a.RunID, &a.NodeID, &a.TaskID, &a.Kind, &a.Title, &payload, &a.ActionHash, &a.Status, &a.Decision, &a.Created, &resolved)
 	a.Payload = payload
 	a.Resolved = resolved.Int64
 	return a, err
 }
 
+func (s *store) approval(ctx context.Context, id RequestID) (ApprovalRow, error) {
+	a, err := scanApproval(s.db.Reader().QueryRowContext(ctx, `SELECT `+approvalCols+` FROM approvals WHERE id=?`, string(id)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return a, fmt.Errorf("workflow: approval %s not found", id)
+	}
+	return a, err
+}
+
+// listApprovals reads the approvals with status (all when empty) in one query, oldest first.
 func (s *store) listApprovals(ctx context.Context, status string) ([]ApprovalRow, error) {
-	q := `SELECT id FROM approvals`
+	q := `SELECT ` + approvalCols + ` FROM approvals`
 	var args []any
 	if status != "" {
 		q += ` WHERE status=?`
 		args = append(args, status)
 	}
-	q += ` ORDER BY created_at`
+	q += ` ORDER BY created_at, rowid`
 	rows, err := s.db.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
-	var ids []RequestID
-	for rows.Next() {
-		var id RequestID
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
+	defer rows.Close()
 	var out []ApprovalRow
-	for _, id := range ids {
-		a, err := s.approval(ctx, id)
+	for rows.Next() {
+		a, err := scanApproval(rows)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, a)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *store) setSafePoint(ctx context.Context, run RunID, node NodeID, step, attempt int, ref string) error {

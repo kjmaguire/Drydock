@@ -70,3 +70,23 @@ func TestGetDeleteFindAndWorkspaceSearch(t *testing.T) {
 		t.Fatal("ValidKind")
 	}
 }
+
+// Search drops common words (a question does not match every entry through "the" and "how") and ranks a title match above
+// a body mention, the same weighting the memory page and the expert packs use.
+func TestSearchIgnoresCommonWordsAndWeighsTitles(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	body, _ := s.Add(ctx, Entry{ProjectID: "p1", Kind: Decision, Title: "Logging", Body: "Logs go to the shared collector; the deploy script ships them."}, true)
+	title, _ := s.Add(ctx, Entry{ProjectID: "p1", Kind: Decision, Title: "How we deploy", Body: "Through the pipeline, never by hand."}, true)
+	_, _ = s.Add(ctx, Entry{ProjectID: "p1", Kind: Convention, Title: "Naming", Body: "The packages are named for what they do."}, true)
+	r, err := s.Search(ctx, "p1", "how do I deploy the worker", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r) != 2 {
+		t.Fatalf("common words matched unrelated entries: %+v", r)
+	}
+	if r[0].ID != title.ID || r[1].ID != body.ID {
+		t.Fatalf("a title match must rank first: %q then %q", r[0].Title, r[1].Title)
+	}
+}

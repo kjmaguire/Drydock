@@ -245,7 +245,12 @@ func (c *Core) Methods() map[string]Method {
 
 // Call dispatches one method by name.
 func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
-	m, ok := c.Methods()[name]
+	reg := c.methods.Load()
+	if reg == nil { // a call made while the core is still opening
+		m := c.Methods()
+		reg = &m
+	}
+	m, ok := (*reg)[name]
 	if !ok {
 		return nil, fmt.Errorf("unknown method %q", name)
 	}

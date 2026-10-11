@@ -116,10 +116,33 @@ type CreateReq struct {
 	MaxIterations int
 }
 
+// Limits of a task a request may set.
+const (
+	MaxTitleLen      = 300
+	MaxIterationsCap = 20 // every iteration is a paid work and review turn
+	MaxPriority      = 1000
+)
+
+func (r CreateReq) validate() error {
+	switch title := strings.TrimSpace(r.Title); {
+	case strings.TrimSpace(r.ProjectID) == "":
+		return errors.New("tasks: project required")
+	case title == "":
+		return errors.New("tasks: title required")
+	case len(title) > MaxTitleLen:
+		return fmt.Errorf("tasks: the title is %d characters; keep it under %d and put the rest in the description", len(title), MaxTitleLen)
+	case r.MaxIterations > MaxIterationsCap:
+		return fmt.Errorf("tasks: at most %d iterations (each is a paid work and review turn), not %d", MaxIterationsCap, r.MaxIterations)
+	case r.Priority < -MaxPriority || r.Priority > MaxPriority:
+		return fmt.Errorf("tasks: priority %d is outside -%d to %d", r.Priority, MaxPriority, MaxPriority)
+	}
+	return nil
+}
+
 // Create inserts a BACKLOG task.
 func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
-	if strings.TrimSpace(req.Title) == "" {
-		return Task{}, errors.New("tasks: title required")
+	if err := req.validate(); err != nil {
+		return Task{}, err
 	}
 	id := ids.New("task")
 	now := storage.Now()
@@ -141,6 +164,13 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
 		for _, d := range req.DependsOn {
 			if d == id {
 				return errors.New("tasks: a task cannot depend on itself")
+			}
+			var dp string
+			if err := tx.QueryRowContext(ctx, `SELECT project_id FROM tasks WHERE id=?`, d).Scan(&dp); err != nil {
+				return fmt.Errorf("tasks: dependency %s: %w", d, ErrNotFound)
+			}
+			if dp != req.ProjectID {
+				return fmt.Errorf("tasks: dependency %s belongs to another project", d)
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO task_deps(task_id,depends_on) VALUES(?,?)`, id, d); err != nil {
 				return fmt.Errorf("dependency %s: %w", d, err)

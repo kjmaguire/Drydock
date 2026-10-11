@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -140,6 +141,15 @@ func redact(text string, fs []Finding) (string, []string) {
 		return text, nil
 	}
 	sortFindings(fs)
+	// every literal a finding covers is redacted wherever it occurs: a scanner that reports one offset per secret (gitleaks
+	// through secretadapt locates a repeated secret at its first occurrence) would otherwise leave a second copy in the text
+	type lit struct{ val, rule string }
+	var lits []lit
+	for _, f := range fs {
+		if f.Start >= 0 && f.End > f.Start && f.End <= len(text) && f.End-f.Start >= 8 {
+			lits = append(lits, lit{text[f.Start:f.End], f.Rule})
+		}
+	}
 	var b strings.Builder
 	var rules []string
 	seen := map[string]bool{}
@@ -160,7 +170,12 @@ func redact(text string, fs []Finding) (string, []string) {
 		}
 	}
 	b.WriteString(text[pos:])
-	return b.String(), rules
+	out := b.String()
+	sort.SliceStable(lits, func(i, j int) bool { return len(lits[i].val) > len(lits[j].val) })
+	for _, l := range lits {
+		out = strings.ReplaceAll(out, l.val, "[REDACTED:"+l.rule+"]")
+	}
+	return out, rules
 }
 
 func sortFindings(fs []Finding) {
