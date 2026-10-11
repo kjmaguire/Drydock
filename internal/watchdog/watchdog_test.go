@@ -205,7 +205,6 @@ func TestToolCallVisibilityReporting(t *testing.T) {
 	}
 }
 
-
 // A long test run whose stable "ok" lines fill the first 4 KB and whose failure changes at the end is progress, not a spin;
 // the same output three times is still a spin.
 func TestALongOutputThatChangesAtTheEndIsNotASpin(t *testing.T) {

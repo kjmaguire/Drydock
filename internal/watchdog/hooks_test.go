@@ -342,7 +342,9 @@ func TestResetWritesARowOnlyWhenNeeded(t *testing.T) {
 // hungTC is a labelled test double of a turn controller whose agent process does not answer the interrupt (a hung CLI).
 type hungTC struct{ sent atomic.Int32 }
 
-func (h *hungTC) CancelTurn() error { return fmt.Errorf("claude: interrupt not acknowledged within 5s") }
+func (h *hungTC) CancelTurn() error {
+	return fmt.Errorf("claude: interrupt not acknowledged within 5s")
+}
 func (h *hungTC) Send(context.Context, string) error {
 	h.sent.Add(1)
 	return nil
