@@ -23,6 +23,7 @@ const (
 	agentOutputRetention = 30 * 24 * time.Hour
 	rawCompactAfter      = 30 * 24 * time.Hour
 	rawDeleteAfter       = 90 * 24 * time.Hour
+	retentionFirstPass   = 5 * time.Minute
 )
 
 // RetentionReport is what one retention pass did.
@@ -47,6 +48,12 @@ func init() {
 	RegisterExtension(Extension{Name: "retention", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ctx, cancel := context.WithCancel(ctx)
 		go func() {
+			// the first pass waits a little, so starting the app does not begin with disk work
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(retentionFirstPass):
+			}
 			t := time.NewTicker(24 * time.Hour)
 			defer t.Stop()
 			for {
