@@ -219,8 +219,7 @@ func (s *Session) openSession(ctx context.Context) error {
 	s.sinfo = readSessionInfo(modes, options)
 	si := s.sinfo
 	s.mu.Unlock()
-	s.applyRequested(ctx, si)
-	return nil
+	return s.applyRequested(ctx, si)
 }
 
 // readSessionInfo extracts the selectable models, efforts and modes.
@@ -284,8 +283,20 @@ func (s *Session) warn(msg string) {
 }
 
 // applyRequested sets model, effort and permission mode when the agent exposes them. Values are validated against the
-// agent's own lists; the request is never forwarded blindly.
-func (s *Session) applyRequested(ctx context.Context, si SessionInfo) {
+// agent's own lists; the request is never forwarded blindly. A requested model that an agent with a model choice does not
+// offer, or that it refuses, ends the start: running on the agent's default instead could put a cheap-tier turn on an
+// expensive model (or the reverse) without anyone deciding it. An agent with no model choice at all runs its own model, with
+// a warning.
+func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
+	if m := s.spec.Model; m != "" && si.ModelOption != "" {
+		if len(si.Models) > 0 && !contains(si.Models, m) {
+			return fmt.Errorf("model %q was requested but this agent offers %s; choose one of them for the agent", m, strings.Join(si.Models, ", "))
+		}
+		if _, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{ValueId: &acp.SetSessionConfigOptionValueId{
+			SessionId: s.sid, ConfigId: acp.SessionConfigId(si.ModelOption), Value: acp.SessionConfigValueId(m)}}); err != nil {
+			return fmt.Errorf("setting the model to %q failed: %w", m, err)
+		}
+	}
 	setOption := func(what, option, value string, allowed []string) {
 		if value == "" {
 			return
@@ -300,7 +311,9 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) {
 			s.warn(fmt.Sprintf("setting %s to %q failed: %v", what, value, err))
 		}
 	}
-	setOption("model", si.ModelOption, s.spec.Model, si.Models)
+	if s.spec.Model != "" && si.ModelOption == "" {
+		s.warn(fmt.Sprintf("model %q was requested but this agent has no model choice; its own model is in use", s.spec.Model))
+	}
 	s.mu.Lock()
 	s.model = si.CurrentModel
 	if s.spec.Model != "" && si.ModelOption != "" && contains(si.Models, s.spec.Model) {
@@ -320,6 +333,7 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) {
 			s.warn(fmt.Sprintf("permission mode %q was requested but this agent offers: %s", m, strings.Join(si.Modes, ", ")))
 		}
 	}
+	return nil
 }
 
 // mcpServers reads RunSpec.MCPConfigPath (the Claude-style `{"mcpServers":{name:{...}}}` file Drydock writes per run) and

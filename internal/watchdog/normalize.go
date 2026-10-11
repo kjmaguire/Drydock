@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -24,7 +25,9 @@ var (
 const maxHashed = 4096
 
 // Normalize strips volatile content (timestamps, durations, temp paths, hex addresses, ANSI, trailing whitespace)
-// so that two outputs that differ only in such content hash equal. Only the first 4 KB is kept.
+// so that two outputs that differ only in such content hash equal. At most 4 KB is kept: a longer text keeps its first and
+// last 2 KB and its length. The end matters: `go test ./...` prints its stable "ok" lines first and the failure that changes
+// as the agent works last, so the first 4 KB alone would read progress as a spin.
 func Normalize(s string) string {
 	s = reANSI.ReplaceAllString(s, "")
 	s = reUUID.ReplaceAllString(s, "<uuid>")
@@ -40,7 +43,8 @@ func Normalize(s string) string {
 	}
 	s = strings.TrimRight(strings.Join(lines, "\n"), "\n")
 	if len(s) > maxHashed {
-		s = s[:maxHashed]
+		half := maxHashed / 2
+		s = s[:half] + "\n<" + strconv.Itoa(len(s)) + " bytes>\n" + s[len(s)-half:]
 	}
 	return s
 }

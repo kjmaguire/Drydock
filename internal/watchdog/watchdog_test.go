@@ -23,8 +23,8 @@ func TestNormalizeStripsVolatileContent(t *testing.T) {
 	if Normalize(a) != Normalize(b) {
 		t.Fatalf("normalize differs:\n%q\n%q", Normalize(a), Normalize(b))
 	}
-	if len(Normalize(strings.Repeat("x", 10000))) != 4096 {
-		t.Fatal("hash input must be capped at 4 KB")
+	if n := len(Normalize(strings.Repeat("x", 10000))); n > 4096+32 {
+		t.Fatalf("hash input must be capped at about 4 KB, got %d", n)
 	}
 }
 
@@ -202,5 +202,24 @@ func TestToolCallVisibilityReporting(t *testing.T) {
 	tr.Observe(call("c", "read", `{}`))
 	if !tr.ToolCallVisibility() {
 		t.Fatal("tool call seen")
+	}
+}
+
+
+// A long test run whose stable "ok" lines fill the first 4 KB and whose failure changes at the end is progress, not a spin;
+// the same output three times is still a spin.
+func TestALongOutputThatChangesAtTheEndIsNotASpin(t *testing.T) {
+	head := strings.Repeat("ok  \tgithub.com/x/pkg\t0.012s\n", 300) // about 9 KB of stable lines
+	a := head + "--- FAIL: TestSum (0.00s)\n    sum_test.go:9: got 3, want 4\nFAIL"
+	b := head + "--- FAIL: TestSum (0.00s)\n    sum_test.go:9: got 5, want 4\nFAIL"
+	args := json.RawMessage(`{"command":"go test ./..."}`)
+	if ToolKey("Bash", args, a) == ToolKey("Bash", args, b) {
+		t.Fatal("a change at the end of a long output hashes like no change")
+	}
+	if ToolKey("Bash", args, a) != ToolKey("Bash", args, a+"\n") {
+		t.Fatal("the same output must hash the same")
+	}
+	if FailureSignature(a, nil) == FailureSignature(b, nil) {
+		t.Fatal("the failure signature ignored the end of the output")
 	}
 }

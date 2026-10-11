@@ -89,9 +89,19 @@ func TestSessionModelModeEffortCapabilitiesAndSelection(t *testing.T) {
 	}
 }
 
+// A requested model the agent does not offer ends the start: running on the agent's default instead could put a cheap-tier
+// turn on an expensive model without anyone deciding it.
+func TestAModelTheAgentDoesNotOfferIsRefused(t *testing.T) {
+	ad := fakeAdapter(t, fakeacp.Script{Models: []string{"m-small"}, Turns: [][]fakeacp.Step{{{ReportConfig: true}}}})
+	_, err := ad.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "a", Cwd: t.TempDir(), Model: "not-a-model"})
+	if err == nil || !strings.Contains(err.Error(), `model "not-a-model" was requested but this agent offers m-small`) {
+		t.Fatalf("start with an unoffered model: %v", err)
+	}
+}
+
 func TestUnavailableSettingsAreReportedNotSilentlyDropped(t *testing.T) {
 	ad := fakeAdapter(t, fakeacp.Script{Models: []string{"m-small"}, Turns: [][]fakeacp.Step{{{ReportConfig: true}}}})
-	s := startSession(t, ad, agents.RunSpec{AgentID: "a", Model: "not-a-model", Effort: "high", PermissionMode: "bypassPermissions"})
+	s := startSession(t, ad, agents.RunSpec{AgentID: "a", Effort: "high", PermissionMode: "bypassPermissions"})
 	cs := turn(t, s, "go")
 	var warns []string
 	for _, c := range ofKind(cs, workflow.ChunkError) {
@@ -102,7 +112,7 @@ func TestUnavailableSettingsAreReportedNotSilentlyDropped(t *testing.T) {
 		warns = append(warns, e.Message)
 	}
 	joined := strings.Join(warns, "\n")
-	for _, want := range []string{`model "not-a-model"`, `effort "high"`, `permission mode "bypassPermissions"`} {
+	for _, want := range []string{`effort "high"`, `permission mode "bypassPermissions"`} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing warning for %s in %q", want, joined)
 		}

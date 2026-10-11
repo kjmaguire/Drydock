@@ -315,7 +315,18 @@ func (w *Watchdog) trip(st *execState, v Verdict) {
 	if v.Stage == 1 {
 		w.notify(ctx, "watchdog.tripped", t, fmt.Sprintf("Watchdog tripped (%s): %s Cancelling the turn and asking the agent to change approach.", v.Signal, v.Evidence))
 		if tc != nil {
-			_ = tc.CancelTurn()
+			if err := tc.CancelTurn(); err != nil {
+				// the agent did not stop when asked (a hung CLI never reads the nudge either): do not wait out another
+				// time cap, stop the node and pause for the human now
+				st.mu.Lock()
+				st.pause = &t
+				st.pauseNote = "the agent did not stop when asked (" + err.Error() + "), so its process was stopped"
+				st.mu.Unlock()
+				if st.cancel != nil {
+					st.cancel(workflow.ErrWatchdogTrip{Signal: v.Signal, Stage: 1, Evidence: v.Evidence})
+				}
+				return
+			}
 			nudge := nudgeText(v)
 			if err := tc.Send(ctx, nudge); err != nil {
 				// cannot continue the session: stop the node so the engine escalates
@@ -531,7 +542,17 @@ func (w *Watchdog) Middleware() workflow.Middleware {
 				st.mu.Unlock()
 				cancel(nil)
 				if pause != nil {
-					return workflow.NodeOutput{Request: pauseRequest(in.NodeInfo, *pause)}, noteErr(note)
+					req := pauseRequest(in.NodeInfo, *pause)
+					if note != "" {
+						// why the watchdog could not simply nudge the agent: shown with the pause
+						var ev map[string]any
+						if json.Unmarshal(req.Payload, &ev) == nil {
+							ev["stopped"] = note
+							req.Payload, _ = json.Marshal(ev)
+						}
+						req.Title += " (" + note + ")"
+					}
+					return workflow.NodeOutput{Request: req}, nil
 				}
 				if lead == nil || ctx.Err() != nil {
 					return out, err
@@ -559,8 +580,6 @@ func (w *Watchdog) Middleware() workflow.Middleware {
 		}
 	}
 }
-
-func noteErr(string) error { return nil }
 
 // CheckMiddleware wraps check nodes: it feeds results to the error-echo detector. A stage-1 echo queues a nudge for the
 // agent's next turn (the team lead's message instead, when a lead supervises the task); a stage-2 echo parks the check node

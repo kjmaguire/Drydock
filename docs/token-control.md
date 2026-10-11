@@ -72,7 +72,7 @@ Inputs: normalized `ToolEvent{CallID, Tool, ArgsCanonical, ResultNorm, IsError, 
 
 **Canonicalization of arguments.** JSON with sorted keys; paths made worktree-relative and case-folded on Windows; read ranges kept (a different range is a different call); volatile ids removed.
 
-**Normalization of results and texts (before hashing).** Strip timestamps (ISO 8601 and `HH:MM:SS[.mmm]`), durations, temp paths (`%TEMP%`-style Windows paths and `/tmp`), hex addresses (`0x...`), ANSI escape sequences (`charmbracelet/x/ansi` `Strip`, verified in GP s10), trailing whitespace; proposed additions: CRLF to LF, GUIDs. Hash at most the first 4 KB of the normalized text (SHA-256).
+**Normalization of results and texts (before hashing).** Strip timestamps (ISO 8601 and `HH:MM:SS[.mmm]`), durations, temp paths (`%TEMP%`-style Windows paths and `/tmp`), hex addresses (`0x...`), ANSI escape sequences (`charmbracelet/x/ansi` `Strip`, verified in GP s10), trailing whitespace; proposed additions: CRLF to LF, GUIDs. Hash at most the first 4 KB of the normalized text (SHA-256). As built (decision P38): at most 4 KB, but a longer text keeps its first and last 2 KB and its length, because `go test ./...` prints its stable `ok` lines first and the failure that changes as the agent works last; the first 4 KB alone read that progress as a spin (`TestALongOutputThatChangesAtTheEndIsNotASpin`).
 
 | Signal | Definition | Window | Default trip |
 |---|---|---|---|

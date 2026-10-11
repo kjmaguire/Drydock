@@ -128,10 +128,31 @@ func TestControlAck(t *testing.T) {
 
 func TestUnknownAndMalformedLinesAreTolerated(t *testing.T) {
 	p := NewParser()
-	for _, l := range []string{``, `not json`, `{"type":"brand_new_event","x":1}`, `{"type":"assistant","message":"oops"}`, `[1,2]`} {
+	for _, l := range []string{``, `not json`, `{"type":"assistant","message":"oops"}`, `[1,2]`, `{"type":"tool_progress","x":1}`, `{"type":"autocompact_state"}`} {
 		if cs, ack := p.Parse([]byte(l)); len(cs) != 0 || ack != nil {
 			t.Fatalf("line %q produced output", l)
 		}
+	}
+}
+
+// An event type the parser does not know is drift: the first one of each type in a session is a warning (the turn goes on),
+// and every one is counted.
+func TestUnknownEventTypesAreReportedAsDriftOncePerType(t *testing.T) {
+	p := NewParser()
+	cs, _ := p.Parse([]byte(`{"type":"turn_result","x":1}`))
+	if len(cs) != 1 || cs[0].Kind != workflow.ChunkError {
+		t.Fatalf("first unknown event: %v", kinds(cs))
+	}
+	var e workflow.ErrorChunk
+	if cs[0].Decode(&e) != nil || e.Fatal || !strings.Contains(e.Message, `"turn_result"`) || !strings.Contains(e.Message, "adapter drift") {
+		t.Fatalf("warning %+v", e)
+	}
+	if cs, _ := p.Parse([]byte(`{"type":"turn_result","x":2}`)); len(cs) != 0 {
+		t.Fatalf("the second one warned again: %v", kinds(cs))
+	}
+	p.Parse([]byte(`{"type":"other_new"}`))
+	if got := p.UnknownEvents(); got["turn_result"] != 2 || got["other_new"] != 1 || len(got) != 2 {
+		t.Fatalf("counts %v", got)
 	}
 }
 

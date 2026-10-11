@@ -338,3 +338,40 @@ func TestResetWritesARowOnlyWhenNeeded(t *testing.T) {
 		t.Fatalf("count after reset %d", n)
 	}
 }
+
+// hungTC is a labelled test double of a turn controller whose agent process does not answer the interrupt (a hung CLI).
+type hungTC struct{ sent atomic.Int32 }
+
+func (h *hungTC) CancelTurn() error { return fmt.Errorf("claude: interrupt not acknowledged within 5s") }
+func (h *hungTC) Send(context.Context, string) error {
+	h.sent.Add(1)
+	return nil
+}
+
+// A hung CLI that does not stop when the watchdog interrupts it never reads the nudge either: the watchdog stops the node and
+// pauses for the human at once instead of waiting out a second time cap.
+func TestAHungAgentThatIgnoresTheInterruptIsPausedAtOnce(t *testing.T) {
+	r := newRig(t)
+	tc := &hungTC{}
+	h := func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
+		if in.Turn != nil {
+			in.Turn.Set(tc)
+		}
+		spinChunks(in)
+		<-ctx.Done()
+		return workflow.NodeOutput{}, context.Cause(ctx)
+	}
+	start := time.Now()
+	id := r.run("wd-hung", h, "t-hung")
+	r.await(id, workflow.StatusWaitingHuman)
+	if took := time.Since(start); took > 20*time.Second {
+		t.Fatalf("the pause took %s", took)
+	}
+	pend, _ := r.eng.Pending(context.Background(), id)
+	if len(pend) != 1 || !strings.Contains(pend[0].Spec.Title, "did not stop when asked") || !strings.Contains(string(pend[0].Spec.Payload), "interrupt not acknowledged") {
+		t.Fatalf("pause %+v", pend)
+	}
+	if tc.sent.Load() != 0 {
+		t.Fatal("a nudge was queued for an agent that does not answer")
+	}
+}

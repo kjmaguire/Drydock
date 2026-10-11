@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -31,6 +32,25 @@ type Parser struct {
 	// ("status":"failed", measured with 2.1.296), so the agent would work with none of Drydock's tools: for a sandboxed worker
 	// no way to run a command, for every agent no Drydock approvals. The parser makes that a fatal error instead.
 	gateway string
+	// unknown counts the top-level event types this session sent that the parser does not know (docs/connections.md
+	// "drift"): a CLI release that renames or adds events shows up here instead of being dropped without a word.
+	unknown map[string]int
+}
+
+// ignoredEvents are the top-level event types Claude Code sends that carry nothing a turn needs (seen in recorded streams of
+// 2.1.296: progress of a running tool, the auto-compact state, the active goal; keep-alives; requests the CLI only sends to an
+// SDK host). Anything else unknown is drift.
+var ignoredEvents = map[string]bool{"tool_progress": true, "autocompact_state": true, "active_goal": true, "keep_alive": true, "control_request": true}
+
+// UnknownEvents returns how many events of each unknown top-level type the session sent.
+func (p *Parser) UnknownEvents() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make(map[string]int, len(p.unknown))
+	for k, v := range p.unknown {
+		out[k] = v
+	}
+	return out
 }
 
 // GatewayServer is the name of Drydock's MCP server in the configuration the gateway writes (mcp.ServerName).
@@ -250,6 +270,19 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 		}
 	case "result":
 		chunks = append(chunks, p.result(ev)...)
+	default:
+		if ignoredEvents[ev.Type] || ev.Type == "" {
+			break
+		}
+		if p.unknown == nil {
+			p.unknown = map[string]int{}
+		}
+		p.unknown[ev.Type]++
+		if p.unknown[ev.Type] == 1 {
+			// once per type and session, as a warning the run log and the chat show: the turn goes on
+			chunks = append(chunks, workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: "adapter drift: Claude Code sent an event of type " +
+				strconv.Quote(ev.Type) + " that Drydock does not read. If turns stop finishing or lose their results, this CLI version changed its output; check the Connections page and the contract suite."}))
+		}
 	}
 	return chunks, ack
 }
