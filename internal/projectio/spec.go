@@ -96,7 +96,7 @@ var Tables = []Table{
 		Columns: []string{"task_id", "attempt", "kind", "passed", "summary", "ref", "data", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}, Export: exportEvidence},
 	{Name: "task_reviews", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
-		Columns: []string{"task_id", "attempt", "reviewer", "verdict", "feedback", "model", "created_at"},
+		Columns: []string{"task_id", "attempt", "reviewer", "verdict", "feedback", "model", "commit_sha", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
 	{Name: "workflow_runs", Where: `id IN ` + runIDs, OrderBy: `created_at, id`,
 		Columns: []string{"id", "workflow", "status", "project_id", "task_id", "input", "result", "topology_hash", "parent_checkpoint_id",

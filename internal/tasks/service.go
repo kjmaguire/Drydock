@@ -76,7 +76,9 @@ type ReviewRecord struct {
 	Verdict  string `json:"verdict"` // SHIP | REVISE
 	Feedback string `json:"feedback"`
 	Model    string `json:"model,omitempty"`
-	Created  int64  `json:"created"`
+	// Commit is the task commit the reviewer was shown (its diff against the base); '' when unknown.
+	Commit  string `json:"commit,omitempty"`
+	Created int64  `json:"created"`
 }
 
 // Errors.
@@ -615,8 +617,8 @@ func (s *Service) AddReview(ctx context.Context, taskID string, r ReviewRecord) 
 	}
 	r.TaskID, r.Created = taskID, storage.Now()
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `INSERT INTO task_reviews(task_id,attempt,reviewer,verdict,feedback,model,created_at) VALUES(?,?,?,?,?,?,?)`,
-			taskID, r.Attempt, r.Reviewer, r.Verdict, r.Feedback, r.Model, r.Created)
+		res, err := tx.ExecContext(ctx, `INSERT INTO task_reviews(task_id,attempt,reviewer,verdict,feedback,model,commit_sha,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			taskID, r.Attempt, r.Reviewer, r.Verdict, r.Feedback, r.Model, r.Commit, r.Created)
 		if err != nil {
 			return err
 		}
@@ -629,7 +631,7 @@ func (s *Service) AddReview(ctx context.Context, taskID string, r ReviewRecord) 
 
 // Reviews lists a task's reviews, oldest first.
 func (s *Service) Reviews(ctx context.Context, taskID string) ([]ReviewRecord, error) {
-	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT id,task_id,attempt,reviewer,verdict,feedback,model,created_at FROM task_reviews WHERE task_id=? ORDER BY id`, taskID)
+	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT id,task_id,attempt,reviewer,verdict,feedback,model,commit_sha,created_at FROM task_reviews WHERE task_id=? ORDER BY id`, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -637,7 +639,7 @@ func (s *Service) Reviews(ctx context.Context, taskID string) ([]ReviewRecord, e
 	var out []ReviewRecord
 	for rows.Next() {
 		var r ReviewRecord
-		if err := rows.Scan(&r.ID, &r.TaskID, &r.Attempt, &r.Reviewer, &r.Verdict, &r.Feedback, &r.Model, &r.Created); err != nil {
+		if err := rows.Scan(&r.ID, &r.TaskID, &r.Attempt, &r.Reviewer, &r.Verdict, &r.Feedback, &r.Model, &r.Commit, &r.Created); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -213,6 +213,10 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 	if len(rv) != 2 || rv[0].Verdict != "REVISE" || rv[1].Verdict != "SHIP" || rv[0].Reviewer != "a2" || rv[1].Reviewer == task.Assignee {
 		t.Fatalf("reviews %+v", rv)
 	}
+	// each review records the commit it was shown: the REVISE saw the first version, the SHIP the reworked one
+	if rv[0].Commit == "" || rv[1].Commit == "" || rv[0].Commit == rv[1].Commit {
+		t.Fatalf("reviewed commits %q then %q", rv[0].Commit, rv[1].Commit)
+	}
 	// the approval request carries everything a human needs
 	pend, _ := e.eng.Pending(context.Background(), id)
 	var sum pipeline.ApproveSummary
@@ -369,7 +373,14 @@ func TestParseVerdict(t *testing.T) {
 		"SHIPPING this would be a mistake": "REVISE",
 		"I think it is fine":               "REVISE", // unparseable never ships
 		`{"verdict":"MAYBE"}`:              "REVISE",
-		"":                                 "REVISE",
+		// braces in the feedback (code in a review is routine) used to defeat the parser and turn a SHIP into a REVISE
+		`{"verdict":"SHIP","feedback":"optional: use map[string]struct{} for the set"}`:                 "SHIP",
+		"```json\n{\"verdict\": \"SHIP\", \"feedback\": \"if err != nil { return err } is fine\"}\n```": "SHIP",
+		`{"review":{"verdict":"SHIP","feedback":"nested"}}`:                                             "SHIP",
+		`{"verdict":"SHIP","feedback":"an earlier draft said {\"verdict\":\"REVISE\"}"}`:                "SHIP",
+		`{"verdict":"SHIP"} {"verdict":"REVISE","feedback":"func f() {}"}`:                              "REVISE", // last wins
+		`{"verdict": "SHIP", broken`: "REVISE",
+		"":                           "REVISE",
 	}
 	for in, want := range cases {
 		if got := pipeline.ParseVerdict(in).Verdict; got != want {
@@ -378,6 +389,9 @@ func TestParseVerdict(t *testing.T) {
 	}
 	if v := pipeline.ParseVerdict(`{"verdict":"REVISE"}`); v.Feedback == "" {
 		t.Error("REVISE must always carry feedback")
+	}
+	if v := pipeline.ParseVerdict(`{"verdict":"REVISE","feedback":"return map[string]struct{}{} instead of nil"}`); v.Feedback != "return map[string]struct{}{} instead of nil" {
+		t.Errorf("a REVISE with braces lost its feedback: %q", v.Feedback)
 	}
 }
 

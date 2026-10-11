@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
@@ -38,34 +37,65 @@ type Verdict struct {
 	Feedback string `json:"feedback"`
 }
 
-var jsonObj = regexp.MustCompile(`(?s)\{[^{}]*"verdict"[^{}]*\}`)
-
 // ParseVerdict extracts the reviewer's verdict from free text. It accepts a JSON object with a "verdict" field (the last one
 // wins); without one, only a reply that is exactly the word SHIP ships. Anything else is REVISE: a review that cannot be
 // understood never ships work (a first line that merely starts with "SHIP", such as "SHIPPING this would be a mistake", is
-// not a verdict).
+// not a verdict). Objects are found by decoding JSON at every brace, so feedback that quotes code with braces in it
+// (`map[string]struct{}`) is read as written instead of turning a SHIP into an unparsed REVISE.
 func ParseVerdict(text string) Verdict {
-	ms := jsonObj.FindAllString(text, -1)
-	for i := len(ms) - 1; i >= 0; i-- {
-		var v Verdict
-		if json.Unmarshal([]byte(ms[i]), &v) == nil {
-			switch strings.ToUpper(strings.TrimSpace(v.Verdict)) {
-			case "SHIP":
-				v.Verdict = "SHIP"
-				return v
-			case "REVISE":
-				v.Verdict = "REVISE"
-				if strings.TrimSpace(v.Feedback) == "" {
-					v.Feedback = "The reviewer asked for changes but gave no details; re-check the acceptance criteria and the diff."
-				}
-				return v
+	objs := verdictObjects(text)
+	for i := len(objs) - 1; i >= 0; i-- {
+		v := objs[i]
+		switch strings.ToUpper(strings.TrimSpace(v.Verdict)) {
+		case "SHIP":
+			v.Verdict = "SHIP"
+			return v
+		case "REVISE":
+			v.Verdict = "REVISE"
+			if strings.TrimSpace(v.Feedback) == "" {
+				v.Feedback = "The reviewer asked for changes but gave no details; re-check the acceptance criteria and the diff."
 			}
+			return v
 		}
 	}
 	if w := strings.ToUpper(strings.TrimRight(strings.TrimSpace(text), ".!")); w == "SHIP" {
 		return Verdict{Verdict: "SHIP"}
 	}
 	return Verdict{Verdict: "REVISE", Feedback: "The review response could not be parsed as a verdict; reviewer said:\n" + truncate(text, 1500)}
+}
+
+// verdictObjects returns, in order of appearance, every JSON object in text that has a "verdict" field. Decoding starts at
+// each '{'; an object that decodes is skipped as a whole, so a verdict quoted inside another verdict's feedback is not read
+// twice. Only the last 64 KB are searched: the verdict is the reviewer's closing answer.
+func verdictObjects(text string) []Verdict {
+	if len(text) > 64<<10 {
+		text = text[len(text)-64<<10:]
+	}
+	var out []Verdict
+	for i := 0; i < len(text); i++ {
+		if text[i] != '{' {
+			continue
+		}
+		dec := json.NewDecoder(strings.NewReader(text[i:]))
+		var raw map[string]json.RawMessage
+		if dec.Decode(&raw) != nil {
+			continue
+		}
+		vr, ok := raw["verdict"]
+		if !ok {
+			continue // an object without a verdict may still contain one ({"review": {"verdict": ...}}): look inside it
+		}
+		var v Verdict
+		if json.Unmarshal(vr, &v.Verdict) != nil {
+			continue
+		}
+		if fb, ok := raw["feedback"]; ok {
+			_ = json.Unmarshal(fb, &v.Feedback)
+		}
+		out = append(out, v)
+		i += int(dec.InputOffset()) - 1
+	}
+	return out
 }
 
 func truncate(s string, n int) string {
@@ -124,12 +154,14 @@ func Review(d Deps) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		var diff string
-		for i := len(evidence) - 1; i >= 0; i-- {
-			if evidence[i].Kind == "diff" {
+		var diff, commit string
+		for i := len(evidence) - 1; i >= 0 && (diff == "" || commit == ""); i-- {
+			switch {
+			case evidence[i].Kind == "diff" && diff == "":
 				b, _ := os.ReadFile(evidence[i].Ref)
 				diff = string(b)
-				break
+			case evidence[i].Kind == "commit" && commit == "":
+				commit = evidence[i].Ref
 			}
 		}
 		cfg := d.AgentConfig(t, "review")
@@ -161,7 +193,7 @@ func Review(d Deps) workflow.NodeHandler {
 			}
 			d.OnTurn(ctx, t, cfg.AgentID, "review", summary)
 		}
-		if _, err := d.Tasks.AddReview(ctx, t.ID, tasks.ReviewRecord{Attempt: t.Iteration, Reviewer: cfg.AgentID, Verdict: v.Verdict, Feedback: v.Feedback, Model: cfg.Spec.Model}); err != nil {
+		if _, err := d.Tasks.AddReview(ctx, t.ID, tasks.ReviewRecord{Attempt: t.Iteration, Reviewer: cfg.AgentID, Verdict: v.Verdict, Feedback: v.Feedback, Model: cfg.Spec.Model, Commit: commit}); err != nil {
 			return workflow.NodeOutput{}, err
 		}
 		b, _ := json.Marshal(v)
