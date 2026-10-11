@@ -10,6 +10,7 @@ import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
@@ -138,13 +139,24 @@ const jumpCss = css({
   '&:hover': { background: t.accentHover },
 });
 const notesCss = css({ padding: `0 ${t.s5}` });
+const olderCss = css({ display: 'flex', justifyContent: 'center', padding: `${t.s2} 0` });
+
+/** The person is looking at this window: it is visible and has focus. Messages are marked read only then. */
+export function windowAttended(doc: Document = document): boolean {
+  return doc.visibilityState === 'visible' && doc.hasFocus();
+}
 
 
 /** The conversation of one room. Keyed by room id: a new room is a new feed. */
 export function Conversation(handle: Handle<{ room: Room }>) {
   const s = services(handle);
   watch(handle, s.project);
-  const feed = new MessageFeed(s.client, s.store, handle.props.room.id).start(handle.signal);
+  // the read cursor plus the unread count is close to the newest seq: the first read usually lands on the newest page
+  const hint = () => {
+    const u = s.project.unread.data?.find((x) => x.roomId === handle.props.room.id);
+    return u ? u.lastReadSeq + u.unread : 0;
+  };
+  const feed = new MessageFeed(s.client, s.store, handle.props.room.id, 100, hint).start(handle.signal);
   const members = query(handle, {
     load: () => s.client.roomMembers(handle.props.room.id),
     when: (e) => e.type.startsWith('room.member'),
@@ -153,11 +165,29 @@ export function Conversation(handle: Handle<{ room: Room }>) {
 
   let log: HTMLDivElement | undefined;
   let stick = true;
-  let seenCount = 0;
+  /** The newest seq seen while at the bottom: only messages after it count as unseen. */
+  let seenSeq = 0;
   let marked = 0;
   /** Messages after this seq are "new" (the read cursor when the room was opened); undefined = no divider. */
   let newAfter: number | undefined;
   let captured = false;
+  /** The log announces additions only once the first page is on screen (not the whole history on open). */
+  let announce = false;
+  /** scrollHeight before older messages were added, to keep the view where it was. */
+  let keepFrom: number | undefined;
+
+  /**
+   * Mark the room read up to the newest message, only while the person can see it: the window is visible and focused and
+   * the log is at the bottom (the core clamps and never moves the cursor back).
+   */
+  const markRead = () => {
+    const last = feed.lastSeq;
+    if (last <= marked || handle.props.room.archived || !stick || !windowAttended()) return;
+    marked = last;
+    s.client.roomMarkRead(handle.props.room.id, last).catch(() => undefined);
+  };
+  window.addEventListener('focus', markRead, { signal: handle.signal });
+  document.addEventListener('visibilitychange', markRead, { signal: handle.signal });
 
   feed.addEventListener('change', () => {
     const msgs = feed.messages;
@@ -165,18 +195,27 @@ export function Conversation(handle: Handle<{ room: Room }>) {
       captured = true;
       const u = s.project.unread.data?.find((x) => x.roomId === handle.props.room.id);
       if (u && u.unread > 0 && msgs.some((m) => m.seq > u.lastReadSeq && m.author.kind !== 'human')) newAfter = u.lastReadSeq;
+      // the first page is in the DOM after this render: from then on new messages are announced
+      handle.queueTask(() => {
+        if (!announce) {
+          announce = true;
+          void handle.update();
+        }
+      });
     }
-    // mark read (the core clamps and never moves the cursor back)
-    const last = msgs.length ? msgs[msgs.length - 1]!.seq : 0;
-    if (last > marked && !handle.props.room.archived) {
-      marked = last;
-      s.client.roomMarkRead(handle.props.room.id, last).catch(() => undefined);
-    }
+    markRead();
     void handle.update();
   });
 
   const toBottom = () => {
     if (log) log.scrollTop = log.scrollHeight;
+  };
+
+  const loadOlder = async () => {
+    if (!feed.hasMore || feed.loadingOlder) return;
+    keepFrom = log?.scrollHeight;
+    const added = await feed.loadOlder();
+    if (!added) keepFrom = undefined;
   };
 
   return () => {
@@ -187,10 +226,15 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     const rows = buildRows(msgs, { newAfterSeq: newAfter });
     const label = roomLabel(room, agents);
     const mem = members.data ?? [];
-    if (stick) seenCount = msgs.length;
-    const unseen = msgs.length - seenCount;
+    if (stick) seenSeq = feed.lastSeq;
+    // the messages are in seq order: count back from the newest (older pages above are never "new")
+    let unseen = 0;
+    if (!stick) for (let i = msgs.length - 1; i >= 0 && msgs[i]!.seq > seenSeq; i--) unseen++;
     handle.queueTask(() => {
-      if (stick) toBottom();
+      if (keepFrom !== undefined && log && !feed.loadingOlder) {
+        log.scrollTop += log.scrollHeight - keepFrom;
+        keepFrom = undefined;
+      } else if (stick) toBottom();
     });
     return (
       <section mix={screenCss} class="conversation" aria-label={`Conversation ${room.name}`}>
@@ -242,16 +286,26 @@ export function Conversation(handle: Handle<{ room: Room }>) {
                 const el = e.currentTarget as HTMLDivElement;
                 const was = stick;
                 stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+                if (el.scrollTop < 80 && feed.hasMore && !feed.loadingOlder) void loadOlder();
+                if (stick && !was) markRead();
                 if (stick !== was) void handle.update();
               }),
             ]}
             role="log"
-            aria-live="polite"
+            aria-live={announce && !feed.loadingOlder ? 'polite' : 'off'}
             aria-relevant="additions"
+            aria-busy={feed.loading || feed.loadingOlder ? 'true' : undefined}
             aria-label={`Messages in ${room.name}`}
             tabIndex={0}
           >
-            {!feed.loading ? (
+            {feed.hasMore ? (
+              <div mix={olderCss}>
+                <Button size="sm" variant="ghost" disabled={feed.loadingOlder} data-testid="room-older" mix={[on('click', () => void loadOlder())]}>
+                  {feed.loadingOlder ? 'Loading older messages...' : 'Load older messages'}
+                </Button>
+              </div>
+            ) : null}
+            {!feed.loading && !feed.hasMore ? (
               <div mix={introCss}>
                 <span mix={introIcon} aria-hidden="true">
                   <Icon icon={roomIcon(room.kind)} size={18} />
@@ -300,6 +354,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
                 on('click', () => {
                   stick = true;
                   toBottom();
+                  markRead();
                   void handle.update();
                 }),
               ]}

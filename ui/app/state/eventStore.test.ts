@@ -81,6 +81,32 @@ describe('EventStore', () => {
     expect(store.getSnapshot().epoch).toBe(1);
   });
 
+  it('bumps epoch when the stream opens again after a break, never while it is down (F6)', () => {
+    const { t, sched, store } = setup();
+    store.start();
+    t.current.h.onOpen();
+    expect(store.getSnapshot().epoch).toBe(0); // the first open is not a reconnect
+    t.current.h.onError(new Error('down'));
+    expect(store.getSnapshot().epoch).toBe(0); // the core is unreachable: a re-read now would only fail
+    sched.runAll();
+    t.current.h.onError(new Error('still down'));
+    sched.runAll();
+    expect(store.getSnapshot().epoch).toBe(0);
+    t.current.h.onOpen();
+    expect(store.getSnapshot().epoch).toBe(1); // back: re-read once
+    t.current.h.onOpen(); // a second open signal of the same stream is not another reconnect
+    expect(store.getSnapshot().epoch).toBe(1);
+  });
+
+  it('bumps epoch when the first open failed and a retry succeeds', () => {
+    const { t, sched, store } = setup();
+    store.start();
+    t.current.h.onError(new Error('core not up yet'));
+    sched.runAll();
+    t.current.h.onOpen();
+    expect(store.getSnapshot().epoch).toBe(1);
+  });
+
   it('backs off further on repeated failures and resets after a successful open', () => {
     const { t, sched, store } = setup();
     store.start();

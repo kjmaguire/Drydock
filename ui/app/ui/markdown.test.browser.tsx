@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import { cleanup, renderPlain } from '../test/render.tsx';
-import { Markdown, safeHref } from './markdown.tsx';
+import { lex, Markdown, memoLex, safeHref } from './markdown.tsx';
 
 afterEach(cleanup);
 
@@ -95,6 +95,29 @@ describe('Markdown sanitization', () => {
     expect(r.container.querySelector('pre code')?.textContent).toContain('let x = "<b>"');
     expect(r.container.querySelector('blockquote')).not.toBeNull();
     expect(r.container.querySelector('h3')?.textContent).toBe('Title');
+  });
+
+  it('puts a table in a named region the keyboard can reach and scroll', () => {
+    const r = html('| h1 | h2 |\n|---|---|\n| c1 | c2 |');
+    const wrap = r.container.querySelector<HTMLElement>('.md-table-wrap')!;
+    expect(wrap.getAttribute('role')).toBe('region');
+    expect(wrap.getAttribute('aria-label')).toBe('Table');
+    expect(wrap.tabIndex).toBe(0);
+  });
+
+  it('lexes a message once however often it renders (F6)', async () => {
+    const tokensOf = memoLex();
+    const a = tokensOf('**one** two');
+    expect(tokensOf('**one** two')).toBe(a); // the same tokens: no second lex
+    const b = tokensOf('three');
+    expect(b).not.toBe(a);
+    expect(b).toEqual(lex('three'));
+    // the component keeps its tokens across re-renders with the same source
+    const r = renderPlain(<Markdown source="**kept**" />);
+    const strong = r.container.querySelector('strong');
+    r.root.render(<Markdown source="**kept**" />);
+    r.root.flush();
+    expect(r.container.querySelector('strong')).toBe(strong);
   });
 
   it('treats text that looks like an approval or a command as plain text with no controls', () => {

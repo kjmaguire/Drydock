@@ -132,7 +132,8 @@ function block(tk: Token): RemixNode {
     case 'table': {
       const tb = tk as Tokens.Table;
       return (
-        <div class="md-table-wrap">
+        // a wide table scrolls: the wrapper is a named, focusable region so the keyboard can scroll it (WCAG 2.1.1)
+        <div class="md-table-wrap" role="region" aria-label="Table" tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -164,6 +165,22 @@ export function lex(source: string): Token[] {
   return marked.lexer(source, { gfm: true, breaks: false, async: false }) as Token[];
 }
 
+/**
+ * A lexer that remembers its last answer: one per Markdown instance, so re-rendering a list of messages (any event, a
+ * scroll, a hover) re-lexes only the messages whose text changed.
+ */
+export function memoLex(): (source: string) => Token[] {
+  let last: string | undefined;
+  let tokens: Token[] = [];
+  return (source) => {
+    if (source !== last) {
+      tokens = lex(source);
+      last = source;
+    }
+    return tokens;
+  };
+}
+
 const mdCss = css({
   fontSize: t.textMd,
   lineHeight: '1.55',
@@ -181,14 +198,15 @@ const mdCss = css({
 });
 
 export function Markdown(handle: Handle<{ source: string; maxChars?: number }>) {
+  const tokensOf = memoLex();
   return () => {
     const { source, maxChars = 20000 } = handle.props;
     const clipped = source.length > maxChars;
     const text = clipped ? source.slice(0, maxChars) : source;
     return (
       <div class="md" mix={mdCss}>
-        {blocks(lex(text))}
-        {clipped ? <p style={{ color: 'var(--text-muted)' }}>[{source.length - maxChars} more characters not shown]</p> : null}
+        {blocks(tokensOf(text))}
+        {clipped ? <p style={{ color: t.textMuted }}>[{source.length - maxChars} more characters not shown]</p> : null}
       </div>
     );
   };

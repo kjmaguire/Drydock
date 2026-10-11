@@ -48,6 +48,14 @@ function servicesWith(client: Partial<Client>, rooms: Room[] = []) {
 
 const messagesOf = (r: { container: HTMLElement }) => qa(r, '[data-testid="message"]');
 
+/** The test page is not a focused window; a room marks read only in one. Pretend it is (undone after each test). */
+function focusWindow(): void {
+  Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+}
+afterEach(() => {
+  delete (document as unknown as { hasFocus?: unknown }).hasFocus;
+});
+
 describe('Conversation', () => {
   it('renders author kinds, markers, check cards with failure summary, and inert agent text', async () => {
     const messages: Message[] = [
@@ -137,6 +145,7 @@ describe('Conversation', () => {
       roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after),
       roomMarkRead: async (...a: unknown[]) => (reads.push(a), true),
     });
+    focusWindow();
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
     await waitFor(() => expect(messagesOf(r)).toHaveLength(2), r);
     await waitFor(() => expect(reads).toEqual([['r', 2]]), r);
@@ -146,6 +155,84 @@ describe('Conversation', () => {
     await waitFor(() => expect(messagesOf(r)).toHaveLength(3), r);
     expect(messagesOf(r)[2]!.textContent).toContain('an answer');
     await waitFor(() => expect(reads).toEqual([['r', 2], ['r', 3]]), r);
+  });
+
+  it('marks read only while the window is focused and the log is at the bottom (F20)', async () => {
+    let messages = Array.from({ length: 40 }, (_, i) => msg({ seq: i + 1, body: `line ${i + 1}` }));
+    const reads: unknown[][] = [];
+    const s = servicesWith({
+      roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after),
+      roomMarkRead: async (...a: unknown[]) => (reads.push(a), true),
+    });
+    let focused = false;
+    Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => focused });
+    {
+      const r = mount(
+        <div style={{ height: '320px', display: 'flex', flexDirection: 'column' }}>
+          <Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />
+        </div>,
+        s,
+      );
+      await waitFor(() => expect(messagesOf(r)).toHaveLength(40), r);
+      await new Promise((res) => setTimeout(res, 30));
+      expect(reads).toEqual([]); // the window is in the background: nothing is marked read
+      focused = true;
+      await r.act(() => window.dispatchEvent(new Event('focus')));
+      await waitFor(() => expect(reads).toEqual([['r', 40]]), r);
+      // scrolled up to read history: a new message is not marked read until the log is back at the bottom
+      const log = q<HTMLDivElement>(r, '[role="log"]')!;
+      expect(log.scrollHeight > log.clientHeight).toBe(true);
+      await r.act(() => {
+        log.scrollTop = 0;
+        log.dispatchEvent(new Event('scroll'));
+      });
+      messages = [...messages, msg({ seq: 41, author: { kind: 'agent', id: 'agt1' }, body: 'news' })];
+      s.emit({ type: 'room.message_posted', data: { room: 'r' } });
+      await waitFor(() => expect(messagesOf(r)).toHaveLength(41), r);
+      await new Promise((res) => setTimeout(res, 30));
+      expect(reads).toEqual([['r', 40]]);
+      expect(byText(r.container, 'button', '1 new message')).not.toBeNull();
+      await r.act(() => {
+        log.scrollTop = log.scrollHeight;
+        log.dispatchEvent(new Event('scroll'));
+      });
+      await waitFor(() => expect(reads).toEqual([['r', 40], ['r', 41]]), r);
+    }
+  });
+
+  it('opens on the newest page and loads older messages on demand (F6)', async () => {
+    const messages = Array.from({ length: 150 }, (_, i) => msg({ seq: i + 1, body: `line ${i + 1}`, created_at: '2026-01-01T10:00:00Z' }));
+    const calls: [number, number][] = [];
+    const s = servicesWith({
+      // TEST DOUBLE: room.messages as the core answers it (seq > afterSeq, oldest first, at most limit)
+      roomMessages: async (_r: string, after = 0, limit = 200) => (calls.push([after, limit]), messages.filter((m) => m.seq > after).slice(0, limit)),
+    });
+    const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
+    await waitFor(() => expect(messagesOf(r)).toHaveLength(100), r);
+    expect(messagesOf(r)[0]!.textContent).toContain('line 51');
+    expect(messagesOf(r)[99]!.textContent).toContain('line 150');
+    expect(r.container.textContent).not.toContain('This is the start of the general channel.');
+    // the live region did not announce the first page; it announces what comes after
+    const log = q(r, '[role="log"]')!;
+    await waitFor(() => expect(log.getAttribute('aria-live')).toBe('polite'), r);
+    await r.act(() => byText(r.container, 'button', 'Load older messages').click());
+    await waitFor(() => expect(messagesOf(r)).toHaveLength(150), r);
+    expect(messagesOf(r)[0]!.textContent).toContain('line 1');
+    expect(r.container.textContent).toContain('This is the start of the general channel.');
+    expect(calls.at(-1)).toEqual([0, 50]);
+  });
+
+  it('keeps the live region quiet while the history loads', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((res) => (release = res));
+    const s = servicesWith({ roomMessages: async () => (await gate, [msg({ seq: 1 })]) });
+    const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
+    await waitFor(() => expect(q(r, '[role="log"]')!.getAttribute('aria-live')).toBe('off'), r);
+    expect(q(r, '[role="log"]')!.getAttribute('aria-busy')).toBe('true');
+    release();
+    await waitFor(() => expect(messagesOf(r)).toHaveLength(1), r);
+    await waitFor(() => expect(q(r, '[role="log"]')!.getAttribute('aria-live')).toBe('polite'), r);
+    expect(q(r, '[role="log"]')!.getAttribute('aria-busy')).toBeNull();
   });
 
   it('opens a thread from the hover toolbar and shows the reply count under the root', async () => {

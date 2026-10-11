@@ -15,7 +15,7 @@ export interface StoreSnapshot {
   readonly events: readonly DrydockEvent[];
   /** Number of times the stream has been (re)opened; useful to tests and the status line. */
   readonly connects: number;
-  /** Bumped on every reconnect so readers can re-read the core once the stream is back. */
+  /** Bumped when the stream opens again after a break, so readers re-read the core once it is reachable again. */
   readonly epoch: number;
 }
 
@@ -168,6 +168,9 @@ export class EventStore {
     this.stream = this.transport.openEventStream(this.lastSeq, {
       onOpen: () => {
         if (gen !== this.gen) return;
+        // A stream that opens after a break (or after a failed first open) may have missed what the core changed while
+        // it was down: bump epoch now, when the core is reachable again, so live reads re-read once and succeed.
+        if (this.attempts > 0) this.epoch++;
         this.attempts = 0;
         this.status = 'open';
         this.publish(true);
@@ -182,7 +185,6 @@ export class EventStore {
         this.stream = undefined;
         this.status = 'reconnecting';
         this.attempts++;
-        this.epoch++;
         this.publish(true);
         this.retry = this.sched.setTimeout(() => {
           this.retry = undefined;
