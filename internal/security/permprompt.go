@@ -200,7 +200,11 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 			}
 			return ask(KindFSOutsideWorktree, "the path could not be checked against the worktree")
 		}
-		if writes && touchesGitDir(req.Root, full) {
+		root := req.Root
+		if r, err := an.guard.Resolve(req.Root, "."); err == nil {
+			root = r // resolved the way full was (on Windows an 8.3 short name such as RUNNER~1 is expanded in both)
+		}
+		if writes && touchesGitDir(root, full) {
 			return ask(KindAgentTool, "it writes inside .git, where hooks and configuration run code")
 		}
 		if writes {
@@ -211,10 +215,20 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 	return ask(KindAgentTool, "no Drydock rule covers this tool")
 }
 
-// touchesGitDir reports whether full (a resolved path inside root) is in root's .git folder or file.
+// touchesGitDir reports whether full (a resolved path inside root) is in root's .git folder or file. When full does not
+// start with root as written (two spellings of one folder), it fails closed: any path component named .git counts.
 func touchesGitDir(root, full string) bool {
-	rel := strings.TrimPrefix(strings.ReplaceAll(full, `\`, "/"), strings.TrimRight(strings.ReplaceAll(root, `\`, "/"), "/"))
-	rel = strings.TrimPrefix(rel, "/")
+	f := strings.ReplaceAll(full, `\`, "/")
+	r := strings.TrimRight(strings.ReplaceAll(root, `\`, "/"), "/")
+	if len(f) < len(r) || !strings.EqualFold(f[:len(r)], r) || (len(f) > len(r) && f[len(r)] != '/') {
+		for _, part := range strings.Split(f, "/") {
+			if strings.EqualFold(part, ".git") {
+				return true
+			}
+		}
+		return false
+	}
+	rel := strings.TrimPrefix(f[len(r):], "/")
 	first, _, _ := strings.Cut(rel, "/")
 	return strings.EqualFold(first, ".git")
 }

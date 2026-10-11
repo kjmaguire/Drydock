@@ -374,3 +374,26 @@ func TestPermissionRecordsNoSecretValues(t *testing.T) {
 		t.Fatal("nothing was recorded")
 	}
 }
+
+// A write into the worktree's .git is found however the two paths are spelled: a short 8.3 root against an expanded file
+// path (the Windows runner's RUNNER~1), backslashes, another letter case. When the root is not a prefix, any .git component
+// counts (fail closed); .github is not .git.
+func TestTouchesGitDirWhateverTheSpelling(t *testing.T) {
+	for _, c := range []struct {
+		root, full string
+		want       bool
+	}{
+		{`C:\Users\runneradmin\wt`, `C:\Users\runneradmin\wt\.git\hooks\pre-commit`, true},
+		{`C:\Users\runneradmin\wt`, `c:/users/RUNNERADMIN/wt/.GIT/config`, true},
+		{`C:\Users\RUNNER~1\wt`, `C:\Users\runneradmin\wt\.git\hooks\pre-commit`, true},
+		{`C:\Users\RUNNER~1\wt`, `C:\Users\runneradmin\wt\src\calc.go`, false},
+		{`/home/u/wt`, `/home/u/wt/.github/workflows/ci.yml`, false},
+		{`/home/u/wt`, `/home/u/wt/src/.git-notes`, false},
+		{`/home/u/wt`, `/home/u/wtx/.git/config`, true},
+		{`/home/u/wt`, `/home/u/wt/calc.go`, false},
+	} {
+		if got := touchesGitDir(c.root, c.full); got != c.want {
+			t.Errorf("touchesGitDir(%q, %q) = %v, want %v", c.root, c.full, got, c.want)
+		}
+	}
+}
