@@ -30,11 +30,12 @@ func newTestBox(t *testing.T, e *Engine, img testImages, cfg Config) (*Manager, 
 		t.Fatal(err)
 	}
 	// A container running as root leaves root-owned folders in the bind-mounted worktree; a test runner that is not root (a
-	// CI runner) could not remove its temporary folder. Before the box goes (cleanups run last-registered first), open them up.
+	// CI runner) could not remove its temporary folder. Before the box goes (cleanups run last-registered first), the
+	// container empties the worktree itself (the test image has rm, not chmod).
 	t.Cleanup(func() {
 		cctx, ccancel := context.WithTimeout(context.Background(), time.Minute)
 		defer ccancel()
-		_, _ = m.Exec(cctx, b, ExecRequest{Command: "chmod -R a+rwX /workspace 2>/dev/null || true"})
+		_, _ = m.Exec(cctx, b, ExecRequest{Command: "rm -rf /workspace/* /workspace/.[!.]* /workspace/..?* 2>/dev/null; true"})
 	})
 	return m, b, wt
 }
