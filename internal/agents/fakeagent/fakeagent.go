@@ -7,6 +7,7 @@ package fakeagent
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -120,7 +121,8 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 		}
 		session = resume
 	}
-	a := &agent{out: out, script: sc, session: session, allowed: splitRules(flagValue(args, "--allowedTools")), interrupt: make(chan struct{}, 1)}
+	a := &agent{out: out, script: sc, session: session, allowed: splitRules(flagValue(args, "--allowedTools")), interrupt: make(chan struct{}, 1),
+		denied: splitRules(flagValue(args, "--disallowedTools")), mode: flagValue(args, "--permission-mode")}
 	a.loadState()
 	// `claude -p "<prompt>"`, as a user (and the trial harness's plain arm) runs it: one turn on that prompt, then exit. The
 	// adapter's own form is -p followed by flags, with the prompts on stdin.
@@ -209,6 +211,19 @@ func splitRules(v string) []string {
 	return out
 }
 
+// writeRefused says why a Write would be refused by the session's flags ("" when it is allowed).
+func (a *agent) writeRefused() string {
+	if a.mode == "plan" {
+		return "Permission denied: plan mode does not edit files"
+	}
+	for _, d := range a.denied {
+		if d == "Write" || d == "Edit" {
+			return "Permission to use Write has been denied (--disallowedTools " + d + ")"
+		}
+	}
+	return ""
+}
+
 // permits reports whether one of the allow rules covers a call of tool with input.
 func (a *agent) permits(tool string, input json.RawMessage) bool {
 	var in struct {
@@ -236,11 +251,16 @@ func (a *agent) permits(tool string, input json.RawMessage) bool {
 }
 
 type agent struct {
-	mu        sync.Mutex
-	out       io.Writer
-	script    Script
-	session   string
-	allowed   []string
+	mu      sync.Mutex
+	out     io.Writer
+	script  Script
+	session string
+	allowed []string
+	// denied and mode are enforced on Write steps as Claude Code does: a tool in --disallowedTools, or any edit in plan mode,
+	// is refused with an error result instead of writing (so a reviewer session that Drydock forgot to make read-only, or a
+	// worker it forgot to let write, fails a test instead of passing it)
+	denied    []string
+	mode      string
 	turn      int
 	toolSeq   int
 	interrupt chan struct{}
@@ -416,7 +436,12 @@ loop:
 				if !filepath.IsAbs(full) {
 					full = filepath.Join(mustGetwd(), st.Write.Path)
 				}
-				werr := os.WriteFile(full, []byte(st.Write.Content), 0o644)
+				var werr error
+				if why := a.writeRefused(); why != "" {
+					werr = errors.New(why)
+				} else {
+					werr = os.WriteFile(full, []byte(st.Write.Content), 0o644)
+				}
 				in, _ := json.Marshal(map[string]any{"file_path": st.Write.Path, "content": st.Write.Content})
 				res := "File written: " + st.Write.Path
 				if werr != nil {
