@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -55,6 +56,42 @@ func (g GitHub) OpenPR(ctx context.Context, r PRRequest) (PR, error) {
 	return pr, err
 }
 
+// FindOpenPR returns the open pull request whose head is branch (of this repository), or nil when there is none. The flow
+// looks before it opens one, so a retry after a crash or a lost answer adopts the pull request it already opened instead of
+// failing on GitHub's "a pull request already exists".
+func (g GitHub) FindOpenPR(ctx context.Context, branch string) (*PR, error) {
+	var prs []PR
+	q := "?state=open&per_page=10&head=" + url.QueryEscape(g.Owner+":"+branch)
+	if _, err := g.API.Do(ctx, "GET", g.p("%s", "/pulls"+q), nil, &prs, ""); err != nil {
+		return nil, err
+	}
+	for i := range prs {
+		if prs[i].Head.Ref == branch {
+			return &prs[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// maxPages bounds how many pages of 100 a list read follows (10,000 items): a list longer than that is not a pull request's.
+const maxPages = 100
+
+// listAll reads every page of a list endpoint whose path already carries per_page=100, page by page until a short page.
+func listAll[T any](ctx context.Context, api API, path string) ([]T, error) {
+	var all []T
+	for page := 1; page <= maxPages; page++ {
+		var items []T
+		if _, err := api.Do(ctx, "GET", fmt.Sprintf("%s&page=%d", path, page), nil, &items, ""); err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if len(items) < 100 {
+			break
+		}
+	}
+	return all, nil
+}
+
 // GetPR fetches a PR. A non-empty etag makes the call conditional: ErrNotModified costs no rate limit.
 func (g GitHub) GetPR(ctx context.Context, n int, etag string) (PR, string, error) {
 	var pr PR
@@ -104,37 +141,79 @@ type CIState struct {
 	Missing []string
 }
 
+type rawRun struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	URL        string `json:"html_url"`
+	App        struct {
+		Slug string `json:"slug"`
+	} `json:"app"`
+}
+
+type rawStatus struct {
+	ID          int64  `json:"id"`
+	Context     string `json:"context"`
+	State       string `json:"state"` // error | failure | pending | success
+	Description string `json:"description"`
+	TargetURL   string `json:"target_url"`
+}
+
+// CICache lets repeated Checks of one commit use conditional requests: GitHub answers an unchanged first page with 304,
+// which does not count against the rate limit. Only a commit whose results fit on one page is cached.
+type CICache struct {
+	sha                 string
+	runsETag, statsETag string
+	runs                []rawRun
+	stats               []rawStatus
+}
+
 // Checks lists what CI reported on a commit, its check runs and its commit statuses, and summarizes them.
 func (g GitHub) Checks(ctx context.Context, sha string) (CIState, error) {
-	var resp struct {
-		Total int `json:"total_count"`
-		Runs  []struct {
-			ID         int64  `json:"id"`
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			URL        string `json:"html_url"`
-			App        struct {
-				Slug string `json:"slug"`
-			} `json:"app"`
-		} `json:"check_runs"`
+	return g.ChecksCached(ctx, sha, nil)
+}
+
+// ChecksCached is Checks with conditional requests through c (nil reads everything afresh).
+func (g GitHub) ChecksCached(ctx context.Context, sha string, c *CICache) (CIState, error) {
+	if c != nil && c.sha != sha {
+		*c = CICache{sha: sha}
 	}
-	if _, err := g.API.Do(ctx, "GET", g.p("/commits/%s/check-runs?per_page=100", sha), nil, &resp, ""); err != nil {
+	runs, err := pages(ctx, g.API, g.p("/commits/%s/check-runs?per_page=100", sha), cacheTag(c, true), func(page []byte) (int, int, []rawRun, error) {
+		var r struct {
+			Total int      `json:"total_count"`
+			Runs  []rawRun `json:"check_runs"`
+		}
+		err := json.Unmarshal(page, &r)
+		return r.Total, len(r.Runs), r.Runs, err
+	})
+	if err != nil {
 		return CIState{}, err
 	}
 	// the combined status holds the latest status of each context; its own "state" is "pending" when there is none, so only
 	// the list is read
-	var combined struct {
-		Statuses []struct {
-			ID          int64  `json:"id"`
-			Context     string `json:"context"`
-			State       string `json:"state"` // error | failure | pending | success
-			Description string `json:"description"`
-			TargetURL   string `json:"target_url"`
-		} `json:"statuses"`
-	}
-	if _, err := g.API.Do(ctx, "GET", g.p("/commits/%s/status?per_page=100", sha), nil, &combined, ""); err != nil {
+	stats, err := pages(ctx, g.API, g.p("/commits/%s/status?per_page=100", sha), cacheTag(c, false), func(page []byte) (int, int, []rawStatus, error) {
+		var r struct {
+			Total    int         `json:"total_count"`
+			Statuses []rawStatus `json:"statuses"`
+		}
+		err := json.Unmarshal(page, &r)
+		return r.Total, len(r.Statuses), r.Statuses, err
+	})
+	if err != nil {
 		return CIState{}, err
+	}
+	if c != nil {
+		if runs.notModified {
+			runs.items = c.runs
+		} else {
+			c.runs, c.runsETag = runs.items, runs.etag
+		}
+		if stats.notModified {
+			stats.items = c.stats
+		} else {
+			c.stats, c.statsETag = stats.items, stats.etag
+		}
 	}
 	var s CIState
 	add := func(cr CheckRun) {
@@ -148,10 +227,10 @@ func (g GitHub) Checks(ctx context.Context, sha string) (CIState, error) {
 			s.Failed = append(s.Failed, cr)
 		}
 	}
-	for _, r := range resp.Runs {
+	for _, r := range runs.items {
 		add(CheckRun{ID: r.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.URL, Kind: KindCheckRun, AppSlug: r.App.Slug})
 	}
-	for _, st := range combined.Statuses {
+	for _, st := range stats.items {
 		cr := CheckRun{ID: st.ID, Name: st.Context, Status: "completed", Conclusion: st.State, URL: st.TargetURL, Kind: KindStatus, Description: st.Description}
 		if st.State == "pending" {
 			cr.Status, cr.Conclusion = "pending", ""
@@ -160,6 +239,55 @@ func (g GitHub) Checks(ctx context.Context, sha string) (CIState, error) {
 	}
 	s.Passed = len(s.Runs) > 0 && !s.Pending && len(s.Failed) == 0
 	return s, nil
+}
+
+func cacheTag(c *CICache, runs bool) *string {
+	switch {
+	case c == nil:
+		return nil
+	case runs:
+		return &c.runsETag
+	}
+	return &c.statsETag
+}
+
+type paged[T any] struct {
+	items       []T
+	etag        string // of the first page, when the list fit on it
+	notModified bool   // the first page was unchanged (the caller keeps what it had)
+}
+
+// pages reads an object-wrapped list ({"total_count": n, "<list>": [...]}) page by page until total_count items are read or
+// a page is short. With etag non-nil, the first page is asked for conditionally; a list longer than a page is never cached.
+func pages[T any](ctx context.Context, api API, path string, etag *string, decode func([]byte) (total, n int, items []T, err error)) (paged[T], error) {
+	var out paged[T]
+	for page := 1; page <= maxPages; page++ {
+		prev := ""
+		if page == 1 && etag != nil {
+			prev = *etag
+		}
+		var raw json.RawMessage
+		tag, err := api.Do(ctx, "GET", fmt.Sprintf("%s&page=%d", path, page), nil, &raw, prev)
+		if errors.Is(err, ErrNotModified) && page == 1 && prev != "" {
+			out.notModified = true
+			return out, nil
+		}
+		if err != nil {
+			return out, err
+		}
+		total, n, items, err := decode(raw)
+		if err != nil {
+			return out, fmt.Errorf("decode %s: %w", path, err)
+		}
+		out.items = append(out.items, items...)
+		if page == 1 && n >= total {
+			out.etag = tag
+		}
+		if n < 100 || len(out.items) >= total {
+			break
+		}
+	}
+	return out, nil
 }
 
 // FailedLog returns the log of a failed Actions job (the check run id is the job id), or an explanatory error.
@@ -191,47 +319,53 @@ func (e ReviewEvent) Trusted() bool {
 	return false
 }
 
+type review struct {
+	ID    int64                  `json:"id"`
+	State string                 `json:"state"`
+	Body  string                 `json:"body"`
+	User  struct{ Login string } `json:"user"`
+	Assoc string                 `json:"author_association"`
+	At    time.Time              `json:"submitted_at"`
+}
+
+type inlineComment struct {
+	ID    int64                  `json:"id"`
+	Body  string                 `json:"body"`
+	Path  string                 `json:"path"`
+	Line  int                    `json:"line"`
+	Reply int64                  `json:"in_reply_to_id"`
+	User  struct{ Login string } `json:"user"`
+	Assoc string                 `json:"author_association"`
+	At    time.Time              `json:"created_at"`
+}
+
+type issueComment struct {
+	ID    int64                  `json:"id"`
+	Body  string                 `json:"body"`
+	User  struct{ Login string } `json:"user"`
+	Assoc string                 `json:"author_association"`
+	At    time.Time              `json:"created_at"`
+}
+
 // Reviews returns reviews, inline comments and issue comments on the PR created after since (zero = all), oldest first.
 func (g GitHub) Reviews(ctx context.Context, n int, since time.Time) ([]ReviewEvent, error) {
 	var out []ReviewEvent
-	var reviews []struct {
-		ID    int64                  `json:"id"`
-		State string                 `json:"state"`
-		Body  string                 `json:"body"`
-		User  struct{ Login string } `json:"user"`
-		Assoc string                 `json:"author_association"`
-		At    time.Time              `json:"submitted_at"`
-	}
-	if _, err := g.API.Do(ctx, "GET", g.p("/pulls/%d/reviews?per_page=100", n), nil, &reviews, ""); err != nil {
+	reviews, err := listAll[review](ctx, g.API, g.p("/pulls/%d/reviews?per_page=100", n))
+	if err != nil {
 		return nil, err
 	}
 	for _, r := range reviews {
 		out = append(out, ReviewEvent{ID: r.ID, Kind: "review", Author: r.User.Login, Association: r.Assoc, State: r.State, Body: r.Body, Created: r.At})
 	}
-	var inline []struct {
-		ID    int64                  `json:"id"`
-		Body  string                 `json:"body"`
-		Path  string                 `json:"path"`
-		Line  int                    `json:"line"`
-		Reply int64                  `json:"in_reply_to_id"`
-		User  struct{ Login string } `json:"user"`
-		Assoc string                 `json:"author_association"`
-		At    time.Time              `json:"created_at"`
-	}
-	if _, err := g.API.Do(ctx, "GET", g.p("/pulls/%d/comments?per_page=100", n), nil, &inline, ""); err != nil {
+	inline, err := listAll[inlineComment](ctx, g.API, g.p("/pulls/%d/comments?per_page=100", n))
+	if err != nil {
 		return nil, err
 	}
 	for _, c := range inline {
 		out = append(out, ReviewEvent{ID: c.ID, Kind: "inline", Author: c.User.Login, Association: c.Assoc, Body: c.Body, Path: c.Path, Line: c.Line, InReplyTo: c.Reply, Created: c.At})
 	}
-	var issue []struct {
-		ID    int64                  `json:"id"`
-		Body  string                 `json:"body"`
-		User  struct{ Login string } `json:"user"`
-		Assoc string                 `json:"author_association"`
-		At    time.Time              `json:"created_at"`
-	}
-	if _, err := g.API.Do(ctx, "GET", g.p("/issues/%d/comments?per_page=100", n), nil, &issue, ""); err != nil {
+	issue, err := listAll[issueComment](ctx, g.API, g.p("/issues/%d/comments?per_page=100", n))
+	if err != nil {
 		return nil, err
 	}
 	for _, c := range issue {
@@ -323,7 +457,7 @@ func (g GitHub) Issues(ctx context.Context, labels string, since time.Time) ([]I
 	if !since.IsZero() {
 		q += "&since=" + url.QueryEscape(since.UTC().Format(time.RFC3339))
 	}
-	var raw []struct {
+	type rawIssue struct {
 		Number int                     `json:"number"`
 		Title  string                  `json:"title"`
 		Body   string                  `json:"body"`
@@ -333,7 +467,8 @@ func (g GitHub) Issues(ctx context.Context, labels string, since time.Time) ([]I
 		Labels []struct{ Name string } `json:"labels"`
 		User   struct{ Login string }  `json:"user"`
 	}
-	if _, err := g.API.Do(ctx, "GET", g.p("%s", "/issues"+q), nil, &raw, ""); err != nil {
+	raw, err := listAll[rawIssue](ctx, g.API, g.p("%s", "/issues"+q))
+	if err != nil {
 		return nil, err
 	}
 	var out []Issue

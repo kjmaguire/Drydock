@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -47,10 +48,53 @@ type API interface {
 	Raw(ctx context.Context, path string) (string, error)
 }
 
+// RateLimitError is GitHub refusing a call for its rate limits: the primary limit (429, or 403 with no requests remaining) or
+// a secondary limit (403 or 429 with Retry-After, or a message naming it). errors.Is(err, ErrRateLimited) holds for it.
+type RateLimitError struct {
+	Reset      time.Time     // when the primary limit resets (X-RateLimit-Reset); zero when not given
+	RetryAfter time.Duration // how long GitHub asked to wait (Retry-After); zero when not given
+	Secondary  bool
+}
+
+func (e *RateLimitError) Error() string {
+	kind := "rate limit"
+	if e.Secondary {
+		kind = "secondary rate limit"
+	}
+	switch {
+	case e.RetryAfter > 0:
+		return fmt.Sprintf("host: GitHub %s (retry after %s)", kind, e.RetryAfter)
+	case !e.Reset.IsZero():
+		return fmt.Sprintf("host: GitHub %s (resets %s)", kind, e.Reset.UTC().Format(time.RFC3339))
+	}
+	return "host: GitHub " + kind
+}
+
+func (e *RateLimitError) Unwrap() error { return ErrRateLimited }
+
+// Wait is how long to wait before calling again: what GitHub asked for, or until the reset, else fallback; never more than
+// limit (when limit > 0).
+func (e *RateLimitError) Wait(now time.Time, fallback, limit time.Duration) time.Duration {
+	d := fallback
+	switch {
+	case e.RetryAfter > 0:
+		d = e.RetryAfter
+	case !e.Reset.IsZero() && e.Reset.After(now):
+		d = e.Reset.Sub(now) + time.Second
+	}
+	if limit > 0 && d > limit {
+		d = limit
+	}
+	return d
+}
+
 // GhCLI is the API implementation that uses the user's `gh`.
 type GhCLI struct {
 	Bin      string // default "gh"
 	Hostname string // default github.com
+	// Timeout bounds one call (default 60 s; a job log, Raw, gets three times as long). A gh that hangs (a stalled network,
+	// a credential prompt that slipped through) must not hold a run and its agent slot forever.
+	Timeout time.Duration
 }
 
 func (g GhCLI) bin() string {
@@ -58,6 +102,49 @@ func (g GhCLI) bin() string {
 		return g.Bin
 	}
 	return "gh"
+}
+
+func (g GhCLI) timeout() time.Duration {
+	if g.Timeout > 0 {
+		return g.Timeout
+	}
+	return 60 * time.Second
+}
+
+// command builds the gh process for one call, bounded by d: the context ends it, and WaitDelay stops waiting for output a
+// child of gh might still hold open.
+func (g GhCLI) command(ctx context.Context, d time.Duration, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(ctx, d)
+	cmd := exec.CommandContext(ctx, g.bin(), args...)
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	cmd.WaitDelay = 5 * time.Second
+	return cmd, cancel
+}
+
+// maxRawBytes is the most of a raw response (a job log) kept: its end, where a failure shows. Callers truncate further.
+const maxRawBytes = 1 << 20
+
+// tailBuffer keeps the last max bytes written to it.
+type tailBuffer struct {
+	max     int
+	buf     []byte
+	dropped bool
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > t.max {
+		t.buf = append(t.buf[:0], t.buf[len(t.buf)-t.max:]...)
+		t.dropped = true
+	}
+	return len(p), nil
+}
+
+func (t *tailBuffer) String() string {
+	if t.dropped {
+		return "[earlier output dropped]\n" + string(t.buf)
+	}
+	return string(t.buf)
 }
 
 func (g GhCLI) Do(ctx context.Context, method, path string, body any, out any, etag string) (string, error) {
@@ -77,8 +164,8 @@ func (g GhCLI) Do(ctx context.Context, method, path string, body any, out any, e
 		args = append(args, "--input", "-")
 	}
 	args = append(args, path)
-	cmd := exec.CommandContext(ctx, g.bin(), args...)
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	cmd, cancel := g.command(ctx, g.timeout(), args...)
+	defer cancel()
 	if in != nil {
 		cmd.Stdin = bytes.NewReader(in)
 	}
@@ -101,10 +188,11 @@ func (g GhCLI) Raw(ctx context.Context, path string) (string, error) {
 	if g.Hostname != "" {
 		args = append([]string{"api", "--hostname", g.Hostname}, args[1:]...)
 	}
-	cmd := exec.CommandContext(ctx, g.bin(), args...)
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd, cancel := g.command(ctx, 3*g.timeout(), args...)
+	defer cancel()
+	stdout := &tailBuffer{max: maxRawBytes}
+	var stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		return stdout.String(), fmt.Errorf("gh api %s: %v: %s", path, err, strings.TrimSpace(stderr.String()))
 	}
@@ -154,8 +242,9 @@ func finish(status int, h http.Header, payload []byte, path string, out any) (st
 		return "", ErrAuth
 	case status == 404:
 		return "", fmt.Errorf("%w: %s", ErrNotFound, path)
-	case status == 429 || (status == 403 && h.Get("X-Ratelimit-Remaining") == "0"):
-		return "", fmt.Errorf("%w (resets %s)", ErrRateLimited, h.Get("X-Ratelimit-Reset"))
+	case status == 429 || status == 403 && (h.Get("X-Ratelimit-Remaining") == "0" || h.Get("Retry-After") != "" ||
+		strings.Contains(strings.ToLower(string(payload)), "secondary rate limit")):
+		return "", rateLimit(h, payload)
 	case status < 200 || status >= 300:
 		var e struct {
 			Message string `json:"message"`
@@ -172,6 +261,19 @@ func finish(status int, h http.Header, payload []byte, path string, out any) (st
 		}
 	}
 	return etag, nil
+}
+
+func rateLimit(h http.Header, payload []byte) *RateLimitError {
+	e := &RateLimitError{}
+	var secs int64
+	if _, err := fmt.Sscan(h.Get("Retry-After"), &secs); err == nil && secs > 0 {
+		e.RetryAfter = time.Duration(secs) * time.Second
+	}
+	if _, err := fmt.Sscan(h.Get("X-Ratelimit-Reset"), &secs); err == nil && secs > 0 {
+		e.Reset = time.Unix(secs, 0)
+	}
+	e.Secondary = e.RetryAfter > 0 && h.Get("X-Ratelimit-Remaining") != "0" || strings.Contains(strings.ToLower(string(payload)), "secondary rate limit")
+	return e
 }
 
 // HTTPAPI talks to a GitHub-compatible REST endpoint directly.
@@ -238,8 +340,10 @@ func (a HTTPAPI) Raw(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	var buf bytes.Buffer
-	buf.ReadFrom(resp.Body)
+	buf := &tailBuffer{max: maxRawBytes}
+	if _, err := io.Copy(buf, resp.Body); err != nil {
+		return "", err
+	}
 	if resp.StatusCode >= 300 {
 		return "", &APIError{Status: resp.StatusCode, Message: strings.TrimSpace(buf.String()), Path: path}
 	}
@@ -252,8 +356,8 @@ func (g GhCLI) GraphQL(ctx context.Context, query string, vars map[string]string
 	for k, v := range vars {
 		args = append(args, "-f", k+"="+v)
 	}
-	cmd := exec.CommandContext(ctx, g.bin(), args...)
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	cmd, cancel := g.command(ctx, g.timeout(), args...)
+	defer cancel()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

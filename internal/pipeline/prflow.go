@@ -43,10 +43,15 @@ func (c PRConfig) remote() string {
 type PRSource func(ctx context.Context, projectID string) (PRConfig, error)
 
 // PRBody renders the pull request description from task evidence (summary, evidence, review verdicts, link back to the
-// issue so GitHub closes it on merge). Everything in it was produced by Drydock; none of it is outside text.
+// issue so GitHub closes it on merge). The description of an imported task is outside text (an issue, possibly from a
+// private tracker such as Linear or Sentry), so it is not copied into the pull request: the body links to its source.
 func PRBody(t tasks.Task, evidence []tasks.Evidence, reviews []tasks.ReviewRecord) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "## %s\n\n%s\n", t.Title, strings.TrimSpace(t.Description))
+	desc := strings.TrimSpace(t.Description)
+	if t.Imported() {
+		desc = "Imported from " + t.IssueRef + "; its text is not copied here."
+	}
+	fmt.Fprintf(&sb, "## %s\n\n%s\n", t.Title, desc)
 	if len(t.Acceptance) > 0 {
 		sb.WriteString("\n### Acceptance criteria\n")
 		for _, a := range t.Acceptance {
@@ -114,18 +119,28 @@ func PushPR(d Deps, src PRSource) workflow.NodeHandler {
 				return githubTrouble(in, "read the pull request", err)
 			}
 		} else {
-			ev, _ := d.Tasks.Evidence(ctx, t.ID)
-			rv, _ := d.Tasks.Reviews(ctx, t.ID)
-			pr, err = cfg.GitHub.OpenPR(ctx, host.PRRequest{Title: t.Title, Body: PRBody(t, ev, rv), Head: t.Branch, Base: cfg.BaseBranch})
-			if err != nil {
-				return githubTrouble(in, "open the pull request", err)
+			// A pull request this flow opened before a crash, or whose answer was lost, is adopted rather than opened again
+			// (GitHub refuses a second one for the branch, which no retry could get past).
+			existing, ferr := cfg.GitHub.FindOpenPR(ctx, t.Branch)
+			if ferr != nil {
+				return githubTrouble(in, "look for the branch's pull request", ferr)
+			}
+			adopted := existing != nil
+			if adopted {
+				pr = *existing
+			} else {
+				ev, _ := d.Tasks.Evidence(ctx, t.ID)
+				rv, _ := d.Tasks.Reviews(ctx, t.ID)
+				if pr, err = cfg.GitHub.OpenPR(ctx, host.PRRequest{Title: t.Title, Body: PRBody(t, ev, rv), Head: t.Branch, Base: cfg.BaseBranch}); err != nil {
+					return githubTrouble(in, "open the pull request", err)
+				}
 			}
 			ref := fmt.Sprintf("%s/%s#%d", cfg.GitHub.Owner, cfg.GitHub.Repo, pr.Number)
 			if t, err = d.Tasks.Patch(ctx, t.ID, tasks.Update{PRRef: &ref}); err != nil {
 				return workflow.NodeOutput{}, err
 			}
 			_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "pr", Summary: "PR #" + fmt.Sprint(pr.Number), Ref: pr.URL})
-			d.emit(ctx, "github.pr_opened", t, map[string]any{"number": pr.Number, "url": pr.URL})
+			d.emit(ctx, "github.pr_opened", t, map[string]any{"number": pr.Number, "url": pr.URL, "adopted": adopted})
 		}
 		// answer the review threads that caused this rework
 		replied := replyAddressed(ctx, d, t, cfg, pr.Number, head)
@@ -159,14 +174,16 @@ func replyAddressed(ctx context.Context, d Deps, t tasks.Task, cfg PRConfig, pr 
 		if len(short) > 10 {
 			short = short[:10]
 		}
+		// marked answered before posting: after a crash mid-way a thread may miss its reply, but never gets two
+		ok := true
+		if _, err := d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "pr_feedback", Passed: &ok, Summary: fmt.Sprintf("replying to %d thread(s) with %s", len(fd.CommentIDs), short)}); err != nil {
+			break
+		}
 		for _, id := range fd.CommentIDs {
 			if err := cfg.GitHub.Reply(ctx, pr, id, fmt.Sprintf("Addressed in `%s` (Drydock re-ran the checks; the independent reviewer will look again). Resolving this thread stays with you.\n\n%s", short, drydockMarker)); err == nil {
 				n++
 			}
 		}
-		// mark answered by recording a passing marker
-		ok := true
-		_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "pr_feedback", Passed: &ok, Summary: fmt.Sprintf("replied to %d thread(s) with %s", n, short)})
 		break
 	}
 	return n
@@ -242,7 +259,11 @@ func CI(d Deps, src PRSource) workflow.NodeHandler {
 			w.Required = required
 			st, err = cfg.GitHub.WaitCI(ctx, head, w)
 			if running = errors.Is(err, host.ErrCIStillRunning); err != nil && !running {
-				return workflow.NodeOutput{}, err
+				if ctx.Err() != nil {
+					return workflow.NodeOutput{}, err
+				}
+				// GitHub failing to answer is not CI failing: the agents' paid work stays, and a person decides when to look again
+				return githubTrouble(in, "read CI", err)
 			}
 		}
 		res := workflow.CheckResult{Name: "ci", DiffHash: head}
@@ -460,7 +481,10 @@ func PRFeedback(d Deps, src PRSource) workflow.NodeHandler {
 		fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
 		evs, err := cfg.GitHub.Reviews(ctx, n, time.Time{})
 		if err != nil {
-			return workflow.NodeOutput{}, err
+			if ctx.Err() != nil {
+				return workflow.NodeOutput{}, err
+			}
+			return githubTrouble(in, "read the pull request's reviews", err)
 		}
 		seen := map[int64]bool{}
 		prior, _ := d.Tasks.Evidence(ctx, t.ID)

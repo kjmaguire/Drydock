@@ -32,6 +32,9 @@ type ghCall struct {
 }
 
 func fakeGh(log string) int {
+	if d, err := time.ParseDuration(os.Getenv("DRYDOCK_FAKE_GH_HANG")); err == nil {
+		time.Sleep(d) // a gh that stalls (a dead network, a prompt that slipped through)
+	}
 	in, _ := io.ReadAll(os.Stdin)
 	c := ghCall{Args: os.Args[1:]}
 	if json.Valid(in) {
@@ -372,5 +375,163 @@ func TestMergeState(t *testing.T) {
 		if got := c.pr.MergeStatus(); got != c.want {
 			t.Errorf("%+v: %s, want %s", c.pr, got, c.want)
 		}
+	}
+}
+
+// A gh that hangs is ended at the per-call timeout: one stalled call must not hold a run and its agent slot forever.
+func TestAHangingGhCallIsEndedAtTheTimeout(t *testing.T) {
+	t.Setenv("DRYDOCK_FAKE_GH_LOG", filepath.Join(t.TempDir(), "calls.jsonl"))
+	t.Setenv("DRYDOCK_FAKE_GH_HANG", "1m")
+	g := GitHub{API: GhCLI{Bin: os.Args[0], Timeout: 300 * time.Millisecond}, Owner: "o", Repo: "r"}
+	start := time.Now()
+	_, _, err := g.GetPR(context.Background(), 7, "")
+	if err == nil {
+		t.Fatal("a hanging gh returned no error")
+	}
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("the call took %s; the timeout is 300ms (plus a 5s wait for output)", took)
+	}
+}
+
+// Rate limits: GitHub's Retry-After and reset are what the wait follows, a secondary limit is recognised by its header or
+// message, and WaitCI waits as asked and carries on.
+func TestRateLimitsAreReadAndWaitedOut(t *testing.T) {
+	cases := []struct {
+		status    int
+		headers   map[string]string
+		body      string
+		secondary bool
+		wait      time.Duration
+	}{
+		{429, map[string]string{"Retry-After": "7"}, `{"message":"slow down"}`, true, 7 * time.Second},
+		{403, map[string]string{"X-Ratelimit-Remaining": "0", "X-Ratelimit-Reset": "1000060"}, `{"message":"API rate limit exceeded"}`, false, 61 * time.Second},
+		{403, nil, `{"message":"You have exceeded a secondary rate limit"}`, true, 3 * time.Second},
+	}
+	for i, c := range cases {
+		g := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+			for k, v := range c.headers {
+				w.Header().Set(k, v)
+			}
+			w.WriteHeader(c.status)
+			fmt.Fprint(w, c.body)
+		})
+		_, _, err := g.GetPR(context.Background(), 7, "")
+		var rl *RateLimitError
+		if !errors.As(err, &rl) || !errors.Is(err, ErrRateLimited) || rl.Secondary != c.secondary {
+			t.Fatalf("case %d: %v (%+v)", i, err, rl)
+		}
+		if got := rl.Wait(time.Unix(1000000, 0), 3*time.Second, time.Hour); got != c.wait {
+			t.Errorf("case %d: wait %s, want %s", i, got, c.wait)
+		}
+	}
+	// a plain 403 (no permission) is not a rate limit
+	g := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		fmt.Fprint(w, `{"message":"Resource not accessible"}`)
+	})
+	if _, _, err := g.GetPR(context.Background(), 7, ""); errors.Is(err, ErrRateLimited) {
+		t.Fatalf("a permission 403 read as a rate limit: %v", err)
+	}
+
+	var looks atomic.Int32
+	g = fixture(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/check-runs") && looks.Add(1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(429)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/check-runs") {
+			fmt.Fprint(w, `{"total_count":1,"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"success"}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"total_count":0,"statuses":[]}`)
+	})
+	start := time.Now()
+	st, err := g.WaitCI(context.Background(), "abc", CIWait{Poll: time.Millisecond, Grace: time.Second, MaxWait: 30 * time.Second})
+	if err != nil || !st.Passed || time.Since(start) < time.Second {
+		t.Fatalf("%+v %v after %s (Retry-After was 1s)", st, err, time.Since(start))
+	}
+}
+
+// Lists longer than a page are read to the end: a CHANGES_REQUESTED review or a failing check past the hundredth is seen.
+func TestListsAreReadPastTheFirstPage(t *testing.T) {
+	g := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+		page := 1
+		fmt.Sscan(r.URL.Query().Get("page"), &page)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/check-runs"):
+			var runs []map[string]any
+			for i := (page - 1) * 100; i < min(page*100, 150); i++ {
+				c := "success"
+				if i == 149 {
+					c = "failure"
+				}
+				runs = append(runs, map[string]any{"id": i, "name": fmt.Sprintf("job-%d", i), "status": "completed", "conclusion": c})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"total_count": 150, "check_runs": runs})
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			fmt.Fprint(w, `{"total_count":0,"statuses":[]}`)
+		case strings.HasSuffix(r.URL.Path, "/reviews"):
+			var rs []map[string]any
+			for i := (page - 1) * 100; i < min(page*100, 120); i++ {
+				state := "COMMENTED"
+				if i == 119 {
+					state = "CHANGES_REQUESTED"
+				}
+				rs = append(rs, map[string]any{"id": i + 1, "state": state, "body": "x", "user": map[string]string{"login": "kyle"}, "author_association": "OWNER", "submitted_at": "2026-10-08T10:00:00Z"})
+			}
+			json.NewEncoder(w).Encode(rs)
+		default:
+			fmt.Fprint(w, `[]`)
+		}
+	})
+	st, err := g.Checks(context.Background(), "abc")
+	if err != nil || len(st.Runs) != 150 || len(st.Failed) != 1 || st.Failed[0].Name != "job-149" {
+		t.Fatalf("%d runs, failed %+v, %v", len(st.Runs), st.Failed, err)
+	}
+	evs, err := g.Reviews(context.Background(), 7, time.Time{})
+	if err != nil || len(evs) != 120 || evs[len(evs)-1].State != "CHANGES_REQUESTED" && evs[0].State != "CHANGES_REQUESTED" {
+		t.Fatalf("%d reviews %v", len(evs), err)
+	}
+	var changes int
+	for _, e := range evs {
+		if e.State == "CHANGES_REQUESTED" {
+			changes++
+		}
+	}
+	if changes != 1 {
+		t.Fatalf("the change request past the first page was not seen")
+	}
+}
+
+// Polling CI asks conditionally: an unchanged answer (304) costs no rate limit and keeps the last state.
+func TestWaitCIPollsWithETags(t *testing.T) {
+	var looks, conditional atomic.Int32
+	g := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/status") {
+			fmt.Fprint(w, `{"total_count":0,"statuses":[]}`)
+			return
+		}
+		n := looks.Add(1)
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			conditional.Add(1)
+			if n < 4 {
+				w.WriteHeader(304)
+				return
+			}
+		}
+		w.Header().Set("Etag", `"v1"`)
+		if n < 4 {
+			fmt.Fprint(w, `{"total_count":1,"check_runs":[{"id":1,"name":"build","status":"in_progress"}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"total_count":1,"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"success"}]}`)
+	})
+	st, err := g.WaitCI(context.Background(), "abc", CIWait{Poll: time.Millisecond, Grace: time.Second, MaxWait: 5 * time.Second})
+	if err != nil || !st.Passed {
+		t.Fatalf("%+v %v", st, err)
+	}
+	if conditional.Load() < 2 {
+		t.Fatalf("%d of %d looks were conditional", conditional.Load(), looks.Load())
 	}
 }

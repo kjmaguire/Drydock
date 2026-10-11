@@ -111,6 +111,12 @@ func (g *gateGitHub) serve(t *testing.T) *httptest.Server {
 				"head": map[string]any{"ref": g.branch, "sha": strings.TrimSpace(string(out))}, "base": map[string]any{"ref": "main"}}
 		}
 		switch {
+		case r.Method == "GET" && p == "/pulls":
+			if g.branch != "" && r.URL.Query().Get("head") == "o:"+g.branch {
+				json.NewEncoder(w).Encode([]map[string]any{pr()})
+				return
+			}
+			fmt.Fprint(w, `[]`)
 		case r.Method == "POST" && p == "/pulls":
 			var b map[string]any
 			json.NewDecoder(r.Body).Decode(&b)

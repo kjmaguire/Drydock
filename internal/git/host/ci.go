@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/url"
 	"strings"
 	"time"
@@ -44,11 +45,19 @@ func (w CIWait) withDefaults() CIWait {
 func (g GitHub) WaitCI(ctx context.Context, sha string, w CIWait) (CIState, error) {
 	w = w.withDefaults()
 	start := time.Now()
+	var cache CICache // unchanged answers come back as 304s, which do not count against the rate limit
 	for {
-		st, err := g.Checks(ctx, sha)
+		st, err := g.ChecksCached(ctx, sha, &cache)
 		if errors.Is(err, ErrRateLimited) {
-			// back off and keep waiting; never block local work
-			if err := sleep(ctx, w.Poll*4); err != nil {
+			// back off as GitHub asked (Retry-After, or until the limit resets) with some jitter, and keep waiting; never
+			// block local work
+			wait := w.Poll * 4
+			var rl *RateLimitError
+			if errors.As(err, &rl) {
+				wait = rl.Wait(time.Now(), wait, 15*time.Minute)
+			}
+			wait += time.Duration(rand.Int64N(int64(wait/10) + 1))
+			if err := sleep(ctx, wait); err != nil {
 				return st, err
 			}
 			continue

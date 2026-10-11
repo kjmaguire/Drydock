@@ -51,6 +51,10 @@ type githubFixture struct {
 	inline           func(headMoved bool) []map[string]any
 	firstHead        string
 	openFail         int // POST /pulls answers 401 this many times first (gh signed out, a revoked token)
+	// lostOpen: GitHub already has the task branch's pull request although the flow never saw the answer (a crash or a lost
+	// response after POST /pulls), so GET /pulls?head=o:<branch> lists it
+	lostOpen   bool
+	ciReadFail int // the check-runs read answers 502 this many times first (GitHub having a bad minute)
 }
 
 // ciFor is what CI shows on the commit-th head at its look-th read.
@@ -118,6 +122,17 @@ func (f *githubFixture) handler(t *testing.T) http.Handler {
 				"head": map[string]any{"ref": f.branch, "sha": f.head(t)}, "base": map[string]any{"ref": "main"}}
 		}
 		switch {
+		case r.Method == "GET" && p == "/pulls":
+			// the open pull requests of a head branch: the one this fixture opened, or one whose answer was lost
+			switch head := r.URL.Query().Get("head"); {
+			case f.opened > 0 && head == "o:"+f.branch:
+				j(w, []map[string]any{pr()})
+			case f.lostOpen && strings.HasPrefix(head, "o:"):
+				f.branch = strings.TrimPrefix(head, "o:")
+				j(w, []map[string]any{pr()})
+			default:
+				j(w, []map[string]any{})
+			}
 		case r.Method == "POST" && p == "/pulls" && f.openFail > 0:
 			f.openFail--
 			w.WriteHeader(401)
@@ -133,6 +148,10 @@ func (f *githubFixture) handler(t *testing.T) http.Handler {
 			j(w, pr())
 		case r.Method == "GET" && p == "/pulls/7":
 			j(w, pr())
+		case r.Method == "GET" && strings.HasSuffix(p, "/check-runs") && f.ciReadFail > 0:
+			f.ciReadFail--
+			w.WriteHeader(502)
+			j(w, map[string]any{"message": "Server Error"})
 		case r.Method == "GET" && strings.HasSuffix(p, "/check-runs"):
 			sha := strings.Split(p, "/")[2]
 			if f.looks == nil {
@@ -470,5 +489,80 @@ func TestPRFlowAGitHubFailureAsksTheHumanAndRetriesOnlyThatStep(t *testing.T) {
 	}
 	if wp := prompts(lg.workLog); len(wp) != 1 {
 		t.Fatalf("the worker ran %d times; a GitHub failure must not redo paid work", len(wp))
+	}
+}
+
+// The flow opened the pull request but never saw GitHub's answer (a crash, a lost response): the next attempt finds the open
+// pull request of the branch and adopts it instead of failing on "a pull request already exists".
+func TestPRFlowAdoptsThePullRequestItAlreadyOpened(t *testing.T) {
+	ad, cfg, _ := fakeRoles(t,
+		fakeagent.Script{Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}}},
+		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
+	e := setup(t, cfg, ad)
+	f := &githubFixture{lostOpen: true}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.awaitPending(t, id, "review")
+	f.mu.Lock()
+	opened := f.opened
+	f.mu.Unlock()
+	if opened != 0 {
+		t.Fatalf("a second pull request was opened (%d POSTs) although the branch had one", opened)
+	}
+	if got, _ := e.tasks.Get(context.Background(), e.task.ID); got.PRRef != "o/r#7" {
+		t.Fatalf("PRRef %q", got.PRRef)
+	}
+}
+
+// GitHub failing to answer while CI is read is not a CI failure: the paid work stays, the person is asked, and answering
+// reads CI again.
+func TestPRFlowACIReadFailureAsksInsteadOfFailingTheRun(t *testing.T) {
+	ad, cfg, lg := fakeRoles(t,
+		fakeagent.Script{Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}}},
+		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
+	e := setup(t, cfg, ad)
+	f := &githubFixture{ciReadFail: 1}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.await(t, id, workflow.StatusWaitingHuman)
+	pend, _ := e.eng.Pending(context.Background(), id)
+	if len(pend) != 1 || pend[0].Spec.Kind != "question" || !strings.Contains(pend[0].Spec.Title, "Could not read CI on GitHub") {
+		t.Fatalf("pending %+v", pend)
+	}
+	if err := e.eng.Resume(context.Background(), id, workflow.Response{RequestID: pend[0].ID, Decision: "answered", By: "human:kyle", Data: json.RawMessage(`{"text":"try again"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	e.awaitPending(t, id, "review")
+	if wp := prompts(lg.workLog); len(wp) != 1 {
+		t.Fatalf("the worker ran %d times; a GitHub read failure must not redo paid work", len(wp))
+	}
+}
+
+// awaitPending waits (as long as a loaded Windows runner needs) until the run's one pending request is of kind.
+func (e *env) awaitPending(t *testing.T, id workflow.RunID, kind string) {
+	t.Helper()
+	deadline := time.Now().Add(4 * time.Minute)
+	for {
+		p, _ := e.eng.Pending(context.Background(), id)
+		if len(p) == 1 && p[0].Spec.Kind == kind {
+			return
+		}
+		if time.Now().After(deadline) {
+			info, _ := e.eng.Status(context.Background(), id)
+			t.Fatalf("no %s request: pending %+v, run %s %s", kind, p, info.Status, info.FailedReason)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// An imported task's description is outside text, possibly from a private tracker: it is never copied into the pull request.
+func TestPRBodyNeverCopiesAnImportedDescription(t *testing.T) {
+	own := pipeline.PRBody(tasks.Task{ID: "t1", Title: "Add Subtract", Description: "Make Subtract return a - b."}, nil, nil)
+	if !strings.Contains(own, "Make Subtract return a - b.") {
+		t.Fatalf("a task's own description is the PR's summary:\n%s", own)
+	}
+	imported := pipeline.PRBody(tasks.Task{ID: "t2", Title: "Crash on login", IssueRef: "linear:ENG-42", Description: "Customer ACME's private stack trace"}, nil, nil)
+	if strings.Contains(imported, "ACME") || !strings.Contains(imported, "Imported from linear:ENG-42") {
+		t.Fatalf("imported:\n%s", imported)
 	}
 }
