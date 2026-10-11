@@ -174,8 +174,8 @@ describe('Conversation', () => {
         </div>,
         s,
       );
-      await waitFor(() => expect(messagesOf(r)).toHaveLength(40), r);
-      await new Promise((res) => setTimeout(res, 30));
+      // the room marks read (or not) in the same step that shows the messages: once the newest is shown, it has decided
+      await waitFor(() => expect(messagesOf(r).at(-1)!.textContent).toContain('line 40'), r);
       expect(reads).toEqual([]); // the window is in the background: nothing is marked read
       focused = true;
       await r.act(() => window.dispatchEvent(new Event('focus')));
@@ -189,15 +189,18 @@ describe('Conversation', () => {
       });
       messages = [...messages, msg({ seq: 41, author: { kind: 'agent', id: 'agt1' }, body: 'news' })];
       s.emit({ type: 'room.message_posted', data: { room: 'r' } });
-      await waitFor(() => expect(messagesOf(r)).toHaveLength(41), r);
-      await new Promise((res) => setTimeout(res, 30));
+      // the count on the jump button comes from the same step that would have marked it read
+      await waitFor(() => expect(byText(r.container, 'button', '1 new message')).not.toBeNull(), r);
       expect(reads).toEqual([['r', 40]]);
-      expect(byText(r.container, 'button', '1 new message')).not.toBeNull();
+      // away from the bottom the new row is not rendered: the count is said in a status instead
+      expect(q(r, '[data-testid="room-unseen"]')!.textContent).toBe('1 new message below');
       await r.act(() => {
         log.scrollTop = log.scrollHeight;
         log.dispatchEvent(new Event('scroll'));
       });
       await waitFor(() => expect(reads).toEqual([['r', 40], ['r', 41]]), r);
+      await waitFor(() => expect(messagesOf(r).at(-1)!.textContent).toContain('news'), r);
+      expect(q(r, '[data-testid="room-unseen"]')!.textContent).toBe('');
     }
   });
 
@@ -222,6 +225,87 @@ describe('Conversation', () => {
       ['latest', 101],
       ['before', 51, 101],
     ]);
+  });
+
+  it('windows a long history: few rows in the DOM, at the bottom, and every older page keeps the view (F6)', async () => {
+    const start = Date.parse('2026-01-01T08:00:00Z');
+    // 2,000 messages of different heights: two authors, a long one every seventh, a new day every 600
+    const messages = Array.from({ length: 2000 }, (_, i) =>
+      msg({
+        seq: i + 1,
+        author: i % 5 === 0 ? { kind: 'agent', id: 'agt1' } : { kind: 'human', id: 'kyle' },
+        body: i % 7 === 0 ? `long ${i + 1}\n\n${'a paragraph that wraps over several lines '.repeat(12)}` : `line ${i + 1}`,
+        created_at: new Date(start + i * 144_000).toISOString(),
+      }),
+    );
+    const reads = roomMessagesDouble(() => messages); // TEST DOUBLE: room.messages as the core answers it
+    let release: (() => void) | undefined;
+    const s = servicesWith({
+      ...reads,
+      // an older page lands only when the test lets it, so the view can be measured before and after
+      roomMessagesBefore: async (...a: Parameters<typeof reads.roomMessagesBefore>) => {
+        await new Promise<void>((res) => (release = res));
+        return reads.roomMessagesBefore(...a);
+      },
+    });
+    const r = mount(
+      <div style={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
+        <Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />
+      </div>,
+      s,
+    );
+    const log = q<HTMLDivElement>(r, '[role="log"]')!;
+    const rows = () => qa(r, '[data-vkey]');
+    const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 1;
+    const topOf = (key: string) => q(r, `[data-vkey="${key}"]`)!.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    /** At most four views of rows (the view, an overscan on each side, the slack before a re-plan) at 20 px or more. */
+    const bound = () => Math.ceil((4 * log.clientHeight + 600) / 20);
+    /** Scroll as a reader does: the browser's own scroll event reaches the log. */
+    const scrollTo = async (top: number) => {
+      const before = log.scrollTop;
+      const moved = new Promise((res) => log.addEventListener('scroll', res, { once: true }));
+      log.scrollTop = top;
+      if (log.scrollTop !== before) await moved;
+      r.root.flush();
+    };
+    await waitFor(() => expect(messagesOf(r).at(-1)!.textContent).toContain('line 2000'), r);
+    await waitFor(() => expect(atBottom()).toBe(true), r);
+    expect(rows().length).toBeLessThanOrEqual(bound());
+    let most = rows().length;
+    // read the whole history the way a reader does: scroll to the top, an older page is asked for, it lands above
+    for (let page = 1; page < 20; page++) {
+      await scrollTo(0);
+      // the scroll asked for the older page at once (the double holds it until released)
+      expect(release).toBeDefined();
+      // the row at the top of the view before the page lands
+      const viewTop = log.getBoundingClientRect().top;
+      const key = rows().find((e) => e.getBoundingClientRect().bottom > viewTop && e.querySelector('[data-testid="message"]'))!.getAttribute('data-vkey')!;
+      const at = topOf(key);
+      const go = release!;
+      release = undefined;
+      go();
+      // once the page is in, the same row is where it was: the page went above it, the view did not jump
+      await waitFor(() => {
+        expect(q(r, '[aria-busy="true"]')).toBeNull();
+        expect(Math.abs(topOf(key) - at)).toBeLessThan(1);
+      }, r);
+      expect(log.scrollTop).toBeGreaterThan(100 * 20);
+      most = Math.max(most, rows().length);
+    }
+    expect(reads.calls.filter((c) => c[0] === 'before')).toHaveLength(19);
+    expect(r.container.textContent).toContain('This is the start of the general channel.');
+    // 2,000 messages and their day dividers loaded; only a window of them was ever in the DOM
+    expect(most).toBeLessThanOrEqual(bound());
+    expect(most).toBeLessThan(100);
+    // back to the newest, and a new message keeps the log at the bottom
+    await r.act(() => byText(r.container, 'button', 'Jump to the latest').click());
+    await waitFor(() => expect(messagesOf(r).at(-1)!.textContent).toContain('line 2000'), r);
+    await waitFor(() => expect(atBottom()).toBe(true), r);
+    messages.push(msg({ seq: 2001, author: { kind: 'agent', id: 'agt1' }, body: 'the newest', created_at: new Date(start + 2000 * 144_000).toISOString() }));
+    s.emit({ type: 'room.message_posted', data: { room: 'r' } });
+    await waitFor(() => expect(messagesOf(r).at(-1)!.textContent).toContain('the newest'), r);
+    await waitFor(() => expect(atBottom()).toBe(true), r);
+    expect(rows().length).toBeLessThanOrEqual(bound());
   });
 
   it('keeps the live region quiet while the history loads', async () => {

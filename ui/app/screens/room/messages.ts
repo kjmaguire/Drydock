@@ -102,7 +102,9 @@ export function buildRows(messages: readonly Message[], opts: { newAfterSeq?: nu
     let breakGroup = false;
     if (k && k !== day) {
       day = k;
-      rows.push({ kind: 'day', key: `day-${k}`, label: dayLabel(m.created_at, opts.now) });
+      // keyed by the message it stands before: a key names one place in the list (the windowed list anchors on keys), and
+      // when an older page of the same day comes the divider moves up under a new key
+      rows.push({ kind: 'day', key: `day-${m.id}`, label: dayLabel(m.created_at, opts.now) });
       breakGroup = true;
     }
     if (!newShown && m.seq > opts.newAfterSeq!) {

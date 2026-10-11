@@ -66,6 +66,13 @@ describe('message grouping', () => {
     expect(buildRows([msg({ seq: 1 })]).some((r) => r.kind === 'new')).toBe(false);
   });
 
+  it('keys a day divider by the message it stands before, so an older page of the same day moves it under a new key', () => {
+    const keysOf = (seqs: number[]) => buildRows(seqs.map((seq) => msg({ seq, created_at: `2026-10-09T09:0${seq}:00` }))).map((r) => r.key);
+    expect(keysOf([3, 4])).toEqual(['day-m3', 'm3', 'm4']);
+    // the windowed list anchors on keys: the old divider key is gone, not moved above another message
+    expect(keysOf([2, 3, 4])).toEqual(['day-m2', 'm2', 'm3', 'm4']);
+  });
+
   it('labels days in words', () => {
     const now = new Date('2026-10-09T12:00:00');
     expect(dayLabel('2026-10-09T01:00:00', now)).toBe('Today');

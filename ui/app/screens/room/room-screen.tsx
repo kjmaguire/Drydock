@@ -4,7 +4,7 @@
 
 import { css, on, ref, type Handle } from 'remix/component';
 import { ArrowDown, ListChecks, MessageSquare, MessagesSquare } from 'lucide';
-import type { Room } from '../../api/types.ts';
+import type { Message, Room } from '../../api/types.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
@@ -16,10 +16,11 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { headerCss, Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { VirtualList } from '../../ui/virtual-list.tsx';
 import { Composer } from './composer.tsx';
 import { MessageFeed } from './feed.ts';
 import { MessageItem } from './message-item.tsx';
-import { buildRows, lastHumanMessageId, replyCounts } from './messages.ts';
+import { buildRows, lastHumanMessageId, replyCounts, type Row } from './messages.ts';
 import { RoomAgentsPanel } from './room-agents.tsx';
 import { RoomExports } from './room-exports.tsx';
 import { RoomMembers } from './room-members.tsx';
@@ -158,8 +159,8 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     key: () => handle.props.room.id,
   });
 
-  let log: HTMLDivElement | undefined;
-  let stick = true;
+  // the rows near the view are rendered; the list stays at the bottom while the reader is there (ui/virtual-list.tsx)
+  const list = new VirtualList({ onChange: () => void handle.update(), signal: handle.signal, estimate: 44 });
   /** The newest seq seen while at the bottom: only messages after it count as unseen. */
   let seenSeq = 0;
   let marked = 0;
@@ -168,8 +169,6 @@ export function Conversation(handle: Handle<{ room: Room }>) {
   let captured = false;
   /** The log announces additions only once the first page is on screen (not the whole history on open). */
   let announce = false;
-  /** scrollHeight before older messages were added, to keep the view where it was. */
-  let keepFrom: number | undefined;
 
   /**
    * Mark the room read up to the newest message, only while the person can see it: the window is visible and focused and
@@ -177,7 +176,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
    */
   const markRead = () => {
     const last = feed.lastSeq;
-    if (last <= marked || handle.props.room.archived || !stick || !windowAttended()) return;
+    if (last <= marked || handle.props.room.archived || !list.stick || !windowAttended()) return;
     marked = last;
     s.client.roomMarkRead(handle.props.room.id, last).catch(() => undefined);
   };
@@ -202,35 +201,57 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     void handle.update();
   });
 
-  const toBottom = () => {
-    if (log) log.scrollTop = log.scrollHeight;
+  // the rows are rebuilt only when the messages or the "new" line change, not on every scroll that moves the window
+  let built: { msgs: readonly Message[]; newAfter: number | undefined; rows: Row[]; replies: Map<string, number> } | undefined;
+  const rowsOf = (msgs: readonly Message[]) => {
+    if (built?.msgs !== msgs || built.newAfter !== newAfter) built = { msgs, newAfter, rows: buildRows(msgs, { newAfterSeq: newAfter }), replies: replyCounts(msgs) };
+    return built;
   };
 
+  // the page is added above; the list keeps the row at the top of the view where it was
   const loadOlder = async () => {
     if (!feed.hasMore || feed.loadingOlder) return;
-    keepFrom = log?.scrollHeight;
-    const added = await feed.loadOlder();
-    if (!added) keepFrom = undefined;
+    await feed.loadOlder();
   };
 
   return () => {
     const { room } = handle.props;
     const agents = s.project.agentList;
     const msgs = feed.messages;
-    const replies = replyCounts(msgs);
-    const rows = buildRows(msgs, { newAfterSeq: newAfter });
+    const { rows, replies } = rowsOf(msgs);
     const label = roomLabel(room, agents);
     const mem = members.data ?? [];
+    const stick = list.stick;
     if (stick) seenSeq = feed.lastSeq;
     // the messages are in seq order: count back from the newest (older pages above are never "new")
     let unseen = 0;
     if (!stick) for (let i = msgs.length - 1; i >= 0 && msgs[i]!.seq > seenSeq; i--) unseen++;
-    handle.queueTask(() => {
-      if (keepFrom !== undefined && log && !feed.loadingOlder) {
-        log.scrollTop += log.scrollHeight - keepFrom;
-        keepFrom = undefined;
-      } else if (stick) toBottom();
-    });
+    // before reading list.quiet: rows revealed by this render (not new ones) keep the live region silent
+    const shown = list.rows(
+      rows,
+      (r) => r.key,
+      (r) =>
+        r.kind === 'day' ? (
+          <div mix={dividerCss} role="separator" aria-label={r.label}>
+            <span>{r.label}</span>
+          </div>
+        ) : r.kind === 'new' ? (
+          <div mix={newCss} role="separator" aria-label="New messages">
+            <span>New</span>
+          </div>
+        ) : (
+          <MessageItem
+            m={r.m}
+            name={authorName(r.m.author, agents)}
+            role={r.m.author.kind === 'agent' ? agents.find((a) => a.id === r.m.author.id)?.role : undefined}
+            head={r.head}
+            replies={replies.get(r.m.id) ?? 0}
+            onReply={() => s.ui.openThread(room.id, r.m.id)}
+            onOpenRoot={r.m.thread_root_id ? () => s.ui.openThread(room.id, r.m.thread_root_id!) : undefined}
+          />
+        ),
+    );
+    handle.queueTask(() => list.settle());
     return (
       <section mix={screenCss} class="conversation" aria-label={`Conversation ${room.name}`}>
         <header mix={headerCss}>
@@ -274,20 +295,17 @@ export function Conversation(handle: Handle<{ room: Room }>) {
           <div
             mix={[
               logCss,
-              ref((n) => {
-                log = n as HTMLDivElement;
-              }),
+              ref(list.scroller),
               on('scroll', (e) => {
                 const el = e.currentTarget as HTMLDivElement;
-                const was = stick;
-                stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+                const was = list.stick;
+                list.onScroll();
                 if (el.scrollTop < 80 && feed.hasMore && !feed.loadingOlder) void loadOlder();
-                if (stick && !was) markRead();
-                if (stick !== was) void handle.update();
+                if (list.stick && !was) markRead();
               }),
             ]}
             role="log"
-            aria-live={announce && !feed.loadingOlder ? 'polite' : 'off'}
+            aria-live={announce && !feed.loadingOlder && !list.quiet ? 'polite' : 'off'}
             aria-relevant="additions"
             aria-busy={feed.loading || feed.loadingOlder ? 'true' : undefined}
             aria-label={`Messages in ${room.name}`}
@@ -318,39 +336,20 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             ) : null}
             {feed.loading && msgs.length === 0 ? <Loading label="Loading messages..." /> : null}
             {!feed.loading && msgs.length === 0 && !feed.error ? <p mix={emptyCss}>No messages yet.</p> : null}
-            {rows.map((r) =>
-              r.kind === 'day' ? (
-                <div key={r.key} mix={dividerCss} role="separator" aria-label={r.label}>
-                  <span>{r.label}</span>
-                </div>
-              ) : r.kind === 'new' ? (
-                <div key={r.key} mix={newCss} role="separator" aria-label="New messages">
-                  <span>New</span>
-                </div>
-              ) : (
-                <MessageItem
-                  key={r.key}
-                  m={r.m}
-                  name={authorName(r.m.author, agents)}
-                  role={r.m.author.kind === 'agent' ? agents.find((a) => a.id === r.m.author.id)?.role : undefined}
-                  head={r.head}
-                  replies={replies.get(r.m.id) ?? 0}
-                  onReply={() => s.ui.openThread(room.id, r.m.id)}
-                  onOpenRoot={r.m.thread_root_id ? () => s.ui.openThread(room.id, r.m.thread_root_id!) : undefined}
-                />
-              ),
-            )}
+            {shown}
           </div>
+          {/* away from the bottom the new rows are not rendered, so the log cannot announce them: the count is said instead */}
+          <span class="sr-only" role="status" data-testid="room-unseen">
+            {!stick && unseen > 0 ? `${unseen} new ${unseen === 1 ? 'message' : 'messages'} below` : ''}
+          </span>
           {!stick ? (
             <button
               type="button"
               mix={[
                 jumpCss,
                 on('click', () => {
-                  stick = true;
-                  toBottom();
+                  list.toBottom();
                   markRead();
-                  void handle.update();
                 }),
               ]}
             >
@@ -366,9 +365,8 @@ export function Conversation(handle: Handle<{ room: Room }>) {
           rooms={s.project.roomList}
           disabled={room.archived}
           onSent={() => {
-            stick = true;
             newAfter = undefined;
-            void handle.update();
+            list.toBottom();
           }}
         />
       </section>

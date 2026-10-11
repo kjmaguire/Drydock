@@ -30,7 +30,8 @@ app/
   state/              eventStore, live reads (live.ts), services/query/action/watch (services.tsx),
                       models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts
   lib/                pure helpers (format, composer, route, theme, graphLayout)
-  ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown
+  ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
+                      virtual-list (windowed feeds; its arithmetic in virtual.ts)
   shell/              sidebar (with the project switcher), details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog
@@ -122,6 +123,11 @@ Use the kit before writing CSS:
 - `ErrorNote` (role="alert"), `Notice`, `Loading`, `Spinner`, `Empty` (feedback.tsx).
 - `Badge`, `StatusChip`, `PresenceDot`, `Avatar`, `SourceBadge`, `kv`, `muted`, `faint`, `mono` (data.tsx).
 - `Dialog` (native `<dialog>`), `Tabs`, `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.
+- `VirtualList` (virtual-list.tsx) for a long feed: create it in setup with `onChange: () => handle.update()`, render
+  `list.rows(items, key, render)` inside the scroller (before reading `list.quiet` for the log's `aria-live`), put
+  `ref(list.scroller)` and `on('scroll', () => list.onScroll())` on the scroller and `handle.queueTask(() => list.settle())`
+  in render. Only the rows near the view are in the DOM; `list.stick` says the reader is at the bottom, `list.toBottom()`
+  jumps there. Row keys must name one place in the list (it anchors the view on them).
 - Colors only through tokens (`t.text`, `t.bgSurface`, `tone.ok`, ...), never hex values in screens. Both themes come
   from the same tokens.
 

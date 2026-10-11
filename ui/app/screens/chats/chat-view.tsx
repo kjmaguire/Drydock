@@ -17,6 +17,7 @@ import { headerCss } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { Popover } from '../../ui/popover.tsx';
 import { t } from '../../ui/tokens.ts';
+import { VirtualList } from '../../ui/virtual-list.tsx';
 import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
 import { ChatMessageRow } from './chat-message.tsx';
@@ -146,12 +147,10 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   watch(handle, s.workspace);
   const feed = new ChatFeed(s.client, s.store, handle.props.id).start(handle.signal);
   const act = action(handle);
-  let scroller: HTMLDivElement | undefined;
-  let stick = true;
+  // the rows near the view are rendered; the list stays at the bottom while the reader is there (ui/virtual-list.tsx)
+  const list = new VirtualList({ onChange: () => void handle.update(), signal: handle.signal, estimate: 40 });
   /** The newest message seen while at the bottom: only messages after it are "new" (older pages above are not). */
   let seenSeq = 0;
-  /** scrollHeight before older messages were added, to keep the view where it was. */
-  let keepFrom: number | undefined;
   let editing = false;
   let draftTitle = '';
   let settingsOpen = false;
@@ -161,15 +160,10 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   feed.addEventListener('change', () => void handle.update());
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
 
-  const toBottom = () => {
-    if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  };
-
+  // the page is added above; the list keeps the row at the top of the view where it was
   const loadOlder = async () => {
     if (!feed.hasMore || feed.loadingOlder) return;
-    keepFrom = scroller?.scrollHeight;
-    const added = await feed.loadOlder();
-    if (!added) keepFrom = undefined;
+    await feed.loadOlder();
   };
 
   const update = async (u: Omit<Parameters<typeof s.client.chatUpdate>[0], 'id'>, label = 'update') => {
@@ -181,9 +175,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   const send = async (text: string, attach: string[] = []): Promise<boolean> => {
     const r = await act.run('send', () => s.client.chatSend(handle.props.id, text, attach));
     if (!r) return false;
-    stick = true; // before sent(): it may not emit (a turn that already ended), so render here as well
+    list.toBottom(); // before sent(): it may not emit (a turn that already ended), so this renders as well
     feed.sent(r.turnId, r.version);
-    void handle.update();
     return true;
   };
 
@@ -238,16 +231,31 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
         break;
       }
     }
+    const stick = list.stick;
     if (stick) seenSeq = msgs.at(-1)?.seq ?? 0;
     // the messages are in seq order: count back from the newest (nothing is unseen while stuck to the bottom)
     let unseen = 0;
     if (!stick) for (let i = msgs.length - 1; i >= 0 && msgs[i]!.seq > seenSeq; i--) unseen++;
-    handle.queueTask(() => {
-      if (keepFrom !== undefined && scroller && !feed.loadingOlder) {
-        scroller.scrollTop += scroller.scrollHeight - keepFrom;
-        keepFrom = undefined;
-      } else if (stick) toBottom();
-    });
+    // before reading list.quiet: rows revealed by this render (not new ones) keep the live region silent
+    const shown = list.rows(
+      msgs,
+      (m) => m.id,
+      (m, i) => (
+        <ChatMessageRow
+          m={m}
+          head={startsGroup(msgs[i - 1], m)}
+          adapter={chat.adapter}
+          allowedTools={chat.allowedTools}
+          latest={m.seq > lastUserSeq}
+          running={running}
+          busy={act.busy}
+          onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
+          onRetry={chat.archived || readOnly ? undefined : () => void send(RETRY_TEXT)}
+          onFork={(seq) => void fork(seq)}
+        />
+      ),
+    );
+    handle.queueTask(() => list.settle());
     const streaming = feed.streaming;
     const turnNote = feed.lastTurn && feed.lastTurn.fallback ? 'This turn started a new session with the earlier conversation quoted, because the previous session could not be continued.' : '';
 
@@ -421,13 +429,11 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             data-testid="chat-scroll"
             mix={[
               scrollCss,
-              ref((n) => (scroller = n as HTMLDivElement)),
+              ref(list.scroller),
               on('scroll', (e) => {
                 const el = e.currentTarget as HTMLDivElement;
-                const was = stick;
-                stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+                list.onScroll();
                 if (el.scrollTop < 80 && feed.hasMore && !feed.loadingOlder) void loadOlder();
-                if (stick !== was) void handle.update();
               }),
             ]}
           >
@@ -443,22 +449,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                 {chat.readHistory ? ' that can read your other chats' : ''}.
               </div>
             ) : null}
-            <div role="log" aria-live="polite" aria-relevant="additions" aria-label={`Messages in ${chatTitle(chat)}`} aria-busy={feed.loadingOlder ? 'true' : undefined} data-testid="chat-log">
-              {msgs.map((m, i) => (
-                <ChatMessageRow
-                  key={m.id}
-                  m={m}
-                  head={startsGroup(msgs[i - 1], m)}
-                  adapter={chat.adapter}
-                  allowedTools={chat.allowedTools}
-                  latest={m.seq > lastUserSeq}
-                  running={running}
-                  busy={act.busy}
-                  onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
-                  onRetry={chat.archived || readOnly ? undefined : () => void send(RETRY_TEXT)}
-                  onFork={(seq) => void fork(seq)}
-                />
-              ))}
+            <div role="log" aria-live={list.quiet ? 'off' : 'polite'} aria-relevant="additions" aria-label={`Messages in ${chatTitle(chat)}`} aria-busy={feed.loadingOlder ? 'true' : undefined} data-testid="chat-log">
+              {shown}
             </div>
             {!feed.loading && msgs.length === 0 && !streaming ? (
               <Empty title="Start the conversation" icon={Bot}>
@@ -489,19 +481,12 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               </div>
             ) : null}
           </div>
+          {/* away from the bottom the new rows are not rendered, so the log cannot announce them: the count is said instead */}
+          <span class="sr-only" role="status" data-testid="chat-unseen">
+            {!stick && unseen > 0 ? `${unseen} new ${unseen === 1 ? 'message' : 'messages'} below` : ''}
+          </span>
           {!stick ? (
-            <button
-              type="button"
-              data-testid="chat-jump"
-              mix={[
-                jumpCss,
-                on('click', () => {
-                  stick = true;
-                  toBottom();
-                  void handle.update();
-                }),
-              ]}
-            >
+            <button type="button" data-testid="chat-jump" mix={[jumpCss, on('click', () => list.toBottom())]}>
               <Icon icon={ArrowDown} size={14} />
               {unseen > 0 ? `${unseen} new ${unseen === 1 ? 'message' : 'messages'}` : 'Jump to the latest'}
             </button>

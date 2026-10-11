@@ -633,7 +633,9 @@ describe('Conversation', () => {
     type(byLabel<HTMLTextAreaElement>(r.container, 'Message'), 'go');
     await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Send').disabled).toBe(false), r);
     await r.act(() => byText(r.container, 'button', 'Send').click());
-    await waitFor(() => expect(messages(r)).toHaveLength(41), r);
+    // the list is windowed: the newest row is rendered at the bottom, the oldest are not in the DOM
+    await waitFor(() => expect(messages(r).at(-1)!.getAttribute('data-seq')).toBe('41'), r);
+    expect(messages(r).length).toBeLessThan(41);
     await waitFor(() => expect($(r, '[data-testid="chat-jump"]')).toBeNull(), r);
     await waitFor(() => expect(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight).toBeLessThan(40), r);
     expect($(r, '[data-testid="chat-stop"]')).toBeNull();
@@ -691,11 +693,44 @@ describe('Conversation', () => {
       scroller.scrollTop = 0;
       scroller.dispatchEvent(new Event('scroll'));
     });
-    await waitFor(() => expect(messages(r)).toHaveLength(140), r);
+    // the older page lands above the view (rows of it are rendered in the overscan); the view stays where it was
+    await waitFor(() => expect(messages(r).some((m) => Number(m.getAttribute('data-seq')) < 201)).toBe(true), r);
     const jump = await waitFor(() => must$(r, '[data-testid="chat-jump"]'), r);
     expect(jump.textContent).toContain('Jump to the latest');
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(241, 'assistant', 'fresh') } });
     await waitFor(() => expect(must$(r, '[data-testid="chat-jump"]').textContent).toContain('1 new message'), r);
+    // the new row is below the window, so the log cannot announce it: a status says the count
+    expect(must$(r, '[data-testid="chat-unseen"]').textContent).toBe('1 new message below');
+  });
+
+  it('renders only the rows near the view of a long chat, from the bottom, and keeps the DOM small while scrolling (F6)', async () => {
+    // 2,000 stored messages of different heights (a long answer every ninth)
+    const all = Array.from({ length: 2000 }, (_, i) => msg(1 + i, i % 2 ? 'assistant' : 'user', i % 9 ? `line ${1 + i}` : `long ${1 + i}\n\n${'an answer that wraps over lines '.repeat(30)}`));
+    const { r } = conv(chat(), all);
+    // the screen fills a window of 700 px, as in the app
+    r.container.style.height = '700px';
+    r.container.style.display = 'flex';
+    const scroller = await waitFor(() => must$(r, '[data-testid="chat-scroll"]'), r);
+    const rows = () => $$(r, '[data-vkey]');
+    const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 1;
+    await waitFor(() => expect(messages(r).at(-1)!.getAttribute('data-seq')).toBe('2000'), r);
+    await waitFor(() => expect(atBottom()).toBe(true), r);
+    const view = scroller.clientHeight;
+    expect(view).toBeGreaterThan(200);
+    expect(view).toBeLessThan(700);
+    const bound = Math.ceil((4 * view + 600) / 20);
+    expect(rows().length).toBeLessThanOrEqual(bound);
+    // to the top, as a reader does (the browser's own scroll event)
+    const moved = new Promise((res) => scroller.addEventListener('scroll', res, { once: true }));
+    scroller.scrollTop = 0;
+    await moved;
+    await waitFor(() => expect(messages(r)[0]!.getAttribute('data-seq')).toBe('1'), r);
+    expect(rows().length).toBeLessThanOrEqual(bound);
+    await waitFor(() => expect(must$(r, '[data-testid="chat-jump"]').textContent).toContain('Jump to the latest'), r);
+    await r.act(() => must$(r, '[data-testid="chat-jump"]').click());
+    await waitFor(() => expect(messages(r).at(-1)!.getAttribute('data-seq')).toBe('2000'), r);
+    await waitFor(() => expect(atBottom()).toBe(true), r);
+    expect(rows().length).toBeLessThanOrEqual(bound);
   });
 
   it('shows that a chat deleted elsewhere is gone', async () => {
