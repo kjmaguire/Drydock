@@ -340,6 +340,22 @@ func TestLastFailedTestDegrades(t *testing.T) {
 	}
 }
 
+// Drift seen in live output degrades a Connection that is otherwise ready, keeps it usable, names the event types, and wins
+// over a stale test result; without it the Connection is ready again.
+func TestDriftDegradesUntilCleared(t *testing.T) {
+	stubEnv(t, claudeTable("2.1.294", `{"loggedIn": true}`, 0))
+	o := connections.Options{Compat: claudeCompat(t), Last: map[string]connections.TestOutcome{"claude": {OK: true}},
+		Drift: map[string]connections.DriftRecord{"claude": {Kind: "schema", Types: []string{"brand_new_event"}}}}
+	c := check(t, "claude", o)
+	if c.Status != agents.StatusDegraded || c.Reason != connections.ReasonDrift+":schema" || !c.Usable || !strings.Contains(strings.Join(c.Problems, " "), "brand_new_event") {
+		t.Fatalf("%+v", c)
+	}
+	delete(o.Drift, "claude")
+	if c = check(t, "claude", o); c.Status != agents.StatusReady {
+		t.Fatalf("%+v", c)
+	}
+}
+
 func TestProbeTimeoutDoesNotHang(t *testing.T) {
 	dir := t.TempDir()
 	if runtime.GOOS == "windows" {

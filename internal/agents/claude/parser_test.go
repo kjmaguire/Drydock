@@ -144,7 +144,7 @@ func TestUnknownEventTypesAreReportedAsDriftOncePerType(t *testing.T) {
 		t.Fatalf("first unknown event: %v", kinds(cs))
 	}
 	var e workflow.ErrorChunk
-	if cs[0].Decode(&e) != nil || e.Fatal || !strings.Contains(e.Message, `"turn_result"`) || !strings.Contains(e.Message, "adapter drift") {
+	if cs[0].Decode(&e) != nil || e.Fatal || !strings.Contains(e.Message, `"turn_result"`) || !strings.Contains(e.Message, "adapter drift") || e.Code != workflow.CodeAdapterDrift || e.Detail != "turn_result" {
 		t.Fatalf("warning %+v", e)
 	}
 	if cs, _ := p.Parse([]byte(`{"type":"turn_result","x":2}`)); len(cs) != 0 {

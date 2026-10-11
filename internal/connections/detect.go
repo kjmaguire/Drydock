@@ -30,7 +30,9 @@ const (
 	ReasonTransport       = "transport_fallback"
 	ReasonTestFailed      = "test_failed"
 	ReasonGateUnacked     = "gate_unacknowledged"
-	defaultProbeTimeout   = 10 * time.Second
+	// ReasonDrift is "drift:<kind>": an agent sent output the parser does not read (kind schema), until a Test passes.
+	ReasonDrift         = "drift"
+	defaultProbeTimeout = 10 * time.Second
 )
 
 // Prereq is the result of checking one prerequisite tool.
@@ -65,6 +67,14 @@ type Connection struct {
 }
 
 // TestOutcome is the last "Test connection" result, which can degrade a Connection.
+// DriftRecord is drift the core observed in an agent's live output (docs/connections.md s6): kind schema means unknown event
+// types. A passing Test connection clears it.
+type DriftRecord struct {
+	Kind  string   `json:"kind"`
+	Types []string `json:"types,omitempty"`
+	At    int64    `json:"at"`
+}
+
 type TestOutcome struct {
 	OK      bool
 	Reason  string
@@ -78,6 +88,7 @@ type Options struct {
 	Compat  *manifests.Compat
 	Acked   map[string]bool        // acknowledged gate ids
 	Last    map[string]TestOutcome // last Test result per adapter id
+	Drift   map[string]DriftRecord // drift seen in live output since the last passing Test, per adapter id
 	Timeout time.Duration          // per probe; default 10s
 	// BinaryOverride replaces binary discovery per adapter id (the "custom path" Connection setting; tests).
 	BinaryOverride map[string]string
@@ -138,7 +149,8 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 		// Degraded is usable when the agent can still start: an unverified version or a failed last Test. A missing fallback
 		// transport or an unreadable version probe is not.
 		usable := c.Status == agents.StatusReady ||
-			c.Status == agents.StatusDegraded && (strings.HasPrefix(c.Reason, ReasonVersionUntested) || strings.HasPrefix(c.Reason, ReasonTestFailed))
+			c.Status == agents.StatusDegraded && (strings.HasPrefix(c.Reason, ReasonVersionUntested) || strings.HasPrefix(c.Reason, ReasonTestFailed) ||
+				strings.HasPrefix(c.Reason, ReasonDrift))
 		c.Usable = usable && !unacked
 		if unacked && c.Reason == "" {
 			c.Reason = ReasonGateUnacked
@@ -202,7 +214,12 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	// 5. degraded conditions
 	var degraded []string
 	last, haveLast := o.Last[m.Meta.ID]
+	drift, haveDrift := o.Drift[m.Meta.ID]
 	switch {
+	case haveDrift:
+		c.Reason = ReasonDrift + ":" + drift.Kind
+		degraded = append(degraded, fmt.Sprintf("%s sent output Drydock does not read (event types: %s); turns may lose results. Check the contract suite, then run Test connection",
+			m.Meta.DisplayName, strings.Join(drift.Types, ", ")))
 	case haveLast && !last.OK:
 		c.Reason = ReasonTestFailed + ":" + last.Reason
 		degraded = append(degraded, "the last Test connection failed: "+last.Reason)

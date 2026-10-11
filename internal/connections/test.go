@@ -139,7 +139,7 @@ func (t *tester) run(ctx context.Context) Report {
 	t.rep = Report{Adapter: m.Meta.ID, Form: "short", Transport: m.Transports.Primary, Matrix: map[string]Cell{}}
 
 	// T1: binary, version, prerequisites, auth probe
-	conn := Check(ctx, m, s.opts)
+	conn := Check(ctx, m, s.options())
 	t.rep.CLIVersion, t.rep.Platform = conn.Version, conn.Platform
 	if a := m.Transports.ACP; a != nil && m.Transports.Primary == manifests.TransportACP {
 		if pkg := npxPackage(a.Argv); pkg != "" {
@@ -186,7 +186,7 @@ func (t *tester) run(ctx context.Context) Report {
 		cwd = d
 	}
 	spec := agents.RunSpec{AgentID: "test-" + m.Meta.ID, Cwd: cwd, Model: t.o.Model, Env: t.o.Env}
-	pm := s.opts.PM
+	pm := s.options().PM
 	if pm == nil {
 		pm = proc.New()
 	}

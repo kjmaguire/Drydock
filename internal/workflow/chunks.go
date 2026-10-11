@@ -64,7 +64,13 @@ type DoneChunk struct {
 type ErrorChunk struct {
 	Message string `json:"message"`
 	Fatal   bool   `json:"fatal,omitempty"`
+	// Code names a warning the core acts on ("adapter_drift"); Detail is its subject (the unknown event type).
+	Code   string `json:"code,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
+
+// CodeAdapterDrift marks a parser's warning that the CLI sent an event type it does not read.
+const CodeAdapterDrift = "adapter_drift"
 
 // NewChunk marshals v into a chunk of the given kind.
 func NewChunk(kind string, v any) Chunk {

@@ -281,7 +281,8 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 		if p.unknown[ev.Type] == 1 {
 			// once per type and session, as a warning the run log and the chat show: the turn goes on
 			chunks = append(chunks, workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: "adapter drift: Claude Code sent an event of type " +
-				strconv.Quote(ev.Type) + " that Drydock does not read. If turns stop finishing or lose their results, this CLI version changed its output; check the Connections page and the contract suite."}))
+				strconv.Quote(ev.Type) + " that Drydock does not read. If turns stop finishing or lose their results, this CLI version changed its output; check the Connections page and the contract suite.",
+				Code: workflow.CodeAdapterDrift, Detail: ev.Type}))
 		}
 	}
 	return chunks, ack

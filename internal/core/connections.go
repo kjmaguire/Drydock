@@ -65,6 +65,11 @@ func (c *Core) TestConnection(ctx context.Context, adapterID string, prompt bool
 				c.logf("keep the Test connection result: %v", werr)
 			}
 		}
+		if rep.OK {
+			if _, derr := c.DB.Writer().ExecContext(ctx, `DELETE FROM settings WHERE key=?`, driftKey+adapterID); derr != nil {
+				c.logf("clear the recorded drift: %v", derr)
+			}
+		}
 	}
 	return rep, err
 }

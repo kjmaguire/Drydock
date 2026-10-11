@@ -57,6 +57,8 @@ type Step struct {
 	// command>)" or a "Tool(<prefix>:*)" rule for a Bash command), the call is refused the way headless claude refuses it
 	// (an error tool result, and the call listed in the result's permission_denials).
 	Ask bool `json:"ask,omitempty"`
+	// Raw emits this JSON object as one stream line, as it is: a test of what the parser does with an event it does not know.
+	Raw json.RawMessage `json:"raw,omitempty"`
 }
 
 // WriteSpec is a scripted file write.
@@ -420,6 +422,8 @@ loop:
 				<-a.interrupt
 				interrupted = true
 				break loop
+			case len(st.Raw) > 0:
+				a.emit(st.Raw)
 			case st.Say != "":
 				lastText = st.Say
 				for _, w := range strings.SplitAfter(st.Say, " ") {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
@@ -21,7 +22,15 @@ type Config struct {
 // Service ties the manifest registry to detection and Test connection.
 type Service struct {
 	Registry *manifests.Registry
+	mu       sync.RWMutex // guards opts: gate acknowledgements, Test results and drift change while checks read them
 	opts     Options
+}
+
+// options is a snapshot of the detection options (the maps in it are replaced, never changed in place).
+func (s *Service) options() Options {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.opts
 }
 
 // NewService loads the manifests and compat.yaml (embedded unless the config supplies others) and wires detection into the
@@ -30,7 +39,7 @@ func NewService(cfg Config) (*Service, error) {
 	s := &Service{opts: cfg.Detection}
 	mo := cfg.Manifests
 	mo.Detect = func(ctx context.Context, m *manifests.Manifest) (agents.Detection, error) {
-		return Detect(ctx, m, s.opts)
+		return Detect(ctx, m, s.options())
 	}
 	reg, err := manifests.NewRegistry(mo)
 	if err != nil {
@@ -55,7 +64,7 @@ func (s *Service) Check(ctx context.Context, id string) (Connection, error) {
 	if !ok {
 		return Connection{}, fmt.Errorf("no manifest for adapter %q", id)
 	}
-	return Check(ctx, m, s.opts), nil
+	return Check(ctx, m, s.options()), nil
 }
 
 // Detect computes the Detection for one adapter id.
@@ -78,21 +87,52 @@ func (s *Service) DetectAll(ctx context.Context) []Connection {
 
 // Acknowledge records that the user acknowledged a gate. The caller persists the acknowledgement; this only affects Usable.
 func (s *Service) Acknowledge(gateID string) {
+	s.mu.Lock()
 	cp := map[string]bool{gateID: true}
 	for k, v := range s.opts.Acked {
 		cp[k] = v
 	}
 	s.opts.Acked = cp
+	s.mu.Unlock()
 }
 
 // RecordTest stores the outcome of a Test connection so a failure degrades the Connection until the next passing Test.
 func (s *Service) RecordTest(id string, r Report) {
+	s.mu.Lock()
 	cp := map[string]TestOutcome{}
 	for k, v := range s.opts.Last {
 		cp[k] = v
 	}
 	cp[id] = TestOutcome{OK: r.OK, Reason: r.FailureReason(), Version: r.CLIVersion}
 	s.opts.Last = cp
+	s.mu.Unlock()
+	if r.OK {
+		s.SetDrift(id, nil)
+	}
+}
+
+// SetDrift records drift seen in an adapter's live output (nil clears it), so the Connection shows degraded until a Test passes.
+func (s *Service) SetDrift(id string, d *DriftRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := map[string]DriftRecord{}
+	for k, v := range s.opts.Drift {
+		if k != id {
+			cp[k] = v
+		}
+	}
+	if d != nil {
+		cp[id] = *d
+	}
+	s.opts.Drift = cp
+}
+
+// Drift returns the drift recorded for an adapter since its last passing Test.
+func (s *Service) Drift(id string) (DriftRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	d, ok := s.opts.Drift[id]
+	return d, ok
 }
 
 // TestConnection runs Test connection for adapterID on a default Service (embedded manifests and compat.yaml, the real process

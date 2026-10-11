@@ -136,7 +136,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
 	c.Connections, err = connections.NewService(connections.Config{
 		Manifests: manifests.Options{ScrubEnv: true, PassEnv: func() []string { return passEnvNames(context.Background(), db) }},
-		Detection: connections.Options{PM: cfg.Procs, Acked: acked, Last: c.loadTestOutcomes(ctx)},
+		Detection: connections.Options{PM: cfg.Procs, Acked: acked, Last: c.loadTestOutcomes(ctx), Drift: c.loadDrift(ctx)},
 	})
 	if err != nil {
 		cancel()
