@@ -6,7 +6,7 @@
 //   2. `-licensed`: a TEST HARNESS MODE with a throwaway license key, which starts with no license (read-only) and prints
 //      two signed test tokens (one active, one expired). It is only used by e2e/round4.spec.ts.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,23 +28,43 @@ interface Started {
 
 /**
  * The PATH the harness runs with: the same, except that the GitHub CLI is not on it. The harness has no GitHub account, so
- * the suite is the same on a developer machine that has gh signed in as on CI without it (the wizard's GitHub choice then
- * explains that gh is missing). A folder that holds gh is replaced by a folder of links to everything else in it.
+ * the suite is the same on a developer machine that has gh signed in as on CI with it installed (the wizard's GitHub choice
+ * then explains that gh is missing). A folder that holds gh is replaced by a folder of links to everything else in it; on
+ * Windows a folder of its own (C:\Program Files\GitHub CLI: no other program in it) is simply left out.
  */
 function pathWithoutGh(outDir: string): string {
+  const win = process.platform === 'win32';
+  const ghName = win ? 'gh.exe' : 'gh';
   const dirs = (process.env.PATH ?? '').split(delimiter);
-  if (process.platform === 'win32') return dirs.join(delimiter);
   const shimRoot = join(outDir, 'path-without-gh');
   rmSync(shimRoot, { recursive: true, force: true });
   return dirs
     .map((d, i) => {
-      if (!d || !existsSync(join(d, 'gh'))) return d;
+      if (!d || !existsSync(join(d, ghName))) return d;
+      const others = readdirSync(d).filter((f) => f.toLowerCase() !== ghName);
+      if (win && !others.some((f) => /\.(exe|cmd|bat|com|ps1)$/i.test(f))) return '';
       const shim = join(shimRoot, String(i));
       mkdirSync(shim, { recursive: true });
-      for (const f of readdirSync(d)) if (f !== 'gh') symlinkSync(join(d, f), join(shim, f));
+      for (const f of others) linkInto(join(d, f), join(shim, f));
       return shim;
     })
+    .filter((d) => d !== '')
     .join(delimiter);
+}
+
+/** A link at to that reaches from: a symlink, else (Windows without the right to make one) a hard link or a copy. */
+function linkInto(from: string, to: string): void {
+  const dir = statSync(from, { throwIfNoEntry: false })?.isDirectory() === true;
+  try {
+    symlinkSync(from, to, dir ? 'junction' : 'file');
+  } catch (err) {
+    if (process.platform !== 'win32' || dir) throw err;
+    try {
+      linkSync(from, to);
+    } catch {
+      copyFileSync(from, to);
+    }
+  }
 }
 
 let harnessPath: string | undefined;
@@ -100,6 +120,11 @@ export default async function globalSetup() {
   if (build.status !== 0) throw new Error(`go build ./cmd/drydock-e2e failed:\n${build.stdout}\n${build.stderr}`);
 
   harnessPath = pathWithoutGh(outDir);
+  // which fresh repositories the tests have taken (e2e/helpers.ts claim): empty for every run
+  const claims = join(outDir, 'claims');
+  rmSync(claims, { recursive: true, force: true });
+  mkdirSync(claims, { recursive: true });
+  process.env.DRYDOCK_E2E_CLAIMS = claims;
   process.env.DRYDOCK_E2E_EXE = exe; // the binary is also a stdio MCP server when DRYDOCK_E2E_MCP_SERVER=1 (a test fixture)
   const main = await start(exe, ['-repos', String(REPOS), '-green-repos', String(GREEN)]);
   const started: ChildProcess[] = [main.child];

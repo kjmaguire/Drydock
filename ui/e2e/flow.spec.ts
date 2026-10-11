@@ -101,7 +101,8 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
   test('the core refuses a bad repository path and the UI shows its message', async ({ page }) => {
     await page.goto(appUrl());
     await showNewProjectForm(page);
-    await wizardToReview(page, { repo: '/definitely/not/a/repo' });
+    // a full path on this system (Windows refuses /x as not a full path before it looks for a repository)
+    await wizardToReview(page, { repo: process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo' });
     await page.getByRole('button', { name: 'Create project' }).click();
     await expect(page.getByRole('alert')).toContainText('not a usable Git repository');
   });

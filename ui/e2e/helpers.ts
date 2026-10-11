@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { closeSync, openSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
 export const appUrl = (): string => {
@@ -8,13 +9,29 @@ export const appUrl = (): string => {
   return u;
 };
 
-let nextRepo = 0;
+/**
+ * Claims the first entry of a list that no test has claimed yet. The claims are files made with O_EXCL in a folder global
+ * setup empties, so they hold across the worker processes Playwright starts again after a failure (a counter in this
+ * module would start over and hand an earlier test's repository to the next one).
+ */
+function claim(kind: string, list: string[], short: string): string {
+  const dir = process.env.DRYDOCK_E2E_CLAIMS;
+  if (!dir) throw new Error('DRYDOCK_E2E_CLAIMS is not set (global setup did not run)');
+  for (let i = 0; i < list.length; i++) {
+    try {
+      closeSync(openSync(join(dir, `${kind}-${i}`), 'wx'));
+      return list[i]!;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  }
+  throw new Error(short);
+}
+
 /** A fresh git repository (copy of testdata/fixtures/gocalc) that no other test has touched. */
 export function freshRepo(): string {
   const repos = JSON.parse(process.env.DRYDOCK_E2E_REPOS ?? '[]') as string[];
-  const r = repos[nextRepo++];
-  if (!r) throw new Error('out of fresh repositories: raise REPOS in global-setup.ts');
-  return r;
+  return claim('repo', repos, 'out of fresh repositories: raise REPOS in global-setup.ts');
 }
 
 /** The sidebar (the app's main navigation). */
@@ -85,13 +102,10 @@ export async function wizardCreate(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Open project' }).click();
 }
 
-let nextGreen = 0;
 /** A fresh repository whose baseline tests pass and that carries a repository skill (.aet/skills/go-style). */
 export function freshGreenRepo(): string {
   const repos = JSON.parse(process.env.DRYDOCK_E2E_GREEN_REPOS ?? '[]') as string[];
-  const r = repos[nextGreen++];
-  if (!r) throw new Error('out of green repositories: raise GREEN in global-setup.ts');
-  return r;
+  return claim('green', repos, 'out of green repositories: raise GREEN in global-setup.ts');
 }
 
 /** A folder with one Markdown page, for an expert pack of type local_dir. */
@@ -158,12 +172,9 @@ export const licenseTokens = (): { active: string; expired: string } => ({
   active: process.env.DRYDOCK_E2E_LICENSE_ACTIVE ?? '',
   expired: process.env.DRYDOCK_E2E_LICENSE_EXPIRED ?? '',
 });
-let nextLicensedRepo = 0;
 export function licensedRepo(): string {
   const repos = JSON.parse(process.env.DRYDOCK_E2E_LICENSED_REPOS ?? '[]') as string[];
-  const r = repos[nextLicensedRepo++];
-  if (!r) throw new Error('out of licensed-harness repositories');
-  return r;
+  return claim('licensed', repos, 'out of licensed-harness repositories');
 }
 
 /** Reads a zip written by the core (stored/deflate entries only) and returns name -> bytes, so a test can look inside a file the UI created. */

@@ -113,7 +113,11 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
               aria-label="Adapter"
               value={adapterId}
               required
-              mix={on('change', (e) => set(() => ((adapter = e.currentTarget.value), (model = ''), (effort = ''))))}
+              mix={on('change', (e) => {
+                // choosing the adapter that is already chosen keeps the model and effort (and Claude's recommendation)
+                const v = e.currentTarget.value;
+                if (v !== adapterId) set(() => ((adapter = v), (model = ''), (effort = '')));
+              })}
             >
               {adapters.map((x) => (
                 <option key={x.id} value={x.id} selected={x.id === adapterId}>

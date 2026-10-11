@@ -330,6 +330,17 @@ describe('Claude best practices', () => {
     expect(created[0]).toMatchObject({ role: 'backend', model: 'sonnet', effort: 'low', practices: false });
   });
 
+  it('choosing the adapter that is already chosen keeps the recommended model and effort', async () => {
+    const { r } = show([], { claudePractices: async (role) => practices(role) });
+    await waitAdapters(r);
+    type(byLabel(r.container, 'Role'), 'backend');
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Model').value).toBe('sonnet'), r);
+    type(byLabel<HTMLSelectElement>(r.container, 'Adapter'), 'claude');
+    r.root.flush();
+    expect(byLabel<HTMLInputElement>(r.container, 'Model').value).toBe('sonnet');
+    expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('medium');
+  });
+
   it('shows nothing for an adapter that is not Claude Code', async () => {
     const asked: string[] = [];
     const { r } = show([], { claudePractices: async (role) => (asked.push(role), practices(role)) });
