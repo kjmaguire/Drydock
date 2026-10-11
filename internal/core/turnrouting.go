@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -153,8 +154,10 @@ func (s agentSource) Candidates(ctx context.Context, req router.RouteRequest) ([
 			out = append(out, c)
 			continue
 		}
+		// the CLI's own report of a rejected rate limit makes the model unavailable until the limit resets (agentlimits.go)
+		limited, _ := s.e.c.limits.blocked(a.Adapter, r.Model, time.Now())
 		out = append(out, router.Candidate{Provider: router.ProviderID("agent:" + a.Adapter), Model: r.Model, Tier: tier, DataClass: providers.DataPrivate,
-			Enabled: true, PrivateEligible: true, SupportsTools: true, ResponsesValidated: true, Healthy: true, QuotaOK: true, QuotaRemainingPct: -1,
+			Enabled: true, PrivateEligible: true, SupportsTools: true, ResponsesValidated: true, Healthy: true, QuotaOK: !limited, QuotaRemainingPct: -1,
 			AgentNative: true}) // no tool-call probe ran: the agent CLI brings its own tools (the explanation says so)
 	}
 	return out, nil

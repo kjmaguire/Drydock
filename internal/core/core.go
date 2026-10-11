@@ -93,6 +93,8 @@ type Core struct {
 	// taskStarts serializes starting a task's run per task (lockTaskStart): a double click or the scheduler racing the
 	// person must not start two runs on one worktree
 	taskStarts sync.Map
+	// limits are the rate limits the agent CLIs reported (agentlimits.go); the turn router reads them
+	limits agentLimits
 	cancel     context.CancelFunc
 }
 

@@ -665,7 +665,9 @@ func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, st
 		for _, o := range obs {
 			o.OnChunk(ctx, ni, c)
 		}
-		e.emit(ctx, "workflow.node_chunk", info, map[string]any{"node": n.ID, "step": step, "attempt": attempt, "chunk": c})
+		// Chunks are not published as events: the stream file above keeps them, observers (the watchdog, telemetry) see them
+		// live, and an agent's own output is published once by its session (agent.output). Publishing each chunk again
+		// stored every streamed token twice in the events table (audit F10).
 	}
 
 	base := e.baseHandler(n)

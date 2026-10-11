@@ -180,3 +180,35 @@ func TestDurableAcrossReopen(t *testing.T) {
 		t.Fatalf("catch-up want 3 got %d", len(missed))
 	}
 }
+
+// Publishing while the bus closes never hangs: an event the writer took is acknowledged, one that arrived after its last
+// drain fails with ErrClosed instead of waiting forever for a reply.
+func TestPublishDuringCloseNeverHangs(t *testing.T) {
+	for round := 0; round < 20; round++ {
+		b, _, _ := newBus(t)
+		var wg sync.WaitGroup
+		errs := make(chan error, 200)
+		for i := 0; i < 200; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := b.Publish(context.Background(), Event{Type: "t.x"})
+				errs <- err
+			}()
+		}
+		go b.Close()
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(20 * time.Second):
+			t.Fatalf("round %d: a Publish never returned after Close", round)
+		}
+		close(errs)
+		for err := range errs {
+			if err != nil && err != ErrClosed {
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
+	}
+}

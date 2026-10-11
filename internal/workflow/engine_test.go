@@ -545,8 +545,8 @@ func TestStreamingReachesSubscribersBeforeCompletion(t *testing.T) {
 		}),
 	).Edge("W", "D").Start("W")
 	e.eng.Register(g)
-	ch, cancel := e.bus.Subscribe(events.Filter{Types: []string{"workflow.node_chunk"}})
-	defer cancel()
+	ch := make(chan wf.Chunk, 16)
+	e.eng.Observe(func(wf.NodeInfo) wf.StreamObserver { return chunkTap(ch) })
 	run, _ := e.eng.Start(context.Background(), "s", "in", wf.StartOptions{})
 	for i := 0; i < 3; i++ {
 		select {
@@ -564,7 +564,20 @@ func TestStreamingReachesSubscribersBeforeCompletion(t *testing.T) {
 	if downstream.Load() != `"c0c1c2"` {
 		t.Fatalf("downstream received %v, want the complete value", downstream.Load())
 	}
+	// the chunks were not stored as events a second time (the stream file and the session's agent.output hold them)
+	var n int
+	if err := e.db.Reader().QueryRowContext(context.Background(), `SELECT COUNT(*) FROM events WHERE type='workflow.node_chunk'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("%d chunk events stored (%v)", n, err)
+	}
 }
+
+// chunkTap is a stream observer that hands every chunk to ch.
+type chunkTap chan wf.Chunk
+
+func (c chunkTap) OnStart(context.Context, wf.NodeInfo)                  {}
+func (c chunkTap) OnChunk(_ context.Context, _ wf.NodeInfo, ch wf.Chunk) { c <- ch }
+func (c chunkTap) OnEnd(context.Context, wf.NodeInfo, wf.NodeOutput)     {}
+func (c chunkTap) OnError(context.Context, wf.NodeInfo, error)           {}
 
 func TestCrashMidStreamLosesNoDurableOutput(t *testing.T) {
 	dir := t.TempDir()

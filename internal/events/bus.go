@@ -101,14 +101,16 @@ type subscriber struct {
 
 // SQLBus is the SQLite-backed Bus.
 type SQLBus struct {
-	db    *storage.DB
-	in    chan request
-	quit  chan struct{}
-	wg    sync.WaitGroup
-	mu    sync.RWMutex
-	subs  map[*subscriber]struct{}
-	bufSz int
-	once  sync.Once
+	db   *storage.DB
+	in   chan request
+	quit chan struct{}
+	// stopped is closed when the writer has exited: a request queued after its last drain is never written
+	stopped chan struct{}
+	wg      sync.WaitGroup
+	mu      sync.RWMutex
+	subs    map[*subscriber]struct{}
+	bufSz   int
+	once    sync.Once
 }
 
 // NewSQLBus starts the group-commit writer. bufSize is the per-subscriber channel capacity.
@@ -116,7 +118,7 @@ func NewSQLBus(db *storage.DB, bufSize int) *SQLBus {
 	if bufSize <= 0 {
 		bufSize = 1024
 	}
-	b := &SQLBus{db: db, in: make(chan request, 4096), quit: make(chan struct{}), subs: map[*subscriber]struct{}{}, bufSz: bufSize}
+	b := &SQLBus{db: db, in: make(chan request, 4096), quit: make(chan struct{}), stopped: make(chan struct{}), subs: map[*subscriber]struct{}{}, bufSz: bufSize}
 	b.wg.Add(1)
 	go b.writer()
 	return b
@@ -164,12 +166,22 @@ func (b *SQLBus) Publish(ctx context.Context, e Event) (uint64, error) {
 		return res.seq, res.err
 	case <-ctx.Done():
 		return 0, ctx.Err()
+	case <-b.stopped:
+		// the writer exited: either it wrote this request in its last drain (the reply is waiting) or the request arrived
+		// after it, and nothing will ever answer it
+		select {
+		case res := <-r.reply:
+			return res.seq, res.err
+		default:
+			return 0, ErrClosed
+		}
 	}
 }
 
 // writer batches queued events into one transaction (group commit), then fans out in sequence order.
 func (b *SQLBus) writer() {
 	defer b.wg.Done()
+	defer close(b.stopped)
 	for {
 		var first request
 		select {
