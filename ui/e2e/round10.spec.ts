@@ -38,8 +38,11 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
   const xterm = term.getByTestId('xterm');
   await expect(xterm.locator('.xterm-rows')).toBeVisible();
   await xterm.click();
-  await page.keyboard.type('echo dock-$((6*7)); ls\n');
+  // the shell computes the number, so the text is its output and not the echo of what was typed; one command at a time,
+  // since PowerShell's ls (the terminal on Windows) prints a table long enough to scroll the first line out of the rows
+  await page.keyboard.type(process.platform === 'win32' ? 'echo "dock-$(6*7)"\n' : 'echo dock-$((6*7))\n');
   await expect(xterm.locator('.xterm-rows')).toContainText('dock-42', { timeout: 20_000 });
+  await page.keyboard.type('ls\n');
   await expect(xterm.locator('.xterm-rows')).toContainText('calc.go');
   await term.getByRole('button', { name: /^Close / }).click();
   await expect(term.getByText(/No terminal is open/)).toBeVisible();
