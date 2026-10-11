@@ -50,6 +50,9 @@ type Deps struct {
 	Context *ctxeng.Engine
 	// Scanner scans the lines a task added for secrets (the `secrets` check). Default: checks.DefaultScanner.
 	Scanner security.SecretScanner
+	// Redact, if set, removes secrets from a handoff artifact before it is stored and given to an agent (the core passes its
+	// scanner, which also knows the stored provider keys). Nil: Scanner's Redact.
+	Redact func(string) string
 	// DepsBinary overrides the osv-scanner executable of the `deps` check (tests; default osv-scanner on PATH).
 	DepsBinary string
 	// MCPStatus, if set, says whether (and with which tools) the agent's turn gets the MCP gateway entry, so the context
@@ -179,8 +182,9 @@ func stageIndex(s tasks.Status) int {
 }
 
 // Work runs one agent turn in the task worktree. Every pass carries the task (title, description, acceptance criteria) and the
-// project brief; a later pass adds only the latest failure, review feedback or guidance (token rule 16: never the previous
-// session's history).
+// project brief; a later pass adds only the latest failure, review feedback or guidance (token rule 16: the prompt never
+// carries the previous session's history). A later pass continues the previous turn's session while its context occupancy is
+// below ContextHandoffPct; otherwise it starts a fresh session seeded with a handoff artifact (session.go).
 func Work(d Deps) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, d, in)
@@ -197,26 +201,7 @@ func Work(d Deps) workflow.NodeHandler {
 			}
 			return *q, err
 		}
-		prompt := WorkPrompt(t, in, d.promptContext(ctx, t, false))
-		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "work")
-		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
-		out, err := h(ctx, in)
-		if err != nil {
-			return out, err
-		}
-		var res rt.TurnResult
-		if json.Unmarshal(out.Value, &res) == nil {
-			var cost float64
-			for _, u := range res.Usage {
-				cost += u.CostUSD
-			}
-			_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: cost})
-			d.recordDoD(ctx, t, res.Text)
-			if d.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
-				d.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
-			}
-		}
-		return out, nil
+		return d.runWorkTurn(ctx, in, t, cfg, WorkPrompt(t, in, d.promptContext(ctx, t, false)))
 	}
 }
 
@@ -301,7 +286,8 @@ func mdFiles(dir string) []mdFile {
 }
 
 // saveManifest records what this attempt was given and what was deliberately left out.
-func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string) {
+// sess is the session decision of a work turn (nil for the other turns, which always start a fresh session).
+func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string, sess *SessionDecision) {
 	if d.Context == nil {
 		return
 	}
@@ -338,7 +324,17 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 	m.Add("repo map", false, 0, "not built: tree-sitter is gated until the Windows CGO job is green (decision D5)", 9)
 	m.Add("project memory", false, 0, "the newest accepted entries are in AGENTS.md up to a budget; the rest is retrieved on demand (search_memory)", 8)
 	m.Add("room history", false, 0, "no messages selected for this task channel", 7)
-	m.Add("previous session transcript", false, 0, "fresh session per attempt; handoff artifacts only (token rules 5 and 16)", 6)
+	switch {
+	case sess == nil:
+		m.Add("previous session transcript", false, 0, "fresh session per attempt; handoff artifacts only (token rules 5 and 16)", 6)
+	case sess.Action == SessionContinue:
+		m.Add("previous session transcript", true, 0, "continued session "+sess.PrevSession+" (--resume): "+sess.Reason+" (token rule 6)", 6)
+	case sess.Action == SessionHandoff:
+		m.Add("previous session transcript", false, 0, "not continued: "+sess.Reason+" (token rules 5 and 6)", 6)
+		m.Add("handoff:"+nonEmptyStr(sess.Handoff, "unsaved"), true, 0, "handoff artifact ("+sess.Trigger+") put before the prompt: the task, its criteria, what the previous session did, the diff stat, failing checks and open questions", 2)
+	default:
+		m.Add("previous session transcript", false, 0, sess.Reason+" (token rules 5 and 16)", 6)
+	}
 	_ = d.Context.SaveManifest(ctx, string(in.RunID), string(in.NodeID), in.Attempt, t.ID, agentID, m)
 	// the exact prompt goes next to the turn's stream on disk (never into the database) for the run explanation
 	if p := PromptPath(d.DataDir, in.NodeInfo); p != "" {

@@ -188,6 +188,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		Lead:         leadHook{c},
 		ResetWatch:   c.resetWatch,
 		ProjectBrief: c.ProjectBrief,
+		Redact:       c.Scanner.Redact,
 		PlanDir: func(ctx context.Context, projectID string) (string, error) {
 			p, err := c.GetProject(ctx, projectID)
 			if err != nil {

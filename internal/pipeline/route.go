@@ -13,6 +13,9 @@ type RoutedModel struct {
 	Effort     string
 	Tier       string
 	DecisionID string
+	// Handoff is true when the decision requires a handoff artifact (an escalation): a work turn that then runs on a different
+	// model than the previous one starts a fresh session seeded with it (session.go).
+	Handoff bool
 }
 
 type routedKey struct{}

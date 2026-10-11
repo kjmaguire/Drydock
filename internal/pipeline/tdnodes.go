@@ -54,7 +54,7 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 			return turnOut{}, fmt.Errorf("the task's sandbox: %w", err)
 		}
 	}
-	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase)
+	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase, nil)
 	prompt := o.Prompt
 	out, err := td.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
 	if err != nil {
@@ -589,24 +589,7 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 		if scan.Summary != "" {
 			prompt += "\n\nA security scan of the tree found the following. Fix every finding that is real, and do not just silence the scanner:\n" + quoted("Scan results", clip(scan.Summary, 4000))
 		}
-		td.saveManifest(ctx, in, t, cfg.AgentID, prompt, "work")
-		out, err := td.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
-		if err != nil {
-			return out, err
-		}
-		var res rt.TurnResult
-		if json.Unmarshal(out.Value, &res) == nil {
-			var cost float64
-			for _, u := range res.Usage {
-				cost += u.CostUSD
-			}
-			_, _ = td.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: cost})
-			td.recordDoD(ctx, t, res.Text)
-			if td.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
-				td.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
-			}
-		}
-		return out, nil
+		return td.runWorkTurn(ctx, in, t, cfg, prompt)
 	}
 }
 

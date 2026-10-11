@@ -11,6 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -21,7 +22,7 @@ import (
 // lists the tool, and the default role policy withholds all three (ext_mcp.go).
 
 // maxHandoffBytes bounds one stored handoff artifact (token-control s3: about 1,500 tokens, enforced at write time).
-const maxHandoffBytes = 8 << 10
+const maxHandoffBytes = pipeline.MaxHandoffBytes
 
 // ---- task ----
 

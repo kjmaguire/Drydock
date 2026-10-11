@@ -259,15 +259,17 @@ func TestIterateUntilVerifiedHappyPathEndsInHumanMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inc, exc := map[string]bool{}, map[string]string{}
+	inc, exc, why := map[string]bool{}, map[string]string{}, map[string]string{}
 	for _, it := range mf.Items {
+		why[it.Source] = it.Reason
 		if it.Included {
 			inc[it.Source] = true
 		} else {
 			exc[it.Source] = it.Reason
 		}
 	}
-	if !inc["file:AGENTS.md"] || !inc["prompt (work)"] || !inc["budget:instructions"] || !strings.Contains(exc["repo map"], "D5") || exc["previous session transcript"] == "" {
+	// the latest pass continued or replaced the previous session: either way the manifest says which, and why
+	if !inc["file:AGENTS.md"] || !inc["prompt (work)"] || !inc["budget:instructions"] || !strings.Contains(exc["repo map"], "D5") || !strings.Contains(why["previous session transcript"], "70% threshold") {
 		t.Fatalf("manifest %+v", mf.Items)
 	}
 	// without the MCP wiring (this harness sets none) the manifest says so instead of staying silent

@@ -109,6 +109,43 @@ func TestTheRouterChoosesTheModelOfAgentTurnsAndEscalates(t *testing.T) {
 	if len(decided) < 5 || decided[0] != "rules:haiku" || decided[3] != "rules:opus" {
 		t.Fatalf("recorded decisions %v", decided)
 	}
+
+	// The escalation hands the work over: the first premium turn is a fresh session (no --resume) seeded with a handoff artifact
+	// the router asked for, written to handoffs with the reason escalation; the cheap turns before it continued their session.
+	var work []agents.RunSpec
+	for _, s := range capt.all() {
+		if s.Spec.AgentID == w.ID {
+			work = append(work, s.Spec)
+		}
+	}
+	if work[3].Model == work[2].Model || work[3].ResumeID != "" {
+		t.Fatalf("the escalated turn must start a fresh session: %+v", work[3])
+	}
+	continued := 0
+	for _, s := range work[1:3] {
+		if s.ResumeID != "" {
+			continued++
+		}
+	}
+	if continued == 0 {
+		t.Errorf("no cheap turn continued its session: %+v", work[:3])
+	}
+	var hid, artifact string
+	if err := a.c.DB.Reader().QueryRow(`SELECT id, artifact FROM handoffs WHERE task_id=? AND reason='escalation'`, task.ID).Scan(&hid, &artifact); err != nil {
+		t.Fatalf("no escalation handoff: %v", err)
+	}
+	if !strings.Contains(artifact, `"fromModel":"`+work[2].Model+`"`) || !strings.Contains(artifact, `"toModel":"`+work[3].Model+`"`) || !strings.Contains(artifact, `"title":"Implement Subtract"`) {
+		t.Fatalf("escalation artifact %s", artifact)
+	}
+	var escalated bool
+	for _, ev := range a.eventsOf("agent.session") {
+		if ev["trigger"] == "escalation" && ev["handoff"] == hid {
+			escalated = true
+		}
+	}
+	if !escalated {
+		t.Fatalf("no agent.session event for the escalation: %v", a.eventsOf("agent.session"))
+	}
 }
 
 // Routing is off by default: an agent keeps its configured model, and the turn's static decision says why.

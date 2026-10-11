@@ -348,6 +348,9 @@ type TurnResult struct {
 	StopReason string                `json:"stopReason"`
 	Usage      []workflow.UsageChunk `json:"usage,omitempty"`
 	ToolCalls  int                   `json:"toolCalls"`
+	// Started is false for a turn that ended without its session ever starting: no session announcement, no text, no tool
+	// call (Claude Code answers a --resume of a session it does not have with an error result and nothing else).
+	Started bool `json:"started"`
 }
 
 // Controller implements workflow.TurnController for one managed session (the watchdog steers through it).
@@ -377,16 +380,37 @@ func (c *Controller) Send(ctx context.Context, msg string) error {
 	}
 }
 
-// RunTurn sends prompt and consumes the output until the turn ends. emit receives every chunk (may be nil).
+// ErrNotStarted marks a turn that failed before its session started: no session announcement, no text and no tool call came
+// from the agent. A session that could not be resumed fails this way, so the caller can start a fresh one instead.
+var ErrNotStarted = errors.New("the agent session did not start")
+
+// startedKind reports whether a chunk of this kind shows that the session started (as opposed to an error report or usage).
+func startedKind(kind string) bool {
+	switch kind {
+	case workflow.ChunkSession, workflow.ChunkText, workflow.ChunkThinking, workflow.ChunkToolCall, workflow.ChunkMessageEnd:
+		return true
+	}
+	return false
+}
+
+// RunTurn sends prompt and consumes the output until the turn ends. emit receives every chunk (may be nil). An error before
+// the session started wraps ErrNotStarted.
 func (m *Managed) RunTurn(ctx context.Context, prompt string, ctl *Controller, emit func(workflow.Chunk)) (TurnResult, error) {
 	var res TurnResult
+	started := false
+	notStarted := func(err error) error {
+		if started {
+			return err
+		}
+		return fmt.Errorf("%w: %w", ErrNotStarted, err)
+	}
 	wait := m.rt.NudgeWait
 	if wait <= 0 {
 		wait = 15 * time.Second
 	}
 	m.rt.publish(ctx, "agent.waiting", m.cfg, m.RunID, map[string]any{"state": "working"})
 	if err := m.Sess.Send(ctx, prompt); err != nil {
-		return res, fmt.Errorf("send: %w", err)
+		return res, notStarted(fmt.Errorf("send: %w", err))
 	}
 	for {
 		select {
@@ -399,8 +423,9 @@ func (m *Managed) RunTurn(ctx context.Context, prompt string, ctl *Controller, e
 		case c, ok := <-m.Sess.Output():
 			if !ok {
 				m.flushDelta()
-				return res, fmt.Errorf("agent output ended before the turn finished: %s", strings.TrimSpace(m.Sess.Stderr()))
+				return res, notStarted(fmt.Errorf("agent output ended before the turn finished: %s", strings.TrimSpace(m.Sess.Stderr())))
 			}
+			started = started || startedKind(c.Kind)
 			m.observe(ctx, c)
 			if emit != nil {
 				emit(c)
@@ -416,7 +441,7 @@ func (m *Managed) RunTurn(ctx context.Context, prompt string, ctl *Controller, e
 			case workflow.ChunkError:
 				var e workflow.ErrorChunk
 				if c.Decode(&e) == nil && e.Fatal {
-					return res, errors.New(e.Message)
+					return res, notStarted(errors.New(e.Message))
 				}
 			case workflow.ChunkDone:
 				var d workflow.DoneChunk
@@ -441,6 +466,7 @@ func (m *Managed) RunTurn(ctx context.Context, prompt string, ctl *Controller, e
 				res.StopReason = d.StopReason
 				res.SessionID = m.Sess.ID()
 				res.Usage = m.usage
+				res.Started = started
 				m.rt.publish(ctx, "agent.completed", m.cfg, m.RunID, map[string]any{"stopReason": d.StopReason, "toolCalls": res.ToolCalls})
 				return res, nil
 			}
@@ -466,6 +492,10 @@ func (r *Runtime) AgentTask(spec TaskSpec) workflow.NodeHandler {
 		cfg.ProjectID = in.ProjectID
 		m, err := r.Spawn(ctx, cfg)
 		if err != nil {
+			if cfg.Spec.ResumeID != "" {
+				// an adapter that resumes at start (ACP session/load) refuses a session it does not have here
+				err = fmt.Errorf("%w: resume session %s: %w", ErrNotStarted, cfg.Spec.ResumeID, err)
+			}
 			return workflow.NodeOutput{}, err
 		}
 		if !spec.Keep {

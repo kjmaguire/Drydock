@@ -228,7 +228,11 @@ type RoutingDecision struct {
 	PoliciesApplied []string // rule ids, invariants first
 	EscalatedFrom   *PriorRef
 	DeescalatedFrom *PriorRef
-	Alternatives    []Alternative
+	// Handoff is true when the decision requires a handoff artifact: an escalation (a level threshold, an escalation rule, or
+	// Next with an escalate cause). The turn that runs on a different model than the previous one then starts a fresh session
+	// seeded with the artifact (internal/pipeline, docs/model-routing.md s8), never the transcript.
+	Handoff      bool
+	Alternatives []Alternative
 	// Reservation is empty: the llm.Wrapper reserves quota at call time against the ledger. The router only checks
 	// (QuotaLedger.Check) so a decision never holds a slot that a crash could leak.
 	Reservation      ReservationID

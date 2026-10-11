@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,11 +13,8 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/budget"
-	"github.com/kjmaguire/drydock/internal/events"
-	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
-	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/watchdog"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -170,7 +166,8 @@ func (c *Core) watchdogStop(ctx context.Context, n workflow.NodeInfo, by string)
 }
 
 // watchdogHandoff writes the handoff artifact of a stage-2 pause (what tripped, where, on which task) into handoffs, so the
-// agent that picks the task up and the human can read it (mcp read_handoff, the run explanation).
+// agent that picks the task up and the human can read it (mcp read_handoff, the run explanation). The store and the task part
+// are the session handoffs' (pipeline.SaveHandoff, pipeline.HandoffTaskOf).
 func (c *Core) watchdogHandoff(ctx context.Context, n workflow.NodeInfo, tr watchdog.TripRecord) (string, error) {
 	art := map[string]any{"kind": "watchdog_pause", "signal": tr.Signal, "stage": tr.Stage, "node": string(n.NodeID), "attempt": n.Attempt, "workflow": n.Workflow}
 	var ev map[string]any
@@ -179,28 +176,14 @@ func (c *Core) watchdogHandoff(ctx context.Context, n workflow.NodeInfo, tr watc
 	}
 	agentID := ""
 	if t, err := c.Tasks.Get(ctx, n.TaskID); err == nil {
-		art["task"] = map[string]any{"title": t.Title, "status": t.Status, "iteration": t.Iteration, "branch": t.Branch, "files": t.Files}
+		art["task"] = pipeline.HandoffTaskOf(t)
 		agentID = t.Assignee
 		if n.Meta["agent"] == "review" {
 			agentID = t.Reviewer
 		}
 	}
-	b, _ := json.Marshal(art)
-	if len(b) > maxHandoffBytes {
-		b = b[:maxHandoffBytes]
-	}
-	body := c.Scanner.Redact(string(b))
-	id := ids.New("hnd")
-	if err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO handoffs(id,task_id,run_id,agent_id,artifact,reason,created_at) VALUES(?,?,?,?,?,?,?)`,
-			id, n.TaskID, string(n.RunID), agentID, body, "watchdog", storage.Now())
-		return err
-	}); err != nil {
-		return "", err
-	}
-	data, _ := json.Marshal(map[string]any{"handoff": id, "reason": "watchdog", "signal": tr.Signal})
-	_, _ = c.Bus.Publish(ctx, events.Event{Type: "handoff.created", ProjectID: n.ProjectID, TaskID: n.TaskID, RunID: string(n.RunID), AgentID: agentID, Data: data})
-	return id, nil
+	return pipeline.SaveHandoff(ctx, c.DB, c.Bus, c.Scanner.Redact, pipeline.HandoffRecord{ProjectID: n.ProjectID, TaskID: n.TaskID, RunID: string(n.RunID),
+		AgentID: agentID, Reason: "watchdog", Artifact: art, Event: map[string]any{"signal": tr.Signal}})
 }
 
 // ---- the lead service's view of the core ----

@@ -80,7 +80,7 @@ func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) conte
 			tier = r.Tier
 		}
 	}
-	return pipeline.WithRoutedModel(ctx, pipeline.RoutedModel{Model: d.Model, Tier: tier, DecisionID: d.ID})
+	return pipeline.WithRoutedModel(ctx, pipeline.RoutedModel{Model: d.Model, Tier: tier, DecisionID: d.ID, Handoff: d.Handoff})
 }
 
 // turnFailures are the escalation counters for a run: work turns routed to a cheap model before this one (each came back:

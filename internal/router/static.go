@@ -201,7 +201,7 @@ func (r *StaticRouter) Next(ctx context.Context, prev RoutingDecision, cause Cau
 		if r.cfg.Escalation == nil {
 			return RoutingDecision{}, r.blocked(ctx, req, "the static router has no escalation assignment configured", nil)
 		}
-		d, err := r.decide(ctx, req, *r.cfg.Escalation, "static", nil, func(d *RoutingDecision) { d.EscalatedFrom = pr })
+		d, err := r.decide(ctx, req, *r.cfg.Escalation, "static", nil, func(d *RoutingDecision) { d.EscalatedFrom, d.Handoff = pr, true })
 		if err != nil {
 			return RoutingDecision{}, err
 		}

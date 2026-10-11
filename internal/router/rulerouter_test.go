@@ -362,8 +362,11 @@ func TestEscalationByLevelThresholdsAndRules(t *testing.T) {
 		if d.Facts.Tier != tc.tier {
 			t.Errorf("%s with %d failed cheap iterations: %s, want %s (%v)", tc.level, tc.iters, d.Facts.Tier, tc.tier, d.PoliciesApplied)
 		}
-		if tc.tier == providers.TierPremium && !strings.Contains(d.Reason, "handoff") {
-			t.Errorf("%s: an escalation must require a handoff artifact: %q", tc.level, d.Reason)
+		if tc.tier == providers.TierPremium && (!strings.Contains(d.Reason, "handoff") || !d.Handoff) {
+			t.Errorf("%s: an escalation must require a handoff artifact: %q handoff=%v", tc.level, d.Reason, d.Handoff)
+		}
+		if tc.tier == providers.TierCheap && d.Handoff {
+			t.Errorf("%s: a cheap decision asked for a handoff", tc.level)
 		}
 	}
 	// Checks passing cancels the cheap-stuck escalation.
@@ -475,7 +478,7 @@ func TestNextEscalateAndDeescalate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if prem.Facts.Tier != providers.TierPremium || prem.EscalatedFrom == nil || prem.EscalatedFrom.DecisionID != cheap.ID || prem.EscalatedFrom.Model != "qwen-cheap" ||
-		!strings.Contains(prem.Reason, "handoff") || prem.SwitchCostTokens != 0 {
+		!strings.Contains(prem.Reason, "handoff") || !prem.Handoff || prem.SwitchCostTokens != 0 {
 		t.Fatalf("escalation: %+v", prem)
 	}
 	if len(w.events("routing.escalated")) != 1 {

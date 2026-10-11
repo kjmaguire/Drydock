@@ -59,6 +59,9 @@ type Step struct {
 	Ask bool `json:"ask,omitempty"`
 	// Raw emits this JSON object as one stream line, as it is: a test of what the parser does with an event it does not know.
 	Raw json.RawMessage `json:"raw,omitempty"`
+	// Context, with any other field of the step, sets the context occupancy (tokens) the agent's messages report from this step
+	// on (as Claude Code's per-message usage does: input plus cache tokens), so a test can drive the context-pressure handoff.
+	Context int64 `json:"context,omitempty"`
 }
 
 // WriteSpec is a scripted file write.
@@ -274,6 +277,8 @@ type agent struct {
 	// process, and usage is the turn's own: cost and turns are what this process has reported so far.
 	cost  float64
 	turns int
+	// context is the occupancy the next messages report (Step.Context; 0: the fixed small default)
+	context int64
 }
 
 func (a *agent) emit(v any) {
@@ -390,6 +395,11 @@ loop:
 				interrupted = true
 				break loop
 			default:
+			}
+			if st.Context > 0 {
+				a.mu.Lock()
+				a.context = st.Context
+				a.mu.Unlock()
 			}
 			switch {
 			case st.Exit != 0:
@@ -518,7 +528,13 @@ loop:
 }
 
 func (a *agent) usage() map[string]any {
-	return map[string]any{"input_tokens": 3, "output_tokens": 2, "cache_read_input_tokens": 50, "cache_creation_input_tokens": 0}
+	a.mu.Lock()
+	read := a.context - 3
+	a.mu.Unlock()
+	if read < 0 {
+		read = 50
+	}
+	return map[string]any{"input_tokens": 3, "output_tokens": 2, "cache_read_input_tokens": read, "cache_creation_input_tokens": 0}
 }
 
 func mustGetwd() string { d, _ := os.Getwd(); return d }

@@ -420,6 +420,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	}
 	d.Reason = fmt.Sprintf("%s/%s (%s) for %s: %s", c.Provider, c.Model, c.Tier, orStr(req.TaskType, string(req.RunKind)), why)
 	if handoff {
+		d.Handoff = true
 		d.Reason += "; handoff artifact required"
 	}
 	if len(evalErrs) > 0 {
