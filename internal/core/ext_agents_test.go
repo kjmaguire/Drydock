@@ -290,12 +290,16 @@ func TestGoldenPathFeatureTemplateEndToEnd(t *testing.T) {
 	if !strings.Contains(string(b), "Multiply") || !strings.Contains(string(bt), "AC1") {
 		t.Fatalf("merged content:\n%s\n%s", b, bt)
 	}
-	var evs []struct{ Type string }
-	a.call("events.replay", map[string]any{"after": 0, "taskId": task.ID}, &evs)
+	// the status is committed just before its event is published: wait for the event, not only the status
 	have := map[string]bool{}
-	for _, e := range evs {
-		have[e.Type] = true
-	}
+	a.waitFor("task.completed in the replay", func() bool {
+		var evs []struct{ Type string }
+		a.call("events.replay", map[string]any{"after": 0, "taskId": task.ID}, &evs)
+		for _, e := range evs {
+			have[e.Type] = true
+		}
+		return have["task.completed"]
+	})
 	for _, w := range []string{"task.created", "task.waiting_human", "task.review", "task.verification", "task.completed", "workflow.request_raised", "approval.approved"} {
 		if !have[w] {
 			t.Errorf("event %s missing from replay", w)
