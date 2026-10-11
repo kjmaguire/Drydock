@@ -46,7 +46,7 @@ import { css, on, type Handle } from 'remix/component';
 export function Thing(handle: Handle<{ id: string }>) {
   const s = services(handle);            // client, store, ui, workspace, project
   watch(handle, s.project);              // re-render when the model changes
-  const q = query(handle, {              // live read: on mount, on matching events, on reconnect
+  const q = query(handle, {              // live read: on mount, on matching events, when the stream reopens after a break
     load: () => s.client.taskGet(handle.props.id),
     when: (e) => e.taskId === handle.props.id,
     key: () => handle.props.id,          // re-read from scratch when this changes
@@ -72,6 +72,7 @@ export function Thing(handle: Handle<{ id: string }>) {
 - Static styles: module-level `const x = css({...})`. Per-render values: `style={{ width: `${w}px` }}`.
 - Conditional mixins go **last** in a `mix` array (slots are matched by index).
 - Imperative widgets (Monaco, xterm): render an **empty** host element, create the widget in `ref`, dispose on the signal.
+  A host whose widget handles its own keys carries `data-own-keys`: global shortcuts (`lib/keys.ts` `ownsKeys`) skip it.
 - Raw HTML is never rendered. Markdown goes through `ui/markdown.tsx` (no innerHTML).
 - Links: `<a href={routes.x.href(...)}>`. Programmatic: `navigate(href)` from `remix/component`.
   External links (`https://...`) need `target="_blank"` and `data-rmx-document`.

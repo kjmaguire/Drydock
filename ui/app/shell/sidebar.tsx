@@ -401,7 +401,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                       >
                         <Avatar id={a.id} name={a.name} size={18} kind="agent" status={presenceColor(pr)} />
                         <span class="label">{a.name}</span>
-                        <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{a.role}</span>
+                        <span style={{ color: t.textFaint, fontSize: t.textXs }}>{a.role}</span>
                       </button>
                     </li>
                   );
@@ -410,7 +410,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             : null}
         </div>
         <div mix={footCss} data-testid="stream" data-state={status}>
-          <span mix={liveDot} aria-hidden="true" style={{ background: live ? 'var(--success)' : status === 'reconnecting' || status === 'connecting' ? 'var(--warning)' : 'var(--text-faint)' }} />
+          <span mix={liveDot} aria-hidden="true" style={{ background: live ? t.success : status === 'reconnecting' || status === 'connecting' ? t.warning : t.textFaint }} />
           <span>{live ? 'Live' : `Event stream: ${status}`}</span>
           <span style={{ marginLeft: 'auto', display: 'inline-flex' }} title={`Event stream: ${status}`}>
             <Icon icon={live ? CircleDot : MessagesSquare} size={12} />

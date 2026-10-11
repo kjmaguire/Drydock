@@ -88,7 +88,7 @@ const loadingCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, paddi
 /** "Loading..." with a spinner, for a region whose first read has not answered yet. */
 export function Loading(handle: Handle<{ label?: string }>) {
   return () => (
-    <p mix={loadingCss}>
+    <p mix={loadingCss} role="status">
       <span mix={spin} aria-hidden="true" />
       {handle.props.label ?? 'Loading...'}
     </p>

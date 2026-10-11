@@ -11,7 +11,7 @@ import { leadOf, RunStandup } from '../screens/team/lead.tsx';
 import { ThreadPanel } from '../screens/room/thread-panel.tsx';
 import { IconButton } from '../ui/button.tsx';
 import { Avatar, PresenceDot, StatusChip, kv, presenceColor } from '../ui/data.tsx';
-import { Loading } from '../ui/feedback.tsx';
+import { ErrorNote, Loading } from '../ui/feedback.tsx';
 import { Tabs, type TabItem } from '../ui/tabs.tsx';
 import { t } from '../ui/tokens.ts';
 import type { DetailsTab } from '../state/ui.ts';
@@ -84,7 +84,7 @@ export function Details(handle: Handle<{ taskId: string | undefined }>) {
                   <RunStandup projectId={s.workspace.projectId} lead={leadOf(agents)!} />
                 </div>
               ) : null}
-              {agents.length === 0 ? <p style={{ color: 'var(--text-muted)', padding: '0 8px' }}>No agents yet.</p> : null}
+              {agents.length === 0 ? <p style={{ color: t.textMuted, padding: '0 8px' }}>No agents yet.</p> : null}
               {agents.map((a) => {
                 const pr = presenceFor(a.id, presence);
                 return (
@@ -92,7 +92,7 @@ export function Details(handle: Handle<{ taskId: string | undefined }>) {
                     <Avatar id={a.id} name={a.name} size={32} status={presenceColor(pr)} />
                     <div class="who">
                       <span class="name">
-                        {a.name} <span style={{ color: 'var(--text-faint)', fontWeight: '400', fontSize: 'var(--text-sm)' }}>{a.role}</span>
+                        {a.name} <span style={{ color: t.textFaint, fontWeight: '400', fontSize: t.textSm }}>{a.role}</span>
                       </span>
                       <PresenceDot presence={pr} />
                       {pr?.activity ? <span class="act">{pr.activity}</span> : null}
@@ -126,13 +126,14 @@ function TaskSummary(handle: Handle<{ taskId: string }>) {
   });
   return () => {
     const v = d.data;
-    if (!v) return <Loading />;
+    // a failed read shows why (with what it had before, if anything), never an endless "Loading..."
+    if (!v) return d.error ? <ErrorNote error={d.error} what="Could not load the task" /> : <Loading />;
     const agents = s.project.agentList;
     const passed = v.evidence.filter((e) => e.passed === true).length;
     const failed = v.evidence.filter((e) => e.passed === false).length;
     return (
       <div style={{ display: 'grid', gap: '12px' }}>
-        <a href={routes.task.href({ id: v.task.id })} style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--text)' }}>
+        <a href={routes.task.href({ id: v.task.id })} style={{ fontWeight: '600', fontSize: t.textLg, color: t.text }}>
           #{v.task.seq} {v.task.title}
         </a>
         <div>

@@ -28,7 +28,7 @@ export function LicenseBanner(handle: Handle) {
     return (
       <div
         mix={bannerCss}
-        style={{ background: c.bg, color: 'var(--text)' }}
+        style={{ background: c.bg, color: t.text }}
         role={readOnly ? 'alert' : 'status'}
         data-testid="license-banner"
         data-state={view.state}

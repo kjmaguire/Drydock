@@ -61,7 +61,8 @@ const countCss = css({
 
 /**
  * Tabs on the headless @remix-run/ui tabs primitive (roving focus, arrow keys, ARIA). Controlled: `active` and
- * `onChange`. children(name) renders the active panel's content.
+ * `onChange`. children(name) renders the active panel's content; every panel element is rendered (the inactive ones
+ * hidden and empty), so each tab's aria-controls names an element that exists. Without children the tabs name no panel.
  */
 export function Tabs(
   handle: Handle<{ label: string; items: TabItem[]; active: string; onChange: (name: string) => void; children?: (name: string) => RemixNode; panelMix?: ReturnType<typeof css> }>,
@@ -73,7 +74,15 @@ export function Tabs(
         <div mix={tabs.root()}>
           <div aria-label={label} mix={[listCss, tabs.list()]}>
             {items.map((it) => (
-              <button key={it.name} type="button" data-testid={it.testId} mix={[tabCss, tabs.tab({ name: it.name })]}>
+              <button
+                key={it.name}
+                type="button"
+                data-testid={it.testId}
+                // without children the caller renders the content itself: there is no panel for aria-controls to name (an
+                // explicit null overrides the primitive's default, which would point at an element that does not exist)
+                aria-controls={children ? undefined : (null as unknown as string)}
+                mix={[tabCss, tabs.tab({ name: it.name })]}
+              >
                 {it.label}
                 {it.count ? <span mix={countCss}>{it.count}</span> : null}
               </button>

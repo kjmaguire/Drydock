@@ -17,7 +17,7 @@ import { cellText, matrixRows, prereqText, provTone, reportMeta, signedInText, s
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 const grid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: t.s4, alignItems: 'start', '@media (max-width: 520px)': { gridTemplateColumns: '1fr' } });
 const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
-const head = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& h3': { fontSize: t.textLg, fontWeight: '600', margin: '0', marginRight: 'auto' } });
+const head = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& h2': { fontSize: t.textLg, fontWeight: '600', margin: '0', marginRight: 'auto' } });
 const subhead = css({ fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase', color: t.textMuted, margin: '0' });
 const gateCss = css({
   display: 'grid',
@@ -62,7 +62,7 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
           <Badge tone={r.ok ? 'ok' : 'err'}>{r.ok ? 'passed' : 'did not pass'}</Badge> {r.summary}
         </p>
         <p mix={faint}>{reportMeta(r)}</p>
-        <h4 mix={subhead}>Steps</h4>
+        <h3 mix={subhead}>Steps</h3>
         <ol mix={steps}>
           {(r.steps ?? []).map((s) => (
             <li key={s.id} data-status={s.status} mix={lineCss}>
@@ -77,7 +77,7 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
         </ol>
         {(r.degraded ?? []).length > 0 ? (
           <>
-            <h4 mix={subhead}>What is degraded</h4>
+            <h3 mix={subhead}>What is degraded</h3>
             <ul mix={steps}>
               {(r.degraded ?? []).map((d, i) => (
                 <li key={i} mix={lineCss}>
@@ -211,7 +211,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
       <article mix={[card, cardCss]} data-testid="connection" data-adapter={c.adapter} data-usable={String(c.usable)}>
         <header mix={head}>
           <Avatar id={c.adapter} name={c.adapter} size={32} square />
-          <h3>{c.adapter}</h3>
+          <h2>{c.adapter}</h2>
           <Badge tone={statusTone(c.status)}>{c.status}</Badge>
           <Badge tone={c.usable ? 'ok' : 'warn'} title="Usable means the CLI is ready and every notice below is accepted">
             {c.usable ? 'usable' : 'not usable yet'}

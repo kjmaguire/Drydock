@@ -297,7 +297,7 @@ function DiffEditorHost(handle: Handle<{ path: string; original: string; modifie
     handle.queueTask(sync);
     return (
       <div mix={hostWrap}>
-        <div mix={[hostCss, ref(mount)]} data-testid="monaco-diff" />
+        <div mix={[hostCss, ref(mount)]} data-testid="monaco-diff" data-own-keys="" />
         {loading ? <p mix={hostLoading}>Loading the diff editor...</p> : null}
         {error ? (
           <div mix={[hostLoading, hostError]}>

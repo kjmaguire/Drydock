@@ -131,9 +131,11 @@ function block(tk: Token): RemixNode {
     }
     case 'table': {
       const tb = tk as Tokens.Table;
+      // a wide table scrolls: the wrapper is a named, focusable group so the keyboard can scroll it (WCAG 2.1.1). A group, not
+      // a region: a page with several tables must not get several landmarks of the same kind.
+      const heads = tb.header.map((c) => c.text.trim()).filter(Boolean);
       return (
-        // a wide table scrolls: the wrapper is a named, focusable region so the keyboard can scroll it (WCAG 2.1.1)
-        <div class="md-table-wrap" role="region" aria-label="Table" tabIndex={0}>
+        <div class="md-table-wrap" role="group" aria-label={clip(heads.length ? `Table: ${heads.join(', ')}` : 'Table', 100)} tabIndex={0}>
           <table>
             <thead>
               <tr>

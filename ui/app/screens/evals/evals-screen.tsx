@@ -72,7 +72,12 @@ export function EvalsScreen(handle: Handle) {
       <div mix={tileCss}>
         <dt>{label}</dt>
         <dd data-testid={testId}>{ratioText(r)}</dd>
-        {rate !== undefined ? <Meter value={rate} tone="accent" label={`${label}: ${ratioText(r)}`} /> : null}
+        {/* a <dl> group holds only <dt> and <dd>: the bar sits in a <dd> of its own */}
+        {rate !== undefined ? (
+          <dd>
+            <Meter value={rate} tone="accent" label={`${label}: ${ratioText(r)}`} />
+          </dd>
+        ) : null}
       </div>
     );
   };

@@ -97,11 +97,11 @@ describe('Markdown sanitization', () => {
     expect(r.container.querySelector('h3')?.textContent).toBe('Title');
   });
 
-  it('puts a table in a named region the keyboard can reach and scroll', () => {
+  it('puts a table in a named group the keyboard can reach and scroll', () => {
     const r = html('| h1 | h2 |\n|---|---|\n| c1 | c2 |');
     const wrap = r.container.querySelector<HTMLElement>('.md-table-wrap')!;
-    expect(wrap.getAttribute('role')).toBe('region');
-    expect(wrap.getAttribute('aria-label')).toBe('Table');
+    expect(wrap.getAttribute('role')).toBe('group');
+    expect(wrap.getAttribute('aria-label')).toBe('Table: h1, h2');
     expect(wrap.tabIndex).toBe(0);
   });
 

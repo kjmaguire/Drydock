@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { createDockClient, decodeBase64 } from '../../api/dockClient.ts';
 import { FakeTransport } from '../../test/fakes.ts';
-import { diffTotals, formatSize, LogBuffer, orderedWriter, parseColor, splitPath, toHex, withAlpha } from './dock-format.ts';
+import { diffAriaLabels, diffTotals, formatSize, LogBuffer, orderedWriter, parseColor, splitPath, TERMINAL_READ_RETRIES, terminalReadRetry, toHex, withAlpha } from './dock-format.ts';
 
 describe('the dock client', () => {
   it('decodes terminal output from base64 and turns null lists into empty ones', async () => {
@@ -126,5 +126,27 @@ describe('terminal input', () => {
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(sent).toEqual(['a', 'b']);
+  });
+});
+
+describe('terminal read retries (F20)', () => {
+  it('backs off 250 ms doubling to 5 s, and gives up after the retries or when the terminal is gone', () => {
+    const err = new Error('Could not reach the Drydock core: Failed to fetch');
+    expect([1, 2, 3, 4, 5, 6, 7].map((n) => terminalReadRetry(err, n))).toEqual([250, 500, 1000, 2000, 4000, 5000, 5000]);
+    expect(terminalReadRetry(err, TERMINAL_READ_RETRIES)).toBe(5000);
+    expect(terminalReadRetry(err, TERMINAL_READ_RETRIES + 1)).toBeUndefined();
+    expect(terminalReadRetry(new Error('terminal: no such terminal'), 1)).toBeUndefined();
+    expect(terminalReadRetry('unknown terminal term_9', 1)).toBeUndefined();
+  });
+});
+
+describe('diff editor names (F7)', () => {
+  it('names the diff and both of its editors after the file', () => {
+    expect(diffAriaLabels('calc/calc.go')).toEqual({
+      ariaLabel: 'Diff of calc/calc.go',
+      originalAriaLabel: 'calc/calc.go, before the change',
+      modifiedAriaLabel: 'calc/calc.go, after the change',
+    });
+    expect(diffAriaLabels('').ariaLabel).toBe('Diff of the file');
   });
 });

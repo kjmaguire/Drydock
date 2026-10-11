@@ -3,6 +3,7 @@
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { CornerDownLeft, Search } from 'lucide';
+import { ownsKeys } from '../lib/keys.ts';
 import type { ThemeChoice } from '../lib/theme.ts';
 import { routes } from '../routes.ts';
 import { query as liveQuery, services, watch } from '../state/services.tsx';
@@ -79,10 +80,11 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
     debounceMs: 300,
   });
 
-  // Ctrl+K anywhere toggles the palette
+  // Ctrl+K toggles the palette anywhere but inside the terminal (kill to end of line) or the diff editor (a chord)
   window.addEventListener(
     'keydown',
     (e) => {
+      if (ownsKeys(e.target)) return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         s.ui.setPalette(!s.ui.paletteOpen);

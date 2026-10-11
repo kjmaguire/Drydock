@@ -122,3 +122,23 @@ export function orderedWriter(send: (data: string) => Promise<unknown>): (data: 
     void flush();
   };
 }
+
+/** Accessible names for the diff editor and its two inner editors (each is a text field to assistive technology). */
+export function diffAriaLabels(path: string): { ariaLabel: string; originalAriaLabel: string; modifiedAriaLabel: string } {
+  const p = path || 'the file';
+  return { ariaLabel: `Diff of ${p}`, originalAriaLabel: `${p}, before the change`, modifiedAriaLabel: `${p}, after the change` };
+}
+
+/** How many failed terminal reads in a row are retried before the terminal is given up as gone. */
+export const TERMINAL_READ_RETRIES = 12;
+
+/**
+ * The wait before reading a terminal again after `failures` failed reads in a row (250 ms doubling to 5 s, about 45 s in
+ * all), or undefined when it is gone for good: the core no longer has the terminal, or the retries are used up.
+ */
+export function terminalReadRetry(err: unknown, failures: number): number | undefined {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/no such terminal|unknown terminal/i.test(msg)) return undefined;
+  if (failures > TERMINAL_READ_RETRIES) return undefined;
+  return Math.min(250 * 2 ** (Math.max(1, failures) - 1), 5000);
+}

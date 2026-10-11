@@ -30,10 +30,12 @@ const bodyCss = css({ padding: t.s5, overflow: 'auto', display: 'grid', gap: t.s
 
 /**
  * A modal dialog on the native <dialog> (focus trap, Escape and the top layer come from the browser). Controlled: render
- * it with open and handle onClose (Escape, the close button, a click on the backdrop).
+ * it with open and handle onClose (Escape, the close button, a click on the backdrop). The dialog is named by its heading
+ * (aria-labelledby), or by `label` when one is given.
  */
 export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose: () => void; wide?: boolean; children?: RemixNode; label?: string }>) {
   let node: HTMLDialogElement | undefined;
+  const titleId = `dlg-${handle.id}-title`;
   const sync = () => {
     if (!node) return;
     if (handle.props.open && !node.open) node.showModal();
@@ -45,6 +47,7 @@ export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose
     return (
       <dialog
         aria-label={label}
+        aria-labelledby={label ? undefined : titleId}
         mix={[
           dialogCss,
           ref((n) => {
@@ -64,7 +67,7 @@ export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose
         {handle.props.open ? (
           <>
             <div mix={headCss}>
-              <h2>{title}</h2>
+              <h2 id={titleId}>{title}</h2>
               <IconButton icon={X} label="Close" mix={on('click', () => onClose())} />
             </div>
             <div mix={bodyCss}>{children}</div>

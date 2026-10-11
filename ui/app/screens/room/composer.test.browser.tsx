@@ -49,7 +49,11 @@ describe('the composer', () => {
     const lb = r.$('[role="listbox"]')!;
     expect(lb.getAttribute('aria-label')).toBe('Suggestions');
     expect(qa(r, '[role="option"]')[0]!.textContent).toContain('Reviewer #1');
-    expect(box.getAttribute('aria-expanded')).toBe('true');
+    // the textarea stays a textbox (no role="combobox" on a <textarea>) and points at the list and its active option
+    expect(box.getAttribute('role')).toBeNull();
+    expect(box.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(box.getAttribute('aria-controls')).toBe(lb.id);
+    expect(box.getAttribute('aria-activedescendant')).toBe(`${lb.id}-0`);
     await r.act(() => key(box, 'Enter'));
     expect(box.value).toBe('ask @agt_2 ');
     expect(r.$('[role="listbox"]')).toBeNull();

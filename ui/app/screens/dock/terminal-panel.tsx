@@ -11,7 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
-import { orderedWriter } from './dock-format.ts';
+import { orderedWriter, terminalReadRetry } from './dock-format.ts';
 import { errorSlot, panel, toolbar } from './dock-ui.tsx';
 import { loadTerminal, type TerminalView } from './widgets.ts';
 
@@ -183,10 +183,13 @@ function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => voi
 
         void (async () => {
           let next = 0;
+          let failures = 0;
           while (alive) {
             try {
               const c = await client.terminalRead(id, next, 15000);
               if (!alive) return;
+              if (failures > 0) term.write('\r\n[reconnected]\r\n');
+              failures = 0;
               if (c.dropped > 0) term.write(`\r\n[${c.dropped} bytes of earlier output were not kept]\r\n`);
               if (c.data.length) term.write(c.data);
               next = c.next;
@@ -197,8 +200,16 @@ function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => voi
               }
             } catch (e) {
               if (!alive) return;
-              term.write(`\r\n[the terminal is gone: ${e instanceof Error ? e.message : String(e)}]\r\n`);
-              return;
+              // one failed poll (the core busy or restarting, a dropped connection) is retried with backoff; only a
+              // terminal the core no longer has, or a failure that outlasts the retries, ends the loop
+              const msg = e instanceof Error ? e.message : String(e);
+              const wait = terminalReadRetry(e, ++failures);
+              if (wait === undefined) {
+                term.write(`\r\n[the terminal is gone: ${msg}]\r\n`);
+                return;
+              }
+              if (failures === 1) term.write(`\r\n[lost the connection to the terminal (${msg}); retrying]\r\n`);
+              await new Promise((res) => setTimeout(res, wait));
             }
           }
         })();
@@ -214,7 +225,7 @@ function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => voi
 
   return () => (
     <div mix={hostCss}>
-      <div mix={[xtermHost, ref(mount)]} data-testid="xterm" />
+      <div mix={[xtermHost, ref(mount)]} data-testid="xterm" data-own-keys="" />
       {starting ? <p mix={startingCss}>Starting the terminal...</p> : null}
       {error ? (
         <div mix={errorSlot} style={{ position: 'absolute', inset: '0' }}>

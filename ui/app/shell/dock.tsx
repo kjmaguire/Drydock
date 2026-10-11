@@ -64,7 +64,8 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
   const s = services(handle);
   watch(handle, s.ui);
   let drag: { y: number; h: number } | undefined;
-  const maxH = () => Math.round(window.innerHeight * 0.8);
+  const MIN_H = 120;
+  const maxH = () => Math.max(MIN_H, Math.round(window.innerHeight * 0.8));
 
   return () => {
     const { projectId, taskId } = handle.props;
@@ -76,7 +77,10 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize the dock"
+            aria-valuemin={MIN_H}
+            aria-valuemax={maxH()}
             aria-valuenow={d.height}
+            aria-valuetext={`${d.height} pixels high`}
             tabIndex={0}
             mix={[
               resizeCss,
@@ -86,7 +90,7 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
               }),
               on('pointermove', (e) => {
                 if (!drag) return;
-                const h = Math.min(Math.max(drag.h + (drag.y - e.clientY), 120), maxH());
+                const h = Math.min(Math.max(drag.h + (drag.y - e.clientY), MIN_H), maxH());
                 s.ui.setDock({ height: h }, false);
               }),
               on('pointerup', () => {
@@ -95,7 +99,7 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
               }),
               on('keydown', (e) => {
                 if (e.key === 'ArrowUp') s.ui.setDock({ height: Math.min(d.height + 40, maxH()) });
-                if (e.key === 'ArrowDown') s.ui.setDock({ height: Math.max(d.height - 40, 120) });
+                if (e.key === 'ArrowDown') s.ui.setDock({ height: Math.max(d.height - 40, MIN_H) });
               }),
             ]}
           />
@@ -109,7 +113,7 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
                 role="tab"
                 id={`dock-tab-${tb.id}`}
                 aria-selected={d.open && d.tab === tb.id}
-                aria-controls="dock-panel"
+                aria-controls={d.open ? 'dock-panel' : undefined}
                 mix={[tabCss, on('click', () => s.ui.setDock({ open: !(d.open && d.tab === tb.id), tab: tb.id }))]}
               >
                 <Icon icon={tb.icon} size={14} />

@@ -12,7 +12,7 @@ import 'monaco-editor/features/find/register.js';
 import 'monaco-editor/languages/definitions/register.all.js';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
 import { isDarkTheme, onThemeChange } from '../../lib/effectiveTheme.ts';
-import { toHex } from './dock-format.ts';
+import { diffAriaLabels, toHex } from './dock-format.ts';
 import { readColors, type DiffEditorFactory } from './widgets.ts';
 
 (self as unknown as { MonacoEnvironment: { getWorker(): Worker } }).MonacoEnvironment = { getWorker: () => new EditorWorker() };
@@ -65,10 +65,13 @@ export const createMonacoDiff: DiffEditorFactory = (host, init) => {
     contextmenu: true,
     theme: 'drydock',
     accessibilitySupport: 'auto',
-    ariaLabel: `Diff of ${init.path}`,
+    ...diffAriaLabels(init.path),
   });
   const setContent = (path: string, original: string, modified: string) => {
     const lang = languageFor(path);
+    const names = diffAriaLabels(path);
+    editor.getOriginalEditor().updateOptions({ ariaLabel: names.originalAriaLabel });
+    editor.getModifiedEditor().updateOptions({ ariaLabel: names.modifiedAriaLabel });
     const prev = editor.getModel();
     editor.setModel({ original: monaco.editor.createModel(original, lang), modified: monaco.editor.createModel(modified, lang) });
     prev?.original.dispose();

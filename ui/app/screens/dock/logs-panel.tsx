@@ -202,6 +202,9 @@ function LogView(handle: Handle<{ taskId: string; source: LogSource }>) {
         <pre
           tabIndex={0}
           role="log"
+          // the text is replaced as a whole on every poll: as a live region it would read the whole buffer out each time.
+          // It stays a focusable, named log to read on demand.
+          aria-live="off"
           aria-label={`${source.title} log`}
           data-testid="log-text"
           mix={[

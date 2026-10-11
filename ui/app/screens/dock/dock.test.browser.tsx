@@ -285,6 +285,8 @@ describe('the logs panel', () => {
     expect(logList.classList.contains('two-line')).toBe(true);
     expect(logList.classList.length).toBeGreaterThan(1);
     expect(r.$('[data-testid="log-text"]')!.getAttribute('aria-label')).toBe('work (step 2) log');
+    // a named, focusable log that does not read its whole buffer out on every poll (F7)
+    expect(r.$('[data-testid="log-text"]')!.getAttribute('aria-live')).toBe('off');
     expect(byText(r.container, 'button', /Agent:\s*work/).getAttribute('aria-current')).toBe('true');
     await r.act(() => byText(r.container, 'button', 'Show earlier output').click());
     await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toMatch(/^the beginning\ntail of/), r);
@@ -434,6 +436,36 @@ describe('the terminal panel', () => {
     release!();
     await waitFor(() => expect(term.output).toContain('[the shell exited with code 2]'), r);
     await waitFor(() => expect(r.$('[role="tab"]')!.textContent).toBe('task #3 (exited)'), r);
+  });
+
+  it('keeps reading after a failed poll: it retries with backoff and carries on (F20)', async () => {
+    const enc = new TextEncoder();
+    const reads: number[] = [];
+    let failOnce = true;
+    const r = mount(
+      <TerminalPanel projectId={undefined} taskId="t1" />,
+      testServices({
+        terminalList: async () => [info('term_1', 'task #3')],
+        terminalRead: async (_id, from) => {
+          reads.push(from);
+          if (from === 0) return { data: enc.encode('first\r\n'), next: 7, dropped: 0, exited: false, exitCode: 0 };
+          if (failOnce) {
+            failOnce = false;
+            throw new Error('Could not reach the Drydock core: Failed to fetch');
+          }
+          if (from === 7) return { data: enc.encode('second\r\n'), next: 15, dropped: 0, exited: false, exitCode: 0 };
+          return new Promise<TerminalChunk>(() => {});
+        },
+        terminalResize: async () => {},
+      }),
+    );
+    await waitFor(() => expect(terminals.length).toBe(1), r);
+    const term = terminals[0]!;
+    await waitFor(() => expect(term.output).toContain('[lost the connection to the terminal'), r);
+    await waitFor(() => expect(term.output).toContain('second'), r, 3000);
+    expect(term.output).toContain('[reconnected]');
+    expect(term.output).not.toContain('the terminal is gone');
+    expect(reads).toEqual([0, 7, 7, 15]);
   });
 
   it('says when the terminal is gone', async () => {

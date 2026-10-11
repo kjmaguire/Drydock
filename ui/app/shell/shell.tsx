@@ -3,6 +3,7 @@
 // and the details panel keep their state while the center changes.
 
 import { css, navigate, type Handle, type RemixNode } from 'remix/component';
+import { ownsKeys } from '../lib/keys.ts';
 import { isWorkspaceRoute, parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
@@ -31,6 +32,7 @@ const skipCss = css({
   color: t.onAccent,
   '&:focus': { left: t.s2 },
 });
+const skipNav = css({ position: 'absolute', top: '0', left: '0', zIndex: '10' });
 
 export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   const s = services(handle);
@@ -38,10 +40,11 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   watch(handle, s.project);
   let dmError: Error | undefined;
 
-  // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff
+  // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff; not inside the terminal or the diff editor, which use them
   window.addEventListener(
     'keydown',
     (e) => {
+      if (ownsKeys(e.target)) return;
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         s.ui.toggleDock();
@@ -102,9 +105,12 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
       <div mix={rootCss}>
         <LicenseBanner />
         <div mix={appCss}>
-          <a href="#main" mix={skipCss} data-rmx-document>
-            Skip to content
-          </a>
+          {/* in a landmark of its own, so every piece of the page is inside one (axe "region") */}
+          <nav aria-label="Skip links" mix={skipNav}>
+            <a href="#main" mix={skipCss} data-rmx-document>
+              Skip to content
+            </a>
+          </nav>
           <Sidebar route={route} />
           <div mix={centerCss}>
             {dmError ? (
