@@ -273,6 +273,9 @@ func TestLicenseStateMachineAndReadOnlyEnforcement(t *testing.T) {
 	if a.c.RetentionAllowed() {
 		t.Error("retention must be suspended while expired")
 	}
+	if rep, err := a.c.RunRetention(context.Background(), time.Now().Add(400*24*time.Hour)); err != nil || !rep.Suspended || rep.RunsCompacted+rep.RunsDeleted != 0 {
+		t.Errorf("a retention pass while expired: %+v %v", rep, err)
+	}
 	if a.c.ChannelAllowed("beta") {
 		t.Error("an expired license must not allow beta")
 	}

@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -73,8 +73,8 @@ func (c *Core) TaskLogs(ctx context.Context, taskID string) ([]LogSource, error)
 	out := []LogSource{}
 	for _, e := range ev {
 		if path, ok := evidenceLogPath(e.Kind, e.Ref); ok {
-			if st, err := os.Stat(path); err == nil && st.Mode().IsRegular() {
-				out = append(out, LogSource{ID: "ev:" + strconv.FormatInt(e.ID, 10), Kind: "check", Title: e.Kind, Size: st.Size(), Passed: e.Passed, Attempt: e.Attempt, Created: e.Created})
+			if size, _, ok := runfiles.Stat(path); ok {
+				out = append(out, LogSource{ID: "ev:" + strconv.FormatInt(e.ID, 10), Kind: "check", Title: e.Kind, Size: size, Passed: e.Passed, Attempt: e.Attempt, Created: e.Created})
 			}
 		}
 	}
@@ -92,12 +92,12 @@ func (c *Core) TaskLogs(ctx context.Context, taskID string) ([]LogSource, error)
 		if err := rows.Scan(&run, &node, &step, &attempt, &status, &ref, &started); err != nil {
 			return nil, err
 		}
-		st, err := os.Stat(ref)
-		if err != nil || !st.Mode().IsRegular() || (st.Size() == 0 && status != "started") {
+		size, _, ok := runfiles.Stat(ref)
+		if !ok || (size == 0 && status != "started") {
 			continue // a node that streamed nothing (prepare, guard, finalize) has no log to show
 		}
 		out = append(out, LogSource{ID: fmt.Sprintf("nx:%s|%s|%d|%d", run, node, step, attempt), Kind: "agent", Title: node + " (step " + strconv.Itoa(step) + ")",
-			Size: st.Size(), Attempt: attempt, Created: started, Running: status == "started"})
+			Size: size, Attempt: attempt, Created: started, Running: status == "started"})
 	}
 	return out, rows.Err()
 }
@@ -152,16 +152,12 @@ func (c *Core) ReadLog(ctx context.Context, taskID, id string, from int64, limit
 	if err != nil {
 		return LogText{}, err
 	}
-	f, err := os.Open(path)
+	f, err := runfiles.Open(path) // a run older than 30 days has its logs compacted (retention.go)
 	if err != nil {
 		return LogText{}, err
 	}
 	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return LogText{}, err
-	}
-	size := st.Size()
+	size := f.Size()
 	if limit <= 0 || limit > logReadMax {
 		limit = logReadMax
 	}

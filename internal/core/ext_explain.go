@@ -9,6 +9,7 @@ import (
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -179,12 +180,12 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 		v := ExecView{NodeID: string(x.NodeID), Kind: kinds[string(x.NodeID)], Step: x.Step, Attempt: x.Attempt, Status: x.Status, Error: x.Error,
 			Started: x.Started, Finished: x.Finished, SafePoint: x.SafePoint}
 		if x.PartialRef != "" {
-			if st, err := os.Stat(x.PartialRef); err == nil && (st.Size() > 0 || x.Status == "started") {
+			if size, _, ok := runfiles.Stat(x.PartialRef); ok && (size > 0 || x.Status == "started") {
 				v.LogID = fmt.Sprintf("nx:%s|%s|%d|%d", runID, x.NodeID, x.Step, x.Attempt)
 			}
 		}
 		if p := pipeline.PromptPath(c.cfg.DataDir, workflow.NodeInfo{RunID: workflow.RunID(runID), NodeID: x.NodeID, Step: x.Step, Attempt: x.Attempt}); p != "" {
-			if _, err := os.Stat(p); err == nil {
+			if _, _, ok := runfiles.Stat(p); ok {
 				v.HasPrompt = true
 			}
 		}
@@ -321,7 +322,7 @@ func (c *Core) TurnPrompt(ctx context.Context, taskID, runID, nodeID string, ste
 	if p == "" {
 		return "", errors.New("explain: no prompt was kept for this turn")
 	}
-	b, err := os.ReadFile(p)
+	b, err := runfiles.ReadAll(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", errors.New("explain: no prompt was kept for this turn")
 	}

@@ -114,7 +114,7 @@ func (a *app) call(method string, params any, out any) {
 
 func (a *app) waitFor(what string, cond func() bool) {
 	a.t.Helper()
-	deadline := time.Now().Add(90 * time.Second)
+	deadline := waitDeadline(a.t)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -122,6 +122,21 @@ func (a *app) waitFor(what string, cond func() bool) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	a.t.Fatalf("timed out waiting for %s", what)
+}
+
+// waitDeadline is how long a test waits for something the core does in the background. These waits pass in about a second
+// on an idle machine; a fixed limit failed under heavy load (load average 25, audit section 3.4) although nothing was wrong,
+// so a wait lasts until shortly before the test binary's own -timeout instead, with 90 seconds when there is none. A real
+// hang still fails here, with what was awaited, before the binary's timeout kills every test without saying which one.
+func waitDeadline(t testing.TB) time.Time {
+	if d, ok := t.(interface{ Deadline() (time.Time, bool) }); ok {
+		if end, ok := d.Deadline(); ok {
+			if until := time.Until(end); until > 2*time.Minute {
+				return end.Add(-time.Minute)
+			}
+		}
+	}
+	return time.Now().Add(90 * time.Second)
 }
 
 // newRepo makes a Git repository of the gocalc fixture and returns its canonical path: the form git reports and Drydock
@@ -474,5 +489,19 @@ func TestTaskStartHonoursTheTasksTemplate(t *testing.T) {
 	a.call("task.get", map[string]string{"id": task.ID}, &d)
 	if d.Run == nil || d.Run.Workflow != "feature" {
 		t.Fatalf("a feature task must run the feature workflow (spec gate), got %+v", d.Run)
+	}
+}
+
+type noDeadline struct{ testing.TB }
+
+// A background wait lasts until a minute before the test binary's timeout, and 90 seconds without one.
+func TestWaitDeadlineFollowsTheTestTimeout(t *testing.T) {
+	end, ok := t.Deadline()
+	got := waitDeadline(t)
+	if ok && time.Until(end) > 2*time.Minute && !got.Equal(end.Add(-time.Minute)) {
+		t.Fatalf("wait until %s, test deadline %s", got, end)
+	}
+	if left := time.Until(waitDeadline(noDeadline{t})); left < 85*time.Second || left > 90*time.Second {
+		t.Fatalf("without a deadline: %s", left)
 	}
 }
