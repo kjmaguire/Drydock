@@ -39,12 +39,15 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   await message.fill('drydock-e2e chat: and again');
   await message.press('Control+Enter');
   await expect(log.getByText('Hello from the scripted chat stand-in')).toHaveCount(2);
+  // the reply shows before the turn ends, and the composer sends nothing while a turn runs: wait for the end
+  await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
   await expect(page.getByText('could not be continued')).toHaveCount(0);
   await expect(log.getByText('Continued in a new session')).toHaveCount(0);
 
   // a refused tool: allow the suggested rule for this chat, then Retry
   await message.fill('drydock-e2e touch a probe file');
   await message.press('Control+Enter');
+  await expect(message).toHaveValue(''); // sent
   const denied = page.getByTestId('chat-denied');
   await expect(denied).toContainText('Claude was not allowed to run Bash');
   await expect(denied).toContainText('Bash(touch chat_probe.txt)');
