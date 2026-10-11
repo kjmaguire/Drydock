@@ -197,8 +197,9 @@ func (s *Scheduler) Loop(ctx context.Context, every time.Duration, projects func
 	if every <= 0 {
 		every = 5 * time.Second
 	}
-	ch, cancel := s.d.Bus.Subscribe(events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled", "task.ready", "task.created", "workflow.paused", "workflow.completed", "workflow.failed"}})
-	defer cancel()
+	f := events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled", "task.ready", "task.created", "workflow.paused", "workflow.completed", "workflow.failed"}}
+	ch, cancel := s.d.Bus.Subscribe(f)
+	defer func() { cancel() }() // the subscription taken last, after a re-subscribe
 	t := time.NewTicker(every)
 	defer t.Stop()
 	pass := func() {
@@ -219,7 +220,9 @@ func (s *Scheduler) Loop(ctx context.Context, every time.Duration, projects func
 			return
 		case _, ok := <-ch:
 			if !ok {
-				ch, cancel = s.d.Bus.Subscribe(events.Filter{Types: []string{"task.*", "workflow.*"}})
+				// the bus dropped this subscriber (it fell behind): take the same subscription again, not the firehose
+				cancel()
+				ch, cancel = s.d.Bus.Subscribe(f)
 				continue
 			}
 			// coalesce a burst of events into one pass

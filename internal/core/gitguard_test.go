@@ -101,3 +101,40 @@ func TestARepositoryConfigChangeDuringATaskWaitsForTheHuman(t *testing.T) {
 		t.Fatalf("after trustGitConfig: %+v", gc)
 	}
 }
+
+// Two starts of one task at the same moment (a double click, the scheduler racing the person) start one run, not two runs
+// on one worktree.
+func TestTwoStartsOfOneTaskStartOneRun(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "make it return a - b"}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
+	const n = 6
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			_, err := a.c.Call(context.Background(), "task.start", mustJSON(map[string]string{"id": task.ID}))
+			errs <- err
+		}()
+	}
+	started := 0
+	for i := 0; i < n; i++ {
+		if err := <-errs; err == nil {
+			started++
+		} else if !strings.Contains(err.Error(), "already has an active run") {
+			t.Fatalf("unexpected refusal: %v", err)
+		}
+	}
+	var runs int
+	if err := a.c.DB.Reader().QueryRowContext(context.Background(), `SELECT COUNT(*) FROM workflow_runs WHERE task_id=?`, task.ID).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if started != 1 || runs != 1 {
+		t.Fatalf("%d starts succeeded and %d runs exist for one task", started, runs)
+	}
+}

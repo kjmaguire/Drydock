@@ -276,13 +276,19 @@ func (s *store) commit(ctx context.Context, c stepCommit) error {
 				return err
 			}
 		}
-		if err := insertCheckpoint(ctx, tx, c.cp); err != nil {
+		// A run that reached an end meanwhile (a person cancelled it while this step ran) stays ended: the step is not
+		// recorded and the driver stops (ErrRunTerminal), instead of writing RUNNING over CANCELLED.
+		now := storage.Now()
+		res, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status=?, latest_checkpoint_id=?, result=COALESCE(?,result),
+			failed_reason=?, updated_at=?, version=version+1 WHERE id=? AND status NOT IN `+terminalStatuses,
+			string(c.status), string(c.cp.ID), nullBytes(c.result), c.failed, now, string(c.cp.RunID))
+		if err != nil {
 			return err
 		}
-		now := storage.Now()
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status=?, latest_checkpoint_id=?, result=COALESCE(?,result),
-			failed_reason=?, updated_at=?, version=version+1 WHERE id=?`,
-			string(c.status), string(c.cp.ID), nullBytes(c.result), c.failed, now, string(c.cp.RunID)); err != nil {
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrRunTerminal
+		}
+		if err := insertCheckpoint(ctx, tx, c.cp); err != nil {
 			return err
 		}
 		for _, a := range c.newRequests {
@@ -303,11 +309,22 @@ func nullBytes(b json.RawMessage) any {
 	return []byte(b)
 }
 
+// terminalStatuses is the SQL list of the statuses a run never leaves.
+const terminalStatuses = `('COMPLETED','FAILED','CANCELLED')`
+
+// setStatus moves a run that has not ended to status; a run that has ended (completed, failed or cancelled) is left as it is
+// and ErrRunTerminal returned, so a late write from a driver never revives a cancelled run.
 func (s *store) setStatus(ctx context.Context, run RunID, status RunStatus, reason string) error {
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status=?, failed_reason=CASE WHEN ?<>'' THEN ? ELSE failed_reason END,
-			updated_at=?, version=version+1 WHERE id=?`, string(status), reason, reason, storage.Now(), string(run))
-		return err
+		res, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status=?, failed_reason=CASE WHEN ?<>'' THEN ? ELSE failed_reason END,
+			updated_at=?, version=version+1 WHERE id=? AND status NOT IN `+terminalStatuses, string(status), reason, reason, storage.Now(), string(run))
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrRunTerminal
+		}
+		return nil
 	})
 }
 

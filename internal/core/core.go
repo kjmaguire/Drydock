@@ -90,7 +90,10 @@ type Core struct {
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
 	repos    map[string]*git.Repo
-	cancel   context.CancelFunc
+	// taskStarts serializes starting a task's run per task (lockTaskStart): a double click or the scheduler racing the
+	// person must not start two runs on one worktree
+	taskStarts sync.Map
+	cancel     context.CancelFunc
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.

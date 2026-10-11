@@ -393,6 +393,8 @@ func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTe
 		}
 		return StartTemplateResult{}, fmt.Errorf("unknown template %q (have %s)", req.Template, strings.Join(names, ", "))
 	}
+	ctx, unlock := c.lockTaskStart(ctx, req.TaskID)
+	defer unlock()
 	t, err := c.Tasks.Get(ctx, req.TaskID)
 	if err != nil {
 		return StartTemplateResult{}, err
@@ -624,15 +626,17 @@ func (m *previewManager) list() []map[string]any {
 
 // watchTerminal stops the preview of a task that completed, failed or was cancelled.
 func (m *previewManager) watchTerminal(ctx context.Context) {
-	ch, cancel := m.c.Bus.Subscribe(events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}})
-	defer cancel()
+	f := events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}}
+	ch, cancel := m.c.Bus.Subscribe(f)
+	defer func() { cancel() }() // the subscription taken last, after a re-subscribe
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case e, ok := <-ch:
 			if !ok {
-				ch, cancel = m.c.Bus.Subscribe(events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}})
+				cancel()
+				ch, cancel = m.c.Bus.Subscribe(f)
 				continue
 			}
 			if e.TaskID != "" {

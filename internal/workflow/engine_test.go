@@ -1008,3 +1008,101 @@ func TestARunIsRecoveredWhenTheAppRestartsWithinTheLease(t *testing.T) {
 		t.Fatalf("finished node re-ran or unfinished node ran !=1 times: %v", got)
 	}
 }
+
+// Cancel and a step finishing race (a person clicks Cancel while an approval they answered starts the run again, or another
+// engine cancels a run this one drives): the cancelled run stays cancelled. The step that was running is not recorded and
+// nothing after it runs.
+func TestACancelledRunIsNeverRevivedByItsDriver(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	started, release := make(chan struct{}), make(chan struct{})
+	g := wf.NewGraph("race").Add(
+		wf.Check("A", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+			close(started)
+			<-release // a step that does not watch its context (a check command finishing)
+			effect(dir, "A")
+			return wf.NodeOutput{Value: val("A")}, nil
+		}),
+		wf.Check("B", eff(dir, "B", ""))).Edge("A", "B").Start("A")
+	e.eng.Register(g)
+	run, err := e.eng.Start(context.Background(), "race", nil, wf.StartOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	// a second engine on the same database has no driver for the run: its Cancel only writes the status
+	other := wf.New(wf.Config{DB: e.db, Bus: e.bus, DataDir: dir, LeaseTTL: leaseTTL, Owner: "other"})
+	other.Register(g)
+	defer other.Close()
+	if err := other.Cancel(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	time.Sleep(300 * time.Millisecond) // the driver commits (or would) right after A returns
+	info, _ := e.eng.Status(context.Background(), run)
+	if info.Status != wf.StatusCancelled {
+		t.Fatalf("the driver wrote %s over CANCELLED", info.Status)
+	}
+	if got := effects(dir); got["B"] != 0 {
+		t.Fatalf("the step after the cancel ran: %v", got)
+	}
+	if err := e.eng.Cancel(context.Background(), run); !errors.Is(err, wf.ErrRunTerminal) {
+		t.Fatalf("cancelling an ended run: %v", err)
+	}
+}
+
+// A turn that finished as the app was closing is recorded as done (with a context that outlives the driver's), so the next
+// start reuses it instead of paying for it again.
+func TestATurnThatFinishedAsTheAppClosedIsNotRunAgain(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	started := make(chan struct{})
+	g := wf.NewGraph("late").Add(
+		wf.AgentTask("W", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+			effect(dir, "W")
+			close(started)
+			<-ctx.Done() // the app is closing; the turn's answer arrives anyway
+			return wf.NodeOutput{Value: val("W")}, nil
+		}),
+		wf.Check("after", eff(dir, "after", ""))).Edge("W", "after").Start("W")
+	e.eng.Register(g)
+	run, _ := e.eng.Start(context.Background(), "late", nil, wf.StartOptions{})
+	<-started
+	e.eng.Close()
+
+	e2 := wf.New(wf.Config{DB: e.db, Bus: e.bus, DataDir: dir, LeaseTTL: leaseTTL})
+	g2 := wf.NewGraph("late").Add(
+		wf.AgentTask("W", eff(dir, "W", "")),
+		wf.Check("after", eff(dir, "after", ""))).Edge("W", "after").Start("W")
+	e2.Register(g2)
+	defer e2.Close()
+	time.Sleep(2 * leaseTTL)
+	if _, err := e2.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, e2, run, wf.StatusCompleted)
+	if got := effects(dir); got["W"] != 1 || got["after"] != 1 {
+		t.Fatalf("effects %v: the finished turn was run again", got)
+	}
+}
+
+func TestReadRefReadsOnlyExternalizedOutputs(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "runs", "run_1", "work", "step-3", "output.json")
+	os.MkdirAll(filepath.Dir(good), 0o755)
+	os.WriteFile(good, []byte(`"big"`), 0o644)
+	secret := filepath.Join(dir, "secret.txt")
+	os.WriteFile(secret, []byte("token"), 0o644)
+	ref := func(p string) json.RawMessage { b, _ := json.Marshal(map[string]any{"$ref": p}); return b }
+	if v, err := wf.ReadRef(ref(good)); err != nil || string(v) != `"big"` {
+		t.Fatalf("an externalized output: %s %v", v, err)
+	}
+	for _, p := range []string{secret, filepath.Join(dir, "runs", "r", "n", "step-1", "..", "..", "..", "..", "secret.txt"), "output.json", filepath.Join(dir, "runs", "r", "n", "x", "output.json")} {
+		if v, err := wf.ReadRef(ref(p)); err == nil || strings.Contains(string(v), "token") {
+			t.Fatalf("%s was read: %s", p, v)
+		}
+	}
+	if v, err := wf.ReadRef(val("plain")); err != nil || string(v) != `"plain"` {
+		t.Fatalf("a plain value: %s %v", v, err)
+	}
+}

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
@@ -78,11 +80,28 @@ func (c *Core) requireRepo(ctx context.Context, projectID string) error {
 	return nil
 }
 
+type taskStartKey struct{ id string }
+
+// lockTaskStart holds the task's start lock until the returned unlock: the check for an active run and the start that records
+// the new run happen under it, so two starts of one task cannot both pass the check. StartTask and StartTemplate call each
+// other; the lock travels in the context, so the inner call does not wait on its own caller.
+func (c *Core) lockTaskStart(ctx context.Context, taskID string) (context.Context, func()) {
+	if ctx.Value(taskStartKey{taskID}) != nil {
+		return ctx, func() {}
+	}
+	v, _ := c.taskStarts.LoadOrStore(taskID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return context.WithValue(ctx, taskStartKey{taskID}, true), mu.Unlock
+}
+
 // StartTask starts the task's workflow: local_merge projects use iterate-until-verified, pr_flow projects the PR variant.
 func (c *Core) StartTask(ctx context.Context, taskID string) (workflow.RunID, error) {
 	if err := c.RequireLicensed(ctx, "start_task"); err != nil {
 		return "", err
 	}
+	ctx, unlock := c.lockTaskStart(ctx, taskID)
+	defer unlock()
 	t, err := c.Tasks.Get(ctx, taskID)
 	if err != nil {
 		return "", err
@@ -218,10 +237,15 @@ func (c *Core) Replay(ctx context.Context, after uint64, f events.Filter, limit 
 
 // DescribeAdapters reports every adapter's detection and verified capabilities.
 func (c *Core) DescribeAdapters(ctx context.Context) []map[string]any {
+	// detection starts each CLI: it runs outside c.mu so one slow or hung CLI does not stall the rest of the app
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	var out []map[string]any
+	adapters := make(map[string]agents.Adapter, len(c.adapters))
 	for id, a := range c.adapters {
+		adapters[id] = a
+	}
+	c.mu.Unlock()
+	var out []map[string]any
+	for id, a := range adapters {
 		det, err := a.Detect(ctx)
 		m := map[string]any{"id": id, "detection": det, "capabilities": a.Capabilities()}
 		if err != nil {

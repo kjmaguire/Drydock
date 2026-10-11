@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -195,7 +196,10 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 	if st.Status == StatusWaitingHuman || st.Status == StatusRecovering {
 		st.Status = StatusRunning
 	}
-	_ = e.st.setStatus(ctx, info.ID, StatusRunning, "")
+	if err := e.st.setStatus(ctx, info.ID, StatusRunning, ""); errors.Is(err, ErrRunTerminal) {
+		e.onStopped(info) // cancelled (or ended) between the resume and this driver's start: nothing runs
+		return
+	}
 
 	for {
 		if ctx.Err() != nil {
@@ -283,8 +287,8 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		st.LastNodes = append([]NodeID(nil), ready...)
 		cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: info.ID, Workflow: g.Name, Step: step, Kind: CheckpointStep, Parent: parent, State: st, Created: storage.Now()}
 		if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusRunning, newRequests: reqs, owner: e.cfg.Owner, ttl: e.cfg.LeaseTTL}); err != nil {
-			if errors.Is(err, ErrLeaseHeld) {
-				e.onStopped(info) // fenced out: another owner took over; do not touch the run
+			if errors.Is(err, ErrLeaseHeld) || errors.Is(err, ErrRunTerminal) {
+				e.onStopped(info) // fenced out (another owner took over) or ended meanwhile (cancelled): do not touch the run
 				return
 			}
 			e.fail(ctx, info, "commit step: "+err.Error())
@@ -408,7 +412,7 @@ func (e *Engine) finish(ctx context.Context, info RunInfo, g *Graph, st *RunStat
 	st.Result = raw
 	cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: info.ID, Workflow: g.Name, Step: st.Step, Kind: CheckpointStep, Parent: *parent, State: *st, Created: storage.Now()}
 	if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusCompleted, result: raw, owner: e.cfg.Owner, ttl: e.cfg.LeaseTTL}); err != nil {
-		if !errors.Is(err, ErrLeaseHeld) {
+		if !errors.Is(err, ErrLeaseHeld) && !errors.Is(err, ErrRunTerminal) {
 			e.fail(ctx, info, "commit completion: "+err.Error())
 		}
 		return
@@ -440,15 +444,32 @@ func (e *Engine) externalize(run RunID, node NodeID, step int, v json.RawMessage
 	return b
 }
 
-// ReadRef resolves a {"$ref": path} value; other values are returned unchanged.
+// ReadRef resolves a {"$ref": path} value; other values are returned unchanged. Only a path externalize writes is read
+// (<data>/runs/<run>/<node>/step-<N>/output.json): a value that merely looks like a reference (a handler's output, text an
+// agent produced) cannot make the engine read another file.
 func ReadRef(v json.RawMessage) (json.RawMessage, error) {
 	var probe struct {
 		Ref string `json:"$ref"`
 	}
 	if len(v) > 0 && v[0] == '{' && json.Unmarshal(v, &probe) == nil && probe.Ref != "" {
+		if !externalizedPath(probe.Ref) {
+			return v, fmt.Errorf("workflow: %q is not an externalized output", probe.Ref)
+		}
 		return os.ReadFile(probe.Ref)
 	}
 	return v, nil
+}
+
+func externalizedPath(p string) bool {
+	if !filepath.IsAbs(p) || filepath.Clean(p) != p || filepath.Base(p) != "output.json" {
+		return false
+	}
+	step := filepath.Base(filepath.Dir(p))
+	n, ok := strings.CutPrefix(step, "step-")
+	if !ok || n == "" || strings.Trim(n, "0123456789") != "" {
+		return false
+	}
+	return filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(p))))) == "runs"
 }
 
 // --- node execution ---
@@ -515,7 +536,9 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		out, err := e.invoke(ctx, info, g, n, step, attempt, inbox, st, prev, partial)
 		if err == nil {
 			raw, _ := json.Marshal(out)
-			if err := e.st.execFinish(ctx, info.ID, n.ID, step, attempt, "done", raw, ""); err != nil {
+			// the turn finished and is paid for: record it even if the driver is being stopped right now, or a restart would
+			// count it as cut off and run it again
+			if err := e.st.execFinish(context.WithoutCancel(ctx), info.ID, n.ID, step, attempt, "done", raw, ""); err != nil {
 				return NodeOutput{}, err
 			}
 			return out, nil
@@ -1024,15 +1047,26 @@ func (e *Engine) Cancel(ctx context.Context, run RunID) error {
 		}
 	}
 	err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='CANCELLED', updated_at=?, version=version+1 WHERE id=?`, storage.Now(), string(run)); err != nil {
+		res, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='CANCELLED', updated_at=?, version=version+1 WHERE id=? AND status NOT IN `+terminalStatuses, storage.Now(), string(run))
+		if err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE approvals SET status='CANCELLED', resolved_at=? WHERE run_id=? AND status='REQUESTED'`, storage.Now(), string(run))
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrRunTerminal // it completed or failed meanwhile
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE approvals SET status='CANCELLED', resolved_at=? WHERE run_id=? AND status='REQUESTED'`, storage.Now(), string(run))
 		return err
 	})
 	if err != nil {
 		return err
 	}
+	// A driver that started after the look above (an approval answered at the same moment) is stopped too; its next status
+	// write or step commit would be refused anyway, but stopping it saves the turn it would pay for.
+	e.mu.Lock()
+	if d, ok := e.active[run]; ok {
+		d.cancel()
+	}
+	e.mu.Unlock()
 	e.emit(ctx, "workflow.cancelled", info, map[string]any{})
 	return nil
 }
