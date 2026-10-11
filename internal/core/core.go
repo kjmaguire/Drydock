@@ -95,7 +95,7 @@ type Core struct {
 	taskStarts sync.Map
 	// limits are the rate limits the agent CLIs reported (agentlimits.go); the turn router reads them
 	limits agentLimits
-	cancel     context.CancelFunc
+	cancel context.CancelFunc
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.
