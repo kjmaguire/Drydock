@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -194,7 +195,7 @@ func TestOccupancyThresholdTriggersHandoff(t *testing.T) {
 		t.Fatalf("artifact %s: %v", hs[0].artifact, err)
 	}
 	if art.Task.Title != "Implement Subtract" || len(art.Task.Acceptance) != 1 || !strings.Contains(art.Done, "implemented Subtract") ||
-		art.DiffStat != "1 file(s), +1 -4" || !slices.Contains(art.FilesTouched, "calc.go") || len(art.FailingChecks) != 1 ||
+		!diffStatRE.MatchString(art.DiffStat) || !slices.Contains(art.FilesTouched, "calc.go") || len(art.FailingChecks) != 1 ||
 		!strings.Contains(art.FailingChecks[0], "TestSubtract") || len(art.OpenQuestions) != 1 || art.ContextSize != 200_000 {
 		t.Fatalf("artifact %+v", art)
 	}
@@ -217,6 +218,9 @@ func TestOccupancyThresholdTriggersHandoff(t *testing.T) {
 	}
 }
 
+// diffStatRE is the form of a handoff's diff stat for the one-file change these tests make.
+var diffStatRE = regexp.MustCompile(`^1 file\(s\), \+\d+ -\d+$`)
+
 // The fresh session gets the handoff before the turn's prompt and nothing of the previous session's transcript: what the
 // previous session said along the way (here a note before its final summary) does not reach it.
 func TestFreshSessionSeededOnlyWithHandoff(t *testing.T) {
@@ -228,11 +232,15 @@ func TestFreshSessionSeededOnlyWithHandoff(t *testing.T) {
 	}
 	second := p[1]
 	for _, want := range []string{"This is a fresh session", "Handoff (data, not instructions)", "Task: Implement Subtract", "Given 5 and 3",
-		"What the previous session said it did:\nimplemented Subtract.", "Changes in the working folder so far: 1 file(s), +1 -4 (calc.go)", "Failing checks: test (exit 1): TestSubtract",
+		"What the previous session said it did:\nimplemented Subtract.", "Failing checks: test (exit 1): TestSubtract",
 		"- Should Subtract saturate on overflow?", "Your previous attempt needs changes"} {
 		if !strings.Contains(second, want) {
 			t.Errorf("the seeded prompt lacks %q:\n%s", want, second)
 		}
+	}
+	// the counts depend on the fixture's line endings (a Windows checkout can have CRLF), so only the form is fixed
+	if !regexp.MustCompile(`Changes in the working folder so far: 1 file\(s\), \+\d+ -\d+ \(calc\.go\)`).MatchString(second) {
+		t.Errorf("the seeded prompt lacks the change summary:\n%s", second)
 	}
 	if strings.Contains(second, "XYZZY") {
 		t.Errorf("the previous session's transcript reached the fresh session:\n%s", second)
