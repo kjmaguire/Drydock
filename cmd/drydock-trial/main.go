@@ -107,9 +107,9 @@ func run(ctx context.Context, args []string) error {
 	startBefore := fs.Duration("start-before", 0, "start no run once this long has passed since the command started (0: no limit)")
 	skillsDir := fs.String("skills-dir", "", "D only: the repository's own skills (<name>/SKILL.md), committed under .aet/skills and accepted for both agents")
 	prebuilt := fs.Bool("prebuilt-skills", false, "D only: import the prebuilt agents' skills from their registries at the catalog's pins and accept them")
-	skillMode := fs.String("d-skills", "", "D only, with -skills-dir or -prebuilt-skills: how Claude gets them, all (every turn) or relevant (the default delivery)")
+	skillMode := fs.String("d-skills", "", "D only, with -skills-dir or -prebuilt-skills: how Claude gets them, all (every turn) or relevant (the default when not given)")
 	_ = fs.Parse(args)
-	if (*skillsDir == "" && !*prebuilt) != (*skillMode == "") {
+	if *skillMode != "" && *skillsDir == "" && !*prebuilt {
 		return errors.New("-d-skills goes with -skills-dir or -prebuilt-skills")
 	}
 	if *skillMode != "" && *skillMode != skills.DeliveryAll && *skillMode != skills.DeliveryRelevant {

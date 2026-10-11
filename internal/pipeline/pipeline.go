@@ -324,7 +324,7 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 		m.Add("file:"+skills.OnDemandDir+"/"+f.name, false, f.size, "skill listed in AGENTS.md: the agent reads it with Read when the work needs it (skill delivery: relevant)", 5)
 	}
 	if every > InstructionBudget {
-		m.Add("budget:instructions", true, every, fmt.Sprintf("OVER BUDGET: %d KB of instructions go into every Claude turn, more than the %d KB budget; with skill delivery all, set it to relevant; otherwise give this agent fewer skills, or shorten the repository's own skills (.aet/skills), which always load", every>>10, InstructionBudget>>10), 0)
+		m.Add("budget:instructions", true, every, fmt.Sprintf("OVER BUDGET: %d KB of instructions go into every Claude turn, more than the %d KB budget; with skill delivery all, set it to relevant; otherwise give this agent fewer skills, shorten the repository's own skills (.aet/skills), or give them paths so they load only for tasks that touch those files", every>>10, InstructionBudget>>10), 0)
 	} else {
 		m.Add("budget:instructions", true, every, fmt.Sprintf("within budget: %d KB of instructions go into every Claude turn (budget %d KB)", (every+1023)>>10, InstructionBudget>>10), 0)
 	}

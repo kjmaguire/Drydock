@@ -437,7 +437,7 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 	for _, d := range ds {
 		methods[d.Skill] = d.Method + "/" + d.Fidelity
 	}
-	if len(ds) != 2 || methods["go-style"] != skills.MethodClaudeRules+"/"+skills.FidelityRunStart || methods["wrangler"] != skills.MethodClaudeOnDemand+"/"+skills.FidelityOnDemand {
+	if len(ds) != 2 || methods["go-style"] != skills.MethodClaudeRules+"/"+skills.FidelityExact || methods["wrangler"] != skills.MethodClaudeOnDemand+"/"+skills.FidelityOnDemand {
 		t.Fatalf("%+v", ds)
 	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)

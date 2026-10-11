@@ -461,16 +461,22 @@ skill made for the codebase, offered only by its name and description, was misse
 
 **Decision (P37).** The default skill delivery is `relevant`, decided by where a skill comes from: the repository's own
 skills (`.aet/skills`, written for this codebase, the kind the follow-up found missed when only listed) load into every
-turn; a skill imported from a registry (a vendor's, a prebuilt agent's: the kind the main trial measured) loads only when its
-globs match the task's file hints, and is otherwise listed. `all` stays available per project. A first version scoped
-hint-less tasks to the files on disk in the worktree; a code review showed that walk was slow, ignored `.gitignore`,
-counted Drydock's own generated files and files an agent made, and loaded broad registry skills; origin replaced it.
+turn, except that one its author scoped with `paths` is listed when the task names files and none of them matches; a skill
+imported from a registry (a vendor's, a prebuilt agent's: the kind the main trial measured) loads only when its globs match
+the task's file hints, and is otherwise listed. `all` stays available per project. A first version scoped hint-less tasks
+to the files on disk in the worktree; a code review showed that walk was slow, ignored `.gitignore`, counted Drydock's own
+generated files and files an agent made, and loaded broad registry skills; origin replaced it, and a second review kept a
+repository skill's own `paths` in force.
 
 **How the harness gives skills.** `-skills-dir` commits skills into the task's repository, so they are the repository's
 own; `-prebuilt-skills` imports the prebuilt agents' skills from their registries at the catalog's pins, as installing those
-agents does. The main trial and the follow-up used `-skills-dir` for every skill (`-prebuilt-skills` came after): there the
-twelve prebuilt skills were repository skills without globs, which the first version listed exactly as the shipped rule lists
-registry skills, so the measured `relevant` variant matches what a person gets after installing prebuilt agents.
+agents does. The main trial and the follow-up used `-skills-dir` for every skill (`-prebuilt-skills` came after), so the
+twelve prebuilt skills were repository skills there. None of the twelve declares `paths`, and the harness's tasks carry no
+file hints, so the first version's rule (a skill loaded when its globs matched a file of the worktree) listed all twelve,
+which is what the shipped rule does with an imported skill without `paths`: for these twelve the measured `relevant` variant
+matches what a person gets after installing the prebuilt agents. A registry skill that does declare `paths` loads under
+the shipped rule when a task's files match them; no measured run had one. Under the shipped rule the same twelve given
+through `-skills-dir` would load into every turn (repository skills without `paths`), which is the `all` variant's cost.
 
 **Caveats.** One model, one suite with precise tickets where skills could hardly help (acceptance near the ceiling), one
 machine under load (wall times include waiting for CPUs). The follow-up is six runs: an observation, not a rate. The

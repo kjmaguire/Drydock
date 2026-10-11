@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -391,9 +392,10 @@ func TestTheDrydockArmAcceptsOrRejectsOnTheHiddenCheck(t *testing.T) {
 	}
 }
 
-// With the repository's own skills, D commits them into the task's repository, accepts them for both agents as the human
-// would, sets how Claude receives them (the repository's own load into every turn), and counts the agents' reads of
-// on-demand skill files.
+// With -skills-dir and -prebuilt-skills together, the repository's own skills are rules and the prebuilt agents' skills are
+// files to read on demand; a prebuilt skill with a repository skill's name is not imported (the repository's wins, with a
+// note). SkillReads counts the Reads of files that were delivered on demand: a Read of a rule, or of an on-demand path
+// nothing was written to, does not count.
 func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the whole product loop")
@@ -401,10 +403,17 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	root := repoRoot(t)
 	x := task(t, "saasapi-invoice-rules")
 	ctx := context.Background()
+	refs, err := PrebuiltSkillRefs()
+	if err != nil || len(refs) < 2 {
+		t.Fatalf("%v %v", refs, err)
+	}
+	listed, taken := refs[0].Name, refs[1].Name
 	for _, kv := range fakeScript(t, fakeagent.Script{
 		Rules: []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
 		Default: []fakeagent.Step{
-			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/.claude/drydock-skills/house-style.md"}`), Result: "the skill"},
+			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/.claude/drydock-skills/` + listed + `.md"}`), Result: "the skill"},
+			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/.claude/drydock-skills/house-style.md"}`), Result: "no such file"},
+			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/.claude/rules/house-style.md"}`), Result: "the rule"},
 			{Tool: "Read", Input: json.RawMessage(`{"file_path":"/w/internal/billing/invoice.go"}`), Result: "code"},
 			{Write: &fakeagent.WriteSpec{Path: "internal/billing/invoice.go", Content: solution(t, x.ID, "internal/billing/invoice.go")}}, {Say: "done"}},
 	}) {
@@ -415,6 +424,7 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	bundle := filepath.Join(dir, "bundle")
 	// the declared name differs from the directory, as in some registries: the directory's name wins, as on import
 	mustWrite(t, filepath.Join(bundle, "house-style", "SKILL.md"), "---\nname: vendor-house-style\ndescription: How code is written in this house\n---\nKeep it plain.\nname: not front matter\n")
+	mustWrite(t, filepath.Join(bundle, taken, "SKILL.md"), "---\nname: "+taken+"\ndescription: This house's own "+taken+"\n---\nOur own text.\n")
 	repo := filepath.Join(dir, "repo")
 	if _, err := Prepare(ctx, root, x, mustMkdir(t, repo)); err != nil {
 		t.Fatal(err)
@@ -422,19 +432,37 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	var worktree string
 	d := Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: "haiku", CeilingUSD: 2, Wall: 5 * time.Minute, Mode: ModeChecks,
 		Poll: 200 * time.Millisecond, Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}},
-		SkillsDir: bundle, Skills: "relevant"}
+		SkillsDir: bundle, Prebuilt: true, SkillsFetcher: &CachingFetcher{Inner: &stubRegistry{}}, Skills: "relevant"}
 	rec, _ := d.Run(ctx, x, repo, func(tree string) AcceptResult {
 		worktree = tree
 		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "rules", "house-style.md")); err != nil || !strings.Contains(string(b), "Keep it plain.\nname: not front matter") {
 			t.Errorf("the repository's skill as a rule: %v %s", err, b)
 		}
+		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "rules", taken+".md")); err != nil || !strings.Contains(string(b), "Our own text.") || strings.Contains(string(b), "Vendor text") {
+			t.Errorf("the repository's %s wins over the prebuilt one: %v %s", taken, err, b)
+		}
+		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "drydock-skills", listed+".md")); err != nil || !strings.Contains(string(b), "Vendor text of "+listed) {
+			t.Errorf("the prebuilt %s is a file to read on demand: %v %s", listed, err, b)
+		}
+		if _, err := os.Stat(filepath.Join(tree, ".claude", "drydock-skills", "house-style.md")); err == nil {
+			t.Error("a rule has no on-demand file")
+		}
 		return Accept(ctx, root, x, tree)
 	})
-	if rec.Outcome != Accepted || rec.Skills != "relevant" || strings.Join(rec.SkillNames, ",") != "house-style" || rec.SkillReads != 1 {
+	var want []string
+	for _, r := range refs {
+		want = append(want, r.Name)
+	}
+	want = append(want, "house-style")
+	sort.Strings(want)
+	if rec.Outcome != Accepted || rec.Skills != "relevant" || strings.Join(rec.SkillNames, ",") != strings.Join(want, ",") || rec.SkillReads != 1 {
 		t.Fatalf("%s (%s) skills %q %v reads %d", rec.Outcome, rec.Reason, rec.Skills, rec.SkillNames, rec.SkillReads)
 	}
-	if worktree == "" || !strings.Contains(rec.ArmDetail, "the repository's skills delivered relevant") {
+	if worktree == "" || !strings.Contains(rec.ArmDetail, "the repository's skills and the prebuilt agents' skills delivered relevant") {
 		t.Fatal(rec.ArmDetail)
+	}
+	if strings.Join(rec.Notes, ";") != "the prebuilt skill "+taken+" was not imported: the repository has a skill of that name" {
+		t.Fatalf("%v", rec.Notes)
 	}
 }
 

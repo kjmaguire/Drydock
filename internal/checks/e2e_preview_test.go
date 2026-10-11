@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -215,13 +216,43 @@ func TestStarterProjectFullE2E(t *testing.T) {
 
 // ---- preview ----
 
+// freePort picks a port a test can hand to a server it starts later. A port the system gives out (bind to 0) and closed
+// again can be given to another test before the server binds it, so the pick comes from a range below every system's
+// ephemeral range (Linux 32768 and up, Windows and macOS 49152 and up): nothing that binds to 0 can take it in the gap,
+// and a port a service holds is skipped.
 func freePort(t *testing.T) int {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		port := 20000 + rand.IntN(10000)
+		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		l.Close()
+		return port
+	}
+	t.Fatal("no free port between 20000 and 29999")
+	return 0
+}
+
+// refusingPort holds a port for the test and closes every connection as it arrives: a URL there answers nothing, ever,
+// and no other test can take the port meanwhile.
+func refusingPort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
 	return l.Addr().(*net.TCPAddr).Port
 }
 
@@ -308,7 +339,7 @@ func TestPreviewFailuresAreReportedAndNothingIsLeftRunning(t *testing.T) {
 		t.Fatalf("h=%v err=%v %+v", h, err, r)
 	}
 	// nothing ever answers
-	port := freePort(t)
+	port := refusingPort(t)
 	start := time.Now()
 	h, r, err = checks.StartPreview(context.Background(), proc.New(), dir, checks.PreviewOptions{
 		Enabled: true, Command: []string{"node", "-e", "setTimeout(()=>{}, 60000)"}, HealthURL: fmt.Sprintf("http://127.0.0.1:%d/", port), Timeout: 1500 * time.Millisecond,

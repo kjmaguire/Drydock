@@ -204,9 +204,18 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 
 // ---- context engine hooks: attached pack instructions, the skills note, and skill files ----
 
+// projectTarget fills in what every skill plan of a project shares: the skill delivery its development settings choose,
+// unless the caller named one. Every plan, the real run's and the preview's, goes through it, so they cannot drift apart.
+func (k *Knowledge) projectTarget(ctx context.Context, t skills.Target) skills.Target {
+	if t.Delivery == "" {
+		t.Delivery = pipeline.LoadDevSettings(ctx, k.c.DB, t.ProjectID).SkillDelivery
+	}
+	return t
+}
+
 // worktreeTarget finds the task and agent a worktree belongs to.
 func (k *Knowledge) worktreeTarget(ctx context.Context, projectID, worktree string) skills.Target {
-	t := skills.Target{ProjectID: projectID, Worktree: worktree, Delivery: pipeline.LoadDevSettings(ctx, k.c.DB, projectID).SkillDelivery}
+	t := k.projectTarget(ctx, skills.Target{ProjectID: projectID})
 	if worktree == "" {
 		return t
 	}
@@ -639,10 +648,7 @@ func (k *Knowledge) methods() map[string]Method {
 		return k.Skills.TaskCoverage(ctx, p.ProjectID, p.TaskID)
 	})
 	m["skill.plan"] = bind(func(ctx context.Context, p skills.Target) (any, error) {
-		if p.Delivery == "" { // the preview shows what a run of this project gets
-			p.Delivery = pipeline.LoadDevSettings(ctx, k.c.DB, p.ProjectID).SkillDelivery
-		}
-		return k.Skills.Plan(ctx, p)
+		return k.Skills.Plan(ctx, k.projectTarget(ctx, p)) // the preview shows what a run of this project gets
 	})
 
 	// ---- memory ----

@@ -173,25 +173,34 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	}
 }
 
-// The repository's own skills (.aet/skills) were written for this codebase: with "relevant" they load into every turn, with
-// or without file hints and whatever their globs; imported ones without matching hints are listed. Nothing on disk in the
-// worktree changes that.
+// The repository's own skills (.aet/skills) were written for this codebase: with "relevant" one without globs is in every
+// turn (fidelity exact, as under "all"); one its author scoped with paths loads when the task names no files or names one
+// that matches (run_start), and is listed when the task's files match none of its paths. An imported skill loads only on
+// a match. The index tells the agent which skills are loaded and which are not.
 func TestPlanClaudeRelevantLoadsTheRepositorysOwnSkills(t *testing.T) {
 	e := acceptedEnv(t)
 	asImported(t, e, "d1-migrations")
-	wt := t.TempDir()
-	writeFiles(t, wt, map[string]string{"migrations/1.sql": "an agent made this", "AGENTS.md": "generated"})
-	for _, hints := range [][]string{nil, {"README.md"}} {
-		plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Worktree: wt, Hints: hints})
+	for _, c := range []struct {
+		hints    []string
+		apiStyle string // method/fidelity of the repository's api-style (globs src/api/**)
+	}{
+		{nil, MethodClaudeRules + "/" + FidelityRunStart},
+		{[]string{"src/api/users.ts"}, MethodClaudeRules + "/" + FidelityRunStart},
+		{[]string{"README.md"}, MethodClaudeOnDemand + "/" + FidelityOnDemand},
+	} {
+		plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Hints: c.hints})
 		if err != nil {
 			t.Fatal(err)
 		}
-		methods := map[string]string{}
+		got := map[string]string{}
 		for _, f := range plan.Files {
-			methods[f.Skills[0]] = f.Method
+			got[f.Skills[0]] = f.Method + "/" + f.Fidelity
 		}
-		if methods["api-style"] != MethodClaudeRules || methods["everywhere"] != MethodClaudeRules || methods["d1-migrations"] != MethodClaudeOnDemand {
-			t.Fatalf("hints %v: the repository's api-style and everywhere load, the imported d1-migrations is listed: %v", hints, methods)
+		if got["everywhere"] != MethodClaudeRules+"/"+FidelityExact || got["api-style"] != c.apiStyle || got["d1-migrations"] != MethodClaudeOnDemand+"/"+FidelityOnDemand {
+			t.Fatalf("hints %v: %v", c.hints, got)
+		}
+		if !plan.Index || !strings.Contains(plan.Note, "not loaded into your instructions (the ones that are appear as rules above)") || !strings.Contains(plan.Note, "**d1-migrations**") {
+			t.Fatalf("hints %v: %q", c.hints, plan.Note)
 		}
 	}
 }
@@ -266,7 +275,7 @@ func TestContextEngineWritesRulesIntoRealWorktree(t *testing.T) {
 	var delivered []string
 	eng := &ctxeng.Engine{DB: e.db, Memory: memory.Store{DB: e.db}}
 	eng.Files = func(ctx context.Context, projectID, worktree string) ([]ctxeng.ExtraFile, error) {
-		plan, err := e.s.Plan(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_1", Role: "Backend", Adapter: "claude", Worktree: worktree, Delivery: DeliveryAll})
+		plan, err := e.s.Plan(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
 		if err != nil {
 			return nil, err
 		}

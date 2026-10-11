@@ -12,20 +12,26 @@ import (
 	"github.com/kjmaguire/drydock/internal/skills"
 )
 
-// PrebuiltSkillRefs lists the skills the prebuilt agents carry (internal/agentcatalog), each once, sorted by name.
+// PrebuiltSkillRefs lists the skills the prebuilt agents carry (internal/agentcatalog), each once, sorted by name. Two agents
+// may carry the same skill at the same pin; the same name at two different pins is refused, because a project can hold a
+// skill name once and the trial would otherwise run with whichever the catalog lists first.
 func PrebuiltSkillRefs() ([]agentcatalog.SkillRef, error) {
 	entries, err := agentcatalog.Builtin()
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
+	seen := map[string]agentcatalog.SkillRef{}
 	var out []agentcatalog.SkillRef
 	for _, e := range entries {
 		for _, s := range e.Skills {
-			if !seen[s.Name] {
-				seen[s.Name] = true
-				out = append(out, s)
+			if prev, ok := seen[s.Name]; ok {
+				if prev.Registry != s.Registry || prev.Ref != s.Ref {
+					return nil, fmt.Errorf("the catalog carries skill %s at two pins (%s@%s and %s@%s): the trial cannot import both", s.Name, prev.Registry, prev.Ref, s.Registry, s.Ref)
+				}
+				continue
 			}
+			seen[s.Name] = s
+			out = append(out, s)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -33,11 +39,17 @@ func PrebuiltSkillRefs() ([]agentcatalog.SkillRef, error) {
 }
 
 // CachingFetcher fetches each (repository, commit) once and serves later runs from memory: the runs of a trial import the
-// same pinned skills many times.
+// same pinned skills many times. Concurrent runs wait only for the fetch of their own key; a failed fetch is not kept.
 type CachingFetcher struct {
 	Inner skills.RegistryFetcher
 	mu    sync.Mutex
-	cache map[string][]skills.RemoteSkill
+	cache map[string]*fetchEntry
+}
+
+type fetchEntry struct {
+	once sync.Once
+	rs   []skills.RemoteSkill
+	err  error
 }
 
 // Resolve implements skills.RegistryFetcher.
@@ -49,19 +61,24 @@ func (f *CachingFetcher) Resolve(ctx context.Context, repo, ref string) (string,
 func (f *CachingFetcher) Fetch(ctx context.Context, repo, commit, root string) ([]skills.RemoteSkill, error) {
 	key := repo + "@" + commit + ":" + root
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	if rs, ok := f.cache[key]; ok {
-		return rs, nil
-	}
-	rs, err := f.Inner.Fetch(ctx, repo, commit, root)
-	if err != nil {
-		return nil, err
-	}
 	if f.cache == nil {
-		f.cache = map[string][]skills.RemoteSkill{}
+		f.cache = map[string]*fetchEntry{}
 	}
-	f.cache[key] = rs
-	return rs, nil
+	e := f.cache[key]
+	if e == nil {
+		e = &fetchEntry{}
+		f.cache[key] = e
+	}
+	f.mu.Unlock()
+	e.once.Do(func() { e.rs, e.err = f.Inner.Fetch(ctx, repo, commit, root) })
+	if e.err != nil {
+		f.mu.Lock()
+		if f.cache[key] == e {
+			delete(f.cache, key)
+		}
+		f.mu.Unlock()
+	}
+	return e.rs, e.err
 }
 
 // FetchPrebuiltSkills writes the SKILL.md of every skill the prebuilt agents carry (internal/agentcatalog), fetched from its
@@ -69,7 +86,7 @@ func (f *CachingFetcher) Fetch(ctx context.Context, repo, commit, root string) (
 // agents' skills. It returns the names. The files are third-party text under their own licenses; the trial keeps them in
 // its scratch directory and never commits them to this repository.
 func FetchPrebuiltSkills(ctx context.Context, f skills.RegistryFetcher, dst string) ([]string, error) {
-	entries, err := agentcatalog.Builtin()
+	refs, err := PrebuiltSkillRefs()
 	if err != nil {
 		return nil, err
 	}
@@ -81,19 +98,20 @@ func FetchPrebuiltSkills(ctx context.Context, f skills.RegistryFetcher, dst stri
 	for _, r := range regs {
 		byID[r.ID] = r
 	}
-	type key struct{ registry, ref string }
-	want := map[key]map[string]bool{}
-	for _, e := range entries {
-		for _, s := range e.Skills {
-			k := key{s.Registry, s.Ref}
-			if want[k] == nil {
-				want[k] = map[string]bool{}
-			}
-			want[k][s.Name] = true
+	type pin struct{ registry, ref string }
+	want := map[pin]map[string]bool{}
+	var pins []pin
+	for _, r := range refs {
+		k := pin{r.Registry, r.Ref}
+		if want[k] == nil {
+			want[k] = map[string]bool{}
+			pins = append(pins, k)
 		}
+		want[k][r.Name] = true
 	}
 	var names []string
-	for k, ns := range want {
+	for _, k := range pins {
+		ns := want[k]
 		reg, ok := byID[k.registry]
 		if !ok {
 			return nil, fmt.Errorf("the catalog names registry %s, which is not curated", k.registry)

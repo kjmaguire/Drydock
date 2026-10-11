@@ -64,9 +64,11 @@ type Record struct {
 	ToolUses map[string]int `json:"toolUses,omitempty"`
 	// SandboxCommands counts the commands D's worker ran in its sandbox.
 	SandboxCommands int `json:"sandboxCommands,omitempty"`
-	// Skills is how D's agents received the skills of the run's bundle: "" (no skills), "all" or "relevant" (DevSettings.
-	// SkillDelivery), with the bundle's skill names in SkillNames. SkillReads counts the times an agent opened a skill's
-	// on-demand file with Read (only "relevant" has those files).
+	// Skills is how D's agents received the run's skills: "" (the run had none), "all" or "relevant" (DevSettings.
+	// SkillDelivery); SkillNames lists them (the repository's own from -skills-dir, the prebuilt agents' from
+	// -prebuilt-skills). SkillReads counts the times an agent opened, with Read, the file of a skill delivered on demand
+	// (under "relevant": an imported skill whose paths match none of the task's files, or a repository skill whose paths
+	// match none of them; a skill loaded as a rule has no such file, so a run of rules only reads 0).
 	Skills     string   `json:"skills,omitempty"`
 	SkillNames []string `json:"skillNames,omitempty"`
 	SkillReads int      `json:"skillReads,omitempty"`

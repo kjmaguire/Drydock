@@ -45,8 +45,9 @@ type DevSettings struct {
 	CINoneBy string `json:"ciNoneBy,omitempty"`
 	CINoneAt int64  `json:"ciNoneAt,omitempty"`
 	// SkillDelivery is how a Claude agent receives the project's skills: "all" puts every skill that reaches it into every
-	// turn; "relevant" puts in the repository's own skills (.aet/skills) and the imported ones whose globs match the task's
-	// files, and lists the other imported ones in AGENTS.md for the agent to read when the work needs them
+	// turn; "relevant" puts in the repository's own skills (.aet/skills; one with globs unless the task names files and none
+	// matches) and the imported ones whose globs match the task's files, and lists the others in AGENTS.md for the agent
+	// to read when the work needs them
 	// (skills.DeliveryAll, skills.DeliveryRelevant). Empty means the default (skills.DefaultDelivery, relevant). Other CLIs
 	// always get the matching ones at the start and the rest from the skills tool.
 	SkillDelivery string `json:"skillDelivery,omitempty"`

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -183,7 +184,16 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		if err != nil {
 			return fail(Failed, err.Error())
 		}
+		own := map[string]bool{}
+		for _, n := range rec.SkillNames {
+			own[n] = true
+		}
 		for _, r := range refs {
+			if own[r.Name] {
+				// a project holds a skill name once and the repository's own skill wins (skills.Import refuses the import)
+				rec.Notes = append(rec.Notes, "the prebuilt skill "+r.Name+" was not imported: the repository has a skill of that name")
+				continue
+			}
 			if err := call("skill.import", skills.ImportReq{ProjectID: p.ID, RegistryID: r.Registry, Name: r.Name, Ref: r.Ref}, nil); err != nil {
 				return fail(Failed, "the prebuilt skills: "+err.Error())
 			}
@@ -314,6 +324,16 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		after = last.Seq
 	}
 	art.Events, _ = json.MarshalIndent(evs, "", "  ")
+	// the skills Claude got as files to read on demand, by name: a Read counts only when it opened one of those files
+	onDemand := map[string]bool{}
+	var ds []skills.Delivery
+	if err := call("skill.deliveries", map[string]any{"projectId": p.ID, "taskId": task.ID}, &ds); err == nil {
+		for _, d := range ds {
+			if d.Method == skills.MethodClaudeOnDemand {
+				onDemand[d.Skill] = true
+			}
+		}
+	}
 	for _, e := range evs {
 		var head struct {
 			Type string `json:"type"`
@@ -321,7 +341,7 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		if json.Unmarshal(e, &head) == nil && head.Type == "sandbox.command" {
 			rec.SandboxCommands++
 		}
-		if head.Type == "agent.output" && readsSkill(e) {
+		if head.Type == "agent.output" && readsSkill(e, onDemand) {
 			rec.SkillReads++
 		}
 	}
@@ -373,8 +393,9 @@ var eventPage = 2000
 // nameLine is the first name: line of a SKILL.md front matter.
 var nameLine = regexp.MustCompile(`(?m)\A(---\r?\n(?:.*\r?\n)*?name:[ \t]*)\S.*$`)
 
-// readsSkill reports whether an agent.output event is a Read of a skill's on-demand file.
-func readsSkill(e json.RawMessage) bool {
+// readsSkill reports whether an agent.output event is a Read of the on-demand file of one of the named skills (the ones the
+// run delivered that way; a Read of a path nothing was written to does not count).
+func readsSkill(e json.RawMessage, onDemand map[string]bool) bool {
 	var ev struct {
 		Data struct {
 			Kind string `json:"kind"`
@@ -389,7 +410,8 @@ func readsSkill(e json.RawMessage) bool {
 	if json.Unmarshal(e, &ev) != nil || ev.Data.Kind != "tool_call" || ev.Data.Data.Name != "Read" {
 		return false
 	}
-	return strings.Contains(filepath.ToSlash(ev.Data.Data.Args.FilePath), "/"+skills.OnDemandDir+"/")
+	dir, file := path.Split(filepath.ToSlash(ev.Data.Data.Args.FilePath))
+	return strings.HasSuffix(dir, "/"+skills.OnDemandDir+"/") && strings.HasSuffix(file, ".md") && onDemand[strings.TrimSuffix(file, ".md")]
 }
 
 // copySkills copies each <name>/SKILL.md of src into dst and returns the names, sorted. A repository skill's front matter

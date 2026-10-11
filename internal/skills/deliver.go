@@ -28,9 +28,10 @@ const (
 const (
 	// DeliveryAll puts every skill into every turn as a .claude/rules file, whatever the task touches.
 	DeliveryAll = "all"
-	// DeliveryRelevant puts into every turn the repository's own skills (.aet/skills: written for this codebase) and the
-	// imported ones whose globs match the task's file hints; every other imported skill is one line in AGENTS.md (name,
-	// what it is for, where its text is) and Claude reads it with the Read tool when the work needs it.
+	// DeliveryRelevant puts into every turn the repository's own skills (.aet/skills: written for this codebase; one with
+	// globs only when the task names no files or names one they match) and the imported ones whose globs match the task's
+	// file hints; every other skill is one line in AGENTS.md (name, what it is for, where its text is) and Claude reads it
+	// with the Read tool when the work needs it.
 	DeliveryRelevant = "relevant"
 )
 
@@ -46,7 +47,6 @@ type Target struct {
 	TaskID    string
 	AgentID   string
 	Role      string
-	Worktree  string
 	// Adapter is the agent adapter id (claude, codex, gemini, opencode, goose, antigravity). Empty means unknown, which is
 	// treated as Claude: rules for a CLI that is not used are harmless files.
 	Adapter string
@@ -115,14 +115,18 @@ func (s *Service) Plan(ctx context.Context, t Target) (Plan, error) {
 			rule := func(fidelity string) {
 				p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: fidelity, Hash: k.ContentHash})
 			}
+			matches := len(k.Globs) > 0 && len(t.Hints) > 0 && PathsMatch(k.Globs, t.Hints)
 			switch {
 			case delivery == DeliveryAll:
 				rule(FidelityExact)
-			case k.Origin == OriginRepo:
+			case k.Origin == OriginRepo && len(k.Globs) == 0:
 				// the repository's own skill (.aet/skills) was written for this codebase: it loads (a listed one was opened
-				// in 2 of 6 runs, docs/evals.md section 14)
+				// in 2 of 6 runs, docs/evals.md section 14); without globs it is in every turn, as under "all"
+				rule(FidelityExact)
+			case k.Origin == OriginRepo && (len(t.Hints) == 0 || matches):
+				// its author scoped it with paths: it loads unless the task names files and none of them matches
 				rule(FidelityRunStart)
-			case len(k.Globs) > 0 && len(t.Hints) > 0 && PathsMatch(k.Globs, t.Hints):
+			case matches:
 				rule(FidelityRunStart)
 			default:
 				p.Files = append(p.Files, PlannedFile{Path: OnDemandDir + "/" + k.Name + ".md", Content: onDemandFile(k), Skills: []string{k.Name}, Method: MethodClaudeOnDemand, Fidelity: FidelityOnDemand, Hash: k.ContentHash})
@@ -195,9 +199,9 @@ func claudeIndex(ks []Skill) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("This project's skills are not loaded into your instructions. Each line below names a skill, says what it is for and where " +
-		"its text is. Before you work on something a skill covers, read that file with the Read tool and follow it; skip the ones " +
-		"that have nothing to do with your task.\n")
+	b.WriteString("The skills below are not loaded into your instructions (the ones that are appear as rules above): each line names " +
+		"a skill, says what it is for and where its text is. Before you work on something a skill covers, read that file with the " +
+		"Read tool and follow it; skip the ones that have nothing to do with your task.\n")
 	for _, k := range ks {
 		d := oneLineText(k.Description)
 		if d == "" {

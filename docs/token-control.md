@@ -239,8 +239,8 @@ MCP call.
 tokens either way). `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS` saves 147 tokens and removes the CLI's git safety rules. Reordering
 Drydock's appended instructions cannot raise cache reads: the CLI caches the per-session part (environment, instructions,
 prompt) as a whole. The prompt-cache lifetime stays the CLI's default. Changed since by decision P37: skills reach Claude by skill delivery
-`relevant` (the default; the repository's own skills and the imported ones whose globs match the task's files are loaded,
-the other imported ones are listed and read on demand; measured in [`evals.md`](evals.md) section 14: putting the prebuilt agents' twelve skills in
+`relevant` (the default; the repository's own skills, except one whose `paths` match none of the task's files, and the
+imported ones whose globs match the task's files are loaded, the others are listed and read on demand; measured in [`evals.md`](evals.md) section 14: putting the prebuilt agents' twelve skills in
 every turn cost 1.9 times as much, `relevant` cost the same as no skills), and accepted memory goes into AGENTS.md newest
 first up to 8 KB, each entry cut to 600 characters, the rest through `search_memory`; each turn's manifest says when what
 Claude gets in every turn is over 32 KB. Not changed, with their cost visible: the person's own and their plugins' hooks still run (P16), so a SessionStart hook that adds
