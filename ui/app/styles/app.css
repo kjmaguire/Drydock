@@ -43,7 +43,27 @@
     --duration-fast: 120ms;
     --duration-med: 200ms;
 
-    /* colors: light-dark(light, dark); the scheme comes from data-theme or the system preference */
+    /*
+     * colors: light-dark(light, dark); the scheme comes from data-theme or the system preference.
+     *
+     * Contrast (WCAG 2.1 AA, 4.5:1 for 11-13 px text; styles/contrast.test.ts recomputes every pair from this block).
+     * Each figure is the worst case over bg-app, bg-surface, bg-sidebar, bg-raised, bg-overlay, bg-input and the hover and
+     * selection tints over them (the selected sidebar item, bg-active over bg-sidebar, is usually the worst):
+     *                   light  (app / sidebar)      dark   (app / sidebar)
+     *   text            13.10  (16.43 / 15.45)      11.58  (15.17 / 15.68)
+     *   text-muted       5.67  ( 7.11 /  6.69)       5.72  ( 7.49 /  7.75)
+     *   text-faint       4.64  ( 5.81 /  5.47)       4.70  ( 6.15 /  6.36)
+     *   accent-text      4.93  ( 6.19 /  5.82)       6.71  ( 8.78 /  9.08)
+     *   success          4.95  ( 6.21 /  5.84)       5.62  ( 7.37 /  7.61)
+     *   warning          5.04  ( 6.32 /  5.94)       7.20  ( 9.43 /  9.74)
+     *   danger           4.94  ( 6.20 /  5.83)       4.67  ( 6.11 /  6.32)
+     *   info             4.60  ( 5.77 /  5.42)       5.52  ( 7.24 /  7.48)
+     * Tone text on its own soft tint (chips, badges, the licence banner), worst over app/surface/sidebar:
+     *   success 5.16 / 5.48, warning 5.29 / 6.69, danger 5.09 / 4.89, info 4.81 / 5.40, accent-text 4.93 / 6.86.
+     * White (text-on-accent) on accent 4.70 / 5.07, accent-hover 5.79 / 6.13, danger-solid 5.67 / 5.17,
+     * success-solid 5.32 / 5.31. In the dark theme white on --danger or --success is 3.0 / 2.5: solid fills that carry
+     * text use the -solid tokens.
+     */
     --bg-sidebar: light-dark(#f3f4f7, #0f1013);
     --bg-app: light-dark(#fbfbfc, #131418);
     --bg-surface: light-dark(#ffffff, #18191e);
@@ -55,20 +75,22 @@
     --border: light-dark(rgb(15 17 25 / 0.09), rgb(255 255 255 / 0.07));
     --border-strong: light-dark(rgb(15 17 25 / 0.16), rgb(255 255 255 / 0.13));
     --text: light-dark(#1b1c22, #e8e9ed);
-    --text-muted: light-dark(#5f636d, #9a9ca6);
-    --text-faint: light-dark(#8b8f99, #6b6e78);
+    --text-muted: light-dark(#52565f, #a3a5ae);
+    --text-faint: light-dark(#5f636d, #92959f);
     --text-on-accent: #ffffff;
-    --accent: light-dark(#5e6ad2, #6e79e8);
-    --accent-hover: light-dark(#4f5bc4, #808af0);
+    --accent: light-dark(#5e6ad2, #5763d4);
+    --accent-hover: light-dark(#4f5bc4, #4b56c4);
     --accent-soft: light-dark(rgb(94 106 210 / 0.12), rgb(110 121 232 / 0.16));
     --accent-text: light-dark(#4a55b8, #a5adff);
-    --success: light-dark(#2f9e68, #4cb782);
+    --success: light-dark(#186c46, #4cb782);
     --success-soft: light-dark(rgb(47 158 104 / 0.12), rgb(76 183 130 / 0.15));
-    --warning: light-dark(#b7860b, #e2b340);
+    --success-solid: light-dark(#1d7a4f, #1f7a50);
+    --warning: light-dark(#795807, #e2b340);
     --warning-soft: light-dark(rgb(183 134 11 / 0.12), rgb(226 179 64 / 0.15));
-    --danger: light-dark(#d63c3c, #eb5757);
+    --danger: light-dark(#b42828, #f06a6a);
     --danger-soft: light-dark(rgb(214 60 60 / 0.1), rgb(235 87 87 / 0.15));
-    --info: light-dark(#1f7ae0, #4ea7fc);
+    --danger-solid: light-dark(#c03030, #c93636);
+    --info: light-dark(#1a63b8, #4ea7fc);
     --info-soft: light-dark(rgb(31 122 224 / 0.1), rgb(78 167 252 / 0.15));
     --mention-bg: light-dark(rgb(183 134 11 / 0.08), rgb(226 179 64 / 0.1));
     --mention-border: light-dark(#d9a514, #e2b340);
@@ -159,6 +181,16 @@
     text-decoration: underline;
   }
 
+  /* A link inside running text is told apart by more than its colour (WCAG 1.4.1): prose links are underlined. */
+  p a:not([class]),
+  li a:not([class]),
+  dd a:not([class]),
+  td a:not([class]) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+  }
+
   button,
   input,
   textarea,
@@ -183,8 +215,13 @@
     font-size: 0.92em;
   }
 
+  /*
+   * The focus ring is a shadow (it follows the radius) plus a transparent outline: forced-colours mode (Windows High
+   * Contrast) drops box-shadow but paints a transparent outline in the system colour, so focus stays visible there.
+   */
   :focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--focus-ring);
   }
 
@@ -394,6 +431,19 @@
     *::after {
       animation-duration: 1ms !important;
       transition-duration: 1ms !important;
+    }
+  }
+}
+
+/*
+ * Windows High Contrast (forced colours) drops every box-shadow, so the shadow focus ring vanishes. This layer wins over
+ * the component styles (several set outline: none on :focus-visible), so a system-coloured outline always shows.
+ */
+@layer app {
+  @media (forced-colors: active) {
+    :focus-visible {
+      outline: 2px solid Highlight !important;
+      outline-offset: 2px;
     }
   }
 }

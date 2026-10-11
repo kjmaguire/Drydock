@@ -107,7 +107,7 @@ const switchCss = css({
     width: '14px',
     height: '14px',
     borderRadius: '50%',
-    background: '#fff',
+    background: t.onAccent,
     boxShadow: t.shadowSm,
     transition: `transform ${t.fast} ${t.ease}`,
   },

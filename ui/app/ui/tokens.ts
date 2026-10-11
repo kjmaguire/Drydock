@@ -41,10 +41,14 @@ export const t = {
   accentText: 'var(--accent-text)',
   success: 'var(--success)',
   successSoft: 'var(--success-soft)',
+  /** A solid success fill that white (onAccent) text reads on. */
+  successSolid: 'var(--success-solid)',
   warning: 'var(--warning)',
   warningSoft: 'var(--warning-soft)',
   danger: 'var(--danger)',
   dangerSoft: 'var(--danger-soft)',
+  /** A solid danger fill that white (onAccent) text reads on. */
+  dangerSolid: 'var(--danger-solid)',
   info: 'var(--info)',
   infoSoft: 'var(--info-soft)',
   mentionBg: 'var(--mention-bg)',

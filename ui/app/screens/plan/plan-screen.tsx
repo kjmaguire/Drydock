@@ -73,10 +73,10 @@ const stepperWrap = css({
 });
 
 const STEP_STYLE: Record<StepState, { fg: string; bg: string; border: string }> = {
-  done: { fg: t.onAccent, bg: t.success, border: t.success },
+  done: { fg: t.onAccent, bg: t.successSolid, border: t.successSolid },
   current: { fg: t.onAccent, bg: t.accent, border: t.accent },
   working: { fg: t.accentText, bg: t.accentSoft, border: t.accent },
-  failed: { fg: t.onAccent, bg: t.danger, border: t.danger },
+  failed: { fg: t.onAccent, bg: t.dangerSolid, border: t.dangerSolid },
   todo: { fg: t.textMuted, bg: t.bgSurface, border: t.borderStrong },
 };
 

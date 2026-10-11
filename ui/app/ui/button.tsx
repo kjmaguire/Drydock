@@ -48,7 +48,7 @@ export const buttonVariant: Record<ButtonVariant, ReturnType<typeof css>> = {
     background: t.dangerSoft,
     color: t.danger,
     borderColor: 'transparent',
-    '&:hover': { background: t.danger, color: t.onAccent },
+    '&:hover': { background: t.dangerSolid, color: t.onAccent },
   }),
   link: css({
     height: 'auto',
