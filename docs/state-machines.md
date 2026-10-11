@@ -40,7 +40,7 @@ Checkpoint kinds: `entry` (before step 0; carries the input), `step` (after each
 
 ## 4. Agent (session)
 
-`STARTING → IDLE ⇄ WORKING` (thinking is a sub-state of working); `WORKING → WAITING` (human, approval, dependency); `→ NEEDS_ATTENTION` (stuck, repeated errors, watchdog stage 2); `→ PAUSED` (user or budget); `→ COMPLETED` (turn done, returns to idle); `→ FAILED` (crash, auth failure; `FAILED → STARTING` by restart); `STOPPED` terminal for a deliberate stop. Implemented as `agent_runs.status` (`WORKING`, `STOPPED`, `FAILED`) plus `agent.started/waiting/completed/failed/stopped` events; the Room derives presence from events (`internal/room`).
+`STARTING → IDLE ⇄ WORKING` (thinking is a sub-state of working); `WORKING → WAITING` (human, approval, dependency); `→ NEEDS_ATTENTION` (stuck, repeated errors, watchdog stage 2); `→ PAUSED` (user or budget); `→ COMPLETED` (turn done, returns to idle); `→ FAILED` (crash, auth failure; as built there is no automatic restart: a new turn is a new agent run, so `FAILED` is terminal for that run); `STOPPED` terminal for a deliberate stop. Implemented as `agent_runs.status` (`WORKING`, `STOPPED`, `FAILED`) plus `agent.started/waiting/completed/failed/stopped` events; the Room derives presence from events (`internal/room`).
 
 ## 5. Watchdog trip policy (per task)
 

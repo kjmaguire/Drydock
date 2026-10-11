@@ -353,7 +353,10 @@ this trial; no task, check or solution is changed after a run of it has started 
 trial). The analysis is fixed here too: per arm, acceptance and cost per accepted task with medians and ranges; per task,
 D's acceptance against B1's (the report's task-by-task table); and, because the suite meets decision P34's size (at least
 20 tasks with 3 counted runs per arm), an exact two-sided sign test over the tasks where the arms' acceptance differs. A
-claim is made only from that table and test.
+claim is made only from that table and test. Caveat found by the audit of 2026-10-11 (F19): 46 of the 69 D records carry a
+Drydock commit marked `+dirty` (the binary was built from a tree with uncommitted changes); the caveats below argue the trial
+paths did not change, which the audit did not verify independently. `drydock-trial` now refuses to run from such a binary
+unless `-allow-dirty` is passed.
 
 **Conditions.** Model `haiku` first, three repeats; arm D in checks mode (P24), because this environment has no container
 engine running (the sandbox pilot showed the sandbox works; it changes where commands run, not the review loop). A run

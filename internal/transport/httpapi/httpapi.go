@@ -1,5 +1,5 @@
 // Package httpapi is the development transport for the UI: the same core.Methods registry the Wails bridge exposes, over
-// HTTP and Server-Sent Events, so the real React UI can be driven against the real Go core in a browser (Playwright in CI
+// HTTP and Server-Sent Events, so the real Remix UI can be driven against the real Go core in a browser (Playwright in CI
 // and in the cloud sandbox). It listens on loopback only and every request must carry the per-process token; the Host and
 // Origin headers are checked so a web page open in the user's browser cannot reach it (DNS rebinding, cross-site POST).
 // It is a development and test transport and is not part of the shipped Windows app, which uses Wails services.
