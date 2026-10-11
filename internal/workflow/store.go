@@ -411,14 +411,6 @@ func scanApproval(r rowScanner) (ApprovalRow, error) {
 	return a, err
 }
 
-func (s *store) approval(ctx context.Context, id RequestID) (ApprovalRow, error) {
-	a, err := scanApproval(s.db.Reader().QueryRowContext(ctx, `SELECT `+approvalCols+` FROM approvals WHERE id=?`, string(id)))
-	if errors.Is(err, sql.ErrNoRows) {
-		return a, fmt.Errorf("workflow: approval %s not found", id)
-	}
-	return a, err
-}
-
 // listApprovals reads the approvals with status (all when empty) in one query, oldest first.
 func (s *store) listApprovals(ctx context.Context, status string) ([]ApprovalRow, error) {
 	q := `SELECT ` + approvalCols + ` FROM approvals`
