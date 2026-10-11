@@ -2,8 +2,8 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Message } from '../../api/types.ts';
 import { EventStore } from '../../state/eventStore.ts';
-import { FakeTransport, ManualScheduler } from '../../test/fakes.ts';
-import { latestPage, MessageFeed } from './feed.ts';
+import { FakeTransport, ManualScheduler, roomMessagesDouble } from '../../test/fakes.ts';
+import { backPage, MessageFeed } from './feed.ts';
 import {
   buildRows,
   checkFiles,
@@ -109,80 +109,86 @@ describe('message details', () => {
   });
 });
 
-
 describe('the message feed', () => {
-  // TEST DOUBLE (labelled): room.messages as the core answers it: seq > afterSeq, oldest first, at most limit.
   const room = (n: number) => Array.from({ length: n }, (_, i) => msg({ seq: i + 1 }));
-  const reader = (all: () => Message[]) => {
-    const calls: [after: number, limit: number][] = [];
-    const get = async (after: number, limit: number) => {
-      calls.push([after, limit]);
-      return all().filter((m) => m.seq > after).slice(0, limit);
-    };
-    return { calls, get };
-  };
-  const setup = (all: () => Message[], pageSize = 3, hint = () => 0) => {
+  const setup = (all: () => Message[], pageSize = 3) => {
     const t = new FakeTransport();
     const sched = new ManualScheduler();
     const store = new EventStore(t, { scheduler: sched, backoff: () => 10_000 });
-    const r = reader(all);
-    const client = { roomMessages: async (_room: string, after = 0, limit = 200) => r.get(after, limit) };
-    const feed = new MessageFeed(client, store, 'r', pageSize, hint);
-    return { t, sched, store, calls: r.calls, feed };
+    const client = roomMessagesDouble(all); // TEST DOUBLE (labelled): room.messages as the core answers it
+    const feed = new MessageFeed(client, store, 'r', pageSize);
+    return { t, sched, store, calls: client.calls, feed };
   };
   const tick = () => new Promise((r) => setTimeout(r, 0));
   const settle = async () => {
     for (let i = 0; i < 20; i++) await tick();
   };
+  const seqs = (ms: readonly Message[]) => ms.map((m) => m.seq);
 
-  it('finds the newest page of a long room in a few small reads, without reading the history', async () => {
-    for (const n of [0, 1, 99, 100, 101, 250, 1000, 5003, 12_345]) {
+  it('a backward read of a page and one more tells whether older messages exist', () => {
+    expect(backPage(room(4), 3)).toEqual({ page: room(4).slice(1), hasMore: true });
+    expect(backPage(room(3), 3)).toEqual({ page: room(3), hasMore: false });
+    expect(backPage([], 3)).toEqual({ page: [], hasMore: false });
+    expect(seqs(backPage([msg({ seq: 9 }), msg({ seq: 7 }), msg({ seq: 8 })], 2).page)).toEqual([8, 9]);
+  });
+
+  it('shows the newest page first in one read and reads older pages before the oldest shown, oldest first', async () => {
+    const all = room(8);
+    const { feed, calls } = setup(() => all);
+    feed.start();
+    await settle();
+    expect(seqs(feed.messages)).toEqual([6, 7, 8]);
+    expect(feed.hasMore).toBe(true);
+    expect(feed.loading).toBe(false);
+    expect(calls).toEqual([['latest', 4]]);
+    expect(await feed.loadOlder()).toBe(3);
+    expect(seqs(feed.messages)).toEqual([3, 4, 5, 6, 7, 8]);
+    expect(feed.hasMore).toBe(true);
+    expect(await feed.loadOlder()).toBe(2);
+    expect(seqs(feed.messages)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(feed.hasMore).toBe(false);
+    expect(await feed.loadOlder()).toBe(0);
+    expect(calls).toEqual([
+      ['latest', 4],
+      ['before', 6, 4],
+      ['before', 3, 4],
+    ]);
+    feed.stop();
+  });
+
+  it('opens a long room with one read, never reading the history forward', async () => {
+    const all = room(12_345);
+    const { feed, calls } = setup(() => all, 100);
+    feed.start();
+    await settle();
+    expect(seqs(feed.messages)).toEqual(seqs(all.slice(-100)));
+    expect(feed.hasMore).toBe(true);
+    expect(calls).toEqual([['latest', 101]]);
+    feed.stop();
+  });
+
+  it('knows the start of a room that fits one page exactly, and of an empty room, without another read', async () => {
+    for (const n of [0, 3]) {
       const all = room(n);
-      const r = reader(() => all);
-      const { page, hasMore } = await latestPage(r.get, 100);
-      expect(page.map((m) => m.seq)).toEqual(all.slice(-100).map((m) => m.seq));
-      expect(hasMore).toBe(n > 100);
-      // what was read: at most three pages of messages, the rest are one-message probes
-      const read = r.calls.reduce((sum, [after, limit]) => sum + Math.min(limit, Math.max(0, n - after)), 0);
-      expect(read <= 3 * 100 + r.calls.length).toBe(true);
-      expect(r.calls.length <= 4 + 2 * Math.ceil(Math.log2(Math.max(2, n / 100)))).toBe(true);
+      const { feed, calls } = setup(() => all);
+      feed.start();
+      await settle();
+      expect(seqs(feed.messages)).toEqual(seqs(all));
+      expect(feed.hasMore).toBe(false);
+      expect(await feed.loadOlder()).toBe(0);
+      expect(calls).toEqual([['latest', 4]]);
+      feed.stop();
     }
   });
 
-  it('a good hint lands on the tail in one read; a hint past the end still finds it', async () => {
-    const all = room(1000);
-    const good = reader(() => all);
-    expect((await latestPage(good.get, 100, 1000)).page.at(-1)!.seq).toBe(1000);
-    expect(good.calls).toEqual([[900, 101]]);
-    const stale = reader(() => all);
-    const res = await latestPage(stale.get, 100, 50_000);
-    expect(res.page.map((m) => m.seq)).toEqual(all.slice(-100).map((m) => m.seq));
-    expect(res.hasMore).toBe(true);
-  });
-
   it('copes with gaps in the seqs', async () => {
-    const all = room(800).filter((m) => m.seq % 3 !== 0);
-    const r = reader(() => all);
-    const { page, hasMore } = await latestPage(r.get, 100, 10);
-    expect(page.map((m) => m.seq)).toEqual(all.slice(-100).map((m) => m.seq));
-    expect(hasMore).toBe(true);
-  });
-
-  it('shows the newest page first and reads older pages on demand, oldest first', async () => {
-    const all = room(8);
+    const all = room(20).filter((m) => m.seq % 3 !== 0);
     const { feed } = setup(() => all);
     feed.start();
     await settle();
-    expect(feed.messages.map((m) => m.seq)).toEqual([6, 7, 8]);
-    expect(feed.hasMore).toBe(true);
-    expect(feed.loading).toBe(false);
-    expect(await feed.loadOlder()).toBe(3);
-    expect(feed.messages.map((m) => m.seq)).toEqual([3, 4, 5, 6, 7, 8]);
-    expect(feed.hasMore).toBe(true);
-    expect(await feed.loadOlder()).toBe(2);
-    expect(feed.messages.map((m) => m.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(feed.hasMore).toBe(false);
-    expect(await feed.loadOlder()).toBe(0);
+    expect(seqs(feed.messages)).toEqual(seqs(all.slice(-3)));
+    while (feed.hasMore) await feed.loadOlder();
+    expect(seqs(feed.messages)).toEqual(seqs(all));
     feed.stop();
   });
 
@@ -201,38 +207,45 @@ describe('the message feed', () => {
     expect(calls.length).toBe(before);
     store.ingest({ seq: 2, time: '', type: 'room.message_posted', data: { room: 'r' } });
     await settle();
-    expect(feed.messages.map((m) => m.seq)).toEqual([1, 2, 3]);
-    expect(calls.at(-1)).toEqual([2, 3]);
+    expect(seqs(feed.messages)).toEqual([1, 2, 3]);
+    expect(calls.at(-1)).toEqual(['after', 2, 3]);
     // the stream breaks: nothing is read while the core is unreachable
     have = room(5);
     const atBreak = calls.length;
     t.current.h.onError(new Error('down'));
     await settle();
     expect(calls.length).toBe(atBreak);
-    // it reopens: the feed reads what was posted meanwhile
+    // it reopens: the feed reads forward what was posted meanwhile
     sched.runAll();
     t.current.h.onOpen();
     await settle();
-    expect(calls.at(-1)).toEqual([3, 3]);
-    expect(feed.messages.map((m) => m.seq)).toEqual([1, 2, 3, 4, 5]);
+    expect(calls.at(-1)).toEqual(['after', 3, 3]);
+    expect(seqs(feed.messages)).toEqual([1, 2, 3, 4, 5]);
     feed.stop();
     store.stop();
   });
 
   it('after more than a page of news (a long outage) starts again from the newest page', async () => {
     let have = room(3);
-    const { t, sched, store, feed } = setup(() => have);
+    const { t, sched, store, calls, feed } = setup(() => have);
     store.start();
     feed.start();
     await settle();
-    expect(feed.messages.map((m) => m.seq)).toEqual([1, 2, 3]);
+    expect(seqs(feed.messages)).toEqual([1, 2, 3]);
     have = room(20);
     t.current.h.onError(new Error('down'));
     sched.runAll();
     t.current.h.onOpen();
     await settle();
-    expect(feed.messages.map((m) => m.seq)).toEqual([18, 19, 20]);
+    expect(seqs(feed.messages)).toEqual([18, 19, 20]);
     expect(feed.hasMore).toBe(true);
+    expect(calls.slice(-2)).toEqual([
+      ['after', 3, 3],
+      ['latest', 4],
+    ]);
+    // the restarted list pages back from its own oldest message
+    expect(await feed.loadOlder()).toBe(3);
+    expect(seqs(feed.messages)).toEqual([15, 16, 17, 18, 19, 20]);
     feed.stop();
     store.stop();
   });
@@ -252,3 +265,4 @@ describe('the message feed', () => {
     feed.stop();
   });
 });
+

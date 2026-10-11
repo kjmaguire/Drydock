@@ -2,6 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Agent, Message, Room } from '../../api/types.ts';
+import { roomMessagesDouble } from '../../test/fakes.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { Conversation, RoomScreen } from './room-screen.tsx';
 
@@ -38,7 +39,7 @@ function servicesWith(client: Partial<Client>, rooms: Room[] = []) {
     roomMembers: async () => [],
     roomTurns: async () => [],
     roomMarkRead: async () => true,
-    roomMessages: async () => [],
+    ...roomMessagesDouble(() => []),
     ...client,
   });
   s.workspace.start();
@@ -71,7 +72,7 @@ describe('Conversation', () => {
       }),
       msg({ seq: 5, type: 'SYSTEM', author: { kind: 'system', id: 'system' }, body: 'task started' }),
     ];
-    const s = servicesWith({ roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after) });
+    const s = servicesWith({ ...roomMessagesDouble(() => messages) });
     const r = mount(<Conversation room={taskRoom} />, s);
     await waitFor(() => expect(messagesOf(r)).toHaveLength(5), r);
     expect(messagesOf(r).map((m) => m.getAttribute('data-author-kind'))).toEqual(['human', 'agent', 'tool', 'tool', 'system']);
@@ -124,7 +125,7 @@ describe('Conversation', () => {
       msg({ seq: 2, created_at: '2026-01-01T10:01:00Z', body: 'two' }),
       msg({ seq: 3, created_at: '2026-01-02T10:01:00Z', body: 'three' }),
     ];
-    const s = servicesWith({ roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after), roomMembers: async () => [{ roomId: 'r', member: { kind: 'human', id: 'kyle', display: 'Kyle' }, state: 'active', addedAt: '', lastReadSeq: 0 }] });
+    const s = servicesWith({ ...roomMessagesDouble(() => messages), roomMembers: async () => [{ roomId: 'r', member: { kind: 'human', id: 'kyle', display: 'Kyle' }, state: 'active', addedAt: '', lastReadSeq: 0 }] });
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
     await waitFor(() => expect(messagesOf(r)).toHaveLength(3), r);
     const [a, b, c] = messagesOf(r);
@@ -142,7 +143,7 @@ describe('Conversation', () => {
     let messages = [msg({ seq: 1 }), msg({ seq: 2, body: 'second' })];
     const reads: unknown[][] = [];
     const s = servicesWith({
-      roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after),
+      ...roomMessagesDouble(() => messages),
       roomMarkRead: async (...a: unknown[]) => (reads.push(a), true),
     });
     focusWindow();
@@ -161,7 +162,7 @@ describe('Conversation', () => {
     let messages = Array.from({ length: 40 }, (_, i) => msg({ seq: i + 1, body: `line ${i + 1}` }));
     const reads: unknown[][] = [];
     const s = servicesWith({
-      roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after),
+      ...roomMessagesDouble(() => messages),
       roomMarkRead: async (...a: unknown[]) => (reads.push(a), true),
     });
     let focused = false;
@@ -202,11 +203,8 @@ describe('Conversation', () => {
 
   it('opens on the newest page and loads older messages on demand (F6)', async () => {
     const messages = Array.from({ length: 150 }, (_, i) => msg({ seq: i + 1, body: `line ${i + 1}`, created_at: '2026-01-01T10:00:00Z' }));
-    const calls: [number, number][] = [];
-    const s = servicesWith({
-      // TEST DOUBLE: room.messages as the core answers it (seq > afterSeq, oldest first, at most limit)
-      roomMessages: async (_r: string, after = 0, limit = 200) => (calls.push([after, limit]), messages.filter((m) => m.seq > after).slice(0, limit)),
-    });
+    const reads = roomMessagesDouble(() => messages); // TEST DOUBLE: room.messages as the core answers it
+    const s = servicesWith({ ...reads });
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
     await waitFor(() => expect(messagesOf(r)).toHaveLength(100), r);
     expect(messagesOf(r)[0]!.textContent).toContain('line 51');
@@ -219,13 +217,17 @@ describe('Conversation', () => {
     await waitFor(() => expect(messagesOf(r)).toHaveLength(150), r);
     expect(messagesOf(r)[0]!.textContent).toContain('line 1');
     expect(r.container.textContent).toContain('This is the start of the general channel.');
-    expect(calls.at(-1)).toEqual([0, 50]);
+    // the newest page in one read, then the page before the oldest shown (one more than a page asks whether older exist)
+    expect(reads.calls).toEqual([
+      ['latest', 101],
+      ['before', 51, 101],
+    ]);
   });
 
   it('keeps the live region quiet while the history loads', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((res) => (release = res));
-    const s = servicesWith({ roomMessages: async () => (await gate, [msg({ seq: 1 })]) });
+    const s = servicesWith({ roomMessagesLatest: async () => (await gate, [msg({ seq: 1 })]) });
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
     await waitFor(() => expect(q(r, '[role="log"]')!.getAttribute('aria-live')).toBe('off'), r);
     expect(q(r, '[role="log"]')!.getAttribute('aria-busy')).toBe('true');
@@ -237,7 +239,7 @@ describe('Conversation', () => {
 
   it('opens a thread from the hover toolbar and shows the reply count under the root', async () => {
     const messages = [msg({ seq: 1, body: 'who owns the parser?' }), msg({ seq: 2, thread_root_id: 'm1', author: { kind: 'agent', id: 'agt1' }, body: 'me' })];
-    const s = servicesWith({ roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after) });
+    const s = servicesWith({ ...roomMessagesDouble(() => messages) });
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
     await waitFor(() => expect(messagesOf(r)).toHaveLength(2), r);
     const root = messagesOf(r)[0]!;
@@ -256,7 +258,7 @@ describe('Conversation', () => {
 
   it('highlights a message that mentions a human', async () => {
     const messages = [msg({ seq: 1, author: { kind: 'agent', id: 'agt1' }, body: '@kyle look', mentions: [{ kind: 'human', id: 'kyle', span: [0, 5] }] }), msg({ seq: 2, author: { kind: 'agent', id: 'agt1' }, body: 'plain', created_at: '2026-01-01T01:00:00Z' })];
-    const s = servicesWith({ roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after) });
+    const s = servicesWith({ ...roomMessagesDouble(() => messages) });
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, s);
     await waitFor(() => expect(messagesOf(r)).toHaveLength(2), r);
     const [a, b] = messagesOf(r);
@@ -267,7 +269,7 @@ describe('Conversation', () => {
   it('shows a "new messages" line after the read cursor when the room is opened', async () => {
     const messages = [msg({ seq: 1 }), msg({ seq: 2, author: { kind: 'agent', id: 'agt1' }, body: 'news' })];
     const s = servicesWith({
-      roomMessages: async (_r: string, after = 0) => messages.filter((m) => m.seq > after),
+      ...roomMessagesDouble(() => messages),
       roomUnread: async () => [{ roomId: 'r', roomName: 'general', kind: 'channel', unread: 1, mentions: 0, muted: false, lastReadSeq: 1 }],
     });
     await waitFor(() => expect(s.project.unread.data).toHaveLength(1));
@@ -282,7 +284,7 @@ describe('Conversation', () => {
     const bad = mount(
       <Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />,
       servicesWith({
-        roomMessages: async () => {
+        roomMessagesLatest: async () => {
           throw new Error('room store is locked');
         },
       }),

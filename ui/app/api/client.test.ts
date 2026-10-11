@@ -76,6 +76,8 @@ describe('typed client', () => {
     expect(await c.needsYouList('p')).toEqual([]);
     expect(await c.presenceList()).toEqual([]);
     expect(await c.roomMessages('r')).toEqual([]);
+    expect(await c.roomMessagesLatest('r')).toEqual([]);
+    expect(await c.roomMessagesBefore('r', 5)).toEqual([]);
     expect(await c.githubIssues('p')).toEqual([]);
     expect(await c.taskDiff('t')).toBe('');
     const d = await c.taskGet('t');
@@ -91,13 +93,27 @@ describe('typed client', () => {
     await c.roomPost('room1', 'hello');
     await c.projectUpdate('p', 'pr_flow', 'squash');
     await c.githubImportIssue('p', 7);
+    await c.roomMessages('room1', 4, 10);
+    await c.roomMessagesLatest('room1', 101);
+    await c.roomMessagesBefore('room1', 51, 101);
     const bodies = f.mock.calls.map((c) => c.arguments).map((c) => [(c as unknown as [string])[0], JSON.parse((c as unknown as [string, RequestInit])[1].body as string)]);
     expect(bodies).toEqual([
       ['/rpc/run.respond', { runId: 'run1', requestId: 'req1', decision: 'rejected', data: { feedback: 'more tests' } }],
       ['/rpc/room.post', { roomId: 'room1', body: 'hello', threadRoot: '' }],
       ['/rpc/project.update', { id: 'p', mode: 'pr_flow', mergeStrategy: 'squash' }],
       ['/rpc/github.importIssue', { projectId: 'p', number: 7 }],
+      ['/rpc/room.messages', { roomId: 'room1', afterSeq: 4, limit: 10 }],
+      ['/rpc/room.messages', { roomId: 'room1', latest: true, limit: 101 }],
+      ['/rpc/room.messages', { roomId: 'room1', beforeSeq: 51, limit: 101 }],
     ]);
+  });
+
+  it('never sends a backward read that the core would take as a forward read from the start', async () => {
+    const f = mock.fn(async () => json({ result: [] }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    const err = await c.roomMessagesBefore('r', 0).catch((e: unknown) => e);
+    expect((err as Error).message).toContain('beforeSeq must be at least 1');
+    expect(f.mock.calls).toHaveLength(0);
   });
 
   it('propagates RpcError from the transport', async () => {

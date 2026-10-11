@@ -93,7 +93,12 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   providerSetEnabled(id: string, enabled: boolean): Promise<void>;
   providerTest(id: string): Promise<ProbeResult>;
   providerModels(id: string): Promise<ProviderModel[]>;
+  /** Forward: the messages after afterSeq, oldest first (catching up). */
   roomMessages(roomId: string, afterSeq?: number, limit?: number): Promise<Message[]>;
+  /** The newest limit messages of a room, oldest first. */
+  roomMessagesLatest(roomId: string, limit?: number): Promise<Message[]>;
+  /** The limit messages just before beforeSeq (which must be at least 1), oldest first. */
+  roomMessagesBefore(roomId: string, beforeSeq: number, limit?: number): Promise<Message[]>;
   roomPost(roomId: string, body: string, threadRoot?: string): Promise<Posted>;
   roomMarkRead(roomId: string, seq: number): Promise<boolean>;
   roomUnread(projectId: string): Promise<Unread[]>;
@@ -176,6 +181,12 @@ export function createClient(t: Transport): Client {
     },
     providerModels: async (id) => arr(await t.call<ProviderModel[] | null>('provider.models', { id })),
     roomMessages: async (roomId, afterSeq = 0, limit = 200) => arr(await t.call<Message[] | null>('room.messages', { roomId, afterSeq, limit })),
+    roomMessagesLatest: async (roomId, limit = 200) => arr(await t.call<Message[] | null>('room.messages', { roomId, latest: true, limit })),
+    roomMessagesBefore: async (roomId, beforeSeq, limit = 200) => {
+      // beforeSeq 0 would be a forward read from the start: there is nothing before seq 1
+      if (!(beforeSeq >= 1)) throw new Error(`room.messages: beforeSeq must be at least 1 (got ${beforeSeq})`);
+      return arr(await t.call<Message[] | null>('room.messages', { roomId, beforeSeq, limit }));
+    },
     roomPost: (roomId, body, threadRoot = '') => t.call('room.post', { roomId, body, threadRoot }),
     roomMarkRead: async (roomId, seq) => Boolean(await t.call('room.markRead', { roomId, seq })),
     roomUnread: async (projectId) => arr(await t.call<Unread[] | null>('room.unread', { projectId })),

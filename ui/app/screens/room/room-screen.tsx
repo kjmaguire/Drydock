@@ -151,12 +151,7 @@ export function windowAttended(doc: Document = document): boolean {
 export function Conversation(handle: Handle<{ room: Room }>) {
   const s = services(handle);
   watch(handle, s.project);
-  // the read cursor plus the unread count is close to the newest seq: the first read usually lands on the newest page
-  const hint = () => {
-    const u = s.project.unread.data?.find((x) => x.roomId === handle.props.room.id);
-    return u ? u.lastReadSeq + u.unread : 0;
-  };
-  const feed = new MessageFeed(s.client, s.store, handle.props.room.id, 100, hint).start(handle.signal);
+  const feed = new MessageFeed(s.client, s.store, handle.props.room.id, 100).start(handle.signal);
   const members = query(handle, {
     load: () => s.client.roomMembers(handle.props.room.id),
     when: (e) => e.type.startsWith('room.member'),

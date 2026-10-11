@@ -1,21 +1,23 @@
-// A room's messages as a small live model, newest first (the pattern of chats/chat-feed.ts): the first read finds the newest
-// page, older pages are read when the reader scrolls up (loadOlder), room.message_posted for the room reads what is new, and
-// the stream reopening after a break reads again. Nothing here is authoritative: the list is what room.messages returned.
+// A room's messages as a small live model, newest first (the pattern of chats/chat-feed.ts): the first read is the newest
+// page (room.messages `latest`), older pages are read when the reader scrolls up (loadOlder: room.messages `beforeSeq`),
+// room.message_posted for the room reads what is new (`afterSeq`), and the stream reopening after a break reads forward
+// again. Nothing here is authoritative: the list is what room.messages returned.
 //
-// room.messages only answers "seq > afterSeq, oldest first, at most limit". Seqs in a room count up from 1 (the core assigns
-// MAX(seq)+1), so the newest page is found by probing with limit 1 ("is there anything after x?"): a page read from a hint
-// (the read cursor plus the unread count) usually lands on the tail in one call; otherwise the probes gallop forward and
-// bisect, a few small calls instead of reading the whole history.
+// A backward read asks for one message more than a page: getting it back means older messages exist, so the start of the
+// room is known without a read that comes back empty.
 
 import type { Message } from '../../api/types.ts';
 import type { EventStore } from '../../state/eventStore.ts';
 import { TypedEventTarget } from 'remix/component';
 
 export interface FeedClient {
+  /** seq > afterSeq, oldest first, at most limit. */
   roomMessages(roomId: string, afterSeq?: number, limit?: number): Promise<Message[]>;
+  /** The newest limit messages, oldest first. */
+  roomMessagesLatest(roomId: string, limit?: number): Promise<Message[]>;
+  /** The limit messages just before beforeSeq, oldest first. */
+  roomMessagesBefore(roomId: string, beforeSeq: number, limit?: number): Promise<Message[]>;
 }
-
-export type PageReader = (afterSeq: number, limit: number) => Promise<Message[]>;
 
 const bySeq = (a: Message, b: Message) => a.seq - b.seq;
 
@@ -27,41 +29,10 @@ export function mergeById(a: readonly Message[], b: readonly Message[]): Message
   return [...m.values()].sort(bySeq);
 }
 
-/**
- * The newest `size` messages of a room (oldest first) and whether older ones exist. `hint` is a seq near the newest (0 when
- * unknown); a wrong hint costs a few probes, never a wrong answer.
- */
-export async function latestPage(get: PageReader, size: number, hint = 0): Promise<{ page: Message[]; hasMore: boolean }> {
-  const after = Math.max(0, Math.floor(hint) - size);
-  const first = await get(after, size + 1); // one more than a page: fewer back means this is the tail
-  if (first.length > 0 && first.length <= size) return { page: first.slice().sort(bySeq), hasMore: after > 0 };
-  if (first.length === 0 && after === 0) return { page: [], hasMore: false };
-  const beyond = async (x: number) => (await get(x, 1)).length > 0; // is there a message with seq > x?
-  // bracket the newest seq N: lo < N <= hi (lo = 0 also allows an empty room)
-  let lo: number;
-  let hi: number;
-  if (first.length === 0) {
-    lo = 0; // the hint was past the end
-    hi = after;
-  } else {
-    lo = Math.max(...first.map((m) => m.seq)) - 1; // N >= the last seq read
-    let step = size;
-    while (await beyond(lo + step)) {
-      lo += step;
-      step *= 2;
-    }
-    hi = lo + step;
-  }
-  while (hi - lo > size) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (await beyond(mid)) lo = mid;
-    else hi = mid;
-  }
-  // N is in (lo, hi] and hi - lo <= size: one read from size below lo covers it
-  const from = Math.max(0, lo - size);
-  const tail = (await get(from, 2 * size)).slice().sort(bySeq);
-  const page = tail.slice(-size);
-  return { page, hasMore: from > 0 || tail.length > page.length };
+/** A backward read of up to size + 1 messages as a page of at most size (the newest of them, oldest first) and whether older ones exist. */
+export function backPage(read: readonly Message[], size: number): { page: Message[]; hasMore: boolean } {
+  const sorted = read.slice().sort(bySeq);
+  return { page: sorted.slice(-size), hasMore: sorted.length > size };
 }
 
 export class MessageFeed extends TypedEventTarget<{ change: Event }> {
@@ -86,15 +57,13 @@ export class MessageFeed extends TypedEventTarget<{ change: Event }> {
   private client: FeedClient;
   private store: EventStore;
   private pageSize: number;
-  private hint: () => number;
 
-  constructor(client: FeedClient, store: EventStore, roomId: string, pageSize = 100, hint: () => number = () => 0) {
+  constructor(client: FeedClient, store: EventStore, roomId: string, pageSize = 100) {
     super();
     this.client = client;
     this.store = store;
     this.roomId = roomId;
     this.pageSize = pageSize;
-    this.hint = hint;
     this.#epoch = store.getSnapshot().epoch;
   }
 
@@ -129,14 +98,12 @@ export class MessageFeed extends TypedEventTarget<{ change: Event }> {
     return this.messages.at(-1)?.seq ?? 0;
   }
 
-  #get: PageReader = (after, limit) => this.client.roomMessages(this.roomId, after, limit);
-
   /** Read the newest page. It joins what is shown when it reaches back to it; otherwise the list starts again from it. */
   load = async (): Promise<void> => {
     const my = ++this.#gen;
     const newest = this.lastSeq;
     try {
-      const { page, hasMore } = await latestPage(this.#get, this.pageSize, Math.max(this.hint(), newest));
+      const { page, hasMore } = backPage(await this.client.roomMessagesLatest(this.roomId, this.pageSize + 1), this.pageSize);
       if (my !== this.#gen || this.#stopped) return;
       this.#listGen++;
       const firstSeq = page[0]?.seq;
@@ -171,7 +138,7 @@ export class MessageFeed extends TypedEventTarget<{ change: Event }> {
     try {
       for (;;) {
         this.#again = false;
-        const page = await this.#get(this.lastSeq, this.pageSize);
+        const page = await this.client.roomMessages(this.roomId, this.lastSeq, this.pageSize);
         if (this.#stopped) return;
         if (gen !== this.#listGen) break; // a load replaced the list meanwhile
         if (page.length >= this.pageSize) {
@@ -195,21 +162,24 @@ export class MessageFeed extends TypedEventTarget<{ change: Event }> {
     if (this.loadingOlder || !this.hasMore || this.#stopped) return 0;
     const before = this.messages[0]?.seq ?? 0;
     if (before <= 1) {
-      this.hasMore = false;
+      this.hasMore = false; // seqs start at 1: nothing is older
       return 0;
     }
-    const after = Math.max(0, before - 1 - this.pageSize);
     const gen = this.#listGen;
     this.loadingOlder = true;
     this.#emit();
     let added = 0;
     try {
-      const page = (await this.#get(after, before - 1 - after)).filter((m) => m.seq < before);
+      const read = await this.client.roomMessagesBefore(this.roomId, before, this.pageSize + 1);
       if (this.#stopped || gen !== this.#listGen) return 0;
+      const { page, hasMore } = backPage(
+        read.filter((m) => m.seq < before),
+        this.pageSize,
+      );
       const n = this.messages.length;
       this.messages = mergeById(page, this.messages);
       added = this.messages.length - n;
-      this.hasMore = after > 0;
+      this.hasMore = hasMore;
       this.error = undefined;
     } catch (e) {
       if (!this.#stopped) this.error = e instanceof Error ? e : new Error(String(e));
