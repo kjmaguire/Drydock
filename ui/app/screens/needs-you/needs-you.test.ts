@@ -28,5 +28,8 @@ describe('Needs you targets and hints', () => {
     expect(needsHint({ ...base, kind: 'question', title: 'The reviewer keeps asking for the same change: a human needs to decide' })).toContain('stop it');
     expect(needsHint({ ...base, kind: 'watchdog_pause', title: 'Watchdog paused work: tool_spin' })).toContain('send guidance and continue');
     expect(needsHint({ ...base, kind: 'watchdog_pause', title: 'The team lead asks for a human decision on work' })).toContain('recommendation');
+    const repoConfig = { ...base, title: "The repository's git configuration changed during the task (filter.evil.clean). A planted hook...", taskId: 't1' };
+    expect(needsTarget(repoConfig)).toBe('/task/t1');
+    expect(needsHint(repoConfig)).toContain('which items changed');
   });
 });

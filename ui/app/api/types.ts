@@ -42,6 +42,18 @@ export interface Project {
 /** core.MaxBriefLen */
 export const PROJECT_BRIEF_MAX = 8000;
 
+/**
+ * The repository configuration guard's view of a project's repository (core.GitConfig, docs/security.md s3): whether its own
+ * git configuration, hooks and info/attributes are the state a person last trusted. `changed` names the items that differ
+ * (config keys such as `filter.x.clean`, `hooks/<file>`, `info/attributes`), never their values; `fingerprint` is the state
+ * trusting would accept.
+ */
+export interface GitConfigStatus {
+  trusted: boolean;
+  changed: string[];
+  fingerprint: string;
+}
+
 /** Whether a project has a repository (older cores do not send hasRepo; every project had one then). */
 export const projectHasRepo = (p: Pick<Project, 'hasRepo'> | undefined): boolean => !!p && p.hasRepo !== false;
 

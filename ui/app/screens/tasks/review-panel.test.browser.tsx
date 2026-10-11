@@ -174,6 +174,62 @@ describe('Merge gates of a pull request', () => {
     await r.act(() => byText(r.container, 'button', 'Check again').click());
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-1', 'answered', {}]]), r);
   });
+
+  const repoConfig = (changed: unknown = ['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
+    detail({
+      pending: [
+        {
+          id: 'g-1',
+          nodeId: 'merge',
+          step: 5,
+          spec: {
+            kind: 'approval',
+            title: "The repository's git configuration changed during the task (filter.evil.clean, hooks/post-commit, info/attributes). Approve only if you made or expect this change.",
+            payload: { gate: 'repo_config_changed', changed, fingerprint: 'fp-1', root: 'C:\\src\\gocalc' },
+          },
+        },
+      ],
+    });
+
+  it('a changed repository git configuration lists the changed items and trusts only on Trust and continue', async () => {
+    for (const [label, decision] of [
+      ['Trust and continue', 'approved'],
+      ['Stop the run', 'rejected'],
+    ] as const) {
+      const runRespond = recorder(() => undefined);
+      const r = mount(<ReviewPanel detail={repoConfig()} onChanged={() => undefined} />, svc({ runRespond }));
+      const gate = r.$('[data-testid="repo-config-gate"]')!;
+      expect(gate.textContent).toContain('Drydock does not run git there until you review it');
+      expect(gate.textContent).toContain('Trust it only if you made or expect this change.');
+      const items = Array.from(r.$$('[data-testid="repo-config-gate-items"] li'));
+      expect(items.map((li) => li.getAttribute('data-item'))).toEqual(['filter.evil.clean', 'hooks/post-commit', 'info/attributes']);
+      expect(items.map((li) => li.querySelector('.kind')!.textContent)).toEqual(['git setting', 'hook script', 'attributes file (can name filters and diff or merge drivers)']);
+      expect(r.$('[aria-label="Changed git configuration items"]')).toBeTruthy();
+      expect(gate.textContent).toContain('C:\\src\\gocalc');
+      expect(buttons(r.container)).toEqual(['Trust and continue', 'Stop the run']);
+      expect(runRespond.calls).toEqual([]); // nothing is trusted by showing it
+      await r.act(() => byText(r.container, 'button', label).click());
+      await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'g-1', decision, undefined]]), r);
+      cleanup();
+    }
+  });
+
+  it('shows only the names in the changed list, as text', () => {
+    const r = mount(<ReviewPanel detail={repoConfig(['<b>x</b>', 7, null])} onChanged={() => undefined} />, svc());
+    expect(Array.from(r.$$('[data-testid="repo-config-gate-items"] li')).map((li) => li.getAttribute('data-item'))).toEqual(['<b>x</b>']);
+    expect(r.$('[data-testid="repo-config-gate"] b')).toBe(null);
+    cleanup();
+    const none = mount(<ReviewPanel detail={repoConfig(null)} onChanged={() => undefined} />, svc());
+    expect(none.$('[data-testid="repo-config-gate-items"]')).toBe(null);
+    expect(none.$('[data-testid="repo-config-gate"]')).toBeTruthy();
+  });
+
+  it('read-only allows stopping the run, not trusting the configuration', async () => {
+    const r = mount(<ReviewPanel detail={repoConfig()} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
+    await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Trust and continue').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop the run').disabled).toBe(false);
+  });
 });
 
 describe('Spec gate', () => {

@@ -29,6 +29,7 @@ import type {
   AgentUpdate,
   AppInfo,
   DrydockEvent,
+  GitConfigStatus,
   GitHubIssue,
   MergeStrategy,
   Message,
@@ -46,6 +47,7 @@ import type {
 } from './types.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
+const gitConfig = (v: GitConfigStatus | null): GitConfigStatus => ({ trusted: v?.trusted === true, changed: arr(v?.changed), fingerprint: v?.fingerprint ?? '' });
 
 export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient {
   appInfo(): Promise<AppInfo>;
@@ -54,6 +56,10 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   projectList(): Promise<Project[]>;
   projectGet(id: string): Promise<Project>;
   projectUpdate(id: string, mode?: ProjectMode, mergeStrategy?: MergeStrategy): Promise<Project>;
+  /** Whether the repository's own git configuration is the one a person last trusted (errors for a project without one). */
+  projectGitConfig(id: string): Promise<GitConfigStatus>;
+  /** Trusts exactly the state with this fingerprint (the one shown); a stale fingerprint is an error. Returns the new status. */
+  projectTrustGitConfig(id: string, fingerprint: string): Promise<GitConfigStatus>;
   githubIssues(projectId: string, labels?: string): Promise<GitHubIssue[]>;
   githubImportIssue(projectId: string, number: number): Promise<Task>;
   githubPullRequest(taskId: string): Promise<PRState>;
@@ -125,6 +131,8 @@ export function createClient(t: Transport): Client {
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
     projectGet: (id) => t.call('project.get', { id }),
     projectUpdate: (id, mode, mergeStrategy) => t.call('project.update', { id, mode: mode ?? '', mergeStrategy: mergeStrategy ?? '' }),
+    projectGitConfig: async (id) => gitConfig(await t.call<GitConfigStatus | null>('project.gitConfig', { id })),
+    projectTrustGitConfig: async (id, fingerprint) => gitConfig(await t.call<GitConfigStatus | null>('project.trustGitConfig', { id, fingerprint })),
     githubIssues: async (projectId, labels = '') => arr(await t.call<GitHubIssue[] | null>('github.issues', { projectId, labels })),
     githubImportIssue: (projectId, number) => t.call('github.importIssue', { projectId, number }),
     githubPullRequest: (taskId) => t.call('github.pullRequest', { taskId }),

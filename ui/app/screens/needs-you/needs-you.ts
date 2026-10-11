@@ -23,6 +23,8 @@ export function needsTarget(it: NeedsYouItem): string {
 /** A plain-language hint for the kinds of item that need more than a click. Derived from the title; the title is outside text, so it only selects a fixed hint. */
 export function needsHint(it: NeedsYouItem): string {
   if (it.kind === 'approval' && /^Budget limit/i.test(it.title)) return 'A budget stopped the next agent turn. Open the task to raise the limit and resume, or stop the run.';
+  if (it.kind === 'approval' && /^The repository's git configuration changed/i.test(it.title))
+    return "Drydock stopped running git in the repository: its git configuration, hooks or attributes changed. Open the task to see which items changed; trust them only if you made or expect the change.";
   if (it.kind === 'review' && /^Accept the spec/i.test(it.title)) return 'The spec gate: nothing is built until you accept the spec.';
   if (/^Iteration limit reached|^The reviewer keeps asking for the same change/i.test(it.title))
     return 'The task cannot go on by itself. Open it to continue with a fresh loop budget (and guidance, if you like) or to stop it.';

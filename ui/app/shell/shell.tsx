@@ -3,6 +3,7 @@
 // and the details panel keep their state while the center changes.
 
 import { css, navigate, type Handle, type RemixNode } from 'remix/component';
+import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys } from '../lib/keys.ts';
 import { isWorkspaceRoute, parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
@@ -14,6 +15,7 @@ import { t } from '../ui/tokens.ts';
 import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
 import { LicenseBanner } from './license-banner.tsx';
+import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { CommandPalette } from './palette.tsx';
 import { Sidebar } from './sidebar.tsx';
 
@@ -118,6 +120,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
                 <ErrorNote error={dmError} what="Could not open the direct message" />
               </div>
             ) : null}
+            {project && projectHasRepo(project) ? <RepoConfigBanner key={project.id} projectId={project.id} /> : null}
             <main id="main" tabIndex={-1} mix={mainCss}>
               {center}
             </main>

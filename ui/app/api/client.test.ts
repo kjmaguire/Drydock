@@ -96,6 +96,8 @@ describe('typed client', () => {
     await c.roomMessages('room1', 4, 10);
     await c.roomMessagesLatest('room1', 101);
     await c.roomMessagesBefore('room1', 51, 101);
+    await c.projectGitConfig('p');
+    await c.projectTrustGitConfig('p', 'fp1');
     const bodies = f.mock.calls.map((c) => c.arguments).map((c) => [(c as unknown as [string])[0], JSON.parse((c as unknown as [string, RequestInit])[1].body as string)]);
     expect(bodies).toEqual([
       ['/rpc/run.respond', { runId: 'run1', requestId: 'req1', decision: 'rejected', data: { feedback: 'more tests' } }],
@@ -105,6 +107,8 @@ describe('typed client', () => {
       ['/rpc/room.messages', { roomId: 'room1', afterSeq: 4, limit: 10 }],
       ['/rpc/room.messages', { roomId: 'room1', latest: true, limit: 101 }],
       ['/rpc/room.messages', { roomId: 'room1', beforeSeq: 51, limit: 101 }],
+      ['/rpc/project.gitConfig', { id: 'p' }],
+      ['/rpc/project.trustGitConfig', { id: 'p', fingerprint: 'fp1' }],
     ]);
   });
 
@@ -114,6 +118,11 @@ describe('typed client', () => {
     const err = await c.roomMessagesBefore('r', 0).catch((e: unknown) => e);
     expect((err as Error).message).toContain('beforeSeq must be at least 1');
     expect(f.mock.calls).toHaveLength(0);
+  });
+
+  it('reads the git configuration status with an empty list for Go nil', async () => {
+    const c = createClient(transport((async () => json({ result: { trusted: true, changed: null, fingerprint: 'fp' } })) as unknown as typeof fetch));
+    expect(await c.projectGitConfig('p')).toEqual({ trusted: true, changed: [], fingerprint: 'fp' });
   });
 
   it('propagates RpcError from the transport', async () => {
