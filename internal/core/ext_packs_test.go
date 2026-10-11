@@ -363,8 +363,9 @@ func TestSkillsAndPackInstructionsReachTheWorktreeInTheRealLoop(t *testing.T) {
 	})
 }
 
-// With skill delivery "relevant", a Claude worker on a task without file hints gets no skill in its instructions: AGENTS.md
-// lists each one and its text is in .claude/drydock-skills, which stays out of the diff like the other generated files.
+// With skill delivery "relevant" (the default), a Claude worker on a task without file hints gets the repository's own skill
+// in its instructions; a skill imported from a registry is listed in AGENTS.md and its text is in .claude/drydock-skills, which stays out of the
+// diff like the other generated files.
 func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testing.T) {
 	a := open(t, "")
 	repo := newRepo(t)
@@ -376,14 +377,22 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
 	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
 	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "go-style"}, nil)
+	// wrangler comes from a registry, as a prebuilt agent's skill does
+	f := newRegistryFixture(t)
+	f.trees["cloudflare/skills@"+cfPin] = map[string]string{"skills/wrangler/SKILL.md": fixtureSkill("wrangler", "", "Use the vendor's CLI.")}
+	f.use(a)
+	var imported skills.Skill
+	a.call("skill.import", skills.ImportReq{ProjectID: p.ID, RegistryID: "cloudflare-skills", Name: "wrangler", Ref: cfPin}, &imported)
+	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "wrangler"}, nil)
+	if imported.Origin != skills.OriginRegistry {
+		t.Fatalf("%+v", imported)
+	}
 	var s map[string]any
 	a.call("projectdev.get", map[string]any{"projectId": p.ID}, &s)
 	s["skillDelivery"] = "sometimes"
 	if err := a.callErr("projectdev.set", map[string]any{"projectId": p.ID, "settings": s}); err == nil {
 		t.Fatal("an unknown skill delivery was saved")
 	}
-	s["skillDelivery"] = skills.DeliveryRelevant
-	a.call("projectdev.set", map[string]any{"projectId": p.ID, "settings": s}, nil)
 
 	var worker, reviewer core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
@@ -399,16 +408,16 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 		return len(detail.Pending) == 1
 	})
 	wt := detail.Task.Worktree
-	if rules, _ := filepath.Glob(filepath.Join(wt, ".claude", "rules", "*.md")); len(rules) != 0 {
-		t.Fatalf("no skill is loaded into the turn: %v", rules)
+	if rules, _ := filepath.Glob(filepath.Join(wt, ".claude", "rules", "*.md")); len(rules) != 1 || filepath.Base(rules[0]) != "go-style.md" {
+		t.Fatalf("only the repository's own skill is loaded into the turn: %v", rules)
 	}
-	body, err := os.ReadFile(filepath.Join(wt, ".claude", "drydock-skills", "go-style.md"))
-	if err != nil || !strings.Contains(string(body), "Keep functions small.") {
+	body, err := os.ReadFile(filepath.Join(wt, ".claude", "drydock-skills", "wrangler.md"))
+	if err != nil || !strings.Contains(string(body), "Use the vendor's CLI.") {
 		t.Fatalf("%v\n%s", err, body)
 	}
 	agents, _ := os.ReadFile(filepath.Join(wt, "AGENTS.md"))
-	if !strings.Contains(string(agents), "**go-style** (`.claude/drydock-skills/go-style.md`): How Go code is written here") || strings.Contains(string(agents), "Keep functions small.") {
-		t.Fatalf("AGENTS.md lists the skill without its text:\n%s", agents)
+	if !strings.Contains(string(agents), "**wrangler** (`.claude/drydock-skills/wrangler.md`): Stand-in skill wrangler for the test.") || strings.Contains(string(agents), "Use the vendor's CLI.") || strings.Contains(string(agents), "go-style") {
+		t.Fatalf("AGENTS.md lists the imported skill without its text:\n%s", agents)
 	}
 	var diff string
 	a.call("task.diff", map[string]string{"id": task.ID}, &diff)
@@ -416,7 +425,7 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 		t.Fatalf("generated files must stay out of the diff:\n%s", diff)
 	}
 	items := manifestItems(t, a, task.ID)
-	if it := items["file:.claude/drydock-skills/go-style.md"]; it.Included || it.Bytes == 0 || !strings.Contains(it.Reason, "reads it with Read") {
+	if it := items["file:.claude/drydock-skills/wrangler.md"]; it.Included || it.Bytes == 0 || !strings.Contains(it.Reason, "reads it with Read") {
 		t.Fatalf("%+v", it)
 	}
 	if it := items["budget:instructions"]; !strings.Contains(it.Reason, "within budget") {
@@ -424,7 +433,11 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 	}
 	var ds []skills.Delivery
 	a.call("skill.deliveries", map[string]string{"projectId": p.ID, "taskId": task.ID}, &ds)
-	if len(ds) != 1 || ds[0].Method != skills.MethodClaudeOnDemand || ds[0].Fidelity != skills.FidelityOnDemand {
+	methods := map[string]string{}
+	for _, d := range ds {
+		methods[d.Skill] = d.Method + "/" + d.Fidelity
+	}
+	if len(ds) != 2 || methods["go-style"] != skills.MethodClaudeRules+"/"+skills.FidelityRunStart || methods["wrangler"] != skills.MethodClaudeOnDemand+"/"+skills.FidelityOnDemand {
 		t.Fatalf("%+v", ds)
 	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
@@ -487,7 +500,7 @@ func TestTheManifestSaysWhenEveryTurnCarriesTooMuch(t *testing.T) {
 	if !rule.Included || rule.Bytes < 35000 {
 		t.Fatalf("the rule file: %+v (all: %+v)", rule, items)
 	}
-	if budget.Bytes < rule.Bytes || !strings.Contains(budget.Reason, "OVER BUDGET") || !strings.Contains(budget.Reason, "skill delivery to relevant") {
+	if budget.Bytes < rule.Bytes || !strings.Contains(budget.Reason, "OVER BUDGET") || !strings.Contains(budget.Reason, "with skill delivery all, set it to relevant") || !strings.Contains(budget.Reason, "shorten the repository's own skills") {
 		t.Fatalf("%+v", budget)
 	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)

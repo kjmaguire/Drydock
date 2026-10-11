@@ -638,7 +638,12 @@ func (k *Knowledge) methods() map[string]Method {
 	}) (any, error) {
 		return k.Skills.TaskCoverage(ctx, p.ProjectID, p.TaskID)
 	})
-	m["skill.plan"] = bind(func(ctx context.Context, p skills.Target) (any, error) { return k.Skills.Plan(ctx, p) })
+	m["skill.plan"] = bind(func(ctx context.Context, p skills.Target) (any, error) {
+		if p.Delivery == "" { // the preview shows what a run of this project gets
+			p.Delivery = pipeline.LoadDevSettings(ctx, k.c.DB, p.ProjectID).SkillDelivery
+		}
+		return k.Skills.Plan(ctx, p)
+	})
 
 	// ---- memory ----
 	m["memory.list"] = bind(func(ctx context.Context, p struct {

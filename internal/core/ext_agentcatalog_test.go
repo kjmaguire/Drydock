@@ -430,8 +430,14 @@ func TestAgentsAreGivenSkillsWhenMadeAndEdited(t *testing.T) {
 	}
 	var plan skills.Plan
 	a.call("skill.plan", skills.Target{ProjectID: p.ID, AgentID: ag.ID, Role: "reviewer", Adapter: "claude"}, &plan)
-	if len(plan.Files) != 1 || strings.Join(plan.Files[0].Skills, ",") != "wrangler" {
+	// an imported skill without globs is listed for the agent to open (the project's skill delivery, relevant by default)
+	if len(plan.Files) != 1 || plan.Files[0].Path != ".claude/drydock-skills/wrangler.md" || plan.Files[0].Method != skills.MethodClaudeOnDemand {
 		t.Fatalf("the reviewer's next run: %+v", plan.Files)
+	}
+	setSkillDelivery(t, a, p.ID, skills.DeliveryAll)
+	a.call("skill.plan", skills.Target{ProjectID: p.ID, AgentID: ag.ID, Role: "reviewer", Adapter: "claude"}, &plan)
+	if len(plan.Files) != 1 || plan.Files[0].Path != ".claude/rules/wrangler.md" || plan.Files[0].Method != skills.MethodClaudeRules {
+		t.Fatalf("with skill delivery all the preview shows a rule: %+v", plan.Files)
 	}
 
 	// an unknown skill refuses the whole call before the agent exists

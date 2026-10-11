@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -229,8 +230,9 @@ const http = require('http');
 const port = Number(process.env.PREVIEW_PORT);
 const delay = Number(process.env.PREVIEW_DELAY_MS || 0);
 setTimeout(() => {
-  http.createServer((req, res) => { res.statusCode = req.url === '/api/health' ? 200 : 404; res.end('ok'); }).listen(port, '127.0.0.1', () => {
-    if (process.env.PREVIEW_PRINT === '1') console.log('Preview available at http://127.0.0.1:' + port + '/api/health');
+  const srv = http.createServer((req, res) => { res.statusCode = req.url === '/api/health' ? 200 : 404; res.end('ok'); });
+  srv.listen(port, '127.0.0.1', () => {
+    if (process.env.PREVIEW_PRINT === '1') console.log('Preview available at http://127.0.0.1:' + srv.address().port + '/api/health');
   });
 }, delay);
 `
@@ -280,17 +282,17 @@ func TestPreviewTakesTheURLTheCommandPrints(t *testing.T) {
 	needNode(t)
 	dir := t.TempDir()
 	write(t, dir, "server.js", previewServer)
-	port := freePort(t)
+	// port 0: the server takes a port the system gives it, so only the URL it prints can say where it is (a port picked
+	// here and closed again could be taken by another test before the server binds it)
 	h, r, err := checks.StartPreview(context.Background(), proc.New(), dir, checks.PreviewOptions{
 		Enabled: true, Command: []string{"node", "server.js"}, Timeout: 20 * time.Second,
-		Env: []string{fmt.Sprintf("PREVIEW_PORT=%d", port), "PREVIEW_PRINT=1"},
+		Env: []string{"PREVIEW_PORT=0", "PREVIEW_PRINT=1"},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer h.Stop()
-	want := fmt.Sprintf("http://127.0.0.1:%d/api/health", port)
-	if !r.Passed || r.URL != want {
+	if !r.Passed || !regexp.MustCompile(`^http://127\.0\.0\.1:[1-9][0-9]*/api/health$`).MatchString(r.URL) || !reachable(r.URL) {
 		t.Fatalf("%+v", r)
 	}
 }

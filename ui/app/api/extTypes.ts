@@ -255,7 +255,8 @@ export interface DevSettings {
   ciNoneAt?: number;
   /**
    * How a Claude agent gets the project's skills: `all` puts every skill that reaches it into every turn; `relevant` puts in
-   * only those whose paths match the task's files and lists the others for the agent to open when the work needs them.
+   * the repository's own skills and the imported ones whose paths match the task's files, and lists the other imported ones
+   * for the agent to open when the work needs them.
    * Absent means DEFAULT_SKILL_DELIVERY.
    */
   skillDelivery?: 'all' | 'relevant';

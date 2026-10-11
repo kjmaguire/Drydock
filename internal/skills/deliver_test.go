@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -85,11 +86,27 @@ func TestPlanClaudeRulesAreNativePathScopedAndRoleFiltered(t *testing.T) {
 	}
 }
 
-// With DeliveryRelevant, Claude gets in its instructions only the skills whose globs match the task's files; every other skill
-// is one index line (name, description, globs, file) and a file outside .claude/rules that it reads when the work needs it.
+// asImported marks accepted skills as imported from a registry (a test shortcut for Import, which needs a registry fixture):
+// with DeliveryRelevant, origin decides whether a skill without matching globs loads.
+func asImported(t *testing.T, e *env, names ...string) {
+	t.Helper()
+	for _, n := range names {
+		if err := e.db.WriteTx(context.Background(), func(tx *sql.Tx) error {
+			_, err := tx.Exec(`UPDATE skills SET origin='registry' WHERE project_id='p1' AND name=?`, n)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// With DeliveryRelevant, Claude gets in its instructions the repository's own skills and the imported ones whose globs match
+// the task's files; every other imported skill is one index line (name, description, globs, file) and a file outside
+// .claude/rules that it reads when the work needs it.
 func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	e := acceptedEnv(t)
 	ctx := context.Background()
+	asImported(t, e, "api-style", "d1-migrations", "everywhere")
 	plan, err := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant, Hints: []string{"src/api/users.ts"}})
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +146,7 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	if strings.Contains(plan.Note, "api-style") || strings.Contains(plan.Note, d1Skill) {
 		t.Fatalf("the index lists only on-demand skills, never a body:\n%s", plan.Note)
 	}
-	// no file hints: nothing can be matched, so every skill is on demand
+	// no file hints: no imported skill can be matched, so every imported skill is on demand
 	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant})
 	for _, f := range plan.Files {
 		if f.Method != MethodClaudeOnDemand {
@@ -140,15 +157,13 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	if DeliveryOf("") != DeliveryRelevant || DeliveryOf("bogus") != DeliveryRelevant {
 		t.Fatal("the default is relevant")
 	}
-	for _, d := range []string{DeliveryAll} {
-		plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: d, Hints: []string{"src/api/users.ts"}})
-		if len(plan.Files) != 3 || plan.Index || plan.Note != "" || len(plan.OnDemand) != 0 {
-			t.Fatalf("%q: %+v", d, plan)
-		}
-		for _, f := range plan.Files {
-			if f.Method != MethodClaudeRules {
-				t.Fatalf("%q: %+v", d, f)
-			}
+	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
+	if len(plan.Files) != 3 || plan.Index || plan.Note != "" || len(plan.OnDemand) != 0 {
+		t.Fatalf("all: %+v", plan)
+	}
+	for _, f := range plan.Files {
+		if f.Method != MethodClaudeRules {
+			t.Fatalf("all: %+v", f)
 		}
 	}
 	// other CLIs ignore the setting
@@ -158,22 +173,26 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	}
 }
 
-// A task that names no files is scoped to the repository: with "relevant", a skill whose globs match files of the
-// worktree loads as a rule; one whose globs match nothing there, and one without globs, stay on demand.
-func TestPlanClaudeRelevantWithoutHintsLoadsTheSkillsOfThisRepository(t *testing.T) {
+// The repository's own skills (.aet/skills) were written for this codebase: with "relevant" they load into every turn, with
+// or without file hints and whatever their globs; imported ones without matching hints are listed. Nothing on disk in the
+// worktree changes that.
+func TestPlanClaudeRelevantLoadsTheRepositorysOwnSkills(t *testing.T) {
 	e := acceptedEnv(t)
+	asImported(t, e, "d1-migrations")
 	wt := t.TempDir()
-	writeFiles(t, wt, map[string]string{"src/api/users.ts": "x", "README.md": "y", "node_modules/m/migrations/1.sql": "ignored"})
-	plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Worktree: wt})
-	if err != nil {
-		t.Fatal(err)
-	}
-	methods := map[string]string{}
-	for _, f := range plan.Files {
-		methods[f.Skills[0]] = f.Method
-	}
-	if methods["api-style"] != MethodClaudeRules || methods["d1-migrations"] != MethodClaudeOnDemand || methods["everywhere"] != MethodClaudeOnDemand {
-		t.Fatalf("api-style matches src/api here, d1-migrations matches nothing outside node_modules, everywhere has no globs: %v", methods)
+	writeFiles(t, wt, map[string]string{"migrations/1.sql": "an agent made this", "AGENTS.md": "generated"})
+	for _, hints := range [][]string{nil, {"README.md"}} {
+		plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Worktree: wt, Hints: hints})
+		if err != nil {
+			t.Fatal(err)
+		}
+		methods := map[string]string{}
+		for _, f := range plan.Files {
+			methods[f.Skills[0]] = f.Method
+		}
+		if methods["api-style"] != MethodClaudeRules || methods["everywhere"] != MethodClaudeRules || methods["d1-migrations"] != MethodClaudeOnDemand {
+			t.Fatalf("hints %v: the repository's api-style and everywhere load, the imported d1-migrations is listed: %v", hints, methods)
+		}
 	}
 }
 

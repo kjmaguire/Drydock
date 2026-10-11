@@ -105,11 +105,12 @@ func run(ctx context.Context, args []string) error {
 	total := fs.Float64("total-usd", 10, "stop starting runs once what this invocation spent plus one more ceiling would pass this")
 	firstRep := fs.Int("first-repeat", 1, "number of the first repeat (to add repeats to a trial in a later batch)")
 	startBefore := fs.Duration("start-before", 0, "start no run once this long has passed since the command started (0: no limit)")
-	skillsDir := fs.String("skills-dir", "", "D only: skills (<name>/SKILL.md) the project gets, accepted for both agents (see fetch-skills)")
-	skillMode := fs.String("d-skills", "", "D only, with -skills-dir: how Claude gets them, all (every turn) or relevant (matching ones; the rest on demand)")
+	skillsDir := fs.String("skills-dir", "", "D only: the repository's own skills (<name>/SKILL.md), committed under .aet/skills and accepted for both agents")
+	prebuilt := fs.Bool("prebuilt-skills", false, "D only: import the prebuilt agents' skills from their registries at the catalog's pins and accept them")
+	skillMode := fs.String("d-skills", "", "D only, with -skills-dir or -prebuilt-skills: how Claude gets them, all (every turn) or relevant (the default delivery)")
 	_ = fs.Parse(args)
-	if (*skillsDir == "") != (*skillMode == "") {
-		return errors.New("-skills-dir and -d-skills go together")
+	if (*skillsDir == "" && !*prebuilt) != (*skillMode == "") {
+		return errors.New("-d-skills goes with -skills-dir or -prebuilt-skills")
 	}
 	if *skillMode != "" && *skillMode != skills.DeliveryAll && *skillMode != skills.DeliveryRelevant {
 		return fmt.Errorf("-d-skills is all or relevant, not %q", *skillMode)
@@ -170,6 +171,7 @@ func run(ctx context.Context, args []string) error {
 	outDir := filepath.Join(root, *out)
 	fmt.Printf("trial %s: %d task(s) x %v x %d, model %s, ceiling $%.2f, cap %s, %s, Drydock %s\n", *name, len(tasks), armOrder, *k, *model, *ceiling, *wall, cli, commit)
 	spent := 0.0
+	fetcher := &trial.CachingFetcher{Inner: skills.NewGitHubFetcher()} // the runs import the same pinned skills
 	for rep := *firstRep; rep < *firstRep+*k; rep++ {
 		for i, t := range tasks {
 			order := append([]string(nil), armOrder...)
@@ -190,7 +192,7 @@ func run(ctx context.Context, args []string) error {
 					return finish(outDir, *name)
 				}
 				dir := filepath.Join(*work, fmt.Sprintf("%s-%s-%d", t.ID, arm, rep))
-				rec, extra := runOne(ctx, root, dir, t, arm, *model, *ceiling, *wall, *mode, *image, *bin, *skillsDir, *skillMode)
+				rec, extra := runOne(ctx, root, dir, t, arm, *model, *ceiling, *wall, *mode, *image, *bin, skillSetup{dir: *skillsDir, prebuilt: *prebuilt, mode: *skillMode, fetcher: fetcher})
 				rec.Schema, rec.Trial, rec.Commit, rec.Repeat, rec.CLI = 1, *name, commit, rep, cli
 				rec.Host = runtime.GOOS + "/" + runtime.GOARCH
 				where, err := rec.Write(outDir, extra)
@@ -233,7 +235,15 @@ func finish(outDir, name string) error {
 	return nil
 }
 
-func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model string, ceiling float64, wall time.Duration, mode, image, bin, skillsDir, skillMode string) (trial.Record, map[string][]byte) {
+// skillSetup is how arm D's project gets skills (run's -skills-dir, -prebuilt-skills and -d-skills).
+type skillSetup struct {
+	dir      string
+	prebuilt bool
+	mode     string
+	fetcher  *trial.CachingFetcher
+}
+
+func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model string, ceiling float64, wall time.Duration, mode, image, bin string, sk skillSetup) (trial.Record, map[string][]byte) {
 	started := time.Now()
 	extra := map[string][]byte{}
 	repo := filepath.Join(dir, "repo")
@@ -268,7 +278,10 @@ func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model stri
 		}
 	case trial.ArmDrydock:
 		d := trial.Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: model, CeilingUSD: ceiling, Wall: wall, Mode: mode, SandboxImage: image,
-			SkillsDir: skillsDir, Skills: skillMode}
+			SkillsDir: sk.dir, Prebuilt: sk.prebuilt, Skills: sk.mode}
+		if sk.prebuilt {
+			d.SkillsFetcher = sk.fetcher
+		}
 		var art trial.Artifacts
 		rec, art = d.Run(ctx, t, repo, func(tree string) trial.AcceptResult {
 			if diff, err := trial.ResultDiff(ctx, root, t, tree); err == nil {
@@ -351,7 +364,8 @@ func compare(args []string) error {
 	return nil
 }
 
-// fetchSkills writes the prebuilt agents' skills, at their pinned commits, into a directory for -skills-dir.
+// fetchSkills writes the prebuilt agents' skills, at their pinned commits, into a directory to read them (a run imports
+// them itself with -prebuilt-skills).
 func fetchSkills(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("fetch-skills", flag.ExitOnError)
 	out := fs.String("out", "", "directory to write <name>/SKILL.md into (outside this repository: the texts are third-party)")

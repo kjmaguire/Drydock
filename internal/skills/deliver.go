@@ -3,8 +3,6 @@ package skills
 import (
 	"context"
 	"database/sql"
-	"io/fs"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -30,9 +28,9 @@ const (
 const (
 	// DeliveryAll puts every skill into every turn as a .claude/rules file, whatever the task touches.
 	DeliveryAll = "all"
-	// DeliveryRelevant puts a skill into the turn only when its globs match the task's file hints (with none, the
-	// repository's files); every other skill, including every skill without globs, is one line in AGENTS.md (name, what it
-	// is for, where its text is) and Claude reads it with the Read tool when the work needs it.
+	// DeliveryRelevant puts into every turn the repository's own skills (.aet/skills: written for this codebase) and the
+	// imported ones whose globs match the task's file hints; every other imported skill is one line in AGENTS.md (name,
+	// what it is for, where its text is) and Claude reads it with the Read tool when the work needs it.
 	DeliveryRelevant = "relevant"
 )
 
@@ -112,18 +110,20 @@ func (s *Service) Plan(ctx context.Context, t Target) (Plan, error) {
 	switch family(t.Adapter) {
 	case "claude":
 		var index []Skill
-		// a task that names no files is scoped to the whole repository: a skill whose globs match files of this
-		// repository was written for it and loads; one whose globs match nothing here, or that has none, is listed
-		scope := t.Hints
-		if len(scope) == 0 && DeliveryOf(t.Delivery) == DeliveryRelevant && anyGlobs(eligible) {
-			scope = repoFiles(t.Worktree)
-		}
+		delivery := DeliveryOf(t.Delivery)
 		for _, k := range eligible {
+			rule := func(fidelity string) {
+				p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: fidelity, Hash: k.ContentHash})
+			}
 			switch {
-			case DeliveryOf(t.Delivery) == DeliveryAll:
-				p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: FidelityExact, Hash: k.ContentHash})
-			case len(k.Globs) > 0 && len(scope) > 0 && PathsMatch(k.Globs, scope):
-				p.Files = append(p.Files, PlannedFile{Path: ".claude/rules/" + k.Name + ".md", Content: claudeRule(k), Skills: []string{k.Name}, Method: MethodClaudeRules, Fidelity: FidelityRunStart, Hash: k.ContentHash})
+			case delivery == DeliveryAll:
+				rule(FidelityExact)
+			case k.Origin == OriginRepo:
+				// the repository's own skill (.aet/skills) was written for this codebase: it loads (a listed one was opened
+				// in 2 of 6 runs, docs/evals.md section 14)
+				rule(FidelityRunStart)
+			case len(k.Globs) > 0 && len(t.Hints) > 0 && PathsMatch(k.Globs, t.Hints):
+				rule(FidelityRunStart)
 			default:
 				p.Files = append(p.Files, PlannedFile{Path: OnDemandDir + "/" + k.Name + ".md", Content: onDemandFile(k), Skills: []string{k.Name}, Method: MethodClaudeOnDemand, Fidelity: FidelityOnDemand, Hash: k.ContentHash})
 				p.OnDemand = append(p.OnDemand, k.Name)
@@ -178,47 +178,6 @@ func (s *Service) Plan(ctx context.Context, t Target) (Plan, error) {
 // section 14): with the twelve prebuilt agents' skills, "all" cost 1.9 times as much as no skills for no better acceptance;
 // "relevant" cost the same as no skills.
 const DefaultDelivery = DeliveryRelevant
-
-// maxRepoFiles caps the files repoFiles lists.
-const maxRepoFiles = 20000
-
-func anyGlobs(ks []Skill) bool {
-	for _, k := range ks {
-		if len(k.Globs) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// repoFiles lists the worktree's files (relative, with forward slashes), without version control, dependency and
-// generated directories, at most maxRepoFiles.
-func repoFiles(root string) []string {
-	if root == "" {
-		return nil
-	}
-	skip := map[string]bool{".git": true, "node_modules": true, ".claude": true, ".agents": true, ".drydock": true}
-	var out []string
-	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || len(out) >= maxRepoFiles {
-			if d != nil && d.IsDir() && p != root {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			if p != root && skip[d.Name()] {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if rel, err := filepath.Rel(root, p); err == nil {
-			out = append(out, filepath.ToSlash(rel))
-		}
-		return nil
-	})
-	return out
-}
 
 // DeliveryOf returns the delivery in force for a setting value.
 func DeliveryOf(v string) string {

@@ -18,6 +18,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/sandbox/sandboxtest"
+	"github.com/kjmaguire/drydock/internal/skills"
 )
 
 // The arms' agent in these tests is the repository's scripted stand-in for Claude Code (internal/agents/fakeagent, a TEST
@@ -390,8 +391,9 @@ func TestTheDrydockArmAcceptsOrRejectsOnTheHiddenCheck(t *testing.T) {
 	}
 }
 
-// With a skills bundle, D commits the skills into the task's repository, accepts them for both agents as the human would,
-// sets how Claude receives them, and counts the agents' reads of the on-demand files.
+// With the repository's own skills, D commits them into the task's repository, accepts them for both agents as the human
+// would, sets how Claude receives them (the repository's own load into every turn), and counts the agents' reads of
+// on-demand skill files.
 func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the whole product loop")
@@ -423,16 +425,91 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 		SkillsDir: bundle, Skills: "relevant"}
 	rec, _ := d.Run(ctx, x, repo, func(tree string) AcceptResult {
 		worktree = tree
-		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "drydock-skills", "house-style.md")); err != nil || !strings.Contains(string(b), "Keep it plain.\nname: not front matter") {
-			t.Errorf("the on-demand file: %v %s", err, b)
+		if b, err := os.ReadFile(filepath.Join(tree, ".claude", "rules", "house-style.md")); err != nil || !strings.Contains(string(b), "Keep it plain.\nname: not front matter") {
+			t.Errorf("the repository's skill as a rule: %v %s", err, b)
 		}
 		return Accept(ctx, root, x, tree)
 	})
 	if rec.Outcome != Accepted || rec.Skills != "relevant" || strings.Join(rec.SkillNames, ",") != "house-style" || rec.SkillReads != 1 {
 		t.Fatalf("%s (%s) skills %q %v reads %d", rec.Outcome, rec.Reason, rec.Skills, rec.SkillNames, rec.SkillReads)
 	}
-	if worktree == "" || !strings.Contains(rec.ArmDetail, "delivered relevant") {
+	if worktree == "" || !strings.Contains(rec.ArmDetail, "the repository's skills delivered relevant") {
 		t.Fatal(rec.ArmDetail)
+	}
+}
+
+// stubRegistry is a labelled test double for the skill registries: every prebuilt agent's skill, at any commit.
+type stubRegistry struct{ fetched int }
+
+func (f *stubRegistry) Resolve(_ context.Context, _, ref string) (string, error) { return ref, nil }
+
+func (f *stubRegistry) Fetch(_ context.Context, repo, _, root string) ([]skills.RemoteSkill, error) {
+	f.fetched++
+	regs, _ := skills.CuratedRegistries()
+	refs, _ := PrebuiltSkillRefs()
+	var out []skills.RemoteSkill
+	for _, r := range refs {
+		for _, g := range regs {
+			if g.ID == r.Registry && g.Repo == repo {
+				out = append(out, skills.RemoteSkill{Name: r.Name, Dir: root + r.Name, LicenseTxt: "MIT",
+					SkillMD: []byte("---\nname: " + r.Name + "\ndescription: Stand-in for " + r.Name + "\nlicense: MIT\n---\nVendor text of " + r.Name + ".\n")})
+			}
+		}
+	}
+	return out, nil
+}
+
+// With Prebuilt, D imports the prebuilt agents' skills from their registries, as installing those agents does: they are
+// registry skills, so with the default delivery Claude gets them listed, not loaded. A caching fetcher fetches each
+// registry once for many runs.
+func TestTheDrydockArmImportsThePrebuiltSkillsFromTheirRegistries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the whole product loop")
+	}
+	root := repoRoot(t)
+	x := task(t, "saasapi-invoice-rules")
+	ctx := context.Background()
+	for _, kv := range fakeScript(t, fakeagent.Script{
+		Rules:   []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
+		Default: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "internal/billing/invoice.go", Content: solution(t, x.ID, "internal/billing/invoice.go")}}, {Say: "done"}},
+	}) {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
+	refs, err := PrebuiltSkillRefs()
+	if err != nil || len(refs) < 10 {
+		t.Fatalf("%v %v", refs, err)
+	}
+	stub := &stubRegistry{}
+	cache := &CachingFetcher{Inner: stub}
+	for i := 0; i < 2; i++ {
+		dir := t.TempDir()
+		repo := filepath.Join(dir, "repo")
+		if _, err := Prepare(ctx, root, x, mustMkdir(t, repo)); err != nil {
+			t.Fatal(err)
+		}
+		d := Drydock{Root: root, DataDir: filepath.Join(dir, "data"), Model: "haiku", CeilingUSD: 2, Wall: 5 * time.Minute, Mode: ModeChecks,
+			Poll: 200 * time.Millisecond, Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}},
+			Prebuilt: true, SkillsFetcher: cache}
+		rec, _ := d.Run(ctx, x, repo, func(tree string) AcceptResult {
+			if rules, _ := filepath.Glob(filepath.Join(tree, ".claude", "rules", "*.md")); len(rules) != 0 {
+				t.Errorf("registry skills are listed, not loaded: %v", rules)
+			}
+			if b, err := os.ReadFile(filepath.Join(tree, ".claude", "drydock-skills", refs[0].Name+".md")); err != nil || !strings.Contains(string(b), "Vendor text of "+refs[0].Name) {
+				t.Errorf("%v %s", err, b)
+			}
+			return Accept(ctx, root, x, tree)
+		})
+		if rec.Outcome != Accepted || rec.Skills != "relevant" || len(rec.SkillNames) != len(refs) || !strings.Contains(rec.ArmDetail, "the prebuilt agents' skills delivered relevant") {
+			t.Fatalf("%s (%s) %q %v %s", rec.Outcome, rec.Reason, rec.Skills, rec.SkillNames, rec.ArmDetail)
+		}
+	}
+	regs := map[string]bool{}
+	for _, r := range refs {
+		regs[r.Registry+"@"+r.Ref] = true
+	}
+	if stub.fetched != len(regs) {
+		t.Fatalf("each registry is fetched once for both runs: %d fetches for %d registries", stub.fetched, len(regs))
 	}
 }
 

@@ -215,7 +215,7 @@ describe('Check settings and development flow', () => {
     expect(relevant.checked).toBe(DEFAULT_SKILL_DELIVERY === 'relevant');
     expect(all.checked).toBe(DEFAULT_SKILL_DELIVERY === 'all');
     expect((DEFAULT_SKILL_DELIVERY === 'all' ? all : relevant).parentElement!.textContent).toContain('(default)');
-    expect(document.getElementById(relevant.getAttribute('aria-describedby')!)!.textContent).toMatch(/listed by name and purpose[\s\S]*opens one when\s+its work needs it/);
+    expect(document.getElementById(relevant.getAttribute('aria-describedby')!)!.textContent).toMatch(/repository's own skills[\s\S]*listed by name and purpose, and the agent opens one when its work needs it/);
     expect(document.getElementById(all.getAttribute('aria-describedby')!)!.textContent).toMatch(/whatever the task touches[\s\S]*over budget/);
     await r.act(() => (DEFAULT_SKILL_DELIVERY === 'all' ? relevant : all).click());
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());

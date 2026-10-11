@@ -6,10 +6,63 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/kjmaguire/drydock/internal/agentcatalog"
 	"github.com/kjmaguire/drydock/internal/skills"
 )
+
+// PrebuiltSkillRefs lists the skills the prebuilt agents carry (internal/agentcatalog), each once, sorted by name.
+func PrebuiltSkillRefs() ([]agentcatalog.SkillRef, error) {
+	entries, err := agentcatalog.Builtin()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []agentcatalog.SkillRef
+	for _, e := range entries {
+		for _, s := range e.Skills {
+			if !seen[s.Name] {
+				seen[s.Name] = true
+				out = append(out, s)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// CachingFetcher fetches each (repository, commit) once and serves later runs from memory: the runs of a trial import the
+// same pinned skills many times.
+type CachingFetcher struct {
+	Inner skills.RegistryFetcher
+	mu    sync.Mutex
+	cache map[string][]skills.RemoteSkill
+}
+
+// Resolve implements skills.RegistryFetcher.
+func (f *CachingFetcher) Resolve(ctx context.Context, repo, ref string) (string, error) {
+	return f.Inner.Resolve(ctx, repo, ref)
+}
+
+// Fetch implements skills.RegistryFetcher.
+func (f *CachingFetcher) Fetch(ctx context.Context, repo, commit, root string) ([]skills.RemoteSkill, error) {
+	key := repo + "@" + commit + ":" + root
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if rs, ok := f.cache[key]; ok {
+		return rs, nil
+	}
+	rs, err := f.Inner.Fetch(ctx, repo, commit, root)
+	if err != nil {
+		return nil, err
+	}
+	if f.cache == nil {
+		f.cache = map[string][]skills.RemoteSkill{}
+	}
+	f.cache[key] = rs
+	return rs, nil
+}
 
 // FetchPrebuiltSkills writes the SKILL.md of every skill the prebuilt agents carry (internal/agentcatalog), fetched from its
 // registry at the catalog's pinned commit, to dst/<name>/SKILL.md: the skills a person gets by installing the prebuilt

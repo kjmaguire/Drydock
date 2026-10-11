@@ -211,8 +211,9 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   Only the ones the task needs{DEFAULT_SKILL_DELIVERY === 'relevant' ? ' (default)' : ''}
                 </label>
                 <p id={`${skName}-relevant`}>
-                  A skill whose paths match the files of the task is loaded into every turn. The others are listed by name and purpose, and the agent opens one when
-                  its work needs it. Fewer tokens in every turn; a skill the agent does not think of opening is not used.
+                  The repository's own skills, and imported skills whose paths match the files of the task, are loaded into every turn. Other imported skills
+                  (a vendor's, a prebuilt agent's) are listed by name and purpose, and the agent opens one when its work needs it. Fewer tokens in every turn; a listed
+                  skill the agent does not think of opening is not used.
                 </p>
               </div>
               <div>

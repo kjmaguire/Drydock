@@ -459,12 +459,20 @@ written from the fixture's own code, not from the hidden checks; globs `internal
 `2026-10-10-skills-probe`. All six accepted; the agents opened `tally-api` in **2 of 6** runs and none of the others. A
 skill made for the codebase, offered only by its name and description, was missed four times out of six.
 
-**Decision (P37).** The default skill delivery is `relevant`, with one change made after the follow-up: a task that names no
-files is scoped to the repository, so a skill whose globs match files of the repository loads into every turn like a rule
-(it was written for this codebase), while a skill whose globs match nothing here, or that has no globs (the registries'
-skills), is listed. With task file hints, only the skills matching them load. `all` stays available per project.
+**Decision (P37).** The default skill delivery is `relevant`, decided by where a skill comes from: the repository's own
+skills (`.aet/skills`, written for this codebase, the kind the follow-up found missed when only listed) load into every
+turn; a skill imported from a registry (a vendor's, a prebuilt agent's: the kind the main trial measured) loads only when its
+globs match the task's file hints, and is otherwise listed. `all` stays available per project. A first version scoped
+hint-less tasks to the files on disk in the worktree; a code review showed that walk was slow, ignored `.gitignore`,
+counted Drydock's own generated files and files an agent made, and loaded broad registry skills; origin replaced it.
+
+**How the harness gives skills.** `-skills-dir` commits skills into the task's repository, so they are the repository's
+own; `-prebuilt-skills` imports the prebuilt agents' skills from their registries at the catalog's pins, as installing those
+agents does. The main trial and the follow-up used `-skills-dir` for every skill (`-prebuilt-skills` came after): there the
+twelve prebuilt skills were repository skills without globs, which the first version listed exactly as the shipped rule lists
+registry skills, so the measured `relevant` variant matches what a person gets after installing prebuilt agents.
 
 **Caveats.** One model, one suite with precise tickets where skills could hardly help (acceptance near the ceiling), one
 machine under load (wall times include waiting for CPUs). The follow-up is six runs: an observation, not a rate. The
-repository-scope change was made after the follow-up and is covered by tests, not by another paid run. A suite whose
+origin rule was set after the follow-up and is covered by tests, not by another paid run. A suite whose
 tickets leave rules to the codebase's skills is what would show whether skills raise acceptance.

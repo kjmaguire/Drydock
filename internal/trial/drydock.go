@@ -42,12 +42,18 @@ type Drydock struct {
 	Poll time.Duration
 	// Adapters replace the core's agent adapters: test doubles only (the harness's own tests use the scripted stand-in).
 	Adapters map[string]agents.Adapter
-	// SkillsDir (optional) holds skills as <name>/SKILL.md. They are committed into the task's repository under .aet/skills
-	// before the run, accepted by the harness as the human would, and reach both agents; Skills says how (skills.DeliveryAll or
-	// skills.DeliveryRelevant). Without SkillsDir the project has no skills.
-	SkillsDir string
-	Skills    string
+	// SkillsDir (optional) holds the repository's own skills as <name>/SKILL.md: they are committed into the task's
+	// repository under .aet/skills before the run. Prebuilt imports the prebuilt agents' skills from their registries at the
+	// catalog's pins, as installing those agents does (SkillsFetcher, if set, replaces the GitHub fetcher: a cache or a test
+	// double). The harness accepts every skill as the human would, they reach both agents, and Skills says how
+	// (skills.DeliveryAll or skills.DeliveryRelevant).
+	SkillsDir     string
+	Prebuilt      bool
+	SkillsFetcher skills.RegistryFetcher
+	Skills        string
 }
+
+func (d Drydock) hasSkills() bool { return d.SkillsDir != "" || d.Prebuilt }
 
 // Detail describes the arm for the record.
 func (d Drydock) Detail() string {
@@ -55,8 +61,13 @@ func (d Drydock) Detail() string {
 	if d.Mode == ModeChecks {
 		s = "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)"
 	}
-	if d.SkillsDir != "" {
-		s += ", the bundle's skills delivered " + skills.DeliveryOf(d.Skills)
+	switch {
+	case d.SkillsDir != "" && d.Prebuilt:
+		s += ", the repository's skills and the prebuilt agents' skills delivered " + skills.DeliveryOf(d.Skills)
+	case d.SkillsDir != "":
+		s += ", the repository's skills delivered " + skills.DeliveryOf(d.Skills)
+	case d.Prebuilt:
+		s += ", the prebuilt agents' skills delivered " + skills.DeliveryOf(d.Skills)
 	}
 	return s
 }
@@ -104,7 +115,10 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		if err := commitAll(ctx, repo, "The team's skills"); err != nil {
 			return fail(Failed, err.Error())
 		}
-		rec.Skills, rec.SkillNames = skills.DeliveryOf(d.Skills), names
+		rec.SkillNames = names
+	}
+	if d.hasSkills() {
+		rec.Skills = skills.DeliveryOf(d.Skills)
 	}
 	c, err := core.Open(ctx, core.Config{DataDir: d.DataDir, User: "trial", LeaseTTL: 30 * time.Second, Adapters: d.Adapters})
 	if err != nil {
@@ -160,6 +174,24 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		if res.Offered != len(rec.SkillNames) || len(res.Errors) > 0 {
 			return fail(Failed, fmt.Sprintf("the skills scan offered %d of %d skills (blocked %d): %s", res.Offered, len(rec.SkillNames), res.Blocked, strings.Join(res.Errors, "; ")))
 		}
+	}
+	if d.Prebuilt {
+		if d.SkillsFetcher != nil {
+			c.Knowledge().Skills.Fetcher = d.SkillsFetcher
+		}
+		refs, err := PrebuiltSkillRefs()
+		if err != nil {
+			return fail(Failed, err.Error())
+		}
+		for _, r := range refs {
+			if err := call("skill.import", skills.ImportReq{ProjectID: p.ID, RegistryID: r.Registry, Name: r.Name, Ref: r.Ref}, nil); err != nil {
+				return fail(Failed, "the prebuilt skills: "+err.Error())
+			}
+			rec.SkillNames = append(rec.SkillNames, r.Name)
+		}
+		sort.Strings(rec.SkillNames)
+	}
+	if d.hasSkills() {
 		for _, name := range rec.SkillNames {
 			if err := call("skill.accept", map[string]string{"projectId": p.ID, "name": name}, nil); err != nil {
 				return fail(Failed, err.Error())
