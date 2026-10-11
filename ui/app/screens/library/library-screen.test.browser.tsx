@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { McpLibraryServer, McpOAuthStatus } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { claude, devLicense, libServer, pay, projects, projServer, rev, tpl } from '../mcp/fixtures.ts';
 import { DRAG_MIME } from './dnd.ts';
 import { CATALOG } from '../project/wizard-fixtures.ts';
@@ -170,7 +170,8 @@ describe('Library page', () => {
       bad.setData(DRAG_MIME, '{"kind":"file","id":"x"}');
       project.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: bad }));
     });
-    await new Promise((res) => setTimeout(res, 50));
+    // a drop that is taken calls the core from its handler (the template drop above was recorded that way)
+    await drain();
     expect(grants).toEqual([]);
     expect(adds).toEqual([]);
     expect(applies).toEqual([['tpl_1', 'prj_1']]);

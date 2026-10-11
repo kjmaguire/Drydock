@@ -96,9 +96,14 @@ const messages = (r: R) => $$(r, '[data-testid="chat-message"]');
 async function pickMenu(r: R, rowTitle: string, label: string) {
   const trigger = await waitFor(() => byText(r.container, 'button', `Actions for ${rowTitle}`), r);
   await r.act(() => trigger.click());
+  // a menu still finishing its last selection (flash, close, back to idle) ignores the click, as it does for a person:
+  // click again until it opens (no fixed wait)
   const it = await waitFor(() => {
     const el = $$(r, '[popover]:popover-open [role^="menuitem"]').find((e) => e.textContent!.trim() === label);
-    if (!el) throw new Error(`no menu item ${label}`);
+    if (!el) {
+      if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+      throw new Error(`no menu item ${label}`);
+    }
     return el;
   }, r);
   await r.act(() => it.click());
@@ -212,7 +217,6 @@ describe('Chats list', () => {
     await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
     expect(must$(r, '[aria-label="Chats"]').querySelector('[role="alert"]')).toBeNull();
     // opened again, the dialog starts without the old error
-    await new Promise((res) => setTimeout(res, 300)); // the menu finishes closing after a selection
     await pickMenu(r, 'Keep', 'Delete…');
     const again = await waitFor(() => dialogWith('Delete chat'), r);
     expect(again.querySelector('[role="alert"]')).toBeNull();
@@ -224,7 +228,6 @@ describe('Chats list', () => {
     await pickMenu(r, 'Draft', 'Pin');
     const list = must$(r, '[aria-label="Chats"]');
     await waitFor(() => expect(must(list.querySelector('[role="alert"]'), 'list alert').textContent).toContain('no valid license'), r);
-    await new Promise((res) => setTimeout(res, 300));
     await pickMenu(r, 'Draft', 'Rename');
     const dlg = await waitFor(() => dialogWith('Rename chat'), r);
     expect(dlg.querySelector('[role="alert"]')).toBeNull(); // the list's error is not the dialog's
@@ -272,7 +275,6 @@ describe('Chats list', () => {
     await r.act(() => byText(dlg, 'button', 'Save').click());
     await waitFor(() => expect(updates).toEqual([{ id: 'c1', title: 'Release notes' }]), r);
     await waitFor(() => expect(rowTitles(r)).toEqual(['Release notes']), r); // no chat.updated was sent
-    await new Promise((res) => setTimeout(res, 300)); // the menu finishes closing after a selection
     await pickMenu(r, 'Release notes', 'Fork');
     await waitFor(() => expect(navigated).toEqual(['/chats/c9']), r);
     expect(forks).toEqual([['c1', undefined]]);

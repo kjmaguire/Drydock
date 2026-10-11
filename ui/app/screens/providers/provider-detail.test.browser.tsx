@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { ProviderDetail, ProviderEdit } from '../../api/providerClient.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { ProviderDetailPanel } from './provider-detail.tsx';
 
 afterEach(cleanup);
@@ -72,10 +72,16 @@ describe('ProviderDetailPanel', () => {
     await r.act(() => byText(r.container, 'button', 'Save price').click());
     type(byLabel(r.container, 'Quota limit'), '0');
     await r.act(() => byText(r.container, 'button', 'Set limit').click());
-    await new Promise((res) => setTimeout(res, 30));
+    // the values are checked in the click handlers; a call would reach the double from there or its promise chain
+    await drain();
     expect(prices.length).toBe(0);
     expect(quotas.length).toBe(0);
     expect(byLabel(r.container, 'Input price of model-a')).toBeTruthy();
+    // and a valid limit, the same way, is sent: the check above would have seen a call
+    type(byLabel(r.container, 'Quota limit'), '5');
+    await r.act(() => byText(r.container, 'button', 'Set limit').click());
+    await drain();
+    expect(quotas).toEqual([['prov_1', '', 'rpd', 5]]); // the form's default window
   });
 
   it('reads the key limits from the provider on a button, and shows a refusal verbatim', async () => {

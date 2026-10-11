@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
-import { cleanup, mount, testServices, waitFor } from '../test/render.tsx';
+import { cleanup, drain, mount, testServices, waitFor } from '../test/render.tsx';
 import { ProjectSwitcher } from './project-switcher.tsx';
 
 afterEach(cleanup);
@@ -29,9 +29,16 @@ async function setup(projects?: { id: string; name: string }[]) {
     if (projects?.length !== 0 && !b.textContent!.includes('gocalc-approve')) throw new Error('projects not loaded yet');
     return b;
   }, r);
+  /**
+   * Open the menu. A menu still finishing its last selection (flash, close, back to idle) ignores the click, as it does for
+   * a person, so the click is repeated until the menu shows: no fixed wait.
+   */
   const open = async () => {
     await r.act(() => trigger.click());
-    await waitFor(() => expect(shown(r)).toBe(true), r);
+    await waitFor(() => {
+      if (!shown(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+      expect(shown(r)).toBe(true);
+    }, r);
   };
   const items = () => Array.from(r.$$('[role^="menuitem"]')) as HTMLElement[];
   const radios = () => Array.from(r.$$('[role="menuitemradio"]')) as HTMLElement[];
@@ -91,7 +98,9 @@ describe('the project switcher', () => {
       const { s, open, radios, r, navigated } = await setup();
       await open();
       await r.act(() => radios()[0]!.click());
-      await new Promise((res) => setTimeout(res, 50));
+      // the menu hands over the selection before it closes: once it is closed, the choice has been handled
+      await waitFor(() => expect(shown(r)).toBe(false), r);
+      await drain();
       expect(s.workspace.projectId).toBe('p1');
       expect(navigated).toEqual([]);
     } finally {
@@ -121,8 +130,7 @@ describe('the project switcher', () => {
     await waitFor(() => expect(navigated).toEqual(['/project/new']), r);
     await waitFor(() => expect(shown(r)).toBe(false), r);
     await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'), r);
-    // the menu finishes its selection (flash, close, back to idle) a moment after it hides; a person cannot click that fast
-    await new Promise((res) => setTimeout(res, 150));
+    // the menu finishes its selection (flash, close, back to idle) a moment after it hides: open() clicks until it opens
     await open();
     await r.act(() => items().find((e) => e.textContent!.includes('App settings'))!.click());
     await waitFor(() => expect(navigated).toEqual(['/project/new', '/settings']), r);

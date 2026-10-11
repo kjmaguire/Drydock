@@ -5,7 +5,7 @@ import type { Skill } from '../../api/extTypes.ts';
 import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts';
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { CATALOG } from '../project/wizard-fixtures.ts';
 import { TeamScreen } from './team-screen.tsx';
 
@@ -316,8 +316,8 @@ describe('Claude best practices', () => {
     type(byLabel<HTMLSelectElement>(r.container, 'Effort'), 'low');
     type(byLabel(r.container, 'Role'), 'backend');
     await waitFor(() => expect(asked.filter((x) => x === 'backend').length).toBe(2), r);
-    await new Promise((res) => setTimeout(res, 300));
-    r.root.flush();
+    // the answer for backend is on screen (the step that would have overwritten the effort has run)
+    await waitFor(() => expect(box.textContent).toContain('Recommended for a backend (worker)'), r);
     expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('low');
     // the switch is on by default and can be turned off
     const sw = byLabel<HTMLInputElement>(r.container, 'Follow Claude Code best practices');
@@ -341,13 +341,17 @@ describe('Claude best practices', () => {
     expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('medium');
   });
 
-  it('shows nothing for an adapter that is not Claude Code', async () => {
+  it('shows nothing for an adapter that is not Claude Code', async (t) => {
     const asked: string[] = [];
     const { r } = show([], { claudePractices: async (role) => (asked.push(role), practices(role)) });
     await waitAdapters(r);
+    // the recommendation is asked 200 ms after the role changes (a timer): fake time runs past it
+    const timers = t.useFakeTimers();
     type(byLabel<HTMLSelectElement>(r.container, 'Adapter'), 'opencode');
     type(byLabel(r.container, 'Role'), 'backend');
-    await new Promise((res) => setTimeout(res, 300));
+    r.root.flush();
+    timers.advance(1000);
+    await drain();
     r.root.flush();
     expect(r.container.querySelector('[data-testid="claude-practices"]')).toBe(null);
     expect(asked).toEqual([]);

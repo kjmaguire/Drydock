@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../api/client.ts';
 import type { GitConfigStatus, Project } from '../api/types.ts';
 import { expiredLicense, lic } from '../test/fixtures.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../test/render.tsx';
+import { byText, cleanup, drain, mount, testServices, waitFor } from '../test/render.tsx';
 import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { Shell } from './shell.tsx';
 
@@ -48,14 +48,14 @@ function svc(client: Partial<Client>, license = lic()) {
 
 const banner = (r: { $: (s: string) => Element | null }) => r.$('[data-testid="repo-config-banner"]');
 const items = (r: { $$: (s: string) => NodeListOf<Element> }) => Array.from(r.$$('[data-testid="repo-config-items"] li')).map((li) => li.getAttribute('data-item'));
-const settle = () => new Promise((res) => setTimeout(res, 30));
 
 describe('the repository configuration banner', () => {
   it('shows nothing while the configuration is the trusted one', async () => {
     const g = guard(trusted);
     const r = mount(<RepoConfigBanner projectId="p1" />, svc(g.client));
     await waitFor(() => expect(g.reads).toBe(1), r);
-    await settle();
+    // the answer of the (async) double is on screen once its promise chain has run
+    await drain();
     r.root.flush();
     expect(banner(r)).toBeNull();
   });
@@ -78,7 +78,9 @@ describe('the repository configuration banner', () => {
     // showing it, re-reading it, focusing the window: none of that trusts anything
     await r.act(() => window.dispatchEvent(new Event('focus')));
     s.emit({ type: 'approval.requested', projectId: 'p1' });
-    await settle();
+    // both re-reads happened (focus at once, the event after its debounce) and everything they started has run
+    await waitFor(() => expect(g.reads).toBe(3), r);
+    await drain();
     expect(g.trusts).toEqual([]);
     await r.act(() => btn.click());
     await waitFor(() => expect(g.trusts).toEqual([['p1', 'fp-1']]), r);
@@ -122,15 +124,18 @@ describe('the repository configuration banner', () => {
   });
 
   it('a read that fails shows no banner', async () => {
+    let reads = 0;
     const r = mount(
       <RepoConfigBanner projectId="p1" />,
       svc({
         projectGitConfig: async () => {
+          reads++;
           throw new Error('project p1 has no repository');
         },
       }),
     );
-    await settle();
+    await waitFor(() => expect(reads).toBe(1), r);
+    await drain();
     r.root.flush();
     expect(banner(r)).toBeNull();
   });
@@ -163,7 +168,8 @@ describe('the banner in the shell', () => {
     const g = guard(changed);
     const r = shell(project({ hasRepo: false, repoPath: '' }), g);
     await waitFor(() => expect(r.$('[data-testid="route-content"]')).not.toBeNull(), r);
-    await settle();
+    // a banner mounted with the page would have asked within the same promise chain
+    await drain();
     expect(g.reads).toBe(0);
     expect(banner(r)).toBeNull();
   });

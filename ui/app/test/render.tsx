@@ -61,6 +61,21 @@ export function cleanup(): void {
   for (const r of mounted.splice(0)) r.cleanup();
 }
 
+/**
+ * The real timer, taken before any test can install fake timers (t.useFakeTimers()): waitFor and drain keep working while
+ * the component under test runs on fake time.
+ */
+const realSetTimeout: typeof setTimeout = globalThis.setTimeout.bind(globalThis);
+
+/**
+ * Let every pending promise continuation run: resolves on the next macrotask, after the microtask queue is empty. Not a
+ * sleep (no amount of time is waited); use it to assert that nothing followed from a step whose follow-up, if any, would be
+ * promise-driven (an async test double's answer, a re-render). Code driven by timers needs fake timers instead.
+ */
+export function drain(): Promise<void> {
+  return new Promise((res) => realSetTimeout(res, 0));
+}
+
 /** Retry `check` (flushing the root between tries) until it stops throwing or the timeout passes. */
 export async function waitFor<T>(check: () => T, r?: { root: { flush(): void } }, timeoutMs = 2000): Promise<T> {
   const start = Date.now();
@@ -73,7 +88,7 @@ export async function waitFor<T>(check: () => T, r?: { root: { flush(): void } }
       last = e;
     }
     if (Date.now() - start > timeoutMs) throw last;
-    await new Promise((res) => setTimeout(res, 10));
+    await new Promise((res) => realSetTimeout(res, 10));
   }
 }
 

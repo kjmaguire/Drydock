@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ExternalItem, IntegrationView, Outbox } from '../../api/extTypes.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
 import { IntegrationsScreen, RiskBadge } from './integrations-screen.tsx';
 
 afterEach(cleanup);
@@ -130,7 +130,9 @@ describe('Integrations', () => {
     await waitFor(() => expect(r.$('[data-testid="integration"][data-kind="sentry"]')).not.toBeNull(), r);
   });
 
-  it('OAuth instead of a token: the sign-in page is linked, and once signed in the reference is sent instead of a token', async () => {
+  it('OAuth instead of a token: the sign-in page is linked, and once signed in the reference is sent instead of a token', async (t) => {
+    // the sign-in status is asked once a second (a timer): fake time drives it, no real second is waited
+    const timers = t.useFakeTimers();
     const calls: Calls = [];
     let signed = false;
     const r = show({
@@ -144,14 +146,18 @@ describe('Integrations', () => {
     expect(link.href).toBe('https://linear.app/oauth/authorize?x=1');
     expect(link.target).toBe('_blank');
     signed = true;
-    await waitFor(() => expect(r.$('[data-testid="integration-oauth"]')).not.toBeNull(), r, 4000);
+    timers.advance(1000);
+    await waitFor(() => expect(r.$('[data-testid="integration-oauth"]')).not.toBeNull(), r);
     expect(() => byLabel(r.container, 'Access token')).toThrow();
     await r.act(() => byText(r.container, 'button', 'Connect').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]![0]).toMatchObject({ kind: 'linear', oauthRef: 'oauth/mcplib/lin1', token: undefined });
   });
 
-  it('a sign-in that fails is said, and the page stops asking', async () => {
+  it('a sign-in that fails is said, and the page stops asking', async (t) => {
+    // the sign-in status is asked once a second (a timer): fake time drives it, so "stops asking" is checked over ten
+    // seconds of fake time instead of a real wait
+    const timers = t.useFakeTimers();
     let polls = 0;
     const r = show({
       integrationList: async () => [],
@@ -159,17 +165,22 @@ describe('Integrations', () => {
       mcpOAuthStatus: async (id: string) => (polls++, { id, state: 'failed', error: 'sign-in failed: dial tcp 127.0.0.1:9: connection refused', signedIn: false }),
     });
     await r.act(() => byText(r.container, 'button', 'Sign in with OAuth instead').click());
+    await waitFor(() => expect(r.$('[data-testid="integration-oauth-link"]')).not.toBeNull(), r);
+    expect(polls).toBe(0);
+    timers.advance(1000);
     const err = await waitFor(() => {
       const e = r.$('[data-testid="integration-oauth-error"]');
       if (!e) throw new Error('not yet');
       return e;
-    }, r, 4000);
+    }, r);
     expect(err.textContent).toContain('Could not sign in to Linear');
     expect(err.textContent).toContain('connection refused');
     expect(r.$('[data-testid="integration-oauth-link"]')).toBeNull();
-    const seen = polls;
-    await new Promise((res) => setTimeout(res, 1500));
-    expect(polls).toBe(seen);
+    expect(polls).toBe(1);
+    // ten more seconds: the page asks no more (a poll would call the double at once, when its timer fires)
+    timers.advance(10_000);
+    await drain();
+    expect(polls).toBe(1);
     // the token field is still there to connect another way
     expect(byLabel(r.container, 'Access token')).toBeDefined();
   });

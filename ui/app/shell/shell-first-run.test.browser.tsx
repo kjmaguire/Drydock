@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Project, SetupResult } from '../api/types.ts';
 import { lic } from '../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../test/render.tsx';
 import { adapterInfo, CATALOG, prebuilt } from '../screens/project/wizard-fixtures.ts';
 import { Shell } from './shell.tsx';
 
@@ -47,7 +47,8 @@ describe('the first run', () => {
     created = true;
     s.emit({ type: 'project.created', data: { id: 'p9' } });
     await waitFor(() => expect(s.workspace.projectList.map((p) => p.id)).toEqual(['p9']), r);
-    await new Promise((res) => setTimeout(res, 50));
+    // the shell has seen the new project (its reads answer through async doubles): what it does about it has run
+    await drain();
     r.root.flush();
     expect(r.$('[data-testid="route-content"]')).toBeNull();
     expect(r.$('form')!.getAttribute('data-step')).toBe('Review');
