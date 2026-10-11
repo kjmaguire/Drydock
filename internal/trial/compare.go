@@ -76,11 +76,16 @@ func Compare(groups []Group) string {
 		base := groups[0].Name
 		for _, g := range groups[1:] {
 			more, less, same := 0, 0, 0
+			paired, minRuns := 0, 0
 			for _, t := range tasks {
 				a, okA := byTask[t][base]
 				o, okO := byTask[t][g.Name]
 				if !okA || !okO || a[1] == 0 || o[1] == 0 {
 					continue
+				}
+				paired++
+				if r := min(a[1], o[1]); minRuns == 0 || r < minRuns {
+					minRuns = r
 				}
 				ra, ro := float64(a[0])/float64(a[1]), float64(o[0])/float64(o[1])
 				switch {
@@ -92,8 +97,14 @@ func Compare(groups []Group) string {
 					same++
 				}
 			}
-			fmt.Fprintf(&b, "%s against %s: accepted more often on %d task(s), less often on %d, as often on %d; exact two-sided sign test p = %.3f.\n",
-				g.Name, base, more, less, same, signTest(more, less))
+			fmt.Fprintf(&b, "%s against %s: accepted more often on %d task(s), less often on %d, as often on %d", g.Name, base, more, less, same)
+			// the same rule as Report (decision P34): no significance test below the size a claim needs
+			if paired >= ClaimTasks && minRuns >= ClaimRepeats {
+				fmt.Fprintf(&b, "; exact two-sided sign test p = %.3f.\n", signTest(more, less))
+			} else {
+				fmt.Fprintf(&b, ". No test is computed: decision P34 asks for at least %d paired tasks with %d counted runs of each arm (here %d tasks, at least %d runs each).\n",
+					ClaimTasks, ClaimRepeats, paired, minRuns)
+			}
 		}
 	}
 	return b.String()

@@ -76,3 +76,12 @@ func TestDrydockCommitIsTheBinarysOwn(t *testing.T) {
 		t.Fatalf("unstamped binary: %q, want the repository's HEAD %s", got, head)
 	}
 }
+
+func TestATrialFromADirtyTreeIsRefusedUnlessAllowed(t *testing.T) {
+	if err := refuseDirty("0123456789ab+dirty", false); err == nil || !strings.Contains(err.Error(), "-allow-dirty") {
+		t.Fatalf("dirty: %v", err)
+	}
+	if refuseDirty("0123456789ab+dirty", true) != nil || refuseDirty("0123456789ab", false) != nil {
+		t.Fatal("allowed or clean must run")
+	}
+}

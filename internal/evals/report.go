@@ -156,7 +156,7 @@ type WatchdogSection struct {
 	BySignal    map[string]int `json:"bySignal"`
 	Warnings    int            `json:"warnings"` // soft stagnation warnings: not trips
 	PerAccepted *float64       `json:"perAccepted,omitempty"`
-	FalseTrips  int            `json:"falseTrips"` // a human reset or dismissed the trip within the same run
+	FalseTrips  int            `json:"falseTrips"` // a human reset or dismissed the trip within the same run (overridden, not judged false: see Note)
 	FalseRate   Ratio          `json:"falseRate"`
 	Note        string         `json:"note"`
 }
@@ -673,7 +673,7 @@ func (r *Report) computeWatchdog(ctx context.Context, db *storage.DB, o Options,
 		w.PerAccepted = &v
 	}
 	w.FalseRate = ratio(w.FalseTrips, w.Trips)
-	w.Note = "A trip is false when a human reset the task (a watchdog 'reset' row after it, before the task's next workflow run began) or dismissed its Needs-you item. A trip nobody acted on is not labeled real: it is unreviewed, so the rate is a lower bound on false trips, and a trip is never labeled by the system itself. Stage-1 trips on adapters without tool-call visibility run reduced detection and are not comparable."
+	w.Note = "falseTrips counts trips a person let go: a watchdog 'reset' row after the trip, before the task's next workflow run began, or a dismissed Needs-you item. That is not a judgement that the trip was wrong: answering a pause to let a genuinely stuck agent try again resets it too, so it can count real trips, and a trip nobody acted on counts in neither direction. No person is asked whether a trip was real, so no false-trip rate is measured; read this as the share of trips people overrode. Stage-1 trips on adapters without tool-call visibility run reduced detection and are not comparable."
 	return rows.Err()
 }
 

@@ -554,12 +554,27 @@ func TestCompareShowsVariantsTaskByTask(t *testing.T) {
 	})
 	for _, want := range []string{
 		"| none | 2 | 2 | $0.2000 | $0.1000 |", "| all | 2 | 1 | $0.4000 | $0.4000 |", "| 1100 (1100 to 1100) |", "| 1.5 (1.0 to 2.0) |",
-		"| a | 1 of 1 | 0 of 1 | 1 of 1 |", "all against none: accepted more often on 0 task(s), less often on 1, as often on 1; exact two-sided sign test p = 1.000.",
+		"| a | 1 of 1 | 0 of 1 | 1 of 1 |", "all against none: accepted more often on 0 task(s), less often on 1, as often on 1. No test is computed: decision P34 asks for at least 20 paired tasks with 3 counted runs of each arm (here 2 tasks, at least 1 runs each).",
 		"relevant against none: accepted more often on 0 task(s), less often on 0, as often on 2",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)
 		}
+	}
+	if strings.Contains(md, "sign test p") {
+		t.Errorf("a pilot-sized comparison printed a significance test:\n%s", md)
+	}
+	// at the size P34 asks for, the test is printed
+	var none, all []Record
+	for i := 0; i < ClaimTasks; i++ {
+		for k := 0; k < ClaimRepeats; k++ {
+			id := fmt.Sprintf("t%02d", i)
+			none = append(none, r("none", id, Accepted, 0.1, 0))
+			all = append(all, r("all", id, Accepted, 0.1, 0))
+		}
+	}
+	if md := Compare([]Group{{Name: "none", Recs: none}, {Name: "all", Recs: all}}); !strings.Contains(md, "exact two-sided sign test p = 1.000") {
+		t.Errorf("a claim-sized comparison lacks its test:\n%s", md)
 	}
 }
 

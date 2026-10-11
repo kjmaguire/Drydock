@@ -201,7 +201,7 @@ Built in `internal/evals` (2026-10-08, Slice 2). It reads the real database and 
 
 **11.7 Premium REVISE rate on cheap-worker tasks (3.4).** Cheap-worker tasks are classified by the worker's tier alone (an escalated cheap-worker task stays in, because its premium verdicts are the point). A *premium verdict* is a `task_reviews` row by a non-human reviewer whose usage rows on that task include a premium-tier row; a reviewer with no usage rows is unknown tier and excluded (counted), human verdicts are excluded (counted). Reported: premium REVISE / premium verdicts; tasks with at least one premium REVISE / cheap-worker tasks with a premium verdict; escalated / cheap-worker tasks. `task_reviews` only stores SHIP or REVISE (an unparseable answer is stored as REVISE), so the `invalid` verdict class of 3.4 cannot be reported.
 
-**11.8 Watchdog (3.5).** Trips are `watchdog_trips` rows other than `reset` and `stagnation` in the window (stagnation is a soft warning, counted apart; `reset` is a human resuming); split by signal and stage; per accepted task = trips / accepted tasks. A trip is **false** when a human acted on it inside the same run: a `reset` row for the task after the trip and before the task's next workflow run began, or a human acknowledgement of its Needs-you item (`room_inbox_acks`, `watchdog:<id>`). A trip nobody acted on is unreviewed, not real, so the false-trip rate (false / trips) is a lower bound. The system never labels a trip itself.
+**11.8 Watchdog (3.5).** Trips are `watchdog_trips` rows other than `reset` and `stagnation` in the window (stagnation is a soft warning, counted apart; `reset` is a human resuming); split by signal and stage; per accepted task = trips / accepted tasks. The report's `falseTrips` counts trips a human **overrode** inside the same run: a `reset` row for the task after the trip and before the task's next workflow run began, or a human acknowledgement of its Needs-you item (`room_inbox_acks`, `watchdog:<id>`). As built this is not a false-trip label (audit F19, 2026-10-11): answering a pause so that a genuinely stuck agent tries again also resets it, so real trips can be counted, while a trip nobody acted on counts in neither direction. No person is asked whether a trip was real, so the false-trip rate of section 3.5 is **not measured**; the report's note says so. Measuring it needs an explicit real/false answer on the pause. The system never labels a trip itself.
 
 **11.9 Completion, tests, iterations (3.7).** Completion = accepted / started (`started_at > 0`). First-check test pass = tasks whose first `test` evidence passed / tasks with test evidence; final = accepted tasks whose last `test` evidence passed / accepted tasks with test evidence. Iterations to SHIP = for accepted tasks, the number of non-human reviews up to and including the first SHIP (median, min, max, n; tasks shipped only by a human are not in it).
 
@@ -372,6 +372,10 @@ both arms. The runs went in 12 parallel shards on one 4-CPU Linux machine, so wa
 | D | 69 | 68 | $9.0503 | $0.1331 | $0.0870 ($0.0305 to $0.5487) | 4m7s (1m34s to 9m39s) |
 | B1 | 69 | 66 | $8.6999 | $0.1318 | $0.0681 ($0.0222 to $0.4247) | 3m13s (59s to 7m15s) |
 
+Read per run first: the median D run cost 28% more than the median B1 run ($0.0870 against $0.0681) and took about a minute
+longer; over all runs D cost 4% more. Cost per accepted task came out about the same only because D was accepted on two more
+runs.
+
 **The pre-registered comparison.** Task by task, D was accepted more often than B1 on 2 tasks (graceful shutdown and webhook
 SSRF: 3 of 3 against 2 of 3), less often on none, and as often on 21 (every one 3 of 3 in both arms except proration, 2 of 3
 in both). The exact two-sided sign test over the 2 tasks where the arms differ gives p = 0.5. By class: high-risk 6 of 6
@@ -444,10 +448,11 @@ Prompt tokens are fresh input plus cache reads and writes over every turn of a r
 **Result.**
 - **All skills in every turn cost 1.9 times as much and did not help.** Cost per accepted task $0.19 against $0.10; every
   turn re-read the 87 KB. Acceptance was 43 of 46 against 45 of 46: task by task worse on 2 tasks (graceful shutdown 0 of 2
-  against 1 of 2, renewal dedupe 1 of 2 against 2 of 2), better on none, exact sign test p = 0.5, so no claim of harm to
-  quality either.
+  against 1 of 2, renewal dedupe 1 of 2 against 2 of 2), better on none. With two repeats per task this is below the size decision P34 asks for (20 tasks, 3 repeats), so no
+  significance test applies and no claim of harm to quality is made either. (An earlier version of this section quoted sign
+  test p-values here; the comparison tool printed them regardless of size until the audit of 2026-10-11, F19.)
 - **Relevant cost the same as none** ($4.38 against $4.37; the index added about 16% prompt tokens at the median) and was
-  accepted as often (45 of 46; better on graceful shutdown, worse on proration, p = 1.0).
+  accepted as often (45 of 46; better on graceful shutdown, worse on proration; no test, as above).
 - **The agents opened none of the twelve** in the relevant runs (0 reads in 46 runs): right, since none applies.
 - The five runs not accepted: three on the graceful-shutdown rule "a second Shutdown returns at once" (two in all, one in
   none; plain Claude Code failed the same rule in section 13.2), one proration rule (relevant), one iteration limit (all).

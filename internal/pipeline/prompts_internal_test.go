@@ -280,3 +280,27 @@ func TestAcceptedSpecComesFromHumanAcceptance(t *testing.T) {
 		t.Fatalf("the brief in a prompt is bounded: %d", len(b))
 	}
 }
+
+// The brief reaches a task turn once: from the worktree's AGENTS.md when that file carries it, otherwise in the prompt.
+func TestTheBriefIsSentOncePerTurn(t *testing.T) {
+	ctx := context.Background()
+	brief := "A calculator library for primary-school pupils. Keep every message short and friendly."
+	d := Deps{ProjectBrief: func(context.Context, string) string { return brief }}
+	wt := t.TempDir()
+	tk := tasks.Task{ProjectID: "p1", Worktree: wt}
+	if got := d.taskBrief(ctx, tk); got != brief {
+		t.Fatalf("no instruction file: the prompt carries the brief, got %q", got)
+	}
+	os.WriteFile(filepath.Join(wt, "AGENTS.md"), []byte("# Project instructions\n\n## Standing instructions\n\n"+BriefForInstructions(brief)+"\n"), 0o644)
+	if got := d.taskBrief(ctx, tk); got != "" {
+		t.Fatalf("AGENTS.md carries the brief: the prompt must not repeat it, got %q", got)
+	}
+	if p := WorkPrompt(tasks.Task{Title: "Add Subtract"}, workflow.NodeInput{}, PromptContext{Brief: d.taskBrief(ctx, tk)}); strings.Contains(p, "primary-school") {
+		t.Fatalf("work prompt repeats the brief:\n%s", p)
+	}
+	// a person edited AGENTS.md and the brief is gone from it: the prompt carries it again
+	os.WriteFile(filepath.Join(wt, "AGENTS.md"), []byte("# My own notes\n"), 0o644)
+	if got := d.taskBrief(ctx, tk); got != brief {
+		t.Fatalf("an AGENTS.md without the brief: got %q", got)
+	}
+}

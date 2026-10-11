@@ -160,7 +160,7 @@ func (td TemplateDeps) specDraft() workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		feedback, previous := feedbackFromInbox(in)
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RolePM, ReadOnly: true, Phase: "spec", Prompt: SpecPrompt(t, previous, feedback, td.brief(ctx, t.ProjectID))})
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RolePM, ReadOnly: true, Phase: "spec", Prompt: SpecPrompt(t, previous, feedback, td.taskBrief(ctx, t))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -349,7 +349,7 @@ func (td TemplateDeps) design() workflow.NodeHandler {
 			return workflow.NodeOutput{Value: json.RawMessage(`{"design":"skipped: no architect agent on the team"}`)}, nil
 		}
 		cur, _ := td.Tasks.Get(ctx, t.ID)
-		out, err := td.roleTurn(ctx, in, cur, turnOpts{Role: RoleArchitect, ReadOnly: true, Phase: "design", Prompt: DesignPrompt(cur, td.acceptedSpec(ctx, t.ID), td.brief(ctx, t.ProjectID))})
+		out, err := td.roleTurn(ctx, in, cur, turnOpts{Role: RoleArchitect, ReadOnly: true, Phase: "design", Prompt: DesignPrompt(cur, td.acceptedSpec(ctx, t.ID), td.taskBrief(ctx, t))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -388,7 +388,7 @@ func (td TemplateDeps) writeTests(bug bool) workflow.NodeHandler {
 		if !bug {
 			spec = td.acceptedSpec(ctx, t.ID)
 		}
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleTests, Phase: phase, Prompt: TestsPrompt(t, bug, feedback, spec, td.brief(ctx, t.ProjectID))})
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleTests, Phase: phase, Prompt: TestsPrompt(t, bug, feedback, spec, td.taskBrief(ctx, t))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}

@@ -107,6 +107,7 @@ func run(ctx context.Context, args []string) error {
 	startBefore := fs.Duration("start-before", 0, "start no run once this long has passed since the command started (0: no limit)")
 	skillsDir := fs.String("skills-dir", "", "D only: the repository's own skills (<name>/SKILL.md), committed under .aet/skills and accepted for both agents")
 	prebuilt := fs.Bool("prebuilt-skills", false, "D only: import the prebuilt agents' skills from their registries at the catalog's pins and accept them")
+	allowDirty := fs.Bool("allow-dirty", false, "run from a binary built from a tree with uncommitted changes (its records say +dirty; a trial that is to support a claim is run from a commit)")
 	skillMode := fs.String("d-skills", "", "D only, with -skills-dir or -prebuilt-skills: how Claude gets them, all (every turn) or relevant (the default when not given)")
 	_ = fs.Parse(args)
 	if *skillMode != "" && *skillsDir == "" && !*prebuilt {
@@ -153,6 +154,9 @@ func run(ctx context.Context, args []string) error {
 	}
 	info, _ := debug.ReadBuildInfo()
 	commit := drydockCommit(root, info)
+	if err := refuseDirty(commit, *allowDirty); err != nil {
+		return err
+	}
 	if contains(armOrder, trial.ArmDrydock) && *mode == trial.ModeSandbox && *image == "" {
 		eng := sandbox.NewEngine()
 		fmt.Println("building the offline Go image for the sandbox ...")
@@ -492,4 +496,13 @@ func contains(xs []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// refuseDirty stops a trial whose Drydock was built from uncommitted changes: its records could not say which code ran
+// (audit F19: 46 of 69 records of the first hard trial carry +dirty). -allow-dirty runs it anyway, for trying the harness.
+func refuseDirty(commit string, allow bool) error {
+	if strings.HasSuffix(commit, "+dirty") && !allow {
+		return fmt.Errorf("drydock-trial was built from a tree with uncommitted changes (%s): commit them first, or pass -allow-dirty for a run that supports no claim", commit)
+	}
+	return nil
 }

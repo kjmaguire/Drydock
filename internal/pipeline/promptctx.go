@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -43,6 +44,29 @@ func (d Deps) brief(ctx context.Context, projectID string) string {
 		return ""
 	}
 	return clip(strings.TrimSpace(cleanText(d.ProjectBrief(ctx, projectID))), maxBriefPrompt)
+}
+
+// taskBrief is the brief for a turn in the task's worktree: empty when the worktree's instruction file (the AGENTS.md the
+// context engine writes, which every agent there reads as standing instructions) already carries it, so a turn does not pay
+// for it twice, once of them outside the cached system prompt. A worktree without it (no context engine, an instruction file
+// a person edited) still gets the brief in the prompt.
+func (d Deps) taskBrief(ctx context.Context, t tasks.Task) string {
+	b := d.brief(ctx, t.ProjectID)
+	if b == "" || t.Worktree == "" {
+		return b
+	}
+	raw, err := os.ReadFile(filepath.Join(t.Worktree, "AGENTS.md"))
+	if err != nil {
+		return b
+	}
+	head := b
+	if len(head) > 200 {
+		head = head[:200]
+	}
+	if strings.Contains(string(raw), head) {
+		return ""
+	}
+	return b
 }
 
 // briefBlock renders the project brief for a prompt: it is the human's own text, so it is background, not quoted agent data.

@@ -39,6 +39,8 @@ type Adapter struct {
 	// ScrubEnv starts claude from an allowlisted environment instead of the app's whole environment: the base list
 	// (proc.BaseEnvNames), the variables claude itself reads (CLAUDE_*, ANTHROPIC_*) and the names PassEnv returns.
 	ScrubEnv bool
+	// PM runs Detect's probes (nil: a process manager of its own); sessions use the one Start is given.
+	PM proc.Manager
 	// PassEnv returns extra variable NAMES (not values) the human chose to pass on, for setups the allowlist cannot know about
 	// (a Bedrock or Vertex login, a company proxy variable). Read at every start. Nil means none.
 	PassEnv func() []string
@@ -122,24 +124,35 @@ func (a *Adapter) Detect(ctx context.Context) (agents.Detection, error) {
 		return d, nil
 	}
 	d.Installed, d.Path = true, exe
-	vctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(vctx, exe, append(append([]string(nil), a.BaseArgs...), "--version")...).Output()
-	if err != nil {
+	// both probes go through the process manager, which kills the whole tree on a timeout: an npm claude.cmd on Windows is
+	// cmd.exe then node, and killing only cmd.exe would leave node running
+	pm := a.PM
+	if pm == nil {
+		pm = proc.New()
+	}
+	vr := proc.Probe(ctx, pm, proc.Spec{Path: exe, Args: append(append([]string(nil), a.BaseArgs...), "--version"), Label: "probe:claude"}, 15*time.Second)
+	if vr.Err != nil || vr.Exit != 0 {
 		d.Status = agents.StatusDegraded
-		d.Problems = append(d.Problems, "claude --version failed: "+err.Error())
+		why := fmt.Sprintf("exit %d", vr.Exit)
+		if vr.Err != nil {
+			why = vr.Err.Error()
+		}
+		d.Problems = append(d.Problems, "claude --version failed: "+why)
 		return d, nil
 	}
-	d.Version = strings.TrimSpace(string(out))
+	d.Version = strings.TrimSpace(vr.Stdout)
 	if v, ok := ParseVersion(d.Version); ok && Less(v, MinVersion) {
 		d.Status = agents.StatusUnsupportedVersion
 		d.Problems = append(d.Problems, fmt.Sprintf("claude %s is older than the minimum supported %d.%d.%d", d.Version, MinVersion[0], MinVersion[1], MinVersion[2]))
 		return d, nil
 	}
 	// Authentication state comes from the CLI's own probe; Drydock never reads credential files.
-	actx, cancel2 := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel2()
-	aout, aerr := exec.CommandContext(actx, exe, append(append([]string(nil), a.BaseArgs...), "auth", "status")...).Output()
+	ar := proc.Probe(ctx, pm, proc.Spec{Path: exe, Args: append(append([]string(nil), a.BaseArgs...), "auth", "status"), Label: "probe:claude"}, 20*time.Second)
+	aout := []byte(ar.Stdout)
+	var aerr error
+	if ar.Err != nil || ar.Exit != 0 {
+		aerr = fmt.Errorf("exit %d: %v", ar.Exit, ar.Err)
+	}
 	var st struct {
 		LoggedIn   bool   `json:"loggedIn"`
 		AuthMethod string `json:"authMethod"`
@@ -154,9 +167,8 @@ func (a *Adapter) Detect(ctx context.Context) (agents.Detection, error) {
 			return d, nil
 		}
 	} else if aerr != nil {
-		// A non-zero exit from `auth status` is how a logged-out CLI answers; treat it as unauthenticated.
-		var ee *exec.ExitError
-		if errors.As(aerr, &ee) {
+		// A non-zero exit from `auth status` (it ran and answered) is how a logged-out CLI answers; treat it as unauthenticated.
+		if ar.Exit > 0 && !ar.TimedOut {
 			f := false
 			d.Authenticated = &f
 			d.Status = agents.StatusUnauthenticated

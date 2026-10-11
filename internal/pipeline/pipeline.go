@@ -223,7 +223,7 @@ func Work(d Deps) workflow.NodeHandler {
 // promptContext gathers what a builder's turn carries besides the task: the brief, the accepted spec and design notes (when the
 // task went through the spec gate) and the worker's own definition of done for a task without criteria.
 func (d Deps) promptContext(ctx context.Context, t tasks.Task, withSpec bool) PromptContext {
-	pc := PromptContext{Brief: d.brief(ctx, t.ProjectID)}
+	pc := PromptContext{Brief: d.taskBrief(ctx, t)}
 	if withSpec {
 		pc.Spec = d.acceptedSpec(ctx, t.ID)
 		pc.Design = d.designNotes(ctx, t.ID)
