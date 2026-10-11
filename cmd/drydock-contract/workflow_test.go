@@ -64,8 +64,16 @@ func TestContractWorkflowIsWhatTheDocsSay(t *testing.T) {
 			t.Errorf("push paths %v lack %s", w.On.Push.Paths, p)
 		}
 	}
-	if w.Permissions["contents"] != "read" || len(w.Permissions) != 1 {
-		t.Errorf("read-only token: %v", w.Permissions)
+	// a read-only token: contents, and what the gh contracts read (pull requests, check runs, comments); never a write
+	for _, scope := range []string{"contents", "pull-requests", "checks", "issues"} {
+		if w.Permissions[scope] != "read" {
+			t.Errorf("token scope %s: %q, want read", scope, w.Permissions[scope])
+		}
+	}
+	for scope, v := range w.Permissions {
+		if v != "read" {
+			t.Errorf("token scope %s is %q: the contract job only reads", scope, v)
+		}
 	}
 	job, ok := w.Jobs["contract"]
 	if !ok {

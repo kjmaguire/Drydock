@@ -210,5 +210,28 @@ func All() []Contract {
 		Files:      []string{"internal/agents/claude/adapter.go"},
 		Tests:      []TestRef{{Package: pkgContract, Test: "TestWindowsMultilineArgumentThroughClaudeCmd", EstUSD: 0.02, Env: real}},
 	})
+	cs = append(cs,
+		Contract{
+			ID: "GH-AUTH-01", CLI: "gh", Adapter: "gh",
+			Assumption: "Without a sign-in, gh api exits with code 4, and Drydock's gh client reports that as not signed in whatever gh's message says.",
+			Why:        "The new-project wizard, the repository list and every step of the GitHub flow tell a person to sign in from this; in a GitHub Actions job gh's message does not name gh auth login, so the exit code is what Drydock reads.",
+			Files:      []string{"internal/git/host/host.go", "internal/core/github_account.go"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestGhSignedOutExitsWithCodeFour"}},
+		},
+		Contract{
+			ID: "GH-API-01", CLI: "gh", Adapter: "gh",
+			Assumption: "gh api -i prints the status line and headers before the JSON body, the response has an ETag, and a request that sends it back as If-None-Match is answered 304 through gh.",
+			Why:        "Drydock's gh client parses the status and headers itself (rate limits, Retry-After, pagination), and polls pull requests and checks with conditional requests, which GitHub does not count against the rate limit.",
+			Files:      []string{"internal/git/host/host.go", "internal/git/host/github.go"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestGhAPIIncludeHeadersAndConditionalRequests"}},
+		},
+		Contract{
+			ID: "GH-REST-01", CLI: "gh", Adapter: "gh",
+			Assumption: "A pull request has a string mergeable_state, each check run names its app (app.slug), and every review and comment carries an author_association.",
+			Why:        "The merge waits on mergeable_state, required checks are matched by app, and review feedback is trusted only from a collaborator's author_association.",
+			Files:      []string{"internal/git/host/github.go", "internal/git/host/ci.go", "internal/pipeline/prflow.go"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestGhRESTFieldsDrydockReads"}},
+		},
+	)
 	return cs
 }

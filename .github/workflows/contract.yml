@@ -2,6 +2,7 @@
 # It runs on GitHub-hosted runners since the repository went public (decision P2 resolved). A run whose paid checks all
 # skipped (no sign-in secret) says so in a warning annotation: it proves only the free contracts.
 #
+# The gh contracts (GH-*) read this repository with the job's own read-only token; nothing else is needed for them.
 # Sign-in: one repository secret, CLAUDE_CODE_OAUTH_TOKEN (made with `claude setup-token`) or ANTHROPIC_API_KEY. Without either
 # the paid checks skip and the free ones still run.
 # Runner: the repository variable CONTRACT_RUNS_ON, a JSON value such as "windows-latest" or ["self-hosted","windows"]; the
@@ -24,11 +25,16 @@ on:
   push:
     paths:
       - "internal/agents/**"
+      - "internal/git/host/**"
       - "internal/contract/**"
       - "cmd/drydock-contract/**"
       - ".github/workflows/contract.yml"
 permissions:
   contents: read
+  # the gh contracts (GH-*) read this repository's pull requests, check runs and comments with the job's own token
+  pull-requests: read
+  checks: read
+  issues: read
 concurrency:
   group: contract-${{ github.ref }}
   cancel-in-progress: false
@@ -52,6 +58,7 @@ jobs:
       - name: Contract suite (budget cap, version watch)
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BUDGET: ${{ inputs.budget || '1.50' }}

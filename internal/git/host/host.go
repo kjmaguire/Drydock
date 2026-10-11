@@ -176,7 +176,7 @@ func (g GhCLI) Do(ctx context.Context, method, path string, body any, out any, e
 	status, headers, payload := parseHTTP(stdout.Bytes())
 	if status == 0 && runErr != nil {
 		msg := strings.TrimSpace(stderr.String())
-		if strings.Contains(msg, "gh auth login") || strings.Contains(msg, "authentication") {
+		if notSignedIn(runErr, msg) {
 			return "", ErrAuth
 		}
 		return "", fmt.Errorf("gh api %s: %v: %s", path, runErr, msg)
@@ -195,9 +195,25 @@ func (g GhCLI) Raw(ctx context.Context, path string) (string, error) {
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = stdout, &stderr
 	if err := cmd.Run(); err != nil {
+		if notSignedIn(err, stderr.String()) {
+			return stdout.String(), ErrAuth
+		}
 		return stdout.String(), fmt.Errorf("gh api %s: %v: %s", path, err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// ghExitAuth is gh's exit code when a command needs a sign-in that is not there (contract GH-AUTH-01).
+const ghExitAuth = 4
+
+// notSignedIn reports whether a failed gh call failed for want of a sign-in: gh's exit code says so, whatever its message
+// (in a GitHub Actions job it asks for GH_TOKEN instead of naming gh auth login), and older messages are recognised too.
+func notSignedIn(err error, stderr string) bool {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == ghExitAuth {
+		return true
+	}
+	return strings.Contains(stderr, "gh auth login") || strings.Contains(stderr, "authentication")
 }
 
 // parseHTTP splits `gh api -i` output ("HTTP/2.0 200 OK\r\nHeader: v\r\n\r\nbody") into status, headers, body.
@@ -359,6 +375,9 @@ func (g GhCLI) GraphQL(ctx context.Context, query string, vars map[string]string
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
+		if notSignedIn(err, stderr.String()) {
+			return nil, ErrAuth
+		}
 		return nil, fmt.Errorf("gh api graphql: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil

@@ -35,6 +35,11 @@ func fakeGh(log string) int {
 	if d, err := time.ParseDuration(os.Getenv("DRYDOCK_FAKE_GH_HANG")); err == nil {
 		time.Sleep(d) // a gh that stalls (a dead network, a prompt that slipped through)
 	}
+	if os.Getenv("DRYDOCK_FAKE_GH_SIGNED_OUT") == "1" {
+		// what gh 2.x prints in a GitHub Actions job without GH_TOKEN, with its exit code for a missing sign-in
+		fmt.Fprintln(os.Stderr, "gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable. Example:\n  env:\n    GH_TOKEN: ${{ github.token }}")
+		return 4
+	}
 	in, _ := io.ReadAll(os.Stdin)
 	c := ghCall{Args: os.Args[1:]}
 	if json.Valid(in) {
@@ -533,5 +538,23 @@ func TestWaitCIPollsWithETags(t *testing.T) {
 	}
 	if conditional.Load() < 2 {
 		t.Fatalf("%d of %d looks were conditional", conditional.Load(), looks.Load())
+	}
+}
+
+// gh's exit code 4 means a sign-in is needed, whatever the message says (in a GitHub Actions job it does not name gh auth
+// login): every way Drydock calls gh reports ErrAuth, so the app says "not signed in" instead of showing gh's text.
+func TestASignedOutGhIsNotSignedInWhateverItsMessage(t *testing.T) {
+	t.Setenv("DRYDOCK_FAKE_GH_LOG", filepath.Join(t.TempDir(), "calls.jsonl"))
+	t.Setenv("DRYDOCK_FAKE_GH_SIGNED_OUT", "1")
+	g := GhCLI{Bin: os.Args[0]}
+	ctx := context.Background()
+	if _, err := g.Do(ctx, "GET", "/user", nil, nil, ""); !errors.Is(err, ErrAuth) {
+		t.Errorf("Do: %v", err)
+	}
+	if _, err := g.Raw(ctx, "/repos/o/r/actions/jobs/1/logs"); !errors.Is(err, ErrAuth) {
+		t.Errorf("Raw: %v", err)
+	}
+	if _, err := g.GraphQL(ctx, "query { viewer { login } }", nil); !errors.Is(err, ErrAuth) {
+		t.Errorf("GraphQL: %v", err)
 	}
 }
