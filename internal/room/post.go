@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -203,6 +205,23 @@ func (s *Service) Messages(ctx context.Context, roomID string, afterSeq int64, l
 		limit = 200
 	}
 	return queryMessages(ctx, s.db.Reader(), `room_id=? AND seq>? ORDER BY seq LIMIT ?`, roomID, afterSeq, limit)
+}
+
+// MessagesBefore returns the limit messages just before beforeSeq (the newest ones when beforeSeq is 0), oldest first: a room
+// opens on its newest page and reads older pages as the person scrolls up.
+func (s *Service) MessagesBefore(ctx context.Context, roomID string, beforeSeq int64, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	if beforeSeq <= 0 {
+		beforeSeq = math.MaxInt64
+	}
+	ms, err := queryMessages(ctx, s.db.Reader(), `room_id=? AND seq<? ORDER BY seq DESC LIMIT ?`, roomID, beforeSeq, limit)
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(ms)
+	return ms, nil
 }
 
 // Thread returns a thread: its root and replies in order.

@@ -546,3 +546,34 @@ func TestSetModeCompareAndSwap(t *testing.T) {
 		t.Fatal("mode_changed event")
 	}
 }
+
+// A room opens on its newest page and reads older pages backwards, each oldest first, with no gaps and no repeats.
+func TestMessagesBeforePagesBackwards(t *testing.T) {
+	e := newEnv(t)
+	r := e.channel("paging")
+	for i := 1; i <= 7; i++ {
+		e.say(r, kyle, fmt.Sprintf("m%d", i))
+	}
+	newest, err := e.svc.MessagesBefore(e.ctx, r.ID, 0, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodies := func(ms []Message) string {
+		var b []string
+		for _, m := range ms {
+			b = append(b, m.Body)
+		}
+		return strings.Join(b, ",")
+	}
+	if got := bodies(newest); got != "m5,m6,m7" {
+		t.Fatalf("newest page %s", got)
+	}
+	older, _ := e.svc.MessagesBefore(e.ctx, r.ID, newest[0].Seq, 3)
+	oldest, _ := e.svc.MessagesBefore(e.ctx, r.ID, older[0].Seq, 3)
+	if bodies(older) != "m2,m3,m4" || bodies(oldest) != "m1" {
+		t.Fatalf("older pages %s / %s", bodies(older), bodies(oldest))
+	}
+	if rest, _ := e.svc.MessagesBefore(e.ctx, r.ID, oldest[0].Seq, 3); len(rest) != 0 {
+		t.Fatalf("before the first message: %s", bodies(rest))
+	}
+}

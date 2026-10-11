@@ -174,8 +174,15 @@ func (c *Core) Methods() map[string]Method {
 		"room.messages": bind(func(ctx context.Context, p struct {
 			RoomID   string `json:"roomId"`
 			AfterSeq int64  `json:"afterSeq"`
-			Limit    int    `json:"limit"`
+			// BeforeSeq > 0 reads the page just before it (older messages, for scrolling up); Latest reads the newest page.
+			// Both return oldest first, like a forward read.
+			BeforeSeq int64 `json:"beforeSeq"`
+			Latest    bool  `json:"latest"`
+			Limit     int   `json:"limit"`
 		}) (any, error) {
+			if p.BeforeSeq > 0 || p.Latest {
+				return c.Room.MessagesBefore(ctx, p.RoomID, p.BeforeSeq, p.Limit)
+			}
 			return c.Room.Messages(ctx, p.RoomID, p.AfterSeq, p.Limit)
 		}),
 		"room.post": bind(func(ctx context.Context, p struct {
