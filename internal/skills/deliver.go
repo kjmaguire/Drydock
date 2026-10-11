@@ -199,9 +199,9 @@ func claudeIndex(ks []Skill) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("The skills below are not loaded into your instructions (the ones that are appear as rules above): each line names " +
-		"a skill, says what it is for and where its text is. Before you work on something a skill covers, read that file with the " +
-		"Read tool and follow it; skip the ones that have nothing to do with your task.\n")
+	b.WriteString("The skills below are not loaded into your instructions (the loaded ones are the .claude/rules files among your " +
+		"instructions): each line names a skill, says what it is for and where its text is. Before you work on something a skill " +
+		"covers, read that file with the Read tool and follow it; skip the ones that have nothing to do with your task.\n")
 	for _, k := range ks {
 		d := oneLineText(k.Description)
 		if d == "" {

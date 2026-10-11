@@ -324,7 +324,8 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 		after = last.Seq
 	}
 	art.Events, _ = json.MarshalIndent(evs, "", "  ")
-	// the skills Claude got as files to read on demand, by name: a Read counts only when it opened one of those files
+	// the skills either agent got as files to read on demand, by name (both get the same skills here): a Read counts only
+	// when it opened one of those files
 	onDemand := map[string]bool{}
 	var ds []skills.Delivery
 	if err := call("skill.deliveries", map[string]any{"projectId": p.ID, "taskId": task.ID}, &ds); err == nil {
@@ -411,7 +412,8 @@ func readsSkill(e json.RawMessage, onDemand map[string]bool) bool {
 		return false
 	}
 	dir, file := path.Split(filepath.ToSlash(ev.Data.Data.Args.FilePath))
-	return strings.HasSuffix(dir, "/"+skills.OnDemandDir+"/") && strings.HasSuffix(file, ".md") && onDemand[strings.TrimSuffix(file, ".md")]
+	inDir := dir == skills.OnDemandDir+"/" || strings.HasSuffix(dir, "/"+skills.OnDemandDir+"/") // absolute or relative to the worktree
+	return inDir && strings.HasSuffix(file, ".md") && onDemand[strings.TrimSuffix(file, ".md")]
 }
 
 // copySkills copies each <name>/SKILL.md of src into dst and returns the names, sorted. A repository skill's front matter

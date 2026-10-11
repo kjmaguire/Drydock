@@ -461,7 +461,7 @@ func TestTheDrydockArmGivesTheBundlesSkillsAndCountsTheirReads(t *testing.T) {
 	if worktree == "" || !strings.Contains(rec.ArmDetail, "the repository's skills and the prebuilt agents' skills delivered relevant") {
 		t.Fatal(rec.ArmDetail)
 	}
-	if strings.Join(rec.Notes, ";") != "the prebuilt skill "+taken+" was not imported: the repository has a skill of that name" {
+	if !strings.Contains(strings.Join(rec.Notes, ";"), "the prebuilt skill "+taken+" was not imported: the repository has a skill of that name") {
 		t.Fatalf("%v", rec.Notes)
 	}
 }

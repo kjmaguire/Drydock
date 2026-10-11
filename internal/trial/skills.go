@@ -2,6 +2,7 @@ package trial
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +21,11 @@ func PrebuiltSkillRefs() ([]agentcatalog.SkillRef, error) {
 	if err != nil {
 		return nil, err
 	}
+	return skillRefsOf(entries)
+}
+
+// skillRefsOf is PrebuiltSkillRefs for a given catalog.
+func skillRefsOf(entries []agentcatalog.Entry) ([]agentcatalog.SkillRef, error) {
 	seen := map[string]agentcatalog.SkillRef{}
 	var out []agentcatalog.SkillRef
 	for _, e := range entries {
@@ -57,28 +63,36 @@ func (f *CachingFetcher) Resolve(ctx context.Context, repo, ref string) (string,
 	return f.Inner.Resolve(ctx, repo, ref)
 }
 
-// Fetch implements skills.RegistryFetcher.
+// Fetch implements skills.RegistryFetcher. Callers of one key share one fetch, made with the first caller's context; a
+// caller whose own context is still live when that fetch is cancelled by the first caller's starts a fresh one (a few times
+// at most), so one run's cancellation does not fail the runs waiting beside it.
 func (f *CachingFetcher) Fetch(ctx context.Context, repo, commit, root string) ([]skills.RemoteSkill, error) {
 	key := repo + "@" + commit + ":" + root
-	f.mu.Lock()
-	if f.cache == nil {
-		f.cache = map[string]*fetchEntry{}
-	}
-	e := f.cache[key]
-	if e == nil {
-		e = &fetchEntry{}
-		f.cache[key] = e
-	}
-	f.mu.Unlock()
-	e.once.Do(func() { e.rs, e.err = f.Inner.Fetch(ctx, repo, commit, root) })
-	if e.err != nil {
+	for attempt := 0; ; attempt++ {
+		f.mu.Lock()
+		if f.cache == nil {
+			f.cache = map[string]*fetchEntry{}
+		}
+		e := f.cache[key]
+		if e == nil {
+			e = &fetchEntry{}
+			f.cache[key] = e
+		}
+		f.mu.Unlock()
+		e.once.Do(func() { e.rs, e.err = f.Inner.Fetch(ctx, repo, commit, root) })
+		if e.err == nil {
+			return e.rs, nil
+		}
 		f.mu.Lock()
 		if f.cache[key] == e {
 			delete(f.cache, key)
 		}
 		f.mu.Unlock()
+		if ctx.Err() == nil && attempt < 3 && (errors.Is(e.err, context.Canceled) || errors.Is(e.err, context.DeadlineExceeded)) {
+			continue // someone else's context ended the shared fetch; ours is live
+		}
+		return nil, e.err
 	}
-	return e.rs, e.err
 }
 
 // FetchPrebuiltSkills writes the SKILL.md of every skill the prebuilt agents carry (internal/agentcatalog), fetched from its

@@ -199,7 +199,7 @@ func TestPlanClaudeRelevantLoadsTheRepositorysOwnSkills(t *testing.T) {
 		if got["everywhere"] != MethodClaudeRules+"/"+FidelityExact || got["api-style"] != c.apiStyle || got["d1-migrations"] != MethodClaudeOnDemand+"/"+FidelityOnDemand {
 			t.Fatalf("hints %v: %v", c.hints, got)
 		}
-		if !plan.Index || !strings.Contains(plan.Note, "not loaded into your instructions (the ones that are appear as rules above)") || !strings.Contains(plan.Note, "**d1-migrations**") {
+		if !plan.Index || !strings.Contains(plan.Note, "not loaded into your instructions (the loaded ones are the .claude/rules files among your instructions)") || !strings.Contains(plan.Note, "**d1-migrations**") {
 			t.Fatalf("hints %v: %q", c.hints, plan.Note)
 		}
 	}
