@@ -27,7 +27,7 @@ import (
 )
 
 // mcpServerEnv makes the test binary a real stdio MCP server when a contract check points claude at it: "1" is
-// internal/mcp/mcptestserver (a labelled test fixture with the tools echo, envlen and post_note), "slow" is slowMCPServer.
+// internal/mcp/mcptestserver (a labelled test fixture with the tools echo, envlen and post_note), "slow" is slowMCPServer, "perm" is permMCPServer.
 const mcpServerEnv = "DRYDOCK_CONTRACT_MCP_SERVER"
 
 func TestMain(m *testing.M) {
@@ -36,6 +36,8 @@ func TestMain(m *testing.M) {
 		os.Exit(mcptestserver.Run())
 	case "slow":
 		os.Exit(slowMCPServer())
+	case "perm":
+		os.Exit(permMCPServer())
 	}
 	os.Exit(m.Run())
 }

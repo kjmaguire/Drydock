@@ -45,7 +45,9 @@ func TestClaudeAcceptsTheFlagsDrydockPasses(t *testing.T) {
 	}
 	ro := base
 	ro.ReadOnly, ro.PermissionMode = true, "plan"
-	cases := []tc{{"read-only", ro}}
+	worker := base // a worker outside a sandbox asks Drydock about tool uses its rules do not cover (CLAUDE-PERMPROMPT-01)
+	worker.PermissionMode, worker.PermissionPrompts, worker.PermissionPromptTool = "acceptEdits", true, claude.PermissionPromptTool
+	cases := []tc{{"read-only", ro}, {"worker asking Drydock", worker}}
 	modes := claude.New().Capabilities().PermissionModes
 	for _, m := range modes {
 		s := base

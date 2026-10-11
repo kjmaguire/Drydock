@@ -33,6 +33,9 @@ type Run struct {
 	server    *sdk.Server
 	handler   http.Handler
 	closed    atomic.Bool
+	// done is closed by EndRun: a call still waiting (a permission prompt waiting for a person) ends with a refusal.
+	done      chan struct{}
+	closeOnce sync.Once
 
 	hmu     sync.Mutex
 	handles map[string]string // handle -> raw file path
@@ -158,6 +161,9 @@ func (r *Run) listTools(ctx context.Context) []*sdk.Tool {
 	if len(out) > 0 {
 		out = append(out, fetchRangeTool())
 	}
+	if r.permissionPromptAllowed() {
+		out = append(out, permissionPromptTool())
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
@@ -273,6 +279,15 @@ func (r *Run) callTool(ctx context.Context, req *sdk.CallToolRequest) *sdk.CallT
 	if cerr != nil {
 		c.upstreamStatus = "n/a"
 		res = textResult("invalid arguments: "+cerr.Error(), true)
+		return res
+	}
+	if c.tool == ToolPermissionPrompt {
+		c.server = WorkspaceServerID
+		if !r.permissionPromptAllowed() {
+			res = r.deny(ctx, c, "tool is not in the run's allowlist")
+			return res
+		}
+		res = r.permissionPrompt(ctx, c, args)
 		return res
 	}
 	if c.tool == ToolFetchRange {

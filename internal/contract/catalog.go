@@ -184,6 +184,14 @@ func All() []Contract {
 			Files:      []string{"internal/agents/claude/parser.go", "internal/chats/turn.go"},
 			Tests:      []TestRef{{Package: pkgContract, Test: "TestClaudeReportsRefusedToolCallsAsPermissionDenials", EstUSD: 0.02, Env: real}},
 		},
+		{
+			ID: "CLAUDE-PERMPROMPT-01", CLI: "claude", Adapter: "claude",
+			Assumption: "--permission-prompt-tool mcp__drydock__permission_prompt is accepted, and in a headless session Claude Code calls that MCP tool with {tool_name, input, tool_use_id} before a tool use its rules do not cover, runs the tool with updatedInput when the answer is {\"behavior\":\"allow\",\"updatedInput\":...}, and refuses it with the message when the answer is {\"behavior\":\"deny\",\"message\":...}.",
+			Why:        "A worker outside a sandbox asks Drydock this way; the analyzer and a person's hashed approval decide (security.md s4 and s5). The request and answer shapes were read from the CLI's code, not seen on a live turn.",
+			Files:      []string{"internal/agents/claude/adapter.go", "internal/mcp/permission.go", "internal/core/ext_permprompt.go"},
+			Tests: []TestRef{{Package: pkgContract, Test: "TestClaudeAcceptsThePermissionPromptToolFlag"},
+				{Package: pkgContract, Test: "TestClaudeAsksThePermissionPromptTool", EstUSD: 0.03, Env: real}},
+		},
 	}
 	for _, t := range ACPTargets {
 		cs = append(cs, Contract{

@@ -86,7 +86,14 @@ type RunSpec struct {
 	// the working folder, writes to settings and .git refused, no settings files; the adapter appends the project's CLAUDE.md,
 	// which restricted mode does not load.
 	Sandboxed bool
-	ExtraArgs []string // adapter-specific escape hatch
+	// PermissionPrompts marks a worker session outside a sandbox whose permission prompts go to Drydock: a tool use its allow
+	// rules do not cover is asked of Drydock's analyzer and, when the rules do not decide, of a person (docs/security.md s4).
+	// The pipeline sets it; the MCP hook offers the gateway's permission tool to such a session and sets PermissionPromptTool.
+	PermissionPrompts bool
+	// PermissionPromptTool is the MCP tool the CLI asks (Claude: --permission-prompt-tool mcp__drydock__permission_prompt).
+	// Empty: the CLI's own permission mode and rules decide alone (a headless Claude then refuses what they do not allow).
+	PermissionPromptTool string
+	ExtraArgs            []string // adapter-specific escape hatch
 }
 
 // Session is a running agent CLI process speaking a normalized chunk stream.

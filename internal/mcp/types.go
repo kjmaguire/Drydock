@@ -28,6 +28,10 @@ const (
 	ToolFetchRange = "fetch_range"
 	// ToolSeparator joins a server id and an upstream tool name.
 	ToolSeparator = "__"
+	// ToolPermissionPrompt answers a CLI's permission prompts (Claude Code --permission-prompt-tool
+	// mcp__drydock__permission_prompt). It is offered only to runs whose policy allows it (Claude worker turns outside a
+	// sandbox) and is answered by Options.Permissions.
+	ToolPermissionPrompt = "permission_prompt"
 )
 
 // Event types published on the event bus (docs/mcp.md section 7). The cache hit event is spelled mcp.cache_hit (the task
@@ -279,6 +283,29 @@ type ApprovalRequest struct {
 	Tool     string
 	ArgsHash string // sha256 of the canonical JSON arguments
 	Args     []byte // canonical JSON arguments (for display)
+}
+
+// PermissionPrompter answers a CLI's permission request for one tool call. The production implementation runs it through
+// the command analyzer and, for anything the rules neither allow nor refuse, waits for a person's answer on an approval bound
+// to the hash of exactly that tool and input. ctx ends when the run ends or the CLI gives up; the answer is then a refusal.
+type PermissionPrompter interface {
+	Permit(ctx context.Context, req PermissionRequest) PermissionAnswer
+}
+
+// PermissionRequest is what the CLI sent: the tool it wants to use and the exact input it will use it with.
+type PermissionRequest struct {
+	Run       RunInfo
+	CallID    string
+	ToolName  string
+	Input     []byte // the exact JSON input
+	ToolUseID string
+}
+
+// PermissionAnswer is the decision. Message is shown to the agent when the call is refused; Outcome is recorded.
+type PermissionAnswer struct {
+	Allow   bool
+	Message string
+	Outcome string
 }
 
 // CredentialSource resolves upstream credentials held by Drydock (agents never see them).

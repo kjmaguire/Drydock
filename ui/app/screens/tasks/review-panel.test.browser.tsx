@@ -232,6 +232,65 @@ describe('Merge gates of a pull request', () => {
   });
 });
 
+describe('Permission request', () => {
+  const permission = (payload: Record<string, unknown>) =>
+    detail({
+      run: { id: 'run-7', workflow: 'iterate-until-verified', status: 'RUNNING', topology: 'x', created: 0, updated: 0, version: 1 },
+      pending: [{ id: 'apr_1', nodeId: '', step: 0, spec: { kind: 'approval', title: 'Permission request: Bash: npm install left-pad', payload } }],
+    });
+  const bash = {
+    gate: 'permission_prompt',
+    tool: 'Bash',
+    input: 'npm install left-pad',
+    kind: 'shell_command',
+    reason: 'A Claude worker asks to use Bash, which its rules do not allow.',
+    agentId: 'agt_1',
+    expiresAt: Date.UTC(2026, 9, 11, 12, 30),
+  };
+
+  it('shows the tool and its exact input, and answers the request id with Allow once or Refuse', async () => {
+    for (const [label, decision] of [
+      ['Allow once', 'approved'],
+      ['Refuse', 'rejected'],
+    ] as const) {
+      const runRespond = recorder(() => undefined);
+      const r = mount(<ReviewPanel detail={permission(bash)} onChanged={() => undefined} />, svc({ runRespond }));
+      const panel = r.$('[data-testid="permission-prompt"]')!;
+      expect(panel.getAttribute('data-tool')).toBe('Bash');
+      expect(r.$('[data-testid="permission-prompt-input"]')!.textContent).toBe('npm install left-pad');
+      expect(r.$('[aria-label="Bash input"]')).toBeTruthy();
+      expect(panel.textContent).toContain('shell_command');
+      expect(r.$('[data-testid="permission-prompt-reason"]')!.textContent).toContain('its rules do not allow');
+      expect(panel.textContent).toContain('Refused if unanswered by');
+      expect(buttons(r.container)).toEqual(['Allow once', 'Refuse']);
+      expect(runRespond.calls).toEqual([]); // nothing is allowed by showing it
+      await r.act(() => byText(r.container, 'button', label).click());
+      await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'apr_1', decision, undefined]]), r);
+      cleanup();
+    }
+  });
+
+  it('shows a JSON input indented and as text, and a shortened one as stored', () => {
+    const r = mount(
+      <ReviewPanel detail={permission({ ...bash, tool: 'WebFetch', input: '{"prompt":"<b>x</b>","url":"https://example.com"}', kind: 'agent_tool' })} onChanged={() => undefined} />,
+      svc(),
+    );
+    const pre = r.$('[data-testid="permission-prompt-input"]')!;
+    expect(pre.textContent).toBe('{\n  "prompt": "<b>x</b>",\n  "url": "https://example.com"\n}');
+    expect(pre.querySelector('b')).toBe(null);
+    cleanup();
+    const cut = mount(<ReviewPanel detail={permission({ ...bash, tool: 'Write', input: '{"content":"abc...[900 more bytes]' })} onChanged={() => undefined} />, svc());
+    expect(cut.$('[data-testid="permission-prompt-input"]')!.textContent).toBe('{"content":"abc...[900 more bytes]');
+  });
+
+  it('read-only allows refusing, not allowing', async () => {
+    const r = mount(<ReviewPanel detail={permission(bash)} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
+    await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Allow once').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Refuse').disabled).toBe(false);
+  });
+});
+
 describe('Spec gate', () => {
   const payload: SpecReviewPayload = {
     phase: 'spec',

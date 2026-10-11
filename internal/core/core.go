@@ -83,7 +83,9 @@ type Core struct {
 
 	extMethods map[string]Method
 	extClose   []func()
-	mcpw       atomic.Pointer[mcpWiring]     // the shared MCP gateway (ext_mcp.go)
+	mcpw       atomic.Pointer[mcpWiring] // the shared MCP gateway (ext_mcp.go)
+	permOnce   sync.Once                 // the permission prompt service (ext_permprompt.go)
+	perm       *permissionService
 	lead       atomic.Pointer[pipeline.Lead] // the team lead service (ext_lead.go)
 	secrets    providers.SecretStore         // API keys and tokens (Credential Manager plus an encrypted overflow); nil when the host has no store
 

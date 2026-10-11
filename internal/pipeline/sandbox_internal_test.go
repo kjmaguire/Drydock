@@ -43,7 +43,7 @@ func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
 	if q != nil || err != nil {
 		t.Fatalf("question %+v err %v", q, err)
 	}
-	if !cfg.Spec.Sandboxed || !strings.Contains(cfg.Spec.SystemAppend, "sandbox_run") || !strings.Contains(cfg.Spec.SystemAppend, "Sandbox image: test-image.") {
+	if !cfg.Spec.Sandboxed || cfg.Spec.PermissionPrompts || !strings.Contains(cfg.Spec.SystemAppend, "sandbox_run") || !strings.Contains(cfg.Spec.SystemAppend, "Sandbox image: test-image.") {
 		t.Fatalf("spec %+v", cfg.Spec)
 	}
 	env := strings.Join(cfg.Spec.Env, " ")
@@ -82,6 +82,10 @@ func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
 	cfg = rt.Config{Adapter: "claude"}
 	if q, err := d.prepareWorker(ctx, workflow.NodeInput{}, task, &cfg); q != nil || err != nil || cfg.Spec.Sandboxed {
 		t.Fatalf("off: %+v %v %+v", q, err, cfg.Spec)
+	}
+	// ... except that the worker, which now runs on this machine, asks Drydock about what its rules do not cover
+	if !cfg.Spec.PermissionPrompts {
+		t.Fatal("a worker outside a sandbox must send its permission prompts to Drydock")
 	}
 }
 

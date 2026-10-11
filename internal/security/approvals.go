@@ -134,10 +134,16 @@ func NewApprovals(db *storage.DB, bus events.Bus, audit *Audit, opts ...Approval
 // RequestOption configures a Request.
 type RequestOption func(*requestCfg)
 
-type requestCfg struct{ ttl time.Duration }
+type requestCfg struct {
+	ttl   time.Duration
+	title string
+}
 
 // WithTTL overrides the lifetime of one request.
 func WithTTL(d time.Duration) RequestOption { return func(c *requestCfg) { c.ttl = d } }
+
+// WithTitle replaces the default title ("<kind>: <command>"). It is redacted and capped like the default.
+func WithTitle(title string) RequestOption { return func(c *requestCfg) { c.title = title } }
 
 func (a *Approvals) nowMS() int64 { return a.now().UTC().UnixMilli() }
 
@@ -190,6 +196,9 @@ func (a *Approvals) Request(ctx context.Context, action ActionDescriptor, reason
 		title += ": " + a.redact(action.Command)
 	} else if action.Tool != "" {
 		title += ": " + action.Tool
+	}
+	if cfg.title != "" {
+		title = a.redact(cfg.title)
 	}
 	title = truncate(title, 200)
 

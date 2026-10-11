@@ -53,7 +53,7 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	ws.Tasks, ws.Room, ws.Handoffs = mcpTasks{c}, mcpRoom{c}, mcpHandoffs{c}
 	ws.Chats = mcpChats{c}     // ext_chats.go; allowed only to chat sessions that read history (planChatMCP)
 	ws.Sandbox = mcpSandbox{c} // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
-	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}})
+	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions()})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -254,6 +254,8 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		pl.Policy.Allow[mcp.WorkspaceServerID] = append(pl.Policy.Allow[mcp.WorkspaceServerID], SandboxTools...)
 		pl.Tools = append(pl.Tools, SandboxTools...)
 	}
+	// a worker turn outside a sandbox asks Drydock about tool uses its rules do not cover (ext_permprompt.go)
+	offerPermissionPrompts(cfg, &pl)
 	gw := c.MCPGateway()
 	if gw == nil {
 		return rt.MCPAttachment{Reason: "the MCP gateway is not running"}, nil
@@ -305,6 +307,8 @@ func (c *Core) mcpStatus(ctx context.Context, t tasks.Task, agentID, phase strin
 	}
 	if phase == "work" && ag.Adapter == "claude" && c.sandboxSwitch(ctx, t.ProjectID).Enabled {
 		pl.Tools = append(pl.Tools, SandboxTools...) // what mcpAttach adds for a sandboxed worker turn
+	} else if phase == "work" && ag.Adapter == "claude" {
+		pl.Tools = append(pl.Tools, mcp.ToolPermissionPrompt) // what mcpAttach adds for a worker turn outside a sandbox
 	}
 	return pipeline.MCPStatus{Attached: true, Tools: pl.Tools}
 }

@@ -55,7 +55,8 @@ type Step struct {
 	Write *WriteSpec `json:"write,omitempty"`
 	// Ask marks a Tool step that needs permission: unless an --allowedTools rule covers it (the tool name, "Tool(<exact
 	// command>)" or a "Tool(<prefix>:*)" rule for a Bash command), the call is refused the way headless claude refuses it
-	// (an error tool result, and the call listed in the result's permission_denials).
+	// (an error tool result, and the call listed in the result's permission_denials). With --permission-prompt-tool the
+	// agent asks that MCP tool first, as Claude Code does, and runs the step only when it allows (permission.go).
 	Ask bool `json:"ask,omitempty"`
 	// Raw emits this JSON object as one stream line, as it is: a test of what the parser does with an event it does not know.
 	Raw json.RawMessage `json:"raw,omitempty"`
@@ -127,7 +128,8 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 		session = resume
 	}
 	a := &agent{out: out, script: sc, session: session, allowed: splitRules(flagValue(args, "--allowedTools")), interrupt: make(chan struct{}, 1),
-		denied: splitRules(flagValue(args, "--disallowedTools")), mode: flagValue(args, "--permission-mode")}
+		denied: splitRules(flagValue(args, "--disallowedTools")), mode: flagValue(args, "--permission-mode"),
+		permTool: flagValue(args, "--permission-prompt-tool"), mcpConfig: flagValue(args, "--mcp-config")}
 	a.loadState()
 	// `claude -p "<prompt>"`, as a user (and the trial harness's plain arm) runs it: one turn on that prompt, then exit. The
 	// adapter's own form is -p followed by flags, with the prompts on stdin.
@@ -264,8 +266,12 @@ type agent struct {
 	// denied and mode are enforced on Write steps as Claude Code does: a tool in --disallowedTools, or any edit in plan mode,
 	// is refused with an error result instead of writing (so a reviewer session that Drydock forgot to make read-only, or a
 	// worker it forgot to let write, fails a test instead of passing it)
-	denied    []string
-	mode      string
+	denied []string
+	mode   string
+	// permTool and mcpConfig: with --permission-prompt-tool, a tool use the rules do not cover is asked of that MCP tool
+	// (permission.go) instead of being refused at once
+	permTool  string
+	mcpConfig string
 	turn      int
 	toolSeq   int
 	interrupt chan struct{}
@@ -485,8 +491,15 @@ loop:
 					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": st.Tool, "input": in}}, "usage": a.usage()}})
 				result, isErr := st.Result, st.IsError
 				if st.Ask && !a.permits(st.Tool, in) {
-					result, isErr = "Claude requested permissions to use "+st.Tool+", but you haven't granted it yet.", true
-					denials = append(denials, map[string]any{"tool_name": st.Tool, "tool_use_id": id, "tool_input": in})
+					if a.permTool != "" && a.mcpConfig != "" {
+						if ans, ok := a.askPermission(st.Tool, in, id); !ok {
+							result, isErr = ans.Message, true
+							denials = append(denials, map[string]any{"tool_name": st.Tool, "tool_use_id": id, "tool_input": in})
+						}
+					} else {
+						result, isErr = "Claude requested permissions to use "+st.Tool+", but you haven't granted it yet.", true
+						denials = append(denials, map[string]any{"tool_name": st.Tool, "tool_use_id": id, "tool_input": in})
+					}
 				}
 				a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user",
 					"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": result, "is_error": isErr}}}})

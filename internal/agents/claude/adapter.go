@@ -276,6 +276,12 @@ func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 	}
 	if spec.MCPConfigPath != "" {
 		args = append(args, "--mcp-config", spec.MCPConfigPath, "--strict-mcp-config")
+		// a worker outside a sandbox asks Drydock about every tool use its rules do not cover, instead of being refused by the
+		// headless CLI (docs/security.md s4). Only through the gateway the session was given, never for a read-only or
+		// sandboxed session (their modes already decide everything).
+		if spec.PermissionPromptTool != "" && !spec.ReadOnly && !spec.Sandboxed {
+			args = append(args, "--permission-prompt-tool", spec.PermissionPromptTool)
+		}
 	}
 	if spec.ResumeID != "" {
 		args = append(args, "--resume", spec.ResumeID)

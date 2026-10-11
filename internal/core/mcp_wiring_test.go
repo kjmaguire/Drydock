@@ -415,8 +415,13 @@ func TestPipelineTurnsGetOneGatewayEntryAndTheRunEndsWithTheTurn(t *testing.T) {
 		if st, err := os.Stat(s.Spec.MCPConfigPath); err == nil {
 			t.Fatalf("the config file must be gone once the turn ended (it holds the token): %v", st.Mode())
 		}
-		// while the session was alive: the allowlist was the read-only default, and a tool outside it was refused
-		if !sameSet(s.Tools, "fetch_range", "read_range", "search_memory", "search_requirements", "skills") {
+		// while the session was alive: the allowlist was the read-only default (plus, for the worker outside a sandbox, the
+		// permission tool its CLI asks: ext_permprompt.go), and a tool outside it was refused
+		want := []string{"fetch_range", "read_range", "search_memory", "search_requirements", "skills"}
+		if who == "work" {
+			want = append(want, "permission_prompt")
+		}
+		if !sameSet(s.Tools, want...) {
 			t.Fatalf("%s turn tools: %v", who, s.Tools)
 		}
 		if !strings.Contains(s.ReadRange, "package gocalc") || !strings.Contains(s.ReadRange, "calc.go") {

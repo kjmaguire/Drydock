@@ -31,5 +31,8 @@ describe('Needs you targets and hints', () => {
     const repoConfig = { ...base, title: "The repository's git configuration changed during the task (filter.evil.clean). A planted hook...", taskId: 't1' };
     expect(needsTarget(repoConfig)).toBe('/task/t1');
     expect(needsHint(repoConfig)).toContain('which items changed');
+    const permission = { ...base, title: 'Permission request: Bash: npm install left-pad', taskId: 't1' };
+    expect(needsTarget(permission)).toBe('/task/t1');
+    expect(needsHint(permission)).toContain('exact tool and input');
   });
 });

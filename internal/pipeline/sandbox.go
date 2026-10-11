@@ -36,6 +36,9 @@ func (d Deps) sandboxed(ctx context.Context, t tasks.Task) bool {
 func (d Deps) prepareWorker(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg *rt.Config) (out *workflow.NodeOutput, err error) {
 	if !d.sandboxed(ctx, t) {
 		d.addWorkerTools(ctx, t, cfg)
+		// outside a sandbox nothing but the CLI's own rules stands between the worker and this machine: its permission prompts
+		// go to Drydock's analyzer and, when the rules do not decide, to a person (docs/security.md s4)
+		cfg.Spec.PermissionPrompts = true
 		return nil, nil
 	}
 	if serr := d.sandboxTurn(ctx, t, cfg); serr != nil {

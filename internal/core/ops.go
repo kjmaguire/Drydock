@@ -172,6 +172,10 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 			if p, err := c.Engine.Pending(ctx, info.ID); err == nil && p != nil && !info.Status.Terminal() {
 				d.Pending = p
 			}
+			// a worker's permission requests wait in its live turn, not in the run's checkpoint (ext_permprompt.go)
+			if !info.Status.Terminal() {
+				d.Pending = append(d.Pending, c.permissionPending(ctx, t.ID)...)
+			}
 		}
 	}
 	if r, err := c.Room.RoomByTask(ctx, id); err == nil {
@@ -203,6 +207,9 @@ func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, d
 		if err := c.RequireLicensed(ctx, "approve"); err != nil {
 			return err
 		}
+	}
+	if taskID, ok := c.permissionRequestTask(ctx, requestID); ok {
+		return c.respondPermission(ctx, runID, requestID, taskID, decision)
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
 	var d []byte = data

@@ -56,6 +56,9 @@ func (p *Parser) UnknownEvents() map[string]int {
 // GatewayServer is the name of Drydock's MCP server in the configuration the gateway writes (mcp.ServerName).
 const GatewayServer = "drydock"
 
+// PermissionPromptTool is the gateway tool a worker's permission prompts go to (mcp.ToolPermissionPrompt as Claude names it).
+const PermissionPromptTool = "mcp__" + GatewayServer + "__permission_prompt"
+
 // modelTotals are one model's running totals in a session.
 type modelTotals struct {
 	In    int64   `json:"in"`

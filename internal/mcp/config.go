@@ -132,7 +132,7 @@ func ConfigFor(provider string, ep Endpoint, opts ...ConfigOptions) (ClientConfi
 		cfg.Notes = append(cfg.Notes,
 			"flags and the mcp__<server>__<tool> naming are from the Claude Code help and docs (agent-clis section 1); the stdio-shim route was exercised by the real Claude Code 2.1.294 on Linux (internal/mcp TestRealClaudeTransports, internal/core TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig); not on Windows",
 			"-p mode waits at most MCP_TIMEOUT (30 s) for servers: the gateway answers initialize and tools/list without contacting upstreams",
-			"--permission-prompt-tool mcp__drydock__permission_prompt is not provided by this package (the permission prompt tool is a workflow concern)")
+			"--permission-prompt-tool mcp__drydock__permission_prompt is added by the adapter, not by this config, for worker turns whose policy names the permission_prompt tool (outside a sandbox; docs/security.md s4)")
 		if o.Transport == TransportDirectHTTP {
 			cfg.Verified = false
 			cfg.Notes = append(cfg.Notes, "the http route with an Authorization header also worked once with the real Claude Code 2.1.294 on Linux (TestRealClaudeTransports), but it is one observation on one host and one process fewer is not worth it: the shim stays the default and this route stays unverified")

@@ -2,8 +2,8 @@
 // to message text). Spec reviews get the spec gate, budget pauses the resume form, questions a free-text answer, reviews
 // Approve / Request changes, the limit question and watchdog pauses Continue (with guidance) / Stop, the pull request's CI
 // gate Check CI again / Merge without CI this time / Stop and its merge gate Check again / Stop, a changed repository git
-// configuration (gate repo_config_changed) its changed items with Trust and continue / Stop the run, anything else
-// Approve / Reject. Read-only (license) turns off approving and answering; refusing
+// configuration (gate repo_config_changed) its changed items with Trust and continue / Stop the run, a worker's permission
+// request (gate permission_prompt) the tool and its exact input with Allow once / Refuse, anything else Approve / Reject. Read-only (license) turns off approving and answering; refusing
 // work (reject, request changes, send the spec back) stays available.
 
 import { css, on, type Handle } from 'remix/component';
@@ -21,6 +21,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { BudgetPausePanel } from '../shared/budget-pause.tsx';
 import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../shared/escalation.tsx';
+import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
@@ -118,6 +119,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     const ciGate = ciGatePayload(p);
     const mergeGate = mergeGatePayload(p);
     const repoConfig = repoConfigPayload(p);
+    const permission = permissionPayload(p);
     const ro = s.workspace.license;
     const sending = state !== 'idle';
     const busy = sending || ro.readOnly;
@@ -166,7 +168,9 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
           </p>
         ) : null}
 
-        {budget ? (
+        {permission ? (
+          <PermissionPromptPanel payload={permission} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+        ) : budget ? (
           <BudgetPausePanel payload={budget} runId={runId} requestId={p.id} onDone={onChanged} />
         ) : limit ? (
           <LimitPanel payload={limit} busy={sending} readOnly={ro.readOnly} onRespond={respond} />

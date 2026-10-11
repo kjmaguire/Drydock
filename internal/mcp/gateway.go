@@ -42,6 +42,8 @@ type Options struct {
 	Scanner     Scanner // default BasicScanner
 	Credentials CredentialSource
 	Approver    Approver
+	// Permissions answers the permission_prompt tool. Nil: every permission request is refused.
+	Permissions PermissionPrompter
 	Workspace   Workspace
 	// ShimCommand is the argv of the stdio shim a CLI spawns (docs/mcp.md section 2, transport A). Default:
 	// {os.Executable(), "mcp-shim"}.
@@ -454,7 +456,7 @@ func (g *Gateway) StartRun(cfg RunConfig) (*Endpoint, error) {
 	}
 	r := &Run{
 		g: g, cfg: cfg, dir: dir, specs: specs, tokenHash: sha256.Sum256([]byte(token)),
-		handles: map[string]string{}, creds: map[string]credInfo{},
+		handles: map[string]string{}, creds: map[string]credInfo{}, done: make(chan struct{}),
 		fetchLim: newBucket(g.opts.FetchRangeBurst, g.opts.FetchRangePerSec, g.now),
 		postLim:  newBucket(g.opts.PostBurst, g.opts.PostPerSec, g.now),
 	}
@@ -489,6 +491,7 @@ func (g *Gateway) EndRun(runID string) {
 		return
 	}
 	r.closed.Store(true)
+	r.closeOnce.Do(func() { close(r.done) })
 	for s := range r.server.Sessions() {
 		_ = s.Close()
 	}
