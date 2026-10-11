@@ -69,7 +69,7 @@ func uiStep() Step {
 				cmds = append(cmds, []string{"npx", "playwright", "install", "chromium"})
 			}
 			cmds = append(cmds, []string{"npx", "playwright", "test"})
-			childEnv := env.childEnv(testGitConfig(map[string]string{"DRYDOCK_NO_REAL_AGENTS": "1", "CI": "1"}))
+			childEnv := env.childEnv(env.testGitConfig(map[string]string{"DRYDOCK_NO_REAL_AGENTS": "1", "CI": "1"}))
 			var last string
 			for _, c := range cmds {
 				out, err := runLogged(ctx, sc.Log, ui, childEnv, 45*time.Minute, c...)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -381,5 +382,34 @@ func TestMergesIntoTheBaseBranchAreSerialized(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(r.Root, "src", "p"+string(rune('a'+i))+".go")); err != nil {
 			t.Fatalf("merge %d is missing", i)
 		}
+	}
+}
+
+// With core.autocrlf (the Git for Windows default) a worktree is checked out with CRLF. A file written back with LF and the
+// same text differs only in size, which git status reports as modified without reading it; Status must not.
+func TestStatusIgnoresALineEndingOnlyRewriteUnderAutoCRLF(t *testing.T) {
+	ctx := context.Background()
+	cfg := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(cfg, []byte("[core]\n\tautocrlf = true\n[user]\n\tname = Test\n\temail = test@drydock.invalid\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	r, parent := newRepo(t)
+	w, err := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_crlf", Title: "eol", Parent: parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(w.Path, "README.md")); string(b) != "# demo\r\n" {
+		t.Fatalf("the checkout should have CRLF under autocrlf: %q", b)
+	}
+	write(t, w.Path, "README.md", "# demo\n")
+	write(t, w.Path, "src/main.go", "package main\n\nfunc main() { println() }\n")
+	st, err := r.Status(ctx, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(st.Modified, []string{"src/main.go"}) {
+		t.Fatalf("only the real change is modified: %+v", st)
 	}
 }

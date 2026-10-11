@@ -17,17 +17,59 @@ import (
 const needsGoReason = "needs the Go toolchain at test time (it runs go build, go test or go vet on a fixture project), and no Go is available here: none on PATH and none inside the bundle"
 
 // testGitConfig gives test binaries the git settings CI gives them (.github/workflows/ci.yml): an identity and
-// core.autocrlf false. It goes through GIT_CONFIG_* variables, so no git configuration file on the machine changes. The
-// core smoke does not use it: it runs with the machine's own git settings, as the app would.
-func testGitConfig(set map[string]string) map[string]string {
+// core.autocrlf false, on top of the user's own global configuration. They are written to a file in this run's temp folder
+// and named by GIT_CONFIG_GLOBAL, which Drydock's own git calls also read (GIT_CONFIG_COUNT/KEY/VALUE would reach only the
+// tests' git, since Drydock drops them), so no git configuration file on the machine changes. The core smoke does not use
+// it: it runs with the machine's own git settings, as the app would.
+func (e *Env) testGitConfig(set map[string]string) map[string]string {
 	if set == nil {
 		set = map[string]string{}
 	}
+	if p, err := e.writeTestGitConfig(); err == nil {
+		set["GIT_CONFIG_GLOBAL"] = p
+		return set
+	}
+	// no temp folder to write to: the variables still reach the tests' own git
 	set["GIT_CONFIG_COUNT"] = "3"
 	set["GIT_CONFIG_KEY_0"], set["GIT_CONFIG_VALUE_0"] = "user.name", "Drydock Verify"
 	set["GIT_CONFIG_KEY_1"], set["GIT_CONFIG_VALUE_1"] = "user.email", "verify@drydock.invalid"
 	set["GIT_CONFIG_KEY_2"], set["GIT_CONFIG_VALUE_2"] = "core.autocrlf", "false"
 	return set
+}
+
+// writeTestGitConfig writes the file testGitConfig names. It includes the global files git would otherwise read (the
+// user's GIT_CONFIG_GLOBAL, or ~/.gitconfig and the XDG one), so only the three settings differ from the machine's own.
+func (e *Env) writeTestGitConfig() (string, error) {
+	if e.runTemp == "" {
+		return "", errors.New("no temp folder for this run")
+	}
+	var b strings.Builder
+	var globals []string
+	if g := os.Getenv("GIT_CONFIG_GLOBAL"); g != "" {
+		globals = []string{g}
+	} else {
+		if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+			globals = append(globals, filepath.Join(x, "git", "config"))
+		} else if h, err := os.UserHomeDir(); err == nil {
+			globals = append(globals, filepath.Join(h, ".config", "git", "config"))
+		}
+		if h, err := os.UserHomeDir(); err == nil {
+			globals = append(globals, filepath.Join(h, ".gitconfig"))
+		}
+	}
+	for _, g := range globals {
+		if _, err := os.Stat(g); err == nil {
+			fmt.Fprintf(&b, "[include]\n\tpath = %s\n", gitConfigQuote(filepath.ToSlash(g)))
+		}
+	}
+	b.WriteString("[user]\n\tname = Drydock Verify\n\temail = verify@drydock.invalid\n[core]\n\tautocrlf = false\n")
+	p := filepath.Join(e.runTemp, "test-gitconfig")
+	return p, os.WriteFile(p, []byte(b.String()), 0o644)
+}
+
+// gitConfigQuote writes a value in git's config syntax: double-quoted, with backslash and quote escaped.
+func gitConfigQuote(v string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"`
 }
 
 // unitTestStep runs one package's test binary in its own folder, without the real-Claude tests.
@@ -56,7 +98,7 @@ func unitTestStep(p Package) Step {
 			if len(p.RealClaude) > 0 {
 				sc.Logf("left out here (they use the real Claude Code CLI; see the real-claude step): %s", strings.Join(p.RealClaude, ", "))
 			}
-			run := env.runTestBinary(ctx, sc, p, args, env.childEnv(testGitConfig(map[string]string{"DRYDOCK_NO_REAL_AGENTS": "1"}), "DRYDOCK_REAL_CLAUDE"))
+			run := env.runTestBinary(ctx, sc, p, args, env.childEnv(env.testGitConfig(map[string]string{"DRYDOCK_NO_REAL_AGENTS": "1"}), "DRYDOCK_REAL_CLAUDE"))
 			run.Parsed.Tests = append(run.Parsed.Tests, synthetic...)
 			return testOutcome([]BinaryRun{run}, env.goos())
 		},
@@ -99,7 +141,7 @@ func realClaudeStep(m *Manifest) Step {
 				var br BinaryRun
 				if len(run) > 0 {
 					args := []string{"-test.v=test2json", "-test.timeout=30m", "-test.run=" + namesPattern(run)}
-					br = env.runTestBinary(ctx, sc, p, args, env.childEnv(testGitConfig(map[string]string{"DRYDOCK_REAL_CLAUDE": "1"}), "DRYDOCK_NO_REAL_AGENTS"))
+					br = env.runTestBinary(ctx, sc, p, args, env.childEnv(env.testGitConfig(map[string]string{"DRYDOCK_REAL_CLAUDE": "1"}), "DRYDOCK_NO_REAL_AGENTS"))
 				} else {
 					br = BinaryRun{Package: p.Path}
 				}

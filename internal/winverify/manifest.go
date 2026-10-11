@@ -99,6 +99,7 @@ var Requested = []string{
 	"internal/proc",           // process trees (Job Objects on Windows)
 	"internal/agents/runtime", // the agent runtime, and real-Claude tests
 	"internal/pipeline",       // the task loop, and real-Claude tests
+	"internal/checks",         // the project's own tools (go, npm, gitleaks, osv-scanner) run as Windows child processes
 }
 
 // extraRealClaude are real-Claude tests whose names do not start with TestRealClaude (the builder finds those itself).

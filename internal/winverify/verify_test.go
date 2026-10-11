@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -140,5 +141,39 @@ func TestSetupGoPrefersPATHThenTheBundle(t *testing.T) {
 	e.setupGo()
 	if !e.HasGo() || e.goDir != bin || !strings.Contains(e.goNote, "go1.27.2") {
 		t.Fatalf("the bundled Go: %+v", e)
+	}
+}
+
+// The package tests' git settings reach every git call, Drydock's own included, through a config file that still includes
+// the user's own global file; the machine's files are not changed.
+func TestTestGitConfigIsAFileThatKeepsTheUsersOwnSettings(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+	own := "[alias]\n\tdrydockmark = yes\n[core]\n\tautocrlf = true\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(own), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e := &Env{runTemp: t.TempDir()}
+	set := e.testGitConfig(map[string]string{"X": "1"})
+	if set["X"] != "1" || set["GIT_CONFIG_GLOBAL"] == "" || set["GIT_CONFIG_COUNT"] != "" {
+		t.Fatalf("set %v", set)
+	}
+	get := func(key string) string {
+		cmd := exec.Command("git", "config", "--get", key)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+set["GIT_CONFIG_GLOBAL"], "GIT_CONFIG_NOSYSTEM=1")
+		out, _ := cmd.Output()
+		return strings.TrimSpace(string(out))
+	}
+	if get("core.autocrlf") != "false" || get("user.name") != "Drydock Verify" || get("alias.drydockmark") != "yes" {
+		t.Fatalf("autocrlf %q name %q own %q", get("core.autocrlf"), get("user.name"), get("alias.drydockmark"))
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, ".gitconfig")); string(b) != own {
+		t.Fatal("the user's own file changed")
 	}
 }

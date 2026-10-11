@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,11 +105,14 @@ func (r *Repo) env() []string {
 	)
 }
 
-// keptGitEnv are the GIT_* variables of the app's own environment that git calls keep: how the user reaches their remotes.
-// Every other GIT_* variable is dropped: inherited ones such as GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_*, GIT_EXTERNAL_DIFF or
-// GIT_CONFIG_PARAMETERS would point Drydock's git at another repository or run a program in it.
+// keptGitEnv are the GIT_* variables of the app's own environment that git calls keep: how the user reaches their remotes,
+// and which of the user's configuration files git reads (GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, GIT_CONFIG_NOSYSTEM choose
+// files that stand in for ~/.gitconfig and the system file; Drydock's -c settings override every file). Every other GIT_*
+// variable is dropped: inherited ones such as GIT_DIR, GIT_INDEX_FILE, GIT_EXTERNAL_DIFF, GIT_CONFIG_COUNT/KEY/VALUE or
+// GIT_CONFIG_PARAMETERS would point Drydock's git at another repository, run a program in it, or override the -c settings.
 var keptGitEnv = map[string]bool{"GIT_SSH": true, "GIT_SSH_COMMAND": true, "GIT_SSH_VARIANT": true, "GIT_ASKPASS": true,
-	"GIT_SSL_CAINFO": true, "GIT_SSL_CAPATH": true, "GIT_SSL_NO_VERIFY": true, "GIT_PROXY_COMMAND": true, "GIT_HTTP_PROXY_AUTHMETHOD": true, "GIT_EXEC_PATH": true}
+	"GIT_SSL_CAINFO": true, "GIT_SSL_CAPATH": true, "GIT_SSL_NO_VERIFY": true, "GIT_PROXY_COMMAND": true, "GIT_HTTP_PROXY_AUTHMETHOD": true, "GIT_EXEC_PATH": true,
+	"GIT_CONFIG_GLOBAL": true, "GIT_CONFIG_SYSTEM": true, "GIT_CONFIG_NOSYSTEM": true}
 
 // gitEnv is env without the GIT_* variables that are not in keptGitEnv (names compared as Windows does, ignoring case).
 func gitEnv(env []string) []string {
@@ -293,6 +297,7 @@ func (r *Repo) Status(ctx context.Context, w Worktree) (Status, error) {
 		return Status{}, err
 	}
 	var s Status
+	unstaged := map[string]bool{} // modified in the worktree only: confirmed against the content below
 	for _, line := range strings.Split(out, "\n") {
 		if line == "" {
 			continue
@@ -317,9 +322,27 @@ func (r *Repo) Status(ctx context.Context, w Worktree) (Status, error) {
 			s.Added = append(s.Added, p)
 		case x == 'D' || y == 'D':
 			s.Deleted = append(s.Deleted, p)
+		case x == ' ' && y == 'M':
+			unstaged[p] = true
+			s.Modified = append(s.Modified, p)
 		default:
 			s.Modified = append(s.Modified, p)
 		}
+	}
+	if len(unstaged) > 0 {
+		// status calls a file modified when its size differs from the checkout, without reading it. With core.autocrlf
+		// (the Git for Windows default) a file checked out with CRLF and written back with LF and the same text differs in
+		// size only, so status reports a change that git diff, which compares the content, does not. Only diff's answer is
+		// kept; both print paths quoted the same way.
+		diff, err := r.git(ctx, w.Path, nil, "diff", "--name-only", "--no-renames")
+		if err != nil {
+			return Status{}, err
+		}
+		changed := map[string]bool{}
+		for _, l := range strings.Split(diff, "\n") {
+			changed[strings.TrimSpace(l)] = true
+		}
+		s.Modified = slices.DeleteFunc(s.Modified, func(p string) bool { return unstaged[p] && !changed[p] })
 	}
 	return s, nil
 }

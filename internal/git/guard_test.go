@@ -264,7 +264,7 @@ func TestInheritedGitVariablesDoNotRedirectDrydocksGit(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		return
 	}
-	if got := gitEnv([]string{"GIT_DIR=x", "git_index_file=y", "GIT_SSH_COMMAND=ssh -i k", "PATH=/bin"}); !slices.Equal(got, []string{"GIT_SSH_COMMAND=ssh -i k", "PATH=/bin"}) {
+	if got := gitEnv([]string{"GIT_DIR=x", "git_index_file=y", "GIT_SSH_COMMAND=ssh -i k", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_GLOBAL=/home/u/.gitconfig-ci", "PATH=/bin"}); !slices.Equal(got, []string{"GIT_SSH_COMMAND=ssh -i k", "GIT_CONFIG_GLOBAL=/home/u/.gitconfig-ci", "PATH=/bin"}) {
 		t.Fatalf("gitEnv kept %v", got)
 	}
 }
