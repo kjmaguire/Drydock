@@ -9,6 +9,10 @@ on:
   pull_request:
 permissions:
   contents: read
+# a newer push to the same branch or pull request supersedes the run still going (the Windows jobs take 15 minutes)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   go:
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
@@ -19,6 +23,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v7
+        # some Go tests drive Node projects (the e2e and preview checks, the npm templates); without Node they skip
+        with:
+          node-version: "24"
       - name: Git identity for tests
         run: |
           git config --global user.name "Drydock CI"
@@ -83,9 +91,19 @@ jobs:
         run: go run .
   ui:
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        # the end-to-end suite builds and starts the real core (cmd/drydock-e2e)
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Git identity for the end-to-end suite
+        run: |
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -100,6 +118,51 @@ jobs:
         working-directory: ui
       - run: npm run build
         working-directory: ui
+      - name: End-to-end tests (the built UI against the real core and the scripted agent)
+        working-directory: ui
+        env:
+          DRYDOCK_E2E_USE_DEFAULT_CHROMIUM: "1"
+          DRYDOCK_NO_REAL_AGENTS: "1"
+        run: npx playwright test
+  lint:
+    # golangci-lint with the committed .golangci.yml, for the Windows build and for the Linux development build
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Placeholder for the built UI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ui/dist | Out-Null
+          Set-Content ui/dist/index.html '<!doctype html><title>Drydock</title>'
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+      - name: Lint (Windows)
+        run: golangci-lint run ./...
+      - name: Lint (Linux build)
+        env:
+          GOOS: linux
+        run: golangci-lint run ./...
+  sandbox:
+    # The one Linux job, a test-only exception to decision P1: the sandbox runs project commands in Linux containers, and
+    # GitHub's Windows runners have no Linux container engine. It proves the network allowlist and the container setup
+    # with a real Docker engine; a missing engine fails the job instead of skipping.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Sandbox tests with Docker
+        env:
+          DRYDOCK_REQUIRE_DOCKER: "1"
+          DRYDOCK_NO_REAL_AGENTS: "1"
+        run: go test ./internal/sandbox/... -count=1 -timeout 25m -v
   app:
     needs: [go, ui]
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}

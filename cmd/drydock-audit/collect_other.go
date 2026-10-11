@@ -169,6 +169,7 @@ func tools(ctx context.Context) []Item {
 		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", ""},
 		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", ""},
 		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", ""},
+		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", ""},
 		{"tool:wrangler", "Wrangler", "tool", "", "wrangler"},
 		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", ""},
 	}

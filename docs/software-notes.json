@@ -5,7 +5,8 @@
     "tool:osv-scanner": "2.6.0",
     "tool:go-licenses": "2.0.1",
     "tool:wrangler": "4.149.0",
-    "tool:docker": "29.8.2"
+    "tool:docker": "29.8.2",
+    "tool:golangci-lint": "2.14.0"
   },
   "notes": {
     "go": {
@@ -203,6 +204,9 @@
     "tool:docker": {
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
       "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
+    },
+    "tool:golangci-lint": {
+      "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
     }
   }
 }

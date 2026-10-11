@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -89,26 +88,11 @@ func TestUserSettingsOnlyAddsTheSettingSourcesFlag(t *testing.T) {
 // cmd.exe, which ends the command line at the first newline), the flags after them still arrive, and the file is gone once
 // the process has exited.
 func TestStartPassesTheInstructionsInAFileAndRemovesIt(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses a POSIX shell script as the CLI")
-	}
 	dir := t.TempDir()
 	out := filepath.Join(dir, "seen")
-	script := filepath.Join(dir, "claude")
-	body := `#!/bin/sh
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "--append-system-prompt-file" ]; then cat "$a" > "$OUT.content"; printf '%s' "$a" > "$OUT.path"; fi
-  if [ "$prev" = "--allowedTools" ]; then printf '%s' "$a" > "$OUT.allowed"; fi
-  if [ "$a" = "--append-system-prompt" ]; then echo inline > "$OUT.inline"; fi
-  prev="$a"
-done
-`
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := os.Args[0] // the stand-in (standin_test.go)
 	text := "Line one of the instructions.\nLine two & \"quoted\" | piped\n\nThe end."
-	spec := agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: text, AllowedTools: []string{"Bash(npm test)", "Edit"}, Env: []string{"OUT=" + out}}
+	spec := agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: text, AllowedTools: []string{"Bash(npm test)", "Edit"}, Env: standinSpecEnv(out)}
 	s, err := (&Adapter{Exe: script}).Start(context.Background(), proc.New(), spec)
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +100,7 @@ done
 	select {
 	case <-s.Wait():
 	case <-time.After(10 * time.Second):
-		t.Fatal("the script did not exit")
+		t.Fatal("the stand-in did not exit")
 	}
 	got, err := os.ReadFile(out + ".content")
 	if err != nil || string(got) != text {

@@ -37,7 +37,7 @@ type workflow struct {
 	} `yaml:"jobs"`
 }
 
-// The workflow cannot run yet (decision P2), so it is checked here: it parses, has the triggers and runner expression it
+// The workflow is checked here as well as by its runs: it parses, has the triggers and runner expression it
 // should, uses only the actions (at the versions) the existing CI already uses, and runs the suite with a budget and the
 // version watch.
 func TestContractWorkflowIsWhatTheDocsSay(t *testing.T) {
@@ -71,7 +71,7 @@ func TestContractWorkflowIsWhatTheDocsSay(t *testing.T) {
 	if !ok {
 		t.Fatal("no contract job")
 	}
-	if job.RunsOn != `${{ fromJSON(vars.CONTRACT_RUNS_ON || '"ubuntu-latest"') }}` {
+	if job.RunsOn != `${{ fromJSON(vars.CONTRACT_RUNS_ON || '"windows-latest"') }}` {
 		t.Errorf("runs-on %q", job.RunsOn)
 	}
 	ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))

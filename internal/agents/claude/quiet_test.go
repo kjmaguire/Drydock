@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -93,22 +92,12 @@ func TestQuietEnvReplacesInheritedValues(t *testing.T) {
 // The process really starts with the quiet values even when the app's own environment says otherwise, and a run's own
 // variables still reach it.
 func TestStartRunsClaudeWithTheQuietEnvironment(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses a POSIX shell script as the CLI")
-	}
 	t.Setenv("CLAUDE_AUTO_BACKGROUND_TASKS", "1")
 	t.Setenv("CLAUDE_CODE_DISABLE_CRON", "0")
 	dir := t.TempDir()
 	out := filepath.Join(dir, "seen")
-	script := filepath.Join(dir, "claude")
-	body := `#!/bin/sh
-env > "$OUT.env"
-printf '%s\n' "$@" > "$OUT.args"
-`
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	spec := agents.RunSpec{AgentID: "a1", Cwd: dir, Env: []string{"OUT=" + out, "MCP_TOOL_TIMEOUT=60000"}}
+	script := os.Args[0] // the stand-in (standin_test.go)
+	spec := agents.RunSpec{AgentID: "a1", Cwd: dir, Env: append(standinSpecEnv(out), "MCP_TOOL_TIMEOUT=60000")}
 	s, err := (&Adapter{Exe: script, ScrubEnv: true, UserSettingsOnly: true}).Start(context.Background(), proc.New(), spec)
 	if err != nil {
 		t.Fatal(err)

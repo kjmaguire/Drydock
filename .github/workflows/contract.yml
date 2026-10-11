@@ -1,10 +1,11 @@
 # The contract suite against the real agent CLIs (docs/contract-tests.md): nightly, on demand, and when the adapters change.
-# It has not run yet: GitHub Actions does not start runners for this repository (decision P2).
+# It runs on GitHub-hosted runners since the repository went public (decision P2 resolved). A run whose paid checks all
+# skipped (no sign-in secret) says so in a warning annotation: it proves only the free contracts.
 #
 # Sign-in: one repository secret, CLAUDE_CODE_OAUTH_TOKEN (made with `claude setup-token`) or ANTHROPIC_API_KEY. Without either
 # the paid checks skip and the free ones still run.
 # Runner: the repository variable CONTRACT_RUNS_ON, a JSON value such as "windows-latest" or ["self-hosted","windows"]; the
-# default is ubuntu-latest. WIN-ARGV-01 runs only on Windows. The suite step uses bash (Git Bash on Windows runners).
+# default is windows-latest, the product's platform, so WIN-ARGV-01 (Windows only) runs too. The suite step uses bash (Git Bash on Windows runners).
 name: contract
 on:
   schedule:
@@ -33,7 +34,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   contract:
-    runs-on: ${{ fromJSON(vars.CONTRACT_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(vars.CONTRACT_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 90
     env:
       GOFLAGS: -mod=mod

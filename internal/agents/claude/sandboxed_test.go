@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,27 +30,15 @@ func TestASandboxedSessionStartsRestrictedAndGetsTheProjectMemory(t *testing.T) 
 		t.Fatalf("an ordinary session is unchanged: %s", plain)
 	}
 
-	if runtime.GOOS == "windows" {
-		t.Skip("uses a POSIX shell script as the CLI")
-	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("PROJECT-MEMORY-MARKER\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	script := filepath.Join(dir, "claude")
-	if err := os.WriteFile(script, []byte(`#!/bin/sh
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "--append-system-prompt-file" ]; then cat "$a" > "$OUT"; fi
-  prev="$a"
-done
-`), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := os.Args[0] // the stand-in (standin_test.go)
 	read := func(sandboxed bool) string {
 		out := filepath.Join(t.TempDir(), "seen")
 		s, err := (&Adapter{Exe: script, UserSettingsOnly: !sandboxed}).Start(context.Background(), proc.New(),
-			agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: "Worker instructions.", Sandboxed: sandboxed, Env: []string{"OUT=" + out}})
+			agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: "Worker instructions.", Sandboxed: sandboxed, Env: standinSpecEnv(out)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +47,7 @@ done
 		case <-time.After(10 * time.Second):
 			t.Fatal("the script did not exit")
 		}
-		b, _ := os.ReadFile(out)
+		b, _ := os.ReadFile(out + ".content")
 		return string(b)
 	}
 	if got := read(false); !strings.Contains(got, "PROJECT-MEMORY-MARKER") {

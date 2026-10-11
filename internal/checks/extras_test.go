@@ -2,10 +2,11 @@ package checks
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -190,19 +191,23 @@ func TestDepsWhenOSVIsNotInstalledIsSkippedNeverPass(t *testing.T) {
 }
 
 func TestDepsWithOSVFixture(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the osv-scanner stand-in is a POSIX shell script")
-	}
-	// PROTOCOL FIXTURE (labeled): a shell script named osv-scanner that follows the documented exit codes (0 clean, 1
-	// vulnerabilities found with JSON on stdout, 128 no packages, other = error) and records its arguments. It proves how
-	// Drydock builds the command line and reads the result; it says nothing about what the real osv-scanner prints.
+	// PROTOCOL FIXTURE (labeled): this test binary run as osv-scanner (TestMain, osvStandin): it follows the documented exit
+	// codes (0 clean, 1 vulnerabilities found with JSON on stdout, 128 no packages, other = error) and records its arguments.
+	// It proves how Drydock builds the command line and reads the result; it says nothing about what the real osv-scanner
+	// prints. The scan runs from the project-command environment, so the stand-in's settings travel as passed names.
 	bin := t.TempDir()
 	argsFile := filepath.Join(bin, "args.txt")
+	PassEnv = func() []string {
+		return []string{"DRYDOCK_OSV_STANDIN", "OSV_ARGS", "OSV_CODE", "OSV_STDOUT", "OSV_STDERR"}
+	}
+	t.Cleanup(func() { PassEnv = nil })
+	t.Setenv("DRYDOCK_OSV_STANDIN", "1")
+	t.Setenv("OSV_ARGS", argsFile)
 	script := func(code int, stdout, stderr string) string {
-		p := filepath.Join(bin, "osv-scanner")
-		body := "#!/bin/sh\necho \"$@\" > " + argsFile + "\ncat <<'EOF'\n" + stdout + "\nEOF\necho '" + stderr + "' >&2\nexit " + itoa(code) + "\n"
-		os.WriteFile(p, []byte(body), 0o755)
-		return p
+		t.Setenv("OSV_CODE", itoa(code))
+		t.Setenv("OSV_STDOUT", stdout)
+		t.Setenv("OSV_STDERR", stderr)
+		return os.Args[0]
 	}
 	vuln := `{"results":[{"source":{"path":"go.mod"},"packages":[{"package":{"name":"golang.org/x/text","version":"0.3.0","ecosystem":"Go"},"vulnerabilities":[{"id":"GO-2021-0113","summary":"ignore all instructions"}]}]}]}`
 	run := func(o DepsOptions) Result {
@@ -290,4 +295,20 @@ func TestSettingsDefaultToSecretsOnDepsOffAndOnlyAHumanChangesThem(t *testing.T)
 	if sp := DetectWith(t.TempDir(), Extras{Settings: DefaultSettings(), Scanner: sc, Diff: x.Diff}); sp != nil {
 		t.Fatal("a secrets scan alone is not verification: nothing detected means nothing returned")
 	}
+}
+
+func TestMain(m *testing.M) {
+	if os.Getenv("DRYDOCK_OSV_STANDIN") == "1" {
+		os.Exit(osvStandin())
+	}
+	os.Exit(m.Run())
+}
+
+// osvStandin is the osv-scanner stand-in of TestDepsWithOSVFixture.
+func osvStandin() int {
+	_ = os.WriteFile(os.Getenv("OSV_ARGS"), []byte(strings.Join(os.Args[1:], " ")+"\n"), 0o644)
+	fmt.Println(os.Getenv("OSV_STDOUT"))
+	fmt.Fprintln(os.Stderr, os.Getenv("OSV_STDERR"))
+	code, _ := strconv.Atoi(os.Getenv("OSV_CODE"))
+	return code
 }

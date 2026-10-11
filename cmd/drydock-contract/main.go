@@ -187,6 +187,15 @@ func run(ctx context.Context, o options, w io.Writer) (int, error) {
 		fmt.Fprintf(w, " + about $%.2f estimated", rep.EstimatedUSD)
 	}
 	fmt.Fprintf(w, " (budget $%.2f)\nreport: %s\n", o.budget, filepath.Join(out, "contract-report.md"))
+	if noPaidRan(rep) {
+		// a run in which every paid contract skipped (no sign-in secret) proves only the free contracts: say so where the run
+		// is looked at, so a green run is not read as the real CLI having been checked
+		msg := "no paid contract ran (no sign-in for claude here, or the budget was spent at once): only the free contracts were checked"
+		fmt.Fprintln(w, msg)
+		if os.Getenv("GITHUB_ACTIONS") == "true" {
+			fmt.Fprintln(w, "::warning title=Contract suite::"+msg)
+		}
+	}
 	if rep.Failed() {
 		return 1, nil
 	}
@@ -282,3 +291,6 @@ func repoRoot() (string, error) {
 		d = p
 	}
 }
+
+// noPaidRan reports whether the run spent nothing: no paid check reported a cost and none ran without reporting one.
+func noPaidRan(rep *contract.Report) bool { return rep.SpentUSD == 0 && rep.EstimatedUSD == 0 }

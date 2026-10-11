@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -64,21 +63,14 @@ func TestProjectMemoryReadsClaudeMdItsImportsAndTheRules(t *testing.T) {
 // With UserSettingsOnly (how Drydock starts every Claude agent) the project's instruction files reach the CLI through the
 // instructions file; without it the CLI loads them itself, so they are not added twice.
 func TestStartAddsTheProjectMemoryOnlyWhenTheCLISkipsIt(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses a POSIX shell script as the CLI")
-	}
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "CLAUDE.md"), "@AGENTS.md\n")
 	write(t, filepath.Join(dir, "AGENTS.md"), "Release codename: PELICAN-9.\n")
 	out := filepath.Join(dir, "seen")
-	script := filepath.Join(t.TempDir(), "claude")
-	write(t, script, "#!/bin/sh\nprev=\"\"\nfor a in \"$@\"; do\n  if [ \"$prev\" = \"--append-system-prompt-file\" ]; then cat \"$a\" > \"$OUT\"; fi\n  prev=\"$a\"\ndone\n")
-	if err := os.Chmod(script, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := os.Args[0] // the stand-in (standin_test.go)
 	run := func(a *Adapter) string {
-		_ = os.Remove(out)
-		s, err := a.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: "Practices.", Env: []string{"OUT=" + out}})
+		_ = os.Remove(out + ".content")
+		s, err := a.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "a1", Cwd: dir, SystemAppend: "Practices.", Env: standinSpecEnv(out)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,7 +79,7 @@ func TestStartAddsTheProjectMemoryOnlyWhenTheCLISkipsIt(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatal("the script did not exit")
 		}
-		b, _ := os.ReadFile(out)
+		b, _ := os.ReadFile(out + ".content")
 		return string(b)
 	}
 	if got := run(&Adapter{Exe: script, UserSettingsOnly: true}); !strings.HasPrefix(got, "Practices.") || !strings.Contains(got, "PELICAN-9") {
