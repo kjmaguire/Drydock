@@ -868,13 +868,22 @@ func TestChatVersionsOrderSnapshotsAndActionsReturnTheCommittedRow(t *testing.T)
 	e.call("chat.send", map[string]any{"id": c.ID, "text": "hello"}, &sent)
 	e.waitTurn(sent.TurnID)
 	var running, ended map[string]any
-	for _, ev := range e.eventsOf("chat.updated") {
-		ch, _ := ev["chat"].(map[string]any)
-		if ch["status"] == "running" {
-			running = ch
-		} else if running != nil {
-			ended = ch
+	// the turn's row is written before its end is published: wait for the event too (a loaded Windows runner showed the gap)
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		running, ended = nil, nil
+		for _, ev := range e.eventsOf("chat.updated") {
+			ch, _ := ev["chat"].(map[string]any)
+			if ch["status"] == "running" {
+				running = ch
+			} else if running != nil {
+				ended = ch
+			}
 		}
+		if ended != nil || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if running == nil || int64(running["version"].(float64)) != sent.Version || sent.Version <= un.Version {
 		t.Fatalf("the running chat is published at the version chat.send returns (%d): %+v", sent.Version, running)
