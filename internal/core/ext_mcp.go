@@ -155,14 +155,7 @@ type mcpPlan struct {
 // readTools are the Workspace tools every role gets: they only read. repo_map is withheld while it is gated (D5).
 var readTools = []string{"read_range", "search_memory", "search_requirements", "skills"}
 
-// adapterMCP reports whether the generated configuration of an adapter is verified, and why not when it is not. Only a
-// verified mechanism is ever used: for the rest the CLI gets no MCP at all and the manifest says so.
-func adapterMCP(adapter string) (bool, string) {
-	ok, _, why := adapterMCPKind(adapter)
-	return ok, why
-}
-
-// adapterMCPKind is adapterMCP plus canTry: the configuration can be generated but no real run has proven it, so the human may
+// adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the configuration can be generated but no real run has proven it, so the human may
 // choose to attach the gateway anyway (mcp.try.set). A CLI with no known mechanism (Antigravity) can never be tried.
 func adapterMCPKind(adapter string) (verified, canTry bool, why string) {
 	probe := mcp.Endpoint{RunID: "probe", URL: "http://127.0.0.1:1/mcp/probe", Token: "probe", ShimCommand: []string{"drydock", "mcp-shim"}}

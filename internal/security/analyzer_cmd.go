@@ -82,9 +82,7 @@ func (r *run) cmdTokens(text string) ([]cmdTok, bool) {
 				cur.WriteRune(rs[i])
 				i++
 			}
-			if i >= len(rs) {
-				// cmd tolerates an unterminated quote; treat the rest as quoted text
-			}
+			// at the end of the input: cmd tolerates an unterminated quote, so the rest is quoted text
 		case c == '^':
 			if i+1 >= len(rs) {
 				r.opaque("cmd trailing caret")

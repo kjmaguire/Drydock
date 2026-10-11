@@ -48,23 +48,23 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	w.SetMaxOpenConns(1)
 	w.SetMaxIdleConns(1)
 	if err := w.PingContext(ctx); err != nil {
-		w.Close()
+		_ = w.Close()
 		return nil, fmt.Errorf("open writer: %w", err)
 	}
 	d := &DB{path: path, w: w}
 	if err := d.Migrate(ctx); err != nil {
-		w.Close()
+		_ = w.Close()
 		return nil, err
 	}
 	r, err := sql.Open("sqlite", dsn(path, false))
 	if err != nil {
-		w.Close()
+		_ = w.Close()
 		return nil, err
 	}
 	r.SetMaxOpenConns(4)
 	if path == ":memory:" {
 		// an in-memory database is per-connection; share the writer for reads in tests that use it
-		r.Close()
+		_ = r.Close()
 		r = w
 	}
 	d.r = r

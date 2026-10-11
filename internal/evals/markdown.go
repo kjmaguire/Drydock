@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 func usd(v float64) string { return fmt.Sprintf("$%.4f", v) }
@@ -104,7 +106,7 @@ func (r Report) Markdown() string {
 			w("")
 			return
 		}
-		w("| %s | Accepted tasks (n) | Total (accepted tasks) | Per accepted task |", strings.Title(title))
+		w("| %s | Accepted tasks (n) | Total (accepted tasks) | Per accepted task |", capitalize(title))
 		w("|---|---|---|---|")
 		for _, g := range gs {
 			per := fmt.Sprintf("n < %d: see the per-task rows", r.Options.MinN)
@@ -258,4 +260,12 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// capitalize upper-cases the first letter of s (the headings are plain words, so no word-boundary rules are needed).
+func capitalize(s string) string {
+	for i, r := range s {
+		return string(unicode.ToUpper(r)) + s[i+utf8.RuneLen(r):]
+	}
+	return s
 }

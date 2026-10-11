@@ -408,7 +408,7 @@ func (u *upstream) failedCall(ctx context.Context, err error) {
 		u.mu.Unlock()
 		if sess != nil {
 			u.sessionClosed(sess)
-			go sess.Close()
+			go func() { _ = sess.Close() }()
 		}
 	}
 }

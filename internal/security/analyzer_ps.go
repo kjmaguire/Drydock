@@ -358,9 +358,7 @@ func (l *psLexer) word(argPos bool) (psWord, bool) {
 
 func finishWord(w *psWord, sb *strings.Builder) psWord {
 	w.text = sb.String()
-	if w.quoted && w.mixedQuote {
-		// bare and quoted segments are merged by PowerShell in argument mode
-	}
+	// a word with both bare and quoted segments (w.quoted && w.mixedQuote) is merged as PowerShell does in argument mode
 	return *w
 }
 

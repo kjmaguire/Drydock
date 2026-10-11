@@ -3,7 +3,11 @@
 package proc
 
 import (
+	"bufio"
 	"context"
+	"io"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,4 +60,33 @@ func TestKillTreeReapsGrandchildren(t *testing.T) {
 func TestEnterAppJobIsIdempotent(t *testing.T) {
 	_ = EnterAppJob() // may fail when the runner already placed us in a restrictive job; must not panic
 	_ = EnterAppJob()
+}
+
+func readChildPIDs(t *testing.T, r io.Reader, n int) []int {
+	t.Helper()
+	sc := bufio.NewScanner(r)
+	var pids []int
+	deadline := time.After(15 * time.Second)
+	lines := make(chan string)
+	go func() {
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	for len(pids) < n {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				t.Fatalf("stdout closed after %d pids", len(pids))
+			}
+			if strings.HasPrefix(l, "child:") {
+				v, _ := strconv.Atoi(strings.TrimPrefix(l, "child:"))
+				pids = append(pids, v)
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for grandchild pids")
+		}
+	}
+	return pids
 }

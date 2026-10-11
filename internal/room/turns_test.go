@@ -288,7 +288,7 @@ func TestDebateStopsAtBoundWithAlwaysDisagreeStub(t *testing.T) {
 	}
 	// the stub: each agent disagrees and @mentions the other
 	turn := 0
-	last := opener
+	var last Message
 	author, other := a, b
 	for ; turn < 10; turn++ {
 		last = say(Agent(author), "No, I disagree. @"+other)

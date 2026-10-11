@@ -156,7 +156,7 @@ func (a *Adapter) Handshake(ctx context.Context, pm proc.Manager, spec agents.Ru
 	if err != nil {
 		return h, err
 	}
-	defer s.Stop(context.Background())
+	defer func() { _ = s.Stop(context.Background()) }()
 	h.Info, h.PID, h.InitElapsed = s.info, s.PID(), time.Since(began)
 	octx, cancel := context.WithTimeout(ctx, a.cfg.StartTimeout)
 	defer cancel()

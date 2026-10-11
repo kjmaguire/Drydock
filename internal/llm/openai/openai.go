@@ -93,7 +93,7 @@ func (c *Client) Stream(ctx context.Context, req llm.Request, fn func(llm.Delta)
 		return llm.Response{}, c.fail(err, raw)
 	}
 	stream := ssestream.NewStream[chunk](ssestream.NewDecoder(raw), nil)
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	resp := llm.Response{EffortApplied: req.Effort != "", Header: raw.Header}
 	var usage *wireUsage
 	calls := map[int]*llm.ToolCall{}

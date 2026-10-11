@@ -49,7 +49,7 @@ func FileSchemaVersion(ctx context.Context, path string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	return schemaVersion(ctx, db)
 }
 

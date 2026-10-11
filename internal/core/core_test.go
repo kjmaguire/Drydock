@@ -70,9 +70,8 @@ func copyTree(t *testing.T, src, dst string) {
 }
 
 type app struct {
-	t    *testing.T
-	c    *core.Core
-	repo string
+	t *testing.T
+	c *core.Core
 }
 
 // open starts a Core whose "claude" adapter is the scripted real-process agent (the same stand-in the pipeline tests use).

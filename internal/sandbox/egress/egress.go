@@ -232,18 +232,18 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		up.Close()
+		_ = up.Close()
 		http.Error(w, "drydock egress: tunnelling is not supported here", http.StatusInternalServerError)
 		return
 	}
 	client, buf, err := hj.Hijack()
 	if err != nil {
-		up.Close()
+		_ = up.Close()
 		return
 	}
 	if _, err := client.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); err != nil {
-		client.Close()
-		up.Close()
+		_ = client.Close()
+		_ = up.Close()
 		return
 	}
 	go pipe(up, buf.Reader, client)

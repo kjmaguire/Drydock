@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -115,8 +114,6 @@ func (e *env) approval(id, kind, status, decidedBy string) {
 	e.exec(`INSERT INTO approvals(id,task_id,project_id,kind,title,action_hash,status,decision,decided_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
 		id, "", e.project, kind, "Run rm -rf build", "hash_"+id, status, "", decidedBy, storage.Now())
 }
-
-func raw(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 
 func eventually(t *testing.T, d time.Duration, f func() bool) {
 	t.Helper()

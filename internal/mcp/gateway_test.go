@@ -1011,9 +1011,7 @@ func TestLazyListDoesNotContactDeclaredUpstream(t *testing.T) {
 	if names := toolNames(t, cs); strings.Join(names, ",") != "fetch_range,srv__echo" {
 		t.Fatalf("declared tools: %v", names)
 	}
-	if len(e.events(EventServerStarted)) != 0 || len(e.g.pool) == 0 {
-		// the pool entry exists, but no connection was made
-	}
+	// the pool entry may exist, but no connection was made: nothing to assert on the pool here
 	for _, u := range e.g.pool {
 		if u.isConnected() {
 			t.Fatal("tools/list must not connect to an upstream that declares its tools")

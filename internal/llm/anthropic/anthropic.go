@@ -241,7 +241,7 @@ func (c *Client) Stream(ctx context.Context, r llm.Request, fn func(llm.Delta) e
 	var hr *http.Response
 	start := time.Now()
 	stream := c.c.Messages.NewStreaming(ctx, params, option.WithResponseInto(&hr))
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	var msg sdk.Message
 	toolIdx := map[int64]int{} // content block index -> tool call ordinal
 	for stream.Next() {

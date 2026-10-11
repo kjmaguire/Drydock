@@ -77,7 +77,7 @@ func New() *Server {
 		var m struct {
 			RedirectURIs []string `json:"redirect_uris"`
 		}
-		json.NewDecoder(r.Body).Decode(&m)
+		_ = json.NewDecoder(r.Body).Decode(&m)
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.regs++
@@ -104,7 +104,7 @@ func New() *Server {
 		http.Redirect(w, r, redirect+"?code="+code+"&state="+url.QueryEscape(q.Get("state"))+"&iss="+url.QueryEscape(f.srv.URL), http.StatusFound)
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		_ = r.ParseForm()
 		id, secret, hasBasic := r.BasicAuth()
 		if !hasBasic {
 			id, secret = r.Form.Get("client_id"), r.Form.Get("client_secret")
@@ -141,8 +141,6 @@ func New() *Server {
 	f.srv = httptest.NewServer(mux)
 	return f
 }
-
-func (f *Server) currentAccess() string { f.mu.Lock(); defer f.mu.Unlock(); return f.access }
 
 // URL is the address of the MCP endpoint to give to Drydock.
 func (f *Server) URL() string { return f.srv.URL + "/mcp" }

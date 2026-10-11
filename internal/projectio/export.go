@@ -232,19 +232,19 @@ func (s Source) stage(ctx context.Context, o ExportOptions, dir string) (Manifes
 	for _, t := range Tables {
 		n, err := x.exportTable(tx, dest, dir, t)
 		if err != nil {
-			dest.Close()
+			_ = dest.Close()
 			return Manifest{}, err
 		}
 		counts[t.Name] = n
 	}
 	ver, err := dest.SchemaVersion(ctx)
 	if err != nil {
-		dest.Close()
+		_ = dest.Close()
 		return Manifest{}, err
 	}
 	// a single self-contained file: no write-ahead log travels beside it
 	if _, err := dest.Writer().ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-		dest.Close()
+		_ = dest.Close()
 		return Manifest{}, err
 	}
 	if err := dest.Close(); err != nil {
@@ -336,7 +336,7 @@ func (x *exporter) exportTable(tx *sql.Tx, dest *storage.DB, dir string, t Table
 		if err != nil {
 			return err
 		}
-		defer stmt.Close()
+		defer func() { _ = stmt.Close() }()
 		vals := make([]any, len(t.Columns))
 		ptrs := make([]any, len(vals))
 		for i := range vals {
@@ -543,7 +543,7 @@ func writeZip(dest, dir string, m Manifest) error {
 	}
 	zw := zip.NewWriter(out)
 	fail := func(err error) error {
-		zw.Close()
+		_ = zw.Close()
 		out.Close()
 		return err
 	}

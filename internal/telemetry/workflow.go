@@ -2,7 +2,6 @@ package telemetry
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -48,8 +47,7 @@ func (s *Sink) Observer() workflow.ObserverFactory {
 }
 
 type usageObserver struct {
-	s  *Sink
-	mu sync.Mutex
+	s *Sink
 }
 
 func (u *usageObserver) OnStart(context.Context, workflow.NodeInfo) {}

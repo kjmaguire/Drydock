@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -113,9 +114,7 @@ func PushPR(d Deps, src PRSource) workflow.NodeHandler {
 
 		var pr host.PR
 		if t.PRRef != "" {
-			var n int
-			fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
-			if pr, _, err = cfg.GitHub.GetPR(ctx, n, ""); err != nil {
+			if pr, _, err = cfg.GitHub.GetPR(ctx, prNumber(t.PRRef), ""); err != nil {
 				return githubTrouble(in, "read the pull request", err)
 			}
 		} else {
@@ -446,9 +445,9 @@ func day(ms int64) string {
 }
 
 // prNumber is the number in a task's PR reference ("owner/repo#12").
+// prNumber is the number of an "owner/repo#n" reference; 0 when there is none.
 func prNumber(ref string) int {
-	var n int
-	fmt.Sscanf(ref[strings.LastIndex(ref, "#")+1:], "%d", &n)
+	n, _ := strconv.Atoi(ref[strings.LastIndex(ref, "#")+1:])
 	return n
 }
 
@@ -477,8 +476,7 @@ func PRFeedback(d Deps, src PRSource) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		var n int
-		fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
+		n := prNumber(t.PRRef)
 		evs, err := cfg.GitHub.Reviews(ctx, n, time.Time{})
 		if err != nil {
 			if ctx.Err() != nil {

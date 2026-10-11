@@ -782,8 +782,8 @@ func (c *chunkWriter) flusher() {
 		case <-t.C:
 			c.mu.Lock()
 			if c.dirty {
-				c.w.Flush()
-				c.f.Sync()
+				_ = c.w.Flush()
+				_ = c.f.Sync()
 				c.dirty = false
 			}
 			c.mu.Unlock()
@@ -795,16 +795,16 @@ func (c *chunkWriter) Write(ch Chunk) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	b, _ := json.Marshal(ch)
-	c.w.Write(b)
-	c.w.WriteByte('\n')
+	_, _ = c.w.Write(b) // best effort: the chunk is also published; a full disk shows elsewhere
+	_ = c.w.WriteByte('\n')
 	c.dirty = true
 }
 
 func (c *chunkWriter) Sync() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.w.Flush()
-	c.f.Sync()
+	_ = c.w.Flush()
+	_ = c.f.Sync()
 	c.dirty = false
 }
 

@@ -228,7 +228,7 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 		fail(fmt.Errorf("could not listen for the sign-in to come back: %w", err))
 		return
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	redirect := "http://" + ln.Addr().String() + "/callback"
 	type cb struct{ code, state, iss, err string }
 	got := make(chan cb, 1)

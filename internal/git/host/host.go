@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -218,12 +219,9 @@ func parseHTTP(b []byte) (int, http.Header, []byte) {
 	head, body := s[:sep], s[sep+adv:]
 	lines := strings.Split(strings.ReplaceAll(head, "\r\n", "\n"), "\n")
 	var status int
-	fmt.Sscanf(lines[0], "HTTP/%*s %d", &status)
-	if status == 0 {
-		f := strings.Fields(lines[0])
-		if len(f) >= 2 {
-			fmt.Sscan(f[1], &status)
-		}
+	// "HTTP/2.0 200 OK": the second field is the status
+	if f := strings.Fields(lines[0]); len(f) >= 2 {
+		status, _ = strconv.Atoi(f[1])
 	}
 	for _, l := range lines[1:] {
 		if i := strings.Index(l, ":"); i > 0 {

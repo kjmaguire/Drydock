@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/kjmaguire/drydock/internal/integrations"
+	"strconv"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/integrations"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -107,8 +109,7 @@ func (c *Core) PullRequest(ctx context.Context, taskID string) (PRState, error) 
 	if err != nil {
 		return PRState{}, err
 	}
-	var n int
-	fmt.Sscanf(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:], "%d", &n)
+	n, _ := strconv.Atoi(t.PRRef[strings.LastIndex(t.PRRef, "#")+1:])
 	var st PRState
 	if st.PR, _, err = cfg.GitHub.GetPR(ctx, n, ""); err != nil {
 		return st, err

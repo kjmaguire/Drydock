@@ -123,7 +123,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	acked, err := c.loadGateAcks(ctx)
 	if err != nil {
 		cancel()
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	// Checks, previews and the dependency scan get the same extra names agents get (the person's list in settings).
@@ -136,7 +136,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	})
 	if err != nil {
 		cancel()
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("connections: %w", err)
 	}
 	built, failed := c.Connections.Registry.BuildAll()
@@ -152,7 +152,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	c.Bus = events.NewSQLBus(db, 4096)
 	if c.Scanner, err = security.NewScanner(); err != nil {
 		cancel()
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("secret scanner: %w", err)
 	}
 	// every message body is scanned before it is stored, so a secret pasted into the room never reaches the database, the
@@ -204,7 +204,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	} {
 		if err := c.Engine.Register(g); err != nil {
 			cancel()
-			db.Close()
+			_ = db.Close()
 			return nil, err
 		}
 	}
@@ -261,7 +261,7 @@ func (c *Core) Close() {
 	c.Health.Stop()
 	c.Engine.Close()
 	c.Bus.Close()
-	c.DB.Close()
+	_ = c.DB.Close()
 }
 
 func (c *Core) logf(format string, a ...any) {

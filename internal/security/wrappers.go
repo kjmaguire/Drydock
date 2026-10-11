@@ -29,13 +29,12 @@ func opaqueWrap(note string) unwrapResult { return unwrapResult{kind: uwOpaque, 
 
 // wrapperSpec describes a transparent launcher: flags that take a value, and positionals consumed before the command.
 type wrapperSpec struct {
-	valued      map[string]bool
-	skipPos     int
-	assigns     bool   // NAME=value words before the command (env)
-	note        string // reason recorded when this wrapper is used
-	stdinArgs   bool
-	noCmdOK     bool // running with no command is harmless (env prints the environment)
-	shortAttach bool // -nN style attached values (nice -n5)
+	valued    map[string]bool
+	skipPos   int
+	assigns   bool   // NAME=value words before the command (env)
+	note      string // reason recorded when this wrapper is used
+	stdinArgs bool
+	noCmdOK   bool // running with no command is harmless (env prints the environment)
 }
 
 var wrapperSpecs = map[string]wrapperSpec{

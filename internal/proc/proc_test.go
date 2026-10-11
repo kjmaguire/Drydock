@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -103,33 +102,4 @@ func TestStartMissingExecutable(t *testing.T) {
 	if _, err := New().Start(context.Background(), Spec{Path: "definitely-not-a-real-binary-xyz"}); err == nil {
 		t.Fatal("expected error")
 	}
-}
-
-func readChildPIDs(t *testing.T, r io.Reader, n int) []int {
-	t.Helper()
-	sc := bufio.NewScanner(r)
-	var pids []int
-	deadline := time.After(15 * time.Second)
-	lines := make(chan string)
-	go func() {
-		for sc.Scan() {
-			lines <- sc.Text()
-		}
-		close(lines)
-	}()
-	for len(pids) < n {
-		select {
-		case l, ok := <-lines:
-			if !ok {
-				t.Fatalf("stdout closed after %d pids", len(pids))
-			}
-			if strings.HasPrefix(l, "child:") {
-				v, _ := strconv.Atoi(strings.TrimPrefix(l, "child:"))
-				pids = append(pids, v)
-			}
-		case <-deadline:
-			t.Fatal("timed out waiting for grandchild pids")
-		}
-	}
-	return pids
 }

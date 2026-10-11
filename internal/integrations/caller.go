@@ -187,16 +187,6 @@ func num(v any) (int64, bool) {
 	return 0, false
 }
 
-func strList(v any) []string {
-	var out []string
-	for _, e := range asList(v) {
-		if s := str(e); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 var timeLayouts = []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05", "2006-01-02"}
 
 // millis parses an RFC 3339 string or a Unix timestamp (seconds or milliseconds) into milliseconds.

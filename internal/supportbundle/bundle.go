@@ -344,7 +344,7 @@ func Write(b Bundle, path string) error {
 			_, err = w.Write(bf.Data)
 		}
 		if err != nil {
-			zw.Close()
+			_ = zw.Close()
 			f.Close()
 			os.Remove(tmp)
 			return fmt.Errorf("write %s: %w", bf.Name, err)

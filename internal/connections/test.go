@@ -225,7 +225,7 @@ func (t *tester) run(ctx context.Context) Report {
 			return t.finish(conn)
 		}
 		sess = ss
-		defer ss.Stop(context.Background())
+		defer func() { _ = ss.Stop(context.Background()) }()
 		time.Sleep(1500 * time.Millisecond)
 		select {
 		case ei := <-ss.Wait():

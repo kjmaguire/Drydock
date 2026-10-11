@@ -327,7 +327,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 		o.err = err
 		return o
 	}
-	defer m.Stop(context.Background())
+	defer func() { _ = m.Stop(context.Background()) }()
 	o.started, o.runID = true, m.RunID
 	o.sessionAtStart = m.Sess.ID() != ""
 	s.setTurnRun(t.turnID, m.RunID)

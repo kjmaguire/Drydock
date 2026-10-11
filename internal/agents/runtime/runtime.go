@@ -469,7 +469,7 @@ func (r *Runtime) AgentTask(spec TaskSpec) workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		if !spec.Keep {
-			defer m.Stop(context.Background())
+			defer func() { _ = m.Stop(context.Background()) }()
 		}
 		ctl := newController(m)
 		if in.Turn != nil {

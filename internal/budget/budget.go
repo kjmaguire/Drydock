@@ -193,7 +193,10 @@ func (s *Store) Set(ctx context.Context, b Budget, by string) (Budget, error) {
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			var exists int
-			if tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM budgets WHERE id=?`, b.ID).Scan(&exists); exists == 0 {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM budgets WHERE id=?`, b.ID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists == 0 {
 				return fmt.Errorf("%w: %s", ErrNotFound, b.ID)
 			}
 			return ErrConflict

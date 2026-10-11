@@ -57,7 +57,7 @@ func Inspect(ctx context.Context, archive string) (Preview, error) {
 	if err != nil {
 		return Preview{}, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	im := &ImportEnv{Source: filepath.Base(archive), Human: "human:you"}
 	counts := map[string]int{}
 	for _, t := range Tables {
@@ -120,7 +120,7 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 	if err != nil {
 		return ImportResult{}, err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	// pass 1: every id-shaped token in the archive gets a fresh id (consistently, in every column and in JSON)
 	idmap := map[string]string{}
@@ -180,7 +180,7 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 				key := strings.Join(cols, ",")
 				if stmt == nil || key != stmtCols {
 					if stmt != nil {
-						stmt.Close()
+						_ = stmt.Close()
 					}
 					verb := "INSERT"
 					if tb.IgnoreDup {
@@ -204,7 +204,7 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 				return nil
 			})
 			if stmt != nil {
-				stmt.Close()
+				_ = stmt.Close()
 			}
 			if err != nil {
 				return err
@@ -343,7 +343,7 @@ type archive struct {
 
 func (a *archive) close() {
 	if a.zr != nil {
-		a.zr.Close()
+		_ = a.zr.Close()
 	}
 	if a.stage != "" {
 		os.RemoveAll(a.stage)

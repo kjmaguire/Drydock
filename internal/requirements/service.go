@@ -3,7 +3,6 @@ package requirements
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -453,9 +452,4 @@ func (s *Service) ReleaseChunk(ctx context.Context, by string, chunkID int64) er
 		s.emit(ctx, EventReleased, proj, "", map[string]any{"id": req, "chunk": chunkID, "by": by})
 	}
 	return err
-}
-
-func mustJSON(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }

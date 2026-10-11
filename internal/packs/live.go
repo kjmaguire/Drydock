@@ -105,7 +105,7 @@ func (g *GatewayLive) Search(ctx context.Context, ls LiveSpec, query string, k i
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrLiveUnavailable, err)
 	}
-	defer cs.Close()
+	defer func() { _ = cs.Close() }()
 	arg := ls.Arg
 	if arg == "" {
 		arg = "query"

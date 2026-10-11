@@ -48,7 +48,7 @@ func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Tim
 	if err != nil {
 		return Info{}, err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	if _, err := src.ExecContext(ctx, "VACUUM INTO ?", tmp); err != nil {
 		return Info{}, fmt.Errorf("snapshot: %w", err)
 	}
@@ -104,7 +104,7 @@ func integrity(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	var res string
 	if err := c.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&res); err != nil {
 		return fmt.Errorf("integrity check could not run: %w", err)

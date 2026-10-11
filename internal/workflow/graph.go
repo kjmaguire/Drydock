@@ -176,17 +176,3 @@ func (g *Graph) outEdges(from NodeID) []Edge {
 	}
 	return out
 }
-
-func (g *Graph) sinks() []NodeID {
-	has := map[NodeID]bool{}
-	for _, e := range g.Edges {
-		has[e.From] = true
-	}
-	var s []NodeID
-	for _, id := range g.order {
-		if !has[id] {
-			s = append(s, id)
-		}
-	}
-	return s
-}

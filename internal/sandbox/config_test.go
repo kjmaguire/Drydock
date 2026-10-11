@@ -27,7 +27,7 @@ func TestParseConfigFillsDefaultsAndRefusesWhatCannotWork(t *testing.T) {
 	if got := c2.Hosts(); len(got) != 2 {
 		t.Fatalf("without the defaults only the project's hosts remain: %v", got)
 	}
-	if c.Hash() != c.Hash() || c.Hash() == c2.Hash() {
+	if h1, h2 := c.Hash(), c.Hash(); h1 != h2 || h1 == c2.Hash() {
 		t.Fatal("the hash must be stable and change with the definition")
 	}
 

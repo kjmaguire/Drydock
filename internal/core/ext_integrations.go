@@ -70,7 +70,7 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		},
 	})
 	if err != nil {
-		gw.Close()
+		_ = gw.Close()
 		return nil, nil, err
 	}
 	integrationServices.Store(c, svc)
@@ -107,7 +107,7 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	closeFn := func() {
 		wg.Wait() // ctx is cancelled by Core.Close before the extension hooks run
 		integrationServices.Delete(c)
-		gw.Close()
+		_ = gw.Close()
 	}
 
 	human := func() string { return c.Human() }

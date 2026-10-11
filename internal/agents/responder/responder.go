@@ -515,7 +515,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if err != nil {
 		return fail("could not start the agent", err)
 	}
-	defer m.Stop(context.Background())
+	defer func() { _ = m.Stop(context.Background()) }()
 	var calls int
 	tctx2, cancelCalls := context.WithCancelCause(tctx)
 	defer cancelCalls(nil)

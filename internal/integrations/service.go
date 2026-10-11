@@ -125,8 +125,7 @@ func New(o Options) (*Service, error) {
 // Store exposes the persistence layer (tests and the core extension).
 func (s *Service) Store() *Store { return s.st }
 
-func (s *Service) now() time.Time { return s.o.Now() }
-func (s *Service) nowMS() int64   { return s.o.Now().UTC().UnixMilli() }
+func (s *Service) nowMS() int64 { return s.o.Now().UTC().UnixMilli() }
 
 func (s *Service) lock(key string) *sync.Mutex {
 	s.mu.Lock()

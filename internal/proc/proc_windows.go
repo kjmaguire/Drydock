@@ -35,7 +35,7 @@ func EnterAppJob() error {
 			appJobErr = err
 			return
 		}
-		cur, _ := windows.GetCurrentProcess()
+		cur := windows.CurrentProcess()
 		if err := windows.AssignProcessToJobObject(job, cur); err != nil {
 			appJobErr = fmt.Errorf("assign app to job: %w", err)
 			windows.CloseHandle(job)

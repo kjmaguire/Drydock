@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -385,9 +386,9 @@ func (r *Repo) DiffStat(ctx context.Context, w Worktree, base string) (DiffStat,
 			continue
 		}
 		ds.Files++
-		var a, d int
-		fmt.Sscan(f[0], &a)
-		fmt.Sscan(f[1], &d)
+		// a binary file's counts are "-": they count as 0 lines
+		a, _ := strconv.Atoi(f[0])
+		d, _ := strconv.Atoi(f[1])
 		ds.Insertions += a
 		ds.Deletions += d
 	}
@@ -698,7 +699,9 @@ func (r *Repo) LocalIgnore(ctx context.Context, w Worktree, paths []string) erro
 	}
 	defer f.Close()
 	if len(cur) > 0 && !strings.HasSuffix(string(cur), "\n") {
-		f.WriteString("\n")
+		if _, err := f.WriteString("\n"); err != nil {
+			return err
+		}
 	}
 	_, err = f.WriteString(add.String())
 	return err

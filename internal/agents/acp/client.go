@@ -23,7 +23,6 @@ const maxToolOutput = 64 << 10
 // toolState is what has been learned about one tool call across tool_call and tool_call_update messages.
 type toolState struct {
 	id        string
-	name      string
 	title     string
 	kind      string
 	status    string

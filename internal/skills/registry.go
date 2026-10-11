@@ -216,7 +216,7 @@ func ExtractSkills(tgz []byte, root string) ([]RemoteSkill, error) {
 	if err != nil {
 		return nil, fmt.Errorf("not a gzip archive: %w", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	rootN := ""
 	if root != "" {
 		n, ok := NormalizePath(root)

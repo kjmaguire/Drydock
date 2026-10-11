@@ -92,7 +92,7 @@ func (s *shim) drop(sess *sdk.ClientSession) {
 		s.sess = nil
 	}
 	s.mu.Unlock()
-	go sess.Close()
+	go func() { _ = sess.Close() }()
 }
 
 func (s *shim) middleware(next sdk.MethodHandler) sdk.MethodHandler {

@@ -35,7 +35,7 @@ func (r *Registry) UpsertModels(ctx context.Context, providerID string, models [
 		if err != nil {
 			return err
 		}
-		defer stmt.Close()
+		defer func() { _ = stmt.Close() }()
 		for _, m := range models {
 			if m.ID == "" {
 				continue

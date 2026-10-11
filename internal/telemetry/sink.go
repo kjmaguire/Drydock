@@ -228,7 +228,7 @@ func (s *Sink) Status(ctx context.Context) (Status, error) {
 	st := Status{Enabled: s.Enabled(), DroppedByKey: map[string]int{}, Destination: "this device only (local SQLite); export on demand", NetworkExporter: false}
 	st.EnabledBy, _ = s.setting(ctx, keyEnabledBy)
 	if v, _ := s.setting(ctx, keyEnabledAt); v != "" {
-		fmt.Sscan(v, &st.EnabledAt)
+		_, _ = fmt.Sscan(v, &st.EnabledAt) // a malformed setting reads as "not recorded"
 	}
 	through := s.exportedThrough(ctx)
 	r := s.db.Reader()
@@ -239,8 +239,12 @@ func (s *Sink) Status(ctx context.Context) (Status, error) {
 		return st, err
 	}
 	var ps, pm int64
-	r.QueryRowContext(ctx, `SELECT COUNT(*) FROM telemetry_spans WHERE id>?`, through.spans).Scan(&ps)
-	r.QueryRowContext(ctx, `SELECT COUNT(*) FROM telemetry_metrics WHERE id>?`, through.metrics).Scan(&pm)
+	if err := r.QueryRowContext(ctx, `SELECT COUNT(*) FROM telemetry_spans WHERE id>?`, through.spans).Scan(&ps); err != nil {
+		return st, err
+	}
+	if err := r.QueryRowContext(ctx, `SELECT COUNT(*) FROM telemetry_metrics WHERE id>?`, through.metrics).Scan(&pm); err != nil {
+		return st, err
+	}
 	st.Pending = ps + pm
 	s.dropMu.Lock()
 	for k, v := range s.drop {
@@ -255,7 +259,7 @@ type watermark struct{ spans, metrics int64 }
 func (s *Sink) exportedThrough(ctx context.Context) watermark {
 	var w watermark
 	if v, _ := s.setting(ctx, keyExported); v != "" {
-		fmt.Sscanf(v, "%d,%d", &w.spans, &w.metrics)
+		_, _ = fmt.Sscanf(v, "%d,%d", &w.spans, &w.metrics) // a malformed watermark reads as nothing exported
 	}
 	return w
 }

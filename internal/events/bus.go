@@ -206,7 +206,7 @@ func (b *SQLBus) flush(batch []request) {
 		if err != nil {
 			return err
 		}
-		defer stmt.Close()
+		defer func() { _ = stmt.Close() }()
 		for i, r := range batch {
 			res, err := stmt.Exec(r.e.Time.UnixMilli(), r.e.Type, r.e.ProjectID, r.e.RunID, r.e.TaskID, r.e.AgentID, []byte(r.e.Data))
 			if err != nil {

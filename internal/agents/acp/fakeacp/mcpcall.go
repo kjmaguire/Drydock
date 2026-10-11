@@ -65,7 +65,7 @@ func callMCP(ctx context.Context, servers []acp.McpServer, c *MCPCall) string {
 	if err != nil {
 		return "mcp ERR connect: " + err.Error()
 	}
-	defer cs.Close()
+	defer func() { _ = cs.Close() }()
 	if c.Tool == "" {
 		var names []string
 		for t, err := range cs.Tools(ctx, nil) {

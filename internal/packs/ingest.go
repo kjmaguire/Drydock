@@ -83,18 +83,17 @@ type existingPage struct {
 }
 
 type pageResult struct {
-	page    Page
-	status  string // new | changed | unchanged | skipped | failed
-	reason  string
-	title   string
-	hash    string
-	text    string // normalized, redacted
-	etag    string
-	lm      string
-	chunks  []preparedChunk
-	risk    int
-	redact  int
-	oldText string
+	page   Page
+	status string // new | changed | unchanged | skipped | failed
+	reason string
+	title  string
+	hash   string
+	text   string // normalized, redacted
+	etag   string
+	lm     string
+	chunks []preparedChunk
+	risk   int
+	redact int
 }
 
 type preparedChunk struct {
