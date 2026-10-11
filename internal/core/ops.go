@@ -185,6 +185,7 @@ func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, d
 			return err
 		}
 	}
+	c.trustOnApproval(ctx, runID, requestID, decision)
 	var d []byte = data
 	return c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d})
 }

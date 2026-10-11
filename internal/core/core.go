@@ -19,6 +19,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/connections"
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
@@ -122,6 +123,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		db.Close()
 		return nil, err
 	}
+	// Checks, previews and the dependency scan get the same extra names agents get (the person's list in settings).
+	checks.PassEnv = func() []string { return passEnvNames(context.Background(), db) }
 	// Adapters come from the embedded manifests (Claude headless; Codex, Gemini, OpenCode and Goose over ACP; Antigravity is
 	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
 	c.Connections, err = connections.NewService(connections.Config{
@@ -488,10 +491,13 @@ func (c *Core) GetProject(ctx context.Context, id string) (Project, error) {
 	return p, err
 }
 
+// repo returns the project's repository, opened once. Opening runs git, so it happens outside c.mu: a repository on a slow
+// or hung drive must not stall every other project behind the lock.
 func (c *Core) repo(ctx context.Context, projectID string) (*git.Repo, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if r, ok := c.repos[projectID]; ok {
+	r, ok := c.repos[projectID]
+	c.mu.Unlock()
+	if ok {
 		return r, nil
 	}
 	p, err := c.GetProject(ctx, projectID)
@@ -501,9 +507,17 @@ func (c *Core) repo(ctx context.Context, projectID string) (*git.Repo, error) {
 	if !p.HasRepo {
 		return nil, ErrNoRepository
 	}
-	r, err := git.Open(ctx, p.RepoPath)
+	r, err = git.Open(ctx, p.RepoPath)
 	if err != nil {
 		return nil, err
+	}
+	if err := c.restoreGitTrust(ctx, projectID, r); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if prev, ok := c.repos[projectID]; ok {
+		return prev, nil // another caller opened it meanwhile; one Repo per project keeps one trusted state
 	}
 	c.repos[projectID] = r
 	return r, nil

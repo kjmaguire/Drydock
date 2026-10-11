@@ -47,6 +47,8 @@ type Repo struct {
 	// Identity is used for commits made on behalf of agents when the user has not configured git.
 	AuthorName  string
 	AuthorEmail string
+
+	guard *guard // the repository's trusted git configuration (guard.go)
 }
 
 // Worktree is a task's isolated checkout.
@@ -69,13 +71,19 @@ func Open(ctx context.Context, path string) (*Repo, error) {
 		return nil, fmt.Errorf("%w: %s", ErrNotARepo, abs)
 	}
 	r.Root = filepath.Clean(strings.TrimSpace(out))
+	if err := r.startGuard(ctx); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
 // Init creates a repository with an initial commit of whatever is in dir (used by tests and "new project").
 func Init(ctx context.Context, dir, branch string) (*Repo, error) {
 	r := &Repo{Root: dir, AuthorName: "Drydock", AuthorEmail: "drydock@localhost"}
-	if _, err := r.git(ctx, dir, nil, "init", "-q", "-b", branch); err != nil {
+	if _, err := r.gitUnguarded(ctx, dir, nil, "init", "-q", "-b", branch); err != nil {
+		return nil, err
+	}
+	if err := r.startGuard(ctx); err != nil {
 		return nil, err
 	}
 	if _, err := r.git(ctx, dir, nil, "add", "-A"); err != nil {
@@ -88,20 +96,77 @@ func Init(ctx context.Context, dir, branch string) (*Repo, error) {
 }
 
 func (r *Repo) env() []string {
-	return append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true", "GIT_MERGE_AUTOEDIT=no",
+	return append(gitEnv(os.Environ()),
+		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_MERGE_AUTOEDIT=no", "GIT_PAGER=cat",
 		"GIT_AUTHOR_NAME="+r.AuthorName, "GIT_AUTHOR_EMAIL="+r.AuthorEmail,
 		"GIT_COMMITTER_NAME="+r.AuthorName, "GIT_COMMITTER_EMAIL="+r.AuthorEmail,
 	)
 }
 
-// git runs git in dir with extra env and returns stdout. A non-zero exit is an error carrying stderr.
+// keptGitEnv are the GIT_* variables of the app's own environment that git calls keep: how the user reaches their remotes.
+// Every other GIT_* variable is dropped: inherited ones such as GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_*, GIT_EXTERNAL_DIFF or
+// GIT_CONFIG_PARAMETERS would point Drydock's git at another repository or run a program in it.
+var keptGitEnv = map[string]bool{"GIT_SSH": true, "GIT_SSH_COMMAND": true, "GIT_SSH_VARIANT": true, "GIT_ASKPASS": true,
+	"GIT_SSL_CAINFO": true, "GIT_SSL_CAPATH": true, "GIT_SSL_NO_VERIFY": true, "GIT_PROXY_COMMAND": true, "GIT_HTTP_PROXY_AUTHMETHOD": true, "GIT_EXEC_PATH": true}
+
+// gitEnv is env without the GIT_* variables that are not in keptGitEnv (names compared as Windows does, ignoring case).
+func gitEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		if u := strings.ToUpper(k); strings.HasPrefix(u, "GIT_") && !keptGitEnv[u] {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+var (
+	noHooksOnce sync.Once
+	noHooks     string
+)
+
+// noHooksDir is an empty directory of Drydock's own that every git call uses as core.hooksPath, so no hook of the repository
+// (planted or the user's own) runs inside Drydock's git calls (docs/security.md s3; safe points and commits never run user
+// hooks, brief s13). If it cannot be created, a path that does not exist serves the same purpose.
+func noHooksDir() string {
+	noHooksOnce.Do(func() {
+		d, err := os.MkdirTemp("", "drydock-no-hooks-")
+		if err != nil {
+			d = filepath.Join(os.TempDir(), fmt.Sprintf("drydock-no-hooks-%d-%d", os.Getpid(), time.Now().UnixNano()))
+		}
+		noHooks = filepath.ToSlash(d)
+	})
+	return noHooks
+}
+
+// hardening is the configuration every git call Drydock makes runs with: no hooks, no fsmonitor program, and (for diff) no
+// external diff or textconv driver. core.longpaths avoids Windows MAX_PATH failures in deep node_modules-style trees;
+// quotepath off keeps names readable.
+func hardening(args []string) []string {
+	full := []string{"-c", "core.hooksPath=" + noHooksDir(), "-c", "core.fsmonitor=false", "-c", "core.longpaths=true", "-c", "core.quotepath=false"}
+	if len(args) > 0 && (args[0] == "diff" || args[0] == "show" || args[0] == "log") {
+		return append(append(full, args[0], "--no-ext-diff", "--no-textconv"), args[1:]...)
+	}
+	return append(full, args...)
+}
+
+// git runs git in dir with extra env and returns stdout. A non-zero exit is an error carrying stderr. A command that could run
+// a configured program first checks the repository's configuration against the trusted state (guard.go).
 func (r *Repo) git(ctx context.Context, dir string, extraEnv []string, args ...string) (string, error) {
+	if len(args) > 0 && !inertCommands[args[0]] && r.guard != nil {
+		if err := r.guard.check(ctx, r.Root); err != nil {
+			return "", err
+		}
+	}
+	return r.gitUnguarded(ctx, dir, extraEnv, args...)
+}
+
+func (r *Repo) gitUnguarded(ctx context.Context, dir string, extraEnv []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	// core.longpaths avoids Windows MAX_PATH failures in deep node_modules-style trees; quotepath off keeps names readable.
-	full := append([]string{"-c", "core.longpaths=true", "-c", "core.quotepath=false"}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := exec.CommandContext(ctx, "git", hardening(args)...)
 	cmd.Dir = dir
 	cmd.Env = append(r.env(), extraEnv...)
 	var stdout, stderr bytes.Buffer
@@ -775,7 +840,7 @@ func (r *Repo) PatchID(ctx context.Context, w Worktree, ref string) (string, err
 	}
 	ctx2, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx2, "git", "patch-id", "--stable")
+	cmd := exec.CommandContext(ctx2, "git", hardening([]string{"patch-id", "--stable"})...)
 	cmd.Dir = w.Path
 	cmd.Env = r.env()
 	cmd.Stdin = strings.NewReader(diff)

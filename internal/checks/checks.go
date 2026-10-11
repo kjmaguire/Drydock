@@ -25,6 +25,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// PassEnv returns the extra environment variable names the person chose to pass to agents and project commands (settings,
+// read at every start). Set by the core; nil passes none.
+var PassEnv func() []string
+
+// commandEnv is the environment every project command starts from (a check, a preview, the dependency scan): the app's
+// environment filtered to what a toolchain needs (proc.ToolEnv), never its tokens. These commands run code an agent may have
+// just written, so they get no more than the agent itself (docs/security.md s8).
+func commandEnv() []string {
+	var extra []string
+	if PassEnv != nil {
+		extra = PassEnv()
+	}
+	return proc.ToolEnv(os.Environ(), extra)
+}
+
 // Spec describes one check.
 type Spec struct {
 	Name    string        // build | test | lint | typecheck | custom name
@@ -100,7 +115,7 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	env := append(os.Environ(), spec.Env...)
+	env := append(commandEnv(), spec.Env...)
 	env = append(env, "CI=1", "NO_COLOR=1", "FORCE_COLOR=0")
 	start := time.Now()
 	p, err := pm.Start(cctx, proc.Spec{Path: spec.Argv[0], Args: spec.Argv[1:], Dir: spec.Dir, Env: env, Label: "check:" + spec.Name})

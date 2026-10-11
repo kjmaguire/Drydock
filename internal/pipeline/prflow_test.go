@@ -218,6 +218,10 @@ func (e *env) prSetup(t *testing.T, f *githubFixture) (pipeline.PRSource, *httpt
 	if out, err := exec.Command("git", "-C", e.repo.Root, "remote", "add", "origin", f.bare).CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
+	// the remote is the person's own change to the repository's configuration: they trust it, as the app would ask them to
+	if _, fp, err := e.repo.ConfigStatus(context.Background()); err != nil || e.repo.Trust(context.Background(), fp) != nil {
+		t.Fatal("trust the added remote:", err)
+	}
 	srv := httptest.NewServer(f.handler(t))
 	t.Cleanup(srv.Close)
 	src := func(context.Context, string) (pipeline.PRConfig, error) {

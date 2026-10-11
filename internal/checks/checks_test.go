@@ -169,3 +169,37 @@ func TestDetectGoAndNpmProjects(t *testing.T) {
 		t.Fatal("empty dir has no checks")
 	}
 }
+
+// A check runs code an agent may have just written. The agent's own process has no GH_TOKEN; a test it writes must not be
+// able to print one either: the check starts from the toolchain allowlist plus the names the person chose to pass.
+func TestACheckDoesNotSeeTheAppsTokens(t *testing.T) {
+	t.Setenv("GH_TOKEN", "ghp_leakvalue123")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "cf_leakvalue456")
+	t.Setenv("PROJECT_DB_URL", "sqlite://passed")
+	PassEnv = func() []string { return []string{"PROJECT_DB_URL"} }
+	t.Cleanup(func() { PassEnv = nil })
+	dir := fixture(t, "return a + b", `func TestEnv(t *testing.T) {
+	t.Logf("GH=[%s] CF=[%s] DB=[%s] PATH-set=%v", os.Getenv("GH_TOKEN"), os.Getenv("CLOUDFLARE_API_TOKEN"), os.Getenv("PROJECT_DB_URL"), os.Getenv("PATH") != "")
+}
+`)
+	os.WriteFile(filepath.Join(dir, "calc_test.go"), []byte(strings.Replace(mustRead(t, filepath.Join(dir, "calc_test.go")), `import "testing"`, "import (\n\t\"os\"\n\t\"testing\"\n)", 1)), 0o644)
+	res, err := Run(context.Background(), proc.New(), Spec{Name: "test", Argv: []string{"go", "test", "-v", "./..."}, Dir: dir, Parser: "go", LogDir: t.TempDir()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Passed {
+		t.Fatalf("the toolchain did not run from the scrubbed environment: %s", res.Output)
+	}
+	if !strings.Contains(res.Output, "GH=[] CF=[] DB=[sqlite://passed] PATH-set=true") {
+		t.Fatalf("check environment:\n%s", res.Output)
+	}
+}
+
+func mustRead(t *testing.T, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}

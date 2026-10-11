@@ -34,7 +34,7 @@ func init() {
 
 // AgentEnvView is what the settings page shows.
 type AgentEnvView struct {
-	// Pass are the extra variable names the human chose to pass to agents.
+	// Pass are the extra variable names the human chose to pass to agents and to project commands (checks, preview).
 	Pass []string `json:"pass"`
 	// Kept are the names every agent process keeps, and Prefixes the families kept for Claude Code.
 	Kept     []string `json:"kept"`

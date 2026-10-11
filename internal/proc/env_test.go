@@ -26,3 +26,22 @@ func TestScrubEnvKeepsOnlyAllowlistedNamesAndPrefixes(t *testing.T) {
 		}
 	}
 }
+
+func TestToolEnvKeepsToolchainsAndDropsCredentials(t *testing.T) {
+	parent := []string{"PATH=/bin", "GOPATH=/go", "GOFLAGS=-mod=mod", "JAVA_HOME=/jdk", "NUMBER_OF_PROCESSORS=8", "GH_TOKEN=ghp_x", "GITHUB_TOKEN=ghp_y",
+		"NPM_TOKEN=npm_z", "npm_config_//registry.npmjs.org/:_authToken=npm_w", "AWS_SECRET_ACCESS_KEY=a", "ANTHROPIC_API_KEY=sk-ant", "CLAUDE_CODE_OAUTH_TOKEN=c",
+		"CLOUDFLARE_API_TOKEN=cf", "DATABASE_URL=postgres://u:p@h/db", "DRYDOCK_DEV_TOKEN=d"}
+	got := ToolEnv(parent, []string{"database_url"})
+	sort.Strings(got)
+	want := []string{"DATABASE_URL=postgres://u:p@h/db", "GOFLAGS=-mod=mod", "GOPATH=/go", "JAVA_HOME=/jdk", "NUMBER_OF_PROCESSORS=8", "PATH=/bin"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("got  %v\nwant %v", got, want)
+	}
+	for _, n := range ToolEnvNames {
+		for _, bad := range []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "AUTH"} {
+			if strings.Contains(n, bad) {
+				t.Errorf("%s in ToolEnvNames looks like a credential", n)
+			}
+		}
+	}
+}

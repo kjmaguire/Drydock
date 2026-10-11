@@ -530,6 +530,10 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		if ctx.Err() != nil || errors.As(err, &trip) {
 			return NodeOutput{}, err
 		}
+		var gate GateError
+		if errors.As(err, &gate) {
+			return e.humanGate(ctx, info, n, step, gate)
+		}
 		prev = &Previous{Attempt: attempt, PartialRef: partial, Error: err.Error()}
 		attempt++
 	}
@@ -561,6 +565,33 @@ func (e *Engine) interruptedTurnGate(ctx context.Context, info RunInfo, n *Node,
 	e.emit(ctx, "workflow.turn_interrupted", info, map[string]any{"node": n.ID, "step": step, "interruptions": interrupted})
 	return NodeOutput{Request: &RequestSpec{Kind: "approval", Retry: true, Payload: payload,
 		Title: fmt.Sprintf("The %s turn was cut off %d times because Drydock stopped while it ran. Approve to run it again (it is paid for again) or reject to stop the run.", n.ID, interrupted)}}, true, nil
+}
+
+// GateError is an error a node handler returns when the node cannot go on until a person decides, for example because the
+// repository's git configuration changed under the task (git.ConfigChangedError). Instead of failing the attempt, the engine
+// raises an approval request carrying Gate's payload (plus "gate"); the node runs again once the person has answered. A
+// rejection, the latest decision on that gate for the node, ends the run. Whatever must change for the node to pass after an
+// approval (trusting the git configuration) is done by whoever records the answer (core.Respond), before the node runs again.
+type GateError interface {
+	error
+	Gate() (gate, title string, payload map[string]any)
+}
+
+func (e *Engine) humanGate(ctx context.Context, info RunInfo, n *Node, step int, ge GateError) (NodeOutput, error) {
+	gate, title, payload := ge.Gate()
+	var status string
+	err := e.st.db.Reader().QueryRowContext(ctx, `SELECT status FROM approvals WHERE run_id=? AND node_id=? AND status IN ('APPROVED','REJECTED')
+		AND CAST(payload AS TEXT) LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1`, string(info.ID), string(n.ID), `%"gate":"`+gate+`"%`).Scan(&status)
+	if err == nil && status == "REJECTED" {
+		return NodeOutput{}, fmt.Errorf("%s: a person rejected going on: %w", n.ID, ge)
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["gate"], payload["node"], payload["step"] = gate, n.ID, step
+	raw, _ := json.Marshal(payload)
+	e.emit(ctx, "workflow.gated", info, map[string]any{"node": n.ID, "step": step, "gate": gate})
+	return NodeOutput{Request: &RequestSpec{Kind: "approval", Retry: true, Payload: raw, Title: title}}, nil
 }
 
 func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, step, attempt int, inbox []Message, st RunState, prev *Previous, partial string) (NodeOutput, error) {

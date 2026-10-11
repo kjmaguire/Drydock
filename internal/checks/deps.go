@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -148,7 +147,7 @@ func runDeps(ctx context.Context, pm proc.Manager, s Spec, bin string, o DepsOpt
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	p, err := pm.Start(cctx, proc.Spec{Path: path, Args: args, Dir: s.Dir, Env: append(os.Environ(), "NO_COLOR=1"), Label: "check:deps"})
+	p, err := pm.Start(cctx, proc.Spec{Path: path, Args: args, Dir: s.Dir, Env: append(commandEnv(), "NO_COLOR=1"), Label: "check:deps"})
 	if err != nil {
 		res.Errored = true
 		res.Output = "osv-scanner could not be started: " + err.Error()
