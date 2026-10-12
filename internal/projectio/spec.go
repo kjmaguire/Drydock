@@ -194,6 +194,7 @@ var ExcludedTables = map[string]string{
 	"telemetry_metrics":        "local diagnostics sink",
 	"integrations":             "vendor Connections hold credential references; reconnect after import",
 	"integration_cursors":      "sync state of a Connection",
+	"integration_assignments":  "a workspace Connection's assignment to a project; the Connection is not exported, so neither is its assignment",
 	"external_items":           "vendor data belonging to a Connection",
 	"integration_rules":        "rules belong to a Connection",
 	"integration_rule_matches": "rules belong to a Connection",
