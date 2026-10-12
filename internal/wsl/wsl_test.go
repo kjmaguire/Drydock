@@ -118,6 +118,42 @@ func TestPathsMapDrivesUnderTheDistrosOwnMountRootAndDistroFilesBothWays(t *test
 	}
 }
 
+// ".." in a Windows path stops at the drive root, as Windows resolves it; it never climbs into the distro's mount root
+// (D:\..\..\mnt\d\wt\x is D:\mnt\d\wt\x on Windows, so it must not become /mnt/d/wt/x). A distro path's ".." stops at the
+// distro's "/".
+func TestToLinuxKeepsDotDotInsideTheDriveRoot(t *testing.T) {
+	p := wsl.Paths{Distro: "Ubuntu", MountRoot: "/mnt/"}
+	cases := []struct{ win, linux string }{
+		{`D:\..\..\mnt\d\wt\x`, "/mnt/d/mnt/d/wt/x"}, // the reproduction: not /mnt/d/wt/x
+		{`D:\..`, "/mnt/d"},
+		{`D:\..\..\..`, "/mnt/d"},
+		{`D:\a\..\..\b`, "/mnt/d/b"},
+		{`D:/../c/Users/k/.ssh`, "/mnt/d/c/Users/k/.ssh"},
+		{`D:\wt/..\../mnt/c\Windows`, "/mnt/d/mnt/c/Windows"}, // mixed slashes
+		{`d:\src\.\app\..\lib`, "/mnt/d/src/lib"},
+		{`\\wsl.localhost\Ubuntu\..\..`, "/"},
+		{`\\wsl.localhost\Ubuntu\home\..\..\..\etc`, "/etc"},
+		{`//wsl$/Ubuntu/../../mnt/c`, "/mnt/c"}, // the distro's own /mnt/c, reached from its "/"
+		{"/mnt/d/../../etc", "/etc"},
+	}
+	for _, c := range cases {
+		got, err := p.ToLinux(c.win)
+		if err != nil || got != c.linux {
+			t.Errorf("ToLinux(%q) = %q, %v; want %q", c.win, got, err, c.linux)
+		}
+	}
+	// with the mount root at "/" the drive is the top folder, and ".." still stops there
+	if got, err := (wsl.Paths{Distro: "Ubuntu", MountRoot: "/"}).ToLinux(`D:\..\c\x`); err != nil || got != "/d/c/x" {
+		t.Errorf("root /: %q %v", got, err)
+	}
+	// ".." or "." is never taken as the distro's name: such a path is refused, not climbed out of
+	for _, bad := range []string{`\\wsl.localhost\..\Ubuntu\etc`, `\\wsl.localhost\.\Ubuntu`, `\\wsl$\Debian\..\Ubuntu\x`} {
+		if got, err := p.ToLinux(bad); err == nil {
+			t.Errorf("ToLinux(%q) = %q, want a refusal", bad, got)
+		}
+	}
+}
+
 func TestMountRootComesFromWslpathOrWslConf(t *testing.T) {
 	if r := wsl.MountRootFrom("/mnt/c/", nil); r != "/mnt/" {
 		t.Error(r)

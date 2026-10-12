@@ -34,6 +34,12 @@ func TestResolveWSLMapsMountedDrivesAndDistroPathsToTheirRealLocations(t *testin
 		{distro, "/mnt/c/Windows/win.ini", "", true},
 		{distro, "~/.bashrc", "", true},
 		{distro, `\\wsl.localhost\Debian\home\k\code\.drydock-worktrees\p1\T1\a`, "", true}, // another distro
+		// ".." stops at the drive root on Windows: these name D:\mnt\d\..., outside the worktree, not /mnt/d/src/...
+		{drive, `D:\..\..\mnt\d\src\app\.drydock\wt\T1\x`, "", true},
+		{drive, `D:/../mnt/d/src/app/.drydock/wt/T1/x`, "", true},
+		{drive, `D:\..\mnt\d\src\app\.drydock\wt\T1`, "", true},
+		{drive, `D:\src\app\.drydock\wt\T1\a\..\b.go`, `D:\src\app\.drydock\wt\T1\b.go`, false},
+		{distro, `\\wsl.localhost\Ubuntu\..\..\home\k\code\.drydock-worktrees\p1\T1\a`, `\\wsl.localhost\Ubuntu\home\k\code\.drydock-worktrees\p1\T1\a`, false},
 	}
 	for _, c := range cases {
 		got, err := g.ResolveWSL(ubuntu, c.root, c.cand)

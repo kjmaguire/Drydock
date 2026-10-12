@@ -75,7 +75,8 @@ func driveLetter(s string) bool {
 
 // ToLinux maps a Windows path to the path the distro sees: a drive path under the mount root (D:\src\app with root /mnt/ is
 // /mnt/d/src/app; a Dev Drive is an ordinary drive letter), a path of this distro's own files (\\wsl.localhost\<distro>\...) to
-// its Linux path. A path that is already a Linux absolute path is returned cleaned. Another distro's files, network shares,
+// its Linux path. ".." stops at the drive root (or the distro's "/"), as Windows resolves it, so it never reaches the mount
+// root. A path that is already a Linux absolute path is returned cleaned. Another distro's files, network shares,
 // relative and drive-relative paths are refused: they have no reliable form inside the distro.
 func (p Paths) ToLinux(win string) (string, error) {
 	switch {
@@ -98,8 +99,10 @@ func (p Paths) ToLinux(win string) (string, error) {
 		if strings.Contains(win, "~") {
 			win = longPath(win) // a short name (RUNNER~1) means nothing to the distro
 		}
-		rest := strings.ReplaceAll(win[3:], `\`, "/")
-		return path.Clean(r + strings.ToLower(win[:1]) + "/" + rest), nil
+		// the tail is cleaned on its own, rooted at the drive, so ".." stops at the drive root as it does on Windows
+		// (D:\..\..\mnt\d\x is D:\mnt\d\x); cleaning after the mount root is prefixed would climb out of the drive
+		rest := path.Clean("/" + strings.ReplaceAll(win[3:], `\`, "/"))
+		return path.Clean(r + strings.ToLower(win[:1]) + rest), nil
 	}
 	if strings.HasPrefix(win, `\\`) || strings.HasPrefix(win, "//") {
 		return "", fmt.Errorf("%w: %s is a network path", ErrNotMapped, win)
