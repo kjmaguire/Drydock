@@ -35,7 +35,7 @@ export const unconfiguredLicense = lic({
   subject: undefined,
   licenseId: undefined,
   message: 'Licensing is not configured in this build. This is a development or unlicensed build, so every feature is allowed.',
-  banner: 'LICENSING NOT CONFIGURED: development build, nothing is restricted.',
+  banner: undefined,
 });
 
 export const expiredLicense = lic({

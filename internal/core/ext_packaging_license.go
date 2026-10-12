@@ -102,7 +102,7 @@ func (p *packaging) evaluate(ctx context.Context) licState {
 	if !st.configured {
 		v.State = license.StateNone
 		v.Message = "Licensing is not configured in this build. This is a development or unlicensed build, so every feature is allowed."
-		v.Banner = "LICENSING NOT CONFIGURED: development build, nothing is restricted."
+		// no banner: nothing is restricted, so nothing on every screen needs saying; the License page and the startup log say it
 		v.Channels = []string{"stable", "beta"}
 		st.view = v
 		return st

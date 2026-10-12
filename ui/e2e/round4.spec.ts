@@ -7,21 +7,18 @@ import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUr
 
 const PLANTED = 'ghp_aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5';
 
-test('no license keys in this build: the banner and the License page say so plainly, nothing is disabled, and Updates is honest', async ({ page }) => {
+test('no license keys in this build: no banner, the License page says so plainly, nothing is disabled, and Updates is honest', async ({ page }) => {
   await createProject(page, 'pkg-unlicensed');
   const banner = page.getByTestId('license-banner');
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText('Licensing is not configured');
-  await expect(banner).toContainText('nothing is restricted');
-  await expect(banner).toHaveAttribute('data-configured', 'false');
+  await expect(banner).toHaveCount(0);
 
   await page.getByTestId('nav-license').click();
   const box = page.getByTestId('license-unconfigured');
   await expect(box).toContainText('Licensing is not configured in this build');
   await expect(box).toContainText('Every feature is allowed');
   await expect(page.getByLabel('License token')).toHaveCount(0);
-  // the banner is on this page too, and a mutating control is not disabled
-  await expect(banner).toBeVisible();
+  // still no banner, and a mutating control is not disabled
+  await expect(banner).toHaveCount(0);
   await page.getByTestId('nav-team').click();
   await expect(page.getByTestId('readonly-note')).toHaveCount(0);
   await page.getByLabel('Agent name').fill('x');

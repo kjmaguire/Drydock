@@ -96,14 +96,14 @@ func gitProject(t *testing.T, a *app, name string) core.Project {
 
 // ---- licensing ----
 
-func TestLicensingNotConfiguredAllowsEverythingAndSaysSoLoudly(t *testing.T) {
+func TestLicensingNotConfiguredAllowsEverythingAndSaysSoOnTheLicensePage(t *testing.T) {
 	a := open(t, "")
 	v := a.status()
 	if v.Configured || !v.DevMode || v.State != license.StateNone || v.ReadOnly {
 		t.Fatalf("status %+v", v)
 	}
-	if !strings.Contains(strings.ToUpper(v.Banner), "NOT CONFIGURED") || !strings.Contains(v.Message, "every feature is allowed") {
-		t.Fatalf("the unlicensed build does not say so: %q / %q", v.Banner, v.Message)
+	if v.Banner != "" || !strings.Contains(v.Message, "every feature is allowed") {
+		t.Fatalf("the unlicensed build shows a banner, or its License page does not say so: %q / %q", v.Banner, v.Message)
 	}
 	// nothing is restricted: a project, an agent and a task start
 	p := gitProject(t, a, "dev")
