@@ -44,6 +44,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -58,6 +59,8 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
+	"github.com/kjmaguire/drydock/internal/wsl"
+	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
 
 const (
@@ -74,6 +77,14 @@ const (
 )
 
 func main() {
+	// TEST DOUBLES of the WSL run mode (internal/wsl/wsltest): the stand-in wsl.exe re-executes this binary, and the stand-in
+	// claude inside its distro may start this binary as its MCP server command to check what reached it
+	if wsltest.IsStandIn() {
+		os.Exit(wsltest.StandIn(os.Args[1:]))
+	}
+	if wsltest.IsInteropCheck() {
+		os.Exit(wsltest.InteropCheckMain())
+	}
 	// an agent CLI starts `<this binary> mcp-shim` as its MCP server; it must not start the harness
 	if code, ok := mcp.MaybeRunShim(os.Args); ok {
 		os.Exit(code)
@@ -209,11 +220,26 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		fmt.Printf("DRYDOCK_E2E_LICENSE_EXPIRED %s\n", mint("lic_e2e_expired", now.Add(-60*24*time.Hour), now.Add(-30*24*time.Hour)))
 	}
 
+	// TEST DOUBLE: on a Linux host (the e2e job of the development host) a stand-in WSL with one distro, "Ubuntu", whose
+	// stand-in claude answers in stream-json, so the Connections page and the agent forms show the WSL run mode end to end.
+	// Windows runs the e2e without it (the stand-in is a POSIX shell script); the real wsl.exe is proven by CI's wsl job.
+	var wslHost *wsl.Host
+	if runtime.GOOS != "windows" {
+		f, err := wsltest.Setup(filepath.Join(root, "wsl"), self, true, "Ubuntu")
+		if err != nil {
+			return fmt.Errorf("stand-in WSL: %w", err)
+		}
+		wslHost = &wsl.Host{Exe: f.Exe}
+		fmt.Printf("DRYDOCK_E2E_WSL %s\n", f.Distros[0])
+	} else {
+		wslHost = &wsl.Host{Exe: filepath.Join(root, "no-wsl-in-the-e2e")} // never the machine's own distros
+	}
 	c, err := core.Open(context.Background(), core.Config{
 		DataDir:  filepath.Join(root, "data"),
 		User:     "e2e",
 		LeaseTTL: 3 * time.Second,
-		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self}},
+		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
+		WSL:      wslHost,
 		// TEST DOUBLE: an in-memory credential store so the Providers page can be exercised with a fake API key. The shipped
 		// app uses the Windows Credential Manager; nothing entered here is persisted anywhere.
 		Credentials: providers.NewMemoryCredentialStoreForTests(),
