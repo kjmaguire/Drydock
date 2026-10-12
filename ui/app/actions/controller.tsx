@@ -90,6 +90,10 @@ export const controller = createController(routes, {
       const { EvalsScreen } = await import('../screens/evals/evals-screen.tsx');
       return render(<EvalsScreen />);
     },
+    async security({ render }) {
+      const { SecurityScreen } = await import('../screens/security/security-screen.tsx');
+      return render(<SecurityScreen />);
+    },
     async chats({ render }) {
       const { ChatsScreen } = await import('../screens/chats/chats-screen.tsx');
       // one key for the list and every chat, so switching chats keeps the list (and its search) mounted

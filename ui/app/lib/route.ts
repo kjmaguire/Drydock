@@ -26,6 +26,7 @@ export type Route =
         | 'mcp'
         | 'budgets'
         | 'evals'
+        | 'security'
         | WorkspaceRouteName;
     }
   | { name: 'not-found' };
@@ -35,7 +36,7 @@ export type WorkspaceRouteName = 'library' | 'integrations' | 'connections' | 'p
 /** Screens about the whole workspace, not one project. They open even when no project exists yet. */
 export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = ['library', 'integrations', 'connections', 'providers', 'routing', 'backups', 'data', 'support', 'license', 'settings'];
 
-const SIMPLE = new Set<string>(['pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', ...WORKSPACE_ROUTES]);
+const SIMPLE = new Set<string>(['pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', ...WORKSPACE_ROUTES]);
 
 export function isWorkspaceRoute(r: Route): boolean {
   // chats open without a project too (a chat may have none)

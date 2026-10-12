@@ -36,6 +36,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.budgets.href(), 'Budgets'],
   [routes.evals.href(), 'Evals'],
   [routes.activity.href(), 'Activity'],
+  [routes.security.href(), 'Security scan', ['secrets', 'vulnerabilities', 'gitleaks', 'osv', 'opengrep']],
   [routes.project.href(), 'Project settings'],
   [routes.library.href(), 'Library'],
   [routes.integrations.href(), 'Integrations'],

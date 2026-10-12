@@ -72,6 +72,10 @@ describe('the sidebar', () => {
     for (const id of ['nav-library', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings']) {
       expect(r.$(`[data-testid="${id}"]`)).not.toBeNull();
     }
+    // the Project group starts with Security
+    const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
+    expect(nav.indexOf('nav-security')).toBe(nav.indexOf('nav-milestones') - 1);
+    expect(r.$('[data-testid="nav-security"]')!.textContent).toBe('Security');
   });
 
   it('without a project still shows the switcher and the workspace links', async () => {

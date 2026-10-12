@@ -29,6 +29,7 @@ import {
   Search,
   Server,
   Settings2,
+  ShieldCheck,
   Sparkles,
   Users,
   Gauge,
@@ -349,6 +350,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 'project',
                 'Project',
                 <>
+                  <NavItem href={routes.security.href()} current={at('security')} testId="nav-security" icon={ShieldCheck} label="Security" />
                   <NavItem href={routes.milestones.href()} current={at('milestones')} testId="nav-milestones" icon={Flag} label="Milestones" />
                   <NavItem href={routes.budgets.href()} current={at('budgets')} testId="nav-budgets" icon={PiggyBank} label="Budgets" />
                   <NavItem href={routes.evals.href()} current={at('evals')} testId="nav-evals" icon={Gauge} label="Evals report" />
