@@ -31,7 +31,9 @@ Whenever a change adds, removes or updates software (a Go module, an npm package
 or implements a feature that starts using a new piece of software:
 
 1. Add or update its entry in `docs/software-notes.json` (what it is for; why it is held back, if it is).
-2. Run `go run ./cmd/drydock-audit -artifact-dir <scratch dir>` (or `task audit`) and commit the new `docs/software-versions.json`.
+2. Commit the change itself first, then run `go run ./cmd/drydock-audit -artifact-dir <scratch dir>` (or `task audit`) and commit the new
+   `docs/software-versions.json`. The report names the commit it measured; measured with uncommitted changes it says `<commit>-dirty`, because
+   the versions it lists are then not the ones that commit pins.
 3. Refresh the Artifact (below) and say in the change what version each piece landed on.
 4. Update `docs/decisions.md` section 2 if it names a version that changed (the audit lists any that now disagree).
 
@@ -46,6 +48,13 @@ The page is the Artifact type "Dashboard" over four data files. To refresh, afte
 2. For each dataset (`datasets/items`, `vulns`, `drift`, `meta`): `update` its `source.url` to the new `/_blob/...` address and
    `updated` to `{at, by}`. Delete the old assets afterwards.
 3. The page itself (`files/index.html`) changes only when the design does.
+
+## Libraries only in the module graph
+
+A Go library that another library's go.mod lists, but of which no package is compiled into Drydock or its tests, is shown under
+"Only in the module graph". Its version is the one the libraries that list it ask for, so it is not chased (decision P23): the audit
+gives each one that remark by itself (no hand-written hold needed), says where its version comes from (`module graph (not in go.mod)`
+when go.mod does not require it), and leaves it out of the summary of how far behind Drydock is (`counts.graphOnly` says how many there are).
 
 ## Known limits
 

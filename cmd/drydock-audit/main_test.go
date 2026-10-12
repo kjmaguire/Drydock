@@ -79,3 +79,50 @@ func TestDocDriftFindsDisagreementsAndIgnoresLookalikes(t *testing.T) {
 		t.Fatalf("drift = %+v", got)
 	}
 }
+
+// A graph-only library is not part of what Drydock runs: it gets the P23 remark without a hand-written hold and is left out of
+// how far behind Drydock is, while a library compiled in is counted as before.
+func TestGraphOnlyLibrariesAreRemarkedAndNotCountedAsBehind(t *testing.T) {
+	no, yes := false, true
+	items := []Item{
+		{ID: "go:example.com/graph", Kind: "indirect", Status: "patch", InBuild: &no},
+		{ID: "go:example.com/built", Kind: "indirect", Status: "patch", InBuild: &yes},
+		{ID: "npm:marked", Kind: "direct", Status: "current"},
+	}
+	markGraphOnly(items)
+	markGraphOnly(items) // a second pass does not repeat the remark
+	if items[0].Note != graphOnlyNote {
+		t.Fatalf("graph-only note %q", items[0].Note)
+	}
+	if items[1].Note != "" || items[2].Note != "" {
+		t.Fatalf("built items got a note: %q %q", items[1].Note, items[2].Note)
+	}
+	summary, counts := summarize(items)
+	if summary["patch"] != 1 || summary["current"] != 1 || counts["graphOnly"] != 1 || counts["indirect"] != 2 {
+		t.Fatalf("summary %v counts %v", summary, counts)
+	}
+}
+
+// A measurement taken with uncommitted changes says so: the versions it reports are not the ones HEAD pins.
+func TestCommitLabelMarksUncommittedChanges(t *testing.T) {
+	if got := commitLabel("b755878\n", ""); got != "b755878" {
+		t.Fatalf("clean: %q", got)
+	}
+	if got := commitLabel("b755878\n", " M go.mod\n M ui/package.json\n"); got != "b755878-dirty" {
+		t.Fatalf("dirty: %q", got)
+	}
+}
+
+// A module that go.mod does not require has its version from the module graph, and the report says so.
+func TestGoModWhereNamesTheModuleGraph(t *testing.T) {
+	req := map[string]bool{"github.com/klauspost/compress": true}
+	if got := goModWhere("github.com/klauspost/compress", req); got != "go.mod" {
+		t.Fatalf("required: %q", got)
+	}
+	if got := goModWhere("github.com/aws/aws-sdk-go-v2/feature/ec2/imds", req); got != "module graph (not in go.mod)" {
+		t.Fatalf("graph: %q", got)
+	}
+	if got := goModWhere("anything", nil); got != "go.mod" {
+		t.Fatalf("unknown go.mod: %q", got)
+	}
+}

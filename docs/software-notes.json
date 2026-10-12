@@ -39,10 +39,6 @@
       "role": "Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose.",
       "note": "Pre-1.0; the protocol is still changing."
     },
-    "go:github.com/aws/aws-sdk-go-v2/feature/ec2/imds": {
-      "role": "Listed by openai-go's own module file (its AWS Bedrock support); no Drydock package imports it, so it is not built into Drydock.",
-      "hold": "Its version is the one openai-go asks for: pinning a newer one in go.mod would be removed again by go mod tidy, since nothing here needs the module. It moves when openai-go does."
-    },
     "go:github.com/google/jsonschema-go": {
       "role": "Describes the workspace tools' inputs to MCP clients as JSON Schema."
     },
@@ -78,8 +74,8 @@
       "role": "Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only)."
     },
     "npm:marked": {
-      "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
-      "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."
+      "role": "Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. Used as a lexer only: no HTML from it is ever rendered (decision P25).",
+      "note": "It reads text agents write, so the message-safety browser test (e2e/xss.spec.ts) covers it. Any upgrade has to keep that passing."
     },
     "npm:remix": {
       "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."

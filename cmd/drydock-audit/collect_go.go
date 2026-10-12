@@ -97,6 +97,7 @@ func goModules(ctx context.Context) []Item {
 		fail("go list -m -u: " + err.Error())
 		return nil
 	}
+	required := goModRequires(ctx)
 	dec := json.NewDecoder(strings.NewReader(out))
 	var items []Item
 	for dec.More() {
@@ -108,7 +109,7 @@ func goModules(ctx context.Context) []Item {
 		if m.Main {
 			continue
 		}
-		it := Item{ID: "go:" + m.Path, Name: m.Path, Used: strings.TrimPrefix(m.Version, "v"), Where: "go.mod", Deprecated: m.Deprecated, UsedDate: day(m.Time)}
+		it := Item{ID: "go:" + m.Path, Name: m.Path, Used: strings.TrimPrefix(m.Version, "v"), Where: goModWhere(m.Path, required), Deprecated: m.Deprecated, UsedDate: day(m.Time)}
 		if m.Indirect {
 			it.Kind, it.Group = "indirect", "Go libraries pulled in by other libraries"
 		} else {
@@ -199,4 +200,32 @@ func markGoUsage(ctx context.Context, items []Item) {
 		}
 		it.UsedBy = &n
 	}
+}
+
+// goModRequires is the set of module paths go.mod requires (directly or marked indirect); nil when go.mod cannot be read.
+func goModRequires(ctx context.Context) map[string]bool {
+	out, err := run(ctx, root, nil, "go", "mod", "edit", "-json")
+	if err != nil {
+		return nil
+	}
+	var mf struct {
+		Require []struct{ Path string }
+	}
+	if json.Unmarshal([]byte(out), &mf) != nil {
+		return nil
+	}
+	req := map[string]bool{}
+	for _, r := range mf.Require {
+		req[r.Path] = true
+	}
+	return req
+}
+
+// goModWhere says where a module's version comes from: go.mod when go.mod requires it, else the module graph (another
+// module's go.mod lists it and Go's version selection picks the version).
+func goModWhere(path string, required map[string]bool) string {
+	if required == nil || required[path] {
+		return "go.mod"
+	}
+	return "module graph (not in go.mod)"
 }

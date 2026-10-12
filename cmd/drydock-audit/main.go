@@ -212,11 +212,16 @@ func main() {
 			it.Status = classify(it.Used, it.Latest)
 		}
 	}
+	markGraphOnly(items)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Group < items[j].Group })
 
 	rep := Report{Generated: time.Now().UTC().Format(time.RFC3339), Items: items, VulnScans: map[string]string{}, Vulns: []Vuln{}}
 	if c, err := run(ctx, root, nil, "git", "rev-parse", "--short", "HEAD"); err == nil {
-		rep.Commit = strings.TrimSpace(c)
+		st, _ := run(ctx, root, nil, "git", "status", "--porcelain", "--", ".", ":(exclude)"+*out)
+		rep.Commit = commitLabel(c, st)
+		if strings.HasSuffix(rep.Commit, "-dirty") {
+			fmt.Fprintf(os.Stderr, "measured with uncommitted changes: the report says %s; commit the dependency change first, then measure\n", rep.Commit)
+		}
 	}
 	if *vuln {
 		v1, s1 := govulncheck(ctx)
@@ -228,12 +233,7 @@ func main() {
 		rep.VulnScans["govulncheck"], rep.VulnScans["npm audit"] = "not run", "not run"
 	}
 	rep.Docs = docDrift(items)
-	rep.Summary = map[string]int{}
-	rep.Counts = map[string]int{}
-	for _, it := range items {
-		rep.Summary[it.Status]++
-		rep.Counts[it.Kind]++
-	}
+	rep.Summary, rep.Counts = summarize(items)
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		rep.Counts["withoutNote"] = len(missing)
@@ -252,7 +252,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	fmt.Printf("%d items: %v; %d vulnerabilities; %d lookups failed\n", len(items), rep.Summary, len(rep.Vulns), len(failed))
+	fmt.Printf("%d items (%d only in the module graph, not counted): %v; %d vulnerabilities; %d lookups failed\n", len(items), rep.Counts["graphOnly"], rep.Summary, len(rep.Vulns), len(failed))
 }
 
 func repoRoot() (string, error) {
@@ -272,4 +272,46 @@ func repoRoot() (string, error) {
 		}
 		d = p
 	}
+}
+
+// graphOnlyNote is the remark every Go library gets that is only in the module graph (decision P23).
+const graphOnlyNote = "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23)."
+
+// graphOnly reports whether a Go library is in the module graph without any package of it compiled into Drydock or its tests.
+func graphOnly(it Item) bool {
+	return it.InBuild != nil && !*it.InBuild
+}
+
+// markGraphOnly gives every graph-only library the P23 remark, so none needs a hand-written hold.
+func markGraphOnly(items []Item) {
+	for i := range items {
+		if graphOnly(items[i]) && !strings.Contains(items[i].Note, graphOnlyNote) {
+			items[i].Note = strings.TrimSpace(items[i].Note + " " + graphOnlyNote)
+		}
+	}
+}
+
+// summarize counts the items by status and by kind. A graph-only library is not part of what Drydock runs, so it is left out
+// of the status summary (how far behind Drydock is) and counted on its own as counts.graphOnly.
+func summarize(items []Item) (summary, counts map[string]int) {
+	summary, counts = map[string]int{}, map[string]int{}
+	for _, it := range items {
+		counts[it.Kind]++
+		if graphOnly(it) {
+			counts["graphOnly"]++
+			continue
+		}
+		summary[it.Status]++
+	}
+	return summary, counts
+}
+
+// commitLabel is the commit a measurement describes: HEAD, marked -dirty when the working tree (other than the report itself)
+// has uncommitted changes, because then the measured versions are not the ones that commit pins.
+func commitLabel(head, porcelain string) string {
+	c := strings.TrimSpace(head)
+	if strings.TrimSpace(porcelain) != "" {
+		c += "-dirty"
+	}
+	return c
 }
