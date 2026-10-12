@@ -200,8 +200,10 @@ export interface PrebuiltAgent {
     /** The preferred CLI first, then the alternatives. */
     adapters: AdapterAvailability[];
     preferredUsable: boolean;
-    mcp: { id: string; inLibrary: boolean; libraryId?: string }[];
-    skills: (SkillRef & { imported: boolean; status?: string; samePin: boolean })[];
+    /** Each MCP catalog server: its full name, publisher, logo key and summary (never only the id). */
+    mcp: { id: string; display?: string; publisher?: string; brand?: string; summary?: string; auth?: string; inLibrary: boolean; libraryId?: string }[];
+    /** Each skill: what its SKILL.md says at the pin, the source repository, a link at the pin and the license. */
+    skills: (SkillRef & { description?: string; license?: string; repo?: string; sourceUrl?: string; imported: boolean; status?: string; samePin: boolean })[];
   };
 }
 
