@@ -1,7 +1,9 @@
 // Brand logos for the services Drydock connects to (integrations, MCP servers, agent CLIs). The paths are from Simple Icons
 // 16.35.0 (CC0-1.0, https://simpleicons.org), copied rather than installed so only these few ship. Microsoft has no Simple
-// Icons entry (its four squares are drawn here) and neither has Aikido (a lettermark until an official mark is added). The
-// marks are trademarks of their owners, shown only to say which service a card connects to.
+// Icons entry (its four squares are drawn here) and neither has Aikido: Aikido's mark (the bar over the chevron, #6551F3) is
+// the two paths of the logo in Aikido's own banner, docs/banner.svg of its official repository
+// https://github.com/AikidoSec/safe-chain (also in AikidoSec/firewall-node), scaled into the 24-unit box. The marks are
+// trademarks of their owners, shown only to say which service a card connects to.
 //
 // Each logo is drawn in its brand color on a light tile, so dark marks (GitHub, Notion) stay visible in the dark theme.
 
@@ -21,6 +23,10 @@ const marks: Record<string, Mark> = {
   opencode: { title: "OpenCode", color: "#000000", path: "M22 24H2V0h20zM17 4.8H7v14.4h10z" },
   cline: { title: "Cline", color: "#18181B", path: "m23.365 13.556-1.442-2.895V8.994c0-2.764-2.218-5.002-4.954-5.002h-2.464c.178-.367.276-.779.276-1.213A2.77 2.77 0 0 0 12.018 0a2.77 2.77 0 0 0-2.763 2.779c0 .434.098.846.276 1.213H7.067c-2.736 0-4.954 2.238-4.954 5.002v1.667L.64 13.549c-.149.29-.149.636 0 .927l1.472 2.855v1.667C2.113 21.762 4.33 24 7.067 24h9.902c2.736 0 4.954-2.238 4.954-5.002V17.33l1.44-2.865c.143-.286.143-.622.002-.91m-12.854 2.36a2.27 2.27 0 0 1-2.261 2.273 2.27 2.27 0 0 1-2.261-2.273v-4.042A2.27 2.27 0 0 1 8.249 9.6a2.267 2.267 0 0 1 2.262 2.274zm7.285 0a2.27 2.27 0 0 1-2.26 2.273 2.27 2.27 0 0 1-2.262-2.273v-4.042A2.267 2.267 0 0 1 15.535 9.6a2.267 2.267 0 0 1 2.261 2.274z" },
 };
+
+// Aikido's mark, in the coordinates of its banner (x 159 to 217.185, y 146.453 to 211.731).
+const aikidoBar = 'M217.185 146.453H159V166.951H217.185V146.453Z';
+const aikidoChevron = 'M159 186.174C175.553 171.234 200.632 171.234 217.185 186.174V211.719L217.173 211.731L188.092 182.302L159.011 211.731L159 211.719V186.174Z';
 
 /** The services with a logo: integration ids, MCP catalog ids and agent CLI ids that share a brand map to one mark. */
 const aliases: Record<string, string> = {
@@ -81,12 +87,10 @@ export function BrandLogo(handle: Handle<{ id: string; size?: number; label?: bo
               <rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900" />
             </>
           ) : k === 'aikido' ? (
-            <>
-              <rect x="0" y="0" width="24" height="24" rx="5" fill="#6551F3" />
-              <text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" font-family="system-ui, sans-serif" fill="#ffffff">
-                A
-              </text>
-            </>
+            <g transform="translate(1.304 0) scale(0.36766) translate(-159 -146.453)" fill="#6551F3">
+              <path d={aikidoBar} />
+              <path d={aikidoChevron} />
+            </g>
           ) : mark ? (
             <path d={mark.path} fill={mark.color} />
           ) : null}

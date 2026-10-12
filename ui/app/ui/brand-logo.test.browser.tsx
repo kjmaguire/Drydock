@@ -34,4 +34,17 @@ describe('BrandLogo', () => {
     expect(tile.getBoundingClientRect().width).toBe(40);
     expect(renderPlain(<BrandLogo id="nope" />).container.querySelector('[data-brand]')).toBeNull();
   });
+
+  it("draws Aikido's own mark (from its official banner), not a lettermark, inside the tile", () => {
+    const { container } = renderPlain(<BrandLogo id="aikido" size={48} label />);
+    const svg = container.querySelector('[data-brand="aikido"] svg') as SVGSVGElement;
+    expect(svg.querySelector('text')).toBeNull();
+    const paths = svg.querySelectorAll('path');
+    expect(paths.length).toBe(2);
+    expect(paths[0]!.closest('g')!.getAttribute('fill')).toBe('#6551F3');
+    // the mark (58.185 by 65.278 units in the banner) is scaled into the 24-unit box
+    const box = (svg.querySelector('g') as SVGGElement).getBBox();
+    expect(Math.round(box.width * 0.36766)).toBe(21);
+    expect(Math.round(box.height * 0.36766)).toBe(24);
+  });
 });
