@@ -19,8 +19,21 @@ describe('BrandLogo', () => {
     expect(brandTitle('linear')).toBe('Linear');
   });
 
+  it('knows the model providers and the Linux of a WSL distro, and has nothing for a brand Simple Icons does not carry', () => {
+    expect(brandKey('mistralai')).toBe('mistral');
+    expect(brandKey('lm-studio')).toBe('lmstudio');
+    expect(brandTitle('mistralai')).toBe('Mistral AI');
+    expect(brandTitle('openrouter')).toBe('OpenRouter');
+    expect(brandTitle('anthropic')).toBe('Anthropic');
+    expect(brandTitle('ubuntu')).toBe('Ubuntu');
+    // no drawn guesses: these have no Simple Icons entry, so their tiles show an icon
+    for (const id of ['openai', 'codex', 'groq', 'goose', 'antigravity', 'custom']) expect(brandKey(id)).toBe('');
+  });
+
   it('draws every mark, labelled only when asked, and nothing for an unknown id', () => {
-    for (const id of ['linear', 'notion', 'sentry', 'aikido', 'github', 'cloudflare', 'mslearn', 'ctx7', 'claude', 'gemini', 'opencode', 'cline']) {
+    const providers = ['anthropic', 'openrouter', 'ollama', 'google', 'mistral', 'deepseek', 'vllm', 'lmstudio'];
+    const linux = ['ubuntu', 'debian', 'linux'];
+    for (const id of ['linear', 'notion', 'sentry', 'aikido', 'github', 'cloudflare', 'mslearn', 'ctx7', 'claude', 'gemini', 'opencode', 'cline', ...providers, ...linux]) {
       const { container } = renderPlain(<BrandLogo id={id} label />);
       const tile = container.querySelector('[data-brand]') as HTMLElement;
       expect(tile).not.toBeNull();
