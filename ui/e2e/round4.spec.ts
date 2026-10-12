@@ -319,11 +319,12 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await expect(page.getByRole('button', { name: 'Create agent' })).toBeEnabled();
 });
 
-test('the main harness page also loads through appUrl with the banner present on every route', async ({ page }) => {
+test('the main harness page also loads through appUrl, without a license banner on any route (a build with no keys)', async ({ page }) => {
   await page.goto(appUrl());
-  await expect(page.getByTestId('license-banner')).toBeVisible();
+  await expect(page.getByTestId('nav-team')).toBeVisible();
+  await expect(page.getByTestId('license-banner')).toHaveCount(0);
   // an old #/ link still opens its screen (the UI routes by path now)
   await page.goto(appUrl() + '#/settings');
   await expect(page).toHaveURL(/\/settings$/);
-  await expect(page.getByTestId('license-banner')).toBeVisible();
+  await expect(page.getByTestId('license-banner')).toHaveCount(0);
 });
