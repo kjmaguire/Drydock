@@ -30,7 +30,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Storage | `modernc.org/sqlite` v1.60.1, WAL, FTS5; migrations with `pressly/goose` v3.28.0 | FTS5/bm25/WAL proven on Linux; single writer connection plus pooled readers; `BEGIN IMMEDIATE`/`_txlock=immediate` for write transactions. Re-run on NTFS. |
 | Secrets | `zalando/go-keyring` v0.2.8; values over 2560 bytes are encrypted into SQLite with the key in Credential Manager | Limit confirmed in source and Microsoft docs. |
 | Workflow engine | In-house on SQLite; agent-framework-go is a design reference only | Experiment: re-runs completed siblings after a partial superstep and double-emits on duplicate resume. We provide idempotency keys, leases and `response_entry` checkpoints. |
-| LLM clients | `anthropic-sdk-go` v1.79.1, `github.com/openai/openai-go/v3` v3.74.0 | Read final-chunk usage ourselves (`CacheWriteTokens` is dropped by the accumulator). |
+| LLM clients | `anthropic-sdk-go` v1.80.0, `github.com/openai/openai-go/v3` v3.77.0 | Read final-chunk usage ourselves (`CacheWriteTokens` is dropped by the accumulator). |
 | ACP | `github.com/coder/acp-go-sdk` v0.13.5 behind our own interface | Pre-1.0, no Windows CI; `usage_update` and prompt `usage` unstable. |
 | MCP | `github.com/modelcontextprotocol/go-sdk` v1.8.0 behind our own interface | Mixed MIT/Apache-2.0 license in transition: legal sign-off before release. `CommandTransport` kills only the direct child: servers are started under our process manager. |
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
