@@ -32,6 +32,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -46,6 +47,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,6 +56,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
 	"github.com/kjmaguire/drydock/internal/license"
@@ -60,6 +64,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/scrub"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
 	"github.com/kjmaguire/drydock/internal/wsl"
 	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
@@ -106,14 +111,15 @@ func main() {
 	port := flag.Int("port", 0, "port on 127.0.0.1 (0 = any)")
 	licensed := flag.Bool("licensed", false, "TEST HARNESS MODE: embed a throwaway license key so the app starts read-only until a printed test token is imported")
 	stdinStop := flag.Bool("exit-on-stdin-close", false, "also stop cleanly when standard input closes (cmd/drydock-verify uses this: on Windows a parent cannot send a child SIGTERM)")
+	diag := flag.String("diag", "", "TEST HARNESS: when it stops, write <diag>.goroutines.txt and <diag>.events.txt (what the core was doing and what it published) for a failed run")
 	flag.Parse()
 
-	if err := run(*ui, *fixture, *repos, *green, *port, *licensed, *stdinStop); err != nil {
+	if err := run(*ui, *fixture, *repos, *green, *port, *licensed, *stdinStop, *diag); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bool) error {
+func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bool, diag string) error {
 	root, err := os.MkdirTemp("", "drydock-e2e-")
 	if err != nil {
 		return err
@@ -294,7 +300,88 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		}()
 	}
 	<-sig
+	if diag != "" {
+		if err := writeDiagnostics(c, diag); err != nil {
+			fmt.Fprintf(os.Stderr, "drydock-e2e: diagnostics: %v\n", err)
+		}
+	}
 	return shutdown(context.Background())
+}
+
+// writeDiagnostics records, for a run that failed in CI, what the core was doing when the suite ended (every goroutine's
+// stack: a turn or run that never finished shows where it waits) and what it published (the event log, oldest first, each
+// event's data cut short and passed through the secret scrubber like the application log). The harness holds only test
+// doubles and throwaway values, and nothing here holds its access token.
+func writeDiagnostics(c *core.Core, prefix string) error {
+	if dir := filepath.Dir(prefix); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	g, err := os.Create(prefix + ".goroutines.txt")
+	if err != nil {
+		return err
+	}
+	werr := pprof.Lookup("goroutine").WriteTo(g, 2)
+	if cerr := g.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return werr
+	}
+	f, err := os.Create(prefix + ".events.txt")
+	if err != nil {
+		return err
+	}
+	w := bufio.NewWriter(f)
+	err = writeEvents(context.Background(), c, w)
+	if ferr := w.Flush(); err == nil {
+		err = ferr
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// writeEvents writes the whole event log, oldest first, one line per event.
+func writeEvents(ctx context.Context, c *core.Core, w io.Writer) error {
+	var after uint64
+	for {
+		evs, err := c.Bus.Replay(ctx, after, events.Filter{}, 1000)
+		if err != nil {
+			return err
+		}
+		for _, e := range evs {
+			after = e.Seq
+			if _, err := fmt.Fprintf(w, "%d %s %s project=%s run=%s task=%s agent=%s %s\n", e.Seq, e.Time.Format("15:04:05.000"), e.Type, e.ProjectID, e.RunID, e.TaskID, e.AgentID, diagData(ctx, c, e)); err != nil {
+				return err
+			}
+		}
+		if len(evs) < 1000 {
+			return nil
+		}
+	}
+}
+
+// diagData is an event's data for the diagnostics file: short (streamed agent output shorter still) and scrubbed.
+func diagData(ctx context.Context, c *core.Core, e events.Event) string {
+	limit := 600
+	if e.Type == "agent.output" {
+		limit = 160
+	}
+	s := string(e.Data)
+	if len(s) > limit {
+		s = strings.ToValidUTF8(s[:limit], "") + "..."
+	}
+	if c.Scanner == nil {
+		return s
+	}
+	shown, _, err := scrub.Text(ctx, c.Scanner, s)
+	if err != nil {
+		return "[withheld: could not be scanned for secrets]"
+	}
+	return shown
 }
 
 // e2eCatalog is the built-in MCP catalog with one more card: "Hosted tracker (test double)", the fake OAuth server. It is labelled

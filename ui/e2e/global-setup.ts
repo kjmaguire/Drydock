@@ -6,7 +6,7 @@
 //   2. `-licensed`: a TEST HARNESS MODE with a throwaway license key, which starts with no license (read-only) and prints
 //      two signed test tokens (one active, one expired). It is only used by e2e/round4.spec.ts.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { copyFileSync, createWriteStream, existsSync, linkSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync, type WriteStream } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +16,10 @@ const repoRoot = resolve(uiDir, '..');
 const REPOS = 48;
 const GREEN = 8;
 const LICENSED_REPOS = 4;
+// What each harness printed (stdout and stderr) and, when it stops, its diagnostics (-diag: every goroutine's stack and the
+// event log), so a failed CI run can be read afterwards. Playwright empties test-results before the global setup, and CI
+// uploads the folder when the suite fails.
+const logDir = join(uiDir, 'test-results');
 
 interface Started {
   child: ChildProcess;
@@ -69,9 +73,45 @@ function linkInto(from: string, to: string): void {
 
 let harnessPath: string | undefined;
 
-async function start(exe: string, args: string[]): Promise<Started> {
+/** A harness output line as it goes into its log: the access token in the URL and the signed test licenses left out. */
+function redactHarnessLine(line: string): string {
+  return line
+    .replace(/([?&]token=)[^\s&]+/g, '$1[withheld]')
+    .replace(/^(DRYDOCK_E2E_LICENSE_(?:ACTIVE|EXPIRED) ).*$/, '$1[withheld]');
+}
+
+/** Copies a child stream into the log line by line, redacted. */
+function logLines(stream: NodeJS.ReadableStream, log: WriteStream, tag: string): void {
+  let buf = '';
+  stream.on('data', (d) => {
+    buf += String(d);
+    let i: number;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      log.write(`${tag} ${redactHarnessLine(buf.slice(0, i).replace(/\r$/, ''))}\n`);
+      buf = buf.slice(i + 1);
+    }
+  });
+  stream.on('end', () => {
+    if (buf) log.write(`${tag} ${redactHarnessLine(buf)}\n`);
+  });
+}
+
+async function start(exe: string, args: string[], name: string): Promise<Started> {
   const env = harnessPath ? { ...process.env, PATH: harnessPath } : process.env;
-  const child = spawn(exe, ['-ui', join(uiDir, 'dist'), ...args], { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  // stdin is a pipe the harness watches (-exit-on-stdin-close): closing it stops the harness cleanly, which Windows cannot do
+  // with a signal, so it writes its diagnostics there too
+  const child = spawn(exe, ['-ui', join(uiDir, 'dist'), '-exit-on-stdin-close', '-diag', join(logDir, name), ...args], {
+    cwd: repoRoot,
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  child.stdin!.on('error', () => {}); // closing it after the harness has gone is not an error
+  const log = createWriteStream(join(logDir, `${name}.log`), { flags: 'w' });
+  log.on('error', () => {}); // a log that cannot be written must not fail the suite
+  logLines(child.stdout!, log, 'out');
+  logLines(child.stderr!, log, 'err');
+  // 'close' comes after both streams have ended, so nothing is written after the end
+  child.on('close', (code, signal) => log.end(`-- ${name} exited (code ${code}, signal ${signal})\n`));
   const out: Started = { child, url: '', repos: [], greens: [], docs: '', extra: {} };
   let stderr = '';
   child.stderr!.on('data', (d) => (stderr += String(d)));
@@ -128,12 +168,15 @@ export default async function globalSetup() {
   mkdirSync(claims, { recursive: true });
   process.env.DRYDOCK_E2E_CLAIMS = claims;
   process.env.DRYDOCK_E2E_EXE = exe; // the binary is also a stdio MCP server when DRYDOCK_E2E_MCP_SERVER=1 (a test fixture)
-  const main = await start(exe, ['-repos', String(REPOS), '-green-repos', String(GREEN)]);
+  mkdirSync(logDir, { recursive: true });
+  const main = await start(exe, ['-repos', String(REPOS), '-green-repos', String(GREEN)], 'core');
   const started: ChildProcess[] = [main.child];
   const stopAll = async () => {
-    for (const c of started) c.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
-    for (const c of started) if (c.exitCode === null) c.kill('SIGKILL');
+    // closing stdin stops a harness cleanly (diagnostics, then shutdown); one that does not stop in time is killed
+    const exited = started.map((c) => (c.exitCode !== null || c.signalCode !== null ? Promise.resolve() : new Promise<void>((r) => c.once('exit', () => r()))));
+    for (const c of started) c.stdin?.end();
+    await Promise.race([Promise.all(exited), new Promise((r) => setTimeout(r, 30_000))]);
+    for (const c of started) if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL');
   };
   process.env.DRYDOCK_E2E_URL = main.url;
   process.env.DRYDOCK_E2E_REPOS = JSON.stringify(main.repos);
@@ -146,7 +189,7 @@ export default async function globalSetup() {
   // TEST HARNESS MODE: a build that has a (throwaway) license key. See cmd/drydock-e2e/main.go.
   let licensed: Awaited<ReturnType<typeof start>>;
   try {
-    licensed = await start(exe, ['-licensed', '-repos', String(LICENSED_REPOS)]);
+    licensed = await start(exe, ['-licensed', '-repos', String(LICENSED_REPOS)], 'core-licensed');
   } catch (err) {
     await stopAll(); // do not leak the first harness (its port and temp dir) when the second one fails to start
     throw err;

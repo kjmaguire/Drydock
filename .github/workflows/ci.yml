@@ -155,6 +155,16 @@ jobs:
           DRYDOCK_E2E_USE_DEFAULT_CHROMIUM: "1"
           DRYDOCK_NO_REAL_AGENTS: "1"
         run: npx playwright test
+      # a failed run keeps its evidence: Playwright's traces and error context, and each e2e core's own log, goroutine stacks
+      # and event log (ui/test-results/core*.log, core*.goroutines.txt, core*.events.txt; ui/e2e/global-setup.ts)
+      - name: Keep the end-to-end evidence of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-test-results
+          path: ui/test-results
+          if-no-files-found: warn
+          retention-days: 14
   lint:
     # golangci-lint with the committed .golangci.yml, for the Windows build and for the Linux development build
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
