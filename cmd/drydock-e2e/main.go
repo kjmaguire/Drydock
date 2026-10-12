@@ -193,6 +193,10 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	oauth := oauthfake.New()
 	defer oauth.Close()
 	fmt.Printf("DRYDOCK_E2E_OAUTH_MCP %s\n", oauth.URL())
+	catalog, err := e2eCatalog(oauth.URL())
+	if err != nil {
+		return err
+	}
 
 	if licensed {
 		pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -217,6 +221,9 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		// TEST DOUBLE: an in-memory credential store so the Providers page can be exercised with a fake API key. The shipped
 		// app uses the Windows Credential Manager; nothing entered here is persisted anywhere.
 		Credentials: providers.NewMemoryCredentialStoreForTests(),
+		// TEST HARNESS: the built-in MCP catalog plus one entry for the fake OAuth server above, so the connector gallery's
+		// Connect runs the real sign-in against a test double.
+		MCPCatalog: catalog,
 	})
 	if err != nil {
 		return err
@@ -244,6 +251,31 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	}
 	<-sig
 	return shutdown(context.Background())
+}
+
+// e2eCatalog is the built-in MCP catalog with one more card: "Hosted tracker (test double)", the fake OAuth server. It is labelled
+// a test double on its card and exists only in this harness.
+func e2eCatalog(oauthURL string) (*mcp.Catalog, error) {
+	base, err := mcp.LoadBuiltin()
+	if err != nil {
+		return nil, err
+	}
+	cat := &mcp.Catalog{Schema: base.Schema, Servers: append([]mcp.ServerSpec(nil), base.Servers...)}
+	cat.Servers = append(cat.Servers, mcp.ServerSpec{
+		ID: "faketrk", Display: "Hosted tracker (test double)", Publisher: "Drydock tests", Brand: "linear",
+		Summary:     "A fake hosted MCP server that wants an OAuth sign-in (internal/mcp/oauthfake).",
+		Description: "TEST DOUBLE for the browser end-to-end tests: OAuth discovery, dynamic client registration, PKCE and one whoami tool.",
+		Transport:   mcp.TransportHTTP, URL: oauthURL,
+		Auth:          mcp.AuthSpec{Kind: mcp.AuthDCR, Keyring: "mcp/faketrk"},
+		Trust:         mcp.TrustPrivateData,
+		ReadOnlyTools: []string{"whoami"},
+		Identity:      &mcp.IdentitySpec{Tool: "whoami"},
+		License:       mcp.LicenseSpec{Server: "test-double"},
+	})
+	if err := cat.Validate(); err != nil {
+		return nil, err
+	}
+	return cat, nil
 }
 
 func copyTree(src, dst string) error {

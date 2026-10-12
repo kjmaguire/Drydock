@@ -26,6 +26,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/proc"
@@ -60,6 +61,9 @@ type Config struct {
 	// GitHubCloneURL, when set, makes github.clone run `git clone <url>` instead of `gh repo clone` (tests clone a local
 	// repository this way).
 	GitHubCloneURL func(fullName string) string
+	// MCPCatalog replaces the built-in MCP catalog that the library and the connector gallery offer. TEST HARNESS ONLY: the
+	// browser end-to-end harness adds an entry for its fake OAuth server (a test double); the product leaves it nil.
+	MCPCatalog *mcp.Catalog
 }
 
 // Core is the running application.
