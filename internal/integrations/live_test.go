@@ -4,78 +4,138 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/integrations"
 )
 
-// Live checks against the real vendors (docs/integrations.md, "Live checks"). Every test above runs against fixtures written
-// from the vendors' documentation; these check those fixtures against the real services. Each one runs only when its token
-// is set (the value is never printed), reads only, and never imports an item or writes anything back:
+// Live checks against the real vendor APIs (docs/integrations.md, "Live checks"). Every other test runs against fixtures
+// written from the vendors' documentation; these check those fixtures against the real services. Each runs only when its
+// credential is set (the value is never printed), reads only, and never imports an item or writes anything back:
 //
-//  1. Test connection: the token is accepted and the tools Drydock calls exist (one page, limit 1).
-//  2. One sync (at most 20 pages of 50): every item the vendor returns parses into an item with an id, a title and a valid
-//     reference, and no schema drift is reported.
-//  3. The token is nowhere in the database, the body files or the events.
+//  1. Test connection: the API accepts the credential and reports the account, the workspace and, where the API has them,
+//     the scopes; when a scope is set, one item is read.
+//  2. The first setting with choices is listed (Linear teams, Notion data sources, Sentry organizations, Aikido repositories,
+//     GitHub repositories): the shape of that call is checked too.
+//  3. One sync (at most 20 pages of 50): every item parses into an item with an id, a title and a reference, and no schema
+//     drift is reported.
+//  4. The credential is nowhere in the database, the body files or the events.
 //
-// DRYDOCK_LIVE_REPORT=<file> also writes what was found (tool names, counts, missing tools; no item text) as JSON for the
-// docs. Run, for example:
+// DRYDOCK_LIVE_REPORT=<file> also writes what was found (identity, counts, the API version; no item text, no credential) as
+// JSON. Run, for example:
 //
-//	DRYDOCK_LIVE_LINEAR_TOKEN=... go test ./internal/integrations -run TestLive -v
+//	DRYDOCK_LIVE_LINEAR_TOKEN=lin_api_... go test ./internal/integrations -run TestLive -v
 //
-// Optional scope variables: DRYDOCK_LIVE_LINEAR_TEAM, DRYDOCK_LIVE_SENTRY_ORG and DRYDOCK_LIVE_SENTRY_PROJECT,
-// DRYDOCK_LIVE_AIKIDO_WORKSPACE, DRYDOCK_LIVE_NOTION_QUERY; DRYDOCK_LIVE_<VENDOR>_BASE_URL for a self-hosted server.
+// Credentials: DRYDOCK_LIVE_LINEAR_TOKEN (personal API key), DRYDOCK_LIVE_NOTION_TOKEN (internal integration secret),
+// DRYDOCK_LIVE_SENTRY_TOKEN (auth token), DRYDOCK_LIVE_AIKIDO_CLIENT_ID and DRYDOCK_LIVE_AIKIDO_CLIENT_SECRET (REST API client),
+// DRYDOCK_LIVE_GITHUB_REPO (owner/name; uses your signed-in gh). Scope: DRYDOCK_LIVE_LINEAR_TEAM, DRYDOCK_LIVE_LINEAR_PROJECT,
+// DRYDOCK_LIVE_NOTION_DATA_SOURCE, DRYDOCK_LIVE_NOTION_QUERY, DRYDOCK_LIVE_SENTRY_ORG (required for a sync),
+// DRYDOCK_LIVE_SENTRY_PROJECT, DRYDOCK_LIVE_AIKIDO_REPO, DRYDOCK_LIVE_AIKIDO_REGION (eu, us, me, au), DRYDOCK_LIVE_GITHUB_LABELS;
+// DRYDOCK_LIVE_<VENDOR>_BASE_URL for a self-hosted server.
 
 type liveVendor struct {
-	kind, env string
-	config    map[string]string // connection config key -> environment variable
+	kind   string
+	creds  map[string]string // ConnectReq field -> environment variable (the first one gates the test)
+	config map[string]string // assignment setting -> environment variable
+	choice string            // the setting whose choices are listed
 }
 
 var liveVendors = []liveVendor{
-	{integrations.KindLinear, "DRYDOCK_LIVE_LINEAR_TOKEN", map[string]string{"team": "DRYDOCK_LIVE_LINEAR_TEAM"}},
-	{integrations.KindNotion, "DRYDOCK_LIVE_NOTION_TOKEN", map[string]string{"query": "DRYDOCK_LIVE_NOTION_QUERY"}},
-	{integrations.KindSentry, "DRYDOCK_LIVE_SENTRY_TOKEN", map[string]string{"organization": "DRYDOCK_LIVE_SENTRY_ORG", "project": "DRYDOCK_LIVE_SENTRY_PROJECT"}},
-	{integrations.KindAikido, "DRYDOCK_LIVE_AIKIDO_TOKEN", map[string]string{"workspace": "DRYDOCK_LIVE_AIKIDO_WORKSPACE"}},
+	{integrations.KindLinear, map[string]string{"token": "DRYDOCK_LIVE_LINEAR_TOKEN"}, map[string]string{"team": "DRYDOCK_LIVE_LINEAR_TEAM", "project": "DRYDOCK_LIVE_LINEAR_PROJECT"}, "team"},
+	{integrations.KindNotion, map[string]string{"token": "DRYDOCK_LIVE_NOTION_TOKEN"}, map[string]string{"data_source": "DRYDOCK_LIVE_NOTION_DATA_SOURCE", "query": "DRYDOCK_LIVE_NOTION_QUERY"}, "data_source"},
+	{integrations.KindSentry, map[string]string{"token": "DRYDOCK_LIVE_SENTRY_TOKEN"}, map[string]string{"organization": "DRYDOCK_LIVE_SENTRY_ORG", "project": "DRYDOCK_LIVE_SENTRY_PROJECT"}, "organization"},
+	{integrations.KindAikido, map[string]string{"clientSecret": "DRYDOCK_LIVE_AIKIDO_CLIENT_SECRET", "clientId": "DRYDOCK_LIVE_AIKIDO_CLIENT_ID", "region": "DRYDOCK_LIVE_AIKIDO_REGION"}, map[string]string{"repo": "DRYDOCK_LIVE_AIKIDO_REPO"}, "repo"},
+	{integrations.KindGitHub, map[string]string{"repo": "DRYDOCK_LIVE_GITHUB_REPO"}, map[string]string{"repo": "DRYDOCK_LIVE_GITHUB_REPO", "labels": "DRYDOCK_LIVE_GITHUB_LABELS"}, "repo"},
 }
 
-// LiveReport is what one live check found. It never holds item text or the token.
+// LiveReport is what one live check found. It never holds item text or a credential.
 type LiveReport struct {
-	Kind          string   `json:"kind"`
-	At            string   `json:"at"`
-	OK            bool     `json:"ok"`
-	ToolsFound    []string `json:"toolsFound"`
-	ToolsMissing  []string `json:"toolsMissing"`
-	WritesMissing []string `json:"writesMissing"`
-	Pages         int      `json:"pages"`
-	Items         int      `json:"items"`
-	Drift         int      `json:"drift"`
-	Steps         []string `json:"steps"`
+	Kind       string   `json:"kind"`
+	At         string   `json:"at"`
+	OK         bool     `json:"ok"`
+	APIVersion string   `json:"apiVersion"`
+	Account    bool     `json:"accountRead"` // whether the API named the account (the name itself is not written)
+	Workspace  bool     `json:"workspaceRead"`
+	Scopes     []string `json:"scopes"`
+	Choices    int      `json:"choices"`
+	Pages      int      `json:"pages"`
+	Items      int      `json:"items"`
+	Drift      int      `json:"drift"`
+	Steps      []string `json:"steps"`
 }
 
 func TestLiveLinear(t *testing.T) { liveCheck(t, liveVendors[0]) }
 func TestLiveNotion(t *testing.T) { liveCheck(t, liveVendors[1]) }
 func TestLiveSentry(t *testing.T) { liveCheck(t, liveVendors[2]) }
 func TestLiveAikido(t *testing.T) { liveCheck(t, liveVendors[3]) }
+func TestLiveGitHub(t *testing.T) { liveCheck(t, liveVendors[4]) }
+
+func firstCredEnv(v liveVendor) string {
+	for _, k := range []string{"token", "clientSecret", "repo"} {
+		if e, ok := v.creds[k]; ok {
+			return e
+		}
+	}
+	return ""
+}
 
 func liveCheck(t *testing.T, v liveVendor) {
-	token := os.Getenv(v.env)
-	if token == "" {
-		t.Skipf("set %s to check %s against the real service (read-only)", v.env, v.kind)
+	gate := firstCredEnv(v)
+	secret := os.Getenv(gate)
+	if secret == "" {
+		t.Skipf("set %s to check %s against the real service (read-only)", gate, v.kind)
 	}
-	h := newHarness(t, func(o *integrations.Options) { o.Now = time.Now })
+	mod := func(o *integrations.Options) {
+		o.Now = time.Now
+		o.RateLimits = nil // the documented budgets, as in the product
+	}
+	if v.kind == integrations.KindGitHub {
+		if _, err := exec.LookPath("gh"); err != nil {
+			t.Skip("gh is not installed")
+		}
+		mod = func(o *integrations.Options) {
+			o.Now, o.RateLimits = time.Now, nil
+			o.GitHub = func(context.Context) (host.API, error) { return host.GhCLI{}, nil }
+		}
+	}
+	h := newHarness(t, mod)
 	ctx := context.Background()
+	req := integrations.ConnectReq{Kind: v.kind, BaseURL: os.Getenv("DRYDOCK_LIVE_" + strings.ToUpper(v.kind) + "_BASE_URL")}
+	switch v.kind {
+	case integrations.KindAikido:
+		req.ClientID, req.ClientSecret, req.Region = os.Getenv(v.creds["clientId"]), secret, os.Getenv(v.creds["region"])
+	case integrations.KindGitHub:
+		secret = "" // nothing secret: gh holds the sign-in
+	default:
+		req.Token = secret
+	}
+	c, err := h.svc.Connect(ctx, human, req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
 	cfg := map[string]string{}
 	for key, env := range v.config {
 		if val := os.Getenv(env); val != "" {
 			cfg[key] = val
 		}
 	}
-	base := os.Getenv("DRYDOCK_LIVE_" + strings.ToUpper(v.kind) + "_BASE_URL")
-	c := h.connect(v.kind, token, base, cfg)
+	assigned := len(cfg) > 0 || v.kind == integrations.KindLinear || v.kind == integrations.KindNotion || v.kind == integrations.KindAikido
+	if assigned {
+		if _, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "prj1", Config: cfg}); err != nil {
+			t.Fatalf("assign: %v", err)
+		}
+	}
 	rep := LiveReport{Kind: v.kind, At: time.Now().UTC().Format(time.RFC3339)}
+	for _, k := range integrations.Catalog(nil) {
+		if k.Kind == v.kind {
+			rep.APIVersion = k.APIVersion
+		}
+	}
 	defer func() { writeLiveReport(t, rep) }()
 
 	tr, err := h.svc.Test(ctx, c.ID)
@@ -83,15 +143,28 @@ func liveCheck(t *testing.T, v liveVendor) {
 		t.Fatalf("test connection: %v", err)
 	}
 	for _, s := range tr.Steps {
-		rep.Steps = append(rep.Steps, s.Name+": "+map[bool]string{true: "ok", false: "FAILED"}[s.OK]+" "+s.Detail)
+		rep.Steps = append(rep.Steps, s.Name+": "+map[bool]string{true: "ok", false: "FAILED"}[s.OK])
 		t.Logf("%s: ok=%v %s", s.Name, s.OK, s.Detail)
 	}
-	rep.ToolsFound, rep.ToolsMissing, rep.WritesMissing = tr.ToolsFound, tr.ToolsMissing, tr.WritesMissing
-	t.Logf("tools found %v; missing %v; optional write tools missing %v", tr.ToolsFound, tr.ToolsMissing, tr.WritesMissing)
+	rep.Account, rep.Workspace, rep.Scopes = tr.Identity.Account != "", tr.Identity.Workspace != "", tr.Identity.Scopes
+	t.Logf("identity: account read %v, workspace read %v, scopes %v", rep.Account, rep.Workspace, rep.Scopes)
 	if !tr.OK {
 		t.Fatalf("test connection failed: %s", tr.Summary)
 	}
-
+	if !rep.Account && !rep.Workspace {
+		t.Errorf("the API named neither the account nor the workspace")
+	}
+	if ch, err := h.svc.Choices(ctx, c.ID, v.choice, cfg); err != nil {
+		t.Errorf("listing %s: %v", v.choice, err)
+	} else {
+		rep.Choices = len(ch)
+		t.Logf("%d %s choice(s)", len(ch), v.choice)
+	}
+	if !assigned {
+		t.Logf("no scope set (%v): the sync is skipped", v.config)
+		rep.OK = !t.Failed()
+		return
+	}
 	res, err := h.svc.Sync(ctx, c.ID, integrations.SyncOpts{Force: true})
 	if err != nil {
 		t.Fatalf("sync: %v", err)
@@ -115,8 +188,8 @@ func liveCheck(t *testing.T, v liveVendor) {
 	if len(items) == 0 {
 		t.Logf("nothing to read in this scope: the parsing of real items is unchecked (point the scope variables at something that has items)")
 	}
-	if strings.Contains(h.diskText(), token) || strings.Contains(h.allEventsJSON(), token) {
-		t.Error("the token reached the database, a body file or an event")
+	if secret != "" && (strings.Contains(h.diskText(), secret) || strings.Contains(h.allEventsJSON(), secret)) {
+		t.Error("the credential reached the database, a body file or an event")
 	}
 	rep.OK = !t.Failed()
 }
@@ -139,8 +212,8 @@ func writeLiveReport(t *testing.T, rep LiveReport) {
 	}
 }
 
-// The live check itself, run against the Linear fixture as if it were the real service: it connects, tests, syncs, checks
-// every item and writes its report without item text or the token.
+// The live check itself, run against the Linear fixture as if it were the real service: it connects, tests, lists the
+// teams, syncs, checks every item and writes its report without item text or the credential.
 func TestTheLiveCheckWorksAgainstTheFixture(t *testing.T) {
 	_, url := linearFixture(t, 3)
 	report := filepath.Join(t.TempDir(), "live.json")
@@ -158,10 +231,10 @@ func TestTheLiveCheckWorksAgainstTheFixture(t *testing.T) {
 		t.Fatalf("%v %s", err, b)
 	}
 	r := reps[0]
-	if !r.OK || r.Kind != "linear" || r.Items != 3 || r.Drift != 0 || len(r.ToolsFound) == 0 || len(r.ToolsMissing) != 0 {
+	if !r.OK || r.Kind != "linear" || r.Items != 3 || r.Drift != 0 || !r.Account || !r.Workspace || r.Choices != 2 || r.APIVersion == "" {
 		t.Fatalf("%+v", r)
 	}
-	if strings.Contains(string(b), linearToken) || strings.Contains(string(b), "Description of issue") {
-		t.Fatalf("the report carries the token or item text:\n%s", b)
+	if strings.Contains(string(b), linearToken) || strings.Contains(string(b), "Description of issue") || strings.Contains(string(b), "Kyle Fixture") {
+		t.Fatalf("the report carries the credential, an identity or item text:\n%s", b)
 	}
 }

@@ -28,7 +28,8 @@ const (
 )
 
 // canonicalCall renders the exact call an approval is bound to and its hash. Everything that determines what the vendor will
-// receive is inside it: the integration, the operation, the target, the tool and the arguments.
+// receive is inside it: the integration, the operation, the target, the API call (stored in the outbox's tool column) and the
+// arguments.
 func canonicalCall(integrationID, kind, op, target, tool string, args json.RawMessage) (canonical, hash string, err error) {
 	b, err := security.CanonicalJSON(map[string]any{"integration": integrationID, "kind": kind, "op": op, "target": target, "tool": tool, "args": args})
 	if err != nil {
@@ -113,7 +114,9 @@ func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox,
 	if total > maxPayloadBytes {
 		return Outbox{}, errf(ErrBadRequest, "the action is too large")
 	}
-	call, err := ad.Build(r.Op, target, params, conn.Config)
+	project := r.ProjectID
+	cfg := s.outboundConfig(ctx, conn, &project, target)
+	call, err := ad.Build(r.Op, target, params, cfg)
 	if err != nil {
 		return Outbox{}, err
 	}
@@ -134,29 +137,10 @@ func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox,
 			return Outbox{}, errf(ErrContainsSecret, "found %s; remove it and propose again", strings.Join(rules, ", "))
 		}
 	}
-	// pin the tool name now (the approval is bound to it): the server's live list when reachable, else the first candidate
-	tool := ""
-	for _, n := range ad.Needs() {
-		if n.Role == call.Role {
-			tool = n.Candidates[0]
-			if cl, cerr := s.callerFor(ctx, conn, true); cerr == nil {
-				tctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
-				offered, terr := cl.Tools(tctx)
-				cancel()
-				if terr == nil {
-					if resolved, _, _ := resolveTools([]ToolNeed{n}, offered); resolved[n.Role] != "" {
-						tool = resolved[n.Role]
-					} else {
-						return Outbox{}, errf(ErrToolMissing, "%s's server does not offer %s, so this write is not possible", vendor(conn.Kind), strings.Join(n.Candidates, " or "))
-					}
-				}
-			}
-		}
-	}
+	tool := call.Endpoint
 	if tool == "" {
-		return Outbox{}, errf(ErrOpUnsupported, "no tool is known for %q", r.Op)
+		return Outbox{}, errf(ErrOpUnsupported, "no API call is known for %q", r.Op)
 	}
-	call.Tool = tool
 	argsRaw, err := json.Marshal(call.Args)
 	if err != nil {
 		return Outbox{}, err
@@ -164,10 +148,6 @@ func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox,
 	_, hash, err := canonicalCall(conn.ID, conn.Kind, r.Op, target, tool, argsRaw)
 	if err != nil {
 		return Outbox{}, err
-	}
-	project := r.ProjectID
-	if project == "" {
-		project = conn.ProjectID
 	}
 	row := Outbox{IntegrationID: conn.ID, ProjectID: project, TaskID: r.TaskID, Op: r.Op, Target: target, Tool: tool, PayloadHash: hash, Preview: s.scrub(call.Preview),
 		Status: OutPlanned, IdempotencyKey: hashHex(conn.ID, r.TaskID, r.Op, target, hash), CreatedBy: by}
@@ -204,11 +184,39 @@ func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox,
 	return out, nil
 }
 
-func (s *Service) callerFor(ctx context.Context, c Connection, write bool) (Caller, error) {
-	if s.o.Callers == nil {
-		return nil, errors.New("no MCP gateway is configured")
+// outboundConfig finds the remote scope a write runs in: the assignment of the named project, else the assignment whose
+// items hold the target, else the connection's own (pre-P42) scope. It fills the project when the caller named none.
+func (s *Service) outboundConfig(ctx context.Context, conn Connection, project *string, target string) map[string]string {
+	if *project != "" {
+		if a, err := s.st.AssignmentFor(ctx, conn.ID, *project); err == nil {
+			return a.Config
+		}
 	}
-	return s.o.Callers.Caller(ctx, c, write)
+	if target != "" {
+		if its, err := s.st.ListItems(ctx, ItemFilter{IntegrationID: conn.ID, Limit: 500}); err == nil {
+			for _, it := range its {
+				if it.ExternalID != target || it.AssignmentID == "" {
+					continue
+				}
+				if a, err := s.st.GetAssignment(ctx, it.AssignmentID); err == nil {
+					if *project == "" {
+						*project = a.ProjectID
+					}
+					return a.Config
+				}
+			}
+		}
+	}
+	if *project == "" {
+		*project = conn.ProjectID
+	}
+	if asgs, err := s.st.ListAssignments(ctx, conn.ID); err == nil && len(asgs) == 1 {
+		if *project == "" {
+			*project = asgs[0].ProjectID
+		}
+		return asgs[0].Config
+	}
+	return conn.Config
 }
 
 // Decide records the human's answer to an outbound proposal (it is Approvals.Decide: agents, tools and every non-human principal
@@ -276,23 +284,23 @@ func (s *Service) Execute(ctx context.Context, by, outboxID string) (Outbox, err
 		return s.afterRefused(ctx, o, derr)
 	}
 	// the approval is spent; from here the write is attempted exactly once
-	caller, cerr := s.callerFor(ctx, conn, true)
-	var res Result
+	var receipt string
 	var fail *Failure
-	if cerr != nil {
-		fail = Classify(conn.Kind, cerr, "")
-		if errors.Is(cerr, ErrNoCredential) {
-			fail = &Failure{Code: CodeUnauthorized, Message: "No token is stored for " + vendor(conn.Kind) + "."}
-		}
+	ad, _ := AdapterFor(conn.Kind)
+	api, afail := s.api(ctx, conn)
+	if afail != nil {
+		fail = afail
+	} else if ad == nil {
+		fail = &Failure{Code: CodeOther, Message: "unknown integration " + conn.Kind}
 	} else {
 		cctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
-		res, cerr = caller.Call(cctx, o.Tool, o.Payload)
+		var serr error
+		receipt, serr = ad.Send(cctx, api, OutCall{Endpoint: o.Tool, Args: o.Payload})
 		cancel()
-		switch {
-		case cerr != nil:
-			fail = Classify(conn.Kind, cerr, "")
-		case res.IsError:
-			fail = Classify(conn.Kind, nil, res.Text)
+		if serr != nil {
+			if !errors.As(serr, &fail) {
+				fail = Classify(conn.Kind, serr, "")
+			}
 		}
 	}
 	now := s.nowMS()
@@ -303,7 +311,7 @@ func (s *Service) Execute(ctx context.Context, by, outboxID string) (Outbox, err
 		out, _ := s.st.GetOutbox(ctx, o.ID)
 		return out, fmt.Errorf("%w: %s", ErrSendFailed, msg)
 	}
-	receipt := s.scrub(res.Text)
+	receipt = s.scrub(receipt)
 	receipt, _ = truncateRunes(strings.Join(strings.Fields(receipt), " "), maxReceiptRunes)
 	if _, err := s.st.UpdateOutbox(ctx, o.ID, OutboxUpdate{From: []string{OutExecuting}, To: OutSent, SentAt: &now, Receipt: &receipt}); err != nil {
 		return o, err
@@ -351,7 +359,7 @@ func (s *Service) ListOutbox(ctx context.Context, integrationID, status string, 
 
 // LinkBack proposes the comment that links a task's result back to the external item it came from ("Drydock opened a pull
 // request ... "). Only the template and the PR URL are in the text; no external text is echoed. Like every outbound write it
-// waits for an approval. Linear and Notion support comments; Sentry and Aikido do not (their MCP servers offer no comment tool).
+// waits for an approval. Linear and Notion support comments; Sentry, Aikido and GitHub have no comment operation here.
 func (s *Service) LinkBack(ctx context.Context, by, taskID, prURL string) (Outbox, error) {
 	it, err := s.st.ItemByTask(ctx, taskID)
 	if err != nil {

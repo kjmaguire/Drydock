@@ -45,7 +45,7 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 
 	// protocol fixtures over real loopback HTTP: a Linear peer and a Sentry peer
 	lin := itfixture.NewLinear(itLinearToken)
-	lts, lurl := itfixture.Serve(lin.Server(), &lin.Common)
+	lts, lurl := itfixture.Serve(lin.Server())
 	t.Cleanup(lts.Close)
 	base := time.Now().UTC().Add(-time.Hour)
 	for i := 0; i < 70; i++ {
@@ -61,7 +61,7 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 		Test       integrations.TestReport     `json:"test"`
 	}
 	a.call("integration.connect", map[string]any{"kind": "linear", "projectId": p.ID, "token": itLinearToken, "baseUrl": lurl, "config": map[string]string{"team": "ENG"}}, &out)
-	if !out.Test.OK || out.Connection.Status != integrations.StatusOK || !out.Connection.HasCredential || len(out.Test.Steps) != 4 {
+	if !out.Test.OK || out.Connection.Status != integrations.StatusOK || !out.Connection.HasCredential || len(out.Test.Steps) != 3 || out.Connection.Identity.Workspace != "Fixture Org" || len(out.Connection.Assignments) != 1 {
 		t.Fatalf("%+v", out)
 	}
 	id := out.Connection.ID
@@ -194,10 +194,10 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 	if len(conns) != 1 || !conns[0].HasCredential || conns[0].Sync.Watermark == 0 || conns[0].Sync.ItemsSeen != 71 {
 		t.Fatalf("%+v", conns)
 	}
-	before := lin.Calls("list_issues")
+	before := lin.Calls("issues")
 	b.call("integration.sync", map[string]any{"id": id}, &sr)
-	if sr.New != 0 || sr.Changed != 0 || lin.Calls("list_issues") != before+1 {
-		t.Fatalf("%+v calls %d -> %d", sr, before, lin.Calls("list_issues"))
+	if sr.New != 0 || sr.Changed != 0 || lin.Calls("issues") != before+1 {
+		t.Fatalf("%+v calls %d -> %d", sr, before, lin.Calls("issues"))
 	}
 	var evs []events.Event
 	b.call("events.replay", map[string]any{"types": []string{"integration.*"}, "limit": 100000}, &evs)
@@ -233,7 +233,8 @@ func TestIntegrationsWithoutACredentialStoreSayWhyAndAgentsCannotConnect(t *test
 	// every method of the extension is registered
 	for _, m := range []string{"integration.list", "integration.connect", "integration.disconnect", "integration.test", "integration.sync", "integration.items", "integration.item",
 		"integration.rules.list", "integration.rules.set", "integration.import", "integration.notion.page", "integration.outbound.propose", "integration.outbound.decide",
-		"integration.outbound.execute", "integration.outbound.list", "integration.linkback"} {
+		"integration.outbound.execute", "integration.outbound.list", "integration.linkback", "integration.kinds", "integration.get", "integration.assign",
+		"integration.unassign", "integration.assignments", "integration.choices", "integration.oauthStart", "integration.oauthStatus"} {
 		if _, ok := a.c.Methods()[m]; !ok {
 			t.Errorf("method %s is not registered", m)
 		}

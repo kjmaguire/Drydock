@@ -2,26 +2,12 @@ package integrations
 
 import (
 	"context"
-	"fmt"
-	"sort"
-	"strings"
 )
-
-// ToolNeed names a role a vendor tool plays and the tool names that can play it. The names of Linear's, Notion's and Sentry's
-// hosted MCP tools were not verifiable in Phase 0 (docs/integrations.md section 10), so every role lists candidates and Test
-// connection reports which one the server actually offers. Aikido's names come from the published package's tool list.
-type ToolNeed struct {
-	Role       string
-	Candidates []string
-	Required   bool // sync cannot run without it
-	Write      bool // used only for approved outbound writes
-}
 
 // OpInfo describes one outbound operation.
 type OpInfo struct {
 	Op          string   `json:"op"`
 	Label       string   `json:"label"`
-	Role        string   `json:"-"` // the ToolNeed role it calls
 	Params      []string `json:"params"`
 	NeverAuto   bool     `json:"neverAuto"` // suppresses a signal or changes state in bulk: never eligible for a standing approval
 	Description string   `json:"description"`
@@ -38,7 +24,7 @@ type RawItem struct {
 	State      string
 	Labels     []string
 	Assignee   string
-	Priority   string // urgent | high | medium | low | none
+	Priority   string // urgent | high | medium | low | none, or a Sentry level / Aikido severity
 	Parent     string
 	Created    int64
 	Updated    int64
@@ -54,55 +40,56 @@ type Page struct {
 	Next  string // the vendor's cursor for the next page; "" = no more
 }
 
-// Client is an adapter's view of a connected server: the caller plus the tool names resolved for each role.
-type Client struct {
-	Caller
-	Conn  Connection
-	Tools map[string]string // role -> tool name
+// PageQuery asks an adapter for one page of an assignment's scope.
+type PageQuery struct {
+	Config map[string]string // the assignment's remote scope
+	After  string            // the vendor cursor ("" = first page)
+	Limit  int
+	// Since is the watermark (ms): an adapter whose API can filter by update time asks only for newer items. The cursor of an
+	// interrupted sweep was produced under the same Since (the watermark moves only when a sweep completes).
+	Since int64
 }
 
-// call calls the tool of a role and returns a failure when the server reported an error.
-func (c *Client) call(ctx context.Context, role string, args map[string]any) (Result, error) {
-	name := c.Tools[role]
-	if name == "" {
-		return Result{}, &Failure{Code: CodeToolMissing, Message: fmt.Sprintf("%s's MCP server does not offer a tool for %q, so Drydock cannot do this.", vendor(c.Conn.Kind), role), Cause: ErrToolMissing}
-	}
-	res, err := c.Caller.Call(ctx, name, args)
-	if err != nil {
-		return Result{}, Classify(c.Conn.Kind, err, "")
-	}
-	if res.IsError {
-		return res, Classify(c.Conn.Kind, nil, res.Text)
-	}
-	return res, nil
+// Choice is one value a setting can take, read from the vendor's API (a Linear team, a Sentry project, a Notion data source).
+type Choice struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
-// Adapter is the per-vendor knowledge: which tools to call, how to read their results, and how to build outbound calls.
+// Adapter is the per-vendor knowledge: which API calls read the items, how to read their results, and how to build and send
+// outbound writes.
 type Adapter interface {
 	Kind() string
-	// Needs lists the tool roles.
-	Needs() []ToolNeed
-	// Page fetches one page of items. after is the vendor cursor ("" = first page). It must be read-only.
-	Page(ctx context.Context, cl *Client, after string, limit int) (Page, error)
-	// Detail returns the full text for an item whose list entry was a summary (Notion body, Sentry stack trace). ok=false means
-	// there is nothing more to fetch.
-	Detail(ctx context.Context, cl *Client, externalID string) (text string, ok bool, err error)
+	// Identity reads who the credential is and what it reaches. It is also the cheapest authenticated call, so Test uses it to
+	// prove the credential works.
+	Identity(ctx context.Context, a *API) (Identity, error)
+	// Choices lists the values of an assignment setting ("team", "organization", "project", "data_source", "repo").
+	Choices(ctx context.Context, a *API, key string, cfg map[string]string) ([]Choice, error)
+	// Page fetches one page of an assignment's items. It must be read-only.
+	Page(ctx context.Context, a *API, q PageQuery) (Page, error)
+	// Detail returns the full text for an item whose list entry was a summary (Notion page body, Sentry stack trace). ok=false
+	// means there is nothing more to fetch.
+	Detail(ctx context.Context, a *API, cfg map[string]string, externalID string) (text string, ok bool, err error)
 	// FullSweep reports that every sync lists everything (no vendor cursor or order), so items missing afterwards are gone.
 	FullSweep() bool
+	// Endpoints names the API calls sync makes (shown to the person).
+	Endpoints() []string
 	// Ops lists the outbound operations.
 	Ops() []OpInfo
-	// Build builds the exact tool call for an outbound operation.
+	// Build builds the exact call of an outbound operation. It is pure: nothing is sent.
 	Build(op, target string, params map[string]string, cfg map[string]string) (OutCall, error)
+	// Send performs a call Build made (and a human approved). The receipt is a short vendor reference (a comment id).
+	Send(ctx context.Context, a *API, call OutCall) (receipt string, err error)
 	// TaskMapping maps an item to the task fields (priority, kind label) the importer needs.
 	TaskMapping(it Item) TaskMapping
 }
 
-// OutCall is the exact outbound call: tool role, arguments and a preview for the human.
+// OutCall is the exact outbound call: the API operation, its arguments and a preview for the human. Endpoint and Args are what
+// the approval is bound to.
 type OutCall struct {
-	Role    string         `json:"role"`
-	Tool    string         `json:"tool"` // filled when the tool is resolved against the server
-	Args    map[string]any `json:"args"`
-	Preview string         `json:"preview"`
+	Endpoint string         `json:"endpoint"` // e.g. "graphql commentCreate", "PUT /api/0/organizations/{org}/issues/{id}/"
+	Args     map[string]any `json:"args"`
+	Preview  string         `json:"preview"`
 }
 
 // TaskMapping carries what an importer takes from an item that is not free text.
@@ -124,100 +111,10 @@ func init() {
 	register(notionAdapter{})
 	register(sentryAdapter{})
 	register(aikidoAdapter{})
+	register(githubAdapter{})
 }
 
-// resolveTools maps roles to the tool names a server offers. missing lists required roles with no match; optionalMissing lists
-// the others.
-func resolveTools(needs []ToolNeed, offered []string) (resolved map[string]string, missing, optionalMissing []string) {
-	have := map[string]bool{}
-	for _, n := range offered {
-		have[n] = true
-	}
-	resolved = map[string]string{}
-	for _, n := range needs {
-		found := ""
-		for _, cand := range n.Candidates {
-			if have[cand] {
-				found = cand
-				break
-			}
-		}
-		switch {
-		case found != "":
-			resolved[n.Role] = found
-		case n.Required:
-			missing = append(missing, n.Candidates[0])
-		default:
-			optionalMissing = append(optionalMissing, n.Candidates[0])
-		}
-	}
-	sort.Strings(missing)
-	sort.Strings(optionalMissing)
-	return
-}
-
-// listItems extracts the item list and the paging cursor from a decoded listing: an array, or an object holding one under a
-// well-known key.
-func listItems(v any, keys ...string) (items []any, next string, ok bool) {
-	if l, isList := v.([]any); isList {
-		return l, "", true
-	}
-	m := asMap(v)
-	if m == nil {
-		return nil, "", false
-	}
-	found := false
-	for _, k := range keys {
-		if l, isList := m[k].([]any); isList {
-			items, found = l, true
-			break
-		}
-	}
-	if !found {
-		// one level down: {"data": {"issues": [...]}}
-		for _, outer := range []string{"data", "result", "results"} {
-			if inner := asMap(m[outer]); inner != nil {
-				if its, nx, ok := listItems(inner, keys...); ok {
-					return its, nx, true
-				}
-			}
-		}
-		return nil, "", false
-	}
-	next = str(pick(m, "nextCursor", "next_cursor", "cursor", "endCursor", "end_cursor", "next"))
-	if pi := asMap(pick(m, "pageInfo", "page_info")); pi != nil {
-		if hn, has := pi["hasNextPage"].(bool); has && !hn {
-			next = ""
-		} else if next == "" {
-			next = str(pick(pi, "endCursor", "end_cursor"))
-		}
-	}
-	if hm, has := pick(m, "hasMore", "has_more", "hasNextPage", "has_next_page").(bool); has && !hm {
-		next = ""
-	}
-	return items, next, true
-}
-
-func clampText(s string, n int) string {
-	s = strings.TrimSpace(s)
-	r := []rune(s)
-	if len(r) > n {
-		return string(r[:n])
-	}
+func argString(m map[string]any, k string) string {
+	s, _ := m[k].(string)
 	return s
-}
-
-// priorityTask maps the normalized priority words to Drydock's task priority (higher is more urgent).
-func priorityTask(p string) int {
-	switch strings.ToLower(p) {
-	case "urgent", "critical", "fatal":
-		return 4
-	case "high", "error":
-		return 3
-	case "medium", "warning":
-		return 2
-	case "low", "info":
-		return 1
-	}
-	return 0
 }

@@ -1,8 +1,12 @@
-// Package integrations connects Drydock to Linear, Notion, Sentry and Aikido (docs/integrations.md, brief section 11).
+// Package integrations connects Drydock to Linear, Notion, Sentry, Aikido and GitHub (docs/integrations.md, brief section 11,
+// decision P42).
 //
-// Each integration is a Connection with two independent channels. App sync polls the vendor's MCP server through the MCP
-// gateway client (internal/mcp AppUpstream) with cursors and writes what it sees into external_items. Agent access goes
-// through the gateway's per-role allowlists and is not this package's business; the two share one stored credential.
+// A connection is made once, at the workspace level: it holds the credential (in the credential store) and the account it
+// reaches, which the vendor's API reports. Assigning a connection to a project is a separate step that names that project's
+// remote scope (a Linear team, a Notion data source, a Sentry project, an Aikido repository, a GitHub repository); one
+// connection can serve several projects. App sync calls each vendor's own API (Linear GraphQL, Notion, Sentry and Aikido REST,
+// GitHub through the user's gh) with the documented pagination and rate limits, and writes what it sees into external_items,
+// per assignment. Giving agents a vendor's tools is the MCP screen's business, not this package's.
 //
 // The rules the package enforces:
 //
@@ -28,10 +32,19 @@ const (
 	KindNotion = "notion"
 	KindSentry = "sentry"
 	KindAikido = "aikido"
+	KindGitHub = "github"
 )
 
 // Kinds lists the supported integrations in display order.
-var Kinds = []string{KindLinear, KindNotion, KindSentry, KindAikido}
+var Kinds = []string{KindLinear, KindNotion, KindSentry, KindAikido, KindGitHub}
+
+// Authentication kinds (integrations.auth_kind).
+const (
+	AuthAPIKey            = "api_key"            // a personal or workspace token the person pasted
+	AuthOAuth             = "oauth"              // a sign-in with the vendor (tokens in the credential store, refreshed)
+	AuthClientCredentials = "client_credentials" // Aikido: a client id and secret exchanged for short-lived tokens
+	AuthGH                = "gh"                 // GitHub: the user's own gh sign-in; Drydock stores nothing
+)
 
 // Item kinds (external_items.kind).
 const (
@@ -59,6 +72,7 @@ const (
 	CodeToolMissing  = "tool_missing"
 	CodeSchemaDrift  = "schema_drift"
 	CodeTimeout      = "timeout"
+	CodeNotFound     = "not_found"
 	CodeOther        = "error"
 )
 
@@ -79,6 +93,8 @@ const (
 	EventSchemaDrift        = "integration.schema_drift"
 	EventConnected          = "integration.connected"
 	EventDisconnected       = "integration.disconnected"
+	EventAssigned           = "integration.assigned"
+	EventUnassigned         = "integration.unassigned"
 	EventRuleChanged        = "integration.rule.changed"
 	EventRuleWouldCreate    = "integration.rule.would_create"
 	EventRuleRateLimited    = "integration.rule.rate_limited"
@@ -106,27 +122,45 @@ var (
 	ErrBadRequest        = errors.New("integrations: invalid request")
 	ErrSendFailed        = errors.New("integrations: the vendor did not accept the write")
 	ErrRuleNotAllowed    = errors.New("integrations: this rule is not allowed")
-	ErrToolMissing       = errors.New("integrations: the server does not offer the tool Drydock needs")
+	ErrToolMissing       = errors.New("integrations: the vendor's API does not offer what Drydock needs")
+	ErrNotAssigned       = errors.New("integrations: this connection is not assigned to that project")
+	ErrAlreadyConnected  = errors.New("integrations: this service is already connected; use Reconnect to change its credential")
+	ErrOAuthUnavailable  = errors.New("integrations: sign-in with this service is not available in this build")
 	ErrCredentialsLocked = errors.New("integrations: the credential store is not available")
 )
 
-// Connection is one configured integration.
+// Identity is what the vendor's API says a credential reaches. It is read on Test and on Connect, never typed by a person, and
+// holds no secret.
+type Identity struct {
+	Account      string   `json:"account,omitempty"`      // Linear viewer, Notion bot, Sentry user, GitHub login
+	Workspace    string   `json:"workspace,omitempty"`    // Linear organization, Notion workspace, Sentry organization(s), Aikido workspace
+	WorkspaceURL string   `json:"workspaceUrl,omitempty"` // a link to it, when the API gives one
+	Scopes       []string `json:"scopes,omitempty"`       // where the API reports them (Sentry, Aikido, GitHub, OAuth sign-ins)
+	Method       string   `json:"method,omitempty"`       // how the credential was made, in words ("API key", "OAuth sign-in", ...)
+}
+
+// Connection is one configured integration (one per vendor in the workspace).
 type Connection struct {
-	ID            string            `json:"id"`
-	Kind          string            `json:"kind"`
-	Name          string            `json:"name"`
-	ProjectID     string            `json:"projectId"`
-	Status        string            `json:"status"`
-	StatusDetail  string            `json:"statusDetail"`
-	AuthKind      string            `json:"authKind"`
-	CredentialRef string            `json:"-"` // a reference, not a secret; kept out of the UI payload anyway
-	BaseURL       string            `json:"baseUrl,omitempty"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Name is the vendor's name. It is fixed: a connection is the vendor it connects to.
+	Name string `json:"name"`
+	// ProjectID is the project of a connection made before P42; new connections have none (assignments carry projects).
+	ProjectID     string `json:"projectId"`
+	Status        string `json:"status"`
+	StatusDetail  string `json:"statusDetail"`
+	AuthKind      string `json:"authKind"`
+	CredentialRef string `json:"-"` // a reference, not a secret; kept out of the UI payload anyway
+	BaseURL       string `json:"baseUrl,omitempty"`
+	// Config is the remote scope of a connection made before P42; its first assignment adopts it.
 	Config        map[string]string `json:"config"`
 	PollIntervalS int               `json:"pollIntervalS"`
 	Enabled       bool              `json:"enabled"`
 	Created       int64             `json:"created"`
 	Updated       int64             `json:"updated"`
 	Version       int64             `json:"version"`
+	Identity      Identity          `json:"identity"`
+	CheckedAt     int64             `json:"checkedAt"` // when Identity was last read from the vendor's API
 }
 
 // SyncStatus is the per-Connection sync state shown on the Connections page.
@@ -147,14 +181,23 @@ type SyncStatus struct {
 // ConnectionView is Connection plus derived state.
 type ConnectionView struct {
 	Connection
-	HasCredential bool       `json:"hasCredential"`
-	Sync          SyncStatus `json:"sync"`
-	Tools         ToolInfo   `json:"tools"`
+	HasCredential bool             `json:"hasCredential"`
+	Sync          SyncStatus       `json:"sync"` // the worst state of its assignments
+	Tools         ToolInfo         `json:"tools"`
+	Assignments   []AssignmentView `json:"assignments"`
+	// LegacyItems counts items stored before P42 that wait for the first assignment to adopt them.
+	LegacyItems int `json:"legacyItems,omitempty"`
 }
 
-// ToolInfo describes what the integration's tools can do (from the adapter; the live list comes from Test).
+// AssignmentView is an assignment with its sync state.
+type AssignmentView struct {
+	Assignment
+	Sync SyncStatus `json:"sync"`
+}
+
+// ToolInfo describes what the integration does: the API calls it reads with and its outbound operations.
 type ToolInfo struct {
-	SyncTools []string `json:"syncTools"`
+	SyncTools []string `json:"syncTools"` // the API endpoints sync reads (for the person to see what is called)
 	Ops       []OpInfo `json:"ops"`
 }
 
@@ -162,6 +205,7 @@ type ToolInfo struct {
 type Item struct {
 	ID               string         `json:"id"`
 	IntegrationID    string         `json:"integrationId"`
+	AssignmentID     string         `json:"assignmentId"`
 	Source           string         `json:"source"`
 	ProjectID        string         `json:"projectId"`
 	ExternalID       string         `json:"externalId"`
@@ -198,6 +242,8 @@ type Item struct {
 // ItemFilter selects items.
 type ItemFilter struct {
 	IntegrationID string
+	AssignmentID  string
+	ProjectID     string
 	Kind          string
 	State         string
 	Imported      *bool // nil = both

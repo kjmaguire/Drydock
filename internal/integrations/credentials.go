@@ -29,7 +29,18 @@ func (c Credentials) resolve(ctx context.Context, ref string) (string, error) {
 	if c.Vault == nil {
 		return "", ErrCredentialsLocked
 	}
-	return c.Vault.Get(ctx, ref)
+	v, err := c.Vault.Get(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	if sc, ok := parseStored(v); ok {
+		if sc.Type == "oauth" && sc.AccessToken != "" {
+			return sc.AccessToken, nil // the API sign-in's access token (refreshed by the integration when it syncs)
+		}
+		// Aikido's REST client credentials are not a key its MCP server takes
+		return "", fmt.Errorf("%w: this credential is not a token an MCP server takes", ErrNoCredential)
+	}
+	return v, nil
 }
 
 // Credential implements mcp.CredentialSource.
