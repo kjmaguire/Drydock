@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/responder"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
@@ -271,8 +270,8 @@ func (c *Core) roleConfig(ctx context.Context, t tasks.Task, role, agentID strin
 	if err != nil || a.ProjectID != t.ProjectID {
 		return rt.Config{}, fmt.Errorf("the agent %s for the %s role is not on this project's team", agentID, role)
 	}
-	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
-	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: spec, Provider: providerLabel(a), Tier: "premium"}, nil
+	// the run mode is resolved here, as for the worker, so a sandboxed turn of a role that would run in WSL is refused (P41)
+	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: c.agentRunSpec(ctx, a), Provider: providerLabel(a), Tier: "premium"}, nil
 }
 
 func (a *agentsDev) team(ctx context.Context, projectID string) ([]pipeline.TeamMember, error) {
@@ -295,8 +294,9 @@ func (a *agentsDev) plannerConfig(ctx context.Context, projectID, agentID string
 	if err != nil || ag.ProjectID != projectID {
 		return rt.Config{}, fmt.Errorf("the planner agent %s is not on this project's team", agentID)
 	}
-	return rt.Config{AgentID: ag.ID, Adapter: ag.Adapter, Spec: agents.RunSpec{AgentID: ag.ID, Role: ag.Role, Model: ag.Model, Effort: ag.Effort, PermissionMode: "plan", ReadOnly: true},
-		Provider: providerLabel(ag), Tier: "premium"}, nil
+	spec := a.c.agentRunSpec(ctx, ag)
+	spec.PermissionMode, spec.ReadOnly = "plan", true
+	return rt.Config{AgentID: ag.ID, Adapter: ag.Adapter, Spec: spec, Provider: providerLabel(ag), Tier: "premium"}, nil
 }
 
 // assignByRole sets the worker (the least loaded agent whose role matches) and an independent reviewer of a planned task.

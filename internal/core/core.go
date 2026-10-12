@@ -744,13 +744,21 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 	if err != nil {
 		return rt.Config{AgentID: id, Adapter: "missing:" + id} // surfaces as a clear "unknown adapter" failure on the node
 	}
-	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
-	spec.RunMode, spec.WSLDistro = c.effectiveRunMode(context.Background(), a)
+	spec := c.agentRunSpec(context.Background(), a)
 	if role == "review" {
 		spec.PermissionMode, spec.ReadOnly = "plan", true // the reviewer reads; it never edits (the prompt also says so)
 		spec.Role = "reviewer"
 	}
 	return rt.Config{AgentID: a.ID, Adapter: a.Adapter, Spec: spec, Provider: providerLabel(a), Tier: c.agentTier(a)}
+}
+
+// agentRunSpec is the run spec of a pipeline turn by agent a: its role, model, effort and permission mode, and where its CLI
+// runs (its own run mode, else its project's; decision P41). Every pipeline config (worker, reviewer, template role, planner)
+// starts from it, so a turn's checks (the sandbox+WSL refusal) see the run mode the runtime will start the CLI in.
+func (c *Core) agentRunSpec(ctx context.Context, a Agent) agents.RunSpec {
+	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
+	spec.RunMode, spec.WSLDistro = c.effectiveRunMode(ctx, a)
+	return spec
 }
 
 // workerChecks is Deps.WorkerChecks: a Claude worker may run the project's check commands when the project switched that on.

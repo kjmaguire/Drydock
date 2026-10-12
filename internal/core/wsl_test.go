@@ -12,6 +12,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/wsl"
 	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
@@ -127,6 +128,40 @@ func TestTheProjectsRunModeIsTheDefaultOfAgentsThatDoNotChoose(t *testing.T) {
 	if err := a.callErr("sandbox.set", map[string]any{"projectId": p.ID, "enabled": true}); err == nil || !strings.Contains(err.Error(), "Follows") ||
 		strings.Contains(err.Error(), "Own") {
 		t.Fatalf("the refusal names the agents in WSL: %v", err)
+	}
+}
+
+// A template role resolves its agent's run mode the way the worker does (decision P41): a sandboxed project's test writer that
+// would run in WSL (it follows the project's default, set before the sandbox was switched on and before the agent existed) is
+// refused with the sandbox+WSL reason, never handed to the sandbox or started inside the distro.
+func TestATemplateRoleInWSLIsRefusedInASandboxedProject(t *testing.T) {
+	a, _ := openWSL(t)
+	p, _ := a.setup("wsl-role")
+	a.call("project.setRunMode", map[string]any{"projectId": p.ID, "runMode": "wsl", "wslDistro": "Ubuntu"}, nil)
+	a.call("sandbox.set", map[string]any{"projectId": p.ID, "enabled": true}, nil) // no agent runs in WSL yet
+	var w, r, qa core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "W", Adapter: "claude", Role: "backend", RunMode: "native"}, &w)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "R", Adapter: "claude", Role: "reviewer", RunMode: "native"}, &r)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "QA", Adapter: "claude", Role: "qa"}, &qa) // follows the project: WSL
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Fix Subtract", Description: "Subtract returns 0; it must return a - b.", Template: "bug"}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": w.ID, "reviewer": r.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	var d core.TaskDetail
+	a.waitFor("the test writer's turn to end", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &d)
+		return d.Run != nil && (d.Run.Status.Terminal() || len(d.Pending) > 0)
+	})
+	if d.Run.Workflow != "bug" {
+		t.Fatalf("the bug template did not run: %+v", d.Run)
+	}
+	why := d.Run.FailedReason
+	for _, pr := range d.Pending {
+		why += " " + pr.Spec.Title + " " + string(pr.Spec.Payload)
+	}
+	if !strings.Contains(why, "needs the agent to run on Windows; this turn's agent runs in WSL (Ubuntu)") {
+		t.Fatalf("the test writer in WSL was not refused with the sandbox+WSL reason: status=%s why=%s", d.Run.Status, why)
 	}
 }
 
