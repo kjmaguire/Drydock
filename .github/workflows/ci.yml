@@ -155,6 +155,17 @@ jobs:
           DRYDOCK_E2E_USE_DEFAULT_CHROMIUM: "1"
           DRYDOCK_NO_REAL_AGENTS: "1"
         run: npx playwright test
+      # the same evidence in the job log, readable where artifact downloads are not: each failed test's error context (the
+      # step it stopped at and the page), and the end of each e2e core's log and (scrubbed) event log
+      - name: Show the end-to-end evidence of a failed run
+        if: failure()
+        working-directory: ui
+        shell: pwsh
+        run: |
+          if (-not (Test-Path test-results)) { "no test-results"; exit 0 }
+          Get-ChildItem test-results -Recurse -Filter error-context.md | ForEach-Object { "===== $($_.Directory.Name)/error-context.md"; Get-Content $_.FullName -TotalCount 250 }
+          Get-ChildItem test-results -File -Filter 'core*.log' | ForEach-Object { "===== $($_.Name) (last 300 lines)"; Get-Content $_.FullName -Tail 300 }
+          Get-ChildItem test-results -File -Filter 'core*.events.txt' | ForEach-Object { "===== $($_.Name) (last 200 lines)"; Get-Content $_.FullName -Tail 200 }
       # a failed run keeps its evidence: Playwright's traces and error context, and each e2e core's own log, goroutine stacks
       # and event log (ui/test-results/core*.log, core*.goroutines.txt, core*.events.txt; ui/e2e/global-setup.ts)
       - name: Keep the end-to-end evidence of a failed run
