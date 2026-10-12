@@ -312,3 +312,31 @@ func TestRealWSLSession(t *testing.T) {
 		wslScenario(t, host, distro, wsl.UNC(distro, lin), lin)
 	})
 }
+
+func TestANativeStartWithoutWindowsClaudeNamesTheDistroWhereItIsInstalled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs the stand-in wsl.exe of a development host")
+	}
+	for _, tool := range []string{"/usr/bin/bash", "/usr/bin/getent"} {
+		if _, err := os.Stat(tool); err != nil {
+			t.Skipf("%s is missing on this host", tool)
+		}
+	}
+	f := wsltest.NewFake(t, true, "Ubuntu")
+	host := &wsl.Host{Exe: f.Exe}
+	a := &Adapter{WSL: host}
+	t.Setenv("PATH", t.TempDir()) // no claude on this "Windows"
+	t.Setenv("HOME", t.TempDir())
+	spec := agents.RunSpec{AgentID: "lead", Cwd: t.TempDir()}
+	// before the Connections page probed the distro, the plain error stays
+	if _, err := a.Start(context.Background(), proc.New(), spec); err == nil || strings.Contains(err.Error(), "WSL") {
+		t.Fatalf("no probe yet: %v", err)
+	}
+	if _, err := host.Probe(context.Background(), "Ubuntu", "claude", WSLVersionArgs, WSLAuthArgs, true); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.Start(context.Background(), proc.New(), spec)
+	if err == nil || !strings.Contains(err.Error(), "installed in the WSL distro Ubuntu") || !strings.Contains(err.Error(), "Where agents run") {
+		t.Fatalf("%v", err)
+	}
+}

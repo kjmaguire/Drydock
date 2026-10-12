@@ -178,7 +178,7 @@ func (h *Host) Probe(ctx context.Context, distro, tool string, versionArgs, auth
 		// a probe that did not ask for the sign-in status (a launch's or a repository's) keeps the last one known for the same
 		// install, so it does not turn the Connections page's "signed in" into "unknown"
 		if old, ok := h.cache[key]; ok && old.AuthExit >= 0 && in.Tool != "" && old.Tool == in.Tool {
-			in.Auth, in.AuthExit = old.Auth, old.AuthExit
+			in.Auth, in.AuthExit, in.AuthErr = old.Auth, old.AuthExit, old.AuthErr
 		}
 	}
 	h.cache[key] = in

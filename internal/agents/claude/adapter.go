@@ -327,6 +327,9 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 	}
 	exe, err := a.executable()
 	if err != nil {
+		if d := a.wslInstall(ctx); d != "" {
+			return nil, fmt.Errorf("claude: Claude Code is not installed on Windows, but it is installed in the WSL distro %s: run this agent there (Project settings, \"Where agents run\", or the agent's own settings) or install it on Windows (%w)", d, err)
+		}
 		return nil, fmt.Errorf("claude: %w", err)
 	}
 	promptFile, err := writePromptFile(text)

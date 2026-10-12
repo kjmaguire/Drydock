@@ -80,6 +80,27 @@ func TestASignedOutDistroIsUnauthenticatedAndSaysToSignInInsideIt(t *testing.T) 
 	if c.Status != agents.StatusUnauthenticated || c.Authenticated == nil || *c.Authenticated || !strings.Contains(strings.Join(c.Problems, " "), "wsl -d Ubuntu") {
 		t.Fatalf("%+v", c)
 	}
+	// it says what the CLI answered and as whom it was asked, so a sign-in made as another distro user is recognisable
+	p := strings.Join(c.Problems, " ")
+	if !strings.Contains(p, `"loggedIn": false`) || !strings.Contains(p, "auth status --json` answered") || !strings.Contains(p, "HOME "+f.Home) {
+		t.Fatalf("the problem does not say what the check saw: %s", p)
+	}
+}
+
+func TestAFailingSignInCheckInADistroSaysWhyItFailed(t *testing.T) {
+	needStandInDistro(t)
+	f := wsltest.NewFake(t, true, "Ubuntu")
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-auth-broken"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := wslService(t, f).CheckKey(context.Background(), "claude@wsl:Ubuntu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := strings.Join(c.Problems, " ")
+	if c.Status != agents.StatusUnauthenticated || !strings.Contains(p, "exited 2 without its JSON answer: Error: EACCES: permission denied") || !strings.Contains(p, "checked as") {
+		t.Fatalf("%+v", c)
+	}
 }
 
 func TestADistroWithoutClaudeShowsTheDistrosInstallLine(t *testing.T) {

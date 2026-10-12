@@ -171,13 +171,17 @@ func wslAuth(m *manifests.Manifest, in wsl.Info, c *Connection) authState {
 				c.AuthDetail = jsonField(res.Stdout, "authMethod")
 				return authYes
 			}
-			c.AuthDetail = "the CLI inside the distro reports it is not signed in"
+			c.AuthDetail = "`" + authCmd(in, pr.Argv) + "` answered " + firstNonBlank(wsl.Excerpt(res.Stdout), "that it is not signed in") + checkedAs(in)
 			return authNo
 		}
 		if res.Exit > 0 {
 			f := false
 			c.Authenticated = &f
-			c.AuthDetail = fmt.Sprintf("the auth probe exited %d without JSON inside the distro", res.Exit)
+			c.AuthDetail = fmt.Sprintf("`%s` exited %d without its JSON answer", authCmd(in, pr.Argv), res.Exit)
+			if in.AuthErr != "" {
+				c.AuthDetail += ": " + in.AuthErr
+			}
+			c.AuthDetail += checkedAs(in)
 			return authNo
 		}
 		c.AuthDetail = "the auth probe printed no usable JSON; sign-in is confirmed by Test connection"
@@ -192,6 +196,29 @@ func wslAuth(m *manifests.Manifest, in wsl.Info, c *Connection) authState {
 		}
 	}
 	return authUnknown
+}
+
+// authCmd is the sign-in check as it ran inside the distro.
+func authCmd(in wsl.Info, argv []string) string {
+	return strings.Join(append([]string{in.Tool}, argv...), " ")
+}
+
+// checkedAs names the distro user and HOME the sign-in check ran as: a sign-in made as another user (root, say) is not this
+// one's.
+func checkedAs(in wsl.Info) string {
+	if in.User == "" && in.Home == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (checked as the distro's default user %s, HOME %s)", firstNonBlank(in.User, "?"), firstNonBlank(in.Home, "?"))
+}
+
+func firstNonBlank(s ...string) string {
+	for _, x := range s {
+		if strings.TrimSpace(x) != "" {
+			return x
+		}
+	}
+	return ""
 }
 
 // gates are the manifest's acknowledgement gates with their state.

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 	"time"
 	"unicode/utf16"
 
@@ -183,6 +184,18 @@ func TestParseProbeReadsOnlyMarkedLines(t *testing.T) {
 	}
 	if in.Interop {
 		t.Error("[interop] enabled=false in wsl.conf turns interop off whatever binfmt says")
+	}
+}
+
+func TestParseProbeKeepsTheSignInChecksErrorAsAShortMaskedLine(t *testing.T) {
+	out := "@@drydock@@ authexit=1\n@@drydock@@ auth=\n@@drydock@@ autherr=Error:   token sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWxYz0123 was    rejected \n@@drydock@@ done=1\n"
+	in := wsl.ParseProbe("Ubuntu", out)
+	if in.AuthExit != 1 || in.AuthErr != "Error: token […] was rejected" {
+		t.Fatalf("%+v", in)
+	}
+	long := wsl.Excerpt(strings.Repeat("é ", 300))
+	if !strings.HasSuffix(long, "…") || len(long) > 240+len("…") || !utf8.ValidString(long) {
+		t.Fatalf("an excerpt is cut to at most 240 bytes on a character boundary: %q", long)
 	}
 }
 

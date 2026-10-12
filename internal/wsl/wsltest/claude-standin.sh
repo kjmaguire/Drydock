@@ -11,6 +11,8 @@ case "$1" in
   --version) echo "2.1.296 (Claude Code)"; exit 0 ;;
   auth)
     # a test signs the stand-in out by creating this file in the distro's HOME
+    # ... or makes the check itself fail (an error on stderr, no JSON), as a broken install or an unwritable HOME would
+    if [ -e "$HOME/.drydock-standin-auth-broken" ]; then echo "Error: EACCES: permission denied, open '$HOME/.claude.json'" >&2; exit 2; fi
     if [ -e "$HOME/.drydock-standin-signed-out" ]; then printf '%s\n' '{"loggedIn": false}'; exit 1; fi
     printf '%s\n' '{"loggedIn": true, "authMethod": "claude.ai", "apiProvider": "firstParty"}'; exit 0 ;;
 esac

@@ -1,9 +1,11 @@
 package wsl
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // probeMark starts every line the probe script reports; anything else (a login banner, a profile's echo) is ignored.
@@ -47,9 +49,11 @@ if [ -n "$c" ]; then
   v=$(eval "\"\$c\" $va" 2>&1 </dev/null | head -n 5 | tr "\n" " ")
   say version "$v"
   if [ -n "$aa" ]; then
-    a=$(eval "\"\$c\" $aa" 2>/dev/null </dev/null); e=$?
+    ef=$(mktemp 2>/dev/null) || ef=""
+    a=$(eval "\"\$c\" $aa" 2>"${ef:-/dev/null}" </dev/null); e=$?
     say authexit "$e"
     say auth "$(printf "%s" "$a" | tr "\n" " ")"
+    if [ -n "$ef" ]; then say autherr "$(head -c 400 "$ef" 2>/dev/null | tr "\n\r" "  ")"; rm -f "$ef"; fi
   fi
 fi
 say done 1
@@ -78,10 +82,13 @@ type Info struct {
 	Paths   Paths  `json:"paths"`
 	// Tool is the absolute path of the CLI inside the distro ("" not found); Version its version output; Auth and AuthExit
 	// what its sign-in status command printed and how it exited (AuthExit -1 when it was not run).
-	Tool     string    `json:"tool,omitempty"`
-	Version  string    `json:"version,omitempty"`
-	Auth     string    `json:"auth,omitempty"`
-	AuthExit int       `json:"authExit"`
+	Tool     string `json:"tool,omitempty"`
+	Version  string `json:"version,omitempty"`
+	Auth     string `json:"auth,omitempty"`
+	AuthExit int    `json:"authExit"`
+	// AuthErr is the start of what the sign-in status command wrote to stderr (Excerpt: one line, long opaque words masked), so a
+	// failing check says why instead of only "not signed in".
+	AuthErr  string    `json:"authErr,omitempty"`
 	Complete bool      `json:"complete"` // the script ran to its end
 	At       time.Time `json:"at"`
 }
@@ -131,6 +138,8 @@ func ParseProbe(distro, out string) Info {
 			}
 		case "auth":
 			in.Auth = v
+		case "autherr":
+			in.AuthErr = Excerpt(v)
 		case "done":
 			in.Complete = true
 		}
@@ -141,3 +150,25 @@ func ParseProbe(distro, out string) Info {
 	}
 	return in
 }
+
+// Excerpt is a short, single-line form of a CLI's error output fit for a Connection's problem text: whitespace collapsed, every
+// long opaque word (24 or more letters, digits or token punctuation, the shape of a key or token) masked, at most 240 bytes.
+func Excerpt(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if opaque.MatchString(w) {
+			words[i] = "[…]"
+		}
+	}
+	out := strings.Join(words, " ")
+	if len(out) > 240 {
+		cut := 240
+		for cut > 0 && !utf8.RuneStart(out[cut]) {
+			cut--
+		}
+		out = out[:cut] + "…"
+	}
+	return out
+}
+
+var opaque = regexp.MustCompile(`[A-Za-z0-9_\-+/=.]{24,}`)

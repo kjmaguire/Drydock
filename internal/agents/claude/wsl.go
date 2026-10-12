@@ -61,6 +61,29 @@ func (a *Adapter) WSLAvailable() bool {
 	return err == nil
 }
 
+// wslInstall names a WSL distro where an earlier probe (the Connections page's) found Claude Code, "" when none did. It only
+// reads the probe cache and the distro list, so a native start that failed does not wait for a probe of every distro.
+func (a *Adapter) wslInstall(ctx context.Context) string {
+	if a.WSL == nil {
+		return ""
+	}
+	lctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	ds, _, err := a.WSL.Distros(lctx)
+	if err != nil {
+		return ""
+	}
+	for _, d := range ds {
+		if !wsl.UserDistro(d.Name) {
+			continue
+		}
+		if in, ok := a.WSL.Cached(d.Name, wslBinary); ok && in.Tool != "" {
+			return d.Name
+		}
+	}
+	return ""
+}
+
 // translateArgs rewrites the value of every path-taking flag (both "--flag value" and "--flag=value") to the distro's form.
 func translateArgs(args []string, p wsl.Paths) ([]string, error) {
 	out := append([]string(nil), args...)

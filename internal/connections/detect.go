@@ -241,7 +241,11 @@ func rate(m *manifests.Manifest, o Options, c *Connection, version string, auth 
 	if st := auth(); st == authNo {
 		c.Status, c.Reason = agents.StatusUnauthenticated, ReasonAuthProbeFalse
 		if c.RunMode == agents.RunModeWSL {
-			c.Problems = append(c.Problems, "not signed in inside the distro: open a terminal in it (wsl -d "+c.Distro+") and run `claude auth login`; this sign-in is the distro's own, not the Windows one")
+			msg := "not signed in inside the distro: open a terminal in it (wsl -d " + c.Distro + ") and run `claude auth login`; this sign-in is the distro's own, not the Windows one"
+			if c.AuthDetail != "" {
+				msg += ". What Drydock saw: " + c.AuthDetail
+			}
+			c.Problems = append(c.Problems, msg)
 		} else {
 			c.Problems = append(c.Problems, "not signed in: run the CLI's own login in the embedded terminal")
 		}
