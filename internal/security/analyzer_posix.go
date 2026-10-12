@@ -95,7 +95,7 @@ func (r *run) stmt(st *syntax.Stmt, depth int, edge string) {
 	switch c := st.Cmd.(type) {
 	case nil:
 		if len(redirs) > 0 {
-			r.addInvocation(Invocation{Raw: ":", Program: ":", Redirects: redirs, Edge: edge, Shell: ShellBash, unix: r.a.guard.Windows}, depth)
+			r.addInvocation(Invocation{Raw: ":", Program: ":", Redirects: redirs, Edge: edge, Shell: ShellBash, unix: r.g.Windows}, depth)
 		}
 	case *syntax.CallExpr:
 		r.call(c, redirs, depth, edge)
@@ -193,7 +193,7 @@ func (r *run) attachRedirects(redirs []Redirect, depth int, edge string) {
 	if len(redirs) == 0 {
 		return
 	}
-	r.addInvocation(Invocation{Raw: ":", Program: ":", Redirects: redirs, Edge: edge, Shell: ShellBash, unix: r.a.guard.Windows}, depth)
+	r.addInvocation(Invocation{Raw: ":", Program: ":", Redirects: redirs, Edge: edge, Shell: ShellBash, unix: r.g.Windows}, depth)
 }
 
 func (r *run) decl(c *syntax.DeclClause, depth int) {
@@ -218,7 +218,7 @@ func (r *run) call(c *syntax.CallExpr, redirs []Redirect, depth int, edge string
 			r.assign(a, depth, true)
 		}
 		if len(redirs) > 0 {
-			r.addInvocation(Invocation{Raw: ":", Program: ":", Redirects: redirs, Edge: edge, Shell: ShellBash, unix: r.a.guard.Windows}, depth)
+			r.addInvocation(Invocation{Raw: ":", Program: ":", Redirects: redirs, Edge: edge, Shell: ShellBash, unix: r.g.Windows}, depth)
 		}
 		return
 	}
@@ -262,7 +262,7 @@ func (r *run) call(c *syntax.CallExpr, redirs []Redirect, depth int, edge string
 		}
 	}
 	inv := Invocation{Raw: head.Text, Args: args[1:], Redirects: redirs, Edge: edge, Shell: ShellBash, Env: env, piped: piped, stdinData: stdinData,
-		unix: r.a.guard.Windows}
+		unix: r.g.Windows}
 	if r.funcs[head.Text] {
 		inv.function = true
 	}

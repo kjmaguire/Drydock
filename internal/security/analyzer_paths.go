@@ -3,6 +3,8 @@ package security
 import (
 	"regexp"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // hijackVars change what a later command resolves to or runs; assigning one makes the command Opaque.
@@ -114,14 +116,21 @@ func (r *run) trackCwd(inv *Invocation, pa *parsedArgs) {
 		return
 	}
 	p := t.Text
-	if inv.unix && r.a.guard.Windows {
+	if r.wsl != nil && wsl.IsWindowsPath(p) {
+		var err error
+		if p, err = r.wsl.ToLinux(p); err != nil {
+			r.cwdKnown = false
+			return
+		}
+	}
+	if inv.unix && r.g.Windows {
 		var ok bool
 		if p, ok = unixToWindows(p, inv.wsl); !ok {
 			r.cwdKnown = false
 			return
 		}
 	}
-	if next, ok := r.a.guard.joinClean(r.cwd, p); ok {
+	if next, ok := r.g.joinClean(r.cwd, p); ok {
 		r.cwd = next
 	} else {
 		r.cwdKnown = false
@@ -354,7 +363,16 @@ func (r *run) resolvePath(inv *Invocation, raw string, dyn, glob bool, source st
 		ref.Err = "home directory"
 		return ref
 	}
-	g := r.a.guard
+	g := r.g
+	if r.wsl != nil && wsl.IsWindowsPath(p) {
+		// a Windows path inside a WSL agent's command (an interop program such as cmd.exe): where the distro sees it
+		lin, err := r.wsl.ToLinux(p)
+		if err != nil {
+			ref.Err = "a Windows path the distro cannot reach: " + err.Error()
+			return ref
+		}
+		p = lin
+	}
 	if inv.unix && g.Windows {
 		var ok bool
 		if p, ok = unixToWindows(p, inv.wsl); !ok {
@@ -384,6 +402,13 @@ func (r *run) resolvePath(inv *Invocation, raw string, dyn, glob bool, source st
 	if err != nil {
 		ref.Err = err.Error()
 		return ref
+	}
+	if r.wsl != nil {
+		// the real location on Windows, checked again on its drive for junctions and symlinks (Guard.ResolveWSL)
+		if canon, err = r.a.guard.ResolveWSL(*r.wsl, r.in.Root, canon); err != nil {
+			ref.Err = err.Error()
+			return ref
+		}
 	}
 	ref.Inside, ref.Canonical = true, canon
 	return ref

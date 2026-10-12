@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // Permission prompts (docs/security.md s4 and s5): an agent CLI asks Drydock before it uses a tool its own allow rules do not
@@ -50,6 +51,9 @@ type ToolRequest struct {
 	Tool  string          // the CLI's tool name: "Bash", "Edit", "WebFetch", "mcp__github__create_issue"
 	Input json.RawMessage // the exact input the CLI will run the tool with
 	Root  string          // the worktree the agent works in
+	// WSL is set when the agent runs inside a WSL distro (decision P41): its shell commands are bash with Unix paths and its
+	// file paths are Linux paths, mapped to their real Windows locations before they are checked against Root.
+	WSL *wsl.Paths
 }
 
 // ToolDecision is the analyzer's answer to a ToolRequest.
@@ -142,7 +146,11 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 		if strings.TrimSpace(cmd) == "" {
 			return ask(KindShellUnanalyzable, "the request carries no command")
 		}
-		in := CommandInput{Raw: cmd, Shell: shell, Cwd: req.Root, Root: req.Root}
+		in := CommandInput{Raw: cmd, Shell: shell, Cwd: req.Root, Root: req.Root, WSL: req.WSL}
+		if req.WSL != nil {
+			in.Shell = ShellBash // a Linux shell, whatever the tool is called
+			d.Action.Shell = string(ShellBash)
+		}
 		rep, err := an.Analyze(ctx, in)
 		if err != nil {
 			return ToolDecision{}, err
@@ -184,7 +192,12 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 				return deny("a known CLI credential file (" + c + ") is never readable by an agent")
 			}
 		}
-		full, gerr := an.guard.Resolve(req.Root, path)
+		resolve := an.guard.Resolve
+		if req.WSL != nil {
+			p := *req.WSL
+			resolve = func(root, c string) (string, error) { return an.guard.ResolveWSL(p, root, c) }
+		}
+		full, gerr := resolve(req.Root, path)
 		if gerr == nil {
 			d.Action.Targets = []Target{{Path: full}}
 		} else {
@@ -201,7 +214,7 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 			return ask(KindFSOutsideWorktree, "the path could not be checked against the worktree")
 		}
 		root := req.Root
-		if r, err := an.guard.Resolve(req.Root, "."); err == nil {
+		if r, err := resolve(req.Root, "."); err == nil {
 			root = r // resolved the way full was (on Windows an 8.3 short name such as RUNNER~1 is expanded in both)
 		}
 		if writes && touchesGitDir(root, full) {
