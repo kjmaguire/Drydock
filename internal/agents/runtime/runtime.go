@@ -38,6 +38,9 @@ type Runtime struct {
 	// system prompt (cfg.Spec.SystemAppend), so every path that starts an agent (workflow turns, room replies, templates)
 	// carries the agent's purpose without each one having to remember it.
 	Instructions func(ctx context.Context, agentID, role string) (text string, practicesVersion int)
+	// RunMode, if set, says where an agent's CLI runs (native, or wsl with the distro; decision P41) for a session whose spec
+	// does not say: every path that starts an agent gets the agent's own setting without each one reading it.
+	RunMode func(ctx context.Context, agentID string) (mode, distro string)
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -103,6 +106,9 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	ad, ok := r.Adapters[cfg.Adapter]
 	if !ok {
 		return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
+	}
+	if cfg.Spec.RunMode == "" && r.RunMode != nil && cfg.AgentID != "" {
+		cfg.Spec.RunMode, cfg.Spec.WSLDistro = r.RunMode(ctx, cfg.AgentID)
 	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
 		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})

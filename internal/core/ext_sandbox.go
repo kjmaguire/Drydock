@@ -61,6 +61,10 @@ func (c *Core) SetSandbox(ctx context.Context, projectID string, on bool, by str
 	if _, err := c.GetProject(ctx, projectID); err != nil {
 		return SandboxSwitch{}, err
 	}
+	if names := c.projectWSLAgents(ctx, projectID); on && len(names) > 0 {
+		// decision P41: the container runs the commands of an agent on Windows; an agent inside WSL would run its own there
+		return SandboxSwitch{}, fmt.Errorf("the sandbox needs this project's agents to run on Windows, and %s run in WSL: run them natively first (their settings, or the project's run mode)", strings.Join(names, ", "))
+	}
 	s := SandboxSwitch{Enabled: on, By: by, At: time.Now().UnixMilli()}
 	b, _ := json.Marshal(s)
 	if err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {

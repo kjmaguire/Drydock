@@ -127,7 +127,7 @@ func (p *packaging) importProject(ctx context.Context, r importReq) (any, error)
 	root, branch := "", ""
 	if strings.TrimSpace(r.RepoPath) != "" {
 		var err error
-		if root, branch, err = openProjectRepo(ctx, r.RepoPath); err != nil {
+		if root, branch, err = c.openProjectRepo(ctx, r.RepoPath); err != nil {
 			return nil, err
 		}
 	}

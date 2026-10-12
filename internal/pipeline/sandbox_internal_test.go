@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/proc"
@@ -61,6 +62,13 @@ func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
 	q, err = d.prepareWorker(ctx, workflow.NodeInput{}, task, &other)
 	if err != nil || q == nil || q.Request == nil || !strings.Contains(q.Request.Title, "Claude Code") || other.Spec.Sandboxed {
 		t.Fatalf("other CLI: %+v %v", q, err)
+	}
+
+	// a Claude Code agent running inside WSL cannot run sandboxed (decision P41): the human is asked, nothing runs
+	inWSL := rt.Config{Adapter: "claude", Spec: agents.RunSpec{RunMode: agents.RunModeWSL, WSLDistro: "Ubuntu"}}
+	q, err = d.prepareWorker(ctx, workflow.NodeInput{}, task, &inWSL)
+	if err != nil || q == nil || q.Request == nil || !strings.Contains(q.Request.Title, "runs in WSL (Ubuntu)") || inWSL.Spec.Sandboxed {
+		t.Fatalf("WSL agent: %+v %v", q, err)
 	}
 
 	// a sandbox that cannot start becomes a question the human answers to try again

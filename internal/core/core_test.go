@@ -20,9 +20,16 @@ import (
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
+	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
 
 func TestMain(m *testing.M) {
+	if wsltest.IsStandIn() { // the LABELLED stand-in wsl.exe of the WSL run mode tests (wsl_test.go)
+		os.Exit(wsltest.StandIn(os.Args[1:]))
+	}
+	if wsltest.IsInteropCheck() { // started as the MCP server command by the stand-in claude inside a distro
+		os.Exit(wsltest.InteropCheckMain())
+	}
 	// a real agent CLI starts the gateway's stdio shim as <this binary> mcp-shim; it must never fall through to running the tests
 	if code, ok := mcp.MaybeRunShim(os.Args); ok {
 		os.Exit(code)

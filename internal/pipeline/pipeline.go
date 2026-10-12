@@ -135,7 +135,7 @@ func Prepare(d Deps) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		w, err := repo.CreateWorktree(ctx, git.WorktreeReq{TaskID: t.ID, Title: t.Title, Base: t.BaseBranch, Parent: filepath.Join(d.WorktreeRoot, t.ProjectID)})
+		w, err := repo.CreateWorktree(ctx, git.WorktreeReq{TaskID: t.ID, Title: t.Title, Base: t.BaseBranch, Parent: repo.WorktreeParent(d.WorktreeRoot, t.ProjectID)})
 		if err != nil {
 			return workflow.NodeOutput{}, fmt.Errorf("create worktree: %w", err)
 		}
