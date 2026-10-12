@@ -1,10 +1,10 @@
 {
-  "generated": "2026-10-11T19:03:54Z",
-  "commit": "dd08773",
+  "generated": "2026-10-12T04:01:38Z",
+  "commit": "9119ddd",
   "summary": {
     "current": 283,
     "major": 8,
-    "minor": 88,
+    "minor": 89,
     "patch": 78,
     "prerelease": 2,
     "unknown": 1
@@ -116,6 +116,18 @@
       "status": "current",
       "where": ".github/workflows/windows-probes.yml",
       "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."
+    },
+    {
+      "id": "action:Vampire/setup-wsl",
+      "group": "GitHub Actions (CI)",
+      "name": "Vampire/setup-wsl",
+      "kind": "action",
+      "used": "v7",
+      "latest": "v7.0.0",
+      "status": "current",
+      "where": ".github/workflows/ci.yml",
+      "role": "Installs an Ubuntu 24.04 WSL 2 distro on the GitHub-hosted Windows runner for CI's wsl job, which proves the WSL run mode against it with a stand-in claude (decision P41).",
+      "note": "Major tag v7 (v7.0.0, Node 24), the newest; only the wsl job uses it, and that job always runs on a GitHub-hosted runner so no distro is installed on a self-hosted one."
     },
     {
       "id": "action:actions/checkout",
@@ -262,7 +274,7 @@
       "usedDate": "2026-09-04",
       "where": "go.mod",
       "role": "The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. Its auth package will carry the OAuth connect flow.",
-      "usedBy": 7,
+      "usedBy": 8,
       "inBuild": true
     },
     {
@@ -362,7 +374,7 @@
       "usedDate": "2026-10-06",
       "where": "go.mod",
       "role": "Windows Job Objects (killing an agent's whole process tree) and other Windows calls.",
-      "usedBy": 6,
+      "usedBy": 7,
       "inBuild": true
     },
     {
@@ -3575,7 +3587,7 @@
       "name": "github.com/nwaples/rardecode/v2",
       "kind": "indirect",
       "used": "2.4.1",
-      "latest": "2.4.3",
+      "latest": "2.4.4",
       "status": "patch",
       "usedDate": "2026-08-23",
       "latestDate": "2026-10-11",
@@ -5555,9 +5567,9 @@
       "name": "osv-scanner",
       "kind": "tool",
       "used": "2.6.0",
-      "latest": "2.6.0",
-      "status": "current",
-      "latestDate": "2026-09-14",
+      "latest": "2.7.0",
+      "status": "minor",
+      "latestDate": "2026-10-12",
       "where": "docs/decisions.md section 2",
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it."
     },
@@ -5799,7 +5811,7 @@
     "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {
-    "action": 5,
+    "action": 6,
     "bridge": 2,
     "cli": 6,
     "dev": 6,
