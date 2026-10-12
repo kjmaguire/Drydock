@@ -83,19 +83,87 @@ func (r Registry) Validate() error {
 	return nil
 }
 
-// CuratedRegistries parses the shipped registry.yaml.
-func CuratedRegistries() ([]Registry, error) {
-	var doc struct {
-		Schema     int        `yaml:"schema"`
-		Registries []Registry `yaml:"registries"`
-	}
+// KnownSkill is what a registry skill's SKILL.md says at a pinned commit, recorded when the skill was named in the shipped
+// catalogs (the prebuilt agents), so a page can say what the skill does before anything is fetched. It is a copy of the
+// skill's own front matter description, not the skill text.
+type KnownSkill struct {
+	Registry string `yaml:"registry" json:"registry"`
+	Name     string `yaml:"name" json:"name"`
+	Ref      string `yaml:"ref" json:"ref"`
+	// Path is the skill's directory inside the repository.
+	Path        string `yaml:"path" json:"path"`
+	Description string `yaml:"description" json:"description"`
+	// License is the skill's own license (its LICENSE.txt or front matter), or the registry's when the skill names none.
+	License string `yaml:"license" json:"license"`
+}
+
+// MaxKnownDescription is the Agent Skills limit on a description.
+const MaxKnownDescription = 1024
+
+type registryDoc struct {
+	Schema     int          `yaml:"schema"`
+	Registries []Registry   `yaml:"registries"`
+	Skills     []KnownSkill `yaml:"skills"`
+}
+
+func parseRegistryDoc() (registryDoc, error) {
+	var doc registryDoc
 	dec := yaml.NewDecoder(bytes.NewReader(builtinRegistryYAML))
 	dec.KnownFields(true)
 	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("registry.yaml: %w", err)
+		return doc, fmt.Errorf("registry.yaml: %w", err)
 	}
 	if doc.Schema != 1 {
-		return nil, errors.New("registry.yaml: unsupported schema")
+		return doc, errors.New("registry.yaml: unsupported schema")
+	}
+	return doc, nil
+}
+
+// KnownSkills returns the skill descriptions recorded in registry.yaml, keyed by KnownSkillKey.
+func KnownSkills() (map[string]KnownSkill, error) {
+	doc, err := parseRegistryDoc()
+	if err != nil {
+		return nil, err
+	}
+	regs := map[string]bool{}
+	for _, r := range doc.Registries {
+		regs[r.ID] = true
+	}
+	out := map[string]KnownSkill{}
+	for _, k := range doc.Skills {
+		k.Description = strings.Join(strings.Fields(k.Description), " ")
+		switch {
+		case !regs[k.Registry]:
+			return nil, fmt.Errorf("registry.yaml: skill %s names an unknown registry %q", k.Name, k.Registry)
+		case ValidateName(k.Name) != nil:
+			return nil, fmt.Errorf("registry.yaml: skill %q: %v", k.Name, ValidateName(k.Name))
+		case len(k.Ref) != 40 || strings.Trim(k.Ref, "0123456789abcdef") != "":
+			return nil, fmt.Errorf("registry.yaml: skill %s: ref must be a full commit id", k.Name)
+		case k.Description == "" || len(k.Description) > MaxKnownDescription:
+			return nil, fmt.Errorf("registry.yaml: skill %s: description is required (at most %d characters)", k.Name, MaxKnownDescription)
+		case strings.TrimSpace(k.License) == "":
+			return nil, fmt.Errorf("registry.yaml: skill %s: license is required", k.Name)
+		}
+		if p, ok := NormalizePath(k.Path); !ok || p == "" {
+			return nil, fmt.Errorf("registry.yaml: skill %s: path %q must be a directory inside the repository", k.Name, k.Path)
+		}
+		key := KnownSkillKey(k.Registry, k.Name, k.Ref)
+		if _, dup := out[key]; dup {
+			return nil, fmt.Errorf("registry.yaml: skill %s is listed twice", key)
+		}
+		out[key] = k
+	}
+	return out, nil
+}
+
+// KnownSkillKey is "<registry>/<name>@<ref>".
+func KnownSkillKey(registry, name, ref string) string { return registry + "/" + name + "@" + ref }
+
+// CuratedRegistries parses the shipped registry.yaml.
+func CuratedRegistries() ([]Registry, error) {
+	doc, err := parseRegistryDoc()
+	if err != nil {
+		return nil, err
 	}
 	seen := map[string]bool{}
 	for i := range doc.Registries {

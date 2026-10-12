@@ -126,6 +126,9 @@ type Refs struct {
 	Registries map[string]bool
 	// MCP maps a catalog id to "" when an agent can use it as soon as it is added, or to the reason it cannot be named.
 	MCP map[string]string
+	// Skills are the recorded descriptions of registry skills (skills.KnownSkills); when set, every skill an entry names must
+	// be recorded at the entry's pin, so the page can say what it does.
+	Skills map[string]skills.KnownSkill
 }
 
 // BuiltinRefs reads the shipped skills registry allowlist and MCP catalog.
@@ -138,7 +141,11 @@ func BuiltinRefs() (Refs, error) {
 	if err != nil {
 		return Refs{}, err
 	}
-	r := Refs{Registries: map[string]bool{}, MCP: map[string]string{}}
+	known, err := skills.KnownSkills()
+	if err != nil {
+		return Refs{}, err
+	}
+	r := Refs{Registries: map[string]bool{}, MCP: map[string]string{}, Skills: known}
 	for _, g := range regs {
 		r.Registries[g.ID] = true
 	}
@@ -257,6 +264,11 @@ func (e *Entry) Validate(refs Refs) error {
 		}
 		if !commitRe.MatchString(s.Ref) {
 			add("skill %s: ref must be a full commit id (a pin), got %q", s.Name, s.Ref)
+		}
+		if refs.Skills != nil {
+			if _, ok := refs.Skills[skills.KnownSkillKey(s.Registry, s.Name, s.Ref)]; !ok {
+				add("skill %s: registry.yaml records no description for %s at %s (read its SKILL.md at the pin and add it)", s.Name, s.Registry, s.Ref)
+			}
 		}
 		if seenSkill[s.Name] {
 			add("skill %s is listed twice (skill names are unique in a project)", s.Name)
