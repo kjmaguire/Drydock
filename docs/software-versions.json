@@ -1,11 +1,11 @@
 {
-  "generated": "2026-10-12T18:41:18Z",
-  "commit": "dd0f02d",
+  "generated": "2026-10-12T23:31:55Z",
+  "commit": "2705da9",
   "summary": {
-    "current": 134,
+    "current": 133,
     "major": 2,
     "minor": 13,
-    "patch": 5,
+    "patch": 7,
     "unknown": 1
   },
   "items": [
@@ -345,7 +345,7 @@
       "usedDate": "2026-02-21",
       "where": "go.mod",
       "role": "Scans diffs and outputs for secrets before they are kept or sent.",
-      "usedBy": 1,
+      "usedBy": 2,
       "inBuild": true
     },
     {
@@ -2521,10 +2521,10 @@
       "name": "github.com/google/pprof",
       "kind": "indirect",
       "used": "0.0.0-20260802141513-ef3492d7dac3",
-      "latest": "0.0.0-20261008003335-7bae8d8c4c9e",
+      "latest": "0.0.0-20261012231050-2af12c3f4d87",
       "status": "patch",
       "usedDate": "2026-08-02",
-      "latestDate": "2026-10-08",
+      "latestDate": "2026-10-12",
       "where": "module graph (not in go.mod)",
       "note": "Pinned to a commit, not a release. Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -3446,10 +3446,10 @@
       "name": "github.com/mdlayher/socket",
       "kind": "indirect",
       "used": "0.5.1",
-      "latest": "0.7.0",
+      "latest": "0.8.0",
       "status": "minor",
       "usedDate": "2024-03-15",
-      "latestDate": "2026-09-06",
+      "latestDate": "2026-10-12",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5399,10 +5399,10 @@
       "name": "google.golang.org/api",
       "kind": "indirect",
       "used": "0.259.0",
-      "latest": "0.301.0",
+      "latest": "0.302.0",
       "status": "minor",
       "usedDate": "2026-01-06",
-      "latestDate": "2026-10-07",
+      "latestDate": "2026-10-12",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5413,10 +5413,10 @@
       "name": "google.golang.org/genproto",
       "kind": "indirect",
       "used": "0.0.0-20251202230838-ff82c1b0f217",
-      "latest": "0.0.0-20261005182115-fad411399dd8",
+      "latest": "0.0.0-20261012220534-4341edf3f941",
       "status": "patch",
       "usedDate": "2025-12-02",
-      "latestDate": "2026-10-05",
+      "latestDate": "2026-10-12",
       "where": "module graph (not in go.mod)",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
@@ -5427,9 +5427,10 @@
       "name": "google.golang.org/genproto/googleapis/api",
       "kind": "indirect",
       "used": "0.0.0-20261005182115-fad411399dd8",
-      "latest": "0.0.0-20261005182115-fad411399dd8",
-      "status": "current",
+      "latest": "0.0.0-20261012220534-4341edf3f941",
+      "status": "patch",
       "usedDate": "2026-10-05",
+      "latestDate": "2026-10-12",
       "where": "go.mod",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
@@ -5440,9 +5441,10 @@
       "name": "google.golang.org/genproto/googleapis/rpc",
       "kind": "indirect",
       "used": "0.0.0-20261005182115-fad411399dd8",
-      "latest": "0.0.0-20261005182115-fad411399dd8",
-      "status": "current",
+      "latest": "0.0.0-20261012220534-4341edf3f941",
+      "status": "patch",
       "usedDate": "2026-10-05",
+      "latestDate": "2026-10-12",
       "where": "go.mod",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
@@ -5821,6 +5823,18 @@
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it."
     },
     {
+      "id": "tool:opengrep",
+      "group": "Tools Drydock runs or you install",
+      "name": "Opengrep (the security scan's Code engine)",
+      "kind": "tool",
+      "used": "1.30.2",
+      "latest": "1.30.2",
+      "status": "current",
+      "where": "docs/decisions.md section 2",
+      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary; you install it and choose a rules folder.",
+      "note": "Drydock ships and downloads no rules: the opengrep-rules repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and benchmarking, so the person points the scan at rules they are licensed to use. Newest release read from GitHub (releases/latest)."
+    },
+    {
       "id": "tool:go-licenses",
       "group": "Tools Drydock runs or you install",
       "name": "go-licenses",
@@ -6066,6 +6080,6 @@
     "graphOnly": 306,
     "indirect": 404,
     "runtime": 4,
-    "tool": 8
+    "tool": 9
   }
 }
