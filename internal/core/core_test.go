@@ -19,11 +19,15 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/scan/scantest"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
 
 func TestMain(m *testing.M) {
+	if scantest.IsStandIn(os.Args) { // the LABELLED stand-in osv-scanner and opengrep of the security scan tests (ext_security_test.go)
+		os.Exit(scantest.Main(os.Args))
+	}
 	if wsltest.IsStandIn() { // the LABELLED stand-in wsl.exe of the WSL run mode tests (wsl_test.go)
 		os.Exit(wsltest.StandIn(os.Args[1:]))
 	}

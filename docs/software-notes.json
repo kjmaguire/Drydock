@@ -3,6 +3,7 @@
     "tool:gh": "2.102.0",
     "tool:task": "3.54.0",
     "tool:osv-scanner": "2.6.0",
+    "tool:opengrep": "1.30.2",
     "tool:go-licenses": "2.0.1",
     "tool:wrangler": "4.149.0",
     "tool:docker": "29.8.2",
@@ -171,6 +172,10 @@
     },
     "tool:osv-scanner": {
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it."
+    },
+    "tool:opengrep": {
+      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary; you install it and choose a rules folder.",
+      "note": "Drydock ships and downloads no rules: the opengrep-rules repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and benchmarking, so the person points the scan at rules they are licensed to use. Newest release read from GitHub (releases/latest)."
     },
     "tool:go-licenses": {
       "role": "Produces THIRD_PARTY_NOTICES.md."

@@ -36,21 +36,10 @@ func actions(ctx context.Context) []Item {
 	items = append(items, ciGoPins(files)...)
 	for _, n := range names {
 		it := Item{ID: "action:" + n, Group: "GitHub Actions (CI)", Name: n, Kind: "action", Used: seen[n], Where: ".github/workflows/" + strings.Join(dedupe(where[n]), ", ")}
-		out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+n)
+		best, err := gitLatestTag(ctx, n)
 		if err != nil {
 			fail("tags of " + n + ": " + err.Error())
 		} else {
-			best := ""
-			for _, line := range strings.Split(out, "\n") {
-				i := strings.Index(line, "refs/tags/")
-				if i < 0 {
-					continue
-				}
-				t := line[i+len("refs/tags/"):]
-				if _, _, _, pre, ok := parseSemver(t); ok && !pre && strings.Count(t, ".") == 2 && (best == "" || less(best, t)) {
-					best = t
-				}
-			}
 			it.Latest = best
 			// workflows pin a major tag (v4): only a new major is a gap worth showing
 			um, _, _, _, ok1 := parseSemver(seen[n] + ".0.0")
@@ -67,6 +56,32 @@ func actions(ctx context.Context) []Item {
 		items = append(items, it)
 	}
 	return items
+}
+
+// gitLatestTag is the newest stable release tag (vX.Y.Z or X.Y.Z) of a GitHub repository, read with git ls-remote: no API
+// token is needed, and it works for projects that publish only GitHub releases (Opengrep).
+func gitLatestTag(ctx context.Context, repo string) (string, error) {
+	out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+repo)
+	if err != nil {
+		return "", err
+	}
+	return newestStableTag(out), nil
+}
+
+// newestStableTag picks the highest vX.Y.Z (or X.Y.Z) tag of git ls-remote output; pre-releases and alpha tags are skipped.
+func newestStableTag(lsRemote string) string {
+	best := ""
+	for _, line := range strings.Split(lsRemote, "\n") {
+		i := strings.Index(line, "refs/tags/")
+		if i < 0 {
+			continue
+		}
+		t := line[i+len("refs/tags/"):]
+		if _, _, _, pre, ok := parseSemver(t); ok && !pre && strings.Count(t, ".") == 2 && (best == "" || less(best, t)) {
+			best = t
+		}
+	}
+	return best
 }
 
 var goVersionR = regexp.MustCompile(`(?m)^\s*go-version:\s*"?([0-9][0-9.]*)"?`)
@@ -162,24 +177,33 @@ func agentSoftware(ctx context.Context) []Item {
 // tools: programs Drydock runs or tells you to install, with the newest release. The version "used" is what the documentation
 // says the project is built and tested with (docs/software-notes.json "used"), because none of these is a dependency in a lock file.
 func tools(ctx context.Context) []Item {
-	type tool struct{ id, name, kind, goMod, npmPkg string }
+	// a tool is measured against the Go module proxy, npm, or (a project that publishes only GitHub releases) its git tags
+	type tool struct{ id, name, kind, goMod, npmPkg, ghRepo string }
 	list := []tool{
-		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", ""},
-		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", ""},
-		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", ""},
-		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", ""},
-		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", ""},
-		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", ""},
-		{"tool:wrangler", "Wrangler", "tool", "", "wrangler"},
-		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", ""},
+		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", ""},
+		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", ""},
+		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", ""},
+		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep"},
+		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", ""},
+		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", ""},
+		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", ""},
+		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", ""},
+		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", ""},
 	}
 	used := toolUsed()
 	var items []Item
 	for _, t := range list {
 		it := Item{ID: t.id, Group: "Tools Drydock runs or you install", Name: t.name, Kind: t.kind, Used: used[t.id], Where: "docs/decisions.md section 2"}
-		if t.goMod != "" {
+		switch {
+		case t.goMod != "":
 			it.Latest, it.LatestDate = goLatest(ctx, t.goMod)
-		} else {
+		case t.ghRepo != "":
+			tag, err := gitLatestTag(ctx, t.ghRepo)
+			if err != nil {
+				fail("tags of " + t.ghRepo + ": " + err.Error())
+			}
+			it.Latest = releaseOf(tag)
+		default:
 			it.Latest = npmLatest(ctx, t.npmPkg)
 		}
 		if it.Used == "" {

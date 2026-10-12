@@ -1,0 +1,150 @@
+// Package scantest holds the LABELLED TEST DOUBLES of the external scan tools: a stand-in osv-scanner and a stand-in opengrep.
+// Each is this test binary (or the e2e harness) started again as `<binary> drydock-standin-tool <tool> [options] <tool args>`,
+// so no shell script and no PATH change is needed and the same stand-in runs on Windows. They print canned, documented
+// output shapes; they never present themselves as the real tools (their --version says so).
+package scantest
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Marker is the first argument that tells a binary to run a stand-in instead of itself.
+const Marker = "drydock-standin-tool"
+
+// IsStandIn reports whether args (os.Args) ask for a stand-in.
+func IsStandIn(args []string) bool { return len(args) > 2 && args[1] == Marker }
+
+// Args are the leading arguments (scan.Tool.Args) that make a binary run the stand-in of name. Options come before the
+// tool's own arguments:
+//
+//	--sleep-ms=N  wait N ms before answering (so a test can see the engine running)
+//	--fail        exit 2 with a message on stderr (a tool that broke)
+//	--empty       report nothing found
+func Args(name string, opts ...string) []string { return append([]string{Marker, name}, opts...) }
+
+// Main runs the stand-in named by os.Args and returns its exit code. Call it from TestMain or the harness's main when
+// IsStandIn(os.Args).
+func Main(args []string) int {
+	name := args[2]
+	rest := args[3:]
+	var sleep time.Duration
+	fail, empty := false, false
+	for len(rest) > 0 {
+		opt := rest[0]
+		switch {
+		case strings.HasPrefix(opt, "--sleep-ms="):
+			ms, _ := strconv.Atoi(strings.TrimPrefix(opt, "--sleep-ms="))
+			sleep = time.Duration(ms) * time.Millisecond
+		case opt == "--fail":
+			fail = true
+		case opt == "--empty":
+			empty = true
+		default:
+			opt = ""
+		}
+		if opt == "" {
+			break
+		}
+		rest = rest[1:]
+	}
+	if len(rest) > 0 && rest[0] == "--version" {
+		switch name {
+		case "osv-scanner":
+			fmt.Println("osv-scanner version: 0.0.0-standin (a Drydock test double, not osv-scanner)")
+		default:
+			fmt.Println("0.0.0-standin (a Drydock test double, not Opengrep)")
+		}
+		return 0
+	}
+	time.Sleep(sleep)
+	if fail {
+		fmt.Fprintf(os.Stderr, "%s stand-in: told to fail (a test double)\n", name)
+		return 2
+	}
+	switch name {
+	case "osv-scanner":
+		return osv(empty)
+	case "opengrep":
+		return opengrep(rest, empty)
+	}
+	fmt.Fprintf(os.Stderr, "no stand-in named %q\n", name)
+	return 3
+}
+
+// osv prints the documented osv-scanner JSON (results[].packages[].vulnerabilities[]) for one vulnerable Go package and
+// exits 1, as the real tool does when it finds something; with --empty it prints an empty result and exits 0.
+func osv(empty bool) int {
+	if empty {
+		fmt.Println(`{"results":[]}`)
+		return 0
+	}
+	b, _ := json.Marshal(map[string]any{"results": []any{map[string]any{
+		"source": map[string]any{"path": "go.mod", "type": "lockfile"},
+		"packages": []any{map[string]any{
+			"package":         map[string]any{"name": "golang.org/x/text", "version": "0.3.7", "ecosystem": "Go"},
+			"vulnerabilities": []any{map[string]any{"id": "GO-2021-0113"}, map[string]any{"id": "CVE-2021-38561"}},
+		}},
+	}}})
+	fmt.Println(string(b))
+	return 1
+}
+
+// SARIF is the log the stand-in opengrep writes: SARIF 2.1.0 with two results in calc.go (a PROTOCOL FIXTURE written from
+// the SARIF specification and the Semgrep-family shape; not captured from a real run).
+const SARIF = `{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": {"driver": {"name": "Opengrep stand-in (a Drydock test double)", "semanticVersion": "0.0.0-standin",
+      "rules": [
+        {"id": "go.lang.security.audit.crypto.math-random-used", "shortDescription": {"text": "Do not use math/rand for security purposes"}, "defaultConfiguration": {"level": "warning"}},
+        {"id": "go.lang.security.audit.dangerous-exec-command", "shortDescription": {"text": "Detected non-static command inside exec"}, "defaultConfiguration": {"level": "error"}}
+      ]}},
+    "results": [
+      {"ruleId": "go.lang.security.audit.crypto.math-random-used", "level": "warning", "message": {"text": "Do not use math/rand for security purposes: use crypto/rand"},
+       "locations": [{"physicalLocation": {"artifactLocation": {"uri": "calc.go", "uriBaseId": "%SRCROOT%"}, "region": {"startLine": 3, "endLine": 3}}}]},
+      {"ruleId": "go.lang.security.audit.dangerous-exec-command", "level": "error", "message": {"text": "Detected non-static command inside exec: the argument comes from input"},
+       "locations": [{"physicalLocation": {"artifactLocation": {"uri": "calc.go", "uriBaseId": "%SRCROOT%"}, "region": {"startLine": 5, "endLine": 7}}}]}
+    ]
+  }]
+}`
+
+// opengrep checks that a rules folder was given, writes SARIF to the --sarif-output file and exits 0.
+func opengrep(args []string, empty bool) int {
+	out, rules := "", ""
+	for i := 0; i < len(args); i++ {
+		switch {
+		case strings.HasPrefix(args[i], "--sarif-output="):
+			out = strings.TrimPrefix(args[i], "--sarif-output=")
+		case args[i] == "-f" && i+1 < len(args):
+			rules = args[i+1]
+			i++
+		}
+	}
+	if rules == "" {
+		fmt.Fprintln(os.Stderr, "opengrep stand-in: no rules given (-f)")
+		return 2
+	}
+	if st, err := os.Stat(rules); err != nil || !st.IsDir() {
+		fmt.Fprintf(os.Stderr, "opengrep stand-in: rules folder %s is not there\n", rules)
+		return 2
+	}
+	if out == "" {
+		fmt.Fprintln(os.Stderr, "opengrep stand-in: no --sarif-output given")
+		return 2
+	}
+	doc := SARIF
+	if empty {
+		doc = `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Opengrep stand-in","semanticVersion":"0.0.0-standin","rules":[]}},"results":[]}]}`
+	}
+	if err := os.WriteFile(out, []byte(doc), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "opengrep stand-in:", err)
+		return 2
+	}
+	return 0
+}

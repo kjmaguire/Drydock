@@ -126,3 +126,13 @@ func TestGoModWhereNamesTheModuleGraph(t *testing.T) {
 		t.Fatalf("unknown go.mod: %q", got)
 	}
 }
+
+func TestNewestStableTagSkipsPreReleasesAndAlphaTags(t *testing.T) {
+	out := "a\trefs/tags/v1.29.0\nb\trefs/tags/v1.30.2\nc\trefs/tags/v2.0.0-nopython.alpha.1\nd\trefs/tags/v1.30.3-rc.1\ne\trefs/tags/nightly\n"
+	if got := newestStableTag(out); got != "v1.30.2" {
+		t.Fatalf("got %q", got)
+	}
+	if got := newestStableTag("x\trefs/tags/v3\n"); got != "" {
+		t.Fatalf("a major-only tag is not a release: %q", got)
+	}
+}

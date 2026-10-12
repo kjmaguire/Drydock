@@ -32,6 +32,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -68,6 +69,12 @@ type Config struct {
 	// WSL reaches the WSL distros (the WSL run mode, decision P41). Default: the machine's wsl.exe through Procs; tests use
 	// the labelled stand-in (internal/wsl/wsltest).
 	WSL *wsl.Host
+	// ScanTools say where the security scan's external tools are (decision P44). Default: osv-scanner and opengrep on PATH;
+	// tests and the e2e harness point them at the labelled stand-ins (internal/scan/scantest).
+	ScanTools scan.Paths
+	// ScanRulesDir is the Opengrep rules folder a project uses until a person chooses one. The product leaves it empty
+	// (Drydock downloads no rules); the e2e harness gives its stand-in a folder.
+	ScanRulesDir string
 }
 
 // Core is the running application.

@@ -64,6 +64,8 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/scan"
+	"github.com/kjmaguire/drydock/internal/scan/scantest"
 	"github.com/kjmaguire/drydock/internal/scrub"
 	"github.com/kjmaguire/drydock/internal/transport/httpapi"
 	"github.com/kjmaguire/drydock/internal/wsl"
@@ -84,6 +86,11 @@ const (
 )
 
 func main() {
+	// TEST DOUBLES of the security scan's external tools (internal/scan/scantest): the core starts this binary again as the
+	// stand-in osv-scanner and opengrep, which print canned, documented output shapes
+	if scantest.IsStandIn(os.Args) {
+		os.Exit(scantest.Main(os.Args))
+	}
 	// TEST DOUBLES of the WSL run mode (internal/wsl/wsltest): the stand-in wsl.exe re-executes this binary, and the stand-in
 	// claude inside its distro may start this binary as its MCP server command to check what reached it
 	if wsltest.IsStandIn() {
@@ -262,12 +269,24 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	} else {
 		wslHost = &wsl.Host{Exe: filepath.Join(root, "no-wsl-in-the-e2e")} // never the machine's own distros
 	}
+	// TEST DOUBLES: the security scan's osv-scanner and opengrep are this binary's stand-ins (scantest), and the Code engine
+	// gets a rules folder with one placeholder file; the product reads both tools from PATH and ships no rules
+	scanRules := filepath.Join(root, "opengrep-rules")
+	if err := os.MkdirAll(scanRules, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(scanRules, "placeholder.yaml"), []byte("# a placeholder rules file for the stand-in opengrep (a test double)\nrules: []\n"), 0o644); err != nil {
+		return err
+	}
 	c, err := core.Open(context.Background(), core.Config{
 		DataDir:  filepath.Join(root, "data"),
 		User:     "e2e",
 		LeaseTTL: 3 * time.Second,
 		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
 		WSL:      wslHost,
+		ScanTools: scan.Paths{OSV: scan.Tool{Path: self, Args: scantest.Args("osv-scanner", "--sleep-ms=1500")},
+			Opengrep: scan.Tool{Path: self, Args: scantest.Args("opengrep", "--sleep-ms=2500")}},
+		ScanRulesDir: scanRules,
 		// TEST DOUBLE: an in-memory credential store so the Providers page can be exercised with a fake API key. The shipped
 		// app uses the Windows Credential Manager; nothing entered here is persisted anywhere.
 		Credentials: providers.NewMemoryCredentialStoreForTests(),

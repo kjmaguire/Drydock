@@ -1,0 +1,321 @@
+package scan
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/kjmaguire/drydock/internal/proc"
+)
+
+// Options configure one scan.
+type Options struct {
+	ID        string
+	ProjectID string
+	By        string
+	// Dir is the working tree to scan.
+	Dir string
+	// Procs starts the external tools (default proc.New()).
+	Procs proc.Manager
+	// Redact is applied to every title and reason (the app's secret scanner). nil leaves text as it is.
+	Redact func(string) string
+	// Env is the environment the external tools get (default: the scrubbed tool environment, proc.ToolEnv). Nothing of
+	// the app's own environment reaches a tool that reads the whole project.
+	Env func() []string
+	// Paths say where the tools are (default: osv-scanner and opengrep on PATH).
+	Paths Paths
+	// RulesDir is the Opengrep rules folder; empty skips the Code engine.
+	RulesDir string
+	// Timeout per engine (default Timeout).
+	Timeout time.Duration
+	// OnChange, when set, is called after an engine changes state (started, finished, skipped, errored) and when the scan
+	// ends, with a copy of the report. Progress counters do not call it: read Snapshot for those.
+	OnChange func(Report)
+}
+
+func (o *Options) redact(s string) string {
+	if o.Redact == nil {
+		return s
+	}
+	return o.Redact(s)
+}
+
+func (o *Options) env() []string {
+	if o.Env != nil {
+		return o.Env()
+	}
+	return proc.ToolEnv(os.Environ(), nil)
+}
+
+func (o *Options) timeout() time.Duration {
+	if o.Timeout > 0 {
+		return o.Timeout
+	}
+	return Timeout
+}
+
+// Run is a scan in progress or finished. Snapshot is safe to call from any goroutine.
+type Run struct {
+	o      Options
+	cancel context.CancelFunc
+	done   chan struct{}
+
+	mu  sync.Mutex
+	rep Report
+}
+
+// Start begins the three engines at once and returns at once; Wait or Done tell when they are finished.
+func Start(ctx context.Context, o Options) *Run {
+	if o.Procs == nil {
+		o.Procs = proc.New()
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	r := &Run{o: o, cancel: cancel, done: make(chan struct{})}
+	r.rep = Report{ID: o.ID, ProjectID: o.ProjectID, Dir: o.Dir, Status: StatusRunning, By: o.By, StartedAt: time.Now().UnixMilli(), Findings: []Finding{}}
+	for _, e := range Engines {
+		r.rep.Engines = append(r.rep.Engines, EngineResult{ID: e.ID, Name: e.Name, Tool: e.Tool, Status: Pending})
+	}
+	go r.run(cctx)
+	return r
+}
+
+// Cancel stops the engines; the report ends cancelled.
+func (r *Run) Cancel() { r.cancel() }
+
+// Done is closed when the scan has finished (done or cancelled).
+func (r *Run) Done() <-chan struct{} { return r.done }
+
+// Wait blocks until the scan finished and returns the final report.
+func (r *Run) Wait() Report {
+	<-r.done
+	return r.Snapshot()
+}
+
+// Snapshot is a copy of the report as it stands.
+func (r *Run) Snapshot() Report {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.rep.copy()
+}
+
+func (rep Report) copy() Report {
+	out := rep
+	out.Engines = append([]EngineResult(nil), rep.Engines...)
+	out.Findings = append([]Finding{}, rep.Findings...)
+	return out
+}
+
+func (r *Run) engine(id EngineID) *EngineResult {
+	for i := range r.rep.Engines {
+		if r.rep.Engines[i].ID == id {
+			return &r.rep.Engines[i]
+		}
+	}
+	return nil
+}
+
+// set changes an engine under the lock and tells OnChange.
+func (r *Run) set(id EngineID, f func(e *EngineResult)) {
+	r.mu.Lock()
+	f(r.engine(id))
+	rep := r.rep.copy()
+	r.mu.Unlock()
+	if r.o.OnChange != nil {
+		r.o.OnChange(rep)
+	}
+}
+
+func (r *Run) progress(id EngineID, done, total int) {
+	r.mu.Lock()
+	e := r.engine(id)
+	e.Done, e.Total = done, total
+	r.mu.Unlock()
+}
+
+// finish records an engine's outcome and its findings (capped at MaxFindings across the report).
+func (r *Run) finish(id EngineID, fs []Finding, status EngineStatus, reason, version string) {
+	r.mu.Lock()
+	e := r.engine(id)
+	e.Status, e.Reason, e.FinishedAt, e.Findings = status, r.o.redact(reason), time.Now().UnixMilli(), len(fs)
+	if version != "" {
+		e.Version = version
+	}
+	if e.Total > 0 {
+		e.Done = e.Total
+	}
+	for _, f := range fs {
+		r.rep.Counts.Total++
+		switch f.Severity {
+		case Critical:
+			r.rep.Counts.Critical++
+		case High:
+			r.rep.Counts.High++
+		case Medium:
+			r.rep.Counts.Medium++
+		case Low:
+			r.rep.Counts.Low++
+		default:
+			r.rep.Counts.Info++
+		}
+		if len(r.rep.Findings) < MaxFindings {
+			r.rep.Findings = append(r.rep.Findings, f)
+		} else {
+			r.rep.Truncated = true
+		}
+	}
+	rep := r.rep.copy()
+	r.mu.Unlock()
+	if r.o.OnChange != nil {
+		r.o.OnChange(rep)
+	}
+}
+
+func (r *Run) run(ctx context.Context) {
+	defer close(r.done)
+	defer r.cancel()
+	var wg sync.WaitGroup
+	start := func(id EngineID, version string) {
+		r.set(id, func(e *EngineResult) { e.Status, e.StartedAt, e.Version = Running, time.Now().UnixMilli(), version })
+	}
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		start(Secrets, gitleaksVersion())
+		fs, err := scanSecrets(ctx, r.o.Dir, r.o.redact, func(d, t int) { r.progress(Secrets, d, t) })
+		switch {
+		case ctx.Err() != nil:
+			r.finish(Secrets, fs, Cancelled, "", "")
+		case err != nil:
+			r.finish(Secrets, nil, Errored, "the secrets engine could not read the tree: "+cleanLine(err.Error(), 160), "")
+		default:
+			r.finish(Secrets, fs, Done, "", "")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		path, err := r.o.Paths.OSV.resolve("osv-scanner", r.o.Paths.LookPath)
+		if err != nil {
+			r.finish(Deps, nil, Skipped, "osv-scanner is not installed, so no dependency was checked. "+osvInstall, "")
+			return
+		}
+		start(Deps, toolVersion(ctx, r.o.Procs, r.o.env(), path, append(append([]string(nil), r.o.Paths.OSV.Args...), "--version"), "osv-scanner"))
+		fs, st, reason := scanDeps(ctx, &r.o, path, r.o.Paths.OSV)
+		r.finish(Deps, fs, st, reason, "")
+	}()
+	go func() {
+		defer wg.Done()
+		path, err := r.o.Paths.Opengrep.resolve("opengrep", r.o.Paths.LookPath)
+		if err != nil {
+			r.finish(SAST, nil, Skipped, "Opengrep is not installed, so no code was checked. "+opengrepInstall, "")
+			return
+		}
+		if ok, note := checkRules(r.o.RulesDir); !ok {
+			r.finish(SAST, nil, Skipped, note, "")
+			return
+		}
+		start(SAST, toolVersion(ctx, r.o.Procs, r.o.env(), path, append(append([]string(nil), r.o.Paths.Opengrep.Args...), "--version"), "opengrep"))
+		fs, st, reason, version := scanCode(ctx, &r.o, path, r.o.Paths.Opengrep)
+		r.finish(SAST, fs, st, reason, version)
+	}()
+	wg.Wait()
+	r.mu.Lock()
+	r.rep.FinishedAt = time.Now().UnixMilli()
+	r.rep.Status = StatusDone
+	if ctx.Err() != nil {
+		r.rep.Status = StatusCancelled
+	}
+	sortFindings(r.rep.Findings)
+	r.rep.Summary = summarize(r.rep)
+	rep := r.rep.copy()
+	r.mu.Unlock()
+	if r.o.OnChange != nil {
+		r.o.OnChange(rep)
+	}
+}
+
+var severityRank = map[Severity]int{Critical: 0, High: 1, Medium: 2, Low: 3, Info: 4}
+
+// sortFindings orders by severity, then file, then line, then rule.
+func sortFindings(fs []Finding) {
+	sort.SliceStable(fs, func(i, j int) bool {
+		a, b := fs[i], fs[j]
+		if severityRank[a.Severity] != severityRank[b.Severity] {
+			return severityRank[a.Severity] < severityRank[b.Severity]
+		}
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		return a.Rule < b.Rule
+	})
+}
+
+// summarize is the report's one sentence: how long it took, what each engine found, and which engines did not run.
+func summarize(rep Report) string {
+	d := time.Duration(rep.FinishedAt-rep.StartedAt) * time.Millisecond
+	if rep.Status == StatusCancelled {
+		return fmt.Sprintf("Cancelled after %s.", durText(d))
+	}
+	var found, notRun []string
+	for _, e := range rep.Engines {
+		switch e.Status {
+		case Done:
+			found = append(found, plural(e.Findings, engineNoun(e.ID)))
+		case Skipped:
+			notRun = append(notRun, fmt.Sprintf("the %s engine was skipped (%s)", e.Name, strings.TrimSuffix(firstSentence(e.Reason), ".")))
+		case Errored:
+			notRun = append(notRun, fmt.Sprintf("the %s engine failed (%s)", e.Name, strings.TrimSuffix(firstSentence(e.Reason), ".")))
+		}
+	}
+	s := fmt.Sprintf("Scanned in %s", durText(d))
+	if len(found) > 0 {
+		s += ": " + strings.Join(found, ", ")
+	}
+	if len(notRun) > 0 {
+		s += "; " + strings.Join(notRun, "; ")
+	}
+	return s + "."
+}
+
+func engineNoun(id EngineID) string {
+	switch id {
+	case Secrets:
+		return "secret"
+	case Deps:
+		return "vulnerable package"
+	}
+	return "code finding"
+}
+
+func plural(n int, noun string) string {
+	if n == 0 {
+		return "no " + noun + "s"
+	}
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+func firstSentence(s string) string {
+	if i := strings.Index(s, ". "); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func durText(d time.Duration) string {
+	switch {
+	case d < time.Second:
+		return fmt.Sprintf("%d ms", d.Milliseconds())
+	case d < time.Minute:
+		return fmt.Sprintf("%.1f s", d.Seconds())
+	}
+	return fmt.Sprintf("%d min %d s", int(d.Minutes()), int(d.Seconds())%60)
+}

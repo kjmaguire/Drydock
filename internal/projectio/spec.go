@@ -168,6 +168,7 @@ var Tables = []Table{
 // triggers of the table they index and are listed here too.
 var ExcludedTables = map[string]string{
 	"events":                   "this installation's event log; sequence numbers are install-local and payloads are not part of a project record",
+	"security_scans":           "security scan reports describe one machine's working tree and installed tools at that time (paths included); the importing machine scans again (decision P44)",
 	"workspaces":               "not project data",
 	"model_catalog":            "a cache of what a provider lists; refetched from the provider",
 	"sessions":                 "agent CLI session ids only resume on the exporting machine",
