@@ -1,6 +1,10 @@
-// Integrations: Linear, Notion, Sentry and Aikido read through their MCP servers. Everything they return is outside text: it is
-// redacted, scored for injection risk, shown inert and quoted as data when imported. Writing back needs the human's approval of
-// the exact text, and rules that create tasks start disabled and in dry-run.
+// Integrations: Drydock's own connections to Linear, Notion, Sentry, Aikido and GitHub (decision P42). A service is connected
+// once, for the whole workspace; assigning it to a project is a separate step that says which part of the service that
+// project imports. Each service's name and logo are fixed: clicking Linear opens Linear. What a connection reaches (account,
+// workspace, scopes) is read from the service's API, never typed. Everything a service returns is outside text: redacted,
+// scored for injection risk, shown inert and quoted as data when imported; writing back needs the human's approval of the
+// exact text, and rules that create tasks start disabled and in dry-run. Giving agents these services' tools is the MCP
+// screen's business; this page links there.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import {
@@ -9,11 +13,15 @@ import {
   Check,
   ExternalLink,
   FileText,
+  FolderPlus,
+  KeyRound,
   ListChecks,
   LogIn,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
+  Server,
   ShieldAlert,
   Stethoscope,
   Trash2,
@@ -21,21 +29,35 @@ import {
   Workflow,
   X,
 } from 'lucide';
-import type { ExternalItem, ExternalItemDetail, IntegrationRule, IntegrationTestReport, IntegrationView, NotionPageText, Outbox } from '../../api/extTypes.ts';
+import type {
+  ExternalItem,
+  ExternalItemDetail,
+  IntegrationAssignment,
+  IntegrationAuthMethod,
+  IntegrationChoice,
+  IntegrationKindInfo,
+  IntegrationOAuthSession,
+  IntegrationRule,
+  IntegrationTestReport,
+  IntegrationView,
+  NotionPageText,
+  Outbox,
+} from '../../api/extTypes.ts';
 import type { Project } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
+import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
-import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
-import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { Badge, faint, mono, muted } from '../../ui/data.tsx';
+import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { card, Page, Section, stack } from '../../ui/layout.tsx';
+import { card, Page, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { canOAuth, KINDS, oauthLibraryId, outboxTone, parseParams, riskText, riskTone, syncText, syncTone } from './integrations.ts';
+import { identityLine, KINDS, kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, statusTone, syncText, syncTone, tileState, type ServiceKind } from './integrations.ts';
 
 type OpenTask = (href: string) => void;
 const defaultOpen: OpenTask = (href) => void navigate(href);
@@ -52,7 +74,7 @@ const head = css({
 const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
 const stats = css({
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
   gap: '1px',
   margin: '0',
   border: `1px solid ${t.border}`,
@@ -93,35 +115,59 @@ const preCss = css({ margin: '0', maxHeight: '260px', overflow: 'auto', whiteSpa
 const rowCard = css({ display: 'grid', gap: t.s2, padding: t.s3, border: `1px solid ${t.border}`, borderRadius: t.rMd, background: t.bgApp, '& p': { margin: '0' } });
 const steps = css({ display: 'grid', gap: '4px', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textMd, '& li': { display: 'flex', gap: t.s2, alignItems: 'baseline' } });
 const reportCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& p': { margin: '0' } });
-const serviceGrid = css({
-  gridColumn: '1 / -1',
+const full = css({ gridColumn: '1 / -1' });
+const detailsCss = css({ gridColumn: '1 / -1', '& summary': { cursor: 'pointer', color: t.textMuted, fontSize: t.textSm, marginBottom: t.s2 } });
+const tiles = css({
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
   gap: t.s2,
   margin: '0',
   padding: '0',
-  border: '0',
-  '& legend': { fontSize: t.textSm, fontWeight: '500', marginBottom: '6px', padding: '0' },
+  listStyle: 'none',
 });
-const serviceTile = css({
+const tileCss = css({
   display: 'flex',
   alignItems: 'center',
-  gap: t.s2,
-  padding: `${t.s2} ${t.s3}`,
+  gap: t.s3,
+  width: '100%',
+  padding: `${t.s3} ${t.s3}`,
   border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
   background: t.bgSurface,
+  color: t.text,
+  textAlign: 'left',
   cursor: 'pointer',
   transition: `border-color ${t.fast} ${t.ease}, background-color ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong },
-  '&:has(input:checked)': { borderColor: t.accent, background: t.accentSoft },
-  '&:has(input:focus-visible)': { boxShadow: t.focus },
-  '& input': { position: 'absolute', opacity: '0', pointerEvents: 'none' },
-  '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs },
-  '& strong': { fontWeight: '600' },
+  '&[aria-pressed="true"]': { borderColor: t.accent, background: t.accentSoft },
+  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  '& strong': { display: 'block', fontWeight: '600' },
+  '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },
 });
-const full = css({ gridColumn: '1 / -1' });
-const detailsCss = css({ gridColumn: '1 / -1', '& summary': { cursor: 'pointer', color: t.textMuted, fontSize: t.textSm, marginBottom: t.s2 } });
+const serviceHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s3,
+  flexWrap: 'wrap',
+  '& h2': { fontSize: t.textXl, fontWeight: '600', margin: '0' },
+});
+const linkList = css({ display: 'flex', gap: t.s3, flexWrap: 'wrap', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textSm });
+const methodGrid = css({ gridColumn: '1 / -1', display: 'flex', gap: t.s2, flexWrap: 'wrap', margin: '0', padding: '0', border: '0', '& legend': { fontSize: t.textSm, fontWeight: '500', marginBottom: '6px', padding: '0' } });
+const methodTile = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  padding: `6px ${t.s3}`,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  cursor: 'pointer',
+  fontSize: t.textSm,
+  '&:has(input:checked)': { borderColor: t.accent, background: t.accentSoft },
+  '&:has(input:disabled)': { opacity: '0.6', cursor: 'not-allowed' },
+});
+const emptyLine = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', margin: '0', color: t.textMuted, fontSize: t.textMd, '& strong': { color: t.text } });
+const identityGrid = css({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
+const codeCss = css({ fontFamily: t.mono, fontSize: t.textLg, fontWeight: '600', letterSpacing: '0.08em' });
 
 /** The injection-risk score the core computed for outside text, with the reasons. 0 is low; 3 and above are never turned into tasks by a rule. */
 export function RiskBadge(handle: Handle<{ risk: number; flags: string[] | null }>) {
@@ -265,7 +311,7 @@ function ItemRow(handle: Handle<{ it: ExternalItem; projects: Project[]; onChang
   };
 }
 
-function Outbound(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
+function Outbound(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -277,20 +323,18 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projects: Project[] }>
   let op = '';
   let target = '';
   let params = '';
-  let project = '';
   const decide = async (o: Outbox, approve: boolean) => {
     await act.run(approve ? 'approve' : 'decline', () => s.client.integrationOutboundDecide({ id: o.id, approve }));
     q.reload();
   };
 
   return () => {
-    const { conn, projects } = handle.props;
+    const { conn, projectId } = handle.props;
     const ro = s.workspace.license;
     const ops = conn.tools.ops ?? [];
     const curOp = op || ops[0]?.op || '';
     const cur = ops.find((o) => o.op === curOp);
-    const proj = project || conn.projectId || projects[0]?.id || '';
-    const rows: Outbox[] = q.data ?? [];
+    const rows: Outbox[] = (q.data ?? []).filter((o) => !projectId || o.projectId === projectId);
     return (
       <section aria-label="Outbound writes" mix={panel}>
         <h4>Outbound writes (need your approval)</h4>
@@ -314,17 +358,6 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projects: Project[] }>
             <Field label="Target (the external id of the item or page)">
               {(id) => <input id={id} value={target} spellcheck={false} mix={on('input', (e) => ((target = e.currentTarget.value), void handle.update()))} />}
             </Field>
-            <Field label="Project">
-              {(id) => (
-                <select id={id} aria-label="Outbound project" value={proj} mix={on('change', (e) => ((project = e.currentTarget.value), void handle.update()))}>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id} selected={p.id === proj}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
             {cur ? (
               <p mix={[full, faint]}>
                 {cur.description}
@@ -343,7 +376,7 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projects: Project[] }>
                 mix={[
                   on('click', async () => {
                     const r = await act.run('propose', () =>
-                      s.client.integrationOutboundPropose({ integrationId: conn.id, op: curOp, target: target.trim(), projectId: proj, params: parseParams(params) }),
+                      s.client.integrationOutboundPropose({ integrationId: conn.id, op: curOp, target: target.trim(), projectId, params: parseParams(params) }),
                     );
                     if (r) {
                       target = '';
@@ -416,7 +449,7 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projects: Project[] }>
   };
 }
 
-function Rules(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
+function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
   const s = services(handle);
   const act = action(handle);
   const q = query(handle, {
@@ -427,7 +460,6 @@ function Rules(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
   let name = '';
   let when = 'item.state == "open"';
   let maxPerDay = '5';
-  let project = '';
   const change = async (r: IntegrationRule, patch: Partial<{ enabled: boolean; dryRun: boolean; delete: boolean }>) => {
     await act.run('rule', () =>
       s.client.integrationRulesSet({ id: r.id, version: r.version, integrationId: r.integrationId, projectId: r.projectId, name: r.name, when: r.when, action: r.action, ...patch }),
@@ -436,9 +468,8 @@ function Rules(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
   };
 
   return () => {
-    const { conn, projects } = handle.props;
-    const rules: IntegrationRule[] = q.data ?? [];
-    const proj = project || conn.projectId || projects[0]?.id || '';
+    const { conn, projectId } = handle.props;
+    const rules: IntegrationRule[] = (q.data ?? []).filter((r) => r.projectId === projectId);
     return (
       <section aria-label="Rules" mix={panel}>
         <h4>Rules (create tasks automatically)</h4>
@@ -488,17 +519,6 @@ function Rules(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
           <Field label="At most per day">
             {(id) => <input id={id} inputMode="numeric" value={maxPerDay} mix={on('input', (e) => ((maxPerDay = e.currentTarget.value), void handle.update()))} />}
           </Field>
-          <Field label="Project for the tasks">
-            {(id) => (
-              <select id={id} aria-label="Rule project" value={proj} mix={on('change', (e) => ((project = e.currentTarget.value), void handle.update()))}>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id} selected={p.id === proj}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Field>
           <div mix={formActions}>
             <Button
               icon={Workflow}
@@ -508,7 +528,7 @@ function Rules(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
                   const v = maxPerDay.trim();
                   const n = v === '' ? undefined : Number(v);
                   const r = await act.run('create', () =>
-                    s.client.integrationRulesSet({ integrationId: conn.id, projectId: proj, name: name.trim(), when, action: 'create_task', maxPerDay: n !== undefined && Number.isFinite(n) ? n : undefined }),
+                    s.client.integrationRulesSet({ integrationId: conn.id, projectId, name: name.trim(), when, action: 'create_task', maxPerDay: n !== undefined && Number.isFinite(n) ? n : undefined }),
                   );
                   if (r) {
                     name = '';
@@ -526,6 +546,34 @@ function Rules(handle: Handle<{ conn: IntegrationView; projects: Project[] }>) {
   };
 }
 
+/** One service on the overview: its fixed logo and name, and whether it is connected. */
+function ServiceTile(handle: Handle<{ kind: ServiceKind; conn?: IntegrationView; selected: boolean; onSelect: () => void }>) {
+  return () => {
+    const { kind, conn, selected, onSelect } = handle.props;
+    const assigned = conn?.assignments?.length ?? 0;
+    return (
+      <li>
+        <button
+          type="button"
+          mix={[tileCss, on('click', onSelect)]}
+          aria-pressed={selected ? 'true' : 'false'}
+          data-testid="integration-tile"
+          data-kind={kind.kind}
+          data-connected={conn ? 'true' : 'false'}
+        >
+          <BrandLogo id={kind.kind} size={32} />
+          <span>
+            <strong>{kind.label}</strong>
+            <small>{conn ? identityLine(conn) : kind.blurb}</small>
+            {conn ? <small>{assigned === 0 ? 'Not assigned to a project' : assigned === 1 ? 'Assigned to 1 project' : `Assigned to ${assigned} projects`}</small> : <small>Not connected</small>}
+          </span>
+        </button>
+      </li>
+    );
+  };
+}
+
+/** The test report: each step, and what the service said the credential reaches. */
 export function ReportView(handle: Handle<{ r: IntegrationTestReport }>) {
   return () => {
     const { r } = handle.props;
@@ -546,67 +594,361 @@ export function ReportView(handle: Handle<{ r: IntegrationTestReport }>) {
             </li>
           ))}
         </ol>
-        {(r.toolsMissing ?? []).length > 0 ? <Notice tone="warn">The server does not offer: {(r.toolsMissing ?? []).join(', ')}</Notice> : null}
-        {(r.writesMissing ?? []).length > 0 ? <Notice tone="warn">Write operations unavailable: {(r.writesMissing ?? []).join(', ')}</Notice> : null}
       </div>
     );
   };
 }
 
-function ConnectionCard(handle: Handle<{ c: IntegrationView; projects: Project[]; onChanged: () => void; openTask: OpenTask }>) {
+/** Connect (or reconnect) one service. The secret fields are uncontrolled: read once, cleared before the request leaves. */
+function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; reconnectId?: string; onDone: (r: { test?: IntegrationTestReport }) => void }>) {
   const s = services(handle);
+  watch(handle, s.workspace);
   const act = action(handle);
-  let report: IntegrationTestReport | undefined;
-  let sync: string | undefined;
-  let confirm = false;
-  let show: 'items' | 'rules' | 'outbound' | '' = '';
-  const list = query(handle, {
-    load: () => s.client.integrationItems({ integrationId: handle.props.c.id, limit: 50 }),
-    key: () => [handle.props.c.id, handle.props.c.sync.itemsSeen],
-    enabled: () => show === 'items',
-    when: (e) => e.type.startsWith('integration.'),
-  });
-  const toggle = (v: typeof show) => {
-    show = show === v ? '' : v;
-    if (show === 'items' && list.data) list.reload();
+  const secrets: Record<string, HTMLInputElement | undefined> = {};
+  let method = '';
+  let values: Record<string, string> = {};
+  let oauth: IntegrationOAuthSession | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const gh = query(handle, { load: () => s.client.githubStatus(), enabled: () => handle.props.kind === 'github' });
+  const stopPoll = () => {
+    clearInterval(timer);
+    timer = undefined;
+  };
+  handle.signal.addEventListener('abort', stopPoll);
+  const upd = (f: () => void) => {
+    f();
     void handle.update();
+  };
+  const finish = async (req: Record<string, unknown>) => {
+    const r = await act.run('connect', () => s.client.integrationConnect({ kind: handle.props.kind, id: handle.props.reconnectId, ...req } as never));
+    if (r) handle.props.onDone(r);
+  };
+  // while a sign-in is open, ask the core how it went; once signed in, connect with it
+  const startPoll = () => {
+    stopPoll();
+    timer = setInterval(async () => {
+      if (!oauth || oauth.state !== 'waiting') return stopPoll();
+      try {
+        const st = await s.client.integrationOAuthStatus(oauth.id);
+        if (st.state !== 'waiting') {
+          stopPoll();
+          oauth = st;
+          void handle.update();
+          if (st.state === 'signed_in') await finish({ oauthSession: st.id, baseUrl: (values.baseUrl ?? '').trim() || undefined });
+        }
+      } catch {
+        /* the next poll tries again */
+      }
+    }, 1000);
   };
 
   return () => {
-    const { c, projects, onChanged, openTask } = handle.props;
-    const sy = c.sync;
-    const label = KINDS.find((k) => k.kind === c.kind)?.label ?? c.kind;
+    const { kind, info, reconnectId } = handle.props;
+    const ro = s.workspace.license;
+    const label = info?.label ?? kindLabel(kind);
+    const methods: IntegrationAuthMethod[] = info?.auth ?? [];
+    const cur = methods.find((m) => m.id === method) ?? methods.find((m) => m.available) ?? methods[0];
+    const fields = cur?.fields ?? [];
+    const plain = fields.filter((f) => !f.advanced);
+    const advanced = fields.filter((f) => f.advanced);
+    const signHref = oauth?.url ? safeHref(oauth.url) : undefined;
+    const submit = async (e: SubmitEvent) => {
+      e.preventDefault();
+      if (!cur || cur.id === 'oauth') return;
+      const req: Record<string, unknown> = {};
+      for (const f of fields) {
+        if (f.secret) {
+          const el = secrets[f.key];
+          req[f.key] = el?.value || undefined;
+          if (el) el.value = '';
+        } else {
+          const v = (values[f.key] ?? f.options?.[0]?.value ?? '').trim();
+          req[f.key] = v || undefined;
+        }
+      }
+      await finish(req);
+    };
+    const renderField = (f: NonNullable<IntegrationAuthMethod['fields']>[number]) => (
+      <Field key={`${kind}-${cur?.id}-${f.key}`} label={f.label} hint={f.hint}>
+        {(id) =>
+          f.secret ? (
+            <input
+              id={id}
+              type="password"
+              autocomplete="new-password"
+              spellcheck={false}
+              name={`integration-${f.key}`}
+              aria-label={f.label}
+              mix={ref((n: HTMLInputElement) => (secrets[f.key] = n))}
+            />
+          ) : f.options && f.options.length > 0 ? (
+            <select id={id} aria-label={f.label} value={values[f.key] ?? f.options[0]!.value} mix={on('change', (e) => upd(() => (values = { ...values, [f.key]: e.currentTarget.value })))}>
+              {f.options.map((o) => (
+                <option key={o.value} value={o.value} selected={o.value === (values[f.key] ?? f.options![0]!.value)}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input id={id} value={values[f.key] ?? ''} spellcheck={false} mix={on('input', (e) => upd(() => (values = { ...values, [f.key]: e.currentTarget.value })))} />
+          )
+        }
+      </Field>
+    );
     return (
-      <article mix={[card, cardCss]} data-testid="integration" data-kind={c.kind} data-name={c.name}>
-        <header mix={head}>
-          <Avatar id={c.kind} name={label} size={32} square />
-          <h3>{c.name}</h3>
-          <Badge>{c.kind}</Badge>
-          <Badge tone={c.status === 'ok' ? 'ok' : 'warn'}>{c.status}</Badge>
+      <form mix={[card, formGrid, on<HTMLFormElement, 'submit'>('submit', submit)]} autocomplete="off" aria-label={reconnectId ? `Reconnect ${label}` : `Connect ${label}`}>
+        <div mix={full}>
+          <ErrorNote error={act.error} what="Not connected" />
+        </div>
+        {methods.length > 1 ? (
+          <fieldset mix={methodGrid}>
+            <legend>How to connect</legend>
+            {methods.map((m) => (
+              <label key={m.id} mix={methodTile} title={m.note}>
+                <input type="radio" name={`int-method-${kind}`} value={m.id} checked={cur?.id === m.id} disabled={!m.available} mix={on('change', () => upd(() => (method = m.id)))} />
+                {m.label}
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
+        {cur?.note ? <p mix={[full, faint]}>{cur.note}</p> : null}
+        {kind === 'github' ? (
+          <div mix={full} data-testid="gh-status">
+            {gh.loading && !gh.data ? <Loading label="Checking gh" /> : null}
+            {gh.data?.loggedIn ? (
+              <Notice tone="ok">gh is signed in as {gh.data.login}. Drydock uses that sign-in and stores no GitHub token.</Notice>
+            ) : gh.data ? (
+              <Notice tone="warn">{gh.data.error || 'gh is not signed in'}. The Connections screen shows the GitHub CLI.</Notice>
+            ) : null}
+          </div>
+        ) : null}
+        {cur?.id === 'oauth' ? (
+          <div mix={[full, stack]}>
+            {oauth?.state === 'failed' ? <ErrorNote error={new Error(oauth.error || 'the sign-in failed')} what={`Could not sign in to ${label}`} /> : null}
+            {oauth?.userCode && oauth.state === 'waiting' ? (
+              <Notice tone="info" title="Enter this code on the sign-in page">
+                <span mix={codeCss} data-testid="oauth-user-code">
+                  {oauth.userCode}
+                </span>
+              </Notice>
+            ) : null}
+            <div mix={toolbar}>
+              <Button
+                icon={LogIn}
+                disabled={act.busy !== '' || ro.readOnly || !cur.available}
+                mix={[
+                  on('click', async () => {
+                    const r = await act.run('oauth', () => s.client.integrationOAuthStart(kind, (values.baseUrl ?? '').trim() || undefined));
+                    if (r) {
+                      oauth = r;
+                      void handle.update();
+                      startPoll();
+                    }
+                  }),
+                ]}
+              >
+                {cur.label}
+              </Button>
+              {signHref && oauth?.state === 'waiting' ? (
+                <a href={signHref} target="_blank" rel="noreferrer noopener" data-rmx-document data-testid="integration-oauth-link" mix={buttonStyle('link', 'sm')}>
+                  <Icon icon={ExternalLink} size={13} />
+                  Open the {label} sign-in page
+                </a>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          plain.map(renderField)
+        )}
+        {advanced.length > 0 ? (
+          <details mix={detailsCss}>
+            <summary>Advanced</summary>
+            <div mix={formGrid}>{advanced.map(renderField)}</div>
+          </details>
+        ) : null}
+        <div mix={full}>
+          <ReadOnlyNote />
+        </div>
+        {cur?.id !== 'oauth' ? (
+          <div mix={formActions}>
+            <Button variant="primary" type="submit" icon={kind === 'github' ? Blocks : KeyRound} disabled={act.busy !== '' || ro.readOnly || !cur} title={ro.readOnly ? ro.reason : undefined}>
+              {reconnectId ? `Reconnect ${label}` : kind === 'github' ? 'Use the GitHub CLI sign-in' : `Connect ${label}`}
+            </Button>
+          </div>
+        ) : null}
+      </form>
+    );
+  };
+}
+
+/** Assign a connection to a project, or change an assignment's settings. Choices are read from the service on request. */
+function AssignForm(handle: Handle<{ conn: IntegrationView; info?: IntegrationKindInfo; projects: Project[]; existing?: IntegrationAssignment; onDone: () => void; onCancel: () => void }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let project = '';
+  let cfg: Record<string, string> = { ...(handle.props.existing?.config ?? {}) };
+  const choices: Record<string, IntegrationChoice[]> = {};
+  return () => {
+    const { conn, info, projects, existing, onDone, onCancel } = handle.props;
+    const label = info?.label ?? kindLabel(conn.kind);
+    const taken = new Set((conn.assignments ?? []).map((a) => a.projectId));
+    const free = projects.filter((p) => !taken.has(p.id));
+    const proj = existing?.projectId ?? (project || free[0]?.id || '');
+    const settings = info?.settings ?? [];
+    return (
+      <form
+        mix={[formGrid, on<HTMLFormElement, 'submit'>('submit', (e) => e.preventDefault())]}
+        aria-label={existing ? `Settings of ${label} for this project` : `Assign ${label} to a project`}
+        data-testid="assign-form"
+      >
+        <div mix={full}>
+          <ErrorNote error={act.error} what="Not assigned" />
+        </div>
+        {existing ? null : (
+          <Field label="Project">
+            {(id) =>
+              free.length === 0 ? (
+                <p id={id} mix={muted}>
+                  Every project already has {label}.
+                </p>
+              ) : (
+                <select id={id} aria-label="Project" value={proj} mix={on('change', (e) => ((project = e.currentTarget.value), void handle.update()))}>
+                  {free.map((p) => (
+                    <option key={p.id} value={p.id} selected={p.id === proj}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )
+            }
+          </Field>
+        )}
+        {settings.map((st) => {
+          const listId = `choices-${handle.id}-${st.key}`;
+          const opts = choices[st.key];
+          return (
+            <Field key={st.key} label={`${st.label}${st.required ? '' : ' (optional)'}`} hint={st.hint}>
+              {(id) => (
+                <div mix={toolbar}>
+                  <input
+                    id={id}
+                    value={cfg[st.key] ?? ''}
+                    spellcheck={false}
+                    list={opts ? listId : undefined}
+                    style={{ flex: '1', minWidth: '0' }}
+                    mix={on('input', (e) => ((cfg = { ...cfg, [st.key]: e.currentTarget.value }), void handle.update()))}
+                  />
+                  {opts ? (
+                    <datalist id={listId}>
+                      {opts.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </datalist>
+                  ) : null}
+                  {st.choices ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={act.busy !== ''}
+                      title={`Read the ${st.label.toLowerCase()} choices from ${label}`}
+                      aria-label={`List the ${st.label} choices from ${label}`}
+                      mix={[
+                        on('click', async () => {
+                          const r = await act.run(`choices-${st.key}`, () => s.client.integrationChoices(conn.id, st.key, cfg));
+                          if (r) {
+                            choices[st.key] = r;
+                            void handle.update();
+                          }
+                        }),
+                      ]}
+                    >
+                      {act.busy === `choices-${st.key}` ? 'Loading...' : `List from ${label}`}
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+            </Field>
+          );
+        })}
+        <div mix={formActions}>
+          <Button
+            variant="primary"
+            icon={existing ? Check : FolderPlus}
+            disabled={act.busy !== '' || !proj}
+            mix={[
+              on('click', async () => {
+                const config = Object.fromEntries(Object.entries(cfg).filter(([, v]) => v.trim()));
+                const r = await act.run('assign', () => s.client.integrationAssign({ integrationId: conn.id, projectId: proj, config, version: existing?.version }));
+                if (r) onDone();
+              }),
+            ]}
+          >
+            {existing ? 'Save settings' : 'Assign'}
+          </Button>
+          <Button mix={[on('click', onCancel)]}>Cancel</Button>
+        </div>
+      </form>
+    );
+  };
+}
+
+/** The items of one assignment. */
+function AssignmentItems(handle: Handle<{ a: IntegrationAssignment; projects: Project[]; openTask: OpenTask }>) {
+  const s = services(handle);
+  const list = query(handle, {
+    load: () => s.client.integrationItems({ assignmentId: handle.props.a.id, limit: 50 }),
+    key: () => [handle.props.a.id, handle.props.a.sync.itemsSeen],
+    when: (e) => e.type.startsWith('integration.'),
+  });
+  return () => {
+    const { projects, openTask } = handle.props;
+    const rows: ExternalItem[] = list.data ?? [];
+    return (
+      <section aria-label="Items" mix={panel}>
+        <ErrorNote error={list.error} />
+        {list.loading && !list.data ? <Loading /> : null}
+        {list.data && rows.length === 0 ? <p mix={muted}>No items yet. Run a sync.</p> : null}
+        {rows.length > 0 ? (
+          <ul mix={items}>
+            {rows.map((it) => (
+              <ItemRow key={it.id} it={it} projects={projects} onChanged={list.reload} openTask={openTask} />
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    );
+  };
+}
+
+/** One project a connection is assigned to: its scope, sync state, items, rules and outbound writes. */
+function AssignmentRow(handle: Handle<{ conn: IntegrationView; info?: IntegrationKindInfo; a: IntegrationAssignment; projects: Project[]; onChanged: () => void; openTask: OpenTask }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let show: 'items' | 'rules' | 'outbound' | 'settings' | '' = '';
+  let confirm = false;
+  let sync: string | undefined;
+  const toggle = (v: typeof show) => {
+    show = show === v ? '' : v;
+    void handle.update();
+  };
+  return () => {
+    const { conn, info, a, projects, onChanged, openTask } = handle.props;
+    const proj = projects.find((p) => p.id === a.projectId);
+    const name = proj?.name ?? a.projectId;
+    const sy = a.sync;
+    return (
+      <div mix={rowCard} data-testid="assignment" data-project={a.projectId}>
+        <div mix={head}>
+          <strong>{name}</strong>
           <Badge tone={syncTone(sy.state)}>sync: {sy.state}</Badge>
-        </header>
-        {c.statusDetail ? <p mix={muted}>{c.statusDetail}</p> : null}
-        <dl mix={stats}>
-          <div>
-            <dt>Credential</dt>
-            <dd>{c.hasCredential ? 'stored in the credential store (never shown)' : 'none'}</dd>
-          </div>
-          <div>
-            <dt>Items stored</dt>
-            <dd>{sy.itemsSeen}</dd>
-          </div>
-          <div>
-            <dt>Last successful sync</dt>
-            <dd>{sy.lastSuccessAt ? formatDateTime(sy.lastSuccessAt) : 'never'}</dd>
-          </div>
-          <div>
-            <dt>Polling every</dt>
-            <dd>{c.pollIntervalS ? `${c.pollIntervalS} s` : 'default'}</dd>
-          </div>
-        </dl>
+          <span mix={faint}>
+            {scopeSummary(info, a)} · {sy.itemsSeen} {info?.items ?? 'items'} · last sync {sy.lastSuccessAt ? formatDateTime(sy.lastSuccessAt) : 'never'}
+          </span>
+        </div>
         {sy.lastError ? <p mix={errLine}>{sy.lastError}</p> : null}
         <ErrorNote error={act.error} />
-        {report ? <ReportView r={report} /> : null}
         {sync ? (
           <Notice tone="info" role="status">
             {sync}
@@ -615,25 +957,11 @@ function ConnectionCard(handle: Handle<{ c: IntegrationView; projects: Project[]
         <div mix={toolbar}>
           <Button
             size="sm"
-            icon={Stethoscope}
-            disabled={act.busy !== ''}
-            mix={[
-              on('click', async () => {
-                const r = await act.run('test', () => s.client.integrationTest(c.id));
-                if (r) report = r;
-                onChanged();
-              }),
-            ]}
-          >
-            Test connection
-          </Button>
-          <Button
-            size="sm"
             icon={RefreshCw}
             disabled={act.busy !== ''}
             mix={[
               on('click', async () => {
-                const r = await act.run('sync', () => s.client.integrationSync(c.id, false));
+                const r = await act.run('sync', () => s.client.integrationSyncAssignment(a.id, false));
                 if (r) sync = syncText(r);
                 onChanged();
               }),
@@ -648,11 +976,16 @@ function ConnectionCard(handle: Handle<{ c: IntegrationView; projects: Project[]
             <button type="button" aria-expanded={show === 'rules'} mix={on('click', () => toggle('rules'))}>
               Rules
             </button>
-            <button type="button" aria-expanded={show === 'outbound'} mix={on('click', () => toggle('outbound'))}>
-              Outbound
-            </button>
+            {(conn.tools.ops ?? []).length > 0 ? (
+              <button type="button" aria-expanded={show === 'outbound'} mix={on('click', () => toggle('outbound'))}>
+                Outbound
+              </button>
+            ) : null}
           </span>
           <span mix={push}>
+            <Button size="sm" variant="ghost" icon={Pencil} mix={[on('click', () => toggle('settings'))]}>
+              Settings
+            </Button>
             {confirm ? (
               <>
                 <Button
@@ -660,12 +993,12 @@ function ConnectionCard(handle: Handle<{ c: IntegrationView; projects: Project[]
                   variant="danger"
                   mix={[
                     on('click', async () => {
-                      await act.run('disconnect', () => s.client.integrationDisconnect(c.id));
+                      await act.run('unassign', () => s.client.integrationUnassign(a.id));
                       onChanged();
                     }),
                   ]}
                 >
-                  Yes, disconnect {c.name}
+                  Yes, unassign from {name}
                 </Button>
                 <Button size="sm" mix={[on('click', () => ((confirm = false), void handle.update()))]}>
                   Keep
@@ -673,262 +1006,225 @@ function ConnectionCard(handle: Handle<{ c: IntegrationView; projects: Project[]
               </>
             ) : (
               <Button size="sm" variant="ghost" icon={Unplug} mix={[on('click', () => ((confirm = true), void handle.update()))]}>
-                Disconnect
+                Unassign
               </Button>
             )}
           </span>
         </div>
-        {show === 'items' ? (
-          <section aria-label="Items" mix={panel}>
-            <ErrorNote error={list.error} />
-            {list.loading && !list.data ? <Loading /> : null}
-            {list.data && list.data.length === 0 ? <p mix={muted}>No items yet. Run a sync.</p> : null}
-            {(list.data ?? []).length > 0 ? (
-              <ul mix={items}>
-                {(list.data ?? []).map((it) => (
-                  <ItemRow key={it.id} it={it} projects={projects} onChanged={list.reload} openTask={openTask} />
+        {confirm ? <p mix={faint}>Unassigning removes this project's items that never became tasks, its rules and its cursor. Tasks stay. The connection stays.</p> : null}
+        {show === 'settings' ? (
+          <AssignForm conn={conn} info={info} projects={projects} existing={a} onDone={() => ((show = ''), onChanged())} onCancel={() => toggle('settings')} />
+        ) : null}
+        {show === 'items' ? <AssignmentItems a={a} projects={projects} openTask={openTask} /> : null}
+        {show === 'rules' ? <Rules conn={conn} projectId={a.projectId} /> : null}
+        {show === 'outbound' ? <Outbound conn={conn} projectId={a.projectId} /> : null}
+      </div>
+    );
+  };
+}
+
+/** One service, opened from its tile: its fixed name and logo, what the connection is, and the projects it is assigned to. */
+function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKindInfo; conn?: IntegrationView; projects: Project[]; onChanged: () => void; openTask: OpenTask }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let report: IntegrationTestReport | undefined;
+  let reconnect = false;
+  let assigning = false;
+  let confirm = false;
+  return () => {
+    const { kind, info, conn, projects, onChanged, openTask } = handle.props;
+    const label = info?.label ?? kind.label;
+    const id = conn?.identity ?? {};
+    const assignments = conn?.assignments ?? [];
+    return (
+      <article mix={[card, cardCss]} data-testid="integration" data-kind={kind.kind} data-name={label} aria-labelledby={`svc-${handle.id}`}>
+        <header mix={serviceHead}>
+          <BrandLogo id={kind.kind} size={40} label />
+          <h2 id={`svc-${handle.id}`} data-testid="integration-name">
+            {label}
+          </h2>
+          {conn ? <Badge tone={statusTone(conn.status)}>{conn.status}</Badge> : <Badge tone="muted">not connected</Badge>}
+          {conn ? <Badge tone={syncTone(conn.sync.state)}>sync: {conn.sync.state}</Badge> : null}
+        </header>
+        <p mix={muted}>
+          {info?.blurb ?? kind.blurb}. Drydock reads {info?.items ?? 'items'} through {info?.api ?? 'the service API'} and imports them into the projects you assign.
+        </p>
+        <p mix={faint}>
+          <a href={routes.mcp.href()} data-testid="mcp-link">
+            Also give agents {label}'s tools: MCP
+          </a>
+        </p>
+        {!conn ? (
+          <ConnectForm kind={kind.kind} info={info} onDone={(r) => ((report = r.test), onChanged())} />
+        ) : (
+          <>
+            {conn.statusDetail ? <p mix={muted}>{conn.statusDetail}</p> : null}
+            <dl mix={[stats, identityGrid]} data-testid="connection-identity">
+              <div>
+                <dt>Account</dt>
+                <dd>{id.account || (conn.checkedAt ? 'not reported by the API' : 'not checked yet')}</dd>
+              </div>
+              <div>
+                <dt>Workspace</dt>
+                <dd>
+                  {id.workspaceUrl && safeHref(id.workspaceUrl) ? (
+                    <a href={safeHref(id.workspaceUrl)} target="_blank" rel="noopener noreferrer" data-rmx-document>
+                      {id.workspace || id.workspaceUrl}
+                    </a>
+                  ) : (
+                    id.workspace || (conn.checkedAt ? 'not reported by the API' : 'not checked yet')
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Connected with</dt>
+                <dd>{id.method || conn.authKind}</dd>
+              </div>
+              <div>
+                <dt>Scopes</dt>
+                <dd>{(id.scopes ?? []).length > 0 ? (id.scopes ?? []).join(', ') : 'not reported by the API'}</dd>
+              </div>
+              <div>
+                <dt>Last checked</dt>
+                <dd>{conn.checkedAt ? formatDateTime(conn.checkedAt) : 'never'}</dd>
+              </div>
+              <div>
+                <dt>Credential</dt>
+                <dd>{conn.kind === 'github' ? 'your gh sign-in (Drydock stores no GitHub token)' : conn.hasCredential ? 'stored in the credential store (never shown)' : 'none'}</dd>
+              </div>
+            </dl>
+            <ErrorNote error={act.error} />
+            {report ? <ReportView r={report} /> : null}
+            <div mix={toolbar}>
+              <Button
+                size="sm"
+                icon={Stethoscope}
+                disabled={act.busy !== ''}
+                mix={[
+                  on('click', async () => {
+                    const r = await act.run('test', () => s.client.integrationTest(conn.id));
+                    if (r) report = r;
+                    onChanged();
+                  }),
+                ]}
+              >
+                Test
+              </Button>
+              <Button size="sm" icon={KeyRound} aria-expanded={reconnect ? 'true' : 'false'} mix={[on('click', () => ((reconnect = !reconnect), void handle.update()))]}>
+                Reconnect
+              </Button>
+              <Button size="sm" icon={FolderPlus} aria-expanded={assigning ? 'true' : 'false'} mix={[on('click', () => ((assigning = !assigning), void handle.update()))]}>
+                Assign to project
+              </Button>
+              <span mix={push}>
+                {confirm ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      mix={[
+                        on('click', async () => {
+                          await act.run('disconnect', () => s.client.integrationDisconnect(conn.id));
+                          report = undefined;
+                          confirm = false;
+                          onChanged();
+                        }),
+                      ]}
+                    >
+                      Yes, disconnect {label}
+                    </Button>
+                    <Button size="sm" mix={[on('click', () => ((confirm = false), void handle.update()))]}>
+                      Keep
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="ghost" icon={Trash2} mix={[on('click', () => ((confirm = true), void handle.update()))]}>
+                    Disconnect
+                  </Button>
+                )}
+              </span>
+            </div>
+            {confirm ? <p mix={faint}>Disconnecting removes the credential, every project assignment and the items that never became tasks.</p> : null}
+            {reconnect ? <ConnectForm kind={kind.kind} info={info} reconnectId={conn.id} onDone={(r) => ((report = r.test), (reconnect = false), onChanged())} /> : null}
+            <section aria-label="Projects" mix={panel}>
+              <h4>Projects</h4>
+              {(conn.legacyItems ?? 0) > 0 ? (
+                <Notice tone="info">
+                  {conn.legacyItems} item(s) were stored before connections and projects were separated; the first project you assign adopts them and the stored settings.
+                </Notice>
+              ) : null}
+              {assignments.length === 0 && !assigning ? <p mix={muted}>Not assigned to a project yet. Assign it to import {info?.items ?? 'items'}.</p> : null}
+              {assigning ? <AssignForm conn={conn} info={info} projects={projects} onDone={() => ((assigning = false), onChanged())} onCancel={() => ((assigning = false), void handle.update())} /> : null}
+              {assignments.map((a) => (
+                <AssignmentRow key={a.id} conn={conn} info={info} a={a} projects={projects} onChanged={onChanged} openTask={openTask} />
+              ))}
+            </section>
+          </>
+        )}
+        {info ? (
+          <details mix={detailsCss} data-testid="api-info">
+            <summary>About the {label} API</summary>
+            <div mix={stack}>
+              <p mix={faint}>
+                {info.api}, {info.apiVersion}. {info.sdk}
+              </p>
+              <p mix={faint}>Rate limit: {info.rateLimit}.</p>
+              {(conn?.tools.syncTools ?? []).length > 0 ? <p mix={[faint, mono]}>{(conn?.tools.syncTools ?? []).join(' · ')}</p> : null}
+              <ul mix={linkList}>
+                {(info.docs ?? []).map((d) => (
+                  <li key={d.url}>
+                    <a href={d.url} target="_blank" rel="noopener noreferrer" data-rmx-document>
+                      {d.title}
+                    </a>
+                  </li>
                 ))}
               </ul>
-            ) : null}
-          </section>
+            </div>
+          </details>
         ) : null}
-        {show === 'rules' ? <Rules conn={c} projects={projects} /> : null}
-        {show === 'outbound' ? <Outbound conn={c} projects={projects} /> : null}
+        {report && !conn ? <ReportView r={report} /> : null}
       </article>
     );
   };
 }
 
-function ConnectForm(handle: Handle<{ projects: Project[]; onConnected: () => void }>) {
-  const s = services(handle);
-  watch(handle, s.workspace);
-  const act = action(handle);
-  let tokenEl: HTMLInputElement | undefined;
-  let kind = 'linear';
-  let name = '';
-  let project = '';
-  let cfg: Record<string, string> = {};
-  let baseUrl = '';
-  let result: IntegrationTestReport | undefined;
-  let oauth: { ref: string; url?: string; signedIn: boolean; error?: string } | undefined;
-  let timer: ReturnType<typeof setInterval> | undefined;
-  const stopPoll = () => {
-    clearInterval(timer);
-    timer = undefined;
-  };
-  handle.signal.addEventListener('abort', stopPoll);
-  // while a sign-in is open, ask the core how it went
-  const startPoll = () => {
-    stopPoll();
-    timer = setInterval(async () => {
-      if (!oauth || oauth.signedIn) return stopPoll();
-      try {
-        const st = await s.client.mcpOAuthStatus(oauthLibraryId(oauth.ref));
-        if (st.signedIn && oauth) {
-          oauth = { ...oauth, signedIn: true, error: undefined };
-          stopPoll();
-          void handle.update();
-        } else if (st.state === 'failed' && oauth) {
-          // a sign-in that failed is said, and the polling stops (it would never succeed by itself)
-          oauth = { ...oauth, error: st.error || 'the sign-in failed' };
-          stopPoll();
-          void handle.update();
-        }
-      } catch {
-        /* the next poll tries again */
-      }
-    }, 1000);
-  };
-  const upd = (f: () => void) => {
-    f();
-    void handle.update();
-  };
-
-  const submit = async (e: SubmitEvent) => {
-    e.preventDefault();
-    const projects = handle.props.projects;
-    const spec = KINDS.find((k) => k.kind === kind)!;
-    const proj = project || projects[0]?.id || '';
-    // The token lives only in the uncontrolled input: read once and cleared before the request leaves.
-    const token = tokenEl?.value ?? '';
-    if (tokenEl) tokenEl.value = '';
-    const r = await act.run('connect', () =>
-      s.client.integrationConnect({
-        kind,
-        name: name.trim() || spec.label,
-        projectId: proj,
-        token: oauth?.signedIn ? undefined : token || undefined,
-        oauthRef: oauth?.signedIn ? oauth.ref : undefined,
-        baseUrl: baseUrl.trim() || undefined,
-        config: Object.fromEntries(Object.entries(cfg).filter(([, v]) => v.trim())),
-      }),
-    );
-    if (r) {
-      result = r.test;
-      name = '';
-      void handle.update();
-      handle.props.onConnected();
-    }
-  };
-
-  return () => {
-    const { projects } = handle.props;
-    const ro = s.workspace.license;
-    const spec = KINDS.find((k) => k.kind === kind)!;
-    const proj = project || projects[0]?.id || '';
-    const signHref = oauth?.url ? safeHref(oauth.url) : undefined;
-    return (
-      <form mix={[card, formGrid, on<HTMLFormElement, 'submit'>('submit', submit)]} autocomplete="off" aria-label="Connect a service">
-        <div mix={full}>
-          <ErrorNote error={act.error} what="Not connected" />
-        </div>
-        <fieldset mix={serviceGrid}>
-          <legend>Service</legend>
-          {KINDS.map((k) => (
-            <label key={k.kind} mix={serviceTile}>
-              <input
-                type="radio"
-                name="integration-service"
-                value={k.kind}
-                checked={kind === k.kind}
-                mix={on('change', () =>
-                  upd(() => {
-                    kind = k.kind;
-                    cfg = {};
-                  }),
-                )}
-              />
-              <Avatar id={k.kind} name={k.label} size={26} square />
-              <span>
-                <strong>{k.label}</strong>
-                <small>{k.blurb}</small>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        <Field label="Name">{(id) => <input id={id} value={name} placeholder={spec.label} mix={on('input', (e) => upd(() => (name = e.currentTarget.value)))} />}</Field>
-        <Field label="Project">
-          {(id) => (
-            <select id={id} aria-label="Project" value={proj} mix={on('change', (e) => upd(() => (project = e.currentTarget.value)))}>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id} selected={p.id === proj}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        {oauth?.signedIn ? (
-          <div data-testid="integration-oauth" mix={full}>
-            <Notice tone="ok">Signed in to {spec.label} with OAuth. Drydock keeps and refreshes the sign-in; no token to paste.</Notice>
-          </div>
-        ) : (
-          <Field label="Access token" hint="Stored in the credential store, never shown again.">
-            {(id) => (
-              <input
-                id={id}
-                type="password"
-                autocomplete="new-password"
-                spellcheck={false}
-                name="integration-token"
-                aria-label="Access token"
-                mix={ref((n: HTMLInputElement) => (tokenEl = n))}
-              />
-            )}
-          </Field>
-        )}
-        {canOAuth(kind) && !oauth?.signedIn ? (
-          <div mix={[full, toolbar]}>
-            <Button
-              size="sm"
-              icon={LogIn}
-              mix={[
-                on('click', async () => {
-                  const r = await act.run('oauth', () => s.client.integrationOAuthBegin(kind, baseUrl.trim() || undefined));
-                  if (r) {
-                    oauth = { ref: r.oauthRef, url: r.status.url, signedIn: !!r.status.signedIn, error: r.status.state === 'failed' ? r.status.error || 'the sign-in failed' : undefined };
-                    void handle.update();
-                    if (!oauth.signedIn && !oauth.error) startPoll();
-                  }
-                }),
-              ]}
-            >
-              Sign in with OAuth instead
-            </Button>
-            {oauth?.error ? (
-              <div mix={full} data-testid="integration-oauth-error">
-                <ErrorNote error={new Error(oauth.error)} what={`Could not sign in to ${spec.label}`} />
-              </div>
-            ) : null}
-            {signHref && !oauth?.error ? (
-              <a href={signHref} target="_blank" rel="noreferrer noopener" data-rmx-document data-testid="integration-oauth-link" mix={buttonStyle('link', 'sm')}>
-                <Icon icon={ExternalLink} size={13} />
-                Open the {spec.label} sign-in page
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-        {spec.config.map((f) => (
-          <Field key={`${kind}-${f.key}`} label={f.label}>
-            {(id) => <input id={id} value={cfg[f.key] ?? ''} mix={on('input', (e) => upd(() => (cfg = { ...cfg, [f.key]: e.currentTarget.value })))} />}
-          </Field>
-        ))}
-        <details mix={detailsCss}>
-          <summary>Advanced</summary>
-          <Field label="Server URL (only if the vendor server is self-hosted)">
-            {(id) => <input id={id} value={baseUrl} spellcheck={false} mix={on('input', (e) => upd(() => (baseUrl = e.currentTarget.value)))} />}
-          </Field>
-        </details>
-        <div mix={full}>
-          <ReadOnlyNote />
-        </div>
-        <div mix={formActions}>
-          <Button variant="primary" type="submit" icon={Blocks} disabled={act.busy !== '' || ro.readOnly || !proj} title={ro.readOnly ? ro.reason : undefined}>
-            Connect
-          </Button>
-        </div>
-        {result ? (
-          <div mix={full}>
-            <ReportView r={result} />
-          </div>
-        ) : null}
-      </form>
-    );
-  };
-}
-
-export function IntegrationsScreen(handle: Handle<{ openTask?: OpenTask }>) {
+export function IntegrationsScreen(handle: Handle<{ openTask?: OpenTask; initial?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const q = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
+  const kinds = query(handle, { load: () => s.client.integrationKinds() });
+  let selected = handle.props.initial ?? '';
   return () => {
     const projects = s.workspace.projectList;
     const list: IntegrationView[] = q.data ?? [];
     const openTask = handle.props.openTask ?? defaultOpen;
+    const kind = KINDS.find((k) => k.kind === selected);
+    const info = (kinds.data ?? []).find((k) => k.kind === selected);
     return (
       <Page title="Integrations" icon={Blocks} subtitle={q.data ? `${list.length} connected` : undefined}>
         <p mix={introCss}>
-          Linear, Notion, Sentry and Aikido are read through their MCP servers with a token you paste here. Everything they return is outside text: it is redacted, scored for
-          injection risk, shown inert and quoted as data when you import it. Writing back needs your approval of the exact text. Nothing here was run against a live vendor account
-          when this page was built; Test connection tells you what the server does and does not offer.
+          Connect a service once for the whole workspace, then assign it to the projects that should import its items. Everything a service returns is outside text: it is
+          redacted, scored for injection risk, shown inert and quoted as data when you import it. Writing back needs your approval of the exact text. Giving agents these services'
+          tools is on the{' '}
+          <a href={routes.mcp.href()}>
+            <Icon icon={Server} size={12} /> MCP screen
+          </a>
+          .
         </p>
-        <ErrorNote error={q.error} what="Integrations" />
+        <ErrorNote error={q.error ?? kinds.error} what="Integrations" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
-          <div mix={card}>
-            <Empty title="Nothing is connected." icon={ShieldAlert}>
-              <p>Pick a service below. Its items arrive as untrusted text you can read, score and import.</p>
-            </Empty>
-          </div>
+          <p mix={emptyLine}>
+            <Icon icon={ShieldAlert} size={14} />
+            <strong>Nothing is connected.</strong> Choose a service below. Its items arrive as untrusted text you can read, score and import.
+          </p>
         ) : null}
-        <div mix={stack}>
-          {list.map((c) => (
-            <ConnectionCard key={c.id} c={c} projects={projects} onChanged={q.reload} openTask={openTask} />
+        <ul mix={tiles} aria-label="Services">
+          {KINDS.map((k) => (
+            <ServiceTile key={k.kind} kind={k} conn={tileState(list, k.kind)} selected={selected === k.kind} onSelect={() => ((selected = selected === k.kind ? '' : k.kind), void handle.update())} />
           ))}
-        </div>
-        <Section title="Connect a service" description="The token goes to the Windows credential store and is never shown again.">
-          <ConnectForm projects={projects} onConnected={q.reload} />
-        </Section>
+        </ul>
+        {kind ? <ServicePanel key={kind.kind} kind={kind} info={info} conn={tileState(list, kind.kind)} projects={projects} onChanged={q.reload} openTask={openTask} /> : null}
       </Page>
     );
   };

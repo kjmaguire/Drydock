@@ -689,12 +689,36 @@ export interface SyncStatus {
   itemsLastSync: number;
   consecutiveFailures: number;
   nextAttemptAt?: number;
+  watermark?: number;
   resuming: boolean;
+}
+/** What the vendor's API says a connection reaches (read on Test; never typed by a person). */
+export interface IntegrationIdentity {
+  account?: string;
+  workspace?: string;
+  workspaceUrl?: string;
+  scopes?: string[] | null;
+  method?: string;
+}
+/** A connection assigned to one project, with that project's scope (decision P42). */
+export interface IntegrationAssignment {
+  id: string;
+  integrationId: string;
+  projectId: string;
+  config: Record<string, string> | null;
+  enabled: boolean;
+  createdBy: string;
+  created: number;
+  updated: number;
+  version: number;
+  sync: SyncStatus;
 }
 export interface IntegrationView {
   id: string;
   kind: string;
+  /** The vendor's name: fixed, not editable. */
   name: string;
+  /** Only on a connection made before P42. */
   projectId: string;
   status: string;
   statusDetail: string;
@@ -709,20 +733,90 @@ export interface IntegrationView {
   hasCredential: boolean;
   sync: SyncStatus;
   tools: { syncTools: string[] | null; ops: OpInfo[] | null };
+  identity?: IntegrationIdentity;
+  checkedAt?: number;
+  assignments?: IntegrationAssignment[] | null;
+  legacyItems?: number;
 }
 export interface ConnectIntegrationReq {
+  /** Set to reconnect (a new credential for the same connection). */
   id?: string;
   kind: string;
-  name: string;
-  projectId: string;
+  /** A shortcut: connect and assign in one call. Connecting needs no project. */
+  projectId?: string;
   /** Sent once and never kept: the page reads it from an uncontrolled password input. */
   token?: string;
+  /** Aikido's REST API client credentials and region. */
+  clientId?: string;
+  clientSecret?: string;
+  region?: string;
+  /** A finished provider sign-in (integration.oauthStart). */
+  oauthSession?: string;
   baseUrl?: string;
   config?: Record<string, string>;
   pollIntervalS?: number;
   skipTest?: boolean;
-  /** Connect with an OAuth sign-in (integration.oauthBegin) instead of a token: "oauth/mcplib/<library id>". */
+  /** A sign-in made before P42 through the vendor's MCP server: "oauth/mcplib/<library id>". */
   oauthRef?: string;
+}
+export interface IntegrationChoice {
+  value: string;
+  label: string;
+}
+export interface IntegrationAuthField {
+  key: string;
+  label: string;
+  secret?: boolean;
+  hint?: string;
+  options?: IntegrationChoice[] | null;
+  advanced?: boolean;
+}
+export interface IntegrationAuthMethod {
+  id: string;
+  label: string;
+  fields?: IntegrationAuthField[] | null;
+  available: boolean;
+  note?: string;
+  flow?: string;
+}
+export interface IntegrationSetting {
+  key: string;
+  label: string;
+  hint?: string;
+  required?: boolean;
+  choices?: boolean;
+}
+/** One integration as the core describes it (integration.kinds): fixed name, auth, settings, API and docs. */
+export interface IntegrationKindInfo {
+  kind: string;
+  label: string;
+  blurb: string;
+  items: string;
+  api: string;
+  apiVersion: string;
+  sdk: string;
+  rateLimit: string;
+  docs: { title: string; url: string }[] | null;
+  auth: IntegrationAuthMethod[] | null;
+  settings: IntegrationSetting[] | null;
+  ops: OpInfo[] | null;
+}
+export interface IntegrationAssignReq {
+  integrationId: string;
+  projectId: string;
+  config?: Record<string, string>;
+  enabled?: boolean;
+  version?: number;
+}
+export interface IntegrationOAuthSession {
+  id: string;
+  kind: string;
+  method: string;
+  state: string;
+  url: string;
+  userCode?: string;
+  error?: string;
+  expiresAt: number;
 }
 export interface IntegrationTestStep {
   id: string;
@@ -734,15 +828,14 @@ export interface IntegrationTestReport {
   integrationId: string;
   ok: boolean;
   steps: IntegrationTestStep[] | null;
-  toolsFound: string[] | null;
-  toolsMissing: string[] | null;
-  writesMissing: string[] | null;
+  identity?: IntegrationIdentity;
   summary: string;
   at: number;
 }
 export interface ExternalItem {
   id: string;
   integrationId: string;
+  assignmentId?: string;
   source: string;
   projectId: string;
   externalId: string;

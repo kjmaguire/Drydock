@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink } from './helpers';
 
-// Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; integrations have no vendor server
-// here, so only their list and refusal paths are exercised.
+// Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; this integrations test has no
+// vendor server, so only the refusal paths are exercised (integrations.spec.ts runs against a protocol fixture).
 
 test('economics: a budget is set and listed, the evals report renders, routing rules and a preview are shown, telemetry is off and local', async ({ page }) => {
   await createProject(page, 'gocalc-econ');
@@ -295,30 +295,37 @@ test('room modes, the scheduler and previews report what the core says', async (
   await expect(page.getByTestId('tick-result')).toContainText('Started 0');
 });
 
-test('integrations: connecting stores the token without ever showing it; with no vendor server the test does not pass; disconnect removes it', async ({ page }) => {
+test('integrations: connecting stores the key without ever showing it; with no vendor server the test does not pass; disconnect removes it', async ({ page }) => {
   await createProject(page, 'gocalc-int');
   await page.getByTestId('nav-integrations').click();
   await expect(page.getByText('Nothing is connected.')).toBeVisible();
-  const secret = 'lin_api_e2e_secret_value';
-  await page.getByLabel('Access token').fill(secret);
-  await page.getByRole('button', { name: 'Connect' }).click();
+  await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
   const card = page.locator('[data-testid=integration][data-kind=linear]');
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('stored in the credential store (never shown)');
-  await expect(page.getByLabel('Access token')).toHaveValue('');
+  const secret = 'lin_api_e2e_secret_value';
+  await card.getByLabel('API key', { exact: true }).fill(secret);
+  // no vendor server here: a port on this computer that nothing listens on (the real API is never called by the suite)
+  await card.getByText('Advanced').click();
+  await card.getByLabel('API URL').fill('http://127.0.0.1:1');
+  await card.getByRole('button', { name: 'Connect Linear' }).click();
+  await expect(card.getByTestId('connection-identity')).toContainText('stored in the credential store (never shown)');
   expect(await page.content()).not.toContain(secret);
-  // there is no Linear MCP server in this environment, so the connection cannot be verified
-  await expect(card.getByText(/^ok$/)).toHaveCount(0);
-  await card.getByRole('button', { name: 'Test connection' }).click();
+  // the connection cannot be verified, and says so
+  await card.getByRole('button', { name: 'Test', exact: true }).click();
   await expect(card.getByTestId('int-report')).toHaveAttribute('data-ok', 'false');
-  // items, rules and outbound are reachable and empty; a new rule says it starts disabled and in dry-run
-  await card.getByRole('button', { name: 'Items' }).click();
-  await expect(card.getByText('No items yet. Run a sync.')).toBeVisible();
-  await card.getByRole('button', { name: 'Rules' }).click();
-  await expect(card.getByText(/starts disabled and in dry-run/)).toBeVisible();
-  await card.getByLabel('Rule name').fill('Open bugs');
-  await card.getByRole('button', { name: 'Add rule (starts disabled, dry-run)' }).click();
-  const rule = card.getByTestId('int-rule');
+  await expect(card.getByTestId('int-report')).toContainText('could not reach Linear');
+  // it is assigned to the project like any other, and a rule there starts disabled and in dry-run
+  await card.getByRole('button', { name: 'Assign to project' }).click();
+  await card.getByTestId('assign-form').getByLabel('Project', { exact: true }).selectOption({ label: 'gocalc-int' });
+  await card.getByTestId('assign-form').getByRole('button', { name: 'Assign', exact: true }).click();
+  const row = card.getByTestId('assignment');
+  await expect(row).toContainText('gocalc-int');
+  await row.getByRole('button', { name: 'Items' }).click();
+  await expect(row.getByText('No items yet. Run a sync.')).toBeVisible();
+  await row.getByRole('button', { name: 'Rules' }).click();
+  await expect(row.getByText(/starts disabled and in dry-run/)).toBeVisible();
+  await row.getByLabel('Rule name').fill('Open bugs');
+  await row.getByRole('button', { name: 'Add rule (starts disabled, dry-run)' }).click();
+  const rule = row.getByTestId('int-rule');
   await expect(rule).toContainText('disabled');
   await expect(rule).toContainText('dry-run');
   await card.getByRole('button', { name: 'Disconnect' }).click();

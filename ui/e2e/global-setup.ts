@@ -88,6 +88,7 @@ async function start(exe: string, args: string[]): Promise<Started> {
         else if (line.startsWith('DRYDOCK_E2E_GREEN_REPO ')) out.greens.push(line.slice('DRYDOCK_E2E_GREEN_REPO '.length));
         else if (line.startsWith('DRYDOCK_E2E_DOCS ')) out.docs = line.slice('DRYDOCK_E2E_DOCS '.length);
         else if (line.startsWith('DRYDOCK_E2E_OAUTH_MCP ')) out.extra.oauth = line.slice('DRYDOCK_E2E_OAUTH_MCP '.length);
+        else if (line.startsWith('DRYDOCK_E2E_LINEAR_API ')) out.extra.linear = line.slice('DRYDOCK_E2E_LINEAR_API '.length);
         else if (line.startsWith('DRYDOCK_E2E_LICENSE_ACTIVE ')) out.extra.active = line.slice('DRYDOCK_E2E_LICENSE_ACTIVE '.length);
         else if (line.startsWith('DRYDOCK_E2E_LICENSE_EXPIRED ')) out.extra.expired = line.slice('DRYDOCK_E2E_LICENSE_EXPIRED '.length);
         else if (line.startsWith('DRYDOCK_E2E ')) {
@@ -138,6 +139,7 @@ export default async function globalSetup() {
   process.env.DRYDOCK_E2E_GREEN_REPOS = JSON.stringify(main.greens);
   process.env.DRYDOCK_E2E_DOCS = main.docs;
   process.env.DRYDOCK_E2E_OAUTH_MCP = main.extra.oauth ?? '';
+  process.env.DRYDOCK_E2E_LINEAR_API = main.extra.linear ?? ''; // the Linear protocol fixture (a test double)
 
   // TEST HARNESS MODE: a build that has a (throwaway) license key. See cmd/drydock-e2e/main.go.
   let licensed: Awaited<ReturnType<typeof start>>;
