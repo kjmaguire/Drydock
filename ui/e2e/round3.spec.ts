@@ -109,6 +109,8 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
 
   // requirements: upload a file, trace, link to a task
   await page.getByTestId('nav-requirements').click();
+  // each screen here has a field labelled Title: wait for the new screen before typing, or the text goes into the old one
+  await expect(page.getByRole('heading', { name: 'Add requirements' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Checkout');
   await page.locator('input[type=file]').setInputFiles({ name: 'checkout.md', mimeType: 'text/markdown', buffer: Buffer.from('# Checkout\n\n- Given a paid cart, when the order is placed, then an order record exists\n\n<script>window.__xss=1</script>\n') });
   await expect(page.locator('textarea').first()).toHaveValue(/paid cart/);
@@ -134,6 +136,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
 
   // milestones
   await page.getByTestId('nav-milestones').click();
+  await expect(page.getByRole('heading', { name: 'New milestone' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Beta');
   await page.getByRole('button', { name: 'Create milestone' }).click();
   const ms = page.locator('[data-testid=milestone][data-title=Beta]');
@@ -153,6 +156,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
 
   // memory: propose, accept, delete
   await page.getByTestId('nav-memory').click();
+  await expect(page.getByRole('heading', { name: 'Propose an entry' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Use gofmt');
   await page.getByLabel('Body').fill('Run gofmt before every commit.');
   await page.getByRole('button', { name: 'Propose' }).click();

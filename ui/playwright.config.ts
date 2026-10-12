@@ -29,6 +29,9 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   reporter: [['list']],
   use: {
+    // a click or fill that cannot happen (a disabled button, a field not there) fails within 30 s and names itself, instead of
+    // waiting out the whole test
+    actionTimeout: 30_000,
     headless: true,
     trace: 'retain-on-failure',
     launchOptions: process.env.DRYDOCK_E2E_USE_DEFAULT_CHROMIUM ? {} : { executablePath: process.env.DRYDOCK_E2E_CHROMIUM ?? chromiumFallback() },
