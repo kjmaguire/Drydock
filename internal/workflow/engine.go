@@ -93,11 +93,47 @@ func (e *Engine) Observe(f ObserverFactory) {
 // Owner returns this engine's lease owner id.
 func (e *Engine) Owner() string { return e.cfg.Owner }
 
-// driver is a run this engine is driving: cancel stops it; done is closed once its goroutine has ended, after the run's
-// lease was released.
+// driver is a run this engine drives, from the moment it claims the run (before it takes the run's lease) until its
+// goroutine has ended: cancel stops it; done is closed once it has ended, after the run's lease was released, or once a claim
+// that never launched was given up.
 type driver struct {
+	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+}
+
+// claim makes this engine the driver of run, before anything takes or uses the run's lease. Start, Resume, ResumeFrom,
+// ResumeSuspended and the recovery watch all claim first: until the driver goroutine is running they publish events and
+// write the run, and on a busy machine that can outlast the lease (3 s in the e2e harness). A run this engine has claimed is
+// never taken over by its own recovery watch, which used to see such a run as abandoned (RUNNING, lease expired, no local
+// driver yet) and start a second driver: both ran the same agent turn, and the run could fail on the duplicate. false when
+// this engine already drives the run, or is closed. Every claim ends with launch or giveUp.
+func (e *Engine) claim(run RunID) (*driver, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return nil, false
+	}
+	if _, ok := e.active[run]; ok {
+		return nil, false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	d := &driver{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	e.active[run] = d
+	e.wg.Add(1)
+	return d, true
+}
+
+// giveUp ends d's claim on run (its own claim only: a later driver of the run is left alone).
+func (e *Engine) giveUp(run RunID, d *driver) {
+	e.mu.Lock()
+	if e.active[run] == d {
+		delete(e.active, run)
+	}
+	e.mu.Unlock()
+	d.cancel()
+	close(d.done)
+	e.wg.Done()
 }
 
 // Close cancels active runs' drivers and waits for them. Runs stay RUNNING in the database and are resumed by Recover.
@@ -140,6 +176,10 @@ func (e *Engine) Start(ctx context.Context, workflow string, input any, opts Sta
 		return "", err
 	}
 	id := RunID(ids.New("run"))
+	d, ok := e.claim(id) // before the run exists: its first driver is this one, however long the writes below take
+	if !ok {
+		return "", ErrEngineClosed
+	}
 	state := newState(raw, g.TopologyHash())
 	for _, n := range g.Entry {
 		state.Inboxes[n] = append(state.Inboxes[n], Message{Value: raw})
@@ -147,40 +187,26 @@ func (e *Engine) Start(ctx context.Context, workflow string, input any, opts Sta
 	cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: id, Workflow: g.Name, Step: 0, Kind: CheckpointEntry, State: state, Created: storage.Now()}
 	info := RunInfo{ID: id, Workflow: g.Name, Status: StatusRunning, ProjectID: opts.ProjectID, TaskID: opts.TaskID, Input: raw, Topology: state.Topology}
 	if err := e.st.createRun(ctx, info, cp); err != nil {
+		e.giveUp(id, d)
 		return "", err
 	}
-	ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
+	ok, err = e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
 	if err != nil || !ok {
+		e.giveUp(id, d)
 		return id, fmt.Errorf("%w (start)", ErrLeaseHeld)
 	}
 	e.emit(ctx, "workflow.started", info, map[string]any{"workflow": g.Name})
 	e.emit(ctx, "workflow.checkpoint_written", info, map[string]any{"checkpoint": cp.ID, "kind": cp.Kind, "step": 0})
-	e.launch(info, g, cp)
+	e.launch(d, info, g, cp)
 	return id, nil
 }
 
-// launch starts the driver goroutine; the lease must already be held by this engine.
-func (e *Engine) launch(info RunInfo, g *Graph, from Checkpoint) {
-	e.mu.Lock()
-	if e.closed {
-		e.mu.Unlock()
-		return
-	}
-	dctx, cancel := context.WithCancel(context.Background())
-	d := &driver{cancel: cancel, done: make(chan struct{})}
-	e.active[info.ID] = d
-	e.wg.Add(1)
-	e.mu.Unlock()
+// launch starts the goroutine of d, the driver claimed for the run; the lease must already be held by this engine. A driver
+// cancelled before it launched (Cancel, Close) stops at once and releases the lease.
+func (e *Engine) launch(d *driver, info RunInfo, g *Graph, from Checkpoint) {
 	go func() {
-		defer e.wg.Done()
-		defer func() {
-			e.mu.Lock()
-			delete(e.active, info.ID)
-			e.mu.Unlock()
-			cancel()
-			close(d.done)
-		}()
-		e.drive(dctx, info, g, from)
+		defer e.giveUp(info.ID, d)
+		e.drive(d.ctx, info, g, from)
 	}()
 }
 
@@ -836,6 +862,18 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	if err := e.awaitDriver(ctx, run, info.Status); err != nil {
 		return err
 	}
+	// the next driver is claimed before the lease is taken: recording the answer and its events can outlast the lease, and
+	// the run is RUNNING again from the answer's write on
+	d, claimed := e.claim(run)
+	if !claimed {
+		return ErrLeaseHeld
+	}
+	launched := false
+	defer func() {
+		if !launched {
+			e.giveUp(run, d)
+		}
+	}()
 	ok, err := e.st.acquireLease(ctx, run, e.cfg.Owner, e.cfg.LeaseTTL)
 	if err != nil {
 		return err
@@ -924,9 +962,9 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	e.emit(ctx, "approval."+map[string]string{"APPROVED": "approved", "REJECTED": "rejected"}[status], info, map[string]any{"request": resp.RequestID})
 	e.emit(ctx, "workflow.checkpoint_written", info, map[string]any{"checkpoint": newCP.ID, "kind": newCP.Kind, "step": newCP.Step})
 	e.emit(ctx, "workflow.resumed", info, map[string]any{})
-	release = false // ownership passes to the driver, which releases the lease when it stops
+	release, launched = false, true // ownership passes to the driver, which releases the lease when it stops
 	info.Status = StatusRunning
-	e.launch(info, g, newCP)
+	e.launch(d, info, g, newCP)
 	return nil
 }
 
@@ -975,6 +1013,16 @@ func (e *Engine) ResumeFrom(ctx context.Context, cpID CheckpointID) (RunID, erro
 		return "", err
 	}
 	id := RunID(ids.New("run"))
+	d, claimed := e.claim(id)
+	if !claimed {
+		return "", ErrEngineClosed
+	}
+	launched := false
+	defer func() {
+		if !launched {
+			e.giveUp(id, d)
+		}
+	}()
 	st := src.State.clone()
 	st.Status = StatusRunning
 	st.Result = nil
@@ -1009,7 +1057,8 @@ func (e *Engine) ResumeFrom(ctx context.Context, cpID CheckpointID) (RunID, erro
 		return id, ErrLeaseHeld
 	}
 	e.emit(ctx, "workflow.started", info, map[string]any{"workflow": g.Name, "branchedFrom": src.ID})
-	e.launch(info, g, cp)
+	launched = true
+	e.launch(d, info, g, cp)
 	return id, nil
 }
 
@@ -1121,38 +1170,47 @@ func (e *Engine) recover(ctx context.Context, unleased bool) (int, error) {
 	rows.Close()
 	n := 0
 	for _, id := range runs {
-		e.mu.Lock()
-		_, local := e.active[id]
-		e.mu.Unlock()
-		if local {
-			continue // this engine drives it already (its lease renewal is late, not lost)
-		}
-		ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
-		if err != nil || !ok {
+		// this engine drives it already, or is about to (its lease renewal is late, or its start is still being written):
+		// the claim, taken before the lease, is what says so
+		d, ok := e.claim(id)
+		if !ok {
 			continue
 		}
-		info, err := e.st.getRun(ctx, id)
-		if err != nil {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			continue
+		if e.recoverOne(ctx, id, d) {
+			n++
+		} else {
+			e.giveUp(id, d)
 		}
-		g, err := e.graph(info.Workflow)
-		if err != nil {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			continue
-		}
-		cp, err := e.st.getCheckpoint(ctx, info.LatestCP)
-		if err != nil || cp.State.Topology != g.TopologyHash() {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			_ = e.st.setStatus(ctx, id, StatusFailed, "recover: topology mismatch or missing checkpoint")
-			continue
-		}
-		_ = e.st.setStatus(ctx, id, StatusRecovering, "")
-		e.emit(ctx, "workflow.recovering", info, map[string]any{"fromCheckpoint": cp.ID})
-		e.launch(info, g, cp)
-		n++
 	}
 	return n, nil
+}
+
+// recoverOne takes over run with the claimed driver d and reports whether it launched it.
+func (e *Engine) recoverOne(ctx context.Context, id RunID, d *driver) bool {
+	ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
+	if err != nil || !ok {
+		return false
+	}
+	info, err := e.st.getRun(ctx, id)
+	if err != nil {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		return false
+	}
+	g, err := e.graph(info.Workflow)
+	if err != nil {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		return false
+	}
+	cp, err := e.st.getCheckpoint(ctx, info.LatestCP)
+	if err != nil || cp.State.Topology != g.TopologyHash() {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		_ = e.st.setStatus(ctx, id, StatusFailed, "recover: topology mismatch or missing checkpoint")
+		return false
+	}
+	_ = e.st.setStatus(ctx, id, StatusRecovering, "")
+	e.emit(ctx, "workflow.recovering", info, map[string]any{"fromCheckpoint": cp.ID})
+	e.launch(d, info, g, cp)
+	return true
 }
 
 // Status returns the run row.

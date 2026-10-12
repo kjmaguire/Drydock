@@ -213,6 +213,7 @@ var (
 	ErrUnknownWorkflow  = errors.New("workflow: unknown workflow")
 	ErrLoopExhausted    = errors.New("workflow: loop iteration limit reached")
 	ErrRunTerminal      = errors.New("workflow: run is in a terminal state")
+	ErrEngineClosed     = errors.New("workflow: the engine is closed")
 )
 
 // ErrWatchdogTrip is returned by a node cancelled by the watchdog.

@@ -74,37 +74,50 @@ func (e *Engine) ResumeSuspended(ctx context.Context) (int, error) {
 	rows.Close()
 	n := 0
 	for _, id := range runs {
-		ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
-		if err != nil || !ok {
+		d, ok := e.claim(id) // before the lease, as recover does: the recovery watch must not take a run being resumed here
+		if !ok {
 			continue
 		}
-		info, err := e.st.getRun(ctx, id)
-		if err != nil {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			continue
+		if e.resumeSuspended(ctx, id, d) {
+			n++
+		} else {
+			e.giveUp(id, d)
 		}
-		g, err := e.graph(info.Workflow)
-		if err != nil {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			continue
-		}
-		cp, err := e.st.getCheckpoint(ctx, info.LatestCP)
-		if err != nil || cp.State.Topology != g.TopologyHash() {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			_ = e.st.setStatus(ctx, id, StatusFailed, "resume after suspension: topology mismatch or missing checkpoint")
-			continue
-		}
-		err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RECOVERING', failed_reason='', updated_at=?, version=version+1 WHERE id=?`, storage.Now(), string(id))
-			return err
-		})
-		if err != nil {
-			e.st.releaseLease(ctx, id, e.cfg.Owner)
-			continue
-		}
-		e.emit(ctx, "workflow.recovering", info, map[string]any{"fromCheckpoint": cp.ID, "after": "suspension"})
-		e.launch(info, g, cp)
-		n++
 	}
 	return n, nil
+}
+
+// resumeSuspended re-launches one parked run with the claimed driver d and reports whether it launched it.
+func (e *Engine) resumeSuspended(ctx context.Context, id RunID, d *driver) bool {
+	ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
+	if err != nil || !ok {
+		return false
+	}
+	info, err := e.st.getRun(ctx, id)
+	if err != nil {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		return false
+	}
+	g, err := e.graph(info.Workflow)
+	if err != nil {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		return false
+	}
+	cp, err := e.st.getCheckpoint(ctx, info.LatestCP)
+	if err != nil || cp.State.Topology != g.TopologyHash() {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		_ = e.st.setStatus(ctx, id, StatusFailed, "resume after suspension: topology mismatch or missing checkpoint")
+		return false
+	}
+	err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RECOVERING', failed_reason='', updated_at=?, version=version+1 WHERE id=?`, storage.Now(), string(id))
+		return err
+	})
+	if err != nil {
+		e.st.releaseLease(ctx, id, e.cfg.Owner)
+		return false
+	}
+	e.emit(ctx, "workflow.recovering", info, map[string]any{"fromCheckpoint": cp.ID, "after": "suspension"})
+	e.launch(d, info, g, cp)
+	return true
 }
