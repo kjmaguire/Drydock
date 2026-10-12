@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -133,6 +134,23 @@ type GitHubIssue struct {
 	Labels      []string
 	Updated     time.Time
 	PullRequest bool
+	// Closed marks a closed issue. Closing an issue on GitHub updates its updated_at, so set Updated to the close time.
+	Closed bool
+}
+
+func hasAll(have, want []string) bool {
+	for _, w := range want {
+		found := false
+		for _, h := range have {
+			if strings.EqualFold(strings.TrimSpace(w), h) {
+				found = true
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // GitHub is the GitHub REST fixture for the calls gh makes on Drydock's behalf: GET /user, GET /user/repos, GET
@@ -175,7 +193,11 @@ func (g *GitHub) Server() http.Handler {
 			writeJSON(w, 200, []any{map[string]any{"full_name": g.Repo, "name": g.Repo, "owner": map[string]any{"login": g.Login}}})
 		case "/repos/" + g.Repo + "/issues":
 			q := r.URL.Query()
-			args := map[string]any{"since": q.Get("since"), "labels": q.Get("labels"), "page": q.Get("page"), "sort": q.Get("sort")}
+			args := map[string]any{"since": q.Get("since"), "labels": q.Get("labels"), "page": q.Get("page"), "sort": q.Get("sort"), "state": q.Get("state")}
+			state := q.Get("state")
+			if state == "" {
+				state = "open" // GitHub's default
+			}
 			if f := g.count("issues", args, true); f != nil {
 				writeFail(w, f)
 				return
@@ -196,15 +218,30 @@ func (g *GitHub) Server() http.Handler {
 						continue
 					}
 				}
+				st := "open"
+				if is.Closed {
+					st = "closed"
+				}
+				if state != "all" && state != st {
+					continue
+				}
+				if l := q.Get("labels"); l != "" && !hasAll(is.Labels, strings.Split(l, ",")) {
+					continue
+				}
 				labels := []any{}
 				for _, l := range is.Labels {
 					labels = append(labels, map[string]any{"name": l})
 				}
-				m := map[string]any{"number": is.Number, "title": is.Title, "body": is.Body, "state": "open", "labels": labels,
+				m := map[string]any{"number": is.Number, "title": is.Title, "body": is.Body, "state": st, "labels": labels,
 					"html_url": "https://github.com/" + g.Repo + "/issues/" + strconv.Itoa(is.Number), "user": map[string]any{"login": "someone"},
 					"created_at": is.Updated.Add(-time.Hour).UTC().Format(time.RFC3339), "updated_at": is.Updated.UTC().Format(time.RFC3339)}
 				if is.PullRequest {
 					m["pull_request"] = map[string]any{"url": "x"}
+				}
+				if is.Closed {
+					m["closed_at"] = is.Updated.UTC().Format(time.RFC3339)
+				} else {
+					m["closed_at"] = nil
 				}
 				out = append(out, m)
 			}

@@ -13,8 +13,9 @@ import (
 )
 
 // githubAdapter reads a repository's issues through the user's own GitHub CLI (gh api, internal/git/host): the gh sign-in is
-// the credential, and Drydock never stores or sees a GitHub token. Endpoint: GET /repos/{owner}/{repo}/issues (state=open,
-// sort=updated, direction=desc, since, labels, per_page at most 100, page numbers). Pull requests come back from that endpoint
+// the credential, and Drydock never stores or sees a GitHub token. Endpoint: GET /repos/{owner}/{repo}/issues (state=open on
+// the first sweep, state=all with since afterwards so a close arrives as an update; sort=updated, direction=desc, labels,
+// per_page at most 100, page numbers). Pull requests come back from that endpoint
 // too and are skipped. An imported issue becomes a task whose reference is "#<number>", so its pull request says "Closes #n".
 type githubAdapter struct{}
 
@@ -23,7 +24,7 @@ func (githubAdapter) Kind() string { return KindGitHub }
 func (githubAdapter) FullSweep() bool { return false }
 
 func (githubAdapter) Endpoints() []string {
-	return []string{"gh api GET /repos/{owner}/{repo}/issues?state=open&sort=updated&direction=desc&since=&labels=&per_page=&page="}
+	return []string{"gh api GET /repos/{owner}/{repo}/issues?state=open|all&sort=updated&direction=desc&since=&labels=&per_page=&page="}
 }
 
 func (githubAdapter) Ops() []OpInfo { return nil }
@@ -103,8 +104,11 @@ func (githubAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
+	// The first sweep (and a full one) lists the open issues; after that, every issue updated since the watermark, closed
+	// ones included: closing an issue updates it, so a close arrives as an update and takes the item out of the open set.
 	v := url.Values{"state": {"open"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {strconv.Itoa(limit)}, "page": {strconv.Itoa(page)}}
 	if q.Since > 0 {
+		v.Set("state", "all")
 		v.Set("since", time.UnixMilli(q.Since).UTC().Format(time.RFC3339))
 	}
 	if l := q.Config["labels"]; l != "" {
@@ -137,7 +141,7 @@ func (githubAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 		}
 		it := RawItem{ExternalID: fmt.Sprintf("%s#%d", strings.ToLower(repo), r.Number), Kind: ItemIssue, IssueRef: fmt.Sprintf("#%d", r.Number), URL: r.URL,
 			Title: r.Title, Body: r.Body, State: r.State, Created: millis(r.CreatedAt), Updated: millis(r.UpdatedAt), Etag: r.UpdatedAt,
-			Meta: map[string]any{"repo": repo, "author": r.User.Login}}
+			Meta: map[string]any{"repo": repo, "author": r.User.Login}, Closed: r.State == "closed"}
 		for _, l := range r.Labels {
 			it.Labels = append(it.Labels, l.Name)
 		}

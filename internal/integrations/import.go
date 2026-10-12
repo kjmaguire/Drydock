@@ -55,6 +55,11 @@ func (s *Service) Import(ctx context.Context, by, itemID, projectOverride string
 	if it.Risk >= RiskThreshold {
 		return TaskResult{}, errf(ErrNotImportable, "%s has a high injection risk (%s): it is not turned into a task", it.IssueRef, strings.Join(it.RiskFlags, ", "))
 	}
+	// a gone item is closed upstream (a closed GitHub issue, a resolved Sentry issue) or out of the project's scope: it is not
+	// open work any more (one that already has a task answers with that task below)
+	if it.Gone && it.TaskID == "" {
+		return TaskResult{}, errf(ErrNotImportable, "%s is closed upstream or no longer in this project's scope", it.IssueRef)
+	}
 	tr, err := s.createTask(ctx, by, it, project, nil)
 	if errors.Is(err, ErrAlreadyImported) {
 		return tr, nil

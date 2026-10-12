@@ -94,7 +94,7 @@ func (s *Service) buildRecord(ctx context.Context, c Connection, a Assignment, r
 		IntegrationID: c.ID, AssignmentID: a.ID, Source: c.Kind, ProjectID: a.ProjectID, ExternalID: clampText(raw.ExternalID, 200), Kind: raw.Kind, IssueRef: ref, URL: validHTTPURL(raw.URL),
 		Title: title.Text, Excerpt: excerpt, State: s.san.Line(ctx, raw.State, 40).Text, Labels: labels, Assignee: s.san.Line(ctx, raw.Assignee, 80).Text, Priority: prio,
 		ParentExternalID: clampText(s.san.Line(ctx, raw.Parent, 200).Text, 200), Meta: meta, ExternalCreated: raw.Created, ExternalUpdated: raw.Updated, Etag: clampText(raw.Etag, 80),
-		Risk: risk, RiskFlags: flags, Redactions: redactions, Truncated: bc.Truncated || title.Truncated, Untrusted: true,
+		Risk: risk, RiskFlags: flags, Redactions: redactions, Truncated: bc.Truncated || title.Truncated, Untrusted: true, Gone: raw.Closed,
 	}
 	return ItemRecord{Item: it, Body: bc.Text}, rules
 }
@@ -374,6 +374,7 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 		res.New += pr.New
 		res.Changed += pr.Changed
 		res.Unchanged += pr.Unchanged
+		res.Gone += pr.Closed
 		for i, it := range pr.Touched {
 			s.emit(ctx, EventItemUpserted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "itemId": it.ID, "externalId": it.ExternalID, "kind": it.Kind, "hash": it.ContentHash, "new": pr.Outcomes[i] == Inserted})
 			if it.Redactions > 0 {
@@ -398,7 +399,7 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 			if err != nil {
 				return res, err
 			}
-			res.Gone = n
+			res.Gone += n
 		}
 		cur.SweepStart, cur.SweepSeen = 0, 0
 		if err := s.st.PutCursor(ctx, cur); err != nil {

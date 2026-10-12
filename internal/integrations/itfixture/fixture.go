@@ -401,6 +401,15 @@ func LinearForbidden() Fail {
 	return Fail{Status: 400, Body: `{"errors":[{"message":"Forbidden","extensions":{"type":"forbidden","code":"FORBIDDEN","userPresentableMessage":"You do not have access to this team."}}]}`}
 }
 
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 func dig(m map[string]any, keys ...string) string {
 	var cur any = m
 	for _, k := range keys {
@@ -736,9 +745,19 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 		if want["-1"] {
 			slugs = map[string]bool{}
 		}
+		// the status terms of Sentry's search syntax (is:unresolved, is:resolved, is:ignored); other terms are not modelled
+		status := ""
+		for _, term := range strings.Fields(q.Get("query")) {
+			if strings.HasPrefix(term, "is:") {
+				status = strings.TrimPrefix(term, "is:")
+			}
+		}
 		all := make([]SentryIssue, 0, len(s.issues))
 		for _, i := range s.issues {
 			if len(slugs) > 0 && !slugs[i.Project] {
+				continue
+			}
+			if st := firstNonEmpty(i.Status, "unresolved"); status != "" && st != status {
 				continue
 			}
 			all = append(all, i)
@@ -810,6 +829,12 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 		s.count("update", nil, false)
 		s.mu2.Lock()
 		s.Updates = append(s.Updates, map[string]any{"organization": s.Org, "issueId": id, "status": body["status"]})
+		if is, ok := s.issues[id]; ok {
+			if st, _ := body["status"].(string); st != "" {
+				is.Status = st // like Sentry: the status changes, lastSeen does not
+				s.issues[id] = is
+			}
+		}
 		s.mu2.Unlock()
 		writeJSON(w, 200, map[string]any{"status": body["status"]})
 	default:

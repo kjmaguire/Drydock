@@ -21,10 +21,14 @@ type sentryAdapter struct{}
 
 func (sentryAdapter) Kind() string { return KindSentry }
 
-func (sentryAdapter) FullSweep() bool { return false }
+// FullSweep: every sync walks the whole query (by default is:unresolved), and issues missing from a complete walk are gone.
+// Sentry's issue search has no filter or sort by the time an issue's status changed (sort is date = lastSeen, new, freq,
+// user, trends or inbox), and resolving an issue does not change its lastSeen, so a walk that stops at a lastSeen watermark
+// would never see a resolve; the unresolved set itself is what tells which issues are still open.
+func (sentryAdapter) FullSweep() bool { return true }
 
 func (sentryAdapter) Endpoints() []string {
-	return []string{"GET /api/0/organizations/{org}/issues/?project=&query=&sort=date&limit= (Link cursors)", "GET /api/0/organizations/{org}/issues/{id}/events/latest/ (on import)"}
+	return []string{"GET /api/0/organizations/{org}/issues/?project=<id>&query=&sort=date&limit= (Link cursors; every page each sync)", "GET /api/0/organizations/{org}/issues/{id}/events/latest/ (on import)"}
 }
 
 func (sentryAdapter) Ops() []OpInfo {
@@ -244,9 +248,11 @@ func (sentryAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 		if as := asMap(m["assignedTo"]); as != nil {
 			assignee = str(as["name"])
 		}
+		status := str(m["status"])
 		pg.Items = append(pg.Items, RawItem{
 			ExternalID: id, Kind: ItemErrorEvent, IssueRef: short, URL: str(m["permalink"]), Title: str(m["title"]), Body: body,
-			State: str(m["status"]), Assignee: assignee, Priority: level,
+			// a query that also lists resolved or ignored issues: they are not open work
+			State: status, Assignee: assignee, Priority: level, Closed: status == "resolved" || status == "ignored",
 			Created: millis(m["firstSeen"]), Updated: millis(last), Etag: last,
 			Meta: map[string]any{"level": level, "events": events, "users": users, "project": proj, "culprit": str(m["culprit"]),
 				"firstSeen": str(m["firstSeen"]), "lastSeen": last, "priority": str(m["priority"])},

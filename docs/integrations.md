@@ -260,7 +260,7 @@ than 30 s fails as rate limited and the sync's backoff takes over (at least the 
 | Official SDK | TypeScript only (`@linear/sdk`, MIT) | JavaScript only (`@notionhq/client` 5.27.0, MIT) | none for the API (`sentry-go` sends events) | none | none needed: `gh` |
 | Auth | personal API key as `Authorization: <key>`; OAuth 2 authorization code with PKCE (no client secret), rotating refresh token, `Bearer` | internal integration secret as `Bearer` (public OAuth needs a client secret: not offered) | user, organization or internal-integration auth token as `Bearer`; OAuth device flow (RFC 8628) | OAuth 2 client credentials only: `POST <host>/api/oauth/token`, Basic client id and secret; the access token is kept in memory and bought again on a 401 | the user's `gh` sign-in |
 | Identity (Test) | `viewer { name displayName }`, `organization { name urlKey }` | `GET /v1/users/me` (bot name, `workspace_name`) | `GET /api/0/` (`user`, `auth.scopes`), `GET /api/0/organizations/` | `GET /workspace`; scopes from the token answer | `GET /user` |
-| Sync | `issues(first, after, filter: {team.key, project.id, updatedAt > watermark}, orderBy: updatedAt)`; Relay `pageInfo` | `POST /v1/data_sources/{id}/query` (sort and filter on `last_edited_time`) or `POST /v1/search` (pages, newest first); `GET /v1/pages/{id}/markdown` for the body | `GET /organizations/{org}/issues/?project=<id>&query=&sort=date&limit=` (at most 100), `Link` header cursors (`rel="next"; results="true"`); `project` is the numeric project id (the API takes an array of integers, not a slug) | `GET /issues/export?format=json&filter_status=open[&filter_code_repo_id]`: everything at once, a full sweep each time | `GET /repos/{o}/{r}/issues?state=open&sort=updated&direction=desc&since=&labels=&per_page=&page=`, pull requests skipped |
+| Sync | `issues(first, after, filter: {team.key, project.id, updatedAt > watermark}, orderBy: updatedAt)`; Relay `pageInfo` | `POST /v1/data_sources/{id}/query` (sort and filter on `last_edited_time`) or `POST /v1/search` (pages, newest first); `GET /v1/pages/{id}/markdown` for the body | `GET /organizations/{org}/issues/?project=<id>&query=&sort=date&limit=` (at most 100), `Link` header cursors (`rel="next"; results="true"`); `project` is the numeric project id (the API takes an array of integers, not a slug) | `GET /issues/export?format=json&filter_status=open[&filter_code_repo_id]`: everything at once, a full sweep each time | `GET /repos/{o}/{r}/issues?state=open&sort=updated&direction=desc&labels=&per_page=&page=` on the first sweep, then `state=all&since=<watermark>` so a close arrives as an update; pull requests skipped |
 | Writes (approval-gated) | `commentCreate`; `issueUpdate(stateId)` after reading the team's states | `POST /v1/comments`; `POST /v1/pages` (Markdown content under a parent page) | `PUT /organizations/{org}/issues/{id}/` status resolved or ignored | `PUT /issues/{id}/ignore`, `/unignore`, `/snooze` (`snooze_until`), `/unsnooze` | none here |
 | Rate limit in the code | 2,500 requests/h per user with an API key, 5,000/h with OAuth (burst 50); `X-RateLimit-Requests-*` and `X-RateLimit-Complexity-*` remaining 0 holds until the reset (epoch ms); a `ratelimited` GraphQL error is a rate limit | 3 requests/s average (burst 3); 429 `rate_limited` with `Retry-After` | no published numbers: `X-Sentry-Rate-Limit-Remaining` 0 holds until `X-Sentry-Rate-Limit-Reset` (epoch s); 429 `Retry-After` | 20 requests/min per workspace (burst 5); 429 `Retry-After` | 5,000 requests/h for a signed-in user; `gh` errors map to a rate-limit backoff |
 | Item reference | `ENG-123` | none (a requirements source) | the short id | `AIK-<id>` | `#<number>` (so the pull request says "Closes #n") |
@@ -286,6 +286,24 @@ imports (default: the project's origin remote; any repository `gh` can see can b
 sync into `external_items` like any other kind (cleaned, scored, quoted; a high-risk issue is never imported) and an import
 creates a BACKLOG task with the reference `#<number>`. The Pull Requests screen's direct issue import (`github.issues`,
 `github.importIssue`) is unchanged.
+
+### Closed upstream
+
+An item closed upstream leaves the open set: it is stored gone, so the item list does not offer it, Import refuses it ("closed
+upstream or no longer in this project's scope") and rules skip it; an item closed before Drydock ever stored it is not stored.
+If it is reopened it comes back.
+
+- **GitHub**: the first sweep lists the open issues; after that each sync lists every issue updated since the watermark,
+  closed ones included (`state=all&since=`). Closing an issue updates it, so the close arrives as an update with
+  `state: closed`. A full sync lists the open issues again and marks the missing ones gone.
+- **Sentry**: every sync walks the whole query (default `is:unresolved`, all pages, resuming across syncs if it is long) and
+  the issues missing from a complete walk are gone. Sentry's issue search has no filter or sort by the time an issue's status
+  changed (`sort` is `date` = last seen, `new`, `freq`, `user`, `trends` or `inbox`) and resolving an issue does not change its
+  last-seen time, so a walk that stopped at a last-seen watermark would never see a resolve. With a query that also lists
+  resolved or ignored issues, those are stored gone too. The cost is one walk of the open issues per poll (100 per request,
+  every 5 minutes by default).
+- Linear and Notion are unchanged: a done or cancelled Linear issue and a trashed Notion page stay listed with their state
+  (`Done`, `in_trash`), which rules can test.
 
 ### Failures: the connection and its assignments
 

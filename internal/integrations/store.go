@@ -259,6 +259,8 @@ const (
 	Unchanged UpsertOutcome = iota
 	Inserted
 	Updated
+	// Skipped is a closed item that was never stored: it is not stored now either.
+	Skipped
 )
 
 const itemCols = `id,integration_id,assignment_id,source,project_id,external_id,kind,issue_ref,url,title,excerpt,body_ref,state,labels_json,assignee,priority,parent_external_id,meta_json,
@@ -294,17 +296,21 @@ func (s *Store) bodyPath(integrationID, itemID string) string {
 	return filepath.Join(s.BodyDir, integrationID, itemID+".txt")
 }
 
-// upsertTx stores one sanitized item inside tx.
-func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (Item, UpsertOutcome, error) {
-	it := rec.Item
+// upsertTx stores one sanitized item inside tx. An item marked Gone (closed upstream) is stored gone, and is not stored at all
+// when it was never stored; closedNow reports that this upsert took a stored, open item out of the open set.
+func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (it Item, out UpsertOutcome, closedNow bool, err error) {
+	it = rec.Item
 	it.ContentHash = ContentHash(it, rec.Body)
 	now := s.now()
 	var id, oldHash string
-	err := tx.QueryRowContext(ctx, `SELECT id, content_hash FROM external_items WHERE integration_id=? AND assignment_id=? AND external_id=?`, it.IntegrationID, it.AssignmentID, it.ExternalID).Scan(&id, &oldHash)
+	var oldGone int
+	err = tx.QueryRowContext(ctx, `SELECT id, content_hash, gone FROM external_items WHERE integration_id=? AND assignment_id=? AND external_id=?`, it.IntegrationID, it.AssignmentID, it.ExternalID).Scan(&id, &oldHash, &oldGone)
 	lb, _ := json.Marshal(nzs(it.Labels))
 	mb, _ := json.Marshal(it.Meta)
 	fb, _ := json.Marshal(nzs(it.RiskFlags))
 	switch {
+	case errors.Is(err, sql.ErrNoRows) && it.Gone:
+		return it, Skipped, false, nil // closed upstream before Drydock ever stored it: nothing to offer or to keep
 	case errors.Is(err, sql.ErrNoRows):
 		it.ID = ids.New("ext")
 		if rec.Body != "" && s.BodyDir != "" {
@@ -315,23 +321,24 @@ func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (Item,
 			it.ID, it.IntegrationID, it.AssignmentID, it.Source, it.ProjectID, it.ExternalID, it.Kind, it.IssueRef, it.URL, it.Title, it.Excerpt, it.BodyRef, it.State, string(lb), it.Assignee, it.Priority,
 			it.ParentExternalID, string(mb), it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, it.FetchedAt, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), "", "", 0, 0, 1)
 		it.Version = 1
-		return it, Inserted, err
+		return it, Inserted, false, err
 	case err != nil:
-		return it, Unchanged, err
+		return it, Unchanged, false, err
 	}
 	it.ID = id
+	closedNow = it.Gone && oldGone == 0
 	if oldHash == it.ContentHash {
-		_, err := tx.ExecContext(ctx, `UPDATE external_items SET fetched_at=?, gone=0 WHERE id=?`, now, id)
-		return it, Unchanged, err
+		_, err := tx.ExecContext(ctx, `UPDATE external_items SET fetched_at=?, gone=? WHERE id=?`, now, b2i(it.Gone), id)
+		return it, Unchanged, closedNow, err
 	}
 	if rec.Body != "" && s.BodyDir != "" {
 		it.BodyRef = s.writeBody(it.IntegrationID, id, rec.Body)
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE external_items SET project_id=?, kind=?, issue_ref=?, url=?, title=?, excerpt=?, body_ref=CASE WHEN ?<>'' THEN ? ELSE body_ref END, state=?, labels_json=?, assignee=?, priority=?,
-		parent_external_id=?, meta_json=?, external_created_at=?, external_updated_at=?, etag=?, content_hash=?, fetched_at=?, risk=?, risk_flags=?, redactions=?, truncated=?, gone=0, version=version+1 WHERE id=?`,
+		parent_external_id=?, meta_json=?, external_created_at=?, external_updated_at=?, etag=?, content_hash=?, fetched_at=?, risk=?, risk_flags=?, redactions=?, truncated=?, gone=?, version=version+1 WHERE id=?`,
 		it.ProjectID, it.Kind, it.IssueRef, it.URL, it.Title, it.Excerpt, it.BodyRef, it.BodyRef, it.State, string(lb), it.Assignee, it.Priority, it.ParentExternalID, string(mb),
-		it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, now, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), id)
-	return it, Updated, err
+		it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, now, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), b2i(it.Gone), id)
+	return it, Updated, closedNow, err
 }
 
 func nzs(s []string) []string {
@@ -386,6 +393,7 @@ type PageCommit struct {
 // PageResult counts what a commit did and lists the items that were new or changed.
 type PageResult struct {
 	New, Changed, Unchanged int
+	Closed                  int // stored open items that this page says are closed upstream (now gone)
 	Touched                 []Item
 	Outcomes                []UpsertOutcome
 }
@@ -401,11 +409,16 @@ func (s *Store) CommitPage(ctx context.Context, pc PageCommit) (PageResult, erro
 			}
 		}
 		for _, rec := range pc.Items {
-			it, out, err := s.upsertTx(ctx, tx, rec)
+			it, out, closedNow, err := s.upsertTx(ctx, tx, rec)
 			if err != nil {
 				return err
 			}
+			if closedNow {
+				res.Closed++
+			}
 			switch out {
+			case Skipped:
+				continue
 			case Inserted:
 				res.New++
 			case Updated:
