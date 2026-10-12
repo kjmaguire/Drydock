@@ -22,7 +22,8 @@ type in struct {
 
 // Run serves MCP over stdin and stdout until the client disconnects and returns the process exit code.
 func Run() int {
-	srv := sdk.NewServer(&sdk.Implementation{Name: "drydock-test-server", Version: "1"}, nil)
+	srv := sdk.NewServer(&sdk.Implementation{Name: "drydock-test-server", Title: "Drydock test server", Version: "1"},
+		&sdk.ServerOptions{Instructions: "A test double: echo returns its text."})
 	txt := func(s string) *sdk.CallToolResult {
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: s}}}
 	}

@@ -40,7 +40,7 @@ type Server struct {
 func New() *Server {
 	f := &Server{ttl: 3600, clients: map[string]string{}, codes: map[string][]string{}}
 	mux := http.NewServeMux()
-	mcpSrv := sdk.NewServer(&sdk.Implementation{Name: "oauthy", Version: "1"}, nil)
+	mcpSrv := sdk.NewServer(&sdk.Implementation{Name: "oauthy", Title: "OAuth test double", Version: "1"}, nil)
 	type in struct{}
 	sdk.AddTool(mcpSrv, &sdk.Tool{Name: "whoami", Description: "who is signed in"}, func(ctx context.Context, r *sdk.CallToolRequest, _ in) (*sdk.CallToolResult, any, error) {
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "alice"}}}, nil, nil

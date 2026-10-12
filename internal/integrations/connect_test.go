@@ -435,7 +435,7 @@ func TestServerSpecsComeFromTheCatalogAndNeverCarryTheTokenInArgv(t *testing.T) 
 		t.Fatalf("%+v", sen)
 	}
 	aik, _ := integrations.ServerSpecFor(cat, integrations.Connection{Kind: integrations.KindAikido, CredentialRef: "integrations/int_y/token"}, false)
-	if aik.Transport != mcp.TransportStdio || aik.Command.SecretEnv["AIKIDO_API_KEY"] != "integrations/int_y/token" || aik.License.Bundled || aik.Command.Pin != "@aikidosec/mcp@1.0.27" {
+	if aik.Transport != mcp.TransportStdio || aik.Command.SecretEnv["AIKIDO_API_KEY"] != "integrations/int_y/token" || aik.License.Bundled || aik.Command.Pin != "@aikidosec/mcp@1.0.28" {
 		t.Fatalf("%+v", aik)
 	}
 	for _, a := range aik.Command.Argv {

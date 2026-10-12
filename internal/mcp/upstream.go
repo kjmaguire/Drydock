@@ -39,6 +39,7 @@ type upstream struct {
 	exitInfo proc.ExitInfo
 	stopping bool
 	version  string
+	init     *sdk.InitializeResult // the server's answer to initialize on the current connection
 	tools    []*sdk.Tool
 	restarts int
 	stderr   *tailBuf
@@ -138,7 +139,7 @@ func (u *upstream) connectLocked(ctx context.Context) error {
 					}
 					return "", err
 				}
-				return spec.Auth.Scheme + " " + tok, nil
+				return "Bearer " + tok, nil // OAuth access tokens are bearer tokens (RFC 6750), whatever a pasted token's scheme is
 			}
 		}
 		hc := &http.Client{
@@ -190,6 +191,7 @@ func (u *upstream) connectLocked(ctx context.Context) error {
 	if ir := sess.InitializeResult(); ir != nil && ir.ServerInfo != nil {
 		u.setVersion(ir.ServerInfo.Name + "@" + ir.ServerInfo.Version)
 	}
+	u.init = sess.InitializeResult()
 	pid := 0
 	restarts := u.restarts
 	if p != nil {
@@ -276,6 +278,9 @@ func (u *upstream) stop(reason string) {
 func (u *upstream) authValue() string {
 	if u.token == "" {
 		return ""
+	}
+	if u.spec.Auth.Kind == AuthPKCE || u.spec.Auth.Kind == AuthDCR {
+		return "Bearer " + u.token // an OAuth access token is a bearer token, whatever scheme a pasted token would use
 	}
 	if u.spec.Auth.Scheme == "" {
 		return u.token

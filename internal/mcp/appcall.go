@@ -7,6 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // EventAppCall is published for every call the app itself makes to an upstream (as opposed to an agent run's call, which is
@@ -161,4 +165,124 @@ func (a *AppUpstream) Call(ctx context.Context, tool string, args any) (*AppResu
 		"duration_ms": ms(a.g.now().Sub(start)),
 	})
 	return out, err
+}
+
+// ServerIdentity is what a server says about itself in its answer to initialize (serverInfo and instructions). It is the
+// server's own claim, untrusted text: the UI shows it as data, and Drydock never passes the instructions to an agent.
+type ServerIdentity struct {
+	Name            string `json:"name"`
+	Title           string `json:"title,omitempty"`
+	Version         string `json:"version,omitempty"`
+	Description     string `json:"description,omitempty"`
+	WebsiteURL      string `json:"websiteUrl,omitempty"`
+	Instructions    string `json:"instructions,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+}
+
+// Limits on what is kept of a server's self-description.
+const (
+	maxIdentityField        = 200
+	maxIdentityInstructions = 4000
+)
+
+// Identity connects (when needed) and returns the server's serverInfo and instructions, trimmed to sane lengths.
+func (a *AppUpstream) Identity(ctx context.Context) (ServerIdentity, error) {
+	if _, err := a.u.ensure(ctx); err != nil {
+		return ServerIdentity{}, err
+	}
+	a.u.mu.Lock()
+	ir := a.u.init
+	a.u.mu.Unlock()
+	var id ServerIdentity
+	if ir == nil {
+		return id, nil
+	}
+	id.Instructions = clip(ir.Instructions, maxIdentityInstructions)
+	id.ProtocolVersion = clip(ir.ProtocolVersion, 40)
+	if si := ir.ServerInfo; si != nil {
+		id.Name, id.Title, id.Version = clip(si.Name, maxIdentityField), clip(si.Title, maxIdentityField), clip(si.Version, 80)
+		id.Description = clip(si.Description, 1000)
+		if u, err := url.Parse(si.WebsiteURL); err == nil && u.Scheme == "https" && u.Host != "" {
+			id.WebsiteURL = clip(si.WebsiteURL, 300)
+		}
+	}
+	return id, nil
+}
+
+// clip trims s and cuts it to at most n bytes on a rune boundary.
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s + "..."
+}
+
+// Account calls the identity tool spec names and reads who the credential belongs to: the first of spec.Fields found in a JSON
+// answer (at the top level or one object down), else the first line of a text answer. The answer is outside text: the result
+// is a single short line, and the caller scans it before keeping it.
+func (a *AppUpstream) Account(ctx context.Context, spec IdentitySpec) (string, error) {
+	args := spec.Args
+	if args == nil {
+		args = map[string]any{}
+	}
+	r, err := a.Call(ctx, spec.Tool, args)
+	if err != nil {
+		return "", err
+	}
+	if r.IsError {
+		return "", fmt.Errorf("%s answered with an error", spec.Tool)
+	}
+	return accountFrom(r.Structured, r.Text, spec.Fields), nil
+}
+
+func accountFrom(structured json.RawMessage, text string, fields []string) string {
+	var v any
+	if len(structured) == 0 || json.Unmarshal(structured, &v) != nil {
+		v = nil
+		t := strings.TrimSpace(text)
+		if strings.HasPrefix(t, "{") {
+			_ = json.Unmarshal([]byte(t), &v)
+		}
+	}
+	pick := func(m map[string]any) string {
+		for _, f := range fields {
+			if s, ok := m[f].(string); ok && strings.TrimSpace(s) != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	if m, ok := v.(map[string]any); ok {
+		if s := pick(m); s != "" {
+			return oneLine(s)
+		}
+		for _, x := range m {
+			if inner, ok := x.(map[string]any); ok {
+				if s := pick(inner); s != "" {
+					return oneLine(s)
+				}
+			}
+		}
+		return ""
+	}
+	return oneLine(text)
+}
+
+func oneLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+	return clip(s, 120)
 }

@@ -121,6 +121,34 @@ type ServerSpec struct {
 	// Template (extension): a user-install template that is never started unless the project enables it explicitly.
 	Template bool   `yaml:"template,omitempty"`
 	Notes    string `yaml:"notes,omitempty"`
+
+	// The connector gallery (extension, decision P43): how the server is presented to a human who connects it.
+
+	// Publisher is who publishes the server ("GitHub", "Cloudflare"); Official is true when that is the service's own vendor.
+	Publisher string `yaml:"publisher,omitempty"`
+	Official  bool   `yaml:"official,omitempty"`
+	// Brand is the logo the card shows (a key of the UI's brand marks: github, cloudflare, microsoft, ...).
+	Brand string `yaml:"brand,omitempty"`
+	// Group puts several servers of one vendor under one heading (Cloudflare's documentation and API servers).
+	Group string `yaml:"group,omitempty"`
+	// Summary is one line on what the server gives agents, for the card.
+	Summary string `yaml:"summary,omitempty"`
+	// DocsURL is the vendor's own page the entry was checked against (shown on the card as "Docs").
+	DocsURL string `yaml:"docs_url,omitempty"`
+	// TokenHelp says where the human gets a token for bearer auth or a template's secret variable.
+	TokenHelp string `yaml:"token_help,omitempty"`
+	// Identity names a read-only tool that reports the signed-in account, so a connected card can say "Connected as X".
+	Identity *IdentitySpec `yaml:"identity,omitempty"`
+	// Integration names the Drydock integration of the same brand (docs/integrations.md), for a link from the card.
+	Integration string `yaml:"integration,omitempty"`
+}
+
+// IdentitySpec is a tool that answers who the credential belongs to. Fields are read in order from its JSON answer; a plain
+// text answer is used as it is (first line).
+type IdentitySpec struct {
+	Tool   string         `yaml:"tool"`
+	Args   map[string]any `yaml:"args,omitempty"`
+	Fields []string       `yaml:"fields,omitempty"`
 }
 
 // CommandSpec is a stdio server command.
@@ -431,6 +459,18 @@ func (s *ServerSpec) Validate(shipped bool) error {
 		names[t.Name] = true
 		if t.InputSchema != nil && t.InputSchema["type"] != "object" {
 			add("tool %q input_schema must have type object", t.Name)
+		}
+	}
+	if s.Identity != nil {
+		if s.Identity.Tool == "" || strings.Contains(s.Identity.Tool, ToolSeparator) {
+			add("identity.tool %q is invalid", s.Identity.Tool)
+		} else if matchAny(s.SideEffectsTools, s.Identity.Tool) || (s.Trust == TrustPrivateData && !matchAny(s.ReadOnlyTools, s.Identity.Tool)) {
+			add("identity.tool %q must be a read-only tool of the server", s.Identity.Tool)
+		}
+	}
+	if s.DocsURL != "" {
+		if u, err := url.Parse(s.DocsURL); err != nil || u.Scheme != "https" || u.Host == "" {
+			add("docs_url %q must be an https address", s.DocsURL)
 		}
 	}
 	if strings.HasPrefix(s.License.Content, "CC-BY") && strings.TrimSpace(s.License.Attribution) == "" {

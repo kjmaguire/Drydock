@@ -89,6 +89,40 @@ func TestBuiltinCatalogLoadsAndMatchesTheDocs(t *testing.T) {
 	if !get("aikido").Template || !strings.HasPrefix(get("aikido").License.Server, "AGPL") {
 		t.Error("aikido template")
 	}
+	if tools(cf) != "search_cloudflare_documentation" {
+		t.Errorf("cfdocs offers one tool now: %s", tools(cf))
+	}
+	// decision P43: the facts re-checked against the vendors' own sources
+	cfa := get("cfapi")
+	if cfa.URL != "https://mcp.cloudflare.com/mcp" || cfa.Auth.Kind != AuthDCR || cfa.Trust != TrustPrivateData || !matchAny(cfa.SideEffectsTools, "execute") ||
+		cfa.isSideEffect("whoami", false, false) || cfa.Identity == nil || cfa.Identity.Tool != "whoami" || cfa.Group != "Cloudflare" || get("cfdocs").Group != "Cloudflare" {
+		t.Errorf("cfapi: %+v", cfa)
+	}
+	if s := get("sentry"); s.Auth.Kind != AuthDCR || s.Auth.Scheme != "Sentry-Bearer" {
+		t.Errorf("hosted Sentry signs in with OAuth (dynamic registration); a pasted token keeps Sentry-Bearer: %+v", s.Auth)
+	}
+	if s := get("gh"); s.Identity == nil || s.Identity.Tool != "get_me" || s.Auth.Kind != AuthBearer {
+		t.Errorf("gh: %+v", s)
+	}
+	gl := get("ghlocal")
+	if !gl.Template || gl.Transport != TransportStdio || gl.Command.SecretEnv["GITHUB_PERSONAL_ACCESS_TOKEN"] == "" || !contains(gl.Command.Argv, "--read-only") || gl.License.Server != "MIT" {
+		t.Errorf("ghlocal: %+v", gl)
+	}
+	if a := get("aikido"); a.Command.Pin != "@aikidosec/mcp@1.0.28" || !contains(a.Command.Argv, "@aikidosec/mcp@1.0.28") {
+		t.Errorf("aikido pin: %+v", a.Command)
+	}
+	if s := get("sentryx"); !contains(s.Command.Argv, "@sentry/mcp-server@0.42.0") || s.Command.SecretEnv["SENTRY_ACCESS_TOKEN"] == "" {
+		t.Errorf("sentryx must pin an exact version: %+v", s.Command)
+	}
+	// every card has what the gallery shows
+	for _, s := range c.Servers {
+		if s.Publisher == "" || s.Brand == "" || s.Summary == "" || !strings.HasPrefix(s.DocsURL, "https://") || !s.Official {
+			t.Errorf("%s: gallery fields publisher %q brand %q summary %q docs %q official %v", s.ID, s.Publisher, s.Brand, s.Summary, s.DocsURL, s.Official)
+		}
+		if (s.Auth.Kind == AuthBearer && !s.Auth.Optional || s.Template) && s.TokenHelp == "" && s.Command != nil && len(s.Command.SecretEnv) > 0 {
+			t.Errorf("%s: a token is asked for without saying where to get it", s.ID)
+		}
+	}
 	// the local Notion server is not in the catalog at all
 	for _, s := range c.Servers {
 		if s.Transport == TransportStdio && strings.Contains(strings.Join(s.Command.Argv, " "), "notion") {
@@ -150,6 +184,16 @@ func TestCatalogValidationRejectsBadEntries(t *testing.T) {
 		"cc-by needs attribution": func(s *ServerSpec) { s.License.Content = "CC-BY-4.0" },
 		"bundle FSL":              func(s *ServerSpec) { s.License = LicenseSpec{Server: "FSL-1.1-Apache-2.0", Bundled: true} },
 		"bundle AGPL":             func(s *ServerSpec) { s.License = LicenseSpec{Server: "AGPL-3.0", Bundled: true} },
+		"docs url not https":      func(s *ServerSpec) { s.DocsURL = "http://example.com/docs" },
+		"identity without tool":   func(s *ServerSpec) { s.Identity = &IdentitySpec{} },
+		"identity is a write tool": func(s *ServerSpec) {
+			s.SideEffectsTools = []string{"me"}
+			s.Identity = &IdentitySpec{Tool: "me"}
+		},
+		"identity of a private server not read-only": func(s *ServerSpec) {
+			s.Trust, s.DataClass, s.Cache = TrustPrivateData, ContentPrivate, CacheSpec{Scope: "project"}
+			s.Identity = &IdentitySpec{Tool: "me"}
+		},
 	}
 	for name, mod := range cases {
 		s := base()
