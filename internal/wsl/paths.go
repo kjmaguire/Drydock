@@ -95,6 +95,9 @@ func (p Paths) ToLinux(win string) (string, error) {
 		if r == "" {
 			return "", fmt.Errorf("%w: the distro's mount root for Windows drives is not known", ErrNotMapped)
 		}
+		if strings.Contains(win, "~") {
+			win = longPath(win) // a short name (RUNNER~1) means nothing to the distro
+		}
 		rest := strings.ReplaceAll(win[3:], `\`, "/")
 		return path.Clean(r + strings.ToLower(win[:1]) + "/" + rest), nil
 	}

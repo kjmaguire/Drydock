@@ -161,44 +161,62 @@ type Fake struct {
 // IsStandIn is true. With claude set, the stand-in claude is installed in ~/.local/bin.
 func NewFake(t testing.TB, claude bool, distros ...string) *Fake {
 	t.Helper()
-	if len(distros) == 0 {
-		distros = []string{"Ubuntu"}
-	}
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
+	f, err := Setup(t.TempDir(), self, claude, distros...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// Setup writes a stand-in WSL under dir whose wsl.exe runs the program self as the stand-in (self must call StandIn when
+// IsStandIn is true: a test binary's TestMain, or the e2e harness's main). With claude set, the stand-in claude is installed
+// in the stand-in distro's ~/.local/bin. The first distro is the default ("Ubuntu" when none is named).
+func Setup(dir, self string, claude bool, distros ...string) (*Fake, error) {
+	if len(distros) == 0 {
+		distros = []string{"Ubuntu"}
+	}
 	f := &Fake{Exe: filepath.Join(dir, "wsl"), Home: filepath.Join(dir, "home"), Log: filepath.Join(dir, "wsl.log"), Distros: distros}
 	if err := os.MkdirAll(filepath.Join(f.Home, ".local", "bin"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	profile := "if [ -d \"$HOME/.local/bin\" ]; then PATH=\"$HOME/.local/bin:$PATH\"; fi\n"
-	if err := os.WriteFile(filepath.Join(f.Home, ".profile"), []byte(profile), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// bash -l reads ~/.bash_profile first when it exists; the host's own must not stand in for the stand-in distro's
-	if err := os.WriteFile(filepath.Join(f.Home, ".bash_profile"), []byte(". \"$HOME/.profile\"\n"), 0o644); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	// the stand-in distro's wslpath: only -u of a drive path, under the default mount root
 	wslpath := "#!/bin/sh\n# LABELLED TEST DOUBLE: wslpath of the stand-in distro (internal/wsl/wsltest)\n[ \"$1\" = -u ] || exit 1\n" +
 		"d=$(printf '%s' \"$2\" | cut -c1 | tr 'A-Z' 'a-z'); r=$(printf '%s' \"$2\" | cut -c4- | tr '\\\\' '/')\nprintf '/mnt/%s/%s\\n' \"$d\" \"$r\"\n"
-	if err := os.WriteFile(filepath.Join(f.Home, ".local", "bin", "wslpath"), []byte(wslpath), 0o755); err != nil {
-		t.Fatal(err)
+	files := []struct {
+		path string
+		body []byte
+		mode os.FileMode
+	}{
+		{filepath.Join(f.Home, ".profile"), []byte("if [ -d \"$HOME/.local/bin\" ]; then PATH=\"$HOME/.local/bin:$PATH\"; fi\n"), 0o644},
+		// bash -l reads ~/.bash_profile first when it exists; the host's own must not stand in for the stand-in distro's
+		{filepath.Join(f.Home, ".bash_profile"), []byte(". \"$HOME/.profile\"\n"), 0o644},
+		{filepath.Join(f.Home, ".local", "bin", "wslpath"), []byte(wslpath), 0o755},
 	}
 	if claude {
-		if err := os.WriteFile(filepath.Join(f.Home, ".local", "bin", "claude"), Script(), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		files = append(files, struct {
+			path string
+			body []byte
+			mode os.FileMode
+		}{filepath.Join(f.Home, ".local", "bin", "claude"), Script(), 0o755})
 	}
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	script := fmt.Sprintf("#!/bin/sh\n# LABELLED TEST DOUBLE: the stand-in wsl.exe (internal/wsl/wsltest)\n%s=1 %s=%s %s=%s %s=%s exec %s \"$@\"\n",
 		EnvStandIn, envDistros, q(strings.Join(distros, ",")), envHome, q(f.Home), envLog, q(f.Log), q(self))
-	if err := os.WriteFile(f.Exe, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
+	files = append(files, struct {
+		path string
+		body []byte
+		mode os.FileMode
+	}{f.Exe, []byte(script), 0o755})
+	for _, x := range files {
+		if err := os.WriteFile(x.path, x.body, x.mode); err != nil {
+			return nil, err
+		}
 	}
-	return f
+	return f, nil
 }
 
 // Script is the stand-in claude script with LF line ends whatever the checkout did to it.

@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -71,6 +72,82 @@ func TestGitRunnerTranslatesPathsAndRunsTheDistrosGit(t *testing.T) {
 	}
 	if h := g.HostPath("/home/k/app/.git"); h != `\\wsl.localhost\Ubuntu\home\k\app\.git` {
 		t.Fatal(h)
+	}
+}
+
+// TestRealWSLRepository proves a repository inside a real distro (CI's wsl job sets DRYDOCK_WSL_TEST_DISTRO): opened through
+// \\wsl.localhost with the distro's git, its task worktree is made next to it inside the distro, Drydock's commit and status
+// work, and the distro's own git can use the worktree (its links are Linux paths). It also records what a plain Windows git
+// does with that path when it gets safe.directory on its command line (the fallback of the chokepoint).
+func TestRealWSLRepository(t *testing.T) {
+	distro := os.Getenv("DRYDOCK_WSL_TEST_DISTRO")
+	if runtime.GOOS != "windows" || distro == "" {
+		t.Skip("needs Windows with a WSL distro named in DRYDOCK_WSL_TEST_DISTRO (CI's wsl job)")
+	}
+	ctx := context.Background()
+	h := &wsl.Host{}
+	exe, err := h.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := h.Probe(ctx, distro, "git", []string{"--version"}, nil, true)
+	if err != nil || in.Tool == "" {
+		t.Fatalf("the distro has no git: %+v %v", in, err)
+	}
+	base := "/tmp/drydock-wsl-repo-" + wsl.NewMarker()
+	inDistro := func(dir string, args ...string) string {
+		t.Helper()
+		full := append([]string{"-d", distro, "--cd", dir, "--exec"}, args...)
+		out, err := exec.Command(exe, full...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %v %s", args, err, out)
+		}
+		return string(out)
+	}
+	inDistro("/", "mkdir", "-p", base+"/app")
+	t.Cleanup(func() { _ = exec.Command(exe, "-d", distro, "--exec", "rm", "-rf", base).Run() })
+	inDistro(base+"/app", "/bin/sh", "-c", "git init -q -b main && printf 'hello\\n' > README.md && git add -A && git -c user.name=t -c user.email=t@t commit -q -m init")
+	unc := wsl.UNC(distro, base+"/app")
+	r, err := OpenIn(ctx, unc, wsl.GitRunner{Exe: exe, Paths: in.Paths})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(r.Root, unc) {
+		t.Fatalf("root %s, want %s", r.Root, unc)
+	}
+	parent := r.WorktreeParent(t.TempDir(), "p1")
+	if parent != wsl.UNC(distro, base+"/.drydock-worktrees/p1") {
+		t.Fatalf("the worktree parent is not next to the repository inside the distro: %s", parent)
+	}
+	w, err := r.CreateWorktree(ctx, WorktreeReq{TaskID: "T1", Title: "wsl", Parent: parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.Path, "new.txt"), []byte("written from Windows through \\\\wsl.localhost\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Commit(ctx, w, "add new"); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := r.Status(ctx, w); err != nil || st.Dirty() {
+		t.Fatalf("%+v %v", st, err)
+	}
+	b, _ := os.ReadFile(filepath.Join(w.Path, ".git"))
+	if !strings.HasPrefix(string(b), "gitdir: /") {
+		t.Fatalf("the worktree's link is not a Linux path: %q", b)
+	}
+	// the agent's (and the person's) git inside the distro uses the worktree as it is
+	log := inDistro(base+"/.drydock-worktrees/p1/T1", "git", "log", "--oneline", "-1")
+	if !strings.Contains(log, "add new") {
+		t.Fatalf("the distro's git does not see Drydock's commit: %s", log)
+	}
+	// the fallback: a plain Windows git reaching the repository through \\wsl.localhost, with safe.directory on its own
+	// command line. Recorded, not asserted: Drydock opens a distro repository with the distro's git.
+	plain := &Repo{Root: unc}
+	if out, err := plain.gitUnguarded(ctx, unc, nil, "rev-parse", "--show-toplevel"); err != nil {
+		t.Logf("Windows git with safe.directory on %s: %v", unc, err)
+	} else {
+		t.Logf("Windows git with safe.directory on %s answered %s", unc, strings.TrimSpace(out))
 	}
 }
 
