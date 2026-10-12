@@ -19,13 +19,13 @@ func TestMCPCatalogServersAreAddedToTheLibraryOnce(t *testing.T) {
 		byID[e.ID] = e
 		ids = append(ids, e.ID)
 	}
-	if strings.Join(ids, ",") != "mslearn,cfdocs,gh,ctx7,linear,notion" {
+	if strings.Join(ids, ",") != "mslearn,cfdocs,cfapi,gh,ctx7,linear,notion,sentry" {
 		t.Fatalf("addable entries (http, an auth the library can send): %v", ids)
 	}
 	if ml := byID["mslearn"]; ml.Auth != "none" || ml.URL != "https://learn.microsoft.com/api/mcp" || ml.Description == "" || len(ml.ReadOnlyTools) != 3 || ml.InLibrary || len(ml.RecommendedRoles) == 0 {
 		t.Fatalf("%+v", ml)
 	}
-	if byID["ctx7"].Auth != "bearer" || !byID["ctx7"].AuthOptional || byID["gh"].Auth != "bearer" || byID["gh"].AuthOptional || byID["notion"].Auth != "oauth" || byID["linear"].Auth != "oauth" {
+	if byID["ctx7"].Auth != "bearer" || !byID["ctx7"].AuthOptional || byID["gh"].Auth != "bearer" || byID["gh"].AuthOptional || byID["notion"].Auth != "oauth" || byID["linear"].Auth != "oauth" || byID["sentry"].Auth != "oauth" || byID["cfapi"].Auth != "oauth" {
 		t.Fatalf("auth kinds: %+v", cat)
 	}
 
@@ -68,7 +68,7 @@ func TestMCPCatalogServersAreAddedToTheLibraryOnce(t *testing.T) {
 	if added.Server.HasToken || !strings.Contains(added.Next, "token") || !added.Server.Guard {
 		t.Fatalf("gh: %+v", added)
 	}
-	for _, bad := range []string{"sentry", "aikido", "nope", ""} {
+	for _, bad := range []string{"aikido", "sentryx", "ghlocal", "nope", ""} {
 		if err := a.callErr("mcplib.addFromCatalog", map[string]string{"catalogId": bad}); err == nil {
 			t.Errorf("%q was added", bad)
 		}

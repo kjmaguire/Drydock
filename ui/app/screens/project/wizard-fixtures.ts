@@ -38,11 +38,31 @@ export function prebuilt(id: string, avail: Record<string, boolean> = {}): Prebu
       { adapter: 'codex', model: '', effort: '' },
     ],
     mcp: e.mcp ?? [],
-    skills: Array.from({ length: e.skills ?? 0 }, (_, i) => ({ registry: 'r', name: `skill-${i}`, ref: 'abc' })),
+    skills: skillRefs(e.skills ?? 0),
     tags: [],
-    availability: { adapters, preferredUsable: on('claude'), mcp: (e.mcp ?? []).map((m) => ({ id: m, inLibrary: false })), skills: [] },
+    availability: {
+      adapters,
+      preferredUsable: on('claude'),
+      mcp: (e.mcp ?? []).map((m) => ({ id: m, ...MCP_INFO[m], inLibrary: false })),
+      skills: skillRefs(e.skills ?? 0).map((k, i) => ({
+        ...k,
+        description: `What skill ${i} does, from its SKILL.md.`,
+        license: 'MIT',
+        repo: 'acme/skills',
+        sourceUrl: `https://github.com/acme/skills/tree/${k.ref}/skills/${k.name}`,
+        imported: false,
+        samePin: false,
+      })),
+    },
   };
 }
+
+const skillRefs = (n: number) => Array.from({ length: n }, (_, i) => ({ registry: 'r', name: `skill-${i}`, ref: 'a18ffe2a99448ebff262fc87915b0fd14bab9b70' }));
+
+const MCP_INFO: Record<string, { display: string; publisher: string; brand: string; summary: string; auth: string }> = {
+  'cloudflare-docs': { display: 'Cloudflare Documentation', publisher: 'Cloudflare', brand: 'cloudflare', summary: 'Search the Cloudflare developer documentation.', auth: 'none' },
+  'microsoft-learn': { display: 'Microsoft Learn', publisher: 'Microsoft', brand: 'microsoft', summary: 'Search official Microsoft documentation.', auth: 'none' },
+};
 
 export const CATALOG: PrebuiltAgent[] = Object.keys(ENTRIES).map((id) => prebuilt(id));
 

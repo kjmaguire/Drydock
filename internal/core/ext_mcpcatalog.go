@@ -59,6 +59,37 @@ func loadBuiltinCatalog() (*mcp.Catalog, error) {
 	return builtinCatalog, builtinCatalogErr
 }
 
+// mcpCatalogSource is the catalog this core offers: the built-in one, or the one a test harness configured.
+func (c *Core) mcpCatalogSource() (*mcp.Catalog, error) {
+	if c.cfg.MCPCatalog != nil {
+		return c.cfg.MCPCatalog, nil
+	}
+	return loadBuiltinCatalog()
+}
+
+// catalogIdentity is the identity tool of a catalog entry (nil when the entry has none or the id is not in the catalog).
+func (c *Core) catalogIdentity(catalogID string) *mcp.IdentitySpec {
+	if catalogID == "" {
+		return nil
+	}
+	cat, err := c.mcpCatalogSource()
+	if err != nil {
+		return nil
+	}
+	if s, ok := cat.Get(catalogID); ok {
+		return s.Identity
+	}
+	return nil
+}
+
+// markFromCatalog records which catalog entry a library server is (kept when it already names one).
+func (c *Core) markFromCatalog(ctx context.Context, libraryID, catalogID string) error {
+	return c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET catalog_id=? WHERE id=? AND catalog_id=''`, catalogID, libraryID)
+		return err
+	})
+}
+
 // catalogAuth maps a catalog entry to what the library can do: "" means the library cannot connect it as listed (a stdio
 // template, or a header or scheme other than the Authorization: Bearer the library sends).
 func catalogAuth(s mcp.ServerSpec) string {
@@ -80,7 +111,7 @@ func catalogAuth(s mcp.ServerSpec) string {
 }
 
 func startMCPCatalog(ctx context.Context, c *Core) (map[string]Method, func(), error) {
-	if _, err := loadBuiltinCatalog(); err != nil {
+	if _, err := c.mcpCatalogSource(); err != nil {
 		return nil, nil, err
 	}
 	return map[string]Method{
@@ -117,7 +148,7 @@ func (c *Core) libraryByURL(ctx context.Context, url string) (string, error) {
 }
 
 func (c *Core) mcpCatalog(ctx context.Context) ([]MCPCatalogEntry, error) {
-	cat, err := loadBuiltinCatalog()
+	cat, err := c.mcpCatalogSource()
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +199,7 @@ func (c *Core) addMCPFromCatalog(ctx context.Context, catalogID string) (MCPCata
 	if svc == nil {
 		return MCPCatalogAdded{}, errors.New("MCP servers are not available")
 	}
-	cat, err := loadBuiltinCatalog()
+	cat, err := c.mcpCatalogSource()
 	if err != nil {
 		return MCPCatalogAdded{}, err
 	}
@@ -190,6 +221,9 @@ func (c *Core) addMCPFromCatalog(ctx context.Context, catalogID string) (MCPCata
 	if id, err := c.libraryByURL(ctx, s.URL); err != nil {
 		return MCPCatalogAdded{}, err
 	} else if id != "" {
+		if err := c.markFromCatalog(ctx, id, s.ID); err != nil {
+			return MCPCatalogAdded{}, err
+		}
 		r, err := svc.load(ctx, id)
 		if err != nil {
 			return MCPCatalogAdded{}, err
@@ -210,6 +244,9 @@ func (c *Core) addMCPFromCatalog(ctx context.Context, catalogID string) (MCPCata
 		in.OAuth = &on
 	}
 	if _, err := svc.save(ctx, in); err != nil {
+		return MCPCatalogAdded{}, err
+	}
+	if err := c.markFromCatalog(ctx, id, s.ID); err != nil {
 		return MCPCatalogAdded{}, err
 	}
 	// the catalog's tool declarations stand in until the human (or a first call) discovers the server's real list

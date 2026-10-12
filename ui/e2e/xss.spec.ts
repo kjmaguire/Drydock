@@ -45,7 +45,8 @@ test('message text is inert: no script, no element, no javascript: link, no remo
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__xss)).toBeUndefined();
   expect(dialogs).toEqual([]);
-  expect(requests.filter((u) => u.includes('pixel.png') || u.includes('/x'))).toEqual([]);
+  // the relative <img src=x> would resolve to a path ending in /x (a built chunk named x-<hash>.js is not it)
+  expect(requests.filter((u) => u.includes('pixel.png') || new URL(u).pathname.endsWith('/x'))).toEqual([]);
   expect(page.url()).not.toContain('approve');
 
   // and the text "APPROVED" created no approval: the inbox is still empty

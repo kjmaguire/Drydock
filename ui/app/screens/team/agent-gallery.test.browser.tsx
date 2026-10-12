@@ -4,9 +4,15 @@ import type { PrebuiltApplyReq } from '../../api/types.ts';
 import { byText, cleanup, mount, renderPlain, testServices, waitFor } from '../../test/render.tsx';
 import { CATALOG, prebuilt } from '../project/wizard-fixtures.ts';
 import { AddPrebuilt, appliedLines } from './add-prebuilt.tsx';
-import { AgentGallery, byCategory } from './agent-gallery.tsx';
+import { AgentGallery, byCategory, serversOf, skillsOf } from './agent-gallery.tsx';
 
 afterEach(cleanup);
+
+/** The element, or a throw so waitFor keeps waiting. */
+const must = <T,>(x: T | null | undefined): T => {
+  if (x == null) throw new Error('not there yet');
+  return x;
+};
 
 describe('the prebuilt agents gallery', () => {
   it('groups the agents by category in the catalog order, with role, skills, connectors and CLI availability', () => {
@@ -18,7 +24,10 @@ describe('the prebuilt agents gallery', () => {
     const cf = r.container.querySelector('[data-id="cloudflare-engineer"]')!;
     expect(cf.textContent).toContain('Cloudflare Engineer');
     expect(cf.textContent).toContain('4 skills');
-    expect(cf.textContent).toContain('cloudflare-docs');
+    expect(cf.textContent).toContain('Cloudflare Documentation');
+    expect(cf.textContent).not.toContain('cloudflare-docs');
+    expect(cf.querySelector('[data-testid="prebuilt-skills-chip"]')!.getAttribute('title')).toBe('Skills: skill-0, skill-1, skill-2, skill-3');
+    expect(cf.querySelector('[data-testid="prebuilt-server-chip"]')!.getAttribute('title')).toBe('MCP server Cloudflare Documentation by Cloudflare: Search the Cloudflare developer documentation.');
     expect(cf.textContent).toContain('claude · sonnet');
     expect(cf.textContent).toContain('(installed)');
     expect(r.container.querySelector('[data-id="lead-2"]')!.textContent).toContain('(not installed)');
@@ -29,7 +38,45 @@ describe('the prebuilt agents gallery', () => {
   it('is read-only without onPick (the Library page)', () => {
     const r = renderPlain(<AgentGallery entries={CATALOG} />);
     expect(r.container.querySelectorAll('[data-testid="prebuilt"]').length).toBe(CATALOG.length);
-    expect(r.container.querySelectorAll('button').length).toBe(0);
+    const buttons = Array.from(r.container.querySelectorAll('button')).map((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').trim());
+    expect(buttons.filter((b) => b.startsWith('Add')).length).toBe(0);
+  });
+
+  it('opens an agent to show its model and CLI, each skill with what it does, where it comes from and its license, and its MCP servers by name', async () => {
+    const picked: string[] = [];
+    const r = mount(<AgentGallery entries={CATALOG} onPick={(e) => picked.push(e.id)} />, testServices({}));
+    const cf = r.container.querySelector('[data-id="cloudflare-engineer"]')!;
+    await r.act(() => byText(cf, 'button', 'What Cloudflare Engineer comes with').click());
+    const d = await waitFor(() => must(document.querySelector('[data-testid="prebuilt-details"]')) as HTMLElement, r);
+    expect(d.querySelector('[data-testid="prebuilt-cli"]')!.textContent).toContain('claude');
+    expect(d.querySelector('[data-testid="prebuilt-model"]')!.textContent).toBe('sonnet');
+    const skills = Array.from(d.querySelectorAll('[data-testid="prebuilt-skill"]'));
+    expect(skills.length).toBe(4);
+    const first = skills[0] as HTMLElement;
+    expect(first.textContent).toContain('skill-0');
+    expect(first.textContent).toContain('What skill 0 does, from its SKILL.md.');
+    expect(first.textContent).toContain('MIT');
+    expect(first.textContent).toContain('pinned at a18ffe2a9944');
+    const link = first.querySelector('a')!;
+    expect(link.textContent).toContain('acme/skills');
+    expect(link.getAttribute('href')).toBe('https://github.com/acme/skills/tree/a18ffe2a99448ebff262fc87915b0fd14bab9b70/skills/skill-0');
+    expect(link.getAttribute('target')).toBe('_blank');
+    const server = d.querySelector('[data-testid="prebuilt-server"]') as HTMLElement;
+    expect(server.textContent).toContain('Cloudflare Documentation');
+    expect(server.textContent).toContain('by Cloudflare');
+    expect(server.querySelector('[data-brand="cloudflare"]')).not.toBe(null);
+    // the details dialog can add the agent too
+    await r.act(() => byText(document.body, 'button', 'Add Cloudflare Engineer').click());
+    expect(picked).toEqual(['cloudflare-engineer']);
+    // the skills badge opens the same details
+    await r.act(() => byText(cf, 'button', /^4 skills: skill-0, skill-1, skill-2, skill-3/).click());
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="prebuilt-skill"]').length).toBe(4), r);
+  });
+
+  it('falls back to the references when the core sent no details', () => {
+    const e = { ...CATALOG.find((x) => x.id === 'cloudflare-engineer')!, availability: { ...CATALOG[0]!.availability, mcp: [], skills: [] } };
+    expect(serversOf(e)).toEqual([{ id: 'cloudflare-docs', display: 'cloudflare-docs', publisher: '', brand: 'cloudflare-docs', summary: '' }]);
+    expect(skillsOf(e)[0]).toMatchObject({ name: 'skill-0', description: '', repo: 'r' });
   });
 
   it('puts unknown categories last', () => {

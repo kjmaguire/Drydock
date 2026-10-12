@@ -44,6 +44,73 @@ export interface McpLibraryServer {
   projects: string[];
   createdAt: number;
   updatedAt: number;
+  /** The catalog entry it was connected from (absent for a server the human described). */
+  catalogId?: string;
+  /** What the server said about itself the last time Drydock reached it. Outside text: shown as data. */
+  serverInfo?: McpServerIdentity;
+  /** Who the credential belongs to, as the server reported it. */
+  account?: string;
+  /** Why the last connection failed (absent after a success). */
+  lastError?: string;
+  lastErrorAt?: number;
+}
+
+/** A server's own identity from its answer to initialize (serverInfo and instructions). The server's claim, not Drydock's. */
+export interface McpServerIdentity {
+  name: string;
+  title?: string;
+  version?: string;
+  description?: string;
+  websiteUrl?: string;
+  instructions?: string;
+  protocolVersion?: string;
+}
+
+export type McpGalleryStatus = 'not_connected' | 'connected' | 'needs_sign_in' | 'needs_token' | 'error';
+
+/** One catalog server as the connector gallery shows it (internal/core/ext_mcpgallery.go). */
+export interface McpGalleryCard {
+  id: string;
+  display: string;
+  publisher: string;
+  official: boolean;
+  /** The logo (ui/brand-logo.tsx). */
+  brand: string;
+  group?: string;
+  summary: string;
+  description: string;
+  docsUrl?: string;
+  transport: 'http' | 'stdio';
+  url?: string;
+  /** What a template runs on this computer. */
+  command?: string[];
+  /** none, bearer (paste a token), oauth (sign in in the browser) or env (a template's secret variable, secretEnv). */
+  auth: 'none' | 'bearer' | 'oauth' | 'env' | '';
+  authOptional: boolean;
+  secretEnv?: string;
+  tokenHelp?: string;
+  template: boolean;
+  license: string;
+  licenseNotes?: string;
+  /** The Drydock integration of the same brand. */
+  integration?: string;
+  trust: string;
+  readOnlyTools: string[];
+  tools: McpToolInfo[];
+  /** The tools came from the server itself (not the catalog's declaration). */
+  toolsListed: boolean;
+  status: McpGalleryStatus;
+  detail?: string;
+  libraryId?: string;
+  account?: string;
+  serverInfo?: McpServerIdentity;
+  projects: string[];
+}
+
+export interface McpConnectResult {
+  card: McpGalleryCard;
+  /** Set when the human has to sign in in the browser. */
+  oauth?: McpOAuthStatus;
 }
 
 /** A library server as one project has it. */
@@ -146,7 +213,13 @@ export interface McpClient {
   mcpTrySet(adapter: string, enabled: boolean): Promise<McpStatus>;
   mcpApprovalList(projectId: string): Promise<McpApproval[]>;
   mcpApprovalDecide(approvalId: string, approve: boolean): Promise<void>;
+  /** The connector gallery: every catalog server with whether it is connected, and as whom. */
+  mcpGallery(): Promise<McpGalleryCard[]>;
+  /** Connects a catalog server: the token (or a template's secret) goes to the credential store and is never returned. */
+  mcpConnect(catalogId: string, token?: string): Promise<McpConnectResult>;
 }
+
+const card = (c: McpGalleryCard): McpGalleryCard => ({ ...c, readOnlyTools: arr(c.readOnlyTools), tools: arr(c.tools), projects: arr(c.projects), command: c.command ? arr(c.command) : undefined });
 
 export function createMcpClient(t: Transport): McpClient {
   return {
@@ -179,6 +252,11 @@ export function createMcpClient(t: Transport): McpClient {
     mcpApprovalList: async (projectId) => arr(await t.call<McpApproval[] | null>('mcpserver.approval.list', { projectId })),
     mcpApprovalDecide: async (approvalId, approve) => {
       await t.call('mcpserver.approval.decide', { approvalId, approve });
+    },
+    mcpGallery: async () => arr(await t.call<McpGalleryCard[] | null>('mcplib.gallery', {})).map(card),
+    mcpConnect: async (catalogId, token) => {
+      const r = await t.call<McpConnectResult>('mcplib.connect', token ? { catalogId, token } : { catalogId });
+      return { ...r, card: card(r.card) };
     },
   };
 }

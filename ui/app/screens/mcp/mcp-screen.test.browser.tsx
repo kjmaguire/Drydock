@@ -30,6 +30,7 @@ function show(client: Partial<Client>, opts: { projects?: { id: string; name: st
     taskList: async () => [],
     mcpApprovalList: async () => [],
     mcpLibList: async () => [libServer()],
+    mcpGallery: async () => [],
     ...client,
   });
   s.workspace.start();

@@ -85,6 +85,15 @@ type MCPLibraryServer struct {
 	Projects  []string `json:"projects"`
 	CreatedAt int64    `json:"createdAt"`
 	UpdatedAt int64    `json:"updatedAt"`
+	// CatalogID is the catalog entry the server was connected from ("" for a server the human described).
+	CatalogID string `json:"catalogId,omitempty"`
+	// ServerInfo is what the server said about itself the last time Drydock reached it (its identity, decision P43).
+	ServerInfo *mcp.ServerIdentity `json:"serverInfo,omitempty"`
+	// Account is who the credential belongs to, as the server reported it ("" when unknown).
+	Account string `json:"account,omitempty"`
+	// LastError is why the last connection failed ("" after a success).
+	LastError   string `json:"lastError,omitempty"`
+	LastErrorAt int64  `json:"lastErrorAt,omitempty"`
 }
 
 // MCPServerView is a library server as one project has it.
@@ -217,12 +226,14 @@ type mcpRow struct {
 
 func (s *mcpServers) load(ctx context.Context, id string) (mcpRow, error) {
 	var r mcpRow
-	var argvJSON, envJSON, secretJSON, roJSON, toolsJSON string
+	var argvJSON, envJSON, secretJSON, roJSON, toolsJSON, infoJSON string
 	var tok, guard int
 	var oauth int
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_at,updated_at,oauth,oauth_at,oauth_scope
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_at,updated_at,oauth,oauth_at,oauth_scope,
+catalog_id,server_info,account,last_error,last_error_at
 FROM mcp_library WHERE id=?`, id).Scan(&r.ID, &r.Display, &r.Transport, &r.URL, &argvJSON, &r.Cwd, &envJSON, &secretJSON,
-		&tok, &guard, &roJSON, &toolsJSON, &r.DiscoveredAt, &r.CreatedAt, &r.UpdatedAt, &oauth, &r.OAuthAt, &r.OAuthScope)
+		&tok, &guard, &roJSON, &toolsJSON, &r.DiscoveredAt, &r.CreatedAt, &r.UpdatedAt, &oauth, &r.OAuthAt, &r.OAuthScope,
+		&r.CatalogID, &infoJSON, &r.Account, &r.LastError, &r.LastErrorAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, fmt.Errorf("there is no MCP server %q in the library", id)
 	}
@@ -243,6 +254,12 @@ FROM mcp_library WHERE id=?`, id).Scan(&r.ID, &r.Display, &r.Transport, &r.URL, 
 	}
 	if r.Tools == nil {
 		r.Tools = []mcp.ToolInfo{}
+	}
+	if infoJSON != "" {
+		var info mcp.ServerIdentity
+		if json.Unmarshal([]byte(infoJSON), &info) == nil && info != (mcp.ServerIdentity{}) {
+			r.ServerInfo = &info
+		}
 	}
 	r.Projects = s.projectsOf(ctx, id)
 	return r, nil
@@ -576,9 +593,13 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 		r.OAuthAt, r.OAuthScope = 0, ""
 		removeRefs = append(removeRefs, mcpVaultRef(r.ID, "oauth"))
 	}
-	if !isNew && (existing.Transport != r.Transport || existing.URL != r.URL || strings.Join(existing.Argv, "\x00") != strings.Join(r.Argv, "\x00")) {
+	moved := !isNew && (existing.Transport != r.Transport || existing.URL != r.URL || strings.Join(existing.Argv, "\x00") != strings.Join(r.Argv, "\x00"))
+	if moved {
 		r.Tools, r.DiscoveredAt = []mcp.ToolInfo{}, 0
 	}
+	// what the server said about itself belongs to that address, and the account to that credential
+	forgetIdentity := moved
+	forgetAccount := moved || len(putSecrets) > 0 || in.ClearBearer || (in.OAuth != nil && !*in.OAuth)
 
 	for ref, val := range putSecrets {
 		if err := s.c.secrets.Put(ctx, ref, val); err != nil {
@@ -601,6 +622,17 @@ ON CONFLICT(id) DO UPDATE SET display=excluded.display, transport=excluded.trans
  secret_env=excluded.secret_env, has_token=excluded.has_token, guard=excluded.guard, read_only_tools=excluded.read_only_tools, tools=excluded.tools,
  discovered_at=excluded.discovered_at, updated_at=excluded.updated_at, oauth=excluded.oauth, oauth_at=excluded.oauth_at, oauth_scope=excluded.oauth_scope`,
 			r.ID, r.Display, r.Transport, r.URL, string(argv), r.Cwd, string(env), string(sec), b2i(r.HasToken), b2i(r.Guard), string(ro), string(tools), r.DiscoveredAt, s.c.Human(), now, now, b2i(r.OAuth), r.OAuthAt, r.OAuthScope)
+		if err != nil {
+			return err
+		}
+		if forgetIdentity {
+			if _, err := tx.ExecContext(ctx, `UPDATE mcp_library SET server_info='' WHERE id=?`, r.ID); err != nil {
+				return err
+			}
+		}
+		if forgetAccount {
+			_, err = tx.ExecContext(ctx, `UPDATE mcp_library SET account='', last_error='', last_error_at=0 WHERE id=?`, r.ID)
+		}
 		return err
 	})
 	if err != nil {
@@ -684,11 +716,34 @@ func (s *mcpServers) discover(ctx context.Context, id string) (MCPLibraryServer,
 	sp.Tools = nil
 	up, err := gw.AppUpstream(tctx, sp)
 	if err != nil {
-		return MCPLibraryServer{}, fmt.Errorf("could not reach %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
+		return MCPLibraryServer{}, s.noteFailure(ctx, id, fmt.Errorf("could not reach %s: %s", r.Display, s.c.scrubSecrets(err.Error())))
 	}
 	tools, err := up.ToolList(tctx)
 	if err != nil {
-		return MCPLibraryServer{}, fmt.Errorf("could not list the tools of %s: %s", r.Display, s.c.scrubSecrets(err.Error()))
+		return MCPLibraryServer{}, s.noteFailure(ctx, id, fmt.Errorf("could not list the tools of %s: %s", r.Display, s.c.scrubSecrets(err.Error())))
+	}
+	// the server's own identity (decision P43): serverInfo and instructions from initialize, and for a catalog server with an
+	// identity tool, the account the credential belongs to. Both are the server's claims, kept as text.
+	info, _ := up.Identity(tctx)
+	info.Instructions = s.c.scrubSecrets(info.Instructions)
+	info.Description = s.c.scrubSecrets(info.Description)
+	account := ""
+	if idSpec := s.c.catalogIdentity(r.CatalogID); idSpec != nil {
+		for _, t := range tools {
+			if t.Name == idSpec.Tool {
+				actx, acancel := context.WithTimeout(tctx, 20*time.Second)
+				if who, err := up.Account(actx, *idSpec); err == nil {
+					account = s.c.scrubSecrets(who)
+				}
+				acancel()
+				break
+			}
+		}
+	}
+	infoJSON := ""
+	if info != (mcp.ServerIdentity{}) {
+		b, _ := json.Marshal(info)
+		infoJSON = string(b)
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	flagged := 0
@@ -700,7 +755,8 @@ func (s *mcpServers) discover(ctx context.Context, id string) (MCPLibraryServer,
 	tj, _ := json.Marshal(tools)
 	now := storage.Now()
 	err = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET tools=?, discovered_at=?, updated_at=? WHERE id=?`, string(tj), now, now, id)
+		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET tools=?, discovered_at=?, updated_at=?, server_info=?, account=?, last_error='', last_error_at=0 WHERE id=?`,
+			string(tj), now, now, infoJSON, account, id)
 		return err
 	})
 	if err != nil {
@@ -709,6 +765,21 @@ func (s *mcpServers) discover(ctx context.Context, id string) (MCPLibraryServer,
 	s.c.publish(ctx, "mcp.server_discovered", "", map[string]any{"id": id, "tools": len(tools), "flagged": flagged})
 	out, err := s.load(ctx, id)
 	return out.MCPLibraryServer, err
+}
+
+// noteFailure keeps why a connection failed, for the card, and returns the error. The text was scrubbed of known secrets.
+func (s *mcpServers) noteFailure(ctx context.Context, id string, failure error) error {
+	msg := failure.Error()
+	if len(msg) > 600 {
+		msg = msg[:600] + "..."
+	}
+	now := storage.Now()
+	_ = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET last_error=?, last_error_at=?, updated_at=? WHERE id=?`, msg, now, now, id)
+		return err
+	})
+	s.c.publish(ctx, "mcp.server_unreachable", "", map[string]any{"id": id})
+	return failure
 }
 
 func (c *Core) scrubSecrets(s string) string {

@@ -1,18 +1,31 @@
 # Drydock MCP catalog (docs/mcp.md section 9). Embedded in the binary; users add servers through the same schema
 # (<app data>/mcp/user-servers.yaml or the per-project config) and they pass the same allowlist, cache, shaping and egress
-# pipeline. Fields marked "extension" in catalog.go are additions to the schema in docs/mcp.md.
+# pipeline. Fields marked "extension" in catalog.go are additions to the schema in docs/mcp.md. The connector gallery on the
+# MCP page (decision P43) shows every entry as a card: publisher, brand, summary, docs_url, token_help, identity, integration.
 #
-# Evidence: docs/phase0/tooling-integrations.md sections 5 and 6. No hosted server below was contacted in Phase 0, so every
-# result size, rate limit and commercial term is UNVERIFIED and every entry is terms_status: unverified.
-# D14: Sentry's FSL server, Aikido's AGPL server and Notion's retired local server are never bundled; the stdio entries
-# are user-install templates (template: true, bundled: false) that start only when a project enables them.
+# Evidence (re-checked 2026-10-12, decision P43; the per-entry comments name the page read). The sandbox's proxy could not
+# resolve linear.app, developers.notion.com, docs.sentry.io, learn.microsoft.com, developers.cloudflare.com, context7.com or
+# help.aikido.dev, so the vendors' own GitHub repositories, their npm package metadata and search-engine extracts of the blocked
+# pages were read instead; a fact taken only from a search extract says so. No hosted server below was contacted, so result
+# sizes, rate limits and commercial terms are UNVERIFIED and every entry is terms_status: unverified.
+#
+# D14: Sentry's FSL server, Aikido's AGPL server and Notion's retired local server are never bundled; the stdio entries are
+# user-install templates (template: true, bundled: false) that start only when a project enables them or the human connects
+# them from the gallery, which runs the command the card shows on the human's own computer.
 schema: 1
 servers:
+  # Microsoft Learn. Evidence: github.com/MicrosoftDocs/mcp README (endpoint, "No API keys, no logins", the three tools,
+  # ?maxTokenBudget marked experimental, LICENSE CC-BY-4.0 and LICENSE-CODE MIT). learn.microsoft.com itself was blocked.
   - id: mslearn
     display: Microsoft Learn
+    publisher: Microsoft
+    official: true
+    brand: microsoft
+    summary: "Search and read official Microsoft and Azure documentation and code samples."
     description: "Official Microsoft and Azure documentation and code samples (Microsoft Learn): search, fetch a page, find samples. No account needed."
+    docs_url: https://github.com/MicrosoftDocs/mcp
     transport: http
-    # ?maxTokenBudget=N truncates search responses at the source (tooling-integrations section 6); added via shape.url_params.
+    # ?maxTokenBudget=N truncates search responses at the source (experimental per the README); added via shape.url_params.
     url: https://learn.microsoft.com/api/mcp
     auth: {kind: none}
     trust: public_docs
@@ -36,29 +49,34 @@ servers:
       content: CC-BY-4.0
       attribution: "Content from Microsoft Learn (learn.microsoft.com), licensed CC BY 4.0."
       bundled: false
-      notes: "Repository content CC BY 4.0, code MIT; the Microsoft Learn Terms of Use apply to the service. Commercial-use terms are unverified."
+      notes: "Hosted by Microsoft. Repository content CC BY 4.0, code MIT; the Microsoft Learn Terms of Use apply to the service. Commercial-use terms are unverified."
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, ux, frontend, backend, database, devops, security]
     default_enabled: true
 
+  # Cloudflare documentation. Evidence: github.com/cloudflare/mcp-server-cloudflare README and apps/docs-ai-search/README
+  # ("This public documentation server does not require authentication"; one tool, search_cloudflare_documentation; /mcp is
+  # stateless streamable HTTP, /sse an alias, a legacy SSE GET answers 410); repository Apache-2.0.
   - id: cfdocs
-    display: Cloudflare documentation
+    display: Cloudflare Documentation
+    publisher: Cloudflare
+    official: true
+    brand: cloudflare
+    group: Cloudflare
+    summary: "Search the Cloudflare developer documentation: Workers, Durable Objects, D1, R2 and the rest."
     description: "The Cloudflare developer documentation (Workers, Durable Objects, D1, R2, Pages and the rest), searchable by the agent. No account needed."
+    docs_url: https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search
     transport: http
-    # Stateless streamable HTTP; /sse is only an alias and legacy SSE GET returns 410 (docs/mcp.md section 9).
     url: https://docs.mcp.cloudflare.com/mcp
     auth: {kind: none}
     trust: public_docs
     data_class: public_docs
-    read_only_tools: [search_cloudflare_documentation, migrate_pages_to_workers_guide]
+    read_only_tools: [search_cloudflare_documentation]
     tools:
       - name: search_cloudflare_documentation
         description: Search the Cloudflare documentation; returns results with similarity, url, title and text.
         input_schema: {type: object, required: [query], properties: {query: {type: string, description: "Short natural-language question"}}}
-      - name: migrate_pages_to_workers_guide
-        description: Guide for migrating a Cloudflare Pages project to Workers.
-        input_schema: {type: object, properties: {}}
     cache: {ttl: 24h, scope: global}
     shape: {max_inline_bytes: 8192}
     egress: {max_arg_bytes: 1024, scan_secrets: true, deny_code_fences: true}
@@ -67,27 +85,83 @@ servers:
       content: CC-BY-4.0
       attribution: "Content from the Cloudflare documentation (developers.cloudflare.com), licensed CC BY 4.0."
       bundled: false
-      notes: "Best-effort service, no SLA found; results are cached. Code samples MIT."
+      notes: "Hosted by Cloudflare. Best-effort service, no SLA found; results are cached. Code samples MIT."
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, ux, frontend, backend, database, devops, security]
     default_enabled: true
 
+  # Cloudflare API ("Code Mode"). Evidence: github.com/cloudflare/mcp README: URL https://mcp.cloudflare.com/mcp, "Option 1:
+  # OAuth (Recommended) ... redirected to Cloudflare to authorize and select permissions", "Option 2: API Token" as a bearer
+  # token; tools docs, search, execute, whoami ("returns { id, email } for a user credential or { id, name } for an account
+  # token"); Apache-2.0. The mcp-server-cloudflare README marks the per-product servers (Workers Bindings, Observability,
+  # Builds, Radar and others) deprecated in favour of this one, so they are not offered. Whether its OAuth server takes dynamic
+  # client registration (what Drydock's sign-in needs) is UNVERIFIED; if it does not, a Cloudflare API token works.
+  - id: cfapi
+    display: Cloudflare API
+    publisher: Cloudflare
+    official: true
+    brand: cloudflare
+    group: Cloudflare
+    summary: "Your Cloudflare account through its API: Workers, KV, R2, D1, DNS and more. Every change waits for your approval."
+    description: "The whole Cloudflare API in four tools (search the API, run a call, search the docs, who am I). You sign in with your Cloudflare account; every call that is not a read waits for your approval."
+    docs_url: https://github.com/cloudflare/mcp
+    transport: http
+    url: https://mcp.cloudflare.com/mcp
+    auth: {kind: oauth_dcr, header: Authorization, scheme: Bearer, keyring: "mcp/cfapi"}
+    trust: private_data
+    data_class: private
+    read_only_tools: [docs, search, whoami]
+    side_effects_tools: [execute]
+    identity: {tool: whoami, fields: [email, name, id]}
+    tools:
+      - name: docs
+        description: Search the Cloudflare developer documentation.
+        input_schema: {type: object, additionalProperties: true}
+      - name: search
+        description: Run JavaScript against the Cloudflare OpenAPI spec to find endpoints.
+        input_schema: {type: object, additionalProperties: true}
+      - name: execute
+        description: Run JavaScript that calls the Cloudflare API (approval-gated).
+        input_schema: {type: object, additionalProperties: true}
+      - name: whoami
+        description: The Cloudflare user or account this connection is signed in as.
+        input_schema: {type: object, properties: {}}
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: Apache-2.0, bundled: false, notes: "Hosted by Cloudflare (github.com/cloudflare/mcp). Results are capped at about 6,000 tokens by the server. Terms unverified."}
+    health: {probe: tools/list, timeout: 5s}
+    terms_status: unverified
+    recommended_roles: [devops, backend]
+
+  # GitHub, hosted. Evidence: github.com/github/github-mcp-server README and docs/remote-server.md: https://api.githubcopilot.com/mcp/
+  # over streamable HTTP; OAuth, or a personal access token as Authorization: Bearer; "Each host app must configure a GitHub
+  # App or OAuth App for OAuth access" (no dynamic client registration, so Drydock uses a token); /readonly variants of every
+  # URL and an X-MCP-Readonly header exist; MIT.
   - id: gh
-    display: GitHub (hosted MCP)
+    display: GitHub
+    publisher: GitHub
+    official: true
+    brand: github
+    summary: "Pull requests, issues, Actions runs and code of your repositories. Every write waits for your approval."
     description: "GitHub's hosted server: read pull requests, issues, Actions runs and code of your repositories. Needs a personal access token; every tool that writes waits for your approval."
+    docs_url: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+    token_help: "A fine-grained personal access token from GitHub, Settings, Developer settings. GitHub's OAuth needs an app registered with GitHub, which Drydock does not have, so the hosted server is connected with a token."
+    integration: github
     transport: http
     url: https://api.githubcopilot.com/mcp/
-    # OAuth is also supported by the server; the gateway uses a PAT held by Drydock. Header support in the agent CLIs is
-    # irrelevant here: the gateway, not the CLI, talks to this server.
+    # Header support in the agent CLIs is irrelevant here: the gateway, not the CLI, talks to this server.
     auth: {kind: bearer, header: Authorization, scheme: Bearer, keyring: "mcp/gh"}
     trust: private_data
     data_class: private
-    # Read subset enabled by the catalog (docs/mcp.md section 9). Names other than the ones listed in
-    # tooling-integrations section 6 (search_*, issue_read) were taken from the server's public tool list and are unverified.
-    read_only_tools: [pull_request_read, actions_get, actions_list, get_job_logs, list_issues, issue_read, search_code, search_issues, search_pull_requests, search_repositories, get_file_contents, list_commits, get_commit]
+    # Read subset (docs/mcp.md section 9). The names are from the server's README tool list.
+    read_only_tools: [get_me, pull_request_read, actions_get, actions_list, get_job_logs, list_issues, issue_read, search_code, search_issues, search_pull_requests, search_repositories, get_file_contents, list_commits, get_commit]
     side_effects_tools: [pull_request_review_write, create_pull_request, merge_pull_request, issue_write, add_issue_comment, add_reply_to_pull_request_comment, add_comment_to_pending_review, create_or_update_file, delete_file, push_files, create_branch, create_repository, fork_repository, update_pull_request, update_pull_request_branch, update_issue_comment, sub_issue_write, actions_run_trigger, enable_pr_auto_merge, disable_pr_auto_merge, resolve_review_thread, unresolve_review_thread, request_copilot_review]
+    identity: {tool: get_me, fields: [login, name, email]}
     tools:
+      - name: get_me
+        description: The GitHub user the token belongs to.
+        input_schema: {type: object, properties: {}}
       - name: pull_request_read
         description: Read a pull request (method get, get_diff, get_status, get_files, get_commits, get_review_comments, get_reviews, get_comments, get_check_runs).
         input_schema:
@@ -125,17 +199,53 @@ servers:
     # PRs, issues and logs of the user's own repositories: private, short TTL, per project.
     cache: {ttl: 60s, scope: project}
     shape: {max_inline_bytes: 8192}
-    license: {server: MIT, bundled: false, notes: "Hosted by GitHub. A local Go server (github.com/github/github-mcp-server/v2, stdio, MIT) is an option, not bundled in v1."}
+    license: {server: MIT, bundled: false, notes: "Hosted by GitHub. The same server runs locally as the github-mcp-server program (see the next entry)."}
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, devops, qa, security, reviewer]
 
+  # GitHub, local. Evidence: github.com/github/github-mcp-server README ("github-mcp-server stdio"; GITHUB_PERSONAL_ACCESS_TOKEN
+  # takes precedence over the browser sign-in; --read-only skips write tools; MIT) and its releases page (v2.0.2, 8 Oct).
+  - id: ghlocal
+    display: GitHub (local program)
+    publisher: GitHub
+    official: true
+    brand: github
+    summary: "The same GitHub server as a program on this computer, read-only. You install github-mcp-server yourself."
+    description: "GitHub's MCP server as a program you install yourself (github-mcp-server v2.0.2 or later on your PATH), started read-only with your personal access token."
+    docs_url: https://github.com/github/github-mcp-server
+    token_help: "A fine-grained personal access token from GitHub, Settings, Developer settings. It goes to the Windows credential store and reaches the program as GITHUB_PERSONAL_ACCESS_TOKEN."
+    integration: github
+    transport: stdio
+    command:
+      argv: ["github-mcp-server", "stdio", "--read-only"]
+      pin: "github-mcp-server@2.0.2"
+      secret_env: {GITHUB_PERSONAL_ACCESS_TOKEN: "mcp/ghlocal"}
+    auth: {kind: none}
+    trust: private_data
+    data_class: private
+    cache: {ttl: 0s, scope: project}
+    shape: {max_inline_bytes: 8192}
+    license: {server: MIT, bundled: false, notes: "Not bundled: the human installs the program. Started with --read-only, so its write tools are not offered."}
+    health: {probe: tools/list, timeout: 10s}
+    terms_status: unverified
+    recommended_roles: [architect, devops, qa, security, reviewer]
+    template: true
+
+  # Context7. Evidence: github.com/upstash/context7 README (https://mcp.context7.com/mcp, "pass your API key via the
+  # Authorization: Bearer YOUR_API_KEY header", "API Key Recommended ... for higher rate limits", tools resolve-library-id and
+  # query-docs, the community-docs disclaimer, MIT) and npm @upstash/context7-mcp 4.3.0 (MIT).
   - id: ctx7
     display: Context7
+    publisher: Upstash
+    official: true
+    brand: context7
+    summary: "Up-to-date documentation and code examples for thousands of open-source libraries."
     description: "Up-to-date documentation for thousands of open-source libraries and frameworks. Works without an account; a free key raises the rate limits."
+    docs_url: https://github.com/upstash/context7
+    token_help: "Optional. A free API key from context7.com/dashboard raises the rate limits."
     transport: http
     url: https://mcp.context7.com/mcp
-    # A free API key from context7.com/dashboard raises the rate limits; the server works without one.
     auth: {kind: bearer, header: Authorization, scheme: Bearer, keyring: "mcp/ctx7", optional: true}
     trust: third_party_docs
     data_class: public_docs
@@ -146,95 +256,148 @@ servers:
         input_schema: {type: object, required: [query, libraryName], properties: {query: {type: string}, libraryName: {type: string}}}
       - name: query-docs
         description: Query the documentation of a Context7 library id.
-        input_schema: {type: object, required: [libraryId, query], properties: {libraryId: {type: string}, query: {type: string}}}
+        input_schema: {type: object, required: [libraryId, query], properties: {libraryId: {type: string}, query: {type: string}, language: {type: string}}}
     cache: {ttl: 24h, scope: global}
     shape: {max_inline_bytes: 8192}
     egress: {max_arg_bytes: 1024, scan_secrets: true, deny_code_fences: true}
     license:
       server: MIT
       bundled: false
-      notes: "MCP server repo is MIT; the backend, parsing and crawling engines are private. Community-submitted docs carry an accuracy and security disclaimer: results get extra marking and are never auto-attached to packs."
+      notes: "Hosted by Upstash. The MCP server repo is MIT; the backend, parsing and crawling engines are private. Community-submitted docs carry an accuracy and security disclaimer: results get extra marking and are never auto-attached to packs."
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, ux, frontend, backend, database, devops, security]
 
+  # Linear. Evidence: search-engine extracts of linear.app/docs/mcp and linear.app/docs/mcp.md (blocked here): default endpoint
+  # https://mcp.linear.app/mcp, interactive OAuth 2.1 with dynamic client registration, an OAuth token or API key accepted as
+  # Authorization: Bearer, and a read-only endpoint /mcp/readonly that exposes only read tools. Hosted, not open source.
   - id: linear
-    display: Linear (hosted MCP, read-only endpoint)
+    display: Linear
+    publisher: Linear
+    official: true
+    brand: linear
+    summary: "Read your team's Linear issues, projects and cycles (the read-only endpoint)."
     description: "Read your team's Linear issues and projects (read-only endpoint). You sign in with your Linear account."
+    docs_url: https://linear.app/docs/mcp
+    integration: linear
     transport: http
-    # The read-only endpoint is the default for agents (docs/mcp.md section 9). Snippet-level evidence only: UNVERIFIED.
+    # The read-only endpoint is the default for agents (docs/mcp.md section 9).
     url: https://mcp.linear.app/mcp/readonly
     auth: {kind: oauth_dcr, header: Authorization, scheme: Bearer, keyring: "mcp/linear"}
     trust: private_data
     data_class: private
     cache: {ttl: 0s, scope: project}
     shape: {max_inline_bytes: 8192}
-    license: {server: LicenseRef-Proprietary-Hosted, bundled: false, notes: "Hosted, not open source. OAuth 2.1 with dynamic client registration; an OAuth token or API key is also accepted as a bearer token. Terms unverified."}
+    license: {server: LicenseRef-Proprietary-Hosted, bundled: false, notes: "Hosted by Linear, not open source. OAuth 2.1 with dynamic client registration; an OAuth token or API key is also accepted as a bearer token. Terms unverified."}
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [pm, architect, ux]
 
+  # Notion. Evidence: github.com/makenotion/notion-mcp-server README (the local server is "no longer actively maintained or
+  # supported"; Notion recommends its hosted server with OAuth) and search-engine extracts of developers.notion.com/guides/mcp
+  # (blocked here): https://mcp.notion.com/mcp over streamable HTTP, /sse as fallback, OAuth 2.0 authorization code with PKCE,
+  # interactive sign-in only, Client ID Metadata Documents supported besides dynamic client registration. The read-only tool
+  # names below were seen in a connected client's tool list of this server on 2026-10-12, not in Notion's docs.
   - id: notion
-    display: Notion (hosted MCP)
+    display: Notion
+    publisher: Notion
+    official: true
+    brand: notion
+    summary: "Search and read the Notion pages and databases your account can see."
     description: "Read and search your Notion pages and databases. You sign in with your Notion account."
+    docs_url: https://developers.notion.com/guides/mcp/overview
+    integration: notion
     transport: http
     # /sse is the documented fallback endpoint. The local makenotion/notion-mcp-server is retired and unsupported (D14).
     url: https://mcp.notion.com/mcp
     auth: {kind: oauth2_pkce, header: Authorization, scheme: Bearer, keyring: "mcp/notion"}
     trust: private_data
     data_class: private
+    read_only_tools: [notion-search, notion-fetch, notion-get-self]
+    identity: {tool: notion-get-self, fields: [name, email, workspace_name, id]}
     cache: {ttl: 0s, scope: project}
     shape: {max_inline_bytes: 8192}
-    license: {server: LicenseRef-Proprietary-Hosted, bundled: false, notes: "OAuth 2.0 with PKCE, interactive only. Access-token lifetime of 1 h is snippet-only. Terms unverified."}
+    license: {server: LicenseRef-Proprietary-Hosted, bundled: false, notes: "Hosted by Notion. OAuth 2.0 with PKCE, interactive only. Terms unverified."}
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [pm, architect, ux]
 
+  # Sentry, hosted. Evidence: github.com/getsentry/sentry-mcp README and packages/mcp-cloudflare/src/server/index.ts (an OAuth
+  # provider with authorize, token and /oauth/register, the dynamic client registration endpoint; "Bearer is reserved for MCP
+  # OAuth access tokens", a pasted token goes as Authorization: Sentry-Bearer <token>), LICENSE.md (FSL-1.1, Apache 2.0 future
+  # license), and a search-engine extract of mcp.sentry.dev ("all connections use OAuth"). The scheme below is what a pasted
+  # token uses (the Integrations page sends one); an OAuth access token is always sent as Bearer.
   - id: sentry
-    display: Sentry (hosted MCP)
-    description: "Read Sentry issues, events and releases of your projects. Needs a Sentry access token."
+    display: Sentry
+    publisher: Sentry
+    official: true
+    brand: sentry
+    summary: "Issues, events, traces and releases of your Sentry projects."
+    description: "Read Sentry issues, events and releases of your projects. You sign in with your Sentry account."
+    docs_url: https://github.com/getsentry/sentry-mcp
+    integration: sentry
     transport: http
     url: https://mcp.sentry.dev/mcp
-    # OAuth, or Authorization: Sentry-Bearer <SENTRY_ACCESS_TOKEN>.
-    auth: {kind: bearer, header: Authorization, scheme: Sentry-Bearer, keyring: "mcp/sentry"}
+    auth: {kind: oauth_dcr, header: Authorization, scheme: Sentry-Bearer, keyring: "mcp/sentry"}
     trust: private_data
     data_class: private
     cache: {ttl: 0s, scope: project}
     shape: {max_inline_bytes: 8192}
-    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "The server is source-available (FSL), not OSI, with a competing-use restriction: use the hosted endpoint, never bundle (D14)."}
+    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "Hosted by Sentry. The server is source-available (FSL), not OSI, with a competing-use restriction: use the hosted endpoint, never bundle (D14)."}
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [devops, qa, security]
 
-  # ---- user-install templates (never bundled, never started unless a project enables them) ----
+  # ---- user-install templates (never bundled, never started unless a project enables them or the human connects them) ----
+
+  # Sentry, local. Evidence: getsentry/sentry-mcp README (npx @sentry/mcp-server, --access-token or the SENTRY_ACCESS_TOKEN
+  # environment variable, the scopes below, --host for self-hosted Sentry) and npm @sentry/mcp-server 0.42.0 (FSL-1.1-ALv2).
   - id: sentryx
-    display: Sentry (user-installed stdio server, template)
-    description: "Sentry as a program you install yourself (a template, never bundled)."
+    display: Sentry (local program)
+    publisher: Sentry
+    official: true
+    brand: sentry
+    summary: "Sentry as a program on this computer, for self-hosted Sentry or a token instead of a sign-in."
+    description: "Sentry's MCP server as a program you run yourself through npx (needs Node.js): for self-hosted Sentry, or when you prefer a token to a sign-in."
+    docs_url: https://github.com/getsentry/sentry-mcp
+    token_help: "A Sentry user auth token with org:read, project:read, project:write, team:read, team:write and event:write. It reaches the program as SENTRY_ACCESS_TOKEN."
+    integration: sentry
     transport: stdio
     command:
-      argv: ["npx", "-y", "@sentry/mcp-server@latest"]
-      pin: "@sentry/mcp-server@<pin an exact version before enabling>"
-      # The documented invocation passes --access-token on the command line; argv is visible to other processes, so the
-      # token goes through the environment instead. Whether the package reads SENTRY_ACCESS_TOKEN is UNVERIFIED.
+      argv: ["npx", "-y", "@sentry/mcp-server@0.42.0"]
+      pin: "@sentry/mcp-server@0.42.0"
+      # The token goes through the environment (argv is visible to other processes); the README documents SENTRY_ACCESS_TOKEN.
       secret_env: {SENTRY_ACCESS_TOKEN: "mcp/sentry"}
     auth: {kind: none}
     trust: private_data
     data_class: private
     cache: {ttl: 0s, scope: project}
     shape: {max_inline_bytes: 8192}
-    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "Not bundled (D14). Scopes needed: org:read project:read project:write team:read team:write event:write."}
+    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "Not bundled (D14): npx fetches it on your computer when it starts. Scopes needed: org:read project:read project:write team:read team:write event:write."}
     health: {probe: tools/list, timeout: 10s}
     terms_status: unverified
     recommended_roles: [devops, qa, security]
     template: true
 
+  # Aikido. Evidence: npm @aikidosec/mcp 1.0.28 (license AGPL, published 2026-10-08) and its README: a local stdio program that
+  # "exposes Aikido's Code and Secrets Scan as a tool", sign-in in the browser or a personal access token from Settings,
+  # Integrations, IDE, MCP as AIKIDO_API_KEY. Aikido has no hosted MCP server of its own (a third-party host, MintMCP, runs it).
+  # Its scan sends the code it is given to Aikido, which Drydock's rule against uploading source code forbids: the send guard
+  # stays on and refuses code, so in Drydock it can only report findings Aikido already has.
   - id: aikido
-    display: Aikido (user-installed stdio server, template)
-    description: "Aikido security findings through a program you install yourself (a template, never bundled; AGPL)."
+    display: Aikido (local program)
+    publisher: Aikido Security
+    official: true
+    brand: aikido
+    summary: "Aikido code and secrets scanning as a program on this computer (AGPL; Drydock never sends it your code)."
+    description: "Aikido's MCP server as a program you run yourself through npx (needs Node.js). Its scan tool would send code to Aikido; Drydock's send guard refuses code, so agents can use it only for what does not need your source."
+    docs_url: https://www.npmjs.com/package/@aikidosec/mcp
+    token_help: "A personal access token from Aikido, Settings, Integrations, IDE, MCP. It reaches the program as AIKIDO_API_KEY."
+    integration: aikido
     transport: stdio
     command:
-      argv: ["npx", "-y", "@aikidosec/mcp@1.0.27"]
-      pin: "@aikidosec/mcp@1.0.27"
+      argv: ["npx", "-y", "@aikidosec/mcp@1.0.28"]
+      pin: "@aikidosec/mcp@1.0.28"
       secret_env: {AIKIDO_API_KEY: "mcp/aikido"}
     auth: {kind: none}
     trust: private_data

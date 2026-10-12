@@ -47,18 +47,30 @@ type AdapterAvailability struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
-// PrebuiltMCPState is one MCP catalog server of the entry: whether the library already has it.
+// PrebuiltMCPState is one MCP catalog server of the entry: what it is (full name, publisher, logo, what it gives agents, how
+// it signs in) and whether the library already has it.
 type PrebuiltMCPState struct {
 	ID        string `json:"id"`
+	Display   string `json:"display"`
+	Publisher string `json:"publisher"`
+	Brand     string `json:"brand"`
+	Summary   string `json:"summary"`
+	Auth      string `json:"auth"`
 	InLibrary bool   `json:"inLibrary"`
 	LibraryID string `json:"libraryId,omitempty"`
 }
 
-// PrebuiltSkillState is one skill of the entry: whether the project already has it (only with a projectId).
+// PrebuiltSkillState is one skill of the entry: what it does and where it comes from (its SKILL.md description at the pin,
+// the source repository and license, decision P43) and whether the project already has it (only with a projectId).
 type PrebuiltSkillState struct {
 	agentcatalog.SkillRef
-	Imported bool   `json:"imported"`
-	Status   string `json:"status,omitempty"` // offered | accepted | rejected | blocked
+	Description string `json:"description"`
+	License     string `json:"license"`
+	// Repo is the registry's GitHub repository (owner/name) and SourceURL the skill's directory at the pinned commit.
+	Repo      string `json:"repo"`
+	SourceURL string `json:"sourceUrl,omitempty"`
+	Imported  bool   `json:"imported"`
+	Status    string `json:"status,omitempty"` // offered | accepted | rejected | blocked
 	// SamePin is true when the project's copy is pinned to the entry's commit.
 	SamePin bool `json:"samePin"`
 }
@@ -190,9 +202,21 @@ func (c *Core) prebuiltList(ctx context.Context, projectID string) ([]PrebuiltAg
 		return a
 	}
 	libByURL := map[string]string{}
-	cat, err := loadBuiltinCatalog()
+	cat, err := c.mcpCatalogSource()
 	if err != nil {
 		return nil, err
+	}
+	known, err := skills.KnownSkills()
+	if err != nil {
+		return nil, err
+	}
+	regs, err := skills.CuratedRegistries()
+	if err != nil {
+		return nil, err
+	}
+	repos := map[string]skills.Registry{}
+	for _, r := range regs {
+		repos[r.ID] = r
 	}
 	out := make([]PrebuiltAgent, 0, len(all))
 	for _, e := range all {
@@ -205,8 +229,10 @@ func (c *Core) prebuiltList(ctx context.Context, projectID string) ([]PrebuiltAg
 			av.Adapters = append(av.Adapters, adapterState(alt.Adapter))
 		}
 		for _, id := range e.MCP {
-			st := PrebuiltMCPState{ID: id}
+			st := PrebuiltMCPState{ID: id, Display: id}
 			if s, ok := cat.Get(id); ok {
+				auth, _ := galleryAuth(s)
+				st.Display, st.Publisher, st.Brand, st.Summary, st.Auth = s.Display, s.Publisher, s.Brand, s.Summary, auth
 				lib, seen := libByURL[s.URL]
 				if !seen {
 					if lib, err = c.libraryByURL(ctx, s.URL); err != nil {
@@ -219,7 +245,13 @@ func (c *Core) prebuiltList(ctx context.Context, projectID string) ([]PrebuiltAg
 			av.MCP = append(av.MCP, st)
 		}
 		for _, ref := range e.Skills {
-			st := PrebuiltSkillState{SkillRef: ref}
+			st := PrebuiltSkillState{SkillRef: ref, Repo: repos[ref.Registry].Repo, License: repos[ref.Registry].License}
+			if k, ok := known[skills.KnownSkillKey(ref.Registry, ref.Name, ref.Ref)]; ok {
+				st.Description, st.License = k.Description, k.License
+				if st.Repo != "" {
+					st.SourceURL = "https://github.com/" + st.Repo + "/tree/" + ref.Ref + "/" + k.Path
+				}
+			}
 			if k, ok := have[ref.Name]; ok && k.Origin == skills.OriginRegistry && k.RegistryID == ref.Registry {
 				st.Imported, st.Status, st.SamePin = true, k.Status, k.PinnedCommit == ref.Ref
 			}

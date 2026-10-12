@@ -71,6 +71,10 @@ func TestEveryEntryReferencesWhatShips(t *testing.T) {
 		regIDs[r.ID] = true
 	}
 	cat, _ := mcp.LoadBuiltin()
+	known, err := skills.KnownSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cats := map[string]bool{}
 	for _, c := range Categories {
 		cats[c] = true
@@ -94,6 +98,11 @@ func TestEveryEntryReferencesWhatShips(t *testing.T) {
 		for _, s := range e.Skills {
 			if !regIDs[s.Registry] || skills.ValidateName(s.Name) != nil || len(s.Ref) != 40 {
 				t.Errorf("%s: skill %+v", e.ID, s)
+			}
+			// decision P43: the page says what each skill does, from its own SKILL.md at the pin
+			k, ok := known[skills.KnownSkillKey(s.Registry, s.Name, s.Ref)]
+			if !ok || k.Description == "" || k.License == "" || !strings.HasSuffix(k.Path, s.Name) {
+				t.Errorf("%s: skill %s has no recorded description at its pin: %+v", e.ID, s.Name, k)
 			}
 		}
 		if model, effort, ok := e.Setup(""); !ok || model != e.Preferred.Model || effort != e.Preferred.Effort {
@@ -135,29 +144,31 @@ func TestParseRejectsBadEntries(t *testing.T) {
 		t.Fatalf("%v %+v", err, es)
 	}
 	for name, doc := range map[string]string{
-		"unknown key":           base("    preferred: {adapter: claude}\n    color: red\n"),
-		"schema":                strings.Replace(ok, "schema: 1", "schema: 2", 1),
-		"duplicate id":          ok + strings.TrimPrefix(ok, "schema: 1\nagents:\n"),
-		"unknown role":          strings.Replace(ok, "role: backend", "role: wizard", 1),
-		"unknown category":      strings.Replace(ok, "category: engineering", "category: sales", 1),
-		"two-line summary":      strings.Replace(ok, "summary: One line.", "summary: \"One\\nline\"", 1),
-		"no purpose":            strings.Replace(ok, "purpose: Do the thing.", "purpose: \"\"", 1),
-		"long purpose":          strings.Replace(ok, "purpose: Do the thing.", "purpose: "+strings.Repeat("x", MaxPurposeRunes+1), 1),
-		"unknown adapter":       base("    preferred: {adapter: cursor}\n"),
-		"claude effort":         base("    preferred: {adapter: claude, effort: ultra}\n"),
-		"claude model":          base("    preferred: {adapter: claude, model: gpt-5}\n"),
-		"model like a flag":     base("    preferred: {adapter: gemini, model: --yolo}\n"),
-		"mode on gemini":        base("    preferred: {adapter: gemini, permission_mode: plan}\n"),
-		"practices on gemini":   base("    preferred: {adapter: gemini, practices: true}\n"),
-		"alt repeats":           base("    preferred: {adapter: claude}\n    alternatives: [{adapter: claude}]\n"),
-		"unknown mcp":           base("    preferred: {adapter: claude}\n    mcp: [nope]\n"),
-		"mcp needing a token":   base("    preferred: {adapter: claude}\n    mcp: [gh]\n"),
-		"stdio template mcp":    base("    preferred: {adapter: claude}\n    mcp: [aikido]\n"),
-		"unknown registry":      base("    preferred: {adapter: claude}\n    skills: [{registry: random/repo, name: x, ref: " + pin + "}]\n"),
-		"branch instead of pin": base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: wrangler, ref: main}]\n"),
-		"bad skill name":        base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: Wrangler, ref: " + pin + "}]\n"),
-		"skill twice":           base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: wrangler, ref: " + pin + "}, {registry: vercel-agent-skills, name: wrangler, ref: " + pin + "}]\n"),
-		"bad tag":               base("    preferred: {adapter: claude}\n    tags: [\"Not A Slug\"]\n"),
+		"unknown key":              base("    preferred: {adapter: claude}\n    color: red\n"),
+		"schema":                   strings.Replace(ok, "schema: 1", "schema: 2", 1),
+		"duplicate id":             ok + strings.TrimPrefix(ok, "schema: 1\nagents:\n"),
+		"unknown role":             strings.Replace(ok, "role: backend", "role: wizard", 1),
+		"unknown category":         strings.Replace(ok, "category: engineering", "category: sales", 1),
+		"two-line summary":         strings.Replace(ok, "summary: One line.", "summary: \"One\\nline\"", 1),
+		"no purpose":               strings.Replace(ok, "purpose: Do the thing.", "purpose: \"\"", 1),
+		"long purpose":             strings.Replace(ok, "purpose: Do the thing.", "purpose: "+strings.Repeat("x", MaxPurposeRunes+1), 1),
+		"unknown adapter":          base("    preferred: {adapter: cursor}\n"),
+		"claude effort":            base("    preferred: {adapter: claude, effort: ultra}\n"),
+		"claude model":             base("    preferred: {adapter: claude, model: gpt-5}\n"),
+		"model like a flag":        base("    preferred: {adapter: gemini, model: --yolo}\n"),
+		"mode on gemini":           base("    preferred: {adapter: gemini, permission_mode: plan}\n"),
+		"practices on gemini":      base("    preferred: {adapter: gemini, practices: true}\n"),
+		"alt repeats":              base("    preferred: {adapter: claude}\n    alternatives: [{adapter: claude}]\n"),
+		"unknown mcp":              base("    preferred: {adapter: claude}\n    mcp: [nope]\n"),
+		"mcp needing a token":      base("    preferred: {adapter: claude}\n    mcp: [gh]\n"),
+		"stdio template mcp":       base("    preferred: {adapter: claude}\n    mcp: [aikido]\n"),
+		"unknown registry":         base("    preferred: {adapter: claude}\n    skills: [{registry: random/repo, name: x, ref: " + pin + "}]\n"),
+		"branch instead of pin":    base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: wrangler, ref: main}]\n"),
+		"bad skill name":           base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: Wrangler, ref: " + pin + "}]\n"),
+		"skill twice":              base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: wrangler, ref: " + pin + "}, {registry: vercel-agent-skills, name: wrangler, ref: " + pin + "}]\n"),
+		"bad tag":                  base("    preferred: {adapter: claude}\n    tags: [\"Not A Slug\"]\n"),
+		"skill not described":      base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: agents-sdk, ref: " + pin + "}]\n"),
+		"described at another pin": base("    preferred: {adapter: claude}\n    skills: [{registry: cloudflare-skills, name: wrangler, ref: " + strings.Repeat("b", 40) + "}]\n"),
 	} {
 		if _, err := Parse([]byte(doc), refs); err == nil {
 			t.Errorf("%s: accepted", name)
