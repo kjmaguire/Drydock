@@ -54,6 +54,7 @@ import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { card, Page, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t, tone } from '../../ui/tokens.ts';
@@ -117,33 +118,6 @@ const steps = css({ display: 'grid', gap: '4px', margin: '0', padding: '0', list
 const reportCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& p': { margin: '0' } });
 const full = css({ gridColumn: '1 / -1' });
 const detailsCss = css({ gridColumn: '1 / -1', '& summary': { cursor: 'pointer', color: t.textMuted, fontSize: t.textSm, marginBottom: t.s2 } });
-const tiles = css({
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-  gap: t.s2,
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-});
-const tileCss = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: t.s3,
-  width: '100%',
-  padding: `${t.s3} ${t.s3}`,
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rMd,
-  background: t.bgSurface,
-  color: t.text,
-  textAlign: 'left',
-  cursor: 'pointer',
-  transition: `border-color ${t.fast} ${t.ease}, background-color ${t.fast} ${t.ease}`,
-  '&:hover': { borderColor: t.borderStrong },
-  '&[aria-pressed="true"]': { borderColor: t.accent, background: t.accentSoft },
-  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
-  '& strong': { display: 'block', fontWeight: '600' },
-  '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },
-});
 const serviceHead = css({
   display: 'flex',
   alignItems: 'center',
@@ -165,7 +139,6 @@ const methodTile = css({
   '&:has(input:checked)': { borderColor: t.accent, background: t.accentSoft },
   '&:has(input:disabled)': { opacity: '0.6', cursor: 'not-allowed' },
 });
-const emptyLine = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', margin: '0', color: t.textMuted, fontSize: t.textMd, '& strong': { color: t.text } });
 const identityGrid = css({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
 const codeCss = css({ fontFamily: t.mono, fontSize: t.textLg, fontWeight: '600', letterSpacing: '0.08em' });
 
@@ -552,23 +525,16 @@ function ServiceTile(handle: Handle<{ kind: ServiceKind; conn?: IntegrationView;
     const { kind, conn, selected, onSelect } = handle.props;
     const assigned = conn?.assignments?.length ?? 0;
     return (
-      <li>
-        <button
-          type="button"
-          mix={[tileCss, on('click', onSelect)]}
-          aria-pressed={selected ? 'true' : 'false'}
-          data-testid="integration-tile"
-          data-kind={kind.kind}
-          data-connected={conn ? 'true' : 'false'}
-        >
-          <BrandLogo id={kind.kind} size={32} />
-          <span>
-            <strong>{kind.label}</strong>
-            <small>{conn ? identityLine(conn) : kind.blurb}</small>
-            {conn ? <small>{assigned === 0 ? 'Not assigned to a project' : assigned === 1 ? 'Assigned to 1 project' : `Assigned to ${assigned} projects`}</small> : <small>Not connected</small>}
-          </span>
-        </button>
-      </li>
+      <Tile
+        title={kind.label}
+        logo={kind.kind}
+        blurb={conn ? identityLine(conn) : kind.blurb}
+        state={conn ? (assigned === 0 ? 'Not assigned to a project' : assigned === 1 ? 'Assigned to 1 project' : `Assigned to ${assigned} projects`) : 'Not connected'}
+        selected={selected}
+        onSelect={onSelect}
+        testId="integration-tile"
+        data={{ kind: kind.kind, connected: conn ? 'true' : 'false' }}
+      />
     );
   };
 }
@@ -1228,7 +1194,7 @@ export function IntegrationsScreen(handle: Handle<{ openTask?: OpenTask; initial
             <strong>Nothing is connected.</strong> Choose a service below. Its items arrive as untrusted text you can read, score and import.
           </p>
         ) : null}
-        <ul mix={tiles} aria-label="Services">
+        <ul mix={tileGrid} aria-label="Services">
           {KINDS.map((k) => (
             <ServiceTile key={k.kind} kind={k} conn={tileState(list, k.kind)} selected={selected === k.kind} onSelect={() => ((selected = selected === k.kind ? '' : k.kind), void handle.update())} />
           ))}
