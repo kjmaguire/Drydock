@@ -27,7 +27,8 @@ export const kindLabel = (kind: string): string => KINDS.find((k) => k.kind === 
 export const riskTone = (risk: number): Tone => (risk >= 3 ? 'err' : risk >= 1 ? 'warn' : 'ok');
 export const riskText = (risk: number, flags: readonly string[] | null | undefined): string => `injection risk ${risk}${(flags ?? []).length ? `: ${(flags ?? []).join(', ')}` : ''}`;
 
-export const syncTone = (state: string): Tone => (state === 'ok' ? 'ok' : state === 'error' || state === 'unauthenticated' ? 'err' : 'muted');
+/** 'forbidden' is one assignment whose scope the credential may not read; the connection and its other projects carry on. */
+export const syncTone = (state: string): Tone => (state === 'ok' ? 'ok' : state === 'error' || state === 'forbidden' || state === 'unauthenticated' ? 'err' : 'muted');
 export const outboxTone = (status: string): Tone => (status === 'sent' ? 'ok' : status === 'awaiting_approval' || status === 'approved' ? 'warn' : 'muted');
 export const statusTone = (status: string): Tone => (status === 'ok' ? 'ok' : status === 'untested' ? 'muted' : 'warn');
 

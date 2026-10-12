@@ -154,7 +154,8 @@ func statusFor(code string) string {
 	switch code {
 	case CodeUnauthorized:
 		return StatusUnauthenticated
-	case CodeSchemaDrift, CodeToolMissing, CodeNotFound:
+	case CodeSchemaDrift, CodeToolMissing, CodeNotFound, CodeForbidden:
+		// a forbidden read is a missing scope, not a refused credential: the connection is degraded, not paused
 		return StatusDegraded
 	}
 	return StatusUnreachable

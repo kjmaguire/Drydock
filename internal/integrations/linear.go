@@ -67,7 +67,7 @@ func (c *apiClient) graphql(ctx context.Context, query string, vars map[string]a
 		case strings.Contains(t, "authentication"):
 			return &Failure{Code: CodeUnauthorized, Message: "Linear rejected the credential (authentication error). It may have been revoked or expired. Reconnect Linear on the Integrations page."}
 		case strings.Contains(t, "forbidden"), strings.Contains(t, "feature not accessible"):
-			return &Failure{Code: CodeUnauthorized, Message: "Linear refused the request (" + strings.TrimSpace(e.Extensions.Type) + "): the credential lacks a permission. Reconnect Linear with read and write access."}
+			return &Failure{Code: CodeForbidden, Message: "Linear refused the request (" + strings.TrimSpace(e.Extensions.Type) + "): the credential lacks a permission. Reconnect Linear with read and write access."}
 		}
 		if err == nil {
 			code := e.Extensions.Code

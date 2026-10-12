@@ -195,7 +195,9 @@ func (c *apiClient) statusFailure(r *apiResponse) *Failure {
 	case r.Status == http.StatusUnauthorized:
 		return &Failure{Code: CodeUnauthorized, Message: v + " rejected the credential" + suffix + ". It may have been revoked or expired. Reconnect " + v + " on the Integrations page."}
 	case r.Status == http.StatusForbidden:
-		return &Failure{Code: CodeUnauthorized, Message: v + " refused the request" + suffix + ": the credential lacks a permission or the resource is not shared with it. Check its scopes, or reconnect " + v + "."}
+		// the credential is valid (that would be a 401) but may not read this resource: a scope or sharing problem of this
+		// request, not of the connection
+		return &Failure{Code: CodeForbidden, Message: v + " refused the request" + suffix + ": the credential lacks a permission or the resource is not shared with it. Check its scopes, or reconnect " + v + "."}
 	case r.Status == http.StatusNotFound:
 		return &Failure{Code: CodeNotFound, Message: v + " did not find what Drydock asked for" + suffix + ". Check the project's settings for this integration."}
 	case r.Status >= 500:

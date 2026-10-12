@@ -37,6 +37,7 @@ type Common struct {
 	auth     []string
 	headers  []http.Header
 	failNext []Fail
+	failWhen []standingFail
 	revoked  bool
 	// Scheme and Token are what the fixture expects in Authorization ("Bearer", or "" for Linear's bare API key).
 	Scheme string
@@ -82,6 +83,26 @@ func (c *Common) FailNext(f Fail) {
 	c.mu.Unlock()
 }
 
+type standingFail struct {
+	key, value string
+	f          Fail
+}
+
+// FailWhen makes every list call whose parameter key (as ListArgs records it: "team", "data_source", "project", ...) equals
+// value answer with f, until ClearFailWhen. It stands for a scope the credential may not read: other scopes still answer.
+func (c *Common) FailWhen(key, value string, f Fail) {
+	c.mu.Lock()
+	c.failWhen = append(c.failWhen, standingFail{key, value, f})
+	c.mu.Unlock()
+}
+
+// ClearFailWhen removes every standing failure.
+func (c *Common) ClearFailWhen() {
+	c.mu.Lock()
+	c.failWhen = nil
+	c.mu.Unlock()
+}
+
 // Revoke makes the fixture answer 401 to every request, like a revoked credential.
 func (c *Common) Revoke(v bool) {
 	c.mu.Lock()
@@ -109,6 +130,12 @@ func (c *Common) count(label string, args map[string]any, isList bool) *Fail {
 		f := c.failNext[0]
 		c.failNext = c.failNext[1:]
 		return &f
+	}
+	for _, sf := range c.failWhen {
+		if v, ok := args[sf.key]; ok && v == sf.value {
+			f := sf.f
+			return &f
+		}
 	}
 	return nil
 }
@@ -369,6 +396,11 @@ func LinearRateLimited(reset time.Time) Fail {
 		Body: `{"errors":[{"message":"Rate limit exceeded","extensions":{"type":"ratelimited","code":"RATELIMITED"}}]}`}
 }
 
+// LinearForbidden is Linear refusing a valid credential something it may not see: a GraphQL error of type "forbidden".
+func LinearForbidden() Fail {
+	return Fail{Status: 400, Body: `{"errors":[{"message":"Forbidden","extensions":{"type":"forbidden","code":"FORBIDDEN","userPresentableMessage":"You do not have access to this team."}}]}`}
+}
+
 func dig(m map[string]any, keys ...string) string {
 	var cur any = m
 	for _, k := range keys {
@@ -540,6 +572,11 @@ func (n *Notion) list(w http.ResponseWriter, label string, body map[string]any, 
 // NotionRateLimited is Notion's 429: code rate_limited and a Retry-After in seconds.
 func NotionRateLimited(seconds int) Fail {
 	return Fail{Status: 429, Headers: map[string]string{"Retry-After": strconv.Itoa(seconds)}, Body: `{"object":"error","status":429,"code":"rate_limited","message":"You have been rate limited."}`}
+}
+
+// NotionRestricted is Notion's 403: the integration's capabilities do not allow the operation on that resource.
+func NotionRestricted() Fail {
+	return Fail{Status: 403, Body: `{"object":"error","status":403,"code":"restricted_resource","message":"API token does not have access to this resource."}`}
 }
 
 // ---------------------------------------------------------------- Sentry (web API v0)

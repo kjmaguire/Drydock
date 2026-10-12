@@ -595,6 +595,8 @@ func (s *Service) syncStatus(c Connection, cur Cursor, items int) SyncStatus {
 		st.State = "never_synced"
 	case cur.LastErrorCode == CodeUnauthorized:
 		st.State = "unauthenticated"
+	case cur.LastErrorCode == CodeForbidden:
+		st.State = "forbidden" // this assignment's scope is refused; the connection itself works
 	case cur.LastErrorCode == CodeRateLimited && cur.NextAttemptAt > s.nowMS():
 		st.State = "rate_limited"
 	case cur.ConsecutiveFailures > 0 && cur.NextAttemptAt > s.nowMS():
@@ -607,7 +609,7 @@ func (s *Service) syncStatus(c Connection, cur Cursor, items int) SyncStatus {
 	return st
 }
 
-var syncRank = map[string]int{"ok": 0, "never_synced": 1, "paused": 2, "backing_off": 3, "rate_limited": 4, "error": 5, "unauthenticated": 6}
+var syncRank = map[string]int{"ok": 0, "never_synced": 1, "paused": 2, "backing_off": 3, "rate_limited": 4, "error": 5, "forbidden": 6, "unauthenticated": 7}
 
 func (s *Service) view(ctx context.Context, c Connection) (ConnectionView, error) {
 	v := ConnectionView{Connection: c, Assignments: []AssignmentView{}}

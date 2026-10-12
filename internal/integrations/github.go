@@ -45,6 +45,14 @@ func ghFailure(err error) error {
 		return &Failure{Code: CodeRateLimited, Cause: err, RetryAfter: rl.Wait(time.Now(), time.Minute, time.Hour),
 			Message: "GitHub asked Drydock to slow down (rate limit). Drydock will wait and try again by itself."}
 	}
+	if errors.Is(err, host.ErrNotFound) {
+		// GitHub also answers 404 for a private repository the sign-in cannot see
+		return &Failure{Code: CodeNotFound, Cause: err, Message: "GitHub did not find the repository (HTTP 404). Check the project's GitHub settings, and that your gh sign-in can see the repository."}
+	}
+	var ae *host.APIError
+	if errors.As(err, &ae) && ae.Status == 403 { // a rate-limit 403 is a RateLimitError (above)
+		return &Failure{Code: CodeForbidden, Cause: err, Message: "GitHub refused the request (HTTP 403): your gh sign-in lacks a permission for this repository, or an organization policy blocks it. Check `gh auth status` and the repository's access."}
+	}
 	return Classify(KindGitHub, err, "")
 }
 

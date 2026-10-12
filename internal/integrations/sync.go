@@ -407,6 +407,7 @@ func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur
 	cur.LastErrorCode = f.Code
 	cur.ConsecutiveFailures++
 	status, detail := conn.Status, s.scrub(f.Message)
+	setStatus := true
 	typ := EventSyncFailed
 	switch f.Code {
 	case CodeRateLimited:
@@ -420,6 +421,11 @@ func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur
 		cur.NextAttemptAt = 0 // paused, not failing: the scheduler skips unauthenticated connections until the token is replaced
 		status = StatusUnauthenticated
 		s.emit(ctx, EventAuthExpired, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind})
+	case CodeForbidden:
+		// the credential works but may not read this assignment's scope: only this assignment fails (its cursor says why); the
+		// connection keeps its status, so the scheduler goes on syncing the other projects
+		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
+		setStatus = false
 	case CodeSchemaDrift, CodeToolMissing, CodeNotFound:
 		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
 		status = StatusDegraded
@@ -433,7 +439,9 @@ func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur
 	if err := s.st.PutCursor(ctx, cur); err != nil {
 		return err
 	}
-	_ = s.st.SetStatus(ctx, conn.ID, status, detail)
+	if setStatus {
+		_ = s.st.SetStatus(ctx, conn.ID, status, detail)
+	}
 	s.emit(ctx, typ, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "code": f.Code, "consecutiveFailures": cur.ConsecutiveFailures, "message": cur.LastError})
 	return f
 }

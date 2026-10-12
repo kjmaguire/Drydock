@@ -284,6 +284,18 @@ sync into `external_items` like any other kind (cleaned, scored, quoted; a high-
 creates a BACKLOG task with the reference `#<number>`. The Pull Requests screen's direct issue import (`github.issues`,
 `github.importIssue`) is unchanged.
 
+### Failures: the connection and its assignments
+
+One connection serves several projects, so a failure is recorded where it belongs:
+
+- **The credential is refused** (HTTP 401, Linear "authentication error", no stored credential, a refresh the vendor did not
+  accept): the connection becomes `unauthenticated` and the scheduler leaves it alone until it is reconnected; this stops
+  every project, because every project uses that credential.
+- **The credential works but may not read one project's scope** (HTTP 403, Linear "forbidden", GitHub's 403 that is not a
+  rate limit, Notion's `restricted_resource`): only that assignment fails. Its sync state is `forbidden` with a message about
+  the missing permission or sharing, it backs off and is retried like any failure, and the connection and its other projects
+  keep syncing. A 403 in Test's one-item read marks the connection `degraded`, not `unauthenticated`.
+
 ### Documentation read for this change, and what could not be read
 
 The sandbox's proxy refused `linear.app`, `developers.notion.com`, `docs.sentry.io`, `apidocs.aikido.dev`, `apis.io` and the

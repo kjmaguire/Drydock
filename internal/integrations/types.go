@@ -66,14 +66,17 @@ const (
 
 // Failure codes recorded with a sync failure (integration_cursors.last_error_code).
 const (
-	CodeUnauthorized = "unauthorized"
-	CodeRateLimited  = "rate_limited"
-	CodeUnreachable  = "unreachable"
-	CodeToolMissing  = "tool_missing"
-	CodeSchemaDrift  = "schema_drift"
-	CodeTimeout      = "timeout"
-	CodeNotFound     = "not_found"
-	CodeOther        = "error"
+	CodeUnauthorized = "unauthorized" // the credential itself is refused (HTTP 401): the whole connection pauses
+	// CodeForbidden is a credential that works but may not read this assignment's scope (HTTP 403, Linear "forbidden"): only
+	// that assignment fails; the connection and its other projects carry on.
+	CodeForbidden   = "forbidden"
+	CodeRateLimited = "rate_limited"
+	CodeUnreachable = "unreachable"
+	CodeToolMissing = "tool_missing"
+	CodeSchemaDrift = "schema_drift"
+	CodeTimeout     = "timeout"
+	CodeNotFound    = "not_found"
+	CodeOther       = "error"
 )
 
 // Event types (docs/integrations.md section 9).
@@ -165,7 +168,7 @@ type Connection struct {
 
 // SyncStatus is the per-Connection sync state shown on the Connections page.
 type SyncStatus struct {
-	State               string `json:"state"` // never_synced | ok | error | unauthenticated | rate_limited | backing_off | paused
+	State               string `json:"state"` // never_synced | ok | error | forbidden | unauthenticated | rate_limited | backing_off | paused
 	LastSuccessAt       int64  `json:"lastSuccessAt"`
 	LastAttemptAt       int64  `json:"lastAttemptAt"`
 	LastError           string `json:"lastError,omitempty"` // plain language

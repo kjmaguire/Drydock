@@ -50,6 +50,7 @@ describe('integrations helpers', () => {
     expect(kindLabel('github')).toBe('GitHub');
     expect(syncTone('ok')).toBe('ok');
     expect(syncTone('unauthenticated')).toBe('err');
+    expect(syncTone('forbidden')).toBe('err');
     expect(syncTone('idle')).toBe('muted');
     expect(outboxTone('sent')).toBe('ok');
     expect(outboxTone('approved')).toBe('warn');

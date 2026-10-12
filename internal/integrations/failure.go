@@ -167,9 +167,11 @@ func schemaDrift(kind string, cause error) *Failure {
 }
 
 var (
-	reUnauthorized = regexp.MustCompile(`(?i)\b(401|403)\b|unauthori[sz]ed|forbidden|invalid[ _-]?(api[ _-]?key|token|credentials?)|token (is )?(expired|revoked|invalid)|authentication (failed|required)|not authenticated|access denied|permission denied`)
-	reRateLimited  = regexp.MustCompile(`(?i)\b429\b|rate[ _-]?limit|too many requests|throttl|quota exceeded|slow down`)
-	reProxy        = regexp.MustCompile(`(?i)proxy|tunnel`)
+	reUnauthorized = regexp.MustCompile(`(?i)\b401\b|unauthori[sz]ed|invalid[ _-]?(api[ _-]?key|token|credentials?)|token (is )?(expired|revoked|invalid)|authentication (failed|required)|not authenticated`)
+	// a credential that works but may not do this one thing (a missing scope, a resource not shared with it)
+	reForbidden   = regexp.MustCompile(`(?i)\b403\b|forbidden|access denied|permission denied|not accessible by|insufficient (scope|permission)s?`)
+	reRateLimited = regexp.MustCompile(`(?i)\b429\b|rate[ _-]?limit|too many requests|throttl|quota exceeded|slow down`)
+	reProxy       = regexp.MustCompile(`(?i)proxy|tunnel`)
 )
 
 var vendorNames = map[string]string{KindLinear: "Linear", KindNotion: "Notion", KindSentry: "Sentry", KindAikido: "Aikido", KindGitHub: "GitHub"}
@@ -198,12 +200,15 @@ func Classify(kind string, err error, text string) *Failure {
 		// A refusal by a corporate or sandbox proxy is not the vendor rejecting the credential (a CONNECT 403 looks like one).
 		f.Code = CodeUnreachable
 		f.Message = "A proxy between Drydock and " + v + " refused the connection (" + strings.TrimSpace(firstLine(text)) + "). This is a network or proxy setting, not a problem with your credential."
-	case reRateLimited.MatchString(text) && !reUnauthorized.MatchString(text):
+	case reRateLimited.MatchString(text) && !reUnauthorized.MatchString(text) && !reForbidden.MatchString(text):
 		f.Code = CodeRateLimited
 		f.Message = v + " asked Drydock to slow down (rate limit). Drydock will wait and try again by itself."
 	case reUnauthorized.MatchString(text):
 		f.Code = CodeUnauthorized
-		f.Message = v + " rejected the credential. It may have been revoked, expired or lack access. Reconnect " + v + " on the Integrations page."
+		f.Message = v + " rejected the credential. It may have been revoked or expired. Reconnect " + v + " on the Integrations page."
+	case reForbidden.MatchString(text):
+		f.Code = CodeForbidden
+		f.Message = v + " refused the request: the credential lacks a permission or the resource is not shared with it. Check its scopes, or reconnect " + v + "."
 	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(strings.ToLower(text), "timeout") || strings.Contains(strings.ToLower(text), "timed out"):
 		f.Code = CodeTimeout
 		f.Message = v + " did not answer in time. Drydock will try again later."
