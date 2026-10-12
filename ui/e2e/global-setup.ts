@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const uiDir = resolve(here, '..');
 const repoRoot = resolve(uiDir, '..');
-const REPOS = 32;
+const REPOS = 48;
 const GREEN = 8;
 const LICENSED_REPOS = 4;
 
