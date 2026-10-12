@@ -32,8 +32,10 @@ import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section, stack } from '../../ui/layout.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CliGateway } from '../mcp/cli-gateway.tsx';
 import { actionsRow, cardHead, confirmCss, subhead, tile, whereCss } from '../mcp/mcp-screen.tsx';
@@ -44,6 +46,7 @@ import { skillLines } from '../team/team.ts';
 import { TemplateForm } from '../team/template-form.tsx';
 import { joinedNote, startDrag, type Dragged } from './dnd.ts';
 import { DropZone } from './drop-zone.tsx';
+import { serverBlurb, serverState, templateBlurb, templateState } from './tiles.ts';
 
 type Say = (message: string) => void;
 type Fail = (e: Error | undefined) => void;
@@ -59,15 +62,16 @@ const colsCss = css({
 const sideCss = css({ position: 'sticky', top: t.s4, display: 'grid', gap: t.s3 });
 const noteCss = css({ '&:empty': { display: 'none' } });
 
+// The selected entry's panel below its grid. Its header can be dragged like the tile.
 const dragCard = css({
   display: 'grid',
   gap: t.s3,
-  transition: `box-shadow ${t.fast} ${t.ease}, border-color ${t.fast} ${t.ease}, opacity ${t.fast} ${t.ease}`,
-  '&:hover': { borderColor: t.borderStrong, boxShadow: t.shadowSm },
+  transition: `border-color ${t.fast} ${t.ease}, opacity ${t.fast} ${t.ease}`,
   '&[data-dragging="true"]': { opacity: '0.55', borderStyle: 'dashed' },
   '& [data-grip]': { color: t.textFaint, cursor: 'grab', display: 'inline-flex' },
   '& p': { margin: '0' },
 });
+const dragHead = css({ cursor: 'grab' });
 const dragHint = css({ fontSize: t.textSm, color: t.textFaint });
 const metaRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', fontSize: t.textSm, color: t.textMuted, '& svg': { color: t.textFaint } });
 const toolsTable = css({
@@ -115,6 +119,89 @@ const agentRow = css({
   '& .who strong': { fontWeight: '600' },
 });
 
+/** The brand a server shows, from the catalog entry it was connected from or its own id; '' when it has none. */
+export function serverLogo(s: Pick<McpLibraryServer, 'id' | 'catalogId'>): string {
+  return [s.catalogId, s.id].find((x): x is string => !!x && brandKey(x) !== '') ?? '';
+}
+
+/** The drag handlers of one Library item (a tile or a panel header): what is dragged, and a flag the element dims by. */
+function dragOf(item: () => Dragged, onDragging: (d: Dragged | undefined) => void, flag: (v: boolean) => void) {
+  return {
+    start: (e: DragEvent) => {
+      const it = item();
+      startDrag(e, it);
+      flag(true);
+      onDragging(it);
+    },
+    end: () => {
+      flag(false);
+      onDragging(undefined);
+    },
+  };
+}
+
+function ServerTile(handle: Handle<{ s: McpLibraryServer; selected: boolean; onSelect: () => void; onDragging: (d: Dragged | undefined) => void }>) {
+  let dragging = false;
+  const drag = dragOf(
+    () => ({ kind: 'mcp', id: handle.props.s.id }),
+    (d) => handle.props.onDragging(d),
+    (v) => ((dragging = v), void handle.update()),
+  );
+  return () => {
+    const { s, selected, onSelect } = handle.props;
+    const st = serverState(s);
+    return (
+      <Tile
+        title={s.display}
+        logo={serverLogo(s) || undefined}
+        icon={s.transport === 'http' ? Globe : Plug}
+        blurb={serverBlurb(s)}
+        state={st.text}
+        tone={st.tone}
+        selected={selected}
+        onSelect={onSelect}
+        testId="lib-mcp-tile"
+        data={{ server: s.id }}
+        dragging={dragging}
+        onDragStart={drag.start}
+        onDragEnd={drag.end}
+      />
+    );
+  };
+}
+
+function TemplateTile(
+  handle: Handle<{ t: AgentTemplate; libraryIds: ReadonlySet<string>; selected: boolean; onSelect: () => void; onDragging: (d: Dragged | undefined) => void }>,
+) {
+  let dragging = false;
+  const drag = dragOf(
+    () => ({ kind: 'template', id: handle.props.t.id }),
+    (d) => handle.props.onDragging(d),
+    (v) => ((dragging = v), void handle.update()),
+  );
+  return () => {
+    const { t: tp, libraryIds, selected, onSelect } = handle.props;
+    const st = templateState(tp, libraryIds);
+    return (
+      <Tile
+        title={tp.name}
+        logo={tp.adapter}
+        icon={Users}
+        blurb={templateBlurb(tp)}
+        state={st.text}
+        tone={st.tone}
+        selected={selected}
+        onSelect={onSelect}
+        testId="lib-template-tile"
+        data={{ template: tp.name }}
+        dragging={dragging}
+        onDragStart={drag.start}
+        onDragEnd={drag.end}
+      />
+    );
+  };
+}
+
 /** Put an item into a project from a select, for people who do not drag. */
 function PutInProject(handle: Handle<{ projects: readonly Project[]; label: string; onPick: (projectId: string) => void; busy: boolean }>) {
   let id = '';
@@ -139,7 +226,8 @@ function PutInProject(handle: Handle<{ projects: readonly Project[]; label: stri
   };
 }
 
-function McpCard(handle: Handle<{ s: McpLibraryServer; projects: readonly Project[]; onDragging: (d: Dragged | undefined) => void; say: Say; fail: Fail; onChanged: () => void }>) {
+/** The selected server's full panel: where it runs, its secrets, its tools, and what can be done with it. */
+function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Project[]; onDragging: (d: Dragged | undefined) => void; say: Say; fail: Fail; onChanged: () => void }>) {
   const svc = services(handle);
   watch(handle, svc.workspace);
   const act = action(handle);
@@ -150,6 +238,11 @@ function McpCard(handle: Handle<{ s: McpLibraryServer; projects: readonly Projec
     f();
     void handle.update();
   };
+  const drag = dragOf(
+    () => ({ kind: 'mcp', id: handle.props.s.id }),
+    (d) => handle.props.onDragging(d),
+    (v) => set(() => (dragging = v)),
+  );
 
   const setReadOnly = async (tool: string, ticked: boolean) => {
     const { s, onChanged } = handle.props;
@@ -166,33 +259,22 @@ function McpCard(handle: Handle<{ s: McpLibraryServer; projects: readonly Projec
     const inProjects = s.projects.map((id) => projects.find((p) => p.id === id)?.name ?? id);
     return (
       <>
-        <article
-          mix={[
-            card,
-            dragCard,
-            on<HTMLElement, 'dragstart'>('dragstart', (e) => {
-              const item: Dragged = { kind: 'mcp', id: handle.props.s.id };
-              startDrag(e, item);
-              set(() => (dragging = true));
-              handle.props.onDragging(item);
-            }),
-            on<HTMLElement, 'dragend'>('dragend', () => {
-              set(() => (dragging = false));
-              handle.props.onDragging(undefined);
-            }),
-          ]}
-          draggable="true"
-          data-dragging={String(dragging)}
-          data-testid="lib-mcp"
-          data-server={s.id}
-        >
-          <header mix={cardHead}>
+        <article mix={[card, dragCard]} data-dragging={String(dragging)} data-testid="lib-mcp" data-server={s.id} aria-label={s.display}>
+          <header
+            mix={[cardHead, dragHead, on<HTMLElement, 'dragstart'>('dragstart', drag.start), on<HTMLElement, 'dragend'>('dragend', drag.end)]}
+            draggable="true"
+            data-testid="lib-mcp-handle"
+          >
             <span data-grip aria-hidden="true">
               <Icon icon={GripVertical} size={16} />
             </span>
-            <span mix={tile}>
-              <Icon icon={s.transport === 'http' ? Globe : Plug} size={16} />
-            </span>
+            {serverLogo(s) ? (
+              <BrandLogo id={serverLogo(s)} size={32} />
+            ) : (
+              <span mix={tile}>
+                <Icon icon={s.transport === 'http' ? Globe : Plug} size={16} />
+              </span>
+            )}
             <h3>{s.display}</h3>
             <code mix={faint}>{s.id}</code>
             <Badge>{s.transport === 'http' ? 'web address' : 'program'}</Badge>
@@ -204,7 +286,7 @@ function McpCard(handle: Handle<{ s: McpLibraryServer; projects: readonly Projec
               <Badge tone="warn">send guard off</Badge>
             )}
           </header>
-          <p mix={dragHint}>Drag onto a project to add it there, or onto an agent to let that agent use it.</p>
+          <p mix={dragHint}>Drag its tile or this header onto a project to add it there, or onto an agent to let that agent use it.</p>
           <ErrorNote error={act.error} what="Not changed" />
           <code mix={[mono, whereCss]}>{whereOf(s)}</code>
           {s.oauth ? <OAuthPanel server={s} onChanged={onChanged} /> : null}
@@ -350,7 +432,8 @@ function McpCard(handle: Handle<{ s: McpLibraryServer; projects: readonly Projec
   };
 }
 
-function TemplateCard(
+/** The selected template's full panel: its purpose, the servers and skills it gives, and what can be done with it. */
+function TemplatePanel(
   handle: Handle<{
     t: AgentTemplate;
     servers: readonly McpLibraryServer[];
@@ -370,33 +453,23 @@ function TemplateCard(
     f();
     void handle.update();
   };
+  const drag = dragOf(
+    () => ({ kind: 'template', id: handle.props.t.id }),
+    (d) => handle.props.onDragging(d),
+    (v) => set(() => (dragging = v)),
+  );
 
   return () => {
     const { t: tp, servers, projects, adapters, say, onChanged } = handle.props;
     const nameOf = (id: string) => servers.find((x) => x.id === id)?.display ?? id;
     return (
       <>
-        <article
-          mix={[
-            card,
-            dragCard,
-            on<HTMLElement, 'dragstart'>('dragstart', (e) => {
-              const item: Dragged = { kind: 'template', id: handle.props.t.id };
-              startDrag(e, item);
-              set(() => (dragging = true));
-              handle.props.onDragging(item);
-            }),
-            on<HTMLElement, 'dragend'>('dragend', () => {
-              set(() => (dragging = false));
-              handle.props.onDragging(undefined);
-            }),
-          ]}
-          draggable="true"
-          data-dragging={String(dragging)}
-          data-testid="lib-template"
-          data-template={tp.name}
-        >
-          <header mix={cardHead}>
+        <article mix={[card, dragCard]} data-dragging={String(dragging)} data-testid="lib-template" data-template={tp.name} aria-label={tp.name}>
+          <header
+            mix={[cardHead, dragHead, on<HTMLElement, 'dragstart'>('dragstart', drag.start), on<HTMLElement, 'dragend'>('dragend', drag.end)]}
+            draggable="true"
+            data-testid="lib-template-handle"
+          >
             <span data-grip aria-hidden="true">
               <Icon icon={GripVertical} size={16} />
             </span>
@@ -407,7 +480,7 @@ function TemplateCard(
             {tp.model ? <Badge>model {tp.model}</Badge> : null}
             {tp.effort ? <Badge>effort {tp.effort}</Badge> : null}
           </header>
-          <p mix={dragHint}>Drag onto a project to add this team member there.</p>
+          <p mix={dragHint}>Drag its tile or this header onto a project to add this team member there.</p>
           <ErrorNote error={act.error} what="Not changed" />
           {tp.purpose ? <p>{tp.purpose.length > 200 ? `${tp.purpose.slice(0, 200)}...` : tp.purpose}</p> : <p mix={muted}>No purpose written.</p>}
           {tp.mcpServers.length > 0 ? (
@@ -663,6 +736,9 @@ export function LibraryScreen(handle: Handle) {
   let error: Error | undefined;
   let connecting = false;
   let newTemplate = false;
+  // The selected tile of each grid ('' for none); its panel shows below that grid. Clicking the selected tile again closes it.
+  let server = '';
+  let template = '';
   const set = (f: () => void) => {
     f();
     void handle.update();
@@ -680,6 +756,9 @@ export function LibraryScreen(handle: Handle) {
     const libServers = servers.data ?? [];
     const tpls = templates.data ?? [];
     const adapterList = adapters.data ?? [];
+    const libraryIds = new Set(libServers.map((x) => x.id));
+    const openServer = libServers.find((x) => x.id === server);
+    const openTemplate = tpls.find((x) => x.id === template);
     return (
       <Page
         title="Library"
@@ -688,8 +767,8 @@ export function LibraryScreen(handle: Handle) {
         subtitle={servers.data && templates.data ? `${libServers.length} server${libServers.length === 1 ? '' : 's'} · ${tpls.length} template${tpls.length === 1 ? '' : 's'}` : undefined}
       >
         <p mix={introCss}>
-          Connect an MCP server or define a team member once, here. Then drag it onto a project to add it there, or drag a server onto an agent to let that agent use it. A project
-          only ever reaches the servers it was given, and an agent only the servers you gave it.
+          Connect an MCP server or define a team member once, here. Then drag its tile onto a project to add it there, or drag a server onto an agent to let that agent use it.
+          Click a tile to see its tools and settings. A project only ever reaches the servers it was given, and an agent only the servers you gave it.
         </p>
         <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
           {note ? (
@@ -712,17 +791,25 @@ export function LibraryScreen(handle: Handle) {
             >
               {servers.loading && !servers.data ? <Loading /> : null}
               {servers.data && libServers.length === 0 ? (
-                <div mix={card}>
-                  <Empty title="No servers are connected yet." icon={Plug}>
-                    <p>Connect a program on this computer or a web address once. Then press Find tools and drag it onto a project.</p>
-                  </Empty>
-                </div>
+                <p mix={emptyLine} data-testid="lib-mcp-empty">
+                  <Icon icon={Plug} size={14} />
+                  <strong>No servers are connected yet.</strong> Connect a program on this computer or a web address once. Then press Find tools and drag it onto a project.
+                </p>
               ) : null}
-              <div mix={stack}>
-                {libServers.map((x) => (
-                  <McpCard key={x.id} s={x} projects={projects} onDragging={onDragging} say={say} fail={fail} onChanged={reload} />
-                ))}
-              </div>
+              {libServers.length > 0 ? (
+                <ul mix={tileGrid} aria-label="MCP servers">
+                  {libServers.map((x) => (
+                    <ServerTile
+                      key={x.id}
+                      s={x}
+                      selected={x.id === server}
+                      onSelect={() => set(() => (server = server === x.id ? '' : x.id))}
+                      onDragging={onDragging}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+              {openServer ? <McpPanel key={openServer.id} s={openServer} projects={projects} onDragging={onDragging} say={say} fail={fail} onChanged={reload} /> : null}
             </Section>
 
             <CliGateway />
@@ -736,20 +823,39 @@ export function LibraryScreen(handle: Handle) {
                 </Button>
               }
             >
+              {templates.loading && !templates.data ? <Loading /> : null}
               {templates.data && tpls.length === 0 ? (
-                <div mix={card}>
-                  <Empty title="No templates yet." icon={Users}>
-                    <p>
-                      Make one here, or save an agent as a template on the <a href={routes.team.href()}>Team</a> page.
-                    </p>
-                  </Empty>
-                </div>
+                <p mix={emptyLine} data-testid="lib-template-empty">
+                  <Icon icon={Users} size={14} />
+                  <strong>No templates yet.</strong> Make one here, or save an agent as a template on the <a href={routes.team.href()}>Team</a> page.
+                </p>
               ) : null}
-              <div mix={stack}>
-                {tpls.map((x) => (
-                  <TemplateCard key={x.id} t={x} servers={libServers} projects={projects} adapters={adapterList} onDragging={onDragging} say={say} onChanged={reload} />
-                ))}
-              </div>
+              {tpls.length > 0 ? (
+                <ul mix={tileGrid} aria-label="Agent templates">
+                  {tpls.map((x) => (
+                    <TemplateTile
+                      key={x.id}
+                      t={x}
+                      libraryIds={libraryIds}
+                      selected={x.id === template}
+                      onSelect={() => set(() => (template = template === x.id ? '' : x.id))}
+                      onDragging={onDragging}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+              {openTemplate ? (
+                <TemplatePanel
+                  key={openTemplate.id}
+                  t={openTemplate}
+                  servers={libServers}
+                  projects={projects}
+                  adapters={adapterList}
+                  onDragging={onDragging}
+                  say={say}
+                  onChanged={reload}
+                />
+              ) : null}
             </Section>
 
             <Section
@@ -791,6 +897,7 @@ export function LibraryScreen(handle: Handle) {
               onDone={(saved) => {
                 set(() => {
                   connecting = false;
+                  server = saved.id; // open the new server's panel: Find tools is the next step
                   note = `${saved.display} is connected. Press Find tools, then drag it onto a project.`;
                 });
                 reload();
@@ -807,6 +914,7 @@ export function LibraryScreen(handle: Handle) {
               onDone={(saved) => {
                 set(() => {
                   newTemplate = false;
+                  template = saved.id;
                   note = `The template ${saved.name} was saved.`;
                 });
                 reload();

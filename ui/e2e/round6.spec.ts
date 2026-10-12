@@ -35,6 +35,10 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await form.getByLabel('Secret value 1').fill('sekret-e2e-value-123456');
   await form.getByRole('button', { name: 'Connect server' }).click();
 
+  // the new server is a tile in the grid, selected, with its panel open below the grid
+  const serverTile = page.getByTestId('lib-mcp-tile').filter({ hasText: 'Test server' });
+  await expect(serverTile).toHaveAttribute('aria-pressed', 'true');
+  await expect(serverTile).toContainText('Tools not found yet');
   const card = page.getByTestId('lib-mcp').filter({ hasText: 'Test server' });
   await expect(card).toBeVisible();
   await expect(card.getByTestId('mcp-secrets')).toContainText('API_KEY');
@@ -53,15 +57,16 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   // drag the server onto project lib-a
   const projA = page.getByTestId('lib-project').filter({ hasText: 'lib-a' });
   const projB = page.getByTestId('lib-project').filter({ hasText: 'lib-b' });
-  // drop on the project itself (its heading), not on an agent inside its card
+  // drop on the project itself (its heading), not on an agent inside its card; the open panel's header drags like the tile
   await card.locator('h3').dragTo(projA.getByRole('heading', { name: 'lib-a', exact: true }));
   await expect(page.getByTestId('library-note')).toContainText('Test server is now in lib-a.');
   await expect(projA.getByTestId('proj-server')).toHaveCount(1);
   await expect(projB.getByTestId('proj-server')).toHaveCount(0);
   await expect(card.getByTestId('lib-mcp-projects')).toContainText('lib-a');
+  await expect(serverTile).toContainText('In 1 project');
 
-  // drag it onto the agent Pay: only Pay may use it
-  await card.locator('h3').dragTo(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }));
+  // drag its tile onto the agent Pay: only Pay may use it
+  await serverTile.dragTo(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }));
   await expect(page.getByTestId('library-note')).toContainText('Pay can now use Test server.');
   await expect(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }).getByTestId('agent-server')).toHaveCount(1);
   await expect(projA.getByTestId('lib-agent').filter({ hasText: 'Rev' }).getByTestId('agent-server')).toHaveCount(0);
@@ -78,7 +83,9 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await tf.getByRole('button', { name: 'Create template' }).click();
   const tpl = page.getByTestId('lib-template').filter({ hasText: 'Payments dev' });
   await expect(tpl).toBeVisible();
-  await tpl.locator('h3').dragTo(projB.getByRole('heading', { name: 'lib-b', exact: true }));
+  const tplTile = page.getByTestId('lib-template-tile').filter({ hasText: 'Payments dev' });
+  await expect(tplTile).toContainText('Gets 1 server');
+  await tplTile.dragTo(projB.getByRole('heading', { name: 'lib-b', exact: true }));
   await expect(page.getByTestId('library-note')).toContainText('Payments dev joined lib-b, with Test server');
   const newAgent = projB.getByTestId('lib-agent').filter({ hasText: 'Payments dev' });
   await expect(newAgent).toBeVisible();
@@ -94,10 +101,14 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toContainText('effort high');
 
   // disconnecting removes it from every project
+  // (a fresh visit shows only the tiles: clicking one opens its panel)
   await page.getByTestId('nav-library').click();
+  await expect(page.getByTestId('lib-mcp')).toHaveCount(0);
+  await page.getByTestId('lib-mcp-tile').filter({ hasText: 'Test server' }).click();
   const again = page.getByTestId('lib-mcp').filter({ hasText: 'Test server' });
   await again.getByRole('button', { name: 'Disconnect' }).click();
   await again.getByRole('button', { name: 'Yes, disconnect' }).click();
+  await expect(page.getByTestId('lib-mcp-tile')).toHaveCount(0);
   await expect(page.getByTestId('lib-mcp')).toHaveCount(0);
   await expect(projA.getByTestId('proj-server')).toHaveCount(0);
   await expect(projB.getByTestId('proj-server')).toHaveCount(0);
