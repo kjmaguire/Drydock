@@ -233,7 +233,10 @@ servers, and a connection no longer carries a project.
   `asg_<connection id>` with the same config, its cursor moves to that scope, its items get the assignment; credential
   references, tasks and rules are untouched; Aikido's `argv` and every MCP endpoint override are dropped (a self-hosted Sentry
   URL is kept); every connection is `untested` again. A connection without a project keeps its items and config; its first
-  assignment adopts them. Outbound proposals that named an MCP tool and were not sent are cancelled with their approvals (the
+  assignment adopts them. Only the first assignment ever does: migration 00115 adds `integrations.legacy_adopted`, set by
+  every assignment (and by the migration for connections already assigned, made with a project, or holding items of an
+  assignment), so a connection that was assigned, unassigned and assigned again does not take its old scope, items, cursor or
+  rules a second time. The old `config_json` is left as 00114 kept it. Outbound proposals that named an MCP tool and were not sent are cancelled with their approvals (the
   approval was bound to the MCP call); sent and failed ones stay as history. The down migration restores one project per
   connection (the first assignment's).
 - **Methods**: `integration.kinds` (the catalog the screen is built from: fixed name, auth methods and fields, assignment

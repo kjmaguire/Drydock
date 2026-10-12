@@ -40,8 +40,9 @@ func scanAssignment(r rowScanner) (Assignment, error) {
 	return a, nil
 }
 
-// InsertAssignment stores a new assignment. adoptLegacy moves the connection's project-less items and its pre-P42 cursor to it
-// (the first assignment of a connection migrated without a project), in the same transaction.
+// InsertAssignment stores a new assignment and marks the connection as assigned (legacy_adopted). adoptLegacy moves the
+// connection's project-less items, its pre-P42 cursor and its project-less rules to it (the first assignment ever of a
+// connection migrated without a project), in the same transaction.
 func (s *Store) InsertAssignment(ctx context.Context, a Assignment, adoptLegacy bool) (Assignment, error) {
 	if a.ID == "" {
 		a.ID = ids.New("asg")
@@ -58,6 +59,10 @@ func (s *Store) InsertAssignment(ctx context.Context, a Assignment, adoptLegacy 
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO integration_assignments(`+asgCols+`) VALUES(?,?,?,?,?,?,?,?,?)`,
 			a.ID, a.IntegrationID, a.ProjectID, string(cfg), b2i(a.Enabled), a.CreatedBy, a.Created, a.Updated, a.Version); err != nil {
+			return err
+		}
+		// the connection has been assigned: whatever it held from before P42 is adopted now or never
+		if _, err := tx.ExecContext(ctx, `UPDATE integrations SET legacy_adopted=1 WHERE id=?`, a.IntegrationID); err != nil {
 			return err
 		}
 		if adoptLegacy {

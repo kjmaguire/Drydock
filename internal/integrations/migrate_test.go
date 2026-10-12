@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/integrations"
+	"github.com/kjmaguire/drydock/internal/storage"
 )
 
 // Migration 00114 (decision P42) moves connections made when a connection carried one project to workspace connections with
@@ -56,7 +57,7 @@ func TestMigrationFromProjectConnectionsToWorkspaceConnectionsKeepsEverything(t 
 	if err := h.vault.Put(ctx, "integrations/int_lin/token", linearToken); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.db.MigrateTo(ctx, 114); err != nil {
+	if err := h.db.MigrateTo(ctx, storage.LatestVersion()); err != nil { // 00114, then 00115 (legacy_adopted)
 		t.Fatal(err)
 	}
 
@@ -140,8 +141,78 @@ func TestMigrationFromProjectConnectionsToWorkspaceConnectionsKeepsEverything(t 
 	if err := h.db.Reader().QueryRow(`SELECT project_id, config_json FROM integrations WHERE id='int_aik'`).Scan(&proj, &cfg); err != nil || proj != "prj3" || cfg != `{"repo":"web"}` {
 		t.Fatalf("%q %q %v", proj, cfg, err)
 	}
-	if err := h.db.MigrateTo(ctx, 114); err != nil {
+	if err := h.db.MigrateTo(ctx, storage.LatestVersion()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Only the first assignment ever of a connection migrated without a project adopts its old scope, items, cursor and rules.
+// Assigned, unassigned and assigned again, the connection has no assignment either time, but the second assignment must not
+// adopt the old scope again (it was adopted, and maybe deliberately changed, the first time) nor move anything.
+func TestLegacyScopeIsAdoptedOnlyByTheFirstAssignmentEver(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	if err := h.db.MigrateTo(ctx, 111); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO integrations(id,kind,name,project_id,status,auth_kind,credential_ref,base_url,config_json,poll_interval_s,enabled,created_at,updated_at,version)
+		 VALUES('int_aik','aikido','Aikido','','ok','api_key','integrations/int_aik/token','','{"repo":"web"}',0,1,2,2,1)`,
+		`INSERT INTO external_items(id,integration_id,source,project_id,external_id,kind,issue_ref,title,content_hash,fetched_at)
+		 VALUES('ext_c','int_aik','aikido','','77','finding','AIK-77','SQL injection','hc',1)`,
+		`INSERT INTO integration_cursors(integration_id,scope,cursor_json,watermark,last_success_at,last_attempt_at) VALUES('int_aik','default','{}',7,7,7)`,
+	} {
+		if _, err := h.db.Writer().ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := h.db.MigrateTo(ctx, storage.LatestVersion()); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := h.svc.Get(ctx, "int_aik"); v.LegacyItems != 1 {
+		t.Fatalf("%+v", v)
+	}
+	a, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: "int_aik", ProjectID: "prj3"})
+	if err != nil || a.Config["repo"] != "web" || a.Sync.ItemsSeen != 1 {
+		t.Fatalf("the first assignment must adopt: %+v %v", a, err)
+	}
+	if err := h.svc.Unassign(ctx, human, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	// rows that would move if the adoption ran again: a project-less item, a pre-P42 cursor and a project-less rule
+	for _, q := range []string{
+		`INSERT INTO external_items(id,integration_id,assignment_id,source,project_id,external_id,kind,issue_ref,title,content_hash,fetched_at)
+		 VALUES('ext_d','int_aik','','aikido','','78','finding','AIK-78','Another','hd',1)`,
+		`INSERT INTO integration_cursors(integration_id,scope,cursor_json,watermark,last_success_at,last_attempt_at) VALUES('int_aik','default','{}',9,9,9)`,
+		`INSERT INTO integration_rules(id,integration_id,project_id,name,when_cel,action,created_by,created_at,updated_at) VALUES('rule_x','int_aik','','x','true','create_task','human:kyle',1,1)`,
+	} {
+		if _, err := h.db.Writer().ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if v, _ := h.svc.Get(ctx, "int_aik"); v.LegacyItems != 0 || len(v.Assignments) != 0 {
+		t.Fatalf("an unassigned connection is not waiting to adopt anything: %+v", v)
+	}
+	b, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: "int_aik", ProjectID: "prj4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Config) != 0 || b.Sync.ItemsSeen != 0 || b.Sync.LastSuccessAt != 0 {
+		t.Fatalf("the second assignment adopted the old scope again: %+v", b)
+	}
+	if n := h.count(`SELECT COUNT(*) FROM external_items WHERE id='ext_d' AND assignment_id=''`); n != 1 {
+		t.Fatal("the item adoption ran again")
+	}
+	if n := h.count(`SELECT COUNT(*) FROM integration_cursors WHERE integration_id='int_aik' AND scope='default'`); n != 1 {
+		t.Fatal("the cursor adoption ran again")
+	}
+	if n := h.count(`SELECT COUNT(*) FROM integration_rules WHERE id='rule_x' AND project_id=''`); n != 1 {
+		t.Fatal("the rule adoption ran again")
+	}
+	// 00114's data is intact: the connection still holds its old scope
+	var cfg string
+	if err := h.db.Reader().QueryRow(`SELECT config_json FROM integrations WHERE id='int_aik'`).Scan(&cfg); err != nil || cfg != `{"repo":"web"}` {
+		t.Fatalf("%q %v", cfg, err)
 	}
 }
 

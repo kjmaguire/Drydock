@@ -68,7 +68,9 @@ func (s *Service) Assign(ctx context.Context, by string, r AssignReq) (Assignmen
 		if err != nil {
 			return AssignmentView{}, err
 		}
-		adopt := len(asgs) == 0
+		// only the first assignment ever adopts the pre-P42 scope, items and cursor: a connection that was assigned and then
+		// unassigned has no assignment either, but its old scope was adopted (and maybe deliberately changed) back then
+		adopt := len(asgs) == 0 && !conn.LegacyAdopted
 		if adopt && len(cfg) == 0 && len(conn.Config) > 0 {
 			if cfg, err = validateConfig(conn.Kind, conn.Config); err != nil {
 				return AssignmentView{}, err

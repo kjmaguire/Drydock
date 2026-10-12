@@ -38,19 +38,20 @@ func b2i(b bool) int {
 
 // ---- connections ----
 
-const connCols = `id,kind,name,project_id,status,status_detail,auth_kind,credential_ref,base_url,config_json,poll_interval_s,enabled,created_at,updated_at,version,account_json,checked_at`
+const connCols = `id,kind,name,project_id,status,status_detail,auth_kind,credential_ref,base_url,config_json,poll_interval_s,enabled,created_at,updated_at,version,account_json,checked_at,legacy_adopted`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanConn(r rowScanner) (Connection, error) {
 	var c Connection
 	var cfg, acct string
-	var en int
+	var en, adopted int
 	if err := r.Scan(&c.ID, &c.Kind, &c.Name, &c.ProjectID, &c.Status, &c.StatusDetail, &c.AuthKind, &c.CredentialRef, &c.BaseURL, &cfg, &c.PollIntervalS, &en, &c.Created, &c.Updated, &c.Version,
-		&acct, &c.CheckedAt); err != nil {
+		&acct, &c.CheckedAt, &adopted); err != nil {
 		return c, err
 	}
 	c.Enabled = en != 0
+	c.LegacyAdopted = adopted != 0
 	c.Config = map[string]string{}
 	_ = json.Unmarshal([]byte(cfg), &c.Config)
 	_ = json.Unmarshal([]byte(acct), &c.Identity)
@@ -68,9 +69,9 @@ func (s *Store) InsertConnection(ctx context.Context, c Connection) (Connection,
 	cfg, _ := json.Marshal(nz(c.Config))
 	acct, _ := json.Marshal(c.Identity)
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO integrations(`+connCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		_, err := tx.ExecContext(ctx, `INSERT INTO integrations(`+connCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			c.ID, c.Kind, c.Name, c.ProjectID, c.Status, c.StatusDetail, c.AuthKind, c.CredentialRef, c.BaseURL, string(cfg), c.PollIntervalS, b2i(c.Enabled), c.Created, c.Updated, c.Version,
-			string(acct), c.CheckedAt)
+			string(acct), c.CheckedAt, b2i(c.LegacyAdopted))
 		return err
 	})
 	return c, err

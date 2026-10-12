@@ -156,14 +156,17 @@ type Connection struct {
 	CredentialRef string `json:"-"` // a reference, not a secret; kept out of the UI payload anyway
 	BaseURL       string `json:"baseUrl,omitempty"`
 	// Config is the remote scope of a connection made before P42; its first assignment adopts it.
-	Config        map[string]string `json:"config"`
-	PollIntervalS int               `json:"pollIntervalS"`
-	Enabled       bool              `json:"enabled"`
-	Created       int64             `json:"created"`
-	Updated       int64             `json:"updated"`
-	Version       int64             `json:"version"`
-	Identity      Identity          `json:"identity"`
-	CheckedAt     int64             `json:"checkedAt"` // when Identity was last read from the vendor's API
+	Config map[string]string `json:"config"`
+	// LegacyAdopted is set once the connection has been assigned: its pre-P42 scope, items and cursor were adopted then (or
+	// there were none), and a later assignment never adopts them again.
+	LegacyAdopted bool     `json:"-"`
+	PollIntervalS int      `json:"pollIntervalS"`
+	Enabled       bool     `json:"enabled"`
+	Created       int64    `json:"created"`
+	Updated       int64    `json:"updated"`
+	Version       int64    `json:"version"`
+	Identity      Identity `json:"identity"`
+	CheckedAt     int64    `json:"checkedAt"` // when Identity was last read from the vendor's API
 }
 
 // SyncStatus is the per-Connection sync state shown on the Connections page.

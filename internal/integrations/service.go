@@ -623,7 +623,7 @@ func (s *Service) view(ctx context.Context, c Connection) (ConnectionView, error
 		return v, err
 	}
 	v.Sync = SyncStatus{State: "never_synced", ItemsSeen: total}
-	if len(asgs) == 0 {
+	if len(asgs) == 0 && !c.LegacyAdopted {
 		v.LegacyItems = total
 	}
 	for i, a := range asgs {
