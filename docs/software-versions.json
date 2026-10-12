@@ -1,10 +1,10 @@
 {
-  "generated": "2026-10-11T19:03:54Z",
-  "commit": "dd08773",
+  "generated": "2026-10-12T04:04:41Z",
+  "commit": "38c653d",
   "summary": {
-    "current": 283,
+    "current": 282,
     "major": 8,
-    "minor": 88,
+    "minor": 89,
     "patch": 78,
     "prerelease": 2,
     "unknown": 1
@@ -347,8 +347,8 @@
       "status": "current",
       "usedDate": "2026-08-25",
       "where": "go.mod",
-      "role": "The OAuth 2 token handling the MCP SDK's sign-in uses: the stored tokens, and refreshing them when they expire.",
-      "usedBy": 1,
+      "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens).",
+      "usedBy": 2,
       "inBuild": true
     },
     {
@@ -3575,7 +3575,7 @@
       "name": "github.com/nwaples/rardecode/v2",
       "kind": "indirect",
       "used": "2.4.1",
-      "latest": "2.4.3",
+      "latest": "2.4.4",
       "status": "patch",
       "usedDate": "2026-08-23",
       "latestDate": "2026-10-11",
@@ -5534,7 +5534,7 @@
       "status": "current",
       "latestDate": "2026-09-30",
       "where": "docs/decisions.md section 2",
-      "role": "The GitHub CLI Drydock uses for pull requests; you install it.",
+      "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
       "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
     },
     {
@@ -5555,9 +5555,9 @@
       "name": "osv-scanner",
       "kind": "tool",
       "used": "2.6.0",
-      "latest": "2.6.0",
-      "status": "current",
-      "latestDate": "2026-09-14",
+      "latest": "2.7.0",
+      "status": "minor",
+      "latestDate": "2026-10-12",
       "where": "docs/decisions.md section 2",
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it."
     },
