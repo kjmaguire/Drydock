@@ -218,7 +218,25 @@ func (f *Fetcher) Get(ctx context.Context, rawURL string, cond Conditional) (*Re
 			return nil, err
 		}
 	}
-	return f.do(ctx, u, cond, true, false, f.policy.MaxBytes)
+	return f.do(ctx, u, cond, true, false, f.policy.MaxBytes, "")
+}
+
+// GetAPI fetches a JSON document from an API endpoint with the API's own media type as Accept (GitHub's REST API answers 415
+// to the markdown and HTML types a page fetch asks for). The address, host, redirect, size and text checks are Get's.
+func (f *Fetcher) GetAPI(ctx context.Context, rawURL, accept string) (*Response, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.checkURL(u); err != nil {
+		return nil, err
+	}
+	if !f.policy.NoRobots {
+		if err := f.checkRobots(ctx, u); err != nil {
+			return nil, err
+		}
+	}
+	return f.do(ctx, u, Conditional{}, true, false, f.policy.MaxBytes, accept)
 }
 
 // GetBinary fetches a non-text document (a source tarball) with the same address, host, redirect and time checks and its own
@@ -236,7 +254,7 @@ func (f *Fetcher) GetBinary(ctx context.Context, rawURL string, maxBytes int64) 
 			return nil, err
 		}
 	}
-	return f.do(ctx, u, Conditional{}, true, true, maxBytes)
+	return f.do(ctx, u, Conditional{}, true, true, maxBytes, "")
 }
 
 // HTTPError is a non-success response.
@@ -247,7 +265,7 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("GET %s: HTTP %d", e.URL, e.Status) }
 
-func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite, binary bool, maxBytes int64) (*Response, error) {
+func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite, binary bool, maxBytes int64, accept string) (*Response, error) {
 	if polite {
 		if err := f.wait(ctx); err != nil {
 			return nil, err
@@ -258,7 +276,14 @@ func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite, 
 		return nil, err
 	}
 	req.Header.Set("User-Agent", f.ua)
-	req.Header.Set("Accept", "text/markdown, text/plain;q=0.9, text/html;q=0.8, application/xml;q=0.7")
+	switch {
+	case accept != "":
+		req.Header.Set("Accept", accept)
+	case binary:
+		req.Header.Set("Accept", "application/gzip, application/x-gzip, application/octet-stream, */*;q=0.1")
+	default:
+		req.Header.Set("Accept", "text/markdown, text/plain;q=0.9, text/html;q=0.8, application/xml;q=0.7")
+	}
 	if cond.ETag != "" {
 		req.Header.Set("If-None-Match", cond.ETag)
 	}
@@ -352,7 +377,7 @@ func (f *Fetcher) robotsFor(ctx context.Context, u *url.URL) (*Robots, error) {
 		return r, nil
 	}
 	ru := &url.URL{Scheme: u.Scheme, Host: u.Host, Path: "/robots.txt"}
-	resp, err := f.do(ctx, ru, Conditional{}, true, false, 512<<10)
+	resp, err := f.do(ctx, ru, Conditional{}, true, false, 512<<10, "")
 	switch {
 	case err == nil:
 		r = ParseRobots(string(resp.Body))

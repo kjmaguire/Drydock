@@ -176,6 +176,11 @@ func (g *ghFixture) serve(w http.ResponseWriter, r *http.Request) {
 	g.hits[r.URL.Path]++
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	switch {
+	case len(parts) == 5 && parts[0] == "repos" && parts[3] == "commits" && !githubAccepts(r.Header.Get("Accept")):
+		// api.github.com refuses a request that accepts none of its media types
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		fmt.Fprint(w, `{"message":"Unsupported 'Accept' header"}`)
 	case len(parts) == 5 && parts[0] == "repos" && parts[3] == "commits":
 		sha, ok := g.commits[parts[1]+"/"+parts[2]+"@"+parts[4]]
 		if !ok {
@@ -195,6 +200,16 @@ func (g *ghFixture) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func githubAccepts(accept string) bool {
+	for _, t := range strings.Split(accept, ",") {
+		t = strings.TrimSpace(strings.SplitN(t, ";", 2)[0])
+		if t == "*/*" || t == "application/*" || t == "application/json" || strings.HasPrefix(t, "application/vnd.github") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildTarball(top string, files map[string]string) []byte {

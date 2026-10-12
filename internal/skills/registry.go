@@ -153,6 +153,9 @@ type GitHubFetcher struct {
 	TarballBase string // default https://codeload.github.com
 }
 
+// githubAccept is the media type GitHub's REST API documents; it answers 415 to the page crawler's markdown and HTML types.
+const githubAccept = "application/vnd.github+json"
+
 // NewGitHubFetcher builds the production fetcher: GitHub hosts only, no robots check (these are API endpoints a human
 // configured, not a crawl), no loopback.
 func NewGitHubFetcher() *GitHubFetcher {
@@ -183,7 +186,7 @@ func (g *GitHubFetcher) Resolve(ctx context.Context, repo, ref string) (string, 
 	if commitRe.MatchString(ref) {
 		return ref, nil
 	}
-	resp, err := g.Fetcher.Get(ctx, g.api()+"/repos/"+repo+"/commits/"+url.PathEscape(ref), packs.Conditional{})
+	resp, err := g.Fetcher.GetAPI(ctx, g.api()+"/repos/"+repo+"/commits/"+url.PathEscape(ref), githubAccept)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s@%s: %w", repo, ref, err)
 	}
