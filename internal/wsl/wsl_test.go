@@ -257,6 +257,53 @@ func TestStandInHostListsDistrosAndProbesThroughALoginShell(t *testing.T) {
 	}
 }
 
+// A probe that does not ask for the sign-in status (a launch's, a repository's) refreshes the cached probe without losing the
+// sign-in status the Connections page probed; once the install is gone the status is no longer claimed.
+func TestAProbeWithoutAuthKeepsTheLastKnownSignIn(t *testing.T) {
+	requireHostTools(t)
+	f := wsltest.NewFake(t, true, "Ubuntu")
+	h := &wsl.Host{Exe: f.Exe, Env: func() []string { return wsl.BaseEnv(os.Environ()) }, TTL: time.Millisecond}
+	ctx := context.Background()
+	first, err := h.Probe(ctx, "Ubuntu", "claude", []string{"--version"}, []string{"auth", "status"}, true)
+	if err != nil || first.AuthExit != 0 || !strings.Contains(first.Auth, `"loggedIn": true`) {
+		t.Fatalf("the Connections probe: %+v %v", first, err)
+	}
+	time.Sleep(5 * time.Millisecond) // past the TTL: the next probe runs again
+	in, err := h.Probe(ctx, "Ubuntu", "claude", []string{"--version"}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !in.At.After(first.At) {
+		t.Fatal("the probe after the TTL was not run again")
+	}
+	if in.AuthExit != 0 || in.Auth != first.Auth {
+		t.Fatalf("a probe without auth args dropped the sign-in status: authExit=%d auth=%q", in.AuthExit, in.Auth)
+	}
+	if c, ok := h.Cached("Ubuntu", "claude"); !ok || c.AuthExit != 0 || c.Auth != first.Auth || !c.At.Equal(in.At) {
+		t.Fatalf("the cache lost the sign-in status: %+v", c)
+	}
+	// another install now comes first on the login PATH: the first one's sign-in status is not claimed for it
+	other := filepath.Join(f.Home, "other", "bin")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "claude"), []byte("#!/bin/sh\n# LABELLED TEST DOUBLE: a second claude install\necho '2.1.296 (Claude Code)'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(f.Home, ".profile")
+	b, err := os.ReadFile(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(profile, append(b, []byte("PATH=\"$HOME/other/bin:$PATH\"\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if in, err = h.Probe(ctx, "Ubuntu", "claude", []string{"--version"}, nil, false); err != nil || in.Tool != filepath.Join(other, "claude") || in.AuthExit != -1 || in.Auth != "" {
+		t.Fatalf("the first install's sign-in was claimed for another one: %+v %v", in, err)
+	}
+}
+
 // TestKillEndsEveryProcessOfTheRunEvenAfterWslExeIsGone proves the stop path on a development host: the stand-in wsl.exe,
 // like the real one, does not take the program down when it is killed. Kill (the marker sweep) must end the program and its
 // grandchildren, including one that started a session of its own.

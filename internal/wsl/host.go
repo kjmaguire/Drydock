@@ -141,7 +141,8 @@ func firstLine(s string) string {
 func cacheKey(distro, tool string) string { return strings.ToLower(distro) + "\x00" + tool }
 
 // Probe runs the probe script for tool in distro through the person's login shell (versionArgs and authArgs come from the
-// adapter manifest). A result younger than TTL is reused unless fresh is set.
+// adapter manifest). A result younger than TTL is reused unless fresh is set. Without authArgs the sign-in status is not
+// asked again: the result carries the last one probed for the same install (Info.Tool), or none (AuthExit -1).
 func (h *Host) Probe(ctx context.Context, distro, tool string, versionArgs, authArgs []string, fresh bool) (Info, error) {
 	ttl := h.TTL
 	if ttl <= 0 {
@@ -172,7 +173,15 @@ func (h *Host) Probe(ctx context.Context, distro, tool string, versionArgs, auth
 	if h.cache == nil {
 		h.cache = map[string]Info{}
 	}
-	h.cache[cacheKey(distro, tool)] = in
+	key := cacheKey(distro, tool)
+	if len(authArgs) == 0 {
+		// a probe that did not ask for the sign-in status (a launch's or a repository's) keeps the last one known for the same
+		// install, so it does not turn the Connections page's "signed in" into "unknown"
+		if old, ok := h.cache[key]; ok && old.AuthExit >= 0 && in.Tool != "" && old.Tool == in.Tool {
+			in.Auth, in.AuthExit = old.Auth, old.AuthExit
+		}
+	}
+	h.cache[key] = in
 	h.mu.Unlock()
 	return in, nil
 }
