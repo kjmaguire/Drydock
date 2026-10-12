@@ -271,7 +271,10 @@ than 30 s fails as rate limited and the sync's backoff takes over (at least the 
 OAuth sign-in (`oauthflow.go`, `golang.org/x/oauth2`): `integration.oauthStart` returns the page to open (PKCE: a loopback
 redirect `http://127.0.0.1:<port>/callback` checks the state and exchanges the code with the verifier; device: the code to type
 and the verification page), `integration.oauthStatus` says when it finished (never the token), and `integration.connect` with
-`oauthSession` stores the token as JSON in the credential store. Tokens are refreshed when they expire and stored again. A kind
+`oauthSession` stores the token as JSON in the credential store. Tokens are refreshed when they expire and stored again.
+Refreshes of one connection happen one at a time: Linear rotates refresh tokens (each is accepted once), so when a sync, Test
+and the settings' choices find the token expired together, the first refreshes it and the others wait, read the credential
+store again and use the token it stored, instead of spending the same refresh token and being refused. A kind
 signs in only when a build sets its public client id (`-ldflags "-X .../core.LinearOAuthClientID=..."`,
 `SentryOAuthClientID`, or `DRYDOCK_LINEAR_OAUTH_CLIENT_ID` / `DRYDOCK_SENTRY_OAUTH_CLIENT_ID`); no OAuth app is registered yet,
 so in the shipped build both are off and the screen says so. The redirect URI a registered Linear app must allow is the

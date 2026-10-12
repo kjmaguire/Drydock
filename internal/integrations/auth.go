@@ -202,14 +202,35 @@ func (s *Service) authorization(ctx context.Context, c Connection, renew bool) (
 	return "Bearer " + v, nil
 }
 
-// freshOAuth returns a usable access token, refreshing (and storing) it when it has expired.
+// oauthUsable reports that a stored sign-in needs no refresh now.
+func (s *Service) oauthUsable(sc storedCred) bool {
+	return sc.Expiry.IsZero() || sc.Expiry.After(s.o.Now().Add(time.Minute)) || sc.RefreshToken == ""
+}
+
+// freshOAuth returns a usable access token, refreshing (and storing) it when it has expired. Refreshes of one connection are
+// serialized: a vendor that rotates refresh tokens (Linear) accepts each one once, so a second caller that spent the same
+// refresh token would get invalid_grant and the connection would look signed out. A caller that waited re-reads the
+// credential store and uses the token the first one stored.
 func (s *Service) freshOAuth(ctx context.Context, c Connection, sc storedCred) (string, error) {
-	if sc.Expiry.IsZero() || sc.Expiry.After(s.o.Now().Add(time.Minute)) || sc.RefreshToken == "" {
+	if s.oauthUsable(sc) {
 		return sc.AccessToken, nil
 	}
 	app, ok := s.oauthApp(c.Kind, c.BaseURL)
 	if !ok {
 		return sc.AccessToken, nil // no registration to refresh with: try the token; a 401 asks for a new sign-in
+	}
+	lk := s.lock("oauth-refresh:" + c.ID)
+	lk.Lock()
+	defer lk.Unlock()
+	if s.o.Vault != nil {
+		if v, err := s.o.Vault.Get(ctx, c.CredentialRef); err == nil {
+			if cur, ok := parseStored(v); ok && cur.Type == "oauth" {
+				sc = cur
+				if s.oauthUsable(sc) {
+					return sc.AccessToken, nil // refreshed by the caller this one waited for
+				}
+			}
+		}
 	}
 	conf := app.config("")
 	// expired by Drydock's clock: hand the library a token it also sees as expired, so it refreshes

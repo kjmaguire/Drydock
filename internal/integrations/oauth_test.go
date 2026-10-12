@@ -159,3 +159,71 @@ func TestSignInIsOffWithoutARegisteredApp(t *testing.T) {
 		}
 	}
 }
+
+// Linear rotates refresh tokens: each is accepted once. Callers that find the access token expired at the same moment (a sync,
+// Test and the settings' choices) must refresh it once between them; the others wait and use the token the first one stored,
+// instead of spending the same refresh token again and being told invalid_grant (which reads as a revoked sign-in).
+func TestConcurrentCallersRefreshAnExpiredSignInOnce(t *testing.T) {
+	ofx, ourl := oauthFixture(t, "lin_client_fixture")
+	ofx.ExpiresIn = 600
+	ofx.RefreshDelay = 50 * time.Millisecond
+	lfx := itfixture.NewLinear("")
+	lts, lurl := itfixture.Serve(lfx.Server())
+	t.Cleanup(lts.Close)
+	h := newHarness(t, func(o *integrations.Options) {
+		o.OAuth = map[string]integrations.OAuthApp{integrations.KindLinear: {ClientID: "lin_client_fixture", AuthURL: ourl + "/authorize", TokenURL: ourl + "/token"}}
+	})
+	ctx := context.Background()
+	s, err := h.svc.OAuthStart(ctx, human, integrations.KindLinear, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Get(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if done := waitSignedIn(t, h, s.ID); done.State != "signed_in" {
+		t.Fatalf("%+v", done)
+	}
+	c, err := h.svc.Connect(ctx, human, integrations.ConnectReq{Kind: integrations.KindLinear, OAuthSession: s.ID, BaseURL: lurl})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h.clk.Advance(11 * time.Minute) // the access token has expired
+	const n = 8
+	errs := make(chan error, n)
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		go func() {
+			<-start
+			_, err := h.svc.Choices(ctx, c.ID, "team", nil)
+			errs <- err
+		}()
+	}
+	close(start)
+	for i := 0; i < n; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("caller %d: %v", i, err)
+		}
+	}
+	if acc, rej := ofx.RefreshCounts(); acc != 1 || rej != 0 {
+		t.Fatalf("refreshes accepted %d, rejected %d; want exactly one", acc, rej)
+	}
+	// every call went out with the refreshed token, which is the one stored
+	stored, _ := h.vault.Get(ctx, c.CredentialRef)
+	fresh := ofx.Issued[len(ofx.Issued)-1]
+	if !strings.Contains(stored, fresh) {
+		t.Fatal("the refreshed token was not stored")
+	}
+	seen := lfx.AuthSeen()
+	for _, a := range seen[len(seen)-n:] {
+		if a != "Bearer "+fresh {
+			t.Fatalf("a caller used %q", a)
+		}
+	}
+	if v, _ := h.svc.Get(ctx, c.ID); v.Status == integrations.StatusUnauthenticated {
+		t.Fatalf("%+v", v.Connection)
+	}
+}

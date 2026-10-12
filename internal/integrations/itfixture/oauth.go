@@ -13,7 +13,8 @@ import (
 
 // OAuth is an OAuth 2.0 server fixture for a public client: GET /authorize (authorization code with PKCE S256: it redirects
 // at once to redirect_uri with a code and the state, standing in for the person approving), POST /token (grant types
-// authorization_code with code_verifier, refresh_token, and urn:ietf:params:oauth:grant-type:device_code), POST /device/code
+// authorization_code with code_verifier, refresh_token rotating like Linear's: each refresh token is accepted once and a
+// spent one is invalid_grant, and urn:ietf:params:oauth:grant-type:device_code), POST /device/code
 // (RFC 8628: the first poll answers authorization_pending, the second issues the token). No client secret is accepted or
 // needed, as for Linear's PKCE sign-in and Sentry's device flow.
 type OAuth struct {
@@ -26,6 +27,18 @@ type OAuth struct {
 	n          int
 	Issued     []string // access tokens, oldest first
 	Refreshes  int
+	// Rejected counts refresh grants refused because the refresh token was already spent (or never issued).
+	Rejected int
+	// RefreshDelay makes a refresh grant take this long, like a slow network: concurrent callers then all hold the same refresh
+	// token while the first exchange is in flight.
+	RefreshDelay time.Duration
+}
+
+// RefreshCounts returns the accepted and rejected refresh grants so far.
+func (o *OAuth) RefreshCounts() (accepted, rejected int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.Refreshes, o.Rejected
 }
 
 // NewOAuth creates the fixture for a client id.
@@ -95,11 +108,17 @@ func (o *OAuth) Server() http.Handler {
 				delete(o.challenges, f.Get("code"))
 				o.issue(w)
 			case "refresh_token":
+				if o.RefreshDelay > 0 {
+					o.mu.Unlock()
+					time.Sleep(o.RefreshDelay)
+					o.mu.Lock()
+				}
 				if !o.refresh[f.Get("refresh_token")] {
+					o.Rejected++
 					writeJSON(w, 400, map[string]any{"error": "invalid_grant"})
 					return
 				}
-				delete(o.refresh, f.Get("refresh_token")) // rotating refresh tokens
+				delete(o.refresh, f.Get("refresh_token")) // rotating refresh tokens: each one is accepted once
 				o.Refreshes++
 				o.issue(w)
 			case "urn:ietf:params:oauth:grant-type:device_code":
