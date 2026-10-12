@@ -51,6 +51,125 @@ type Repo struct {
 	AuthorEmail string
 
 	guard *guard // the repository's trusted git configuration (guard.go)
+	// runner, when set, runs every git call of this repository somewhere else: inside the WSL distro the repository lives in
+	// (decision P41). Nil: this machine's git.
+	runner Runner
+}
+
+// Runner runs git somewhere other than this machine's own git: for a repository inside a WSL distro, the distro's git, so
+// the worktrees it makes link to each other with the distro's paths, which the agent's git (and the person's) inside the
+// distro can read. Windows git through \\wsl.localhost would write \\wsl.localhost links that git inside the distro cannot
+// follow (and would prune). internal/wsl.GitRunner implements it.
+type Runner interface {
+	// Command returns the program and its arguments that run git with args in dir, with env set (KEY=VALUE, never secrets:
+	// they may be on a command line). Paths in dir, env and args are this machine's (Windows) paths.
+	Command(dir string, env, args []string) (path string, argv []string, procEnv []string, err error)
+	// HostPath maps an absolute path git printed back to this machine's form.
+	HostPath(p string) string
+}
+
+// OpenIn is Open for a repository whose git calls all run through runner (nil: as Open).
+func OpenIn(ctx context.Context, path string, runner Runner) (*Repo, error) {
+	abs := path
+	if runner == nil {
+		return Open(ctx, path)
+	}
+	r := &Repo{Root: abs, AuthorName: "Drydock", AuthorEmail: "drydock@localhost", runner: runner}
+	out, err := r.git(ctx, abs, nil, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s (%v)", ErrNotARepo, abs, err)
+	}
+	r.Root = strings.TrimSpace(out)
+	if err := r.startGuard(ctx); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// RemoteURL is the URL of the named remote, read through Drydock's git chokepoint (so a repository inside a WSL distro asks
+// the distro's git). Reading a remote runs no configured program.
+func (r *Repo) RemoteURL(ctx context.Context, name string) (string, error) {
+	out, err := r.gitUnguarded(ctx, r.Root, nil, "remote", "get-url", name)
+	return strings.TrimSpace(out), err
+}
+
+// WorktreeParent is the folder that holds this repository's task worktrees for project: defaultRoot/<project> (the app's
+// data folder) for a repository on Windows; for a repository inside a WSL distro, a folder next to it inside the distro
+// (<parent>/.drydock-worktrees/<project>), because a worktree is only as fast for an agent in the distro as the disk it is on
+// and git inside the distro must be able to follow its links (decision P41).
+func (r *Repo) WorktreeParent(defaultRoot, project string) string {
+	if r.runner != nil || isDistroPath(r.Root) {
+		return filepath.Join(filepath.Dir(r.Root), ".drydock-worktrees", project)
+	}
+	return filepath.Join(defaultRoot, project)
+}
+
+// drydockEnv is what Drydock sets for every git call (on top of the environment): no prompt, no locks for reads, a fixed
+// language, no editor or pager, and the commit identity.
+func (r *Repo) drydockEnv() []string {
+	return []string{"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_MERGE_AUTOEDIT=no", "GIT_PAGER=cat",
+		"GIT_AUTHOR_NAME=" + r.AuthorName, "GIT_AUTHOR_EMAIL=" + r.AuthorEmail,
+		"GIT_COMMITTER_NAME=" + r.AuthorName, "GIT_COMMITTER_EMAIL=" + r.AuthorEmail}
+}
+
+// command builds the git process for args in dir: this machine's git with the hardening (and, for a distro path reached
+// from Windows, the safe.directory that path needs), or the runner's.
+func (r *Repo) command(ctx context.Context, dir string, extraEnv []string, args []string) (*exec.Cmd, error) {
+	if r.runner != nil {
+		path, argv, penv, err := r.runner.Command(dir, append(r.drydockEnv(), extraEnv...), hardening(args))
+		if err != nil {
+			return nil, err
+		}
+		cmd := exec.CommandContext(ctx, path, argv...)
+		cmd.Env = penv
+		return cmd, nil
+	}
+	cmd := exec.CommandContext(ctx, "git", append(safeDirectory(dir, r.Root), hardening(args)...)...)
+	cmd.Dir = dir
+	cmd.Env = append(r.env(), extraEnv...)
+	return cmd, nil
+}
+
+// hostOutput maps the absolute paths a runner's git printed (rev-parse --show-toplevel, --git-dir, --git-path) to this
+// machine's form.
+func (r *Repo) hostOutput(args []string, out string) string {
+	if r.runner == nil || len(args) == 0 || args[0] != "rev-parse" {
+		return out
+	}
+	lines := strings.Split(out, "\n")
+	for i, l := range lines {
+		if t := strings.TrimSpace(l); strings.HasPrefix(t, "/") {
+			lines[i] = r.runner.HostPath(t)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// safeDirectory is the -c safe.directory a Windows git needs to work in a repository inside a WSL distro reached through
+// \\wsl.localhost (its files belong to the distro's user, so git reports "dubious ownership"). It names exactly the paths
+// of this call, on the command line of this call only: the person's global configuration is never changed. Empty for any
+// other path. A repository Drydock opened inside a distro runs its git there (Runner); this covers a Windows git that still
+// reaches one.
+func safeDirectory(paths ...string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range paths {
+		if !isDistroPath(p) {
+			continue
+		}
+		s := strings.ReplaceAll(p, `\`, "/")
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, "-c", "safe.directory="+s)
+		}
+	}
+	return out
+}
+
+// isDistroPath reports whether p is a WSL distro's file as Windows names it (\\wsl.localhost\..., \\wsl$\...).
+func isDistroPath(p string) bool {
+	s := strings.ToLower(strings.ReplaceAll(p, "/", `\`))
+	return strings.HasPrefix(s, `\\wsl.localhost\`) || strings.HasPrefix(s, `\\wsl$\`)
 }
 
 // Worktree is a task's isolated checkout.
@@ -98,11 +217,7 @@ func Init(ctx context.Context, dir, branch string) (*Repo, error) {
 }
 
 func (r *Repo) env() []string {
-	return append(gitEnv(os.Environ()),
-		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_MERGE_AUTOEDIT=no", "GIT_PAGER=cat",
-		"GIT_AUTHOR_NAME="+r.AuthorName, "GIT_AUTHOR_EMAIL="+r.AuthorEmail,
-		"GIT_COMMITTER_NAME="+r.AuthorName, "GIT_COMMITTER_EMAIL="+r.AuthorEmail,
-	)
+	return append(gitEnv(os.Environ()), r.drydockEnv()...)
 }
 
 // keptGitEnv are the GIT_* variables of the app's own environment that git calls keep: how the user reaches their remotes,
@@ -171,15 +286,16 @@ func (r *Repo) git(ctx context.Context, dir string, extraEnv []string, args ...s
 func (r *Repo) gitUnguarded(ctx context.Context, dir string, extraEnv []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", hardening(args)...)
-	cmd.Dir = dir
-	cmd.Env = append(r.env(), extraEnv...)
+	cmd, err := r.command(ctx, dir, extraEnv, args)
+	if err != nil {
+		return "", &gitError{args: args, err: err}
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		return stdout.String(), &gitError{args: args, stderr: strings.TrimSpace(stderr.String()), stdout: stdout.String(), err: err}
 	}
-	return stdout.String(), nil
+	return r.hostOutput(args, stdout.String()), nil
 }
 
 type gitError struct {
@@ -866,9 +982,10 @@ func (r *Repo) PatchID(ctx context.Context, w Worktree, ref string) (string, err
 	}
 	ctx2, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx2, "git", hardening([]string{"patch-id", "--stable"})...)
-	cmd.Dir = w.Path
-	cmd.Env = r.env()
+	cmd, err := r.command(ctx2, w.Path, nil, []string{"patch-id", "--stable"})
+	if err != nil {
+		return "", fmt.Errorf("git patch-id: %w", err)
+	}
 	cmd.Stdin = strings.NewReader(diff)
 	var out bytes.Buffer
 	cmd.Stdout = &out

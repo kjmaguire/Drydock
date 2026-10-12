@@ -181,6 +181,11 @@ func configEntries(ctx context.Context, path string) (map[string]string, error) 
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "config", "--file", path, "--null", "--list")
 	cmd.Dir = filepath.Dir(path)
+	if isDistroPath(path) {
+		// a repository inside a WSL distro: the file is read through \\wsl.localhost; run outside it, so git does not look for
+		// a repository there (and refuse it for its owner)
+		cmd.Dir = os.TempDir()
+	}
 	cmd.Env = append(gitEnv(os.Environ()), "GIT_CONFIG_NOSYSTEM=1")
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
