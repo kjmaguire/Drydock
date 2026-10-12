@@ -1,6 +1,6 @@
 # Drydock: Integrations (Linear, Notion, Sentry, Aikido, GitHub)
 
-Scope: this document specifies how Drydock connects to external work-tracking, documentation and security systems (brief section 11, "Integrations"; Slice 5). Each integration is a Connection ([`connections.md`](connections.md)) with two independent channels: app sync (polling with cursors into `external_items`, run by the app, read-only) and agent access (official MCP servers through the gateway, [`mcp.md`](mcp.md)). Nothing becomes a task without a human action or a stored rule; outbound writes are approval-gated by default; inbound content is untrusted data. It covers the `Integration` interface, the `external_items` and related schemas, task-creation rules, outbound gating, per-integration auth, cursors, rate limits and MCP access, errors, and licensing (D14: Sentry's MCP server is FSL, Aikido's is AGPL or commercial, Notion's local server is retired; none is bundled; Aikido auth is per-customer client credentials). GitHub is specified in [`github.md`](github.md) and reuses the same tables. Decisions in [`decisions.md`](decisions.md) win over the brief.
+Scope: this document specifies how Drydock connects to external work-tracking, documentation and security systems (brief section 11, "Integrations"; Slice 5). Each integration is a Connection ([`connections.md`](connections.md)) with two independent channels: app sync (polling with cursors into `external_items`, run by the app, read-only) and agent access (official MCP servers through the gateway, [`mcp.md`](mcp.md)). Nothing becomes a task without a human action or a stored rule; outbound writes are approval-gated by default; inbound content is untrusted data. It covers the `Integration` interface, the `external_items` and related schemas, task-creation rules, outbound gating, per-integration auth, cursors, rate limits and MCP access, errors, and licensing (D14: Sentry's MCP server is FSL, Aikido's is AGPL or commercial, Notion's local server is retired; none is bundled; Aikido auth is per-customer client credentials). GitHub is specified in [`github.md`](github.md) and reuses the same tables. Decisions in [`decisions.md`](decisions.md) win over the brief. The "As built" sections at the end record what exists; the newest (decision P42: workspace connections assigned to projects, sync through the vendors' own APIs) wins where they differ from the design above.
 
 Evidence tags: `[tool §5]` = [`phase0/tooling-integrations.md`](phase0/tooling-integrations.md) section 5 (integrations), `[tool §6]` = its MCP catalog, `[go §3]` = [`phase0/go-platform.md`](phase0/go-platform.md) section 3 (keyring), `Dn` = decisions.md. Most Linear, Notion and Aikido API facts are search-snippet level because their documentation hosts were unreachable in Phase 0; they are tagged **snippet** and must be re-verified from a networked machine. **Design** marks our choices; **unverified** marks unconfirmed facts.
 
@@ -206,3 +206,132 @@ Room exports (room-protocol s8) are exposed too: `room.export {kind: minutes | a
   DRYDOCK_LIVE_LINEAR_TOKEN=lin_api_... DRYDOCK_LIVE_REPORT=live.json go test ./internal/integrations -run TestLive -v
   ```
 
+
+## As built: workspace connections and the vendors' own APIs (2026-10-12, decision P42)
+
+This section supersedes the earlier "As built" sections where they differ: app sync no longer goes through the vendors' MCP
+servers, and a connection no longer carries a project.
+
+### Connections and assignments
+
+- **A connection is the workspace's link to one vendor**: the credential (in the OS credential store under
+  `integrations/<id>/token`, never in a row, event, log or error), the API host, and what the vendor's API says the credential
+  reaches (`account_json`: account, workspace, workspace URL, scopes, how it was made; `checked_at`). It is named after the
+  vendor and cannot be renamed. There is one connection per vendor; `integration.connect` with an `id` reconnects (a new
+  credential for the same connection, its assignments and items untouched).
+- **An assignment** (`integration_assignments`) gives a connection to one project with that project's scope:
+  Linear `team`, `project`; Notion `data_source`, `query`; Sentry `organization` (required), `project`, `query`; Aikido `repo`;
+  GitHub `repo` (default: the project's origin remote), `labels`. Each assignment has its own cursor (`integration_cursors.scope`
+  is the assignment id), its own items (`external_items` is unique per connection, assignment and external id, so one team
+  assigned to two projects gives each project its own copy) and the rules of its project. Changing an assignment's scope starts
+  its cursor again and drops the old scope's items that never became tasks. Unassigning removes the project's cursor, rules and
+  untasked items; items with tasks stay, marked gone. Disconnecting removes the credential and every assignment.
+- **Migration 00114** (tested from the old shape in `migrate_test.go`): every connection that had a project gets the assignment
+  `asg_<connection id>` with the same config, its cursor moves to that scope, its items get the assignment; credential
+  references, tasks and rules are untouched; Aikido's `argv` and every MCP endpoint override are dropped (a self-hosted Sentry
+  URL is kept); every connection is `untested` again. A connection without a project keeps its items and config; its first
+  assignment adopts them. Outbound proposals that named an MCP tool and were not sent are cancelled with their approvals (the
+  approval was bound to the MCP call); sent and failed ones stay as history. The down migration restores one project per
+  connection (the first assignment's).
+- **Methods**: `integration.kinds` (the catalog the screen is built from: fixed name, auth methods and fields, assignment
+  settings, API, version, rate limit, documentation), `integration.list`, `.get`, `.connect`, `.disconnect`, `.test`,
+  `.assign`, `.unassign`, `.assignments`, `.choices` (the values of a setting, read from the vendor: Linear teams and projects,
+  Notion data sources, Sentry organizations and projects, Aikido repositories, GitHub repositories), `.oauthStart`,
+  `.oauthStatus`, `.sync` (a connection, or one `assignmentId`), `.items` (by connection, assignment or project), and the item,
+  rule, import and outbound methods as before. `integration.oauthBegin` (the MCP library sign-in) is kept for connections made
+  with it.
+
+### The vendors' APIs
+
+No vendor publishes an official Go SDK, so each adapter is a plain HTTPS client written from the vendor's documentation and SDK
+sources. One `apiClient` per connection sends the Authorization header, `Accept: application/json` and a Drydock user agent,
+reads at most 16 MB, classifies HTTP status codes in plain language (a vendor's error code is shown only when it is letters and
+underscores, never free text that could echo a credential), never follows a redirect to another host, and accepts only https
+API hosts (plain http only on a loopback address, for fixtures). Before each request a token bucket spends the documented
+budget evenly; after each response the vendor's rate-limit headers can hold further requests until their reset; a wait longer
+than 30 s fails as rate limited and the sync's backoff takes over (at least the vendor's `Retry-After`).
+
+| | Linear | Notion | Sentry | Aikido | GitHub |
+|---|---|---|---|---|---|
+| API and version | GraphQL `https://api.linear.app/graphql` (unversioned; schema of `@linear/sdk` 97.1.0) | REST `https://api.notion.com/v1`, `Notion-Version: 2026-03-11` | Web API v0, `https://sentry.io/api/0/` or a self-hosted host | Public REST API v1, `<region>/api/public/v1`; regions `app.aikido.dev`, `app.us.`, `app.me.`, `app.au.` | REST API through `gh api` |
+| Official SDK | TypeScript only (`@linear/sdk`, MIT) | JavaScript only (`@notionhq/client` 5.27.0, MIT) | none for the API (`sentry-go` sends events) | none | none needed: `gh` |
+| Auth | personal API key as `Authorization: <key>`; OAuth 2 authorization code with PKCE (no client secret), rotating refresh token, `Bearer` | internal integration secret as `Bearer` (public OAuth needs a client secret: not offered) | user, organization or internal-integration auth token as `Bearer`; OAuth device flow (RFC 8628) | OAuth 2 client credentials only: `POST <host>/api/oauth/token`, Basic client id and secret; the access token is kept in memory and bought again on a 401 | the user's `gh` sign-in |
+| Identity (Test) | `viewer { name displayName }`, `organization { name urlKey }` | `GET /v1/users/me` (bot name, `workspace_name`) | `GET /api/0/` (`user`, `auth.scopes`), `GET /api/0/organizations/` | `GET /workspace`; scopes from the token answer | `GET /user` |
+| Sync | `issues(first, after, filter: {team.key, project.id, updatedAt > watermark}, orderBy: updatedAt)`; Relay `pageInfo` | `POST /v1/data_sources/{id}/query` (sort and filter on `last_edited_time`) or `POST /v1/search` (pages, newest first); `GET /v1/pages/{id}/markdown` for the body | `GET /organizations/{org}/issues/?project=&query=&sort=date&limit=` (at most 100), `Link` header cursors (`rel="next"; results="true"`) | `GET /issues/export?format=json&filter_status=open[&filter_code_repo_id]`: everything at once, a full sweep each time | `GET /repos/{o}/{r}/issues?state=open&sort=updated&direction=desc&since=&labels=&per_page=&page=`, pull requests skipped |
+| Writes (approval-gated) | `commentCreate`; `issueUpdate(stateId)` after reading the team's states | `POST /v1/comments`; `POST /v1/pages` (Markdown content under a parent page) | `PUT /organizations/{org}/issues/{id}/` status resolved or ignored | `PUT /issues/{id}/ignore`, `/unignore`, `/snooze` (`snooze_until`), `/unsnooze` | none here |
+| Rate limit in the code | 2,500 requests/h per user with an API key, 5,000/h with OAuth (burst 50); `X-RateLimit-Requests-*` and `X-RateLimit-Complexity-*` remaining 0 holds until the reset (epoch ms); a `ratelimited` GraphQL error is a rate limit | 3 requests/s average (burst 3); 429 `rate_limited` with `Retry-After` | no published numbers: `X-Sentry-Rate-Limit-Remaining` 0 holds until `X-Sentry-Rate-Limit-Reset` (epoch s); 429 `Retry-After` | 20 requests/min per workspace (burst 5); 429 `Retry-After` | 5,000 requests/h for a signed-in user; `gh` errors map to a rate-limit backoff |
+| Item reference | `ENG-123` | none (a requirements source) | the short id | `AIK-<id>` | `#<number>` (so the pull request says "Closes #n") |
+
+OAuth sign-in (`oauthflow.go`, `golang.org/x/oauth2`): `integration.oauthStart` returns the page to open (PKCE: a loopback
+redirect `http://127.0.0.1:<port>/callback` checks the state and exchanges the code with the verifier; device: the code to type
+and the verification page), `integration.oauthStatus` says when it finished (never the token), and `integration.connect` with
+`oauthSession` stores the token as JSON in the credential store. Tokens are refreshed when they expire and stored again. A kind
+signs in only when a build sets its public client id (`-ldflags "-X .../core.LinearOAuthClientID=..."`,
+`SentryOAuthClientID`, or `DRYDOCK_LINEAR_OAUTH_CLIENT_ID` / `DRYDOCK_SENTRY_OAUTH_CLIENT_ID`); no OAuth app is registered yet,
+so in the shipped build both are off and the screen says so. The redirect URI a registered Linear app must allow is the
+loopback callback.
+
+Credentials for agents: `integrations.Credentials` (the MCP gateway's credential source for `mcp/<kind>`) still resolves a pasted
+token or an OAuth access token; Aikido's REST client credentials are never handed to its MCP server. Wiring a gateway for agent
+runs is the MCP screen's work.
+
+### GitHub
+
+The GitHub card shows the `gh` sign-in (the same check as the project wizard: `github.status`) and connects with nothing typed
+(`auth_kind` `gh`, no credential reference). Test reads the login. An assignment names the repository whose issues the project
+imports (default: the project's origin remote; any repository `gh` can see can be listed with `integration.choices`). Issues
+sync into `external_items` like any other kind (cleaned, scored, quoted; a high-risk issue is never imported) and an import
+creates a BACKLOG task with the reference `#<number>`. The Pull Requests screen's direct issue import (`github.issues`,
+`github.importIssue`) is unchanged.
+
+### Documentation read for this change, and what could not be read
+
+The sandbox's proxy refused `linear.app`, `developers.notion.com`, `docs.sentry.io`, `apidocs.aikido.dev`, `apis.io` and the
+vendors' API hosts except `sentry.io` (which answered `GET /api/0/` with `{"version":"0","auth":null,"user":null}` and the
+`X-Sentry-Rate-Limit-*` headers). Read in full instead:
+
+- Linear: `linear/linear` (the official SDK repository): `packages/sdk/src/schema.graphql` (Query.issues and its arguments,
+  IssueFilter, TeamFilter, Organization, User, Team.states, CommentCreateInput, IssueUpdateInput) and `src/error.ts` (the
+  error types). Linear's rate-limit and OAuth pages were read only as search-engine snippets (2,500/h API key, 5,000/h OAuth,
+  complexity headers; PKCE with the client id only, rotating refresh tokens).
+- Notion: `makenotion/notion-sdk-js` 5.27.0 (the official SDK): `src/Client.ts` (default `Notion-Version` 2025-09-03, retry
+  on 429 with `Retry-After`), `src/api-endpoints/*` (search, data sources query, pages and `pages/{id}/markdown`, comments,
+  users/me, the bot object). The 2026-03-11 upgrade guide and the request-limit page were read as snippets.
+- Sentry: `getsentry/sentry-docs` `docs/api/` (auth.mdx with OAuth and the device flow, pagination.mdx, ratelimits.mdx,
+  permissions.mdx, requests.mdx) and `getsentry/sentry-api-schema` `openapi-derefed.json` (the issues list, update and latest
+  event endpoints and their fields).
+- Aikido: no page could be read. Paths and the client-credentials exchange come from search snippets of `apidocs.aikido.dev`
+  (export issues, list code repositories, ignore and snooze), the regional hosts from the official `@aikidosec/mcp` 1.0.28
+  package, and the export's field names from a community Go client (`hazcod/aikido-sdk-go`). The 20 requests/min limit is the
+  Phase 0 snippet.
+- GitHub: the existing `internal/git/host` and GitHub's REST documentation as already recorded in `github.md`.
+
+### Tests
+
+Protocol fixtures (`internal/integrations/itfixture`, labelled as such) follow the documented shapes: a Linear GraphQL server, a
+Notion REST server that refuses a request without `Notion-Version`, a Sentry server with `Link` cursors and rate-limit headers,
+an Aikido server with the client-credentials token endpoint, a GitHub REST server, and an OAuth server for PKCE, refresh and the
+device flow. `go test ./internal/integrations/...` covers connecting without a project, assigning to two projects, unassigning,
+the migration from the old shape (and back), each adapter's identity, choices, sync, writes and failures, the documented rate
+limits and headers, both sign-ins, and the credential never reaching the database, files, events, logs or errors.
+`go test ./internal/core -run 'Integration|Workspace'` drives the same through the UI methods, GitHub included. The UI has browser
+tests for the screen and `ui/e2e/integrations.spec.ts` connects Linear (the fixture) without a project, checks its fixed name and
+logo, assigns it, syncs and unassigns it.
+
+### Not verified
+
+No vendor was called with a real credential. Until the owner runs the live checks, every shape above is only as right as the
+documentation and SDK sources it was written from; Aikido's least of all. The live checks are read-only and print nothing
+secret:
+
+```sh
+DRYDOCK_LIVE_LINEAR_TOKEN=lin_api_... DRYDOCK_LIVE_LINEAR_TEAM=ENG go test ./internal/integrations -run TestLiveLinear -v
+DRYDOCK_LIVE_NOTION_TOKEN=ntn_... [DRYDOCK_LIVE_NOTION_DATA_SOURCE=...] go test ./internal/integrations -run TestLiveNotion -v
+DRYDOCK_LIVE_SENTRY_TOKEN=... DRYDOCK_LIVE_SENTRY_ORG=acme [DRYDOCK_LIVE_SENTRY_PROJECT=web] go test ./internal/integrations -run TestLiveSentry -v
+DRYDOCK_LIVE_AIKIDO_CLIENT_ID=... DRYDOCK_LIVE_AIKIDO_CLIENT_SECRET=... [DRYDOCK_LIVE_AIKIDO_REGION=us] go test ./internal/integrations -run TestLiveAikido -v
+DRYDOCK_LIVE_GITHUB_REPO=owner/name go test ./internal/integrations -run TestLiveGitHub -v   # uses your signed-in gh
+```
+
+Also unverified: the OAuth sign-ins against Linear's and Sentry's real servers (no client id is registered), whether Linear
+accepts a loopback redirect with any port, whether a pre-P42 MCP sign-in's token works against the vendor's API (Test says if
+not), Notion's 2026-03-11 behaviour beyond the SDK's types, and every Aikido path and field.

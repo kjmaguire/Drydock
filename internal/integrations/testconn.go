@@ -15,114 +15,146 @@ type TestStep struct {
 	Detail string `json:"detail"`
 }
 
-// TestReport is the outcome of Test connection: is a token stored, is the server reachable, is the token accepted, are the
-// tools Drydock needs present.
+// TestReport is the outcome of Test connection: is a credential stored, does the vendor's API accept it and whom does it reach,
+// and can it read an assigned project's items.
 type TestReport struct {
 	IntegrationID string     `json:"integrationId"`
 	OK            bool       `json:"ok"`
 	Steps         []TestStep `json:"steps"`
-	ToolsFound    []string   `json:"toolsFound"`
-	ToolsMissing  []string   `json:"toolsMissing"`
-	WritesMissing []string   `json:"writesMissing"` // optional write tools the server does not offer: those outbound operations are unavailable
+	Identity      Identity   `json:"identity"`
 	Summary       string     `json:"summary"`
 	At            int64      `json:"at"`
 }
 
-// Test runs the four checks and records the connection status. It reads at most one page (limit 1).
+// Test checks a connection and records its status and the account it reaches. It reads at most one item.
 func (s *Service) Test(ctx context.Context, id string) (TestReport, error) {
 	conn, err := s.st.GetConnection(ctx, id)
 	if err != nil {
 		return TestReport{}, err
 	}
 	rep := TestReport{IntegrationID: id, At: s.nowMS()}
+	v := vendor(conn.Kind)
 	step := func(sid, name string, ok bool, detail string) {
 		rep.Steps = append(rep.Steps, TestStep{ID: sid, Name: name, OK: ok, Detail: s.scrub(detail)})
 	}
 	finish := func(status, summary string) (TestReport, error) {
 		rep.Summary = s.scrub(summary)
 		rep.OK = status == StatusOK
-		_ = s.st.SetStatus(ctx, id, status, "")
-		if status != StatusOK {
-			_ = s.st.SetStatus(ctx, id, status, rep.Summary)
+		detail := ""
+		if !rep.OK {
+			detail = rep.Summary
 		}
-		s.emit(ctx, EventTestCompleted, conn.ProjectID, "", map[string]any{"integrationId": id, "kind": conn.Kind, "ok": rep.OK, "status": status})
+		_ = s.st.SetStatus(ctx, id, status, detail)
+		s.emit(ctx, EventTestCompleted, "", "", map[string]any{"integrationId": id, "kind": conn.Kind, "ok": rep.OK, "status": status})
 		return rep, nil
+	}
+	failed := func(sid, name string, err error) (TestReport, error) {
+		var f *Failure
+		if !errors.As(err, &f) {
+			f = Classify(conn.Kind, err, "")
+		}
+		step(sid, name, false, f.Message)
+		return finish(statusFor(f.Code), f.Message)
 	}
 	ad, ok := AdapterFor(conn.Kind)
 	if !ok {
 		return rep, errf(ErrBadRequest, "unknown integration %q", conn.Kind)
 	}
-	// 1. a token is stored
-	hasToken := s.hasCredential(ctx, conn)
-	if !hasToken && strings.HasPrefix(conn.CredentialRef, OAuthRefPrefix) {
-		step("token", "Signed in", false, "The OAuth sign-in has no usable token. Sign in to "+vendor(conn.Kind)+" again.")
-		return finish(StatusUnauthenticated, "The "+vendor(conn.Kind)+" sign-in has expired or was removed.")
+	// 1. a credential is stored (GitHub: gh holds it)
+	if conn.Kind != KindGitHub {
+		if !s.hasCredential(ctx, conn) {
+			if strings.HasPrefix(conn.CredentialRef, OAuthRefPrefix) {
+				step("credential", "Signed in", false, "The sign-in has no usable token. Reconnect "+v+".")
+				return finish(StatusUnauthenticated, "The "+v+" sign-in has expired or was removed.")
+			}
+			step("credential", "Credential stored", false, "No credential is stored. Reconnect "+v+" with a "+tokenNoun(conn.Kind)+".")
+			return finish(StatusUnauthenticated, "No credential is stored for "+v+".")
+		}
+		step("credential", "Credential stored", true, authMethod(conn)+", in the credential store (never shown).")
 	}
-	if !hasToken {
-		step("token", "Token stored", false, "No token is stored. Paste the "+vendor(conn.Kind)+" API key or access token.")
-		return finish(StatusUnauthenticated, "No token is stored for "+vendor(conn.Kind)+".")
+	// 2. the API accepts it, and says whom it reaches
+	api, fail := s.api(ctx, conn)
+	if fail != nil {
+		return failed("identity", "Accepted by "+v, fail)
 	}
-	step("token", "Token stored", true, "A token is stored in the credential store (it is not shown).")
-	// 2. the server is reachable and answers tools/list with this token
-	if s.o.Callers == nil {
-		step("server", "Server reachable", false, "No MCP gateway is configured.")
-		return finish(StatusUnreachable, "No MCP gateway is configured.")
-	}
-	caller, cerr := s.o.Callers.Caller(ctx, conn, false)
-	if cerr != nil {
-		f := Classify(conn.Kind, cerr, "")
-		step("server", "Server reachable", false, f.Message)
-		return finish(statusFor(f.Code), f.Message)
-	}
-	tctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
-	offered, terr := caller.Tools(tctx)
+	ictx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
+	ident, ierr := ad.Identity(ictx, api)
 	cancel()
-	if terr != nil {
-		f := Classify(conn.Kind, terr, "")
-		step("server", "Server reachable", false, f.Message)
-		return finish(statusFor(f.Code), f.Message)
+	if ierr != nil {
+		return failed("identity", "Accepted by "+v, ierr)
 	}
-	step("server", "Server reachable", true, fmt.Sprintf("%s's MCP server answered and offers %d tools.", vendor(conn.Kind), len(offered)))
-	// 3. the tools are present
-	resolved, missing, optMissing := resolveTools(ad.Needs(), offered)
-	for _, n := range ad.Needs() {
-		if t := resolved[n.Role]; t != "" {
-			rep.ToolsFound = append(rep.ToolsFound, t)
+	ident.Account = s.san.Line(ctx, ident.Account, 120).Text
+	ident.Workspace = s.san.Line(ctx, ident.Workspace, 200).Text
+	ident.WorkspaceURL = validHTTPURL(ident.WorkspaceURL)
+	if ident.Method == "" {
+		ident.Method = authMethod(conn)
+	}
+	if len(ident.Scopes) == 0 {
+		ident.Scopes = s.credentialScopes(ctx, conn)
+	}
+	for i, sc := range ident.Scopes {
+		ident.Scopes[i] = clampText(sc, 60)
+	}
+	if len(ident.Scopes) > 40 {
+		ident.Scopes = ident.Scopes[:40]
+	}
+	rep.Identity = ident
+	_ = s.st.SetIdentity(ctx, id, ident)
+	who := strings.TrimSpace(strings.Join(nonEmptyAll(ident.Account, ident.Workspace), " in "))
+	if who == "" {
+		who = "the account"
+	}
+	step("identity", "Accepted by "+v, true, fmt.Sprintf("%s accepted the credential: %s.", v, who))
+	// 3. one read in an assigned project's scope
+	asgs, err := s.st.ListAssignments(ctx, id)
+	if err != nil {
+		return rep, err
+	}
+	var asg *Assignment
+	for i := range asgs {
+		if asgs[i].Enabled {
+			asg = &asgs[i]
+			break
 		}
 	}
-	rep.ToolsMissing, rep.WritesMissing = missing, optMissing
-	if len(missing) > 0 {
-		d := "Missing tools: " + strings.Join(missing, ", ") + ". Sync cannot run until the server offers them."
-		step("tools", "Tools present", false, d)
-		return finish(StatusDegraded, vendor(conn.Kind)+"'s MCP server does not offer "+strings.Join(missing, ", ")+".")
+	if asg == nil {
+		step("read", "Read one item", true, "Not assigned to a project yet, so there is nothing to read. Assign it to a project to import "+itemsWord(conn.Kind)+".")
+		return finish(StatusOK, v+" is connected.")
 	}
-	d := "Found " + strings.Join(rep.ToolsFound, ", ") + "."
-	if len(optMissing) > 0 {
-		d += " Not offered (these outbound operations are unavailable): " + strings.Join(optMissing, ", ") + "."
-	}
-	step("tools", "Tools present", true, d)
-	// 4. the token is valid for a real read: one item
-	cl := &Client{Caller: timeoutCaller{caller, s.o.CallTimeout}, Conn: conn, Tools: resolved}
 	pctx, pcancel := context.WithTimeout(ctx, s.o.CallTimeout)
 	defer pcancel()
-	pg, perr := ad.Page(pctx, cl, "", 1)
+	pg, perr := ad.Page(pctx, api, PageQuery{Config: asg.Config, Limit: 1})
 	if perr != nil {
-		var f *Failure
-		if !errors.As(perr, &f) {
-			f = Classify(conn.Kind, perr, "")
-		}
-		step("read", "Token valid (one read)", false, f.Message)
-		return finish(statusFor(f.Code), f.Message)
+		return failed("read", "Read one item", perr)
 	}
-	step("read", "Token valid (one read)", true, fmt.Sprintf("%s accepted the token and returned %d item(s).", vendor(conn.Kind), len(pg.Items)))
-	return finish(StatusOK, vendor(conn.Kind)+" is connected.")
+	step("read", "Read one item", true, fmt.Sprintf("%s returned %d item(s) for the first assigned project.", v, len(pg.Items)))
+	return finish(StatusOK, v+" is connected.")
+}
+
+func itemsWord(kind string) string {
+	for _, k := range Catalog(nil) {
+		if k.Kind == kind {
+			return k.Items
+		}
+	}
+	return "items"
+}
+
+func nonEmptyAll(ss ...string) []string {
+	var out []string
+	for _, s := range ss {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func statusFor(code string) string {
 	switch code {
 	case CodeUnauthorized:
 		return StatusUnauthenticated
-	case CodeSchemaDrift, CodeToolMissing:
+	case CodeSchemaDrift, CodeToolMissing, CodeNotFound:
 		return StatusDegraded
 	}
 	return StatusUnreachable

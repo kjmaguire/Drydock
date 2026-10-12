@@ -1,152 +1,156 @@
-// Package itfixture holds PROTOCOL FIXTURES for the integrations tests: small MCP servers, written with the go-sdk, that
-// reproduce the tool names and result shapes docs/integrations.md records for Linear, Notion, Sentry and Aikido. They are NOT
-// the vendors' servers. Nothing here was checked against a live vendor (the sandbox cannot reach them), so every tool name and
-// result shape marked UNVERIFIED in the adapters is only as correct as this file: the tests prove Drydock's behaviour (cursors,
-// dedupe, untrusted handling, approval gating, secrets), not the vendors' APIs.
+// Package itfixture holds PROTOCOL FIXTURES for the integrations tests: small local HTTP servers that answer the way each
+// vendor's API documents (Linear GraphQL, Notion REST with Notion-Version, Sentry web API v0 with Link-header cursors and
+// X-Sentry-Rate-Limit headers, Aikido's public REST API with client credentials, GitHub's REST issues endpoint, and an OAuth
+// server for PKCE and the device flow). They are NOT the vendors' services: every shape here was written from the vendors'
+// documentation and SDK sources (see docs/integrations.md "As built: workspace connections"), so the tests prove Drydock's
+// behaviour (cursors, dedupe, untrusted handling, approval gating, secrets, rate limits) against those documented shapes, not
+// the live APIs. The live checks (live_test.go) are the run against the real services.
 //
-// The package is imported only by tests.
+// The package is imported only by tests and by the end-to-end harness (cmd/drydock-e2e), always labelled as a fixture.
 package itfixture
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Common is the state every fixture shares: call counters, the arguments of list calls, the Authorization headers seen, and
+// Fail is an injected failure: the next list call answers with it.
+type Fail struct {
+	Status  int
+	Headers map[string]string
+	Body    string
+}
+
+// Common is the state every fixture shares: call counters, the parameters of list calls, the Authorization headers seen, and
 // failure injection.
 type Common struct {
 	mu       sync.Mutex
 	calls    map[string]int
 	listArgs []map[string]any
 	auth     []string
-	failNext []string
+	headers  []http.Header
+	failNext []Fail
 	revoked  bool
-	// Scheme and Token are what the HTTP wrapper expects in Authorization ("Bearer", "Sentry-Bearer").
+	// Scheme and Token are what the fixture expects in Authorization ("Bearer", or "" for Linear's bare API key).
 	Scheme string
 	Token  string
 }
 
-func (c *Common) init() {
-	if c.calls == nil {
-		c.calls = map[string]int{}
-	}
-}
-
-// Calls returns how many times a tool was called.
-func (c *Common) Calls(tool string) int {
+// Calls returns how many times an endpoint (a fixture label such as "issues" or "markdown") was called.
+func (c *Common) Calls(label string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.calls[tool]
+	return c.calls[label]
 }
 
-// ListArgs returns the arguments of every list call, oldest first.
+// ListArgs returns the parameters of every list call, oldest first.
 func (c *Common) ListArgs() []map[string]any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]map[string]any(nil), c.listArgs...)
 }
 
-// AuthSeen returns the Authorization header values the HTTP wrapper saw (proof that the token reached the server).
+// AuthSeen returns the Authorization header values the fixture saw (proof that the credential reached the server).
 func (c *Common) AuthSeen() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string(nil), c.auth...)
 }
 
-// FailNext makes the next list call return a tool-level error with this text (FIFO).
-func (c *Common) FailNext(text string) {
+// HeaderSeen returns the values of one request header across every request.
+func (c *Common) HeaderSeen(name string) []string {
 	c.mu.Lock()
-	c.failNext = append(c.failNext, text)
+	defer c.mu.Unlock()
+	var out []string
+	for _, h := range c.headers {
+		out = append(out, h.Get(name))
+	}
+	return out
+}
+
+// FailNext makes the next list call answer with f (FIFO).
+func (c *Common) FailNext(f Fail) {
+	c.mu.Lock()
+	c.failNext = append(c.failNext, f)
 	c.mu.Unlock()
 }
 
-// Revoke makes the HTTP wrapper answer 401 to every request, like a revoked token.
+// Revoke makes the fixture answer 401 to every request, like a revoked credential.
 func (c *Common) Revoke(v bool) {
 	c.mu.Lock()
 	c.revoked = v
 	c.mu.Unlock()
 }
 
-func (c *Common) hit(tool string, args map[string]any, isList bool) *sdk.CallToolResult {
+// count records a call; for a list call it also records its parameters and returns an injected failure, if any.
+func (c *Common) count(label string, args map[string]any, isList bool) *Fail {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.init()
-	c.calls[tool]++
-	if isList {
-		cp := map[string]any{}
-		for k, v := range args {
-			cp[k] = v
-		}
-		c.listArgs = append(c.listArgs, cp)
-		if len(c.failNext) > 0 {
-			t := c.failNext[0]
-			c.failNext = c.failNext[1:]
-			return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: t}}}
-		}
+	if c.calls == nil {
+		c.calls = map[string]int{}
+	}
+	c.calls[label]++
+	if !isList {
+		return nil
+	}
+	cp := map[string]any{}
+	for k, v := range args {
+		cp[k] = v
+	}
+	c.listArgs = append(c.listArgs, cp)
+	if len(c.failNext) > 0 {
+		f := c.failNext[0]
+		c.failNext = c.failNext[1:]
+		return &f
 	}
 	return nil
 }
 
-// Wrap returns an http.Handler enforcing the expected Authorization header.
-func (c *Common) Wrap(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got := r.Header.Get("Authorization")
-		c.mu.Lock()
-		c.auth = append(c.auth, got)
-		revoked := c.revoked
-		c.mu.Unlock()
-		if revoked || (c.Token != "" && got != c.Scheme+" "+c.Token) {
-			http.Error(w, "401 unauthorized: invalid token", http.StatusUnauthorized)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
-// Serve starts the fixture's MCP server over real loopback HTTP and returns the endpoint URL.
-func Serve(srv *sdk.Server, c *Common) (*httptest.Server, string) {
-	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil)
-	ts := httptest.NewServer(c.Wrap(h))
-	return ts, ts.URL + "/mcp"
-}
-
-func jsonResult(v any) *sdk.CallToolResult {
-	b, _ := json.Marshal(v)
-	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}}
-}
-
-func textResult(s string) *sdk.CallToolResult {
-	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: s}}}
-}
-
-func argStr(a map[string]any, k string) string { s, _ := a[k].(string); return s }
-
-func argInt(a map[string]any, k string, def int) int {
-	switch x := a[k].(type) {
-	case float64:
-		return int(x)
-	case int:
-		return x
+func writeFail(w http.ResponseWriter, f *Fail) {
+	for k, v := range f.Headers {
+		w.Header().Set(k, v)
 	}
-	return def
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(f.Status)
+	_, _ = w.Write([]byte(f.Body))
 }
 
-// addTool registers a tool taking free-form arguments.
-func addTool(srv *sdk.Server, name, desc string, ro bool, fn func(args map[string]any) *sdk.CallToolResult) {
-	sdk.AddTool(srv, &sdk.Tool{Name: name, Description: desc, Annotations: &sdk.ToolAnnotations{ReadOnlyHint: ro}},
-		func(_ context.Context, _ *sdk.CallToolRequest, in map[string]any) (*sdk.CallToolResult, any, error) {
-			return fn(in), nil, nil
-		})
+// guard checks the Authorization header; it answers 401 itself and returns false when the credential is wrong.
+func (c *Common) guard(w http.ResponseWriter, r *http.Request) bool {
+	got := r.Header.Get("Authorization")
+	c.mu.Lock()
+	c.auth = append(c.auth, got)
+	c.headers = append(c.headers, r.Header.Clone())
+	revoked := c.revoked
+	c.mu.Unlock()
+	want := c.Token
+	if c.Scheme != "" {
+		want = c.Scheme + " " + c.Token
+	}
+	if revoked || (c.Token != "" && got != want) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"code": "unauthorized", "message": "invalid credential"})
+		return false
+	}
+	return true
+}
+
+// Serve starts a fixture handler over real loopback HTTP and returns the server and its base URL.
+func Serve(h http.Handler) (*httptest.Server, string) {
+	ts := httptest.NewServer(h)
+	return ts, ts.URL
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // page slices items by an opaque cursor "c<offset>".
@@ -172,7 +176,15 @@ func page[T any](items []T, cursor string, limit int) (out []T, next string) {
 	return
 }
 
-// ---------------------------------------------------------------- Linear
+func first(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n])
+	}
+	return s
+}
+
+// ---------------------------------------------------------------- Linear (GraphQL)
 
 // LinearIssue is one issue of the Linear fixture.
 type LinearIssue struct {
@@ -183,24 +195,26 @@ type LinearIssue struct {
 	Parent                                                         string
 }
 
-// Linear is the Linear MCP fixture: list_issues (newest first, cursor paging), create_comment, update_issue.
+// Linear is the Linear GraphQL fixture (POST /graphql). It answers the operations Drydock sends, by operation name:
+// DrydockIdentity (viewer, organization), DrydockTeams, DrydockProjects, DrydockIssues (filter team.key.eq, project.id.eq,
+// updatedAt.gt; orderBy updatedAt, newest first; Relay first/after), DrydockComment (commentCreate), DrydockStates and
+// DrydockSetState (issueUpdate stateId). Errors follow the shape of Linear's SDK: errors[].extensions.type.
 type Linear struct {
 	Common
 	mu2      sync.Mutex
 	issues   map[string]LinearIssue
 	Comments []map[string]any
 	Updates  []map[string]any
-	// WrongShape makes list_issues return a payload no parser understands (schema drift).
+	// WrongShape makes the issues query answer data nobody expects (schema drift).
 	WrongShape bool
-	// HideTools lists tool names the server does not offer.
-	srv *sdk.Server
+	// Viewer and Org are what DrydockIdentity returns.
+	Viewer, Org, OrgKey string
 }
 
-// NewLinear creates the fixture with the expected bearer token.
+// NewLinear creates the fixture expecting a personal API key (sent without "Bearer").
 func NewLinear(token string) *Linear {
-	l := &Linear{issues: map[string]LinearIssue{}}
-	l.Scheme, l.Token = "Bearer", token
-	l.build()
+	l := &Linear{issues: map[string]LinearIssue{}, Viewer: "Kyle Fixture", Org: "Fixture Org", OrgKey: "fixture"}
+	l.Token = token
 	return l
 }
 
@@ -225,9 +239,6 @@ func (l *Linear) Delete(id string) {
 	delete(l.issues, id)
 }
 
-// Server returns the MCP server.
-func (l *Linear) Server() *sdk.Server { return l.srv }
-
 // CommentsSent returns a copy of the comments the fixture received.
 func (l *Linear) CommentsSent() []map[string]any {
 	l.mu2.Lock()
@@ -235,81 +246,177 @@ func (l *Linear) CommentsSent() []map[string]any {
 	return append([]map[string]any(nil), l.Comments...)
 }
 
-func (l *Linear) build() {
-	srv := sdk.NewServer(&sdk.Implementation{Name: "linear-fixture", Version: "0.0.1"}, nil)
-	addTool(srv, "list_issues", "List issues, newest first (fixture)", true, func(a map[string]any) *sdk.CallToolResult {
-		if r := l.hit("list_issues", a, true); r != nil {
-			return r
+// Server returns the HTTP handler.
+func (l *Linear) Server() http.Handler { return http.HandlerFunc(l.serve) }
+
+var linearStates = []string{"Todo", "In Progress", "Done"}
+
+func (l *Linear) serve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" || r.URL.Path != "/graphql" {
+		http.NotFound(w, r)
+		return
+	}
+	if !l.guard(w, r) {
+		return
+	}
+	var req struct {
+		Query     string         `json:"query"`
+		Variables map[string]any `json:"variables"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]any{"errors": []any{map[string]any{"message": "bad json", "extensions": map[string]any{"type": "graphql error"}}}})
+		return
+	}
+	data := func(v any) { writeJSON(w, 200, map[string]any{"data": v}) }
+	v := req.Variables
+	switch {
+	case strings.Contains(req.Query, "DrydockIdentity"):
+		l.count("identity", nil, false)
+		data(map[string]any{"viewer": map[string]any{"name": l.Viewer, "displayName": strings.ToLower(l.Viewer)}, "organization": map[string]any{"name": l.Org, "urlKey": l.OrgKey}})
+	case strings.Contains(req.Query, "DrydockTeams"):
+		l.count("teams", nil, false)
+		data(map[string]any{"teams": map[string]any{"nodes": []any{map[string]any{"key": "ENG", "name": "Engineering"}, map[string]any{"key": "OPS", "name": "Operations"}}}})
+	case strings.Contains(req.Query, "DrydockProjects"):
+		l.count("projects", nil, false)
+		data(map[string]any{"projects": map[string]any{"nodes": []any{map[string]any{"id": "proj-1", "name": "Launch"}}}})
+	case strings.Contains(req.Query, "DrydockIssues"):
+		filter, _ := v["filter"].(map[string]any)
+		team := dig(filter, "team", "key", "eq")
+		since := dig(filter, "updatedAt", "gt")
+		after, _ := v["after"].(string)
+		firstN := 50
+		if f, ok := v["first"].(float64); ok {
+			firstN = int(f)
+		}
+		args := map[string]any{"team": team, "since": since, "after": after, "first": firstN}
+		if f := l.count("issues", args, true); f != nil {
+			writeFail(w, f)
+			return
 		}
 		if l.WrongShape {
-			return textResult(`{"totally":"different"}`)
+			data(map[string]any{"totally": "different"})
+			return
+		}
+		var sinceT time.Time
+		if since != "" {
+			sinceT, _ = time.Parse(time.RFC3339Nano, since)
 		}
 		l.mu2.Lock()
 		all := make([]LinearIssue, 0, len(l.issues))
 		for _, i := range l.issues {
-			if t := argStr(a, "team"); t != "" && i.Team != t {
+			if team != "" && i.Team != team {
+				continue
+			}
+			if !sinceT.IsZero() && !i.Updated.After(sinceT) {
 				continue
 			}
 			all = append(all, i)
 		}
 		l.mu2.Unlock()
 		sort.Slice(all, func(x, y int) bool { return all[x].Updated.After(all[y].Updated) })
-		pg, next := page(all, argStr(a, "cursor"), argInt(a, "limit", 50))
-		out := make([]map[string]any, 0, len(pg))
+		pg, next := page(all, after, firstN)
+		nodes := make([]any, 0, len(pg))
 		for _, i := range pg {
-			labels := []map[string]any{}
+			labels := []any{}
 			for _, lb := range i.Labels {
 				labels = append(labels, map[string]any{"name": lb})
 			}
-			out = append(out, map[string]any{"id": i.ID, "identifier": i.Identifier, "title": i.Title, "description": i.Description, "url": i.URL,
-				"priority": map[string]any{"value": i.Priority, "name": [...]string{"No priority", "Urgent", "High", "Medium", "Low"}[i.Priority]},
-				"state":    map[string]any{"name": i.State}, "assignee": map[string]any{"name": i.Assignee}, "labels": labels,
-				"createdAt": i.Created.UTC().Format(time.RFC3339Nano), "updatedAt": i.Updated.UTC().Format(time.RFC3339Nano), "team": map[string]any{"key": i.Team}, "parent": i.Parent})
+			n := map[string]any{"id": i.ID, "identifier": i.Identifier, "title": i.Title, "description": i.Description, "url": i.URL, "priority": i.Priority,
+				"createdAt": i.Created.UTC().Format(time.RFC3339Nano), "updatedAt": i.Updated.UTC().Format(time.RFC3339Nano),
+				"state": map[string]any{"name": i.State}, "labels": map[string]any{"nodes": labels}, "team": map[string]any{"key": i.Team}, "project": nil, "parent": nil}
+			if i.Assignee != "" {
+				n["assignee"] = map[string]any{"name": i.Assignee, "displayName": i.Assignee}
+			} else {
+				n["assignee"] = nil
+			}
+			if i.Parent != "" {
+				n["parent"] = map[string]any{"identifier": i.Parent}
+			}
+			nodes = append(nodes, n)
 		}
-		return jsonResult(map[string]any{"issues": out, "nextCursor": next, "hasNextPage": next != ""})
-	})
-	addTool(srv, "create_comment", "Comment on an issue (fixture)", false, func(a map[string]any) *sdk.CallToolResult {
-		l.hit("create_comment", a, false)
+		data(map[string]any{"issues": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": next != "", "endCursor": next}}})
+	case strings.Contains(req.Query, "DrydockComment"):
+		in, _ := v["input"].(map[string]any)
+		l.count("commentCreate", nil, false)
 		l.mu2.Lock()
-		l.Comments = append(l.Comments, a)
+		l.Comments = append(l.Comments, in)
+		n := len(l.Comments)
 		l.mu2.Unlock()
-		return jsonResult(map[string]any{"id": "cmt-" + strconv.Itoa(len(l.Comments)), "ok": true})
-	})
-	addTool(srv, "update_issue", "Update an issue (fixture)", false, func(a map[string]any) *sdk.CallToolResult {
-		l.hit("update_issue", a, false)
+		data(map[string]any{"commentCreate": map[string]any{"success": true, "comment": map[string]any{"id": "cmt-" + strconv.Itoa(n)}}})
+	case strings.Contains(req.Query, "DrydockStates"):
+		l.count("states", nil, false)
+		nodes := []any{}
+		for i, s := range linearStates {
+			nodes = append(nodes, map[string]any{"id": "st-" + strconv.Itoa(i), "name": s})
+		}
+		data(map[string]any{"issue": map[string]any{"team": map[string]any{"states": map[string]any{"nodes": nodes}}}})
+	case strings.Contains(req.Query, "DrydockSetState"):
+		l.count("issueUpdate", nil, false)
+		in, _ := v["input"].(map[string]any)
+		id, _ := v["id"].(string)
+		st, _ := in["stateId"].(string)
 		l.mu2.Lock()
-		l.Updates = append(l.Updates, a)
+		l.Updates = append(l.Updates, map[string]any{"id": id, "stateId": st})
+		if is, ok := l.issues[id]; ok {
+			if k, err := strconv.Atoi(strings.TrimPrefix(st, "st-")); err == nil && k < len(linearStates) {
+				is.State = linearStates[k]
+				l.issues[id] = is
+			}
+		}
 		l.mu2.Unlock()
-		return jsonResult(map[string]any{"ok": true})
-	})
-	l.srv = srv
+		data(map[string]any{"issueUpdate": map[string]any{"success": true}})
+	default:
+		writeJSON(w, 400, map[string]any{"errors": []any{map[string]any{"message": "unknown operation", "extensions": map[string]any{"type": "graphql error"}}}})
+	}
 }
 
-// ---------------------------------------------------------------- Notion
+// LinearRateLimited is the failure Linear answers when a credential spent its budget: HTTP 400 with a "ratelimited" GraphQL
+// error and the X-RateLimit headers (reset in epoch milliseconds).
+func LinearRateLimited(reset time.Time) Fail {
+	return Fail{Status: 400, Headers: map[string]string{"X-RateLimit-Requests-Limit": "2500", "X-RateLimit-Requests-Remaining": "0", "X-RateLimit-Requests-Reset": strconv.FormatInt(reset.UnixMilli(), 10)},
+		Body: `{"errors":[{"message":"Rate limit exceeded","extensions":{"type":"ratelimited","code":"RATELIMITED"}}]}`}
+}
+
+func dig(m map[string]any, keys ...string) string {
+	var cur any = m
+	for _, k := range keys {
+		mm, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = mm[k]
+	}
+	s, _ := cur.(string)
+	return s
+}
+
+// ---------------------------------------------------------------- Notion (REST, Notion-Version)
 
 // NotionPage is one page of the Notion fixture.
 type NotionPage struct {
 	ID, Title, URL, Text string
 	Edited               time.Time
+	DataSource           string // the data source the page belongs to ("" = a standalone page)
 }
 
-// Notion is the Notion MCP fixture: notion-search, notion-fetch, notion-create-pages, notion-create-comment.
+// Notion is the Notion REST fixture: GET /v1/users/me (a bot of an internal integration), POST /v1/search (filter object
+// page or data_source, sort last_edited_time, start_cursor, page_size), POST /v1/data_sources/{id}/query, GET
+// /v1/pages/{id}/markdown, POST /v1/pages, POST /v1/comments. Every request must carry a Notion-Version header.
 type Notion struct {
 	Common
 	mu2      sync.Mutex
 	pages    map[string]NotionPage
 	Created  []map[string]any
 	Comments []map[string]any
-	// Unsorted makes notion-search return pages in a scrambled order.
-	Unsorted bool
-	srv      *sdk.Server
+	// Unsorted makes search return pages in a scrambled order.
+	Unsorted       bool
+	Bot, Workspace string
 }
 
 // NewNotion creates the fixture.
 func NewNotion(token string) *Notion {
-	n := &Notion{pages: map[string]NotionPage{}}
+	n := &Notion{pages: map[string]NotionPage{}, Bot: "Drydock fixture", Workspace: "Fixture Workspace"}
 	n.Scheme, n.Token = "Bearer", token
-	n.build()
 	return n
 }
 
@@ -327,68 +434,123 @@ func (n *Notion) Get(id string) NotionPage {
 	return n.pages[id]
 }
 
-// Server returns the MCP server.
-func (n *Notion) Server() *sdk.Server { return n.srv }
+// Server returns the HTTP handler.
+func (n *Notion) Server() http.Handler { return http.HandlerFunc(n.serve) }
 
-func (n *Notion) build() {
-	srv := sdk.NewServer(&sdk.Implementation{Name: "notion-fixture", Version: "0.0.1"}, nil)
-	addTool(srv, "notion-search", "Search pages (fixture)", true, func(a map[string]any) *sdk.CallToolResult {
-		if r := n.hit("notion-search", a, true); r != nil {
-			return r
+func notionPageJSON(p NotionPage) map[string]any {
+	parent := map[string]any{"type": "workspace", "workspace": true}
+	if p.DataSource != "" {
+		parent = map[string]any{"type": "data_source_id", "data_source_id": p.DataSource}
+	}
+	return map[string]any{"object": "page", "id": p.ID, "url": p.URL, "in_trash": false, "created_time": p.Edited.Add(-time.Hour).UTC().Format(time.RFC3339),
+		"last_edited_time": p.Edited.UTC().Format(time.RFC3339), "parent": parent,
+		"properties": map[string]any{"Name": map[string]any{"id": "title", "type": "title", "title": []any{map[string]any{"type": "text", "plain_text": p.Title}}}}}
+}
+
+func (n *Notion) serve(w http.ResponseWriter, r *http.Request) {
+	if !n.guard(w, r) {
+		return
+	}
+	if r.Header.Get("Notion-Version") == "" {
+		writeJSON(w, 400, map[string]any{"object": "error", "code": "missing_version", "message": "Notion-Version header failed validation"})
+		return
+	}
+	var body map[string]any
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	p := r.URL.Path
+	switch {
+	case r.Method == "GET" && p == "/v1/users/me":
+		n.count("me", nil, false)
+		writeJSON(w, 200, map[string]any{"object": "user", "id": "bot-1", "type": "bot", "name": n.Bot,
+			"bot": map[string]any{"owner": map[string]any{"type": "workspace", "workspace": true}, "workspace_name": n.Workspace}})
+	case r.Method == "POST" && p == "/v1/search":
+		filter, _ := body["filter"].(map[string]any)
+		if filter["value"] == "data_source" {
+			n.count("search_data_sources", nil, false)
+			writeJSON(w, 200, map[string]any{"object": "list", "results": []any{map[string]any{"object": "data_source", "id": "ds-1",
+				"title": []any{map[string]any{"plain_text": "Requirements"}}}}, "has_more": false, "next_cursor": nil})
+			return
 		}
+		n.list(w, "search", body, "")
+	case r.Method == "POST" && strings.HasPrefix(p, "/v1/data_sources/") && strings.HasSuffix(p, "/query"):
+		ds := strings.TrimSuffix(strings.TrimPrefix(p, "/v1/data_sources/"), "/query")
+		n.list(w, "query", body, ds)
+	case r.Method == "GET" && strings.HasPrefix(p, "/v1/pages/") && strings.HasSuffix(p, "/markdown"):
+		id := strings.TrimSuffix(strings.TrimPrefix(p, "/v1/pages/"), "/markdown")
+		n.count("markdown", nil, false)
 		n.mu2.Lock()
-		all := make([]NotionPage, 0, len(n.pages))
-		for _, p := range n.pages {
-			all = append(all, p)
-		}
-		n.mu2.Unlock()
-		sort.Slice(all, func(x, y int) bool { return all[x].Edited.After(all[y].Edited) })
-		if n.Unsorted && len(all) > 2 {
-			all[0], all[len(all)-1] = all[len(all)-1], all[0]
-		}
-		pg, next := page(all, argStr(a, "start_cursor"), argInt(a, "page_size", 50))
-		out := []map[string]any{}
-		for _, p := range pg {
-			out = append(out, map[string]any{"id": p.ID, "title": p.Title, "url": p.URL, "type": "page", "last_edited_time": p.Edited.UTC().Format(time.RFC3339Nano), "highlight": first(p.Text, 80)})
-		}
-		return jsonResult(map[string]any{"results": out, "next_cursor": next, "has_more": next != ""})
-	})
-	addTool(srv, "notion-fetch", "Fetch a page as Markdown (fixture)", true, func(a map[string]any) *sdk.CallToolResult {
-		n.hit("notion-fetch", a, false)
-		n.mu2.Lock()
-		p, ok := n.pages[argStr(a, "id")]
+		pg, ok := n.pages[id]
 		n.mu2.Unlock()
 		if !ok {
-			return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: "page not found"}}}
+			writeJSON(w, 404, map[string]any{"object": "error", "code": "object_not_found"})
+			return
 		}
-		return jsonResult(map[string]any{"title": p.Title, "text": p.Text})
-	})
-	addTool(srv, "notion-create-pages", "Create pages (fixture)", false, func(a map[string]any) *sdk.CallToolResult {
-		n.hit("notion-create-pages", a, false)
+		writeJSON(w, 200, map[string]any{"object": "page_markdown", "id": id, "markdown": pg.Text, "truncated": false, "unknown_block_ids": []any{}})
+	case r.Method == "POST" && p == "/v1/pages":
+		n.count("create_page", nil, false)
 		n.mu2.Lock()
-		n.Created = append(n.Created, a)
+		n.Created = append(n.Created, body)
 		n.mu2.Unlock()
-		return jsonResult(map[string]any{"ok": true})
-	})
-	addTool(srv, "notion-create-comment", "Comment on a page (fixture)", false, func(a map[string]any) *sdk.CallToolResult {
-		n.hit("notion-create-comment", a, false)
+		writeJSON(w, 200, map[string]any{"object": "page", "id": "new-page-1"})
+	case r.Method == "POST" && p == "/v1/comments":
+		n.count("comment", nil, false)
 		n.mu2.Lock()
-		n.Comments = append(n.Comments, a)
+		n.Comments = append(n.Comments, body)
 		n.mu2.Unlock()
-		return jsonResult(map[string]any{"ok": true})
-	})
-	n.srv = srv
-}
-
-func first(s string, n int) string {
-	r := []rune(s)
-	if len(r) > n {
-		return string(r[:n])
+		writeJSON(w, 200, map[string]any{"object": "comment", "id": "comment-1"})
+	default:
+		writeJSON(w, 404, map[string]any{"object": "error", "code": "invalid_request_url"})
 	}
-	return s
 }
 
-// ---------------------------------------------------------------- Sentry
+func (n *Notion) list(w http.ResponseWriter, label string, body map[string]any, ds string) {
+	cursor, _ := body["start_cursor"].(string)
+	size := 50
+	if f, ok := body["page_size"].(float64); ok {
+		size = int(f)
+	}
+	query, _ := body["query"].(string)
+	args := map[string]any{"start_cursor": cursor, "page_size": size, "query": query, "data_source": ds}
+	if f := n.count(label, args, true); f != nil {
+		writeFail(w, f)
+		return
+	}
+	n.mu2.Lock()
+	all := make([]NotionPage, 0, len(n.pages))
+	for _, p := range n.pages {
+		if ds != "" && p.DataSource != ds {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(p.Title), strings.ToLower(query)) {
+			continue
+		}
+		all = append(all, p)
+	}
+	n.mu2.Unlock()
+	sort.Slice(all, func(x, y int) bool { return all[x].Edited.After(all[y].Edited) })
+	if n.Unsorted && len(all) > 2 {
+		all[0], all[len(all)-1] = all[len(all)-1], all[0]
+	}
+	pg, next := page(all, cursor, size)
+	out := []any{}
+	for _, p := range pg {
+		out = append(out, notionPageJSON(p))
+	}
+	var nc any
+	if next != "" {
+		nc = next
+	}
+	writeJSON(w, 200, map[string]any{"object": "list", "results": out, "next_cursor": nc, "has_more": next != ""})
+}
+
+// NotionRateLimited is Notion's 429: code rate_limited and a Retry-After in seconds.
+func NotionRateLimited(seconds int) Fail {
+	return Fail{Status: 429, Headers: map[string]string{"Retry-After": strconv.Itoa(seconds)}, Body: `{"object":"error","status":429,"code":"rate_limited","message":"You have been rate limited."}`}
+}
+
+// ---------------------------------------------------------------- Sentry (web API v0)
 
 // SentryIssue is one issue of the Sentry fixture.
 type SentryIssue struct {
@@ -397,20 +559,25 @@ type SentryIssue struct {
 	First, Last                                                           time.Time
 }
 
-// Sentry is the Sentry MCP fixture: list_issues, get_issue_details, update_issue.
+// Sentry is the Sentry web API fixture: GET /api/0/ (user and auth.scopes), GET /api/0/organizations/, GET
+// /api/0/organizations/{org}/projects/, GET /api/0/organizations/{org}/issues/ (project, query, sort=date, limit, cursor; a
+// Link header with rel="next" results="true|false" cursor="..."), GET .../issues/{id}/events/latest/ (exception entries), PUT
+// .../issues/{id}/. Every answer carries the X-Sentry-Rate-Limit-* headers.
 type Sentry struct {
 	Common
 	mu2     sync.Mutex
 	issues  map[string]SentryIssue
 	Updates []map[string]any
-	srv     *sdk.Server
+	Org     string
+	// Remaining is what X-Sentry-Rate-Limit-Remaining says (default 39 of 40).
+	Remaining int
+	ResetAt   time.Time
 }
 
-// NewSentry creates the fixture (hosted Sentry expects "Sentry-Bearer <token>").
+// NewSentry creates the fixture (Authorization: Bearer <token>) for organization "acme".
 func NewSentry(token string) *Sentry {
-	s := &Sentry{issues: map[string]SentryIssue{}}
-	s.Scheme, s.Token = "Sentry-Bearer", token
-	s.build()
+	s := &Sentry{issues: map[string]SentryIssue{}, Org: "acme", Remaining: 39}
+	s.Scheme, s.Token = "Bearer", token
 	return s
 }
 
@@ -428,89 +595,171 @@ func (s *Sentry) Get(id string) SentryIssue {
 	return s.issues[id]
 }
 
-// Server returns the MCP server.
-func (s *Sentry) Server() *sdk.Server { return s.srv }
+// Server returns the HTTP handler.
+func (s *Sentry) Server() http.Handler { return http.HandlerFunc(s.serve) }
 
-func (s *Sentry) build() {
-	srv := sdk.NewServer(&sdk.Implementation{Name: "sentry-fixture", Version: "0.0.1"}, nil)
-	addTool(srv, "list_issues", "List issues (fixture)", true, func(a map[string]any) *sdk.CallToolResult {
-		if r := s.hit("list_issues", a, true); r != nil {
-			return r
+func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
+	s.mu2.Lock()
+	rem, reset := s.Remaining, s.ResetAt
+	s.mu2.Unlock()
+	if reset.IsZero() {
+		reset = time.Now().Add(time.Second)
+	}
+	w.Header().Set("X-Sentry-Rate-Limit-Limit", "40")
+	w.Header().Set("X-Sentry-Rate-Limit-Remaining", strconv.Itoa(rem))
+	w.Header().Set("X-Sentry-Rate-Limit-Reset", strconv.FormatInt(reset.Unix(), 10))
+	w.Header().Set("X-Sentry-Rate-Limit-ConcurrentLimit", "25")
+	w.Header().Set("X-Sentry-Rate-Limit-ConcurrentRemaining", "24")
+	if !s.guard(w, r) {
+		return
+	}
+	p := r.URL.Path
+	orgPrefix := "/api/0/organizations/" + s.Org + "/"
+	switch {
+	case r.Method == "GET" && p == "/api/0/":
+		s.count("root", nil, false)
+		writeJSON(w, 200, map[string]any{"version": "0", "auth": map[string]any{"scopes": []string{"org:read", "project:read", "event:read", "event:write"}}, "user": map[string]any{"name": "Kyle Fixture", "username": "kyle"}})
+	case r.Method == "GET" && p == "/api/0/organizations/":
+		s.count("organizations", nil, false)
+		writeJSON(w, 200, []any{map[string]any{"slug": s.Org, "name": "Acme Corp"}})
+	case r.Method == "GET" && p == orgPrefix+"projects/":
+		s.count("projects", nil, false)
+		writeJSON(w, 200, []any{map[string]any{"slug": "web", "name": "Web"}, map[string]any{"slug": "api", "name": "API"}})
+	case r.Method == "GET" && p == orgPrefix+"issues/":
+		q := r.URL.Query()
+		args := map[string]any{"project": q.Get("project"), "query": q.Get("query"), "sort": q.Get("sort"), "cursor": q.Get("cursor"), "limit": q.Get("limit")}
+		if f := s.count("issues", args, true); f != nil {
+			writeFail(w, f)
+			return
 		}
+		limit, _ := strconv.Atoi(q.Get("limit"))
 		s.mu2.Lock()
 		all := make([]SentryIssue, 0, len(s.issues))
 		for _, i := range s.issues {
-			if p := argStr(a, "projectSlugOrId"); p != "" && i.Project != p {
+			if pr := q.Get("project"); pr != "" && i.Project != pr {
 				continue
 			}
 			all = append(all, i)
 		}
 		s.mu2.Unlock()
 		sort.Slice(all, func(x, y int) bool { return all[x].Last.After(all[y].Last) })
-		pg, next := page(all, argStr(a, "cursor"), argInt(a, "limit", 50))
-		out := []map[string]any{}
+		pg, next := page(all, q.Get("cursor"), limit)
+		base := "http://" + r.Host + p
+		results := "false"
+		nc := "0:" + strconv.Itoa(len(all)) + ":0"
+		if next != "" {
+			results, nc = "true", next
+		}
+		w.Header().Set("Link", `<`+base+`?cursor=0:0:1>; rel="previous"; results="false"; cursor="0:0:1", <`+base+`?cursor=`+nc+`>; rel="next"; results="`+results+`"; cursor="`+nc+`"`)
+		out := []any{}
 		for _, i := range pg {
 			out = append(out, map[string]any{"id": i.ID, "shortId": i.ShortID, "title": i.Title, "culprit": i.Culprit, "level": i.Level, "status": i.Status, "permalink": i.Permalink,
-				"project": map[string]any{"slug": i.Project, "name": strings.ToUpper(i.Project)}, "count": strconv.Itoa(i.Count), "userCount": i.Users,
-				"firstSeen": i.First.UTC().Format(time.RFC3339Nano), "lastSeen": i.Last.UTC().Format(time.RFC3339Nano), "metadata": map[string]any{"type": "Error", "value": i.Title}})
+				"project": map[string]any{"id": "1", "slug": i.Project, "name": strings.ToUpper(i.Project), "platform": "go"}, "count": strconv.Itoa(i.Count), "userCount": i.Users,
+				"firstSeen": i.First.UTC().Format(time.RFC3339Nano), "lastSeen": i.Last.UTC().Format(time.RFC3339Nano), "metadata": map[string]any{"type": "Error", "value": i.Title},
+				"assignedTo": nil, "priority": "high"})
 		}
-		return jsonResult(map[string]any{"issues": out, "nextCursor": next})
-	})
-	addTool(srv, "get_issue_details", "Issue details with stack trace (fixture)", true, func(a map[string]any) *sdk.CallToolResult {
-		s.hit("get_issue_details", a, false)
+		writeJSON(w, 200, out)
+	case r.Method == "GET" && strings.HasPrefix(p, orgPrefix+"issues/") && strings.HasSuffix(p, "/events/latest/"):
+		id := strings.TrimSuffix(strings.TrimPrefix(p, orgPrefix+"issues/"), "/events/latest/")
+		s.count("latest_event", nil, false)
 		s.mu2.Lock()
-		i, ok := s.issues[argStr(a, "issueId")]
+		i, ok := s.issues[id]
 		s.mu2.Unlock()
 		if !ok {
-			return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: "issue not found"}}}
+			writeJSON(w, 404, map[string]any{"detail": "The requested resource does not exist"})
+			return
 		}
-		return jsonResult(map[string]any{"id": i.ID, "title": i.Title, "stacktrace": i.Stack})
-	})
-	addTool(srv, "update_issue", "Update issue status (fixture)", false, func(a map[string]any) *sdk.CallToolResult {
-		s.hit("update_issue", a, false)
+		// Stack is written like a Python traceback: `File "f", line n, in fn` lines (each followed by its code line), and the
+		// last line "Type: value". The event carries it the way Sentry does: an exception entry with frames and context lines.
+		frames := []any{}
+		excType, excValue := "Error", i.Title
+		lines := strings.Split(i.Stack, "\n")
+		for n := 0; n < len(lines); n++ {
+			l := strings.TrimSpace(lines[n])
+			var file, fn string
+			var lineNo int
+			if m := pyFrameRe.FindStringSubmatch(l); m != nil {
+				file, fn = m[1], m[3]
+				lineNo, _ = strconv.Atoi(m[2])
+				fr := map[string]any{"filename": file, "function": fn, "lineNo": lineNo, "inApp": true}
+				if n+1 < len(lines) && strings.HasPrefix(lines[n+1], "    ") {
+					fr["context"] = []any{[]any{lineNo, strings.TrimSpace(lines[n+1])}}
+					n++
+				}
+				frames = append(frames, fr)
+				continue
+			}
+			if k := strings.Index(l, ": "); k > 0 && !strings.HasPrefix(l, "Traceback") {
+				excType, excValue = l[:k], l[k+2:]
+			}
+		}
+		writeJSON(w, 200, map[string]any{"id": "ev-1", "groupID": id, "entries": []any{map[string]any{"type": "exception", "data": map[string]any{"values": []any{
+			map[string]any{"type": excType, "value": excValue, "stacktrace": map[string]any{"frames": frames}}}}}}})
+	case r.Method == "PUT" && strings.HasPrefix(p, orgPrefix+"issues/"):
+		id := strings.TrimSuffix(strings.TrimPrefix(p, orgPrefix+"issues/"), "/")
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		s.count("update", nil, false)
 		s.mu2.Lock()
-		s.Updates = append(s.Updates, a)
+		s.Updates = append(s.Updates, map[string]any{"organization": s.Org, "issueId": id, "status": body["status"]})
 		s.mu2.Unlock()
-		return jsonResult(map[string]any{"ok": true})
-	})
-	s.srv = srv
+		writeJSON(w, 200, map[string]any{"status": body["status"]})
+	default:
+		writeJSON(w, 404, map[string]any{"detail": "The requested resource does not exist"})
+	}
 }
 
-// ---------------------------------------------------------------- Aikido
+var pyFrameRe = regexp.MustCompile(`^File "([^"]+)", line (\d+), in (.+)$`)
 
-// AikidoFinding is one finding of the Aikido fixture.
+// SetRemaining sets what the rate-limit headers say: remaining requests and when the window resets.
+func (s *Sentry) SetRemaining(n int, reset time.Time) {
+	s.mu2.Lock()
+	s.Remaining, s.ResetAt = n, reset
+	s.mu2.Unlock()
+}
+
+// SentryRateLimited is Sentry's 429 with Retry-After.
+func SentryRateLimited(seconds int) Fail {
+	return Fail{Status: 429, Headers: map[string]string{"Retry-After": strconv.Itoa(seconds)}, Body: `{"detail":"You are attempting to use this endpoint too frequently. Limit is 40 requests in 1 seconds"}`}
+}
+
+// ---------------------------------------------------------------- Aikido (public REST API, client credentials)
+
+// AikidoFinding is one finding of the Aikido fixture, in the export's field names.
 type AikidoFinding struct {
-	ID          int    `json:"id"`
-	Severity    string `json:"severity"`
-	Type        string `json:"type"`
-	Rule        string `json:"rule"`
-	Description string `json:"description"`
-	Repo        string `json:"repo"`
-	File        string `json:"file"`
-	Line        int    `json:"line"`
-	Status      string `json:"status"`
-	UpdatedAt   string `json:"updated_at"`
-	FirstAt     string `json:"first_detected_at"`
+	ID              int    `json:"id"`
+	GroupID         int    `json:"group_id"`
+	Severity        string `json:"severity"`
+	SeverityScore   int    `json:"severity_score"`
+	Type            string `json:"type"`
+	Rule            string `json:"rule"`
+	AffectedPackage string `json:"affected_package"`
+	AffectedFile    string `json:"affected_file"`
+	CveID           string `json:"cve_id"`
+	CodeRepoName    string `json:"code_repo_name"`
+	CodeRepoID      int    `json:"code_repo_id"`
+	Status          string `json:"status"`
+	FirstDetectedAt int64  `json:"first_detected_at"` // Unix seconds
 }
 
-// Aikido is the Aikido MCP fixture (tool names from the published package): aikido_issues_list and the ignore/snooze tools.
+// Aikido is the Aikido public REST API fixture: POST /api/oauth/token (client credentials, HTTP Basic), then with the bought
+// Bearer token: GET /api/public/v1/workspace, GET /api/public/v1/repositories/code, GET /api/public/v1/issues/export
+// (format=json, filter_status, filter_code_repo_id), PUT /api/public/v1/issues/{id}/{ignore|unignore|snooze|unsnooze}.
 type Aikido struct {
 	Common
-	mu2      sync.Mutex
-	findings []AikidoFinding
-	Actions  []string
-	srv      *sdk.Server
-	// Load, when set, is called on every list call to refresh the findings (the stdio fixture re-reads a file).
-	Load func() []AikidoFinding
-	// KeyCheck, when set, validates the call (the stdio fixture checks AIKIDO_API_KEY).
-	KeyCheck func() error
+	mu2          sync.Mutex
+	findings     []AikidoFinding
+	Actions      []string
+	ClientID     string
+	ClientSecret string
+	issued       map[string]bool
+	n            int
+	TokenCalls   int
 }
 
-// NewAikido creates the fixture.
-func NewAikido() *Aikido {
-	a := &Aikido{}
-	a.build()
-	return a
+// NewAikido creates the fixture accepting these client credentials.
+func NewAikido(clientID, clientSecret string) *Aikido {
+	return &Aikido{ClientID: clientID, ClientSecret: clientSecret, issued: map[string]bool{}}
 }
 
 // Set replaces the findings.
@@ -520,57 +769,89 @@ func (a *Aikido) Set(f []AikidoFinding) {
 	a.mu2.Unlock()
 }
 
-// Server returns the MCP server.
-func (a *Aikido) Server() *sdk.Server { return a.srv }
+// ExpireTokens invalidates every access token issued so far (the next API call answers 401).
+func (a *Aikido) ExpireTokens() {
+	a.mu2.Lock()
+	a.issued = map[string]bool{}
+	a.mu2.Unlock()
+}
 
-func (a *Aikido) build() {
-	srv := sdk.NewServer(&sdk.Implementation{Name: "aikido-fixture", Version: "1.0.27"}, nil)
-	deny := func() *sdk.CallToolResult {
-		if a.KeyCheck != nil {
-			if err := a.KeyCheck(); err != nil {
-				return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: "401 unauthorized: " + err.Error()}}}
-			}
+// Server returns the HTTP handler.
+func (a *Aikido) Server() http.Handler { return http.HandlerFunc(a.serve) }
+
+func (a *Aikido) serve(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/oauth/token" {
+		id, secret, ok := r.BasicAuth()
+		_ = r.ParseForm()
+		a.mu2.Lock()
+		a.TokenCalls++
+		if !ok || id != a.ClientID || secret != a.ClientSecret || r.PostForm.Get("grant_type") != "client_credentials" {
+			a.mu2.Unlock()
+			writeJSON(w, 401, map[string]any{"error": "invalid_client"})
+			return
 		}
-		return nil
+		a.n++
+		tok := "aik_access_" + strconv.Itoa(a.n) + "_Zq8Wm3Xr"
+		a.issued[tok] = true
+		a.mu2.Unlock()
+		writeJSON(w, 200, map[string]any{"access_token": tok, "token_type": "Bearer", "expires_in": 3600, "scope": "issues:read issues:write repositories:read"})
+		return
 	}
-	addTool(srv, "aikido_issues_list", "List findings (fixture)", true, func(args map[string]any) *sdk.CallToolResult {
-		if r := a.hit("aikido_issues_list", args, true); r != nil {
-			return r
-		}
-		if r := deny(); r != nil {
-			return r
-		}
-		if a.Load != nil {
-			a.Set(a.Load())
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	a.mu.Lock()
+	a.auth = append(a.auth, r.Header.Get("Authorization"))
+	revoked := a.revoked
+	a.mu.Unlock()
+	a.mu2.Lock()
+	valid := a.issued[got]
+	a.mu2.Unlock()
+	if revoked || !valid {
+		writeJSON(w, 401, map[string]any{"error": "unauthorized"})
+		return
+	}
+	p := r.URL.Path
+	switch {
+	case r.Method == "GET" && p == "/api/public/v1/workspace":
+		a.count("workspace", nil, false)
+		writeJSON(w, 200, map[string]any{"id": 77, "name": "Fixture Security"})
+	case r.Method == "GET" && p == "/api/public/v1/repositories/code":
+		a.count("repositories", nil, false)
+		writeJSON(w, 200, []any{map[string]any{"id": 11, "name": "drydock"}, map[string]any{"id": 12, "name": "website"}})
+	case r.Method == "GET" && p == "/api/public/v1/issues/export":
+		q := r.URL.Query()
+		args := map[string]any{"format": q.Get("format"), "filter_status": q.Get("filter_status"), "filter_code_repo_id": q.Get("filter_code_repo_id"), "filter_code_repo_name": q.Get("filter_code_repo_name")}
+		if f := a.count("export", args, true); f != nil {
+			writeFail(w, f)
+			return
 		}
 		a.mu2.Lock()
-		defer a.mu2.Unlock()
-		out := []map[string]any{}
+		out := []AikidoFinding{}
 		for _, f := range a.findings {
-			if r := argStr(args, "repo"); r != "" && f.Repo != r {
+			if rid := q.Get("filter_code_repo_id"); rid != "" && strconv.Itoa(f.CodeRepoID) != rid {
 				continue
 			}
-			out = append(out, map[string]any{"id": f.ID, "severity": f.Severity, "type": f.Type, "rule": f.Rule, "description": f.Description, "repo": f.Repo,
-				"location": map[string]any{"file": f.File, "line": f.Line}, "status": f.Status, "updated_at": f.UpdatedAt, "first_detected_at": f.FirstAt})
-		}
-		return jsonResult(map[string]any{"issues": out})
-	})
-	for _, name := range []string{"aikido_ignore_issue", "aikido_unignore_issue", "aikido_snooze_issue", "aikido_unsnooze_issue"} {
-		name := name
-		addTool(srv, name, name+" (fixture)", false, func(args map[string]any) *sdk.CallToolResult {
-			a.hit(name, args, false)
-			if r := deny(); r != nil {
-				return r
+			if rn := q.Get("filter_code_repo_name"); rn != "" && f.CodeRepoName != rn {
+				continue
 			}
-			a.mu2.Lock()
-			a.Actions = append(a.Actions, fmt.Sprintf("%s %v", name, args["issueId"]))
-			a.mu2.Unlock()
-			return jsonResult(map[string]any{"ok": true})
-		})
+			if st := q.Get("filter_status"); st != "" && st != "all" && f.Status != st {
+				continue
+			}
+			out = append(out, f)
+		}
+		a.mu2.Unlock()
+		writeJSON(w, 200, out)
+	case r.Method == "PUT" && strings.HasPrefix(p, "/api/public/v1/issues/"):
+		rest := strings.Split(strings.TrimPrefix(p, "/api/public/v1/issues/"), "/")
+		if len(rest) != 2 {
+			http.NotFound(w, r)
+			return
+		}
+		a.count(rest[1], nil, false)
+		a.mu2.Lock()
+		a.Actions = append(a.Actions, rest[1]+" "+rest[0])
+		a.mu2.Unlock()
+		writeJSON(w, 200, map[string]any{"success": true})
+	default:
+		writeJSON(w, 404, map[string]any{"error": "not_found"})
 	}
-	addTool(srv, "aikido_workspaces_list", "List workspaces (fixture)", true, func(args map[string]any) *sdk.CallToolResult {
-		a.hit("aikido_workspaces_list", args, false)
-		return jsonResult(map[string]any{"workspaces": []map[string]any{{"id": 1, "name": "fixture"}}})
-	})
-	a.srv = srv
 }

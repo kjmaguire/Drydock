@@ -14,6 +14,7 @@
 //	DRYDOCK_E2E_GREEN_REPO <path>        (-green-repos N) baseline tests pass, and a repository skill is committed
 //	DRYDOCK_E2E_DOCS <path>              a folder with one Markdown page, for an expert pack of type local_dir
 //	DRYDOCK_E2E_OAUTH_MCP <url>          a fake MCP server that wants an OAuth sign-in (internal/mcp/oauthfake, a test double)
+//	DRYDOCK_E2E_LINEAR_API <url>         a Linear GraphQL protocol fixture (internal/integrations/itfixture, a test double)
 //	DRYDOCK_E2E_LICENSE_ACTIVE <token>   (-licensed only) a license signed by this run's throwaway key, valid for 30 days
 //	DRYDOCK_E2E_LICENSE_EXPIRED <token>  (-licensed only) a license signed by the same key that expired 30 days ago
 //	DRYDOCK_E2E http://127.0.0.1:PORT/?token=TOKEN
@@ -53,6 +54,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
@@ -208,6 +210,22 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	if err != nil {
 		return err
 	}
+
+	// a PROTOCOL FIXTURE (test double) for Linear's GraphQL API, written from Linear's documented shapes
+	// (internal/integrations/itfixture): the Integrations page connects to it without a project, then assigns it
+	lin := itfixture.NewLinear("") // any key is accepted; the suite types a made-up one
+	now := time.Now()
+	for i, title := range []string{"Login fails on Safari", "Export to CSV", "Rotate the certificates"} {
+		team := "ENG"
+		if i == 2 {
+			team = "OPS"
+		}
+		lin.Put(itfixture.LinearIssue{ID: fmt.Sprintf("e2e-%d", i), Identifier: fmt.Sprintf("%s-%d", team, 10+i), Title: title, Description: "From the Linear fixture.",
+			State: "Todo", Team: team, Priority: 2, Created: now.Add(-time.Hour), Updated: now.Add(-time.Duration(i) * time.Minute)})
+	}
+	lints, linURL := itfixture.Serve(lin.Server())
+	defer lints.Close()
+	fmt.Printf("DRYDOCK_E2E_LINEAR_API %s\n", linURL)
 
 	if licensed {
 		pub, priv, err := ed25519.GenerateKey(rand.Reader)

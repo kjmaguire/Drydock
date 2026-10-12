@@ -35,7 +35,7 @@ func TestOutboundWriteNeedsAHumanApprovalBoundToTheExactAction(t *testing.T) {
 
 	// an agent may PROPOSE; nothing is sent
 	o := propose(t, h, c, "agent:claude-1", "The fix is in PR 12.")
-	if o.Status != integrations.OutAwaiting || o.ApprovalID == "" || o.PayloadHash == "" || o.Tool != "create_comment" {
+	if o.Status != integrations.OutAwaiting || o.ApprovalID == "" || o.PayloadHash == "" || o.Tool != "graphql commentCreate" {
 		t.Fatalf("%+v", o)
 	}
 	if len(fx.CommentsSent()) != 0 {
@@ -226,16 +226,16 @@ func TestSentryAikidoAndNotionWritesAreGatedToo(t *testing.T) {
 	if _, err := h.svc.Execute(ctx, human, o.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(sfx.Updates) != 1 || sfx.Updates[0]["status"] != "resolved" || sfx.Updates[0]["organizationSlug"] != "acme" {
+	if len(sfx.Updates) != 1 || sfx.Updates[0]["status"] != "resolved" || sfx.Updates[0]["organization"] != "acme" || sfx.Updates[0]["issueId"] != "s1" {
 		t.Fatalf("%v", sfx.Updates)
 	}
-	// the Sentry MCP server has no comment tool: unsupported, not silently dropped
+	// Sentry has no comment operation here: unsupported, not silently dropped
 	if _, err := h.svc.Propose(ctx, human, integrations.ProposeReq{IntegrationID: sc.ID, Op: "comment", Target: "s1", Params: map[string]string{"body": "x"}}); !errors.Is(err, integrations.ErrOpUnsupported) {
 		t.Fatalf("%v", err)
 	}
 
 	nfx := itfixture.NewNotion("ntn_Qw3Er5Ty7Ui9Op1As2Df4Gh6Jk8Lz0Xc")
-	nts, nurl := itfixture.Serve(nfx.Server(), &nfx.Common)
+	nts, nurl := itfixture.Serve(nfx.Server())
 	t.Cleanup(nts.Close)
 	nc := h.connect(integrations.KindNotion, "ntn_Qw3Er5Ty7Ui9Op1As2Df4Gh6Jk8Lz0Xc", nurl, nil)
 	n, err := h.svc.Propose(ctx, human, integrations.ProposeReq{IntegrationID: nc.ID, Op: "create_page", Target: "parent-1", Params: map[string]string{"title": "Release notes", "content": "# 1.2\n- fixed checkout"}})

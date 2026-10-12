@@ -163,7 +163,7 @@
       "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
     },
     "tool:gh": {
-      "role": "The GitHub CLI Drydock uses for pull requests; you install it.",
+      "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
       "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
     },
     "tool:task": {
@@ -183,7 +183,7 @@
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it."
     },
     "go:golang.org/x/oauth2": {
-      "role": "The OAuth 2 token handling the MCP SDK's sign-in uses: the stored tokens, and refreshing them when they expire."
+      "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens)."
     },
     "ci-go:1.27.2": {
       "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."

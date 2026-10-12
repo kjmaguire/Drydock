@@ -3,86 +3,139 @@ package integrations
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
-// sentryAdapter reads and writes Sentry through its hosted MCP server (https://mcp.sentry.dev/mcp, Authorization:
-// Sentry-Bearer <token>).
+// sentryAdapter reads and writes Sentry through its web API, version v0 (https://sentry.io/api/0/; a self-hosted Sentry or a
+// regional host is the connection's API URL). sentry-go is Sentry's SDK for reporting errors, not a client of this API, and
+// there is no official Go API client, so this is a plain HTTP client following the API reference (getsentry/sentry-api-schema
+// openapi-derefed.json, read for this change) and the docs pages auth, pagination, rate limits and permissions
+// (getsentry/sentry-docs docs/api).
 //
-// UNVERIFIED: the tool names (list_issues, get_issue_details, update_issue) and the argument and result shapes are the shapes the
-// server is reported to use; the natural-language search tool (search_issues) needs an LLM key on the server side and is only a
-// fallback candidate. The issue fields (shortId, level, status, count as a string, userCount, firstSeen, lastSeen, permalink,
-// project{slug}) are the public Sentry REST issue fields, which the server is expected to pass through.
+// Endpoints: GET /api/0/ (who the token is, with auth.scopes), GET /api/0/organizations/, GET
+// /api/0/organizations/{org}/projects/, GET /api/0/organizations/{org}/issues/ (sort=date, query, project, limit at most 100,
+// Link-header cursors), GET .../issues/{id}/events/latest/ (the stack trace), PUT .../issues/{id}/ (status). Auth: a user,
+// organization or internal-integration token, or an OAuth access token, as "Authorization: Bearer <token>".
 type sentryAdapter struct{}
 
 func (sentryAdapter) Kind() string { return KindSentry }
 
-func (sentryAdapter) Needs() []ToolNeed {
-	return []ToolNeed{
-		{Role: "list", Candidates: []string{"list_issues", "search_issues"}, Required: true},
-		{Role: "detail", Candidates: []string{"get_issue_details", "get_issue"}},
-		{Role: "update", Candidates: []string{"update_issue"}, Write: true},
-	}
-}
-
 func (sentryAdapter) FullSweep() bool { return false }
+
+func (sentryAdapter) Endpoints() []string {
+	return []string{"GET /api/0/organizations/{org}/issues/?project=&query=&sort=date&limit= (Link cursors)", "GET /api/0/organizations/{org}/issues/{id}/events/latest/ (on import)"}
+}
 
 func (sentryAdapter) Ops() []OpInfo {
 	return []OpInfo{
-		{Op: "resolve", Label: "Resolve the issue", Role: "update", Params: nil, Description: "Marks the Sentry issue resolved."},
-		{Op: "ignore", Label: "Ignore the issue", Role: "update", Params: nil, NeverAuto: true, Description: "Marks the Sentry issue ignored (it stops alerting)."},
+		{Op: "resolve", Label: "Resolve the issue", Params: nil, Description: "Marks the Sentry issue resolved (PUT .../issues/{id}/ status=resolved)."},
+		{Op: "ignore", Label: "Ignore the issue", Params: nil, NeverAuto: true, Description: "Marks the Sentry issue ignored: it stops alerting (status=ignored)."},
 	}
 }
 
-func (sentryAdapter) Page(ctx context.Context, cl *Client, after string, limit int) (Page, error) {
-	q := cl.Conn.Config["query"]
-	if q == "" {
-		q = "is:unresolved"
+func (sentryAdapter) Identity(ctx context.Context, a *API) (Identity, error) {
+	var root map[string]any
+	if _, err := a.HTTP.json(ctx, "GET", "/api/0/", nil, nil, &root); err != nil {
+		return Identity{}, err
 	}
-	args := map[string]any{"query": q, "sort": "date", "limit": limit}
-	if o := cl.Conn.Config["organization"]; o != "" {
-		args["organizationSlug"] = o
+	auth := asMap(root["auth"])
+	user := asMap(root["user"])
+	if auth == nil && user == nil {
+		// GET /api/0/ answers {"auth": null, "user": null} to a request it did not authenticate
+		return Identity{}, &Failure{Code: CodeUnauthorized, Message: "Sentry did not recognize the token. Reconnect Sentry on the Integrations page."}
 	}
-	if p := cl.Conn.Config["project"]; p != "" {
-		args["projectSlugOrId"] = p
+	id := Identity{Account: str(pick(user, "name", "username"))}
+	for _, s := range asList(pick(auth, "scopes")) {
+		if v := str(s); v != "" {
+			id.Scopes = append(id.Scopes, v)
+		}
 	}
-	if after != "" {
-		args["cursor"] = after
+	var orgs []any
+	if _, err := a.HTTP.json(ctx, "GET", "/api/0/organizations/", url.Values{"per_page": {"100"}}, nil, &orgs); err == nil {
+		var names []string
+		for _, o := range orgs {
+			if n := str(asMap(o)["name"]); n != "" {
+				names = append(names, n)
+			}
+		}
+		id.Workspace = strings.Join(names, ", ")
+		if len(names) > 3 {
+			id.Workspace = strings.Join(names[:3], ", ") + fmt.Sprintf(" and %d more", len(names)-3)
+		}
 	}
-	res, err := cl.call(ctx, "list", args)
+	return id, nil
+}
+
+func (sentryAdapter) Choices(ctx context.Context, a *API, key string, cfg map[string]string) ([]Choice, error) {
+	var path string
+	switch key {
+	case "organization":
+		path = "/api/0/organizations/"
+	case "project":
+		org := cfg["organization"]
+		if org == "" {
+			return nil, errf(ErrBadRequest, "choose the Sentry organization first")
+		}
+		path = "/api/0/organizations/" + url.PathEscape(org) + "/projects/"
+	default:
+		return nil, errf(ErrBadRequest, "Sentry has no setting %q", key)
+	}
+	var list []any
+	if _, err := a.HTTP.json(ctx, "GET", path, url.Values{"per_page": {"100"}}, nil, &list); err != nil {
+		return nil, err
+	}
+	out := []Choice{}
+	for _, e := range list {
+		m := asMap(e)
+		if slug := str(m["slug"]); slug != "" {
+			out = append(out, Choice{Value: slug, Label: firstNonEmpty(str(m["name"]), slug)})
+		}
+	}
+	return out, nil
+}
+
+func (sentryAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error) {
+	org := q.Config["organization"]
+	if org == "" {
+		return Page{}, &Failure{Code: CodeNotFound, Message: "Choose the Sentry organization in the project's Sentry settings."}
+	}
+	query := q.Config["query"]
+	if query == "" {
+		query = "is:unresolved"
+	}
+	limit := q.Limit
+	if limit > 100 { // "The maximum is 100."
+		limit = 100
+	}
+	v := url.Values{"query": {query}, "sort": {"date"}, "limit": {fmt.Sprint(limit)}}
+	if p := q.Config["project"]; p != "" {
+		v.Set("project", p)
+	}
+	if q.After != "" {
+		v.Set("cursor", q.After)
+	}
+	var list []any
+	r, err := a.HTTP.json(ctx, "GET", "/api/0/organizations/"+url.PathEscape(org)+"/issues/", v, nil, &list)
 	if err != nil {
 		return Page{}, err
 	}
-	v, derr := decode(res)
-	if derr != nil {
-		return Page{}, schemaDrift(KindSentry, derr)
-	}
-	raws, next, ok := listItems(v, "issues", "results", "items")
-	if !ok {
-		return Page{}, schemaDrift(KindSentry, fmt.Errorf("no issue list found in the result"))
-	}
-	var pg Page
-	pg.Next = next
-	for _, r := range raws {
-		m := asMap(r)
-		if m == nil {
-			continue
-		}
+	pg := Page{Next: nextLinkCursor(r.Header)}
+	for _, e := range list {
+		m := asMap(e)
 		id := str(m["id"])
 		if id == "" {
-			id = str(m["shortId"])
-		}
-		if id == "" {
 			continue
 		}
-		events, _ := num(m["count"])
-		users, _ := num(pick(m, "userCount", "user_count"))
+		events, _ := num(m["count"]) // a string in the API ("count": {"type": "string"})
+		users, _ := num(m["userCount"])
 		level := strings.ToLower(str(m["level"]))
-		last := str(pick(m, "lastSeen", "last_seen"))
-		proj := slugOf(m["project"])
-		meta := map[string]any{"level": level, "events": events, "users": users, "project": proj, "culprit": str(m["culprit"]),
-			"environment": str(m["environment"]), "firstSeen": str(pick(m, "firstSeen", "first_seen")), "lastSeen": last}
-		short := str(pick(m, "shortId", "short_id"))
+		last := str(m["lastSeen"])
+		proj := ""
+		if pm := asMap(m["project"]); pm != nil {
+			proj = str(pm["slug"])
+		}
+		short := str(m["shortId"])
 		if short == "" {
 			short = "SEN-" + shortID(id)
 		}
@@ -90,63 +143,62 @@ func (sentryAdapter) Page(ctx context.Context, cl *Client, after string, limit i
 		if md := asMap(m["metadata"]); md != nil {
 			body = strings.TrimSpace(str(md["type"]) + ": " + str(md["value"]) + "\n" + body)
 		}
+		assignee := ""
+		if as := asMap(m["assignedTo"]); as != nil {
+			assignee = str(as["name"])
+		}
 		pg.Items = append(pg.Items, RawItem{
-			ExternalID: id, Kind: ItemErrorEvent, IssueRef: short, URL: str(pick(m, "permalink", "url")), Title: str(m["title"]), Body: body,
-			State: str(m["status"]), Assignee: str(pick(m, "assignedTo", "assigned_to")), Priority: level,
-			Created: millis(pick(m, "firstSeen", "first_seen")), Updated: millis(last), Etag: last, Meta: meta,
+			ExternalID: id, Kind: ItemErrorEvent, IssueRef: short, URL: str(m["permalink"]), Title: str(m["title"]), Body: body,
+			State: str(m["status"]), Assignee: assignee, Priority: level,
+			Created: millis(m["firstSeen"]), Updated: millis(last), Etag: last,
+			Meta: map[string]any{"level": level, "events": events, "users": users, "project": proj, "culprit": str(m["culprit"]),
+				"firstSeen": str(m["firstSeen"]), "lastSeen": last, "priority": str(m["priority"])},
 		})
 	}
 	return pg, nil
 }
 
-// Detail fetches the issue's details for its stack trace. It is called only for an item that is about to become a task.
-func (sentryAdapter) Detail(ctx context.Context, cl *Client, id string) (string, bool, error) {
-	if cl.Tools["detail"] == "" {
+// Detail reads the latest event of an issue and renders its stack trace. It is called only for an issue that is becoming a task.
+func (sentryAdapter) Detail(ctx context.Context, a *API, cfg map[string]string, id string) (string, bool, error) {
+	org := cfg["organization"]
+	if org == "" {
 		return "", false, nil
 	}
-	args := map[string]any{"issueId": id}
-	if o := cl.Conn.Config["organization"]; o != "" {
-		args["organizationSlug"] = o
-	}
-	res, err := cl.call(ctx, "detail", args)
-	if err != nil {
+	var ev map[string]any
+	if _, err := a.HTTP.json(ctx, "GET", "/api/0/organizations/"+url.PathEscape(org)+"/issues/"+url.PathEscape(id)+"/events/latest/", nil, nil, &ev); err != nil {
 		return "", false, err
 	}
-	if v, derr := decode(res); derr == nil {
-		if m := asMap(v); m != nil {
-			if t := findStack(m); t != "" {
-				return t, true, nil
-			}
-			if t := str(pick(m, "text", "content", "details")); t != "" {
-				return t, true, nil
-			}
-		}
-	}
-	return res.Text, strings.TrimSpace(res.Text) != "", nil
+	t := sentryStack(ev)
+	return t, t != "", nil
 }
 
-// findStack looks for a stack trace string anywhere in a decoded detail object.
-func findStack(v any) string {
-	switch x := v.(type) {
-	case map[string]any:
-		for _, k := range []string{"stacktrace", "stackTrace", "stack_trace", "traceback"} {
-			if s, ok := x[k].(string); ok && s != "" {
-				return s
-			}
+// sentryStack renders the exception entries of an event: "Type: value" and the frames, innermost last as Sentry stores them.
+func sentryStack(ev map[string]any) string {
+	var b strings.Builder
+	for _, e := range asList(ev["entries"]) {
+		em := asMap(e)
+		if str(em["type"]) != "exception" {
+			continue
 		}
-		for _, e := range x {
-			if s := findStack(e); s != "" {
-				return s
-			}
-		}
-	case []any:
-		for _, e := range x {
-			if s := findStack(e); s != "" {
-				return s
+		for _, v := range asList(asMap(em["data"])["values"]) {
+			vm := asMap(v)
+			fmt.Fprintf(&b, "%s: %s\n", str(vm["type"]), str(vm["value"]))
+			for _, f := range asList(asMap(vm["stacktrace"])["frames"]) {
+				fm := asMap(f)
+				line, _ := num(fm["lineNo"])
+				fmt.Fprintf(&b, "  at %s (%s:%d)\n", firstNonEmpty(str(fm["function"]), "?"), firstNonEmpty(str(fm["filename"]), str(fm["absPath"]), "?"), line)
+				// the frame's own code line, from its context ([[line number, text], ...])
+				for _, cl := range asList(fm["context"]) {
+					if pair := asList(cl); len(pair) == 2 {
+						if n, ok := num(pair[0]); ok && n == line {
+							fmt.Fprintf(&b, "      %s\n", strings.TrimSpace(str(pair[1])))
+						}
+					}
+				}
 			}
 		}
 	}
-	return ""
+	return strings.TrimSpace(b.String())
 }
 
 func (sentryAdapter) TaskMapping(it Item) TaskMapping {
@@ -160,21 +212,24 @@ func (sentryAdapter) Build(op, target string, _ map[string]string, cfg map[strin
 	}
 	status := map[string]string{"resolve": "resolved", "ignore": "ignored"}[op]
 	if status == "" {
-		return OutCall{}, errf(ErrOpUnsupported, "Sentry has no operation %q (comments are not supported through the MCP server)", op)
+		return OutCall{}, errf(ErrOpUnsupported, "Sentry has no operation %q", op)
 	}
-	args := map[string]any{"issueId": target, "status": status}
-	if o := cfg["organization"]; o != "" {
-		args["organizationSlug"] = o
+	org := cfg["organization"]
+	if org == "" {
+		return OutCall{}, errf(ErrBadRequest, "the project's Sentry settings name no organization")
 	}
-	return OutCall{Role: "update", Args: args, Preview: fmt.Sprintf("Set Sentry issue %s to %s", target, status)}, nil
+	return OutCall{Endpoint: "PUT /api/0/organizations/{org}/issues/{id}/", Args: map[string]any{"organization": org, "issueId": target, "status": status},
+		Preview: fmt.Sprintf("Set Sentry issue %s (organization %s) to %s", target, org, status)}, nil
 }
 
-// slugOf renders a project reference: its slug when it is an object, else the string itself.
-func slugOf(v any) string {
-	if m := asMap(v); m != nil {
-		if s := str(m["slug"]); s != "" {
-			return s
-		}
+func (sentryAdapter) Send(ctx context.Context, a *API, call OutCall) (string, error) {
+	if call.Endpoint != "PUT /api/0/organizations/{org}/issues/{id}/" {
+		return "", errf(ErrOpUnsupported, "unknown Sentry call %q", call.Endpoint)
 	}
-	return str(v)
+	path := "/api/0/organizations/" + url.PathEscape(argString(call.Args, "organization")) + "/issues/" + url.PathEscape(argString(call.Args, "issueId")) + "/"
+	var res map[string]any
+	if _, err := a.HTTP.json(ctx, "PUT", path, nil, map[string]any{"status": argString(call.Args, "status")}, &res); err != nil {
+		return "", err
+	}
+	return "status " + firstNonEmpty(str(res["status"]), argString(call.Args, "status")), nil
 }

@@ -18,7 +18,7 @@ type SyncOpts struct {
 	Full bool
 }
 
-var issueRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.#-]{0,39}$`)
+var issueRefRe = regexp.MustCompile(`^(#[0-9]{1,9}|[A-Za-z0-9][A-Za-z0-9_.#-]{0,39})$`)
 
 var levelEnum = map[string]bool{"fatal": true, "error": true, "warning": true, "info": true, "debug": true}
 var severityEnum = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
@@ -27,7 +27,7 @@ var priorityEnum = map[string]bool{"urgent": true, "high": true, "medium": true,
 // buildRecord sanitizes one raw item into a storable record. Every free-text field passes through the sanitizer: control and
 // invisible characters removed, secrets redacted, literal untrusted tags neutralized, length limited. Fields that feed rules or
 // task headers are additionally constrained to known values.
-func (s *Service) buildRecord(ctx context.Context, c Connection, raw RawItem, detail string) (ItemRecord, []string) {
+func (s *Service) buildRecord(ctx context.Context, c Connection, a Assignment, raw RawItem, detail string) (ItemRecord, []string) {
 	title := s.san.Line(ctx, raw.Title, MaxTitleRunes)
 	body := raw.Body
 	if detail != "" {
@@ -91,7 +91,7 @@ func (s *Service) buildRecord(ctx context.Context, c Connection, raw RawItem, de
 	}
 	excerpt, _ := truncateRunes(strings.Join(strings.Fields(bc.Text), " "), MaxExcerptRunes)
 	it := Item{
-		IntegrationID: c.ID, Source: c.Kind, ProjectID: c.ProjectID, ExternalID: clampText(raw.ExternalID, 200), Kind: raw.Kind, IssueRef: ref, URL: validHTTPURL(raw.URL),
+		IntegrationID: c.ID, AssignmentID: a.ID, Source: c.Kind, ProjectID: a.ProjectID, ExternalID: clampText(raw.ExternalID, 200), Kind: raw.Kind, IssueRef: ref, URL: validHTTPURL(raw.URL),
 		Title: title.Text, Excerpt: excerpt, State: s.san.Line(ctx, raw.State, 40).Text, Labels: labels, Assignee: s.san.Line(ctx, raw.Assignee, 80).Text, Priority: prio,
 		ParentExternalID: clampText(s.san.Line(ctx, raw.Parent, 200).Text, 200), Meta: meta, ExternalCreated: raw.Created, ExternalUpdated: raw.Updated, Etag: clampText(raw.Etag, 80),
 		Risk: risk, RiskFlags: flags, Redactions: redactions, Truncated: bc.Truncated || title.Truncated, Untrusted: true,
@@ -138,52 +138,9 @@ func (s *Service) backoff(n int) time.Duration {
 	return time.Duration(float64(d) * s.o.Jitter())
 }
 
-// client connects to the server and resolves the adapter's tools. It returns a Failure on any problem.
-func (s *Service) client(ctx context.Context, c Connection, ad Adapter, write bool) (*Client, *Failure) {
-	if s.o.Callers == nil {
-		return nil, &Failure{Code: CodeOther, Message: "no MCP gateway is configured"}
-	}
-	caller, err := s.o.Callers.Caller(ctx, c, write)
-	if err != nil {
-		if errors.Is(err, ErrNoCredential) {
-			return nil, &Failure{Code: CodeUnauthorized, Message: "No token is stored for " + vendor(c.Kind) + ". Paste one under Connections > " + vendor(c.Kind) + ".", Cause: err}
-		}
-		return nil, Classify(c.Kind, err, "")
-	}
-	tctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
-	defer cancel()
-	offered, err := caller.Tools(tctx)
-	if err != nil {
-		return nil, Classify(c.Kind, err, "")
-	}
-	resolved, missing, _ := resolveTools(ad.Needs(), offered)
-	if len(missing) > 0 {
-		return nil, &Failure{Code: CodeToolMissing, Cause: ErrToolMissing,
-			Message: fmt.Sprintf("%s's MCP server does not offer the tool %s that Drydock uses to read items. The server may have changed or the wrong server is configured; sync is paused until this is fixed.", vendor(c.Kind), strings.Join(missing, ", "))}
-	}
-	return &Client{Caller: timeoutCaller{caller, s.o.CallTimeout}, Conn: c, Tools: resolved}, nil
-}
-
-// timeoutCaller bounds every call.
-type timeoutCaller struct {
-	Caller
-	d time.Duration
-}
-
-func (t timeoutCaller) Call(ctx context.Context, tool string, args any) (Result, error) {
-	cctx, cancel := context.WithTimeout(ctx, t.d)
-	defer cancel()
-	return t.Caller.Call(cctx, tool, args)
-}
-
-func (t timeoutCaller) Tools(ctx context.Context) ([]string, error) {
-	cctx, cancel := context.WithTimeout(ctx, t.d)
-	defer cancel()
-	return t.Caller.Tools(cctx)
-}
-
-// Sync polls one connection: it walks the vendor's listing newest first, upserts changed items page by page (cursor and rows in
-// one transaction), stops at the watermark, then evaluates the connection's rules.
+// Sync polls a connection: for every enabled assignment it walks the vendor's listing (newest first where the API sorts),
+// upserts changed items page by page (cursor and rows in one transaction), stops at the watermark, then evaluates the rules of
+// that project. A connection without an assignment has nothing to sync.
 func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, error) {
 	lk := s.lock("sync:" + id)
 	if !lk.TryLock() {
@@ -194,16 +151,86 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 	if err != nil {
 		return SyncResult{IntegrationID: id}, err
 	}
-	res := SyncResult{IntegrationID: id}
+	asgs, err := s.st.ListAssignments(ctx, id)
+	if err != nil {
+		return SyncResult{IntegrationID: id}, err
+	}
+	var due []Assignment
+	for _, a := range asgs {
+		if a.Enabled {
+			due = append(due, a)
+		}
+	}
+	return s.syncAssignments(ctx, conn, due, o)
+}
+
+// SyncAssignment polls one assignment.
+func (s *Service) SyncAssignment(ctx context.Context, assignmentID string, o SyncOpts) (SyncResult, error) {
+	a, err := s.st.GetAssignment(ctx, assignmentID)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	lk := s.lock("sync:" + a.IntegrationID)
+	if !lk.TryLock() {
+		return SyncResult{IntegrationID: a.IntegrationID}, ErrSyncBusy
+	}
+	defer lk.Unlock()
+	conn, err := s.st.GetConnection(ctx, a.IntegrationID)
+	if err != nil {
+		return SyncResult{IntegrationID: a.IntegrationID}, err
+	}
+	return s.syncAssignments(ctx, conn, []Assignment{a}, o)
+}
+
+// syncAssignments runs the given assignments of a connection (the caller holds the connection's sync lock). The result adds
+// them up; the first error is returned after every assignment had its turn.
+func (s *Service) syncAssignments(ctx context.Context, conn Connection, asgs []Assignment, o SyncOpts) (SyncResult, error) {
+	res := SyncResult{IntegrationID: conn.ID, Complete: true}
 	if !conn.Enabled {
-		res.Skipped = "disabled"
+		res.Skipped, res.Complete = "disabled", false
+		return res, nil
+	}
+	if len(asgs) == 0 {
+		res.Skipped, res.Complete = "not assigned to a project", false
 		return res, nil
 	}
 	ad, ok := AdapterFor(conn.Kind)
 	if !ok {
 		return res, errf(ErrBadRequest, "unknown integration %q", conn.Kind)
 	}
-	cur, err := s.st.GetCursor(ctx, id, defaultScope)
+	var firstErr error
+	var skipped []string
+	for _, a := range asgs {
+		if ctx.Err() != nil {
+			return res, ctx.Err()
+		}
+		r, err := s.syncOne(ctx, conn, ad, a, o)
+		res.Pages += r.Pages
+		res.Seen += r.Seen
+		res.New += r.New
+		res.Changed += r.Changed
+		res.Unchanged += r.Unchanged
+		res.Gone += r.Gone
+		res.RuleResults = append(res.RuleResults, r.RuleResults...)
+		res.Complete = res.Complete && r.Complete
+		if r.Skipped != "" {
+			skipped = append(skipped, r.Skipped)
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		if conn2, gerr := s.st.GetConnection(ctx, conn.ID); gerr == nil {
+			conn = conn2 // a failure may have changed its status
+		}
+	}
+	res.Skipped = strings.Join(skipped, "; ")
+	return res, firstErr
+}
+
+// syncOne polls one assignment.
+func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg Assignment, o SyncOpts) (SyncResult, error) {
+	res := SyncResult{IntegrationID: conn.ID}
+	cur, err := s.st.GetCursor(ctx, conn.ID, asg.ID)
 	if err != nil {
 		return res, err
 	}
@@ -216,10 +243,10 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 		}
 		return res, nil
 	}
-	s.emit(ctx, EventSyncStarted, conn.ProjectID, "", map[string]any{"integrationId": id, "kind": conn.Kind, "full": o.Full, "resuming": cur.After != ""})
-	cl, fail := s.client(ctx, conn, ad, false)
+	s.emit(ctx, EventSyncStarted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "full": o.Full, "resuming": cur.After != ""})
+	api, fail := s.api(ctx, conn)
 	if fail != nil {
-		return res, s.fail(ctx, conn, cur, fail)
+		return res, s.fail(ctx, conn, asg, cur, fail)
 	}
 
 	if o.Full && cur.After == "" {
@@ -229,18 +256,24 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 	if cur.After == "" && cur.SweepStart == 0 {
 		cur.SweepStart, cur.SweepSeen = now, 0
 	}
+	since := int64(0)
+	if !sweepFull && cur.Watermark > 0 {
+		since = cur.Watermark
+	}
 	bodyBudget := s.o.MaxBodyFetch
 	complete := false
 	for page := 0; page < s.o.MaxPages; page++ {
 		snap := cur // what was committed before this page: a failure persists this, never half a page's progress
 		pageAfter := cur.After
-		pg, perr := ad.Page(ctx, cl, pageAfter, s.o.PageSize)
+		pctx, pcancel := context.WithTimeout(ctx, s.o.CallTimeout)
+		pg, perr := ad.Page(pctx, api, PageQuery{Config: asg.Config, After: pageAfter, Limit: s.o.PageSize, Since: since})
+		pcancel()
 		if perr != nil {
 			var f *Failure
 			if !errors.As(perr, &f) {
 				f = Classify(conn.Kind, perr, "")
 			}
-			return res, s.fail(ctx, conn, snap, f)
+			return res, s.fail(ctx, conn, asg, snap, f)
 		}
 		res.Pages++
 		sorted := sortedDesc(pg.Items)
@@ -262,7 +295,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 			cur.SweepSeen++
 			detail := ""
 			if raw.NeedsBody {
-				existing, gerr := s.st.GetItemByExternal(ctx, conn.ID, raw.ExternalID)
+				existing, gerr := s.st.GetItemByExternal(ctx, conn.ID, asg.ID, raw.ExternalID)
 				if gerr == nil && existing.Etag == raw.Etag && raw.Etag != "" {
 					touch = append(touch, raw.ExternalID) // unchanged since last fetch: skip the body call (the If-Modified analogue)
 					res.Unchanged++
@@ -275,14 +308,16 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 					break
 				}
 				bodyBudget--
-				text, has, derr := ad.Detail(ctx, cl, raw.ExternalID)
+				dctx, dcancel := context.WithTimeout(ctx, s.o.CallTimeout)
+				text, has, derr := ad.Detail(dctx, api, asg.Config, raw.ExternalID)
+				dcancel()
 				if derr != nil {
 					var f *Failure
 					if !errors.As(derr, &f) {
 						f = Classify(conn.Kind, derr, "")
 					}
 					if f.Code == CodeRateLimited || f.Code == CodeUnauthorized || f.Code == CodeUnreachable || f.Code == CodeTimeout {
-						return res, s.fail(ctx, conn, snap, f)
+						return res, s.fail(ctx, conn, asg, snap, f)
 					}
 					has = false // a page whose body cannot be read is stored with its summary only
 				}
@@ -290,7 +325,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 					detail = text
 				}
 			}
-			rec, _ := s.buildRecord(ctx, conn, raw, detail)
+			rec, _ := s.buildRecord(ctx, conn, asg, raw, detail)
 			recs = append(recs, rec)
 		}
 		next := pg.Next
@@ -313,7 +348,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 			cur.LastError, cur.LastErrorCode, cur.ConsecutiveFailures, cur.NextAttemptAt = "", "", 0, 0
 			cur.ItemsLastSync = cur.SweepSeen
 		}
-		pr, cerr := s.st.CommitPage(ctx, PageCommit{Items: recs, Cursor: cur, Touch: touch, IntegrationID: conn.ID})
+		pr, cerr := s.st.CommitPage(ctx, PageCommit{Items: recs, Cursor: cur, Touch: touch, IntegrationID: conn.ID, AssignmentID: asg.ID})
 		if cerr != nil {
 			return res, cerr
 		}
@@ -321,12 +356,12 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 		res.Changed += pr.Changed
 		res.Unchanged += pr.Unchanged
 		for i, it := range pr.Touched {
-			s.emit(ctx, EventItemUpserted, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "externalId": it.ExternalID, "kind": it.Kind, "hash": it.ContentHash, "new": pr.Outcomes[i] == Inserted})
+			s.emit(ctx, EventItemUpserted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "itemId": it.ID, "externalId": it.ExternalID, "kind": it.Kind, "hash": it.ContentHash, "new": pr.Outcomes[i] == Inserted})
 			if it.Redactions > 0 {
-				s.emit(ctx, EventItemSecretRedacted, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "findings": it.Redactions})
+				s.emit(ctx, EventItemSecretRedacted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "findings": it.Redactions})
 			}
 			if it.Risk >= s.o.ThreatThreshold {
-				s.emit(ctx, EventItemRiskFlagged, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "risk": it.Risk, "flags": it.RiskFlags})
+				s.emit(ctx, EventItemRiskFlagged, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "risk": it.Risk, "flags": it.RiskFlags})
 			}
 		}
 		if done {
@@ -340,7 +375,7 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 	res.Complete = complete
 	if complete {
 		if sweepFull {
-			n, err := s.st.MarkGoneNotSeenSince(ctx, conn.ID, cur.SweepStart)
+			n, err := s.st.MarkGoneNotSeenSince(ctx, conn.ID, asg.ID, cur.SweepStart)
 			if err != nil {
 				return res, err
 			}
@@ -353,21 +388,22 @@ func (s *Service) Sync(ctx context.Context, id string, o SyncOpts) (SyncResult, 
 		if conn.Status != StatusOK {
 			_ = s.st.SetStatus(ctx, conn.ID, StatusOK, "")
 		}
-		res.RuleResults = s.EvaluateRules(ctx, conn)
+		res.RuleResults = s.EvaluateRules(ctx, conn, asg)
 	}
-	s.emit(ctx, EventSyncCompleted, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "pages": res.Pages, "seen": res.Seen, "new": res.New, "changed": res.Changed, "gone": res.Gone, "complete": complete})
+	s.emit(ctx, EventSyncCompleted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "pages": res.Pages, "seen": res.Seen, "new": res.New, "changed": res.Changed, "gone": res.Gone, "complete": complete})
 	return res, nil
 }
 
 // fail records a failed attempt: a plain-language message, a backoff, and the connection status; the cursor keeps its resume
 // position so the next attempt continues where this one stopped.
-func (s *Service) fail(ctx context.Context, conn Connection, cur Cursor, f *Failure) error {
+func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur Cursor, f *Failure) error {
 	if ctx.Err() != nil {
 		return ctx.Err() // the app is shutting down: that is not the vendor's failure and earns no backoff
 	}
 	now := s.nowMS()
 	cur.LastAttemptAt = now
-	cur.LastError = s.scrub(f.Message)
+	f = &Failure{Code: f.Code, Message: s.scrub(f.Message), RetryAfter: f.RetryAfter, Cause: f.Cause} // the caller sees the scrubbed text too
+	cur.LastError = f.Message
 	cur.LastErrorCode = f.Code
 	cur.ConsecutiveFailures++
 	status, detail := conn.Status, s.scrub(f.Message)
@@ -379,15 +415,15 @@ func (s *Service) fail(ctx context.Context, conn Connection, cur Cursor, f *Fail
 			wait = f.RetryAfter
 		}
 		cur.NextAttemptAt = now + wait.Milliseconds()
-		s.emit(ctx, EventRateLimited, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "waitMs": wait.Milliseconds(), "until": cur.NextAttemptAt})
+		s.emit(ctx, EventRateLimited, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "waitMs": wait.Milliseconds(), "until": cur.NextAttemptAt})
 	case CodeUnauthorized:
 		cur.NextAttemptAt = 0 // paused, not failing: the scheduler skips unauthenticated connections until the token is replaced
 		status = StatusUnauthenticated
-		s.emit(ctx, EventAuthExpired, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind})
-	case CodeSchemaDrift, CodeToolMissing:
+		s.emit(ctx, EventAuthExpired, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind})
+	case CodeSchemaDrift, CodeToolMissing, CodeNotFound:
 		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
 		status = StatusDegraded
-		s.emit(ctx, EventSchemaDrift, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "code": f.Code})
+		s.emit(ctx, EventSchemaDrift, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "code": f.Code})
 	case CodeUnreachable, CodeTimeout:
 		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
 		status = StatusUnreachable
@@ -398,12 +434,13 @@ func (s *Service) fail(ctx context.Context, conn Connection, cur Cursor, f *Fail
 		return err
 	}
 	_ = s.st.SetStatus(ctx, conn.ID, status, detail)
-	s.emit(ctx, typ, conn.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "code": f.Code, "consecutiveFailures": cur.ConsecutiveFailures, "message": cur.LastError})
+	s.emit(ctx, typ, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "code": f.Code, "consecutiveFailures": cur.ConsecutiveFailures, "message": cur.LastError})
 	return f
 }
 
-// Tick runs every sync that is due: enabled connections whose interval elapsed, whose backoff passed, that are not paused for
-// authentication, plus interrupted sweeps that should resume. It returns the ids it synced.
+// Tick runs every sync that is due: the enabled assignments of enabled connections whose interval elapsed, whose backoff
+// passed and that are not paused for authentication, plus interrupted sweeps that should resume. It returns the ids of the
+// connections it synced.
 func (s *Service) Tick(ctx context.Context) []string {
 	conns, err := s.st.ListConnections(ctx)
 	if err != nil {
@@ -411,34 +448,49 @@ func (s *Service) Tick(ctx context.Context) []string {
 		return nil
 	}
 	now := s.nowMS()
-	var due []Connection
-	for _, c := range conns {
-		if !c.Enabled || c.Status == StatusUnauthenticated || c.Status == StatusDisconnected {
-			continue
-		}
-		cur, err := s.st.GetCursor(ctx, c.ID, defaultScope)
-		if err != nil || cur.NextAttemptAt > now {
-			continue
-		}
-		iv := pollInterval(c).Milliseconds()
-		iv += int64(float64(iv) * 0.1 * float64(hashByte(c.ID)) / 255) // up to 10% deterministic jitter per connection
-		if cur.After == "" && cur.LastAttemptAt > 0 && now-cur.LastAttemptAt < iv {
-			continue
-		}
-		due = append(due, c)
-	}
-	sort.Slice(due, func(i, j int) bool { return due[i].ID < due[j].ID })
+	sort.Slice(conns, func(i, j int) bool { return conns[i].ID < conns[j].ID })
 	var ran []string
-	for _, c := range due {
+	for _, c := range conns {
 		if ctx.Err() != nil {
 			break
 		}
-		if _, err := s.Sync(ctx, c.ID, SyncOpts{}); err != nil && !errors.Is(err, ErrSyncBusy) {
+		if !c.Enabled || c.Status == StatusUnauthenticated || c.Status == StatusDisconnected {
+			continue
+		}
+		asgs, err := s.st.ListAssignments(ctx, c.ID)
+		if err != nil {
+			continue
+		}
+		var due []Assignment
+		for _, a := range asgs {
+			if !a.Enabled {
+				continue
+			}
+			cur, err := s.st.GetCursor(ctx, c.ID, a.ID)
+			if err != nil || cur.NextAttemptAt > now {
+				continue
+			}
+			iv := pollInterval(c).Milliseconds()
+			iv += int64(float64(iv) * 0.1 * float64(hashByte(a.ID)) / 255) // up to 10% deterministic jitter per assignment
+			if cur.After == "" && cur.LastAttemptAt > 0 && now-cur.LastAttemptAt < iv {
+				continue
+			}
+			due = append(due, a)
+		}
+		if len(due) == 0 {
+			continue
+		}
+		lk := s.lock("sync:" + c.ID)
+		if !lk.TryLock() {
+			continue
+		}
+		if _, err := s.syncAssignments(ctx, c, due, SyncOpts{}); err != nil {
 			var f *Failure
 			if !errors.As(err, &f) {
 				s.o.Logf("integrations: sync %s: %v", c.ID, err)
 			}
 		}
+		lk.Unlock()
 		ran = append(ran, c.ID)
 	}
 	return ran

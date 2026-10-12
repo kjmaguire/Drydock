@@ -38,20 +38,23 @@ func b2i(b bool) int {
 
 // ---- connections ----
 
-const connCols = `id,kind,name,project_id,status,status_detail,auth_kind,credential_ref,base_url,config_json,poll_interval_s,enabled,created_at,updated_at,version`
+const connCols = `id,kind,name,project_id,status,status_detail,auth_kind,credential_ref,base_url,config_json,poll_interval_s,enabled,created_at,updated_at,version,account_json,checked_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanConn(r rowScanner) (Connection, error) {
 	var c Connection
-	var cfg string
+	var cfg, acct string
 	var en int
-	if err := r.Scan(&c.ID, &c.Kind, &c.Name, &c.ProjectID, &c.Status, &c.StatusDetail, &c.AuthKind, &c.CredentialRef, &c.BaseURL, &cfg, &c.PollIntervalS, &en, &c.Created, &c.Updated, &c.Version); err != nil {
+	if err := r.Scan(&c.ID, &c.Kind, &c.Name, &c.ProjectID, &c.Status, &c.StatusDetail, &c.AuthKind, &c.CredentialRef, &c.BaseURL, &cfg, &c.PollIntervalS, &en, &c.Created, &c.Updated, &c.Version,
+		&acct, &c.CheckedAt); err != nil {
 		return c, err
 	}
 	c.Enabled = en != 0
 	c.Config = map[string]string{}
 	_ = json.Unmarshal([]byte(cfg), &c.Config)
+	_ = json.Unmarshal([]byte(acct), &c.Identity)
+	c.Name = vendor(c.Kind) // the vendor's name is fixed: a stored legacy name is not shown
 	return c, nil
 }
 
@@ -61,10 +64,13 @@ func (s *Store) InsertConnection(ctx context.Context, c Connection) (Connection,
 		c.ID = ids.New("int")
 	}
 	c.Created, c.Updated, c.Version = s.now(), s.now(), 1
+	c.Name = vendor(c.Kind)
 	cfg, _ := json.Marshal(nz(c.Config))
+	acct, _ := json.Marshal(c.Identity)
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO integrations(`+connCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			c.ID, c.Kind, c.Name, c.ProjectID, c.Status, c.StatusDetail, c.AuthKind, c.CredentialRef, c.BaseURL, string(cfg), c.PollIntervalS, b2i(c.Enabled), c.Created, c.Updated, c.Version)
+		_, err := tx.ExecContext(ctx, `INSERT INTO integrations(`+connCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			c.ID, c.Kind, c.Name, c.ProjectID, c.Status, c.StatusDetail, c.AuthKind, c.CredentialRef, c.BaseURL, string(cfg), c.PollIntervalS, b2i(c.Enabled), c.Created, c.Updated, c.Version,
+			string(acct), c.CheckedAt)
 		return err
 	})
 	return c, err
@@ -104,6 +110,15 @@ func (s *Store) ListConnections(ctx context.Context) ([]Connection, error) {
 	return out, rows.Err()
 }
 
+// SetIdentity records what the vendor's API says the credential reaches, and when it was read.
+func (s *Store) SetIdentity(ctx context.Context, id string, ident Identity) error {
+	b, _ := json.Marshal(ident)
+	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE integrations SET account_json=?, checked_at=?, updated_at=? WHERE id=?`, string(b), s.now(), s.now(), id)
+		return err
+	})
+}
+
 // SetStatus records the connection status and its plain-language detail.
 func (s *Store) SetStatus(ctx context.Context, id, status, detail string) error {
 	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
@@ -117,8 +132,8 @@ func (s *Store) UpdateConnection(ctx context.Context, c Connection, expectVersio
 	cfg, _ := json.Marshal(nz(c.Config))
 	var n int64
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE integrations SET name=?, project_id=?, status=?, status_detail=?, base_url=?, config_json=?, poll_interval_s=?, enabled=?, credential_ref=?, updated_at=?, version=version+1
-			WHERE id=? AND version=?`, c.Name, c.ProjectID, c.Status, c.StatusDetail, c.BaseURL, string(cfg), c.PollIntervalS, b2i(c.Enabled), c.CredentialRef, s.now(), c.ID, expectVersion)
+		res, err := tx.ExecContext(ctx, `UPDATE integrations SET name=?, project_id=?, status=?, status_detail=?, base_url=?, config_json=?, poll_interval_s=?, enabled=?, credential_ref=?, auth_kind=?, updated_at=?, version=version+1
+			WHERE id=? AND version=?`, vendor(c.Kind), c.ProjectID, c.Status, c.StatusDetail, c.BaseURL, string(cfg), c.PollIntervalS, b2i(c.Enabled), c.CredentialRef, c.AuthKind, s.now(), c.ID, expectVersion)
 		if err != nil {
 			return err
 		}
@@ -144,6 +159,7 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) error {
 			`DELETE FROM integration_rules WHERE integration_id=?`,
 			`DELETE FROM external_items WHERE integration_id=? AND task_id=''`,
 			`UPDATE external_items SET gone=1 WHERE integration_id=?`,
+			`DELETE FROM integration_assignments WHERE integration_id=?`,
 			`DELETE FROM integrations WHERE id=?`,
 		} {
 			if _, err := tx.ExecContext(ctx, q, id); err != nil {
@@ -245,14 +261,14 @@ const (
 	Updated
 )
 
-const itemCols = `id,integration_id,source,project_id,external_id,kind,issue_ref,url,title,excerpt,body_ref,state,labels_json,assignee,priority,parent_external_id,meta_json,
+const itemCols = `id,integration_id,assignment_id,source,project_id,external_id,kind,issue_ref,url,title,excerpt,body_ref,state,labels_json,assignee,priority,parent_external_id,meta_json,
 external_created_at,external_updated_at,etag,content_hash,fetched_at,risk,risk_flags,redactions,truncated,task_id,imported_by,imported_at,gone,version`
 
 func scanItem(r rowScanner) (Item, error) {
 	var it Item
 	var labels, meta, flags string
 	var trunc, gone int
-	if err := r.Scan(&it.ID, &it.IntegrationID, &it.Source, &it.ProjectID, &it.ExternalID, &it.Kind, &it.IssueRef, &it.URL, &it.Title, &it.Excerpt, &it.BodyRef, &it.State, &labels,
+	if err := r.Scan(&it.ID, &it.IntegrationID, &it.AssignmentID, &it.Source, &it.ProjectID, &it.ExternalID, &it.Kind, &it.IssueRef, &it.URL, &it.Title, &it.Excerpt, &it.BodyRef, &it.State, &labels,
 		&it.Assignee, &it.Priority, &it.ParentExternalID, &meta, &it.ExternalCreated, &it.ExternalUpdated, &it.Etag, &it.ContentHash, &it.FetchedAt, &it.Risk, &flags, &it.Redactions,
 		&trunc, &it.TaskID, &it.ImportedBy, &it.ImportedAt, &gone, &it.Version); err != nil {
 		return it, err
@@ -284,7 +300,7 @@ func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (Item,
 	it.ContentHash = ContentHash(it, rec.Body)
 	now := s.now()
 	var id, oldHash string
-	err := tx.QueryRowContext(ctx, `SELECT id, content_hash FROM external_items WHERE integration_id=? AND external_id=?`, it.IntegrationID, it.ExternalID).Scan(&id, &oldHash)
+	err := tx.QueryRowContext(ctx, `SELECT id, content_hash FROM external_items WHERE integration_id=? AND assignment_id=? AND external_id=?`, it.IntegrationID, it.AssignmentID, it.ExternalID).Scan(&id, &oldHash)
 	lb, _ := json.Marshal(nzs(it.Labels))
 	mb, _ := json.Marshal(it.Meta)
 	fb, _ := json.Marshal(nzs(it.RiskFlags))
@@ -295,8 +311,8 @@ func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (Item,
 			it.BodyRef = s.writeBody(it.IntegrationID, it.ID, rec.Body)
 		}
 		it.FetchedAt = now
-		_, err := tx.ExecContext(ctx, `INSERT INTO external_items(`+itemCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			it.ID, it.IntegrationID, it.Source, it.ProjectID, it.ExternalID, it.Kind, it.IssueRef, it.URL, it.Title, it.Excerpt, it.BodyRef, it.State, string(lb), it.Assignee, it.Priority,
+		_, err := tx.ExecContext(ctx, `INSERT INTO external_items(`+itemCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			it.ID, it.IntegrationID, it.AssignmentID, it.Source, it.ProjectID, it.ExternalID, it.Kind, it.IssueRef, it.URL, it.Title, it.Excerpt, it.BodyRef, it.State, string(lb), it.Assignee, it.Priority,
 			it.ParentExternalID, string(mb), it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, it.FetchedAt, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), "", "", 0, 0, 1)
 		it.Version = 1
 		return it, Inserted, err
@@ -362,6 +378,7 @@ type PageCommit struct {
 	Items         []ItemRecord
 	Cursor        Cursor
 	IntegrationID string
+	AssignmentID  string
 	// Touch lists external ids seen again but not re-fetched (their vendor version marker is unchanged).
 	Touch []string
 }
@@ -379,7 +396,7 @@ func (s *Store) CommitPage(ctx context.Context, pc PageCommit) (PageResult, erro
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		res = PageResult{}
 		for _, ext := range pc.Touch {
-			if _, err := tx.ExecContext(ctx, `UPDATE external_items SET fetched_at=?, gone=0 WHERE integration_id=? AND external_id=?`, s.now(), pc.IntegrationID, ext); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE external_items SET fetched_at=?, gone=0 WHERE integration_id=? AND assignment_id=? AND external_id=?`, s.now(), pc.IntegrationID, pc.AssignmentID, ext); err != nil {
 				return err
 			}
 		}
@@ -406,11 +423,11 @@ func (s *Store) CommitPage(ctx context.Context, pc PageCommit) (PageResult, erro
 	return res, err
 }
 
-// MarkGoneNotSeenSince marks items of an integration not fetched since `since` as gone (full-sweep adapters).
-func (s *Store) MarkGoneNotSeenSince(ctx context.Context, integrationID string, since int64) (int, error) {
+// MarkGoneNotSeenSince marks items of an assignment not fetched since `since` as gone (full-sweep adapters).
+func (s *Store) MarkGoneNotSeenSince(ctx context.Context, integrationID, assignmentID string, since int64) (int, error) {
 	var n int64
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE external_items SET gone=1, version=version+1 WHERE integration_id=? AND gone=0 AND fetched_at<?`, integrationID, since)
+		res, err := tx.ExecContext(ctx, `UPDATE external_items SET gone=1, version=version+1 WHERE integration_id=? AND assignment_id=? AND gone=0 AND fetched_at<?`, integrationID, assignmentID, since)
 		if err != nil {
 			return err
 		}
@@ -429,9 +446,9 @@ func (s *Store) GetItem(ctx context.Context, id string) (Item, error) {
 	return it, err
 }
 
-// GetItemByExternal returns one item by (integration, external id).
-func (s *Store) GetItemByExternal(ctx context.Context, integrationID, externalID string) (Item, error) {
-	it, err := scanItem(s.DB.Reader().QueryRowContext(ctx, `SELECT `+itemCols+` FROM external_items WHERE integration_id=? AND external_id=?`, integrationID, externalID))
+// GetItemByExternal returns one item by (integration, assignment, external id).
+func (s *Store) GetItemByExternal(ctx context.Context, integrationID, assignmentID, externalID string) (Item, error) {
+	it, err := scanItem(s.DB.Reader().QueryRowContext(ctx, `SELECT `+itemCols+` FROM external_items WHERE integration_id=? AND assignment_id=? AND external_id=?`, integrationID, assignmentID, externalID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return it, fmt.Errorf("%w: item %s/%s", ErrNotFound, integrationID, externalID)
 	}
@@ -454,6 +471,14 @@ func (s *Store) ListItems(ctx context.Context, f ItemFilter) ([]Item, error) {
 	if f.IntegrationID != "" {
 		q += ` AND integration_id=?`
 		args = append(args, f.IntegrationID)
+	}
+	if f.AssignmentID != "" {
+		q += ` AND assignment_id=?`
+		args = append(args, f.AssignmentID)
+	}
+	if f.ProjectID != "" {
+		q += ` AND project_id=?`
+		args = append(args, f.ProjectID)
 	}
 	if f.Kind != "" {
 		q += ` AND kind=?`
@@ -502,6 +527,13 @@ func (s *Store) ListItems(ctx context.Context, f ItemFilter) ([]Item, error) {
 func (s *Store) CountItems(ctx context.Context, integrationID string) (int, error) {
 	var n int
 	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM external_items WHERE integration_id=? AND gone=0`, integrationID).Scan(&n)
+	return n, err
+}
+
+// CountAssignmentItems counts the stored, not-gone items of an assignment.
+func (s *Store) CountAssignmentItems(ctx context.Context, assignmentID string) (int, error) {
+	var n int
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM external_items WHERE assignment_id=? AND gone=0`, assignmentID).Scan(&n)
 	return n, err
 }
 

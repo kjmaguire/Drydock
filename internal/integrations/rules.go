@@ -213,7 +213,18 @@ func (s *Service) checkRule(ctx context.Context, r *Rule) error {
 		r.ProjectID = conn.ProjectID
 	}
 	if r.ProjectID == "" {
+		if asgs, err := s.st.ListAssignments(ctx, conn.ID); err == nil && len(asgs) == 1 {
+			r.ProjectID = asgs[0].ProjectID
+		}
+	}
+	if r.ProjectID == "" {
 		return errf(ErrBadRequest, "a rule needs the Drydock project its tasks go to")
+	}
+	if _, err := s.st.AssignmentFor(ctx, conn.ID, r.ProjectID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("%w: assign %s to the project before adding a rule for it", ErrNotAssigned, vendor(conn.Kind))
+		}
+		return err
 	}
 	if s.o.ProjectExists != nil {
 		if err := s.o.ProjectExists(ctx, r.ProjectID); err != nil {
@@ -282,18 +293,27 @@ type RuleOutcome struct {
 	TaskID  string `json:"taskId,omitempty"`
 }
 
-// EvaluateRules runs the enabled rules of a connection over its not-yet-imported items. It is idempotent: an item that already
+// EvaluateRules runs the rules of an assignment's project over the assignment's not-yet-imported items. It is idempotent: an item that already
 // has a task is never a candidate (dedupe on (integration, external id)), a rule stops creating at max_per_day tasks in any
 // rolling 24 hours (excess items stay eligible and are tried again on the next evaluation), items at or above the risk threshold
 // are never created, and a dry-run rule only records what it would do.
-func (s *Service) EvaluateRules(ctx context.Context, conn Connection) []RuleOutcome {
-	rules, err := s.st.ListRules(ctx, conn.ID)
+func (s *Service) EvaluateRules(ctx context.Context, conn Connection, asg Assignment) []RuleOutcome {
+	all, err := s.st.ListRules(ctx, conn.ID)
 	if err != nil {
 		s.o.Logf("integrations: rules: %v", err)
 		return nil
 	}
+	var rules []Rule
+	for _, r := range all {
+		if r.ProjectID == asg.ProjectID {
+			rules = append(rules, r)
+		}
+	}
+	if len(rules) == 0 {
+		return nil
+	}
 	imported := false
-	items, err := s.st.ListItems(ctx, ItemFilter{IntegrationID: conn.ID, Imported: &imported, Limit: 500})
+	items, err := s.st.ListItems(ctx, ItemFilter{IntegrationID: conn.ID, AssignmentID: asg.ID, Imported: &imported, Limit: 500})
 	if err != nil {
 		s.o.Logf("integrations: rules: %v", err)
 		return nil

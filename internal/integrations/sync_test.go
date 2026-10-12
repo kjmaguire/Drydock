@@ -15,7 +15,7 @@ const linearToken = "lin_api_Zk3Pq9TvL2mXw8RaB5nYd7CjHs4UeF6g"
 func linearFixture(t *testing.T, n int) (*itfixture.Linear, string) {
 	t.Helper()
 	fx := itfixture.NewLinear(linearToken)
-	ts, url := itfixture.Serve(fx.Server(), &fx.Common)
+	ts, url := itfixture.Serve(fx.Server())
 	t.Cleanup(ts.Close)
 	for i := 0; i < n; i++ {
 		at := baseTime.Add(-time.Duration(i) * time.Minute)
@@ -38,7 +38,7 @@ func TestSyncCursorsDedupeAndWatermark(t *testing.T) {
 	if got := len(h.items(c.ID)); got != 120 {
 		t.Fatalf("stored %d items", got)
 	}
-	if got := fx.Calls("list_issues"); got != 3 {
+	if got := fx.Calls("issues"); got != 3 {
 		t.Fatalf("list calls %d", got)
 	}
 	// the team filter from the connection reached the server
@@ -52,7 +52,7 @@ func TestSyncCursorsDedupeAndWatermark(t *testing.T) {
 	if r2.New != 0 || r2.Changed != 0 || r2.Pages != 1 || !r2.Complete {
 		t.Fatalf("second sync: %+v", r2)
 	}
-	if got := fx.Calls("list_issues"); got != 4 {
+	if got := fx.Calls("issues"); got != 4 {
 		t.Fatalf("list calls %d, want 4", got)
 	}
 	if got := h.count(`SELECT COUNT(*) FROM external_items WHERE integration_id=?`, c.ID); got != 120 {
@@ -103,7 +103,7 @@ func TestRestartKeepsCursorAndResumesInterruptedSweep(t *testing.T) {
 		t.Fatalf("resume 1: %+v", r2)
 	}
 	args := fx.ListArgs()
-	if args[1]["cursor"] != "c50" {
+	if args[1]["after"] != "c50" {
 		t.Fatalf("the restarted sync did not resume from the stored cursor: %v", args[1])
 	}
 	h.restart()
@@ -116,10 +116,10 @@ func TestRestartKeepsCursorAndResumesInterruptedSweep(t *testing.T) {
 	}
 	// after another restart the watermark is kept: a sync reads one page and finds nothing new
 	h.restart()
-	before := fx.Calls("list_issues")
+	before := fx.Calls("issues")
 	r4 := h.sync(c.ID, integrations.SyncOpts{})
-	if r4.New != 0 || r4.Changed != 0 || fx.Calls("list_issues") != before+1 || !r4.Complete {
-		t.Fatalf("after restart: %+v calls %d->%d", r4, before, fx.Calls("list_issues"))
+	if r4.New != 0 || r4.Changed != 0 || fx.Calls("issues") != before+1 || !r4.Complete {
+		t.Fatalf("after restart: %+v calls %d->%d", r4, before, fx.Calls("issues"))
 	}
 }
 
@@ -156,7 +156,7 @@ func TestSchedulerRespectsTheIntervalAndTheConfiguredOverride(t *testing.T) {
 func TestNotionEtagSkipsBodyFetchAndUnsortedResultsAreFullyWalked(t *testing.T) {
 	h := newHarness(t, nil)
 	fx := itfixture.NewNotion("ntn_Qw3Er5Ty7Ui9Op1As2Df4Gh6Jk8Lz0Xc")
-	ts, url := itfixture.Serve(fx.Server(), &fx.Common)
+	ts, url := itfixture.Serve(fx.Server())
 	t.Cleanup(ts.Close)
 	for i := 0; i < 6; i++ {
 		fx.Put(itfixture.NotionPage{ID: fmt.Sprintf("page-%d", i), Title: fmt.Sprintf("Spec %d", i), URL: fmt.Sprintf("https://notion.example/page-%d", i),
@@ -164,13 +164,13 @@ func TestNotionEtagSkipsBodyFetchAndUnsortedResultsAreFullyWalked(t *testing.T) 
 	}
 	c := h.connect(integrations.KindNotion, "ntn_Qw3Er5Ty7Ui9Op1As2Df4Gh6Jk8Lz0Xc", url, nil)
 	r1 := h.sync(c.ID, integrations.SyncOpts{})
-	if r1.New != 6 || fx.Calls("notion-fetch") != 6 {
-		t.Fatalf("%+v fetches %d", r1, fx.Calls("notion-fetch"))
+	if r1.New != 6 || fx.Calls("markdown") != 6 {
+		t.Fatalf("%+v fetches %d", r1, fx.Calls("markdown"))
 	}
 	// nothing edited: the vendor's last_edited_time is the validator, so no body is fetched again
 	r2 := h.sync(c.ID, integrations.SyncOpts{})
-	if r2.New != 0 || r2.Changed != 0 || fx.Calls("notion-fetch") != 6 {
-		t.Fatalf("%+v fetches %d", r2, fx.Calls("notion-fetch"))
+	if r2.New != 0 || r2.Changed != 0 || fx.Calls("markdown") != 6 {
+		t.Fatalf("%+v fetches %d", r2, fx.Calls("markdown"))
 	}
 	// one page edited: exactly one more fetch
 	p := fx.Get("page-2")
@@ -178,8 +178,8 @@ func TestNotionEtagSkipsBodyFetchAndUnsortedResultsAreFullyWalked(t *testing.T) 
 	p.Edited = baseTime.Add(time.Minute)
 	fx.Put(p)
 	r3 := h.sync(c.ID, integrations.SyncOpts{})
-	if r3.Changed != 1 || fx.Calls("notion-fetch") != 7 {
-		t.Fatalf("%+v fetches %d", r3, fx.Calls("notion-fetch"))
+	if r3.Changed != 1 || fx.Calls("markdown") != 7 {
+		t.Fatalf("%+v fetches %d", r3, fx.Calls("markdown"))
 	}
 	// the stored body is the sanitized text of the page
 	var found bool

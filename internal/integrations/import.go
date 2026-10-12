@@ -43,10 +43,13 @@ func (s *Service) Import(ctx context.Context, by, itemID, projectOverride string
 	}
 	project := projectOverride
 	if project == "" {
+		project = it.ProjectID // the project of the assignment that brought the item
+	}
+	if project == "" {
 		project = conn.ProjectID
 	}
 	if project == "" {
-		return TaskResult{}, errf(ErrBadRequest, "this connection has no Drydock project; choose one first")
+		return TaskResult{}, errf(ErrBadRequest, "this item belongs to no Drydock project; choose one first")
 	}
 	// the screen disables the button for such an item; this refuses it for any other caller as well
 	if it.Risk >= RiskThreshold {
@@ -60,9 +63,10 @@ func (s *Service) Import(ctx context.Context, by, itemID, projectOverride string
 }
 
 func (s *Service) notionCandidate(ctx context.Context, by string, conn Connection, it Item) (TaskResult, error) {
-	s.emit(ctx, EventNotionPageReady, conn.ProjectID, "", map[string]any{
+	project := firstNonEmpty(it.ProjectID, conn.ProjectID)
+	s.emit(ctx, EventNotionPageReady, project, "", map[string]any{
 		"integrationId": conn.ID, "itemId": it.ID, "externalId": it.ExternalID, "sourceRef": "notion:" + it.ExternalID, "hash": it.ContentHash, "risk": it.Risk, "by": by,
-		"projectId": conn.ProjectID, "untrusted": true,
+		"projectId": project, "untrusted": true,
 	})
 	return TaskResult{ItemID: it.ID, IssueRef: it.IssueRef, Requirements: true, Warnings: riskWarnings(it.RiskFlags)}, nil
 }
@@ -210,11 +214,19 @@ func (s *Service) createTask(ctx context.Context, by string, it Item, projectID 
 }
 
 func (s *Service) fetchStack(ctx context.Context, conn Connection, ad Adapter, it Item, warnings []string) (string, []string) {
-	cl, fail := s.client(ctx, conn, ad, false)
+	api, fail := s.api(ctx, conn)
 	if fail != nil {
-		return "", append(warnings, "the stack trace could not be fetched: "+fail.Message)
+		return "", append(warnings, "the stack trace could not be fetched: "+s.scrub(fail.Message))
 	}
-	text, has, err := ad.Detail(ctx, cl, it.ExternalID)
+	cfg := conn.Config
+	if it.AssignmentID != "" {
+		if a, err := s.st.GetAssignment(ctx, it.AssignmentID); err == nil {
+			cfg = a.Config
+		}
+	}
+	dctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
+	defer cancel()
+	text, has, err := ad.Detail(dctx, api, cfg, it.ExternalID)
 	if err != nil {
 		var f *Failure
 		msg := err.Error()

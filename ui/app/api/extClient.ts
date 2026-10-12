@@ -28,6 +28,11 @@ import type {
   IntegrationTestReport,
   IntegrationView,
   ConnectIntegrationReq,
+  IntegrationAssignment,
+  IntegrationAssignReq,
+  IntegrationChoice,
+  IntegrationKindInfo,
+  IntegrationOAuthSession,
   MemoryEntry,
   Milestone,
   NotionPageText,
@@ -182,12 +187,19 @@ export interface ExtClient {
   previewList(): Promise<PreviewInfo[]>;
   // integrations
   integrationList(): Promise<IntegrationView[]>;
+  integrationKinds(): Promise<IntegrationKindInfo[]>;
+  integrationAssign(req: IntegrationAssignReq): Promise<IntegrationAssignment>;
+  integrationUnassign(assignmentId: string): Promise<void>;
+  integrationChoices(integrationId: string, key: string, config?: Record<string, string>): Promise<IntegrationChoice[]>;
+  integrationOAuthStart(kind: string, baseUrl?: string): Promise<IntegrationOAuthSession>;
+  integrationOAuthStatus(id: string): Promise<IntegrationOAuthSession>;
+  integrationSyncAssignment(assignmentId: string, full?: boolean): Promise<IntegrationSyncResult>;
   integrationConnect(req: ConnectIntegrationReq): Promise<{ connection: IntegrationView; test?: IntegrationTestReport }>;
   integrationOAuthBegin(kind: string, baseUrl?: string): Promise<{ libraryId: string; oauthRef: string; status: { state: string; url?: string; error?: string; signedIn?: boolean } }>;
   integrationDisconnect(id: string): Promise<void>;
   integrationTest(id: string): Promise<IntegrationTestReport>;
   integrationSync(id: string, full?: boolean): Promise<IntegrationSyncResult>;
-  integrationItems(filter: { integrationId?: string; kind?: string; state?: string; imported?: boolean; limit?: number; offset?: number }): Promise<ExternalItem[]>;
+  integrationItems(filter: { integrationId?: string; assignmentId?: string; projectId?: string; kind?: string; state?: string; imported?: boolean; limit?: number; offset?: number }): Promise<ExternalItem[]>;
   integrationItem(id: string): Promise<ExternalItemDetail>;
   integrationRulesList(integrationId: string): Promise<IntegrationRule[]>;
   integrationRulesSet(r: RuleReq): Promise<IntegrationRule>;
@@ -332,6 +344,13 @@ export function createExtClient(t: Transport): ExtClient {
     previewList: async () => arr(await call<PreviewInfo[] | null>('preview.list')),
 
     integrationList: async () => arr(await call<IntegrationView[] | null>('integration.list')),
+    integrationKinds: async () => arr(await call<IntegrationKindInfo[] | null>('integration.kinds')),
+    integrationAssign: (req) => call('integration.assign', req),
+    integrationUnassign: (id) => voidCall('integration.unassign', { id }),
+    integrationChoices: async (integrationId, key, config = {}) => arr(await call<IntegrationChoice[] | null>('integration.choices', { integrationId, key, config })),
+    integrationOAuthStart: (kind, baseUrl = '') => call('integration.oauthStart', { kind, baseUrl }),
+    integrationOAuthStatus: (id) => call('integration.oauthStatus', { id }),
+    integrationSyncAssignment: (assignmentId, full = false) => call('integration.sync', { assignmentId, full }),
     integrationConnect: (req) => call('integration.connect', req),
     integrationOAuthBegin: (kind, baseUrl = '') => call('integration.oauthBegin', { kind, baseUrl }),
     integrationDisconnect: (id) => voidCall('integration.disconnect', { id }),

@@ -126,6 +126,32 @@ func (d *DB) Migrate(ctx context.Context) error {
 	return nil
 }
 
+// MigrateTo moves the schema to exactly version (down or up). It exists for migration tests that start from an older
+// shape, insert old rows and migrate up again; the app itself only ever calls Migrate.
+func (d *DB) MigrateTo(ctx context.Context, version int64) error {
+	sub, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		return err
+	}
+	p, err := goose.NewProvider(goose.DialectSQLite3, d.w, sub)
+	if err != nil {
+		return fmt.Errorf("migrations provider: %w", err)
+	}
+	cur, err := p.GetDBVersion(ctx)
+	if err != nil {
+		return err
+	}
+	if version < cur {
+		_, err = p.DownTo(ctx, version)
+	} else if version > cur {
+		_, err = p.UpTo(ctx, version)
+	}
+	if err != nil {
+		return fmt.Errorf("migrate to %d: %w", version, err)
+	}
+	return nil
+}
+
 // Path returns the database file path.
 func (d *DB) Path() string { return d.path }
 

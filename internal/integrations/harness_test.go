@@ -4,29 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/integrations"
-	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
-	"github.com/kjmaguire/drydock/internal/mcp"
-	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
-
-// TestMain lets the test binary double as the Aikido stdio fixture (a real subprocess speaking MCP over stdio).
-func TestMain(m *testing.M) {
-	if len(os.Args) > 1 && os.Args[1] == itfixture.AikidoStdioFlag {
-		os.Exit(itfixture.RunAikidoStdio(os.Args[2:]))
-	}
-	os.Exit(m.Run())
-}
 
 const human = "human:kyle"
 
@@ -73,11 +62,12 @@ type harness struct {
 	vault *providers.Vault
 	scan  *security.Scanner
 	appr  *security.Approvals
-	gw    *mcp.Gateway
 	svc   *integrations.Service
-	clk   *clock
-	logs  *logBuf
-	mod   func(*integrations.Options)
+	// gh is the GitHub API the service reaches (a host.HTTPAPI on the GitHub fixture), nil = gh not installed
+	gh   host.API
+	clk  *clock
+	logs *logBuf
+	mod  func(*integrations.Options)
 
 	mu    sync.Mutex
 	tasks []integrations.TaskInput
@@ -101,14 +91,9 @@ func newHarness(t *testing.T, mod func(*integrations.Options)) *harness {
 	cred := providers.NewMemoryCredentialStoreForTests()
 	h := &harness{t: t, dir: dir, db: db, bus: bus, cred: cred, vault: providers.NewVault(cred, db), scan: scan, clk: &clock{t: baseTime}, logs: &logBuf{}, mod: mod}
 	h.appr = security.NewApprovals(db, bus, security.NewAudit(db, scan), security.WithApprovalClock(h.clk.Now), security.WithApprovalRedactor(scan))
-	h.gw, err = mcp.New(mcp.Options{DataDir: dir, DB: db, Bus: bus, Proc: proc.New(), InitTimeout: 20 * time.Second, StopGrace: 3 * time.Second,
-		Credentials: integrations.Credentials{Store: &integrations.Store{DB: db}, Vault: h.vault}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	h.build()
 	t.Cleanup(func() {
-		h.gw.Close()
+		h.svc.Close()
 		bus.Close()
 		db.Close()
 	})
@@ -117,10 +102,18 @@ func newHarness(t *testing.T, mod func(*integrations.Options)) *harness {
 
 func (h *harness) build() {
 	o := integrations.Options{
-		DB: h.db, Bus: h.bus, Vault: h.vault, Callers: integrations.GatewayFactory{Gateway: h.gw}, Scanner: h.scan, Approvals: h.appr,
+		DB: h.db, Bus: h.bus, Vault: h.vault, Scanner: h.scan, Approvals: h.appr,
 		BodyDir: h.dir + "/integrations", Now: h.clk.Now, Logf: h.logs.logf, Jitter: func() float64 { return 1 },
 		RegisterSecret: func(name, v string) { _ = h.scan.RegisterSecret(name, v) }, UnregisterSecret: h.scan.UnregisterSecret,
-		OnCredentialChange: func(kind string) { h.gw.StopUpstream(kind) },
+		// the fixtures are local: the documented budgets are tested on their own (ratelimit_test.go), not slept through here
+		RateLimits: generousLimits,
+		GitHub: func(context.Context) (host.API, error) {
+			if h.gh == nil {
+				return nil, fmt.Errorf("gh is not installed")
+			}
+			return h.gh, nil
+		},
+		ProjectRepo: func(_ context.Context, projectID string) (string, error) { return "acme/" + projectID, nil },
 		ProjectExists: func(ctx context.Context, id string) error {
 			if id == "" {
 				return fmt.Errorf("no project")
@@ -144,8 +137,19 @@ func (h *harness) build() {
 	h.svc = svc
 }
 
-// restart simulates quitting and reopening the app: a new Service over the same database, vault and gateway.
-func (h *harness) restart() { h.build() }
+// restart simulates quitting and reopening the app: a new Service over the same database and vault.
+func (h *harness) restart() {
+	h.svc.Close()
+	h.build()
+}
+
+// generousLimits lets tests talk to the fixtures at full speed.
+var generousLimits = map[string]integrations.RateLimit{
+	integrations.KindLinear: {Requests: 100000, Per: time.Second, Burst: 100000},
+	integrations.KindNotion: {Requests: 100000, Per: time.Second, Burst: 100000},
+	integrations.KindSentry: {Requests: 100000, Per: time.Second, Burst: 100000},
+	integrations.KindAikido: {Requests: 100000, Per: time.Second, Burst: 100000},
+}
 
 func (h *harness) taskList() []integrations.TaskInput {
 	h.mu.Lock()
@@ -153,6 +157,7 @@ func (h *harness) taskList() []integrations.TaskInput {
 	return append([]integrations.TaskInput(nil), h.tasks...)
 }
 
+// connect connects a kind with a token against a fixture and assigns it to project prj1 with cfg.
 func (h *harness) connect(kind, token, baseURL string, cfg map[string]string) integrations.ConnectionView {
 	h.t.Helper()
 	v, err := h.svc.Connect(context.Background(), human, integrations.ConnectReq{Kind: kind, ProjectID: "prj1", Token: token, BaseURL: baseURL, Config: cfg})

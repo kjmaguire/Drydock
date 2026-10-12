@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-12T04:01:38Z",
-  "commit": "9119ddd",
+  "generated": "2026-10-12T04:48:23Z",
+  "commit": "5b86120",
   "summary": {
     "current": 283,
     "major": 8,
@@ -274,7 +274,7 @@
       "usedDate": "2026-09-04",
       "where": "go.mod",
       "role": "The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. Its auth package will carry the OAuth connect flow.",
-      "usedBy": 8,
+      "usedBy": 7,
       "inBuild": true
     },
     {
@@ -359,8 +359,8 @@
       "status": "current",
       "usedDate": "2026-08-25",
       "where": "go.mod",
-      "role": "The OAuth 2 token handling the MCP SDK's sign-in uses: the stored tokens, and refreshing them when they expire.",
-      "usedBy": 1,
+      "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens).",
+      "usedBy": 2,
       "inBuild": true
     },
     {
@@ -5546,7 +5546,7 @@
       "status": "current",
       "latestDate": "2026-09-30",
       "where": "docs/decisions.md section 2",
-      "role": "The GitHub CLI Drydock uses for pull requests; you install it.",
+      "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
       "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
     },
     {

@@ -4,24 +4,47 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/security"
-	"github.com/kjmaguire/drydock/internal/security/secretadapt"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
-// The Integrations extension (Slice 5, docs/integrations.md): Linear, Notion, Sentry and Aikido Connections with app sync
-// through the MCP gateway client, human-authored task rules, human-action imports, and approval-gated outbound writes. It lives
-// in this file so it adds to the app without editing the base wiring.
+// The Integrations extension (docs/integrations.md, decision P42): Linear, Notion, Sentry, Aikido and GitHub connected once at
+// the workspace level and assigned to projects, app sync through each vendor's own API, human-authored task rules,
+// human-action imports, and approval-gated outbound writes. It lives in this file so it adds to the app without editing the
+// base wiring.
 func init() {
 	RegisterExtension(Extension{Name: "integrations", Start: startIntegrations})
+}
+
+// The OAuth apps Drydock signs in with. A release build sets them (-ldflags "-X .../core.LinearOAuthClientID=..."); a
+// developer can set DRYDOCK_LINEAR_OAUTH_CLIENT_ID or DRYDOCK_SENTRY_OAUTH_CLIENT_ID. Empty: that sign-in is off and the
+// person pastes a key. These are public client ids (PKCE and the device flow need no secret).
+var (
+	LinearOAuthClientID string
+	SentryOAuthClientID string
+)
+
+func integrationOAuthApps() map[string]integrations.OAuthApp {
+	out := map[string]integrations.OAuthApp{}
+	for kind, id := range map[string]string{integrations.KindLinear: LinearOAuthClientID, integrations.KindSentry: SentryOAuthClientID} {
+		if v := strings.TrimSpace(os.Getenv("DRYDOCK_" + strings.ToUpper(kind) + "_OAUTH_CLIENT_ID")); v != "" {
+			id = v
+		}
+		if id != "" {
+			out[kind] = integrations.OAuthApp{ClientID: id}
+		}
+	}
+	return out
 }
 
 // integrationServices keeps each running Core's integrations service (core.go is not edited to add a field for it).
@@ -35,6 +58,18 @@ func (c *Core) Integrations() *integrations.Service {
 	return nil
 }
 
+// projectGitHubRepo is a project's GitHub repository (owner/name), from its origin remote.
+func (c *Core) projectGitHubRepo(ctx context.Context, projectID string) (string, error) {
+	cfg, err := c.prSource(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	if cfg.GitHub.Owner == "" || cfg.GitHub.Repo == "" {
+		return "", errors.New("the project has no GitHub repository")
+	}
+	return cfg.GitHub.Owner + "/" + cfg.GitHub.Repo, nil
+}
+
 func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	var vault providers.SecretStore
 	cred := c.cfg.Credentials
@@ -46,73 +81,61 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	if cred != nil {
 		vault = providers.NewVault(cred, c.DB)
 	}
-	store := &integrations.Store{DB: c.DB}
-	// The gateway is used here as a client only (no listener): the app's own calls to the vendors' MCP servers share the pooled
-	// upstreams, credential handling and circuit breaker that agent runs use.
-	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner),
-		Credentials: integrations.Credentials{Store: store, Vault: vault, OAuth: c.integrationOAuthToken}})
-	if err != nil {
-		return nil, nil, err
-	}
 	audit := security.NewAudit(c.DB, c.Scanner)
 	approvals := security.NewApprovals(c.DB, c.Bus, audit, security.WithApprovalRedactor(c.Scanner))
 	svc, err := integrations.New(integrations.Options{
-		DB: c.DB, Bus: c.Bus, Vault: vault, Callers: integrations.GatewayFactory{Gateway: gw}, Scanner: c.Scanner, Approvals: approvals,
+		DB: c.DB, Bus: c.Bus, Vault: vault, Scanner: c.Scanner, Approvals: approvals,
 		BodyDir: filepath.Join(c.cfg.DataDir, "integrations"), Logf: c.logf,
-		RegisterSecret:     func(name, v string) { _ = c.Scanner.RegisterSecret(name, v) },
-		OAuthToken:         c.integrationOAuthToken,
-		UnregisterSecret:   c.Scanner.UnregisterSecret,
-		OnCredentialChange: gw.StopUpstream,
-		ProjectExists:      func(ctx context.Context, id string) error { _, err := c.GetProject(ctx, id); return err },
+		RegisterSecret:   func(name, v string) { _ = c.Scanner.RegisterSecret(name, v) },
+		UnregisterSecret: c.Scanner.UnregisterSecret,
+		OAuthToken:       c.integrationOAuthToken,
+		OAuth:            integrationOAuthApps(),
+		// GitHub goes through the user's own gh (Drydock never holds a GitHub token)
+		GitHub: func(context.Context) (host.API, error) {
+			api, ok := c.githubAPI()
+			if !ok {
+				return nil, errors.New("the GitHub CLI (gh) is not installed")
+			}
+			return api, nil
+		},
+		ProjectRepo:   c.projectGitHubRepo,
+		ProjectExists: func(ctx context.Context, id string) error { _, err := c.GetProject(ctx, id); return err },
 		CreateTask: func(ctx context.Context, in integrations.TaskInput) (string, error) {
 			t, err := c.CreateTask(ctx, tasks.CreateReq{ProjectID: in.ProjectID, Title: in.Title, Description: in.Description, Priority: in.Priority, IssueRef: in.IssueRef, Template: in.Template})
 			return t.ID, err
 		},
 	})
 	if err != nil {
-		_ = gw.Close()
 		return nil, nil, err
 	}
 	integrationServices.Store(c, svc)
 	svc.RecoverInterrupted(ctx)
-	// teach the scanner the exact token values again after a restart, so they are redacted from anything that passes through it
-	if vault != nil {
-		if conns, err := store.ListConnections(ctx); err == nil {
-			for _, cn := range conns {
-				if tok, err := vault.Get(ctx, cn.CredentialRef); err == nil {
-					_ = c.Scanner.RegisterSecret("integration:"+cn.ID, tok)
-				}
-			}
-		}
-	}
+	// teach the scanner the exact credential values again after a restart, so they are redacted from anything that passes it
+	svc.RegisterStoredSecrets(ctx)
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		svc.Run(ctx, 15*time.Second)
 	}()
-	go func() { // the gateway has no listener here, so its idle reaper does not run by itself
-		defer wg.Done()
-		t := time.NewTicker(time.Minute)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				gw.ReapIdle()
-			}
-		}
-	}()
 	closeFn := func() {
 		wg.Wait() // ctx is cancelled by Core.Close before the extension hooks run
+		svc.Close()
 		integrationServices.Delete(c)
-		_ = gw.Close()
 	}
 
 	human := func() string { return c.Human() }
 	m := map[string]Method{
-		"integration.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.List(ctx) }),
+		"integration.kinds": bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.Kinds(), nil }),
+		"integration.list":  bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.List(ctx) }),
+		"integration.get":   bind(func(ctx context.Context, p idParam) (any, error) { return svc.Get(ctx, p.ID) }),
+		"integration.oauthStart": bind(func(ctx context.Context, p struct {
+			Kind    string `json:"kind"`
+			BaseURL string `json:"baseUrl"`
+		}) (any, error) {
+			return svc.OAuthStart(ctx, human(), p.Kind, p.BaseURL)
+		}),
+		"integration.oauthStatus": bind(func(ctx context.Context, p idParam) (any, error) { return svc.OAuthStatus(p.ID) }),
 		"integration.oauthBegin": bind(func(ctx context.Context, p struct {
 			Kind    string `json:"kind"`
 			BaseURL string `json:"baseUrl"`
@@ -141,14 +164,34 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		}),
 		"integration.disconnect": bind(func(ctx context.Context, p idParam) (any, error) { return nil, svc.Disconnect(ctx, human(), p.ID) }),
 		"integration.test":       bind(func(ctx context.Context, p idParam) (any, error) { return svc.Test(ctx, p.ID) }),
-		"integration.sync": bind(func(ctx context.Context, p struct {
-			ID   string `json:"id"`
-			Full bool   `json:"full"`
+		"integration.assign":     bind(func(ctx context.Context, p integrations.AssignReq) (any, error) { return svc.Assign(ctx, human(), p) }),
+		"integration.unassign":   bind(func(ctx context.Context, p idParam) (any, error) { return nil, svc.Unassign(ctx, human(), p.ID) }),
+		"integration.assignments": bind(func(ctx context.Context, p struct {
+			IntegrationID string `json:"integrationId"`
 		}) (any, error) {
+			return svc.Assignments(ctx, p.IntegrationID)
+		}),
+		"integration.choices": bind(func(ctx context.Context, p struct {
+			IntegrationID string            `json:"integrationId"`
+			Key           string            `json:"key"`
+			Config        map[string]string `json:"config"`
+		}) (any, error) {
+			return svc.Choices(ctx, p.IntegrationID, p.Key, p.Config)
+		}),
+		"integration.sync": bind(func(ctx context.Context, p struct {
+			ID           string `json:"id"`
+			AssignmentID string `json:"assignmentId"`
+			Full         bool   `json:"full"`
+		}) (any, error) {
+			if p.AssignmentID != "" {
+				return svc.SyncAssignment(ctx, p.AssignmentID, integrations.SyncOpts{Force: true, Full: p.Full})
+			}
 			return svc.Sync(ctx, p.ID, integrations.SyncOpts{Force: true, Full: p.Full})
 		}),
 		"integration.items": bind(func(ctx context.Context, p struct {
 			IntegrationID string `json:"integrationId"`
+			AssignmentID  string `json:"assignmentId"`
+			ProjectID     string `json:"projectId"`
 			Kind          string `json:"kind"`
 			State         string `json:"state"`
 			Imported      *bool  `json:"imported"`
@@ -156,7 +199,8 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 			Limit         int    `json:"limit"`
 			Offset        int    `json:"offset"`
 		}) (any, error) {
-			return svc.Items(ctx, integrations.ItemFilter{IntegrationID: p.IntegrationID, Kind: p.Kind, State: p.State, Imported: p.Imported, Gone: p.Gone, Limit: p.Limit, Offset: p.Offset})
+			return svc.Items(ctx, integrations.ItemFilter{IntegrationID: p.IntegrationID, AssignmentID: p.AssignmentID, ProjectID: p.ProjectID, Kind: p.Kind, State: p.State,
+				Imported: p.Imported, Gone: p.Gone, Limit: p.Limit, Offset: p.Offset})
 		}),
 		"integration.item": bind(func(ctx context.Context, p idParam) (any, error) { return svc.ItemDetail(ctx, p.ID) }),
 		"integration.rules.list": bind(func(ctx context.Context, p struct {
