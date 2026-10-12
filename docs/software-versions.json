@@ -1,11 +1,11 @@
 {
-  "generated": "2026-10-12T07:57:25Z",
-  "commit": "dd16e1a",
+  "generated": "2026-10-12T16:27:45Z",
+  "commit": "110c4db",
   "summary": {
-    "current": 283,
+    "current": 281,
     "major": 8,
     "minor": 89,
-    "patch": 78,
+    "patch": 80,
     "prerelease": 2,
     "unknown": 1
   },
@@ -2956,9 +2956,10 @@
       "name": "github.com/klauspost/compress",
       "kind": "indirect",
       "used": "1.20.1",
-      "latest": "1.20.1",
-      "status": "current",
+      "latest": "1.20.3",
+      "status": "patch",
       "usedDate": "2026-09-25",
+      "latestDate": "2026-10-12",
       "where": "go.mod",
       "inBuild": true
     },
@@ -5775,8 +5776,8 @@
       "name": "marked",
       "kind": "direct",
       "used": "18.1.0",
-      "latest": "18.1.0",
-      "status": "current",
+      "latest": "18.1.1",
+      "status": "patch",
       "where": "ui/package.json",
       "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
       "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."
