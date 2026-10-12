@@ -98,9 +98,7 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	s.running[c.ID] = &turnState{turnID: turnID, cancel: cancel}
 	s.mu.Unlock()
 	release := func() {
-		s.mu.Lock()
-		delete(s.running, c.ID)
-		s.mu.Unlock()
+		s.unreserve(c.ID, turnID)
 		cancel(nil)
 	}
 	attachedIDs := []string{}
@@ -149,6 +147,16 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		s.run(tctx, c, caps, turnID, user, attachmentBlock(attached, s.o.AttachChars))
 	}()
 	return res, nil
+}
+
+// unreserve ends turnID's hold on its chat, and only its own: by the time a turn's deferred release runs, the next turn may
+// already hold the chat.
+func (s *Service) unreserve(chatID, turnID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t := s.running[chatID]; t != nil && t.turnID == turnID {
+		delete(s.running, chatID)
+	}
 }
 
 // Stop cancels the running turn of a chat. It reports whether a turn was running.
@@ -585,6 +593,8 @@ func (t *turnRun) finish(ctx context.Context, o attemptOut, resumed, transcript 
 	if err != nil {
 		s.logf("chats: record turn end: %v", err)
 	}
+	// the chat takes its next message from the moment chat.turn says this one ended (the UI and the API act on that event)
+	s.unreserve(c.ID, t.turnID)
 	usage := map[string]any{"inputTokens": o.in, "outputTokens": o.out, "costUsd": turnCost}
 	ev := map[string]any{"chatId": c.ID, "turnId": t.turnID, "status": status, "usage": usage, "sessionId": session, "resumed": resumed, "fallback": transcript}
 	if errMsg != "" {

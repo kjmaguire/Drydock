@@ -21,6 +21,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/chats"
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
 )
 
@@ -695,6 +696,35 @@ func (p *chatsProbe) last() probeResult {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.seen[len(p.seen)-1]
+}
+
+// chat.turn says a turn ended, and the UI enables sending on it: a message sent the moment it arrives is taken, never refused
+// as "a turn is already running" (the reservation used to outlive the event; Windows CI hit it).
+func TestChatTakesTheNextMessageAsSoonAsChatTurnArrives(t *testing.T) {
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "ok"}}}, nil)
+	p, _ := e.setup("next")
+	c := e.create(map[string]any{"projectId": p.ID})
+	ch, stop := e.c.Bus.Subscribe(events.Filter{Types: []string{"chat.turn"}})
+	defer stop()
+	for i := range 10 {
+		turn := e.start(c.ID, "message "+strconv.Itoa(i))
+		deadline := time.After(time.Minute)
+		for done := false; !done; {
+			select {
+			case ev, ok := <-ch:
+				if !ok {
+					t.Fatal("subscription closed")
+				}
+				var d struct {
+					TurnID string `json:"turnId"`
+				}
+				_ = json.Unmarshal(ev.Data, &d)
+				done = d.TurnID == turn
+			case <-deadline:
+				t.Fatalf("turn %d: no chat.turn", i)
+			}
+		}
+	}
 }
 
 func TestChatSessionsThatReadHistoryGetTheChatsToolOnly(t *testing.T) {
