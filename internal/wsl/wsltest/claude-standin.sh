@@ -9,7 +9,10 @@
 # length of ANTHROPIC_API_KEY.
 case "$1" in
   --version) echo "2.1.296 (Claude Code)"; exit 0 ;;
-  auth) printf '%s\n' '{"loggedIn": true, "authMethod": "claude.ai", "apiProvider": "firstParty"}'; exit 0 ;;
+  auth)
+    # a test signs the stand-in out by creating this file in the distro's HOME
+    if [ -e "$HOME/.drydock-standin-signed-out" ]; then printf '%s\n' '{"loggedIn": false}'; exit 1; fi
+    printf '%s\n' '{"loggedIn": true, "authMethod": "claude.ai", "apiProvider": "firstParty"}'; exit 0 ;;
 esac
 mcp=""; prompt=""; n=0
 while [ $# -gt 0 ]; do

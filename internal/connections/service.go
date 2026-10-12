@@ -38,6 +38,9 @@ func (s *Service) options() Options {
 func NewService(cfg Config) (*Service, error) {
 	s := &Service{opts: cfg.Detection}
 	mo := cfg.Manifests
+	if mo.WSL == nil {
+		mo.WSL = cfg.Detection.WSL // one host: the adapters start in the distros detection probed
+	}
 	mo.Detect = func(ctx context.Context, m *manifests.Manifest) (agents.Detection, error) {
 		return Detect(ctx, m, s.options())
 	}
@@ -73,7 +76,7 @@ func (s *Service) Detect(ctx context.Context, id string) (agents.Detection, erro
 	return c.Detection, err
 }
 
-// DetectAll checks every manifest, in id order.
+// DetectAll checks every manifest, in id order, then the installs inside WSL distros (DetectWSL).
 func (s *Service) DetectAll(ctx context.Context) []Connection {
 	ids := s.Registry.Set.IDs()
 	sort.Strings(ids)
@@ -82,7 +85,7 @@ func (s *Service) DetectAll(ctx context.Context) []Connection {
 		c, _ := s.Check(ctx, id)
 		out = append(out, c)
 	}
-	return out
+	return append(out, s.DetectWSL(ctx)...)
 }
 
 // Acknowledge records that the user acknowledged a gate. The caller persists the acknowledgement; this only affects Usable.

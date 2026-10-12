@@ -33,7 +33,9 @@ type TestOptions struct {
 	Cancel     bool          // also run a second, longer prompt and interrupt it (T4); needs Prompt
 	Timeout    time.Duration // whole test; default 3 minutes
 	Cwd        string        // default: a fresh empty temp directory that is removed afterwards
-	Env        []string      // extra KEY=VALUE for the session (for example a provider key the caller owns)
+	// Distro tests the install inside this WSL distro (its own Connection, key WSLKey) instead of the native one.
+	Distro string
+	Env    []string // extra KEY=VALUE for the session (for example a provider key the caller owns)
 }
 
 // Step is one line of a Test connection report: pass, fail, or skipped with the reason.
@@ -68,6 +70,9 @@ type Report struct {
 	TokensUsed   int64                 `json:"tokensUsed"` // measured from the agent's own report; 0 when none was reported
 	Usage        []workflow.UsageChunk `json:"usage,omitempty"`
 	OK           bool                  `json:"ok"`
+	Key          string                `json:"key"`              // the Connection tested (Connection.Key)
+	RunMode      string                `json:"runMode"`          // native | wsl
+	Distro       string                `json:"distro,omitempty"` // the WSL distro (run mode wsl)
 	Elapsed      time.Duration         `json:"elapsed"`
 }
 
@@ -139,7 +144,20 @@ func (t *tester) run(ctx context.Context) Report {
 	t.rep = Report{Adapter: m.Meta.ID, Form: "short", Transport: m.Transports.Primary, Matrix: map[string]Cell{}}
 
 	// T1: binary, version, prerequisites, auth probe
-	conn := Check(ctx, m, s.options())
+	var conn Connection
+	if t.o.Distro != "" {
+		c, err := s.CheckWSL(ctx, m.Meta.ID, t.o.Distro)
+		if err != nil {
+			t.rep.Key, t.rep.RunMode, t.rep.Distro = WSLKey(m.Meta.ID, t.o.Distro), agents.RunModeWSL, t.o.Distro
+			t.step("T1", "Install, version and prerequisites", StepFail, err.Error(), "")
+			t.skipRest("T1 did not pass")
+			return t.finish(Connection{Key: t.rep.Key})
+		}
+		conn = c
+	} else {
+		conn = Check(ctx, m, s.options())
+	}
+	t.rep.Key, t.rep.RunMode, t.rep.Distro = conn.Key, conn.RunMode, conn.Distro
 	t.rep.CLIVersion, t.rep.Platform = conn.Version, conn.Platform
 	if a := m.Transports.ACP; a != nil && m.Transports.Primary == manifests.TransportACP {
 		if pkg := npxPackage(a.Argv); pkg != "" {
@@ -186,6 +204,9 @@ func (t *tester) run(ctx context.Context) Report {
 		cwd = d
 	}
 	spec := agents.RunSpec{AgentID: "test-" + m.Meta.ID, Cwd: cwd, Model: t.o.Model, Env: t.o.Env}
+	if conn.RunMode == agents.RunModeWSL {
+		spec.RunMode, spec.WSLDistro = agents.RunModeWSL, conn.Distro
+	}
 	pm := s.options().PM
 	if pm == nil {
 		pm = proc.New()
@@ -449,7 +470,12 @@ func (t *tester) stop(sess agents.Session) {
 	select {
 	case ei := <-sess.Wait():
 		detail := fmt.Sprintf("the process exited (code %d)", ei.Code)
-		t.step("T5", "Stop and process cleanup", StepPass, "", detail+"; killing grandchildren is asserted only by the Windows tests (decision P1)")
+		if t.rep.RunMode == agents.RunModeWSL {
+			detail += "; every process of the run inside the distro was killed by its marker before the stop finished (proven by the wsl tests, decision P41)"
+		} else {
+			detail += "; killing grandchildren is asserted only by the Windows tests (decision P1)"
+		}
+		t.step("T5", "Stop and process cleanup", StepPass, "", detail)
 	case <-time.After(5 * time.Second):
 		t.step("T5", "Stop and process cleanup", StepFail, "the process was still running 5 seconds after Stop", "")
 	}
