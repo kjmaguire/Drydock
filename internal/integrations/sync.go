@@ -385,9 +385,7 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 		if err := s.st.PutCursor(ctx, cur); err != nil {
 			return res, err
 		}
-		if conn.Status != StatusOK {
-			_ = s.st.SetStatus(ctx, conn.ID, StatusOK, "")
-		}
+		s.clearProvenStatus(ctx, conn, asg)
 		res.RuleResults = s.EvaluateRules(ctx, conn, asg)
 	}
 	s.emit(ctx, EventSyncCompleted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "pages": res.Pages, "seen": res.Seen, "new": res.New, "changed": res.Changed, "gone": res.Gone, "complete": complete})
@@ -406,8 +404,10 @@ func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur
 	cur.LastError = f.Message
 	cur.LastErrorCode = f.Code
 	cur.ConsecutiveFailures++
-	status, detail := conn.Status, s.scrub(f.Message)
-	setStatus := true
+	// The connection's status is shared by every project it is assigned to, so only a failure of the connection itself sets it:
+	// the credential refused, the vendor unreachable, the API's shape changed. A failure of this assignment's scope (forbidden,
+	// not found, any other refusal) and a rate limit are recorded on this assignment's cursor only.
+	status := ""
 	typ := EventSyncFailed
 	switch f.Code {
 	case CodeRateLimited:
@@ -421,12 +421,7 @@ func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur
 		cur.NextAttemptAt = 0 // paused, not failing: the scheduler skips unauthenticated connections until the token is replaced
 		status = StatusUnauthenticated
 		s.emit(ctx, EventAuthExpired, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind})
-	case CodeForbidden:
-		// the credential works but may not read this assignment's scope: only this assignment fails (its cursor says why); the
-		// connection keeps its status, so the scheduler goes on syncing the other projects
-		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
-		setStatus = false
-	case CodeSchemaDrift, CodeToolMissing, CodeNotFound:
+	case CodeSchemaDrift, CodeToolMissing:
 		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
 		status = StatusDegraded
 		s.emit(ctx, EventSchemaDrift, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "kind": conn.Kind, "code": f.Code})
@@ -434,16 +429,49 @@ func (s *Service) fail(ctx context.Context, conn Connection, asg Assignment, cur
 		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
 		status = StatusUnreachable
 	default:
+		// CodeForbidden (the credential works but may not read this scope), CodeNotFound (the scope is not there) and the rest:
+		// only this assignment backs off; the scheduler goes on syncing the connection's other projects
 		cur.NextAttemptAt = now + s.backoff(cur.ConsecutiveFailures).Milliseconds()
 	}
 	if err := s.st.PutCursor(ctx, cur); err != nil {
 		return err
 	}
-	if setStatus {
-		_ = s.st.SetStatus(ctx, conn.ID, status, detail)
+	if status != "" {
+		_ = s.st.SetStatus(ctx, conn.ID, status, f.Message)
 	}
 	s.emit(ctx, typ, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "code": f.Code, "consecutiveFailures": cur.ConsecutiveFailures, "message": cur.LastError})
 	return f
+}
+
+// clearProvenStatus is called after an assignment synced completely. That proves what any successful call proves: the
+// credential is accepted and the vendor answers, so an unauthenticated, unreachable or untested connection is OK again. It
+// does not prove that another assignment's listing parses, so a degraded connection (the API's shape) becomes OK only when no
+// other assignment's cursor still records schema drift. A success never clears another assignment's own failure: that stays
+// on its cursor until that assignment syncs.
+func (s *Service) clearProvenStatus(ctx context.Context, conn Connection, asg Assignment) {
+	now, err := s.st.GetConnection(ctx, conn.ID) // an earlier assignment of this run may have changed it
+	if err != nil {
+		return
+	}
+	switch now.Status {
+	case StatusOK, StatusDisconnected:
+		return
+	case StatusDegraded:
+		asgs, err := s.st.ListAssignments(ctx, conn.ID)
+		if err != nil {
+			return
+		}
+		for _, a := range asgs {
+			if a.ID == asg.ID || !a.Enabled {
+				continue
+			}
+			c, err := s.st.GetCursor(ctx, conn.ID, a.ID)
+			if err != nil || c.LastErrorCode == CodeSchemaDrift || c.LastErrorCode == CodeToolMissing {
+				return
+			}
+		}
+	}
+	_ = s.st.SetStatus(ctx, conn.ID, StatusOK, "")
 }
 
 // Tick runs every sync that is due: the enabled assignments of enabled connections whose interval elapsed, whose backoff

@@ -295,6 +295,15 @@ One connection serves several projects, so a failure is recorded where it belong
   rate limit, Notion's `restricted_resource`): only that assignment fails. Its sync state is `forbidden` with a message about
   the missing permission or sharing, it backs off and is retried like any failure, and the connection and its other projects
   keep syncing. A 403 in Test's one-item read marks the connection `degraded`, not `unauthenticated`.
+- **The connection's status** (`integrations.status`, shown on the card) only says what is wrong with the connection itself:
+  `unauthenticated` (the credential), `unreachable` (network, server errors, time-outs) or `degraded` (the API answered in a
+  shape Drydock does not know). Every other failure (forbidden, not found, a rate limit, anything else) is recorded on that
+  assignment's cursor only, and the Integrations page shows it on that project's row (`sync.state`, `sync.lastError`); the
+  card's sync summary is the worst of its assignments.
+- **A success clears only what it proves.** A complete sync of one assignment proves the credential is accepted and the vendor
+  answers, so it turns `unauthenticated`, `unreachable` or `untested` back to `ok`. It turns `degraded` back to `ok` only when
+  no other assignment still records schema drift. It never clears another assignment's failure: that stays on its row until
+  that assignment syncs.
 
 ### Documentation read for this change, and what could not be read
 

@@ -181,3 +181,57 @@ func TestGitHubForbiddenAndNotFoundAreAssignmentFailures(t *testing.T) {
 		t.Errorf("%+v", f)
 	}
 }
+
+// The connection's status is shared; an assignment's own failure lives on its cursor. A failure of the connection itself
+// (here: the API's shape changed for project A) is not wiped by project B's success in the same tick, and a failure of one
+// assignment's scope (B's team is gone) never reaches the connection, nor is it hidden by A's success.
+func TestOneAssignmentsSuccessDoesNotHideAnothersFailure(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	fx, url := linearFixture(t, 2)
+	fx.Put(itfixture.LinearIssue{ID: "ops-1", Identifier: "OPS-1", Title: "Rotate the certificates", State: "Todo", Team: "OPS", Created: baseTime, Updated: baseTime})
+	c, err := h.svc.Connect(ctx, human, integrations.ConnectReq{Kind: integrations.KindLinear, Token: linearToken, BaseURL: url})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "web", Config: map[string]string{"team": "ENG"}})
+	h.clk.Advance(time.Second) // A is the older assignment: it syncs first, B second
+	b, _ := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "ops", Config: map[string]string{"team": "OPS"}})
+
+	// A's listing comes back in a shape Drydock does not know; B's is fine
+	fx.FailWhen("team", "ENG", itfixture.Fail{Status: 200, Body: `{"data":{"totally":"different"}}`})
+	h.svc.Tick(ctx)
+	v, _ := h.svc.Get(ctx, c.ID)
+	if v.Status != integrations.StatusDegraded || !strings.Contains(v.StatusDetail, "shape Drydock does not recognize") {
+		t.Fatalf("B's success wiped A's failure: %s %q", v.Status, v.StatusDetail)
+	}
+	if av := assignmentView(t, h, c.ID, a.ID); av.Sync.LastErrorCode != integrations.CodeSchemaDrift || av.Sync.State == "ok" {
+		t.Fatalf("%+v", av.Sync)
+	}
+	if bv := assignmentView(t, h, c.ID, b.ID); bv.Sync.State != "ok" || bv.Sync.ItemsSeen != 1 {
+		t.Fatalf("%+v", bv.Sync)
+	}
+	if v.Sync.State == "ok" {
+		t.Fatalf("the connection's summary hides A: %+v", v.Sync)
+	}
+
+	// A recovers (its own success proves the shape again), while B's team is not found any more: that is B's failure only
+	fx.ClearFailWhen()
+	fx.FailWhen("team", "OPS", itfixture.Fail{Status: 404, Body: `{"errors":[{"message":"Entity not found","extensions":{"type":"invalid input"}}]}`})
+	h.clk.Advance(5 * time.Minute)
+	h.svc.Tick(ctx)
+	v, _ = h.svc.Get(ctx, c.ID)
+	if v.Status != integrations.StatusOK || v.StatusDetail != "" {
+		t.Fatalf("%s %q", v.Status, v.StatusDetail)
+	}
+	if av := assignmentView(t, h, c.ID, a.ID); av.Sync.State != "ok" {
+		t.Fatalf("%+v", av.Sync)
+	}
+	bv := assignmentView(t, h, c.ID, b.ID)
+	if bv.Sync.State == "ok" || bv.Sync.LastError == "" || bv.Sync.ConsecutiveFailures != 1 {
+		t.Fatalf("A's success hid B's failure: %+v", bv.Sync)
+	}
+	if v.Sync.State == "ok" || v.Sync.LastError != bv.Sync.LastError {
+		t.Fatalf("the connection's summary must show its worst assignment: %+v", v.Sync)
+	}
+}
