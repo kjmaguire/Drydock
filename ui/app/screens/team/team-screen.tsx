@@ -218,6 +218,13 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                           effort <b>{a.effort}</b>
                         </span>
                       ) : null}
+                      {a.runMode === 'wsl' ? (
+                        <span data-testid="agent-runs">
+                          in WSL <b>{a.wslDistro}</b>
+                        </span>
+                      ) : a.runMode === 'native' ? (
+                        <span data-testid="agent-runs">on Windows</span>
+                      ) : null}
                     </div>
                     {a.purpose ? (
                       <p class="purpose" data-testid="agent-purpose" title={a.purpose}>

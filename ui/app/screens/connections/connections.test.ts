@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { ConnectionReport } from '../../api/types.ts';
-import { cellText, matrixRows, prereqText, provTone, reportMeta, signedInText, statusTone, stepTone } from './connections.ts';
+import { cellText, connectionKey, connectionTitle, matrixRows, netModeText, prereqText, provTone, reportMeta, runsText, signedInText, statusTone, stepTone } from './connections.ts';
 
 const report = (over: Partial<ConnectionReport> = {}): ConnectionReport =>
   ({ adapter: 'claude', platform: 'windows', transport: 'headless', form: 'short', steps: [], capabilities: {} as never, matrix: null, summary: '', tokensUsed: 0, ok: false, elapsed: 31_500_000_000, ...over }) as ConnectionReport;
@@ -31,5 +31,21 @@ describe('connections helpers', () => {
     expect(signedInText({ authenticated: false })).toBe('no');
     expect(prereqText({ tool: 'node', min: '22', found: false, ok: false })).toBe('node (needs 22 or newer): not found');
     expect(prereqText({ tool: 'git', found: true, version: '2.45', ok: true })).toBe('git: found 2.45');
+  });
+
+  it('a WSL install is its own card, named by its distro', () => {
+    const native = { adapter: 'claude', key: 'claude', runMode: 'native' };
+    const inWSL = { adapter: 'claude', key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', wsl: { distro: 'Ubuntu', wsl2: true, interop: true, setsid: true, default: true } };
+    expect(connectionKey(native)).toBe('claude');
+    expect(connectionKey({ adapter: 'codex' })).toBe('codex');
+    expect(connectionKey(inWSL)).toBe('claude@wsl:Ubuntu');
+    expect(connectionTitle(native)).toBe('claude');
+    expect(connectionTitle(inWSL)).toBe('claude in WSL (Ubuntu)');
+    expect(runsText(native)).toBe('on Windows');
+    expect(runsText(inWSL)).toBe('inside the WSL 2 distro Ubuntu (the default distro)');
+    expect(runsText({ runMode: 'wsl', distro: 'Old', wsl: { distro: 'Old', wsl2: false, wslVersion: 1, interop: true, setsid: true } })).toBe('inside the WSL 1 distro Old');
+    expect(netModeText('mirrored')).toBe('mirrored: the distro shares Windows localhost');
+    expect(netModeText('nat')).toBe('nat: the distro cannot reach Windows localhost directly');
+    expect(netModeText('')).toContain('NAT unless .wslconfig');
   });
 });

@@ -248,6 +248,9 @@ export interface Agent {
   status: string;
   /** Models the model router may choose between for this agent's turns; empty: always `model`. */
   routeModels?: RouteModel[];
+  /** Where the CLI runs: '' follows the project, 'native' on Windows, 'wsl' inside the distro `wslDistro`. */
+  runMode?: string;
+  wslDistro?: string;
 }
 
 export interface RouteModel {
@@ -268,6 +271,9 @@ export interface AgentSpec {
   practices?: boolean;
   /** Project skills the new agent is given. */
   skills?: string[];
+  /** '' follows the project, 'native', or 'wsl' with `wslDistro`. */
+  runMode?: string;
+  wslDistro?: string;
 }
 
 /** Only the fields that are set change. The adapter cannot change: make a new agent for a different CLI. */
@@ -285,6 +291,8 @@ export interface AgentUpdate {
   /** Project skills to give the agent, and to take away from it. */
   addSkills?: string[];
   removeSkills?: string[];
+  runMode?: string;
+  wslDistro?: string;
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */
@@ -667,6 +675,33 @@ export interface Connection extends Detection {
   transport?: string;
   compatClass?: string;
   platform: string;
+  /** The adapter id for the Windows install; "<adapter>@wsl:<distro>" for one inside a WSL distro (its own Connection). */
+  key?: string;
+  /** native | wsl */
+  runMode?: string;
+  /** The WSL distro (run mode wsl). */
+  distro?: string;
+  /** What the probe found in the distro (run mode wsl). */
+  wsl?: WSLFacts;
+}
+
+/** connections.WSLFacts: the distro behind a WSL Connection. */
+export interface WSLFacts {
+  distro: string;
+  default?: boolean;
+  /** 1 or 2 as wsl.exe -l -v reports it; 0 or missing when unknown. */
+  wslVersion?: number;
+  wsl2: boolean;
+  kernel?: string;
+  /** Windows programs can be started from inside: Drydock's tools need it. */
+  interop: boolean;
+  /** nat, mirrored, ... ("" when not reported). */
+  netMode?: string;
+  mountRoot?: string;
+  home?: string;
+  setsid: boolean;
+  git?: string;
+  notes?: string[];
 }
 
 export interface TestStep {
@@ -700,6 +735,10 @@ export interface ConnectionReport {
   ok: boolean;
   /** time.Duration in nanoseconds. */
   elapsed: number;
+  /** The Connection tested (Connection.key), its run mode and WSL distro. */
+  key?: string;
+  runMode?: string;
+  distro?: string;
 }
 
 // --- providers (internal/providers) ---
