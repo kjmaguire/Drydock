@@ -277,6 +277,34 @@ describe('Integrations', () => {
     expect(calls[0]![0]).toMatchObject({ kind: 'sentry', oauthSession: 'oas_1' });
   });
 
+  it('a slow sign-in status is asked one at a time, and the sign-in connects exactly once', async () => {
+    const calls: Calls = [];
+    let state = 'waiting';
+    let inflight = 0;
+    let most = 0;
+    const r = show({
+      integrationList: async () => [],
+      integrationOAuthStart: async () => ({ id: 'oas_2', kind: 'sentry', method: 'device', state: 'waiting', url: 'https://sentry.io/oauth/device/?user_code=WXYZ-1234', userCode: 'WXYZ-1234', expiresAt: 0 }),
+      integrationOAuthStatus: async () => {
+        inflight++;
+        most = Math.max(most, inflight);
+        const answer = state; // what the core knew when asked
+        await new Promise((res) => setTimeout(res, 2500)); // slower than the 1 s between polls
+        inflight--;
+        return { id: 'oas_2', kind: 'sentry', method: 'device', state: answer, url: '', expiresAt: 0 };
+      },
+      integrationConnect: rec(calls, () => ({ connection: conn({ kind: 'sentry', name: 'Sentry' }) })) as never,
+    });
+    const card = await open(r, 'sentry');
+    await r.act(() => (card.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).click());
+    state = 'signed_in';
+    await r.act(() => byText(card, 'button', 'Sign in with Sentry (device code)').click());
+    await waitFor(() => expect(calls.length).toBe(1), r, 8000);
+    await new Promise((res) => setTimeout(res, 4000)); // any overlapping poll would have answered by now
+    expect(calls.length).toBe(1);
+    expect(most).toBe(1);
+  });
+
   it('GitHub uses the gh sign-in: its state is shown and no token is asked for', async () => {
     const calls: Calls = [];
     const r = show({

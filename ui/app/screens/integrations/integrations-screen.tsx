@@ -608,10 +608,12 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
   let method = '';
   let values: Record<string, string> = {};
   let oauth: IntegrationOAuthSession | undefined;
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pollGen = 0; // a poll answers only for the sign-in it was started for
   const gh = query(handle, { load: () => s.client.githubStatus(), enabled: () => handle.props.kind === 'github' });
   const stopPoll = () => {
-    clearInterval(timer);
+    pollGen++;
+    clearTimeout(timer);
     timer = undefined;
   };
   handle.signal.addEventListener('abort', stopPoll);
@@ -623,23 +625,30 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
     const r = await act.run('connect', () => s.client.integrationConnect({ kind: handle.props.kind, id: handle.props.reconnectId, ...req } as never));
     if (r) handle.props.onDone(r);
   };
-  // while a sign-in is open, ask the core how it went; once signed in, connect with it
+  // while a sign-in is open, ask the core how it went; once signed in, connect with it. One question at a time: the next is
+  // asked a second after the last answer, so a slow answer never overlaps another and the sign-in connects once.
   const startPoll = () => {
     stopPoll();
-    timer = setInterval(async () => {
-      if (!oauth || oauth.state !== 'waiting') return stopPoll();
+    const gen = pollGen;
+    const tick = async () => {
+      timer = undefined;
+      if (gen !== pollGen || !oauth || oauth.state !== 'waiting') return;
       try {
         const st = await s.client.integrationOAuthStatus(oauth.id);
+        if (gen !== pollGen) return;
         if (st.state !== 'waiting') {
           stopPoll();
           oauth = st;
           void handle.update();
           if (st.state === 'signed_in') await finish({ oauthSession: st.id, baseUrl: (values.baseUrl ?? '').trim() || undefined });
+          return;
         }
       } catch {
-        /* the next poll tries again */
+        if (gen !== pollGen) return; // the next poll tries again
       }
-    }, 1000);
+      timer = setTimeout(tick, 1000);
+    };
+    timer = setTimeout(tick, 1000);
   };
 
   return () => {
