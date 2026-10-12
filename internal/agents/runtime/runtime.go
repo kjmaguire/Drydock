@@ -104,6 +104,10 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	if !ok {
 		return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
 	}
+	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
+		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
+		return nil, err
+	}
 	runID := ids.New("arun")
 	if r.Instructions != nil && cfg.AgentID != "" {
 		if s, pv := r.Instructions(ctx, cfg.AgentID, cfg.Spec.Role); strings.TrimSpace(s) != "" {

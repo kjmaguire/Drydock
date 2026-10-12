@@ -4,12 +4,20 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
 
 // TestMain lets the process tests run this test binary as the claude CLI (a LABELED TEST DOUBLE, the stand-in): with
 // DRYDOCK_CLAUDE_STANDIN=1 in its environment it records what it was started with into files named after $OUT and exits.
 // It replaces POSIX shell scripts, so the same tests run on Windows, where the CLI's argument passing matters most.
 func TestMain(m *testing.M) {
+	if wsltest.IsStandIn() { // the LABELLED stand-in wsl.exe of the WSL run mode tests (wsl_test.go)
+		os.Exit(wsltest.StandIn(os.Args[1:]))
+	}
+	if wsltest.IsInteropCheck() { // started as the MCP server command by the stand-in claude inside a distro (wsl_test.go)
+		os.Exit(wsltest.InteropCheckMain())
+	}
 	if os.Getenv("DRYDOCK_CLAUDE_STANDIN") == "1" {
 		os.Exit(standin(os.Args[1:], os.Getenv("OUT")))
 	}

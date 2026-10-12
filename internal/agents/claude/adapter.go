@@ -21,6 +21,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/workflow"
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // MinVersion is the lowest Claude Code version Drydock supports: 2.1.205 introduced interrupt receipts (system/init
@@ -44,6 +45,8 @@ type Adapter struct {
 	// PassEnv returns extra variable NAMES (not values) the human chose to pass on, for setups the allowlist cannot know about
 	// (a Bedrock or Vertex login, a company proxy variable). Read at every start. Nil means none.
 	PassEnv func() []string
+	// WSL reaches the WSL distros for the wsl run mode (RunSpec.RunMode, decision P41). Nil: native only.
+	WSL *wsl.Host
 	// UserSettingsOnly starts claude with --setting-sources user. A repository's own .claude/settings.json can define hooks, and
 	// claude -p runs them without asking, even in a folder never trusted: with this on, commands written into a repository by
 	// someone else are not run by an unattended agent. Measured with claude 2.1.295. The user's own settings still apply.
@@ -60,11 +63,19 @@ func (a *Adapter) Capabilities() agents.Capabilities {
 		Interrupt: true, MCP: true, TokenUsage: true, CostReporting: true, Headless: true, ImageInput: false,
 		ToolCallVisibility: true,
 		PermissionModes:    []string{"default", "acceptEdits", "plan", "dontAsk", "auto", "bypassPermissions"},
-		RunModes:           []string{"native"},
+		RunModes:           a.runModes(),
 		// from `claude --help` (2.1.294): --effort <low, medium, high, xhigh, max>; --model takes an alias or a full name
 		Efforts: []string{"low", "medium", "high", "xhigh", "max"},
 		Models:  []string{"fable", "opus", "sonnet", "haiku"},
 	}
+}
+
+// runModes lists native, and wsl where wsl.exe exists and a WSL host is configured.
+func (a *Adapter) runModes() []string {
+	if a.WSLAvailable() {
+		return []string{agents.RunModeNative, agents.RunModeWSL}
+	}
+	return []string{agents.RunModeNative}
 }
 
 func (a *Adapter) executable() (string, error) {
@@ -299,10 +310,6 @@ func (a *Adapter) argsWith(spec agents.RunSpec, promptFile string) []string {
 }
 
 func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpec) (agents.Session, error) {
-	exe, err := a.executable()
-	if err != nil {
-		return nil, fmt.Errorf("claude: %w", err)
-	}
 	env := Quiet(a.childEnv(os.Environ()))
 	env = append(env, spec.Env...)
 	text := spec.SystemAppend
@@ -310,6 +317,17 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 		if mem := projectMemory(spec.Cwd); mem != "" {
 			text = strings.TrimSpace(text + "\n\n" + mem)
 		}
+	}
+	switch spec.RunMode {
+	case "", agents.RunModeNative:
+	case agents.RunModeWSL:
+		return a.startWSL(ctx, pm, spec, env, text)
+	default:
+		return nil, fmt.Errorf("claude: unknown run mode %q", spec.RunMode)
+	}
+	exe, err := a.executable()
+	if err != nil {
+		return nil, fmt.Errorf("claude: %w", err)
 	}
 	promptFile, err := writePromptFile(text)
 	if err != nil {
@@ -320,17 +338,33 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 		removePromptFile(promptFile)
 		return nil, err
 	}
-	s := &session{proc: p, parser: NewParser(), out: make(chan workflow.Chunk, 256), acks: map[string]chan bool{}, exited: make(chan struct{})}
+	return newSession(p, spec, nil, func() { removePromptFile(promptFile) }), nil
+}
+
+// newSession reads the process's stream. sweep, if set, ends what the run left running where the process tree kill cannot
+// reach (the WSL run mode's Linux processes): Stop calls it before killing the tree, and the session runs it once more when
+// the process has exited, before Wait answers. cleanup runs after that (temporary files).
+func newSession(p proc.Proc, spec agents.RunSpec, sweep func(), cleanup func()) *session {
+	s := &session{proc: p, parser: NewParser(), out: make(chan workflow.Chunk, 256), acks: map[string]chan bool{}, exited: make(chan struct{}), sweep: sweep}
 	if spec.MCPConfigPath != "" {
 		s.parser.RequireGateway(GatewayServer)
 	}
 	if spec.ResumeID != "" {
 		s.parser.SetBaseline(spec.UsageBaseline)
 	}
-	go func() { s.ei = <-p.Wait(); removePromptFile(promptFile); close(s.exited) }()
+	go func() {
+		s.ei = <-p.Wait()
+		if sweep != nil {
+			sweep()
+		}
+		if cleanup != nil {
+			cleanup()
+		}
+		close(s.exited)
+	}()
 	go s.readStdout()
 	go s.readStderr()
-	return s, nil
+	return s
 }
 
 // writePromptFile puts the system prompt addition in a private temporary file for --append-system-prompt-file ("" when there
@@ -368,6 +402,7 @@ type session struct {
 	errBuf tail
 	exited chan struct{}
 	ei     proc.ExitInfo
+	sweep  func() // the WSL run mode: kill the run's processes inside the distro (nil natively)
 }
 
 type tail struct {
@@ -469,6 +504,9 @@ func (s *session) Stop(ctx context.Context) error {
 		return nil
 	case <-time.After(2 * time.Second):
 	case <-ctx.Done():
+	}
+	if s.sweep != nil {
+		s.sweep() // inside the distro first: wsl.exe then ends with its program
 	}
 	return s.proc.Kill(true)
 }
