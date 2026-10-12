@@ -40,4 +40,23 @@ describe('Tile', () => {
     expect(getComputedStyle(state).color).toBe('rgb(1, 128, 2)');
     document.documentElement.style.removeProperty('--success');
   });
+
+  it('is draggable only when it takes a drag, reports the drag and dims while dragged', () => {
+    const seen: string[] = [];
+    const { container } = renderPlain(
+      <ul>
+        <Tile title="Plain" testId="plain" />
+        <Tile title="Moves" testId="moves" dragging onDragStart={(e) => seen.push(`start:${e.type}`)} onDragEnd={(e) => seen.push(`end:${e.type}`)} />
+      </ul>,
+    );
+    const plain = container.querySelector('[data-testid="plain"]') as HTMLButtonElement;
+    expect(plain.hasAttribute('draggable')).toBe(false);
+    expect(plain.hasAttribute('data-dragging')).toBe(false);
+    const moves = container.querySelector('[data-testid="moves"]') as HTMLButtonElement;
+    expect(moves.getAttribute('draggable')).toBe('true');
+    expect(moves.getAttribute('data-dragging')).toBe('true');
+    moves.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() }));
+    moves.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    expect(seen).toEqual(['start:dragstart', 'end:dragend']);
+  });
 });

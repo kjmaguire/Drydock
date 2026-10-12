@@ -33,6 +33,7 @@ export const tileCss = css({
   transition: `border-color ${t.fast} ${t.ease}, background-color ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong },
   '&[aria-pressed="true"]': { borderColor: t.accent, background: t.accentSoft },
+  '&[data-dragging="true"]': { opacity: '0.55', borderStyle: 'dashed' },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
   '& strong': { display: 'block', fontWeight: '600', overflowWrap: 'anywhere' },
   '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },
@@ -62,6 +63,7 @@ export type TileTone = 'ok' | 'warn' | 'bad' | '';
 /**
  * One tile. `logo` is a brand id (BrandLogo); a thing without a brand shows `icon` on a neutral square instead. `blurb` says what it
  * is, `state` what state it is in (with an optional tone). Extra data attributes go through `data` for tests and styling.
+ * `onDragStart` makes the tile draggable (HTML5 drag and drop); `dragging` dims it while it is being dragged.
  */
 export function Tile(
   handle: Handle<{
@@ -75,18 +77,28 @@ export function Tile(
     onSelect?: () => void;
     testId?: string;
     data?: Record<string, string>;
+    onDragStart?: (e: DragEvent) => void;
+    onDragEnd?: (e: DragEvent) => void;
+    dragging?: boolean;
   }>,
 ) {
   return () => {
-    const { title, logo, icon, blurb, state, tone = '', selected = false, onSelect, testId, data = {} } = handle.props;
+    const { title, logo, icon, blurb, state, tone = '', selected = false, onSelect, testId, data = {}, onDragStart, onDragEnd, dragging } = handle.props;
     const attrs: Record<string, string> = {};
     for (const [k, v] of Object.entries(data)) attrs[`data-${k}`] = v;
     return (
       <li>
         <button
           type="button"
-          mix={onSelect ? [tileCss, on('click', onSelect)] : [tileCss]}
+          mix={[
+            tileCss,
+            onSelect ? on('click', onSelect) : undefined,
+            onDragStart ? on<HTMLButtonElement, 'dragstart'>('dragstart', onDragStart) : undefined,
+            onDragEnd ? on<HTMLButtonElement, 'dragend'>('dragend', onDragEnd) : undefined,
+          ]}
           aria-pressed={selected ? 'true' : 'false'}
+          draggable={onDragStart ? 'true' : undefined}
+          data-dragging={onDragStart ? String(!!dragging) : undefined}
           data-testid={testId}
           {...attrs}
         >
