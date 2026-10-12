@@ -176,14 +176,6 @@ func page[T any](items []T, cursor string, limit int) (out []T, next string) {
 	return
 }
 
-func first(s string, n int) string {
-	r := []rune(s)
-	if len(r) > n {
-		return string(r[:n])
-	}
-	return s
-}
-
 // ---------------------------------------------------------------- Linear (GraphQL)
 
 // LinearIssue is one issue of the Linear fixture.
