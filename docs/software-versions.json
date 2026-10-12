@@ -1,10 +1,10 @@
 {
-  "generated": "2026-10-12T04:50:05Z",
-  "commit": "0bdff20",
+  "generated": "2026-10-12T07:02:19Z",
+  "commit": "d3f41dd",
   "summary": {
-    "current": 283,
+    "current": 282,
     "major": 8,
-    "minor": 89,
+    "minor": 90,
     "patch": 78,
     "prerelease": 2,
     "unknown": 1
@@ -283,9 +283,10 @@
       "name": "github.com/openai/openai-go/v3",
       "kind": "direct",
       "used": "3.76.0",
-      "latest": "3.76.0",
-      "status": "current",
+      "latest": "3.77.0",
+      "status": "minor",
       "usedDate": "2026-10-09",
+      "latestDate": "2026-10-12",
       "where": "go.mod",
       "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests.",
       "usedBy": 1,
