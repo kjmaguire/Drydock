@@ -60,9 +60,7 @@ func CheckWSL(ctx context.Context, m *manifests.Manifest, d wsl.Distro, o Option
 			c.Warnings = append(c.Warnings, fmt.Sprintf("%s is set in the Windows environment Drydock starts agents in, and it is passed into the distro too: %s (the value is never read by Drydock)", k, envBillingText(k, m)))
 		}
 	}
-	for _, g := range gates(m, o) {
-		c.Gates = append(c.Gates, g)
-	}
+	c.Gates = append(c.Gates, gates(m, o)...)
 	finish := func() Connection {
 		unacked := false
 		for _, g := range c.Gates {
