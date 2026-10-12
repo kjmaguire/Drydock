@@ -1,7 +1,26 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import type { ConnectionReport } from '../../api/types.ts';
-import { cellText, connectionKey, connectionTitle, matrixRows, netModeText, prereqText, provTone, reportMeta, runsText, signedInText, statusTone, stepTone } from './connections.ts';
+import type { Connection, ConnectionReport } from '../../api/types.ts';
+import {
+  cellText,
+  connectionBlurb,
+  connectionKey,
+  connectionName,
+  connectionState,
+  connectionTitle,
+  defaultConnection,
+  distroBrand,
+  matrixRows,
+  needsAttention,
+  netModeText,
+  prereqText,
+  provTone,
+  reportMeta,
+  runsText,
+  signedInText,
+  statusTone,
+  stepTone,
+} from './connections.ts';
 
 const report = (over: Partial<ConnectionReport> = {}): ConnectionReport =>
   ({ adapter: 'claude', platform: 'windows', transport: 'headless', form: 'short', steps: [], capabilities: {} as never, matrix: null, summary: '', tokensUsed: 0, ok: false, elapsed: 31_500_000_000, ...over }) as ConnectionReport;
@@ -31,6 +50,41 @@ describe('connections helpers', () => {
     expect(signedInText({ authenticated: false })).toBe('no');
     expect(prereqText({ tool: 'node', min: '22', found: false, ok: false })).toBe('node (needs 22 or newer): not found');
     expect(prereqText({ tool: 'git', found: true, version: '2.45', ok: true })).toBe('git: found 2.45');
+  });
+
+  it('tiles: the product name, what it is, the state with its tone, and which one opens first', () => {
+    const base = { adapter: 'claude', installed: true, status: 'ready', usable: true, platform: 'windows', version: '2.1.0', gates: [] } as Connection;
+    const inWSL = { ...base, key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu' } as Connection;
+    expect(connectionName(base)).toBe('Claude Code');
+    expect(connectionName(inWSL)).toBe('Claude Code (Ubuntu)');
+    expect(connectionName({ adapter: 'custom' })).toBe('custom');
+    expect(connectionBlurb(base)).toBe('2.1.0 on Windows');
+    expect(connectionBlurb(inWSL)).toBe('2.1.0 in WSL, Ubuntu');
+    expect(connectionBlurb({ runMode: 'native' })).toBe('Agent CLI on Windows');
+
+    expect(connectionState(base)).toEqual({ text: 'Ready', tone: 'ok' });
+    expect(connectionState({ ...base, usable: false })).toEqual({ text: 'Not usable yet', tone: 'warn' });
+    expect(connectionState({ ...base, installed: false, status: 'not_installed', usable: false })).toEqual({ text: 'Not installed', tone: '' });
+    expect(connectionState({ ...base, status: 'unauthenticated', usable: false })).toEqual({ text: 'Not signed in', tone: 'warn' });
+    expect(connectionState({ ...base, status: 'unsupported_version', usable: false, version: '0.9' })).toEqual({ text: 'Unsupported version 0.9', tone: 'bad' });
+    expect(connectionState({ ...base, status: 'degraded' })).toEqual({ text: 'Degraded', tone: 'warn' });
+    const gate = (acked: boolean) => ({ id: 'g', text: 'notice', acked });
+    expect(connectionState({ ...base, usable: false, gates: [gate(false)] })).toEqual({ text: '1 notice to accept', tone: 'warn' });
+    expect(connectionState({ ...base, usable: false, gates: [gate(false), gate(false), gate(true)] })).toEqual({ text: '2 notices to accept', tone: 'warn' });
+
+    // the first that needs the human (installed, not usable), else the first; a CLI that is not installed needs nothing
+    const missing = { ...base, adapter: 'codex', installed: false, status: 'not_installed', usable: false } as Connection;
+    expect(needsAttention(missing)).toBe(false);
+    expect(needsAttention(base)).toBe(false);
+    expect(needsAttention({ ...base, status: 'degraded' })).toBe(true);
+    expect(defaultConnection([missing, base, { ...inWSL, usable: false, status: 'unauthenticated' }])).toBe('claude@wsl:Ubuntu');
+    expect(defaultConnection([missing, base])).toBe('codex');
+    expect(defaultConnection([])).toBe('');
+
+    expect(distroBrand('Ubuntu-24.04')).toBe('ubuntu');
+    expect(distroBrand('Debian')).toBe('debian');
+    expect(distroBrand('openSUSE-Tumbleweed')).toBe('linux');
+    expect(distroBrand(undefined)).toBe('linux');
   });
 
   it('a WSL install is its own card, named by its distro', () => {

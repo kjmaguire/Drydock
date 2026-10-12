@@ -174,14 +174,27 @@ describe('Connections page', () => {
       connectionList: async () => [conn({ key: 'claude', runMode: 'native', gates: [], prereqs: [], warnings: [] }), inWSL],
       connectionTest: async (a: string, prompt?: boolean, distro?: string) => (tests.push(`${a}:${prompt}:${distro ?? ''}`), report()),
     });
+    // a tile of its own, named by its distro; its card opens below the grid when it is chosen
+    const tile = await waitFor(() => {
+      const x = r.$('[data-testid="connection-tile"][data-key="claude@wsl:Ubuntu"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLButtonElement;
+    }, r);
+    expect(r.$$('[data-testid="connection-tile"]').length).toBe(2);
+    expect(tile.getAttribute('data-run-mode')).toBe('wsl');
+    expect(tile.textContent).toBe('Claude Code (Ubuntu)2.1.0 in WSL, UbuntuNot signed in');
+    await r.act(() => tile.click());
     const c = await waitFor(() => {
-      const x = r.$('[data-key="claude@wsl:Ubuntu"]');
+      const x = r.$('[data-testid="connection"][data-key="claude@wsl:Ubuntu"]');
       if (!x) throw new Error('not yet');
       return x as HTMLElement;
     }, r);
-    expect(r.$$('[data-testid="connection"]').length).toBe(2);
+    expect(r.$$('[data-testid="connection"]').length).toBe(1);
     expect(c.getAttribute('data-run-mode')).toBe('wsl');
     expect(c.querySelector('h2')!.textContent).toBe('claude in WSL (Ubuntu)');
+    // the CLI's logo and the distro's
+    expect(c.querySelector('[data-brand="claude"]')).not.toBeNull();
+    expect(c.querySelector('[data-brand="ubuntu"]')!.getAttribute('aria-label')).toBe('Ubuntu');
     const text = c.textContent ?? '';
     expect(text).toContain('inside the WSL 2 distro Ubuntu (the default distro)');
     expect(text).toContain('its own sign-in, separate from Windows');
@@ -190,16 +203,81 @@ describe('Connections page', () => {
     expect(facts.textContent).toContain('nat: the distro cannot reach Windows localhost directly');
     expect(facts.textContent).toContain('/mnt/');
     expect(facts.textContent).toContain('A repository inside the distro is fast for the agent.');
-    // the Windows card says where it runs too
-    expect(r.$('[data-key="claude"]')!.textContent).toContain('on Windows');
     await r.act(() => byText(c, 'button', 'Test connection...').click());
     expect(c.textContent).toContain('inside the WSL distro Ubuntu');
     await r.act(() => byText(c, 'button', 'Run the test').click());
     await waitFor(() => expect(tests).toEqual(['claude:false:Ubuntu']), r);
+    // the Windows card says where it runs too
+    await r.act(() => (r.$('[data-testid="connection-tile"][data-key="claude"]') as HTMLButtonElement).click());
+    const native = await waitFor(() => {
+      const x = r.$('[data-testid="connection"][data-key="claude"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(native.textContent).toContain('on Windows');
+    expect(native.querySelector('[data-brand="ubuntu"]')).toBeNull();
+  });
+
+  it('the overview: a tile per CLI with its logo, what it is and its state; the first that needs attention opens, a click opens another', async () => {
+    const r = show({
+      connectionList: async () => [
+        conn({ adapter: 'codex', key: 'codex', installed: false, status: 'not_installed', version: undefined, gates: [], prereqs: [], warnings: [] }),
+        conn({ adapter: 'gemini', key: 'gemini', usable: true, gates: [], prereqs: [], warnings: [], version: '0.9.0' }),
+        conn({ adapter: 'custom', key: 'custom', version: undefined }),
+      ],
+    });
+    const tiles = await waitFor(() => {
+      const x = Array.from(r.$$('[data-testid="connection-tile"]')) as HTMLButtonElement[];
+      if (x.length !== 3) throw new Error('not yet');
+      return x;
+    }, r);
+    expect(r.$('ul[aria-label="Agent CLIs"]')).not.toBeNull();
+    // codex has no Simple Icons mark (OpenAI is not in it): an icon on a neutral square, never a drawn guess
+    expect(tiles[0]!.querySelector('[data-brand]')).toBeNull();
+    expect(tiles[0]!.querySelector('svg')).not.toBeNull();
+    expect(tiles[0]!.textContent).toBe('CodexAgent CLI on WindowsNot installed');
+    expect(tiles[1]!.querySelector('[data-brand="gemini"]')).not.toBeNull();
+    expect(tiles[1]!.textContent).toBe('Gemini CLI0.9.0 on WindowsReady');
+    expect(tiles[1]!.querySelector('small[data-tone="ok"]')!.textContent).toBe('Ready');
+    expect(tiles[2]!.querySelector('small[data-tone="warn"]')!.textContent).toBe('1 notice to accept');
+    // custom needs the human (a notice to accept): it is open, and the only card
+    expect(tiles.map((t) => t.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
+    expect(r.$$('[data-testid="connection"]').length).toBe(1);
+    expect(r.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('custom');
+    await r.act(() => tiles[1]!.click());
+    await waitFor(() => expect(r.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('gemini'), r);
+    expect(tiles.map((t) => t.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
+    expect(r.$('[data-testid="connection"] [data-brand="gemini"]')).not.toBeNull();
+    // a second click keeps it open: a tile selects, it does not toggle
+    await r.act(() => tiles[1]!.click());
+    expect(r.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('gemini');
+  });
+
+  it('with nothing that needs attention the first opens, and an accepted notice does not move the selection', async () => {
+    let acked = false;
+    const r = show({
+      connectionList: async () => [
+        conn({ adapter: 'custom', key: 'custom', gates: [{ id: 'g1', text: 'custom notice', acked }], usable: acked }),
+        conn({ adapter: 'cline', key: 'cline', gates: [{ id: 'g2', text: 'cline notice', acked: false }] }),
+      ],
+      connectionAcknowledge: async () => void (acked = true),
+    });
+    const c = await card(r);
+    expect(c.getAttribute('data-adapter')).toBe('custom');
+    const gate = c.querySelector('[data-testid="gate"]')!;
+    await r.act(() => byLabel(gate, 'I have read this and accept it').click());
+    await r.act(() => byText(gate, 'button', 'Accept').click());
+    await waitFor(() => expect(r.$('[data-testid="connection-tile"][data-key="custom"]')!.textContent).toContain('Ready'), r);
+    expect(r.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('custom');
+
+    const r2 = show({ connectionList: async () => [conn({ adapter: 'gemini', key: 'gemini', usable: true, gates: [] }), conn({ adapter: 'claude', key: 'claude', usable: true, gates: [] })] });
+    await waitFor(() => expect(r2.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('gemini'), r2);
   });
 
   it('says plainly when no CLI was found', async () => {
     const r = show({ connectionList: async () => [] });
     await waitFor(() => expect(r.container.textContent).toContain('No agent CLIs found'), r);
+    expect(r.$('[data-testid="connection-tile"]')).toBeNull();
+    expect(r.$('[data-testid="connection"]')).toBeNull();
   });
 });

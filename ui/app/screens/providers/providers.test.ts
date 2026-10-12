@@ -1,7 +1,24 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { ProbeResult, ProviderModel } from '../../api/types.ts';
-import { emptyProviderForm, healthTone, isZeroTime, keyInfoText, newProviderRequest, priceText, probeDetail, probeLabel, quotaFraction, rawPrice } from './providers.ts';
+import {
+  ADD_PROVIDER,
+  defaultProvider,
+  emptyProviderForm,
+  healthTone,
+  isZeroTime,
+  keyInfoText,
+  newProviderRequest,
+  priceText,
+  probeDetail,
+  probeLabel,
+  providerBlurb,
+  providerBrand,
+  providerHost,
+  providerState,
+  quotaFraction,
+  rawPrice,
+} from './providers.ts';
 
 const model = (over: Partial<ProviderModel> = {}): ProviderModel => ({
   providerId: 'prov_1',
@@ -70,5 +87,39 @@ describe('provider helpers', () => {
     expect(healthTone('')).toBe('muted');
     expect(quotaFraction(10, 250)).toBe(0.04);
     expect(quotaFraction(10, 0)).toBe(undefined);
+  });
+});
+
+describe('provider tiles', () => {
+  it('the logo is looked up by the API host, else the detected flavor', () => {
+    expect(providerBrand({ baseUrl: 'https://openrouter.ai/api/v1', flavor: 'openai' })).toBe('openrouter');
+    expect(providerBrand({ baseUrl: 'https://api.anthropic.com/v1', flavor: '' })).toBe('anthropic');
+    expect(providerBrand({ baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', flavor: '' })).toBe('gemini');
+    expect(providerBrand({ baseUrl: 'https://api.mistral.ai/v1', flavor: 'openai' })).toBe('mistral');
+    expect(providerBrand({ baseUrl: 'https://api.deepseek.com', flavor: '' })).toBe('deepseek');
+    expect(providerBrand({ baseUrl: 'http://127.0.0.1:11434/v1', flavor: 'Ollama' })).toBe('ollama');
+    expect(providerBrand({ baseUrl: 'http://10.0.0.5:8000/v1', flavor: 'vllm' })).toBe('vllm');
+    // a look-alike host is not the brand
+    expect(providerBrand({ baseUrl: 'https://notopenrouter.ai/v1', flavor: '' })).toBe('');
+    expect(providerBrand({ baseUrl: 'not a url', flavor: '' })).toBe('');
+  });
+
+  it('what it is and its state, with a tone', () => {
+    expect(providerHost('http://127.0.0.1:9/v1')).toBe('127.0.0.1:9');
+    expect(providerHost('nonsense')).toBe('nonsense');
+    expect(providerBlurb({ kind: 'aggregator', baseUrl: 'https://openrouter.ai/api/v1' })).toBe('Aggregator, openrouter.ai');
+    expect(providerBlurb({ kind: 'direct', baseUrl: 'https://api.anthropic.com' })).toBe('Vendor API, api.anthropic.com');
+    expect(providerBlurb({ kind: 'host', baseUrl: 'http://127.0.0.1:9/v1' })).toBe('Your server, 127.0.0.1:9');
+    expect(providerState({ enabled: true, status: 'up' })).toEqual({ text: 'Up', tone: 'ok' });
+    expect(providerState({ enabled: true, status: 'down' })).toEqual({ text: 'Down', tone: 'bad' });
+    expect(providerState({ enabled: true, status: 'unknown' })).toEqual({ text: 'Not checked yet', tone: 'warn' });
+    expect(providerState({ enabled: false, status: 'down' })).toEqual({ text: 'Disabled', tone: '' });
+  });
+
+  it('opens the first enabled provider that is down, else the first, else the add form', () => {
+    const p = (id: string, status: string, enabled = true) => ({ id, status, enabled });
+    expect(defaultProvider([p('a', 'up'), p('b', 'down', false), p('c', 'down')])).toBe('c');
+    expect(defaultProvider([p('a', 'unknown'), p('b', 'up')])).toBe('a');
+    expect(defaultProvider([])).toBe(ADD_PROVIDER);
   });
 });

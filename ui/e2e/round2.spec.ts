@@ -4,6 +4,11 @@ import { appUrl, createAgent, createAndStartTask, createProject, roomLink } from
 test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
   await page.getByTestId('nav-connections').click();
+  // the overview is a grid of tiles; a tile opens its connection's card below the grid
+  const customTile = page.locator('[data-testid=connection-tile][data-adapter=custom]');
+  await expect(customTile).toHaveAttribute('data-usable', 'false');
+  await customTile.click();
+  await expect(customTile).toHaveAttribute('aria-pressed', 'true');
   const custom = page.locator('[data-testid=connection][data-adapter=custom]');
   await expect(custom).toBeVisible();
   await expect(custom).toHaveAttribute('data-usable', 'false');
@@ -16,13 +21,16 @@ test('Connections: gates need a checkbox and a click by the human; Test is gated
   await expect(gate).toHaveAttribute('data-acked', 'true');
   // persisted by the core: still accepted after a reload
   await page.reload();
+  await page.locator('[data-testid=connection-tile][data-adapter=custom]').click();
   await expect(page.locator('[data-testid=connection][data-adapter=custom] [data-testid=gate]')).toHaveAttribute('data-acked', 'true');
 
   // Test connection never starts the CLI without the warning and a second click. (It is not run here: the connection
   // service in the harness looks at the real machine, so a test could start a real CLI.)
   // the Windows install (a Claude Code inside a WSL distro has a card of its own, data-key claude@wsl:<distro>)
+  await page.locator('[data-testid=connection-tile][data-key=claude]').click();
   const claude = page.locator('[data-testid=connection][data-key=claude]');
   await expect(claude).toBeVisible();
+  await expect(page.getByTestId('connection')).toHaveCount(1);
   await claude.getByRole('button', { name: 'Test connection...' }).click();
   await expect(claude).toContainText('It uses your account');
   await expect(claude.getByLabel('Also send one tiny prompt')).not.toBeChecked();
@@ -35,6 +43,8 @@ test('Providers: a fake key is stored by the core but never displayed; validatio
   await createProject(page, 'gocalc-prov');
   await page.getByTestId('nav-providers').click();
   const secret = 'sk-e2e-not-a-real-key-12345';
+  // the overview is a grid of tiles; the "Add a provider" tile opens the form below it
+  await page.getByTestId('provider-add-tile').click();
 
   // plain http to a public host is refused by the core, and the page shows its words
   await page.getByLabel('Provider name').fill('Public over http');
@@ -71,8 +81,10 @@ test('Providers: a fake key is stored by the core but never displayed; validatio
   await card.getByRole('button', { name: 'Delete' }).click();
   await card.getByRole('button', { name: /Yes, delete/ }).click();
   await expect(card).toHaveCount(0);
+  await expect(page.locator('[data-testid=provider-tile][data-name="Local vLLM"]')).toHaveCount(0);
 
   // a trainable provider carries its persistent warning
+  await page.getByTestId('provider-add-tile').click();
   await page.getByLabel('Provider name').fill('Public docs only');
   await page.getByLabel('Base URL').fill('http://127.0.0.1:9/v1');
   await page.getByLabel('Data class').selectOption('trainable');

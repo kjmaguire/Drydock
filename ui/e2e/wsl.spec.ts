@@ -10,16 +10,20 @@ test('Connections: Claude Code inside a WSL distro is its own card with its own 
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-conn');
   await page.getByTestId('nav-connections').click();
+  // a tile of its own on the overview, named by its distro; the tile opens its card below the grid
+  const tile = page.locator(`[data-testid=connection-tile][data-key="claude@wsl:${distro()}"]`);
+  await expect(tile).toBeVisible({ timeout: 60_000 });
+  await expect(tile).toHaveAttribute('data-run-mode', 'wsl');
+  await expect(tile).toContainText(`Claude Code (${distro()})`);
+  await tile.click();
   const card = page.locator(`[data-testid=connection][data-key="claude@wsl:${distro()}"]`);
-  await expect(card).toBeVisible({ timeout: 60_000 });
+  await expect(card).toBeVisible();
   await expect(card).toHaveAttribute('data-run-mode', 'wsl');
   await expect(card.getByRole('heading', { level: 2 })).toHaveText(`claude in WSL (${distro()})`);
   await expect(card).toContainText(`inside the WSL 2 distro ${distro()}`);
   await expect(card).toContainText('its own sign-in, separate from Windows');
   await card.getByText('The distro', { exact: true }).click();
   await expect(card.getByTestId('wsl-facts')).toContainText('Windows drives at');
-  // the Windows card is still there, and says where it runs
-  await expect(page.locator('[data-testid=connection][data-key=claude]')).toContainText('on Windows');
 
   await card.getByRole('button', { name: 'Test connection...' }).click();
   await expect(card).toContainText(`inside the WSL distro ${distro()}`);
@@ -29,6 +33,10 @@ test('Connections: Claude Code inside a WSL distro is its own card with its own 
   await expect(report).toContainText('T2 Start and handshake: pass');
   await expect(report).toContainText('T5 Stop and process cleanup: pass');
   await expect(report).toContainText('killed by its marker');
+
+  // the Windows install is still there, a tile of its own, and says where it runs
+  await page.locator('[data-testid=connection-tile][data-key=claude]').click();
+  await expect(page.locator('[data-testid=connection][data-key=claude]')).toContainText('on Windows');
 });
 
 test('Team: a Claude Code agent is made to run inside the WSL distro and its card says so', async ({ page }) => {

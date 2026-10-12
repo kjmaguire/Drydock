@@ -1,21 +1,43 @@
 // Connections: the agent CLIs found on this machine. Drydock uses the human's own installed CLI and its own sign-in; it never
 // reads or transmits credentials. A CLI is usable only when it is ready and every notice on it has been accepted by the human.
+// The overview is a grid of tiles (the shared kit in ui/tiles.tsx, as on Integrations): one per connection, the Windows install
+// and each WSL distro's own, with the CLI's logo, what it is and its state. The selected tile's full card opens below the grid.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, FlaskConical, Link2, Minus, ScrollText, TriangleAlert, X } from 'lucide';
+import { Check, CircleCheck, FlaskConical, Link2, Minus, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import { query, services } from '../../state/services.tsx';
+import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, muted } from '../../ui/data.tsx';
-import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page } from '../../ui/layout.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { cellText, connectionKey, connectionTitle, isWSL, matrixRows, netModeText, prereqText, provTone, reportMeta, runsText, signedInText, statusTone, stepTone } from './connections.ts';
+import {
+  cellText,
+  connectionBlurb,
+  connectionKey,
+  connectionName,
+  connectionState,
+  connectionTitle,
+  defaultConnection,
+  distroBrand,
+  isWSL,
+  matrixRows,
+  netModeText,
+  prereqText,
+  provTone,
+  reportMeta,
+  runsText,
+  signedInText,
+  statusTone,
+  stepTone,
+} from './connections.ts';
 
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
-const grid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: t.s4, alignItems: 'start', '@media (max-width: 520px)': { gridTemplateColumns: '1fr' } });
 const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
 const head = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& h2': { fontSize: t.textLg, fontWeight: '600', margin: '0', marginRight: 'auto' } });
 const subhead = css({ fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase', color: t.textMuted, margin: '0' });
@@ -266,7 +288,8 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
         data-usable={String(c.usable)}
       >
         <header mix={head}>
-          <Avatar id={c.adapter} name={c.adapter} size={32} square />
+          {brandKey(c.adapter) ? <BrandLogo id={c.adapter} size={32} /> : <Avatar id={c.adapter} name={c.adapter} size={32} square />}
+          {inWSL ? <BrandLogo id={distroBrand(c.distro)} size={24} label /> : null}
           <h2>{connectionTitle(c)}</h2>
           <Badge tone={statusTone(c.status)}>{c.status}</Badge>
           <Badge tone={c.usable ? 'ok' : 'warn'} title="Usable means the CLI is ready and every notice below is accepted">
@@ -390,32 +413,63 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
   };
 }
 
-export function ConnectionsScreen(handle: Handle) {
+/** One connection on the overview: the CLI's logo, its name (with the distro for a WSL install), what it is and its state. */
+function ConnectionTile(handle: Handle<{ c: Connection; selected: boolean; onSelect: () => void }>) {
+  return () => {
+    const { c, selected, onSelect } = handle.props;
+    const st = connectionState(c);
+    return (
+      <Tile
+        title={connectionName(c)}
+        logo={c.adapter}
+        icon={Terminal}
+        blurb={connectionBlurb(c)}
+        state={st.text}
+        tone={st.tone}
+        selected={selected}
+        onSelect={onSelect}
+        testId="connection-tile"
+        data={{ key: connectionKey(c), adapter: c.adapter, 'run-mode': isWSL(c) ? 'wsl' : 'native', usable: String(c.usable) }}
+      />
+    );
+  };
+}
+
+/** `initial` opens that connection (its key) instead of the first one that needs attention. */
+export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.connectionList(), when: (e) => e.type.startsWith('connection.') });
+  let selected = handle.props.initial ?? '';
   return () => {
     const list = q.data ?? [];
     const usable = list.filter((c) => c.usable).length;
+    // the chosen tile; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first.
+    // It stays chosen: accepting its notice does not move the selection to the next one that needs attention.
+    if (q.data && !list.some((c) => connectionKey(c) === selected)) selected = defaultConnection(list);
+    const key = selected;
+    const open = list.find((c) => connectionKey(c) === key);
     return (
       <Page title="Connections" icon={Link2} subtitle={q.data ? `${usable} of ${list.length} usable` : undefined}>
         <p mix={introCss}>
           Agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials. A CLI is usable only when it is ready
-          and every notice below has been accepted by you. A CLI installed inside a WSL distro has a card of its own, with its own sign-in.
+          and every notice on it has been accepted by you. A CLI installed inside a WSL distro has a tile of its own, with its own sign-in. Choose a tile to see it in full.
         </p>
         <ErrorNote error={q.error} what="Could not list connections" />
         {q.loading && !q.data ? <Loading label="Detecting..." /> : null}
         {q.data && list.length === 0 ? (
-          <div mix={card}>
-            <Empty title="No agent CLIs found" icon={Link2}>
-              <p>Install an agent CLI and sign in with it; it appears here.</p>
-            </Empty>
-          </div>
+          <p mix={emptyLine}>
+            <Icon icon={ShieldAlert} size={14} />
+            <strong>No agent CLIs found.</strong> Install an agent CLI and sign in with it; it appears here.
+          </p>
         ) : null}
-        <div mix={grid}>
-          {list.map((c) => (
-            <ConnectionCard key={connectionKey(c)} c={c} onChanged={q.reload} />
-          ))}
-        </div>
+        {list.length > 0 ? (
+          <ul mix={tileGrid} aria-label="Agent CLIs">
+            {list.map((c) => (
+              <ConnectionTile key={connectionKey(c)} c={c} selected={connectionKey(c) === key} onSelect={() => ((selected = connectionKey(c)), void handle.update())} />
+            ))}
+          </ul>
+        ) : null}
+        {open ? <ConnectionCard key={connectionKey(open)} c={open} onChanged={q.reload} /> : null}
       </Page>
     );
   };

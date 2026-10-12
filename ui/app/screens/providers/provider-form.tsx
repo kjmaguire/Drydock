@@ -4,6 +4,7 @@
 
 import { css, on, ref, type Handle } from 'remix/component';
 import { Plus } from 'lucide';
+import type { Provider } from '../../api/types.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -33,7 +34,8 @@ const detailsCss = css({
 
 type Option = [value: string, label: string];
 
-export function ProviderForm(handle: Handle<{ onCreated: () => void }>) {
+/** `onCreated` gets the provider the core created (when it answered with one), so the screen can open it. */
+export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -46,8 +48,9 @@ export function ProviderForm(handle: Handle<{ onCreated: () => void }>) {
     if (keyInput) keyInput.value = '';
     const body = newProviderRequest(v, apiKey);
     let ok = false;
+    let made: Provider | undefined;
     await act.run('create', async () => {
-      await s.client.providerCreate(body);
+      made = (await s.client.providerCreate(body)) ?? undefined;
       ok = true;
     });
     if (ok) {
@@ -55,7 +58,7 @@ export function ProviderForm(handle: Handle<{ onCreated: () => void }>) {
       v.baseUrl = '';
       v.att = {};
       redraw();
-      handle.props.onCreated();
+      handle.props.onCreated(made);
     }
   };
 

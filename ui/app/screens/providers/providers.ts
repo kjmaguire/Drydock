@@ -1,9 +1,10 @@
 // Pure helpers for the Providers screens: price text (an unknown price is never shown as 0), probe summaries, the create
-// request (exported Go field names) and the key-limit summary.
+// request (exported Go field names), the key-limit summary and the overview tiles (logo, what it is, state, which opens first).
 
 import type { ProviderDetail } from '../../api/providerClient.ts';
-import type { DataClass, NewProvider, PriceTier, ProbeResult, ProviderKind, ProviderModel } from '../../api/types.ts';
+import type { DataClass, NewProvider, PriceTier, ProbeResult, Provider, ProviderKind, ProviderModel } from '../../api/types.ts';
 import { formatUsd } from '../../lib/format.ts';
+import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
 export const isZeroTime = (s: string | undefined) => !s || s.startsWith('0001-');
@@ -44,6 +45,60 @@ export function probeDetail(r: ProbeResult): string {
 /** Health from the last probe; anything but up or down is unknown. */
 export function healthTone(status: string): Tone {
   return status === 'up' ? 'ok' : status === 'down' ? 'err' : 'muted';
+}
+
+/** The selection that opens the add form instead of a provider. */
+export const ADD_PROVIDER = 'add';
+
+// Well-known API hosts and the brand their logo is; a host not listed falls back to the detected flavor.
+const BRAND_HOSTS: [suffix: string, brand: string][] = [
+  ['openrouter.ai', 'openrouter'],
+  ['anthropic.com', 'anthropic'],
+  ['generativelanguage.googleapis.com', 'gemini'],
+  ['mistral.ai', 'mistral'],
+  ['deepseek.com', 'deepseek'],
+  ['openai.com', 'openai'],
+  ['groq.com', 'groq'],
+];
+
+/** The host (and port) of a provider's base URL, or the URL itself when it does not parse. */
+export function providerHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
+}
+
+/** The brand id a provider's logo is looked up by (BrandLogo decides whether it has one): its API host, else its flavor. */
+export function providerBrand(p: Pick<Provider, 'baseUrl' | 'flavor'>): string {
+  let host = '';
+  try {
+    host = new URL(p.baseUrl).hostname.toLowerCase();
+  } catch {
+    host = '';
+  }
+  const hit = BRAND_HOSTS.find(([suffix]) => host === suffix || host.endsWith(`.${suffix}`));
+  return hit ? hit[1] : (p.flavor ?? '').toLowerCase();
+}
+
+const KIND_WORDS: Record<string, string> = { aggregator: 'Aggregator', direct: 'Vendor API', host: 'Your server' };
+
+/** The tile's "what it is" line: the kind in words and the host it calls. */
+export const providerBlurb = (p: Pick<Provider, 'kind' | 'baseUrl'>): string => `${KIND_WORDS[p.kind] ?? p.kind}, ${providerHost(p.baseUrl)}`;
+
+/** The tile's state line and its tone: disabled, or the health from the last probe. */
+export function providerState(p: Pick<Provider, 'enabled' | 'status'>): { text: string; tone: TileTone } {
+  if (!p.enabled) return { text: 'Disabled', tone: '' };
+  if (p.status === 'up') return { text: 'Up', tone: 'ok' };
+  if (p.status === 'down') return { text: 'Down', tone: 'bad' };
+  return { text: 'Not checked yet', tone: 'warn' };
+}
+
+/** What opens when the screen opens: the first enabled provider that is down, else the first, else the add form. */
+export function defaultProvider(list: readonly Pick<Provider, 'id' | 'enabled' | 'status'>[]): string {
+  const p = list.find((x) => x.enabled && x.status === 'down') ?? list[0];
+  return p ? p.id : ADD_PROVIDER;
 }
 
 export const ATTESTATIONS: [string, string][] = [

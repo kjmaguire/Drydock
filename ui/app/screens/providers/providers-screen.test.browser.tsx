@@ -60,28 +60,81 @@ const has = (r: { container: Element }, s: string) => () => {
 };
 const exactly = (root: ParentNode, s: string) => Array.from(root.querySelectorAll('*')).filter((e) => e.children.length === 0 && e.textContent === s);
 
-function mountWith(client: Partial<Client>) {
-  return mount(<ProvidersScreen />, testServices(client));
+// a labelled test double of the core's provider.detail: the provider as listed, no models, no quota
+const detailOf = (list: () => Provider[]) => async (id: string) => ({ provider: list().find((p) => p.id === id) ?? provider({ id }), models: [], quota: [] });
+
+function mountWith(client: Partial<Client>, initial?: string) {
+  return mount(<ProvidersScreen initial={initial} />, testServices(client));
 }
+const tiles = (r: { $$: (sel: string) => NodeListOf<Element> }) => Array.from(r.$$('[data-testid="provider-tile"]')) as HTMLButtonElement[];
+const addTile = (r: { $: (sel: string) => Element | null }) => need(r, '[data-testid="provider-add-tile"]') as HTMLButtonElement;
 
 describe('ProvidersScreen', () => {
-  it('lists providers; the key is never shown; a zero time is "never"; trainable carries the persistent notice', async () => {
-    const r = mountWith({ providerList: async () => [provider(), provider({ id: 'p2', name: 'FreeTier', dataClass: 'trainable', keyRef: '', status: 'unknown' })] });
-    const cards = await waitFor(() => {
-      const c = Array.from(r.$$('[data-testid="provider"]'));
+  it('lists providers as tiles; the key is never shown; a zero time is "never"; trainable carries the persistent notice', async () => {
+    const list = [provider(), provider({ id: 'p2', name: 'FreeTier', kind: 'host', baseUrl: 'http://127.0.0.1:9/v1', flavor: '', dataClass: 'trainable', keyRef: '', status: 'unknown' })];
+    const r = mountWith({ providerList: async () => list, providerDetail: detailOf(() => list) });
+    const ts = await waitFor(() => {
+      const c = tiles(r);
       if (c.length !== 2) throw new Error('not yet');
       return c;
     }, r);
-    expect(cards[0]!.getAttribute('data-name')).toBe('OpenRouter');
-    expect(exactly(r.container, 'never').length).toBe(2);
-    expect(cards[0]!.textContent).toContain('stored in the credential store (never shown)');
-    expect(cards[0]!.textContent).not.toContain('ref');
-    expect(cards[1]!.textContent).toContain('none');
-    expect(need(r, '[data-testid="trainable-note"]').textContent).toContain('Public documentation questions only; never receives repo content.');
-    expect(cards[0]!.querySelector('[data-testid="trainable-note"]')).toBeNull();
+    // the tiles: the brand's logo (or the kind's icon), the name, what it is and the state; then the add tile
+    expect(r.$('ul[aria-label="Providers"]')).not.toBeNull();
+    expect(ts[0]!.querySelector('[data-brand="openrouter"]')).not.toBeNull();
+    expect(ts[0]!.textContent).toBe('OpenRouterAggregator, openrouter.aiUp');
+    expect(ts[0]!.querySelector('small[data-tone="ok"]')!.textContent).toBe('Up');
+    expect(ts[1]!.querySelector('[data-brand]')).toBeNull();
+    expect(ts[1]!.textContent).toBe('FreeTierYour server, 127.0.0.1:9Not checked yet');
+    expect(addTile(r).textContent).toContain('Add a provider');
+    // the first opens; its card and its full detail are below the grid
+    expect(ts.map((t) => t.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    const card = await waitFor(() => need(r, '[data-testid="provider"]'), r);
+    expect(r.$$('[data-testid="provider"]').length).toBe(1);
+    expect(card.getAttribute('data-name')).toBe('OpenRouter');
+    expect(card.querySelector('[data-brand="openrouter"]')).not.toBeNull();
+    expect(exactly(card, 'never').length).toBe(1);
+    expect(card.textContent).toContain('stored in the credential store (never shown)');
+    expect(card.textContent).not.toContain('ref');
+    expect(card.querySelector('[data-testid="trainable-note"]')).toBeNull();
     // health is a word as well as a color
-    expect(cards[0]!.textContent).toContain('up');
-    expect(cards[1]!.textContent).toContain('unknown');
+    expect(card.textContent).toContain('up');
+    expect(r.$('[aria-label="Add a provider"]')).toBeNull();
+    await waitFor(() => expect(need(r, '[data-testid="provider-detail"]').getAttribute('aria-label')).toBe('OpenRouter details'), r);
+
+    await r.act(() => ts[1]!.click());
+    const second = await waitFor(() => {
+      const c = need(r, '[data-testid="provider"]');
+      if (c.getAttribute('data-name') !== 'FreeTier') throw new Error('not yet');
+      return c;
+    }, r);
+    expect(ts.map((t) => t.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(second.textContent).toContain('none');
+    expect(exactly(second, 'never').length).toBe(1);
+    expect(need(r, '[data-testid="trainable-note"]').textContent).toContain('Public documentation questions only; never receives repo content.');
+    expect(second.textContent).toContain('unknown');
+    await waitFor(() => expect(need(r, '[data-testid="provider-detail"]').getAttribute('aria-label')).toBe('FreeTier details'), r);
+  });
+
+  it('opens the first enabled provider that is down; the add tile opens the form; nothing set up opens the form', async () => {
+    const list = [provider({ status: 'up' }), provider({ id: 'p2', name: 'Broken', status: 'down', baseUrl: 'https://api.anthropic.com/v1', kind: 'direct', flavor: 'anthropic' })];
+    const r = mountWith({ providerList: async () => list, providerDetail: detailOf(() => list) });
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('Broken'), r);
+    const ts = tiles(r);
+    expect(ts[1]!.querySelector('[data-brand="anthropic"]')).not.toBeNull();
+    expect(ts[1]!.querySelector('small[data-tone="bad"]')!.textContent).toBe('Down');
+    await r.act(() => addTile(r).click());
+    await waitFor(() => need(r, 'form[aria-label="Add a provider"]'), r);
+    expect(r.$('[data-testid="provider"]')).toBeNull();
+    expect(addTile(r).getAttribute('aria-pressed')).toBe('true');
+    // a second click keeps the form open: a tile selects, it does not toggle
+    await r.act(() => addTile(r).click());
+    need(r, 'form[aria-label="Add a provider"]');
+
+    const empty = mountWith({ providerList: async () => [] });
+    await waitFor(() => need(empty, 'form[aria-label="Add a provider"]'), empty);
+    expect(empty.container.textContent).toContain('No providers yet.');
+    expect(tiles(empty).length).toBe(0);
+    expect(addTile(empty).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('create sends exported Go field names, the API key leaves the input immediately, and the key is not rendered anywhere', async () => {
@@ -89,6 +142,7 @@ describe('ProvidersScreen', () => {
     let list: Provider[] = [];
     const r = mountWith({
       providerList: async () => list,
+      providerDetail: detailOf(() => list),
       providerCreate: async (p) => {
         calls.push(p);
         list = [provider({ name: 'My Host' })];
@@ -120,10 +174,16 @@ describe('ProvidersScreen', () => {
       Attestations: { lan_attested: true },
     });
     expect(key.value).toBe('');
-    await waitFor(() => need(r, '[data-testid="provider"]'), r);
+    // the new provider opens in place of the form
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('My Host'), r);
+    expect(r.$('form[aria-label="Add a provider"]')).toBeNull();
+    expect(tiles(r).map((t) => t.getAttribute('aria-pressed'))).toEqual(['true']);
     expect(r.container.innerHTML).not.toContain('sk-secret-123');
-    // the form is reset for the next one
+    // the form is empty for the next one
+    await r.act(() => addTile(r).click());
+    await waitFor(() => need(r, 'form[aria-label="Add a provider"]'), r);
     expect(byLabel(r.container, 'Provider name').value).toBe('');
+    expect(byLabel(r.container, /API key/).value).toBe('');
     expect(byLabel<HTMLInputElement>(r.container, /accept plain http/).checked).toBe(false);
   });
 
@@ -156,6 +216,7 @@ describe('ProvidersScreen', () => {
     const deleted: string[] = [];
     const r = mountWith({
       providerList: async () => [provider()],
+      providerDetail: detailOf(() => [provider()]),
       providerTest: async () => ({ ProviderID: 'prov_1', OK: false, AuthFailed: true, Latency: 42e6, Flavor: 'openrouter', Models: null, ServerInfo: null, Warnings: ['rate limited'], Error: 'HTTP 401' }),
       providerModels: async () => [model({ id: 'a/b' })],
       providerSetEnabled: async (id, on) => void enabled.push([id, on]),
@@ -179,19 +240,31 @@ describe('ProvidersScreen', () => {
     await waitFor(() => expect(deleted).toEqual(['prov_1']), r);
   });
 
-  it('Details and editing opens the provider detail in a dialog', async () => {
-    const r = mountWith({
-      providerList: async () => [provider()],
-      providerDetail: async () => ({ provider: provider(), models: [], quota: [] }),
-    });
-    const card = await waitFor(() => need(r, '[data-testid="provider"]'), r);
-    expect(r.$('[data-testid="provider-detail"]')).toBeNull();
-    await r.act(() => byText(card, 'button', 'Details and editing').click());
+  it('the selected provider shows its detail for editing below its card, and a deleted one gives way to the next', async () => {
+    const asked: string[] = [];
+    let list = [provider(), provider({ id: 'p2', name: 'Second' })];
+    const r = mountWith(
+      {
+        providerList: async () => list,
+        providerDetail: async (id: string) => (asked.push(id), detailOf(() => list)(id)),
+        providerDelete: async (id) => void (list = list.filter((p) => p.id !== id)),
+      },
+      'p2',
+    );
+    // `initial` opens that provider; its detail is on the page, no dialog
     const panel = await waitFor(() => need(r, '[data-testid="provider-detail"]'), r);
-    expect(panel.getAttribute('aria-label')).toBe('OpenRouter details');
-    expect(need(r, 'dialog').hasAttribute('open')).toBe(true);
-    await r.act(() => byText(need(r, 'dialog'), 'button', 'Close').click());
-    await waitFor(() => expect(r.$('[data-testid="provider-detail"]')).toBeNull(), r);
+    expect(panel.getAttribute('aria-label')).toBe('Second details');
+    expect(r.$('dialog')).toBeNull();
+    expect(asked).toEqual(['p2']);
+    expect(byLabel(panel, 'Name').value).toBe('Second');
+    const card = need(r, '[data-testid="provider"]');
+    expect(card.getAttribute('data-name')).toBe('Second');
+    expect(card.contains(panel)).toBe(false);
+    await r.act(() => byText(card, 'button', 'Delete').click());
+    await r.act(() => byText(card, 'button', 'Yes, delete Second').click());
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('OpenRouter'), r);
+    await waitFor(() => expect(need(r, '[data-testid="provider-detail"]').getAttribute('aria-label')).toBe('OpenRouter details'), r);
+    expect(tiles(r).length).toBe(1);
   });
 
   it('read-only turns off adding, with the reason, but the fields stay usable', async () => {

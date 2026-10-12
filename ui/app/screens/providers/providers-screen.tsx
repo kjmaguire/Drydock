@@ -1,22 +1,25 @@
-// Providers (a workspace screen): the model endpoints Drydock may call directly, each with its health, data class, key
-// state (never the key), a probe, its catalog and a details dialog for settings, prices and quotas; then the form to add one.
+// Providers (a workspace screen): the model endpoints Drydock may call directly. The overview is a grid of tiles (the shared
+// kit in ui/tiles.tsx, as on Integrations): one per provider with its brand's logo (or its kind's icon), what it is and its
+// state, and an "Add a provider" tile. The selected provider opens below the grid: its health, data class, key state (never
+// the key), a probe and its catalog, then its full detail for settings, prices and quotas. The add tile opens the form.
 
 import { css, on, type Handle } from 'remix/component';
-import { Activity, Cloud, List, Network, Server, Settings2, Trash2 } from 'lucide';
+import { Activity, Cloud, List, Network, Plus, Server, ShieldAlert, Trash2 } from 'lucide';
 import type { ProbeResult, Provider, ProviderModel } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
+import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
-import { Badge, muted } from '../../ui/data.tsx';
-import { Dialog } from '../../ui/dialog.tsx';
-import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Badge } from '../../ui/data.tsx';
+import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
-import { card, Page, Section, spacer } from '../../ui/layout.tsx';
+import { card, Page, Section, spacer, stack } from '../../ui/layout.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { ProviderDetailPanel } from './provider-detail.tsx';
 import { ProviderForm } from './provider-form.tsx';
 import { HealthBadge, ModelTable, ProbeView } from './provider-parts.tsx';
-import { healthTone, isZeroTime } from './providers.ts';
+import { ADD_PROVIDER, defaultProvider, healthTone, isZeroTime, providerBlurb, providerBrand, providerState } from './providers.ts';
 
 export { ModelTable, PriceSourceBadge, ProbeView } from './provider-parts.tsx';
 export { ProviderDetailPanel } from './provider-detail.tsx';
@@ -79,19 +82,23 @@ function ProviderCard(handle: Handle<{ p: Provider; onChanged: () => void }>) {
   let probe: ProbeResult | undefined;
   let models: ProviderModel[] | undefined;
   let confirmDelete = false;
-  let detail = false;
   const redraw = () => void handle.update();
 
   return () => {
     const { p, onChanged } = handle.props;
     const busy = act.busy !== '';
     const tn = healthTone(p.status);
+    const brand = providerBrand(p);
     return (
       <article mix={cardCss} data-testid="provider" data-name={p.name}>
         <header mix={headCss}>
-          <span mix={kindTile} aria-hidden="true" style={{ background: tone[tn].bg, color: tone[tn].fg }}>
-            <Icon icon={KIND_ICON[p.kind] ?? Server} size={16} />
-          </span>
+          {brandKey(brand) ? (
+            <BrandLogo id={brand} size={32} />
+          ) : (
+            <span mix={kindTile} aria-hidden="true" style={{ background: tone[tn].bg, color: tone[tn].fg }}>
+              <Icon icon={KIND_ICON[p.kind] ?? Server} size={16} />
+            </span>
+          )}
           <h3>{p.name}</h3>
           <span class="badges">
             <Badge>{p.kind}</Badge>
@@ -191,18 +198,6 @@ function ProviderCard(handle: Handle<{ p: Provider; onChanged: () => void }>) {
           >
             Models
           </Button>
-          <Button
-            size="sm"
-            icon={Settings2}
-            aria-haspopup="dialog"
-            aria-expanded={detail}
-            mix={on('click', () => {
-              detail = true;
-              redraw();
-            })}
-          >
-            Details and editing
-          </Button>
           <span mix={spacer} />
           <Button
             size="sm"
@@ -256,57 +251,105 @@ function ProviderCard(handle: Handle<{ p: Provider; onChanged: () => void }>) {
             </Button>
           )}
         </footer>
-        <Dialog
-          open={detail}
-          wide
-          title={p.name}
-          onClose={() => {
-            detail = false;
-            redraw();
-          }}
-        >
-          <ProviderDetailPanel id={p.id} onChanged={onChanged} />
-        </Dialog>
       </article>
     );
   };
 }
 
-const introCss = css({ color: t.textMuted, fontSize: t.textMd, maxWidth: '820px' });
-const listCss = css({ display: 'grid', gap: t.s3 });
+const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 
-export function ProvidersScreen(handle: Handle) {
+/** One provider on the overview: its brand's logo (or its kind's icon), its name, what it is and its state. */
+function ProviderTile(handle: Handle<{ p: Provider; selected: boolean; onSelect: () => void }>) {
+  return () => {
+    const { p, selected, onSelect } = handle.props;
+    const st = providerState(p);
+    return (
+      <Tile
+        title={p.name}
+        logo={providerBrand(p)}
+        icon={KIND_ICON[p.kind] ?? Server}
+        blurb={providerBlurb(p)}
+        state={st.text}
+        tone={st.tone}
+        selected={selected}
+        onSelect={onSelect}
+        testId="provider-tile"
+        data={{ id: p.id, name: p.name, status: p.status, enabled: String(p.enabled) }}
+      />
+    );
+  };
+}
+
+/** `initial` opens that provider (its id, or "add" for the form) instead of the first that is down, else the first. */
+export function ProvidersScreen(handle: Handle<{ initial?: string }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.providerList(), when: (e) => e.type.startsWith('provider.') });
+  let selected = handle.props.initial ?? '';
+  let created = ''; // a provider just added: opened as soon as the list has it
+  const choose = (id: string) => {
+    selected = id;
+    void handle.update();
+  };
 
   return () => {
     const list = q.data ?? [];
     const up = list.filter((p) => p.status === 'up').length;
+    if (q.data) {
+      if (created && list.some((p) => p.id === created)) created = '';
+      // until one is chosen (or when the chosen one is gone, say deleted) the first that is down, else the first, else the form
+      if (selected !== ADD_PROVIDER && !created && !list.some((p) => p.id === selected)) selected = defaultProvider(list);
+    }
+    const open = list.find((p) => p.id === selected);
     return (
       <Page title="Providers" icon={Network} subtitle={q.data ? `${list.length} configured, ${up} up` : undefined}>
         <p mix={introCss}>
           Model providers Drydock may call directly. API keys are stored in the Windows Credential Manager and are never shown again after you save them. Plain http is
-          accepted only for hosts on your own machine or private network.
+          accepted only for hosts on your own machine or private network. Choose a tile to see a provider in full.
         </p>
         <ErrorNote error={q.error} what="Could not list providers" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
-          <div mix={card}>
-            <Empty title="No providers yet." icon={Network}>
-              <p mix={muted}>Add an aggregator, a vendor&apos;s API or a server you run with the form below.</p>
-            </Empty>
-          </div>
+          <p mix={emptyLine}>
+            <Icon icon={ShieldAlert} size={14} />
+            <strong>No providers yet.</strong> Add an aggregator, a vendor&apos;s API or a server you run with the form below.
+          </p>
         ) : null}
-        {list.length > 0 ? (
-          <div mix={listCss}>
+        {q.data ? (
+          <ul mix={tileGrid} aria-label="Providers">
             {list.map((p) => (
-              <ProviderCard key={p.id} p={p} onChanged={() => q.reload()} />
+              <ProviderTile key={p.id} p={p} selected={p.id === selected} onSelect={() => choose(p.id)} />
             ))}
+            <Tile
+              title="Add a provider"
+              icon={Plus}
+              blurb="An aggregator, a vendor's API or your own server"
+              selected={selected === ADD_PROVIDER}
+              onSelect={() => choose(ADD_PROVIDER)}
+              testId="provider-add-tile"
+            />
+          </ul>
+        ) : null}
+        {open ? (
+          <div mix={stack}>
+            <ProviderCard key={open.id} p={open} onChanged={() => q.reload()} />
+            <div mix={card}>
+              <ProviderDetailPanel key={open.id} id={open.id} onChanged={() => q.reload()} />
+            </div>
           </div>
         ) : null}
-        <Section title="Add a provider" description="The core checks the address: https anywhere, plain http only on loopback or a private network.">
-          <ProviderForm onCreated={() => q.reload()} />
-        </Section>
+        {selected === ADD_PROVIDER ? (
+          <Section title="Add a provider" description="The core checks the address: https anywhere, plain http only on loopback or a private network.">
+            <ProviderForm
+              onCreated={(p) => {
+                if (p?.id) {
+                  created = p.id;
+                  selected = p.id;
+                }
+                q.reload();
+              }}
+            />
+          </Section>
+        ) : null}
       </Page>
     );
   };
