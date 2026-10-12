@@ -147,6 +147,7 @@ func New(o Options) (*Service, error) {
 	}
 	s := &Service{o: o, hc: hc, locks: map[string]*sync.Mutex{}}
 	s.auth.limiters, s.auth.tokens = map[string]*limiter{}, map[string]cachedToken{}
+	s.auth.gen, s.auth.credLocks, s.auth.spent = map[string]uint64{}, map[string]chan struct{}{}, map[string]string{}
 	s.oauth.m = map[string]*OAuthSession{}
 	s.st = &Store{DB: o.DB, BodyDir: o.BodyDir, Now: func() int64 { return o.Now().UTC().UnixMilli() }}
 	s.san = Sanitizer{Scanner: o.Scanner}
@@ -454,23 +455,34 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 			return ConnectionView{}, err
 		}
 	}
-	if secret != "" {
-		if s.o.Vault == nil {
-			if existing == nil {
-				_ = s.st.DeleteConnection(ctx, saved.ID)
-			}
-			return ConnectionView{}, ErrCredentialsLocked
+	if secret != "" && s.o.Vault == nil {
+		if existing == nil {
+			_ = s.st.DeleteConnection(ctx, saved.ID)
 		}
-		if err := s.o.Vault.Put(ctx, saved.CredentialRef, secret); err != nil {
-			if existing == nil {
-				_ = s.st.DeleteConnection(ctx, saved.ID)
-			}
-			return ConnectionView{}, fmt.Errorf("integrations: could not store the credential in the credential store: %w", err)
-		}
-		s.registerCredential(saved.ID, secret)
+		return ConnectionView{}, ErrCredentialsLocked
 	}
 	if secret != "" || oauthRef != "" || base != "" {
+		// a refresh of the old OAuth sign-in that is in flight finishes first, so it cannot write the renewed sign-in over the
+		// new credential, or keep it in memory after the change
+		release, err := s.lockCredential(ctx, saved.ID)
+		if err != nil {
+			if existing == nil {
+				_ = s.st.DeleteConnection(ctx, saved.ID)
+			}
+			return ConnectionView{}, err
+		}
+		if secret != "" {
+			if err := s.o.Vault.Put(ctx, saved.CredentialRef, secret); err != nil {
+				release()
+				if existing == nil {
+					_ = s.st.DeleteConnection(ctx, saved.ID)
+				}
+				return ConnectionView{}, fmt.Errorf("integrations: could not store the credential in the credential store: %w", err)
+			}
+			s.registerCredential(saved.ID, secret)
+		}
 		s.forgetAuth(saved.ID)
+		release()
 		if s.o.OnCredentialChange != nil {
 			s.o.OnCredentialChange(saved.Kind)
 		}
@@ -526,15 +538,15 @@ func (s *Service) RegisterStoredSecrets(ctx context.Context) {
 	}
 }
 
-// Disconnect removes the connection, its credential, its assignments and everything not tied to a task.
-func (s *Service) Disconnect(ctx context.Context, by, id string) error {
-	if err := requireHuman(by); err != nil {
-		return err
-	}
-	c, err := s.st.GetConnection(ctx, id)
+// removeConnection deletes the connection's credential and row while holding its credential lock: a refresh of an OAuth
+// sign-in that is in flight finishes first, so it cannot write the deleted credential back or keep it in memory.
+func (s *Service) removeConnection(ctx context.Context, c Connection) error {
+	id := c.ID
+	release, err := s.lockCredential(ctx, id)
 	if err != nil {
 		return err
 	}
+	defer release()
 	if s.o.Vault != nil && c.CredentialRef != "" && !strings.HasPrefix(c.CredentialRef, OAuthRefPrefix) {
 		if err := s.o.Vault.Delete(ctx, c.CredentialRef); err != nil {
 			return fmt.Errorf("integrations: could not remove the credential from the credential store: %w", err)
@@ -551,6 +563,21 @@ func (s *Service) Disconnect(ctx context.Context, by, id string) error {
 		return err
 	}
 	s.forgetAuth(id)
+	return nil
+}
+
+// Disconnect removes the connection, its credential, its assignments and everything not tied to a task.
+func (s *Service) Disconnect(ctx context.Context, by, id string) error {
+	if err := requireHuman(by); err != nil {
+		return err
+	}
+	c, err := s.st.GetConnection(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.removeConnection(ctx, c); err != nil {
+		return err
+	}
 	if s.o.OnCredentialChange != nil {
 		s.o.OnCredentialChange(c.Kind)
 	}

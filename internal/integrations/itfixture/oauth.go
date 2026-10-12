@@ -17,12 +17,17 @@ import (
 // spent one is invalid_grant, and urn:ietf:params:oauth:grant-type:device_code), POST /device/code
 // (RFC 8628: the first poll answers authorization_pending, the second issues the token). No client secret is accepted or
 // needed, as for Linear's PKCE sign-in and Sentry's device flow.
+//
+// A refresh grant can be made to misbehave: RefreshDelay slows it down, RefreshStatus makes the token endpoint answer an
+// error such as 502 (without spending the refresh token), KeepAccessToken rotates the refresh token but answers with the same
+// access token, and RevokeRefreshTokens forgets every refresh token (the person revoked the app).
 type OAuth struct {
 	mu         sync.Mutex
 	ClientID   string
 	ExpiresIn  int // seconds an access token lives (default 3600)
 	challenges map[string]string
 	refresh    map[string]bool
+	access     map[string]string // refresh token -> the access token issued with it
 	polls      map[string]int
 	n          int
 	Issued     []string // access tokens, oldest first
@@ -32,6 +37,51 @@ type OAuth struct {
 	// RefreshDelay makes a refresh grant take this long, like a slow network: concurrent callers then all hold the same refresh
 	// token while the first exchange is in flight.
 	RefreshDelay time.Duration
+	// RefreshStatus, when set, is the HTTP status every refresh grant answers (a plain-text body); the refresh token is not
+	// spent.
+	RefreshStatus int
+	// KeepAccessToken makes a refresh rotate the refresh token (and the expiry) but answer with the same access token.
+	KeepAccessToken bool
+	// RefreshRequests counts refresh grants received, counted on arrival (before RefreshDelay).
+	RefreshRequests int
+}
+
+// SetRefreshDelay changes RefreshDelay while the server runs.
+func (o *OAuth) SetRefreshDelay(d time.Duration) {
+	o.mu.Lock()
+	o.RefreshDelay = d
+	o.mu.Unlock()
+}
+
+// SetRefreshStatus changes RefreshStatus while the server runs (0 answers normally again).
+func (o *OAuth) SetRefreshStatus(code int) {
+	o.mu.Lock()
+	o.RefreshStatus = code
+	o.mu.Unlock()
+}
+
+// RefreshesReceived returns RefreshRequests.
+func (o *OAuth) RefreshesReceived() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.RefreshRequests
+}
+
+// RevokeRefreshTokens forgets every refresh token issued so far: the next refresh grant is invalid_grant.
+func (o *OAuth) RevokeRefreshTokens() {
+	o.mu.Lock()
+	o.refresh = map[string]bool{}
+	o.mu.Unlock()
+}
+
+// LastIssued returns the newest access token.
+func (o *OAuth) LastIssued() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(o.Issued) == 0 {
+		return ""
+	}
+	return o.Issued[len(o.Issued)-1]
 }
 
 // RefreshCounts returns the accepted and rejected refresh grants so far.
@@ -43,14 +93,19 @@ func (o *OAuth) RefreshCounts() (accepted, rejected int) {
 
 // NewOAuth creates the fixture for a client id.
 func NewOAuth(clientID string) *OAuth {
-	return &OAuth{ClientID: clientID, ExpiresIn: 3600, challenges: map[string]string{}, refresh: map[string]bool{}, polls: map[string]int{}}
+	return &OAuth{ClientID: clientID, ExpiresIn: 3600, challenges: map[string]string{}, refresh: map[string]bool{}, access: map[string]string{}, polls: map[string]int{}}
 }
 
-func (o *OAuth) issue(w http.ResponseWriter) {
+// issue answers with a new token pair; keepAccess, when set, is answered as the access token instead of a new one.
+func (o *OAuth) issue(w http.ResponseWriter, keepAccess string) {
 	o.n++
 	acc := "oat_fixture_" + strconv.Itoa(o.n) + "_Kp7Vb2Nq"
+	if keepAccess != "" {
+		acc = keepAccess
+	}
 	ref := "ort_fixture_" + strconv.Itoa(o.n) + "_Hs4Lw9Dz"
 	o.refresh[ref] = true
+	o.access[ref] = acc
 	o.Issued = append(o.Issued, acc)
 	writeJSON(w, 200, map[string]any{"access_token": acc, "refresh_token": ref, "token_type": "Bearer", "expires_in": o.ExpiresIn, "scope": "read write"})
 }
@@ -106,21 +161,40 @@ func (o *OAuth) Server() http.Handler {
 					return
 				}
 				delete(o.challenges, f.Get("code"))
-				o.issue(w)
+				o.issue(w, "")
 			case "refresh_token":
-				if o.RefreshDelay > 0 {
+				o.RefreshRequests++
+				if d := o.RefreshDelay; d > 0 {
 					o.mu.Unlock()
-					time.Sleep(o.RefreshDelay)
+					select {
+					case <-time.After(d):
+					case <-r.Context().Done(): // the client gave up (a timeout): answer nothing
+					}
 					o.mu.Lock()
+					if r.Context().Err() != nil {
+						return
+					}
 				}
-				if !o.refresh[f.Get("refresh_token")] {
+				if o.RefreshStatus != 0 {
+					w.Header().Set("Content-Type", "text/plain")
+					w.WriteHeader(o.RefreshStatus)
+					_, _ = w.Write([]byte(http.StatusText(o.RefreshStatus)))
+					return
+				}
+				rt := f.Get("refresh_token")
+				if !o.refresh[rt] {
 					o.Rejected++
 					writeJSON(w, 400, map[string]any{"error": "invalid_grant"})
 					return
 				}
-				delete(o.refresh, f.Get("refresh_token")) // rotating refresh tokens: each one is accepted once
+				delete(o.refresh, rt) // rotating refresh tokens: each one is accepted once
 				o.Refreshes++
-				o.issue(w)
+				keep := ""
+				if o.KeepAccessToken {
+					keep = o.access[rt]
+				}
+				delete(o.access, rt)
+				o.issue(w, keep)
 			case "urn:ietf:params:oauth:grant-type:device_code":
 				dc := f.Get("device_code")
 				n, ok := o.polls[dc]
@@ -134,7 +208,7 @@ func (o *OAuth) Server() http.Handler {
 					return
 				}
 				delete(o.polls, dc)
-				o.issue(w)
+				o.issue(w, "")
 			default:
 				writeJSON(w, 400, map[string]any{"error": "unsupported_grant_type"})
 			}

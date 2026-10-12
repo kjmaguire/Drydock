@@ -271,10 +271,19 @@ than 30 s fails as rate limited and the sync's backoff takes over (at least the 
 OAuth sign-in (`oauthflow.go`, `golang.org/x/oauth2`): `integration.oauthStart` returns the page to open (PKCE: a loopback
 redirect `http://127.0.0.1:<port>/callback` checks the state and exchanges the code with the verifier; device: the code to type
 and the verification page), `integration.oauthStatus` says when it finished (never the token), and `integration.connect` with
-`oauthSession` stores the token as JSON in the credential store. Tokens are refreshed when they expire and stored again.
-Refreshes of one connection happen one at a time: Linear rotates refresh tokens (each is accepted once), so when a sync, Test
-and the settings' choices find the token expired together, the first refreshes it and the others wait, read the credential
-store again and use the token it stored, instead of spending the same refresh token and being refused. A kind
+`oauthSession` stores the token as JSON in the credential store. Drydock also keeps the sign-in in memory, so a call does not
+read the credential store each time; the credential store holds the copy that survives a restart. Tokens are refreshed when
+they expire, and every refresh is stored again (also when only the refresh token or the expiry changed). Refreshes of one
+connection happen one at a time: Linear rotates refresh tokens (each is accepted once), so when a sync, Test and the
+settings' choices find the token expired together, the first refreshes it and the others wait (a caller that is cancelled
+stops waiting at once) and use the token it renewed, instead of spending the same refresh token and being refused. A
+reconnect or a disconnect waits for a refresh in flight, so the renewed sign-in never overwrites the new credential or
+brings back a deleted one; a caller that finds the credential gone or replaced by an API key stops without refreshing. If
+the renewed sign-in cannot be written to the credential store, Drydock logs that (without the token) and keeps using the
+copy in memory; since the stored refresh token is already spent, Drydock does not send it again and asks for a new sign-in
+if the copy in memory is lost. Only the vendor refusing the refresh (`invalid_grant`, or HTTP 400 or 401 from its token
+endpoint) marks the connection `unauthenticated`; a network error, a time-out or a server error (5xx) while refreshing
+makes it `unreachable`, and it backs off and tries again like any other call. A kind
 signs in only when a build sets its public client id (`-ldflags "-X .../core.LinearOAuthClientID=..."`,
 `SentryOAuthClientID`, or `DRYDOCK_LINEAR_OAUTH_CLIENT_ID` / `DRYDOCK_SENTRY_OAUTH_CLIENT_ID`); no OAuth app is registered yet,
 so in the shipped build both are off and the screen says so. The redirect URI a registered Linear app must allow is the
@@ -315,8 +324,8 @@ If it is reopened it comes back.
 
 One connection serves several projects, so a failure is recorded where it belongs:
 
-- **The credential is refused** (HTTP 401, Linear "authentication error", no stored credential, a refresh the vendor did not
-  accept): the connection becomes `unauthenticated` and the scheduler leaves it alone until it is reconnected; this stops
+- **The credential is refused** (HTTP 401, Linear "authentication error", no stored credential, a refresh the vendor
+  refused with `invalid_grant`, 400 or 401): the connection becomes `unauthenticated` and the scheduler leaves it alone until it is reconnected; this stops
   every project, because every project uses that credential.
 - **The credential works but may not read one project's scope** (HTTP 403, Linear "forbidden", GitHub's 403 that is not a
   rate limit, Notion's `restricted_resource`): only that assignment fails. Its sync state is `forbidden` with a message about
