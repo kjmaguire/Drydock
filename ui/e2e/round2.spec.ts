@@ -20,7 +20,8 @@ test('Connections: gates need a checkbox and a click by the human; Test is gated
 
   // Test connection never starts the CLI without the warning and a second click. (It is not run here: the connection
   // service in the harness looks at the real machine, so a test could start a real CLI.)
-  const claude = page.locator('[data-testid=connection][data-adapter=claude]');
+  // the Windows install (a Claude Code inside a WSL distro has a card of its own, data-key claude@wsl:<distro>)
+  const claude = page.locator('[data-testid=connection][data-key=claude]');
   await expect(claude).toBeVisible();
   await claude.getByRole('button', { name: 'Test connection...' }).click();
   await expect(claude).toContainText('It uses your account');

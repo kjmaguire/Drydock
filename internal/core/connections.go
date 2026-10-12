@@ -49,17 +49,27 @@ func (c *Core) AcknowledgeGate(ctx context.Context, gateID string) error {
 // cheapest model (it uses the human's account: a fraction of a cent); without it nothing that costs tokens runs. The outcome
 // is kept (it survives a restart): a pass clears "version untested" for exactly that CLI version, a failure degrades it.
 func (c *Core) TestConnection(ctx context.Context, adapterID string, prompt bool) (connections.Report, error) {
-	o := connections.TestOptions{}
+	return c.TestConnectionIn(ctx, adapterID, "", prompt)
+}
+
+// TestConnectionIn is TestConnection for the install inside the WSL distro distro ("" is the native install). Each install
+// keeps its own result (decision P41).
+func (c *Core) TestConnectionIn(ctx context.Context, adapterID, distro string, prompt bool) (connections.Report, error) {
+	o := connections.TestOptions{Distro: distro}
 	if prompt {
 		o.Prompt, o.Model = true, cheapestModel(adapterID, c.adapters[adapterID])
 	}
 	rep, err := c.Connections.TestConnection(ctx, adapterID, o)
 	if err == nil {
-		c.Connections.RecordTest(adapterID, rep)
+		key := rep.Key
+		if key == "" {
+			key = adapterID
+		}
+		c.Connections.RecordTest(key, rep)
 		out := connections.TestOutcome{OK: rep.OK, Reason: rep.FailureReason(), Version: rep.CLIVersion}
 		if b, jerr := json.Marshal(out); jerr == nil {
 			if werr := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-				_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, testKey+adapterID, string(b))
+				_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, testKey+key, string(b))
 				return err
 			}); werr != nil {
 				c.logf("keep the Test connection result: %v", werr)

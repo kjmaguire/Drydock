@@ -261,6 +261,14 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		return rt.MCPAttachment{Reason: "the MCP gateway is not running"}, nil
 	}
 	pl.Info.RunID = runID
+	if cfg.Spec.IsWSL() {
+		// the agent runs inside a WSL distro: its permission requests name Linux paths (decision P41)
+		p, ok := c.wslPaths(ctx, cfg.Spec.WSLDistro)
+		if !ok {
+			return rt.MCPAttachment{Reason: "the WSL distro " + cfg.Spec.WSLDistro + " could not be probed, so its paths cannot be checked"}, nil
+		}
+		pl.Info.WSL = &p
+	}
 	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers})
 	if err != nil {
 		return rt.MCPAttachment{}, err

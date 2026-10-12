@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/acp"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // ErrNotImplemented marks adapters that exist as a manifest (detection, install guidance, gates) but cannot start sessions yet.
@@ -42,6 +44,8 @@ type Options struct {
 	PassEnv func() []string
 	// ClaudeExe overrides claude discovery (the "custom path" Connection setting; tests).
 	ClaudeExe string
+	// WSL reaches the WSL distros for adapters with the wsl run mode (Claude Code, decision P41). Nil: native only.
+	WSL *wsl.Host
 }
 
 // Registry builds agents.Adapter instances from manifests.
@@ -102,13 +106,36 @@ func DeclaredCapabilities(m *Manifest) agents.Capabilities {
 	}
 }
 
-// InstallHint is the first install command, shown to the user and never executed.
+// WSLLaunchable reports whether the adapter built for m can start its CLI inside a WSL distro. Only the Claude headless
+// adapter has that path (decision P41); a manifest may declare the wsl run mode as a fact about the CLI before Drydock can use it.
+func WSLLaunchable(m *Manifest) bool {
+	return m.Transports.Primary == TransportHeadless && m.Transports.Headless != nil && m.Transports.Headless.Parser == ParserClaude
+}
+
+// nativeOnly is caps without the wsl run mode: for adapters that cannot start a CLI inside a distro.
+func nativeOnly(caps agents.Capabilities) agents.Capabilities {
+	caps.RunModes = []string{"native"}
+	return caps
+}
+
+// InstallHint is the first Windows install command, shown to the user and never executed.
 func (m *Manifest) InstallHint() string {
-	if len(m.Install) == 0 {
-		return ""
+	for _, in := range m.Install {
+		if in.RunMode == "" {
+			return in.Shell + ": " + in.Command
+		}
 	}
-	in := m.Install[0]
-	return in.Shell + ": " + in.Command
+	return ""
+}
+
+// WSLInstallHint is the first install command to run inside a WSL distro ("" when the manifest has none). Never executed.
+func (m *Manifest) WSLInstallHint() string {
+	for _, in := range m.Install {
+		if in.RunMode == "wsl" {
+			return "inside the distro: " + in.Command
+		}
+	}
+	return ""
 }
 
 // Build returns the adapter for the manifest's primary transport.
@@ -172,7 +199,7 @@ func (r *Registry) buildACP(m *Manifest, detect func(context.Context) (agents.De
 	}
 	return acp.New(acp.Config{
 		ID: m.Meta.ID, Command: a.Argv[0], Args: append([]string(nil), a.Argv[1:]...), Env: env,
-		Declared: DeclaredCapabilities(m), InstallHint: m.InstallHint(), Detector: detect,
+		Declared: nativeOnly(DeclaredCapabilities(m)), InstallHint: m.InstallHint(), Detector: detect,
 		Permission: r.opts.Permission, Terminal: r.opts.Terminal, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
 	}), nil
 }
@@ -185,12 +212,15 @@ func (r *Registry) buildHeadless(m *Manifest, detect func(context.Context) (agen
 		ad.Exe = r.opts.ClaudeExe
 		ad.ScrubEnv, ad.PassEnv = r.opts.ScrubEnv, r.opts.PassEnv
 		ad.UserSettingsOnly = r.opts.ScrubEnv // the same "start agents from a trimmed, trusted setup" switch
+		if slices.Contains(m.Meta.RunModes, "wsl") {
+			ad.WSL = r.opts.WSL
+		}
 		return &detectOverride{Adapter: ad, detect: detect}, nil
 	case h.Parser == ParserAntigravity:
-		return &unimplemented{id: m.Meta.ID, caps: DeclaredCapabilities(m), hint: m.InstallHint(), detect: detect, m: m,
+		return &unimplemented{id: m.Meta.ID, caps: nativeOnly(DeclaredCapabilities(m)), hint: m.InstallHint(), detect: detect, m: m,
 			why: "no captured protocol fixtures for `agy` stream-json (no agy binary was available to verify against); detection and the acknowledgement gate work"}, nil
 	case h.Parser == "" && h.Dialect != nil:
-		return &unimplemented{id: m.Meta.ID, caps: DeclaredCapabilities(m), hint: m.InstallHint(), detect: detect, m: m,
+		return &unimplemented{id: m.Meta.ID, caps: nativeOnly(DeclaredCapabilities(m)), hint: m.InstallHint(), detect: detect, m: m,
 			why: "the declarative headless dialect adapter for custom CLIs is not built yet"}, nil
 	}
 	return nil, fmt.Errorf("adapter %q: no Go parser is registered for %q", m.Meta.ID, h.Parser)

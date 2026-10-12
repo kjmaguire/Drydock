@@ -14,6 +14,8 @@ import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { noSkillChanges, type SkillChanges } from '../skills/skills.ts';
 import { ClaudePracticesPanel, ModelEffortFields, RouteModelsField, claudePractices } from './fields.tsx';
+import { RunModeField } from './run-mode-field.tsx';
+import { supportsWSL } from './run-mode.ts';
 import { SkillsField } from './skills-field.tsx';
 import { PURPOSE_HELP, ROLE_SUGGESTIONS, adapterOption, appliedNote, routesForUpdate } from './team.ts';
 
@@ -42,6 +44,8 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
   let model = '';
   let effort = '';
   let practices = true;
+  let runMode = '';
+  let wslDistro = '';
   let skills: SkillChanges = noSkillChanges();
   const set = (f: () => void) => {
     f();
@@ -68,12 +72,16 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
     };
     if (adapterId === 'claude') spec.practices = practices;
     if (skills.add.length > 0) spec.skills = skills.add;
+    if (supportsWSL(a?.capabilities) && runMode) {
+      spec.runMode = runMode;
+      if (runMode === 'wsl') spec.wslDistro = wslDistro;
+    }
     const ok = await act.run('create', async () => {
       await s.client.agentCreate(spec);
       return true;
     });
     if (!ok) return;
-    name = role = purpose = model = effort = '';
+    name = role = purpose = model = effort = runMode = wslDistro = '';
     skills = noSkillChanges();
     void handle.update();
     handle.props.onCreated();
@@ -134,6 +142,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
           onModel={(v) => set(() => (model = v))}
           onEffort={(v) => set(() => (effort = v))}
         />
+        <RunModeField caps={a?.capabilities} runMode={runMode} wslDistro={wslDistro} onChange={(m, d) => set(() => ((runMode = m), (wslDistro = d)))} />
         <div mix={full}>
           <Field label="Purpose (optional)">
             {(id) => (
@@ -254,6 +263,8 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
   let effort = a0.effort;
   let practices = a0.practices !== false;
   let routes: RouteModel[] = a0.routeModels ?? [];
+  let runMode = a0.runMode ?? '';
+  let wslDistro = a0.wslDistro ?? '';
   let skills: SkillChanges = noSkillChanges();
   let confirmRemove = false;
   let savedAs = '';
@@ -280,6 +291,10 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
     if (rm) u.routeModels = rm;
     if (skills.add.length > 0) u.addSkills = skills.add;
     if (skills.remove.length > 0) u.removeSkills = skills.remove;
+    if (supportsWSL(handle.props.adapter?.capabilities) && (runMode !== (agent.runMode ?? '') || wslDistro !== (agent.wslDistro ?? ''))) {
+      u.runMode = runMode;
+      u.wslDistro = runMode === 'wsl' ? wslDistro : '';
+    }
     return finish('save', () => s.client.agentUpdate(u));
   };
 
@@ -325,6 +340,7 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
           onModel={(v) => set(() => (model = v))}
           onEffort={(v) => set(() => (effort = v))}
         />
+        <RunModeField caps={adapter?.capabilities} runMode={runMode} wslDistro={wslDistro} onChange={(m, d) => set(() => ((runMode = m), (wslDistro = d)))} />
         <div mix={full}>
           <Field label="Purpose">
             {(id) => (

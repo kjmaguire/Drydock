@@ -17,6 +17,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // Reason codes (docs/connections.md section 1).
@@ -31,7 +32,9 @@ const (
 	ReasonTestFailed      = "test_failed"
 	ReasonGateUnacked     = "gate_unacknowledged"
 	// ReasonDrift is "drift:<kind>": an agent sent output the parser does not read (kind schema), until a Test passes.
-	ReasonDrift         = "drift"
+	ReasonDrift = "drift"
+	// ReasonWSL: the distro lacks something the run mode needs (interop for Drydock's tools, a known mount root).
+	ReasonWSL           = "wsl_setup"
 	defaultProbeTimeout = 10 * time.Second
 )
 
@@ -64,6 +67,14 @@ type Connection struct {
 	Transport   string       `json:"transport,omitempty"`
 	CompatClass string       `json:"compatClass,omitempty"` // best evidence class for this exact version
 	Platform    string       `json:"platform"`
+	// Key names this Connection: the adapter id for the native install, "<adapter>@wsl:<distro>" for an install inside a WSL
+	// distro, which is a Connection of its own with its own sign-in and Test (docs/connections.md section 4b).
+	Key     string    `json:"key"`
+	RunMode string    `json:"runMode"`          // native | wsl
+	Distro  string    `json:"distro,omitempty"` // the WSL distro (run mode wsl)
+	WSL     *WSLFacts `json:"wsl,omitempty"`    // what the probe found in the distro (run mode wsl)
+
+	fallback string // the transport fallback checkPrereqs reported, for rate
 }
 
 // TestOutcome is the last "Test connection" result, which can degrade a Connection.
@@ -92,9 +103,21 @@ type Options struct {
 	Timeout time.Duration          // per probe; default 10s
 	// BinaryOverride replaces binary discovery per adapter id (the "custom path" Connection setting; tests).
 	BinaryOverride map[string]string
+	// WSL reaches the WSL distros for the WSL Connections (nil: none are listed).
+	WSL *wsl.Host
+	// Home is the Windows user's home, where .wslconfig says the WSL networking mode (default: the user's home folder).
+	Home string
+}
+
+// compileVersion is the manifest's version regex.
+func compileVersion(m *manifests.Manifest) (*regexp.Regexp, error) {
+	return regexp.Compile(m.Detect.Version.Regex)
 }
 
 func (o *Options) defaults() {
+	if o.Home == "" {
+		o.Home = userHome()
+	}
 	if o.PM == nil {
 		o.PM = proc.New()
 	}
@@ -122,7 +145,7 @@ func Detect(ctx context.Context, m *manifests.Manifest, o Options) (agents.Detec
 // Check computes the full Connection for a manifest.
 func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	o.defaults()
-	c := Connection{Platform: runtime.GOOS, Transport: m.Transports.Primary}
+	c := Connection{Platform: runtime.GOOS, Transport: m.Transports.Primary, Key: m.Meta.ID, RunMode: agents.RunModeNative}
 	c.Adapter, c.InstallHint, c.Status = m.Meta.ID, m.InstallHint(), agents.StatusNotInstalled
 
 	for _, k := range m.Auth.WarnEnv {
@@ -173,6 +196,7 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 		c.Status = agents.StatusNotInstalled
 		return finish()
 	}
+	c.fallback = fallback
 
 	// 3. version
 	ver := probeVersion(ctx, m, path, o)
@@ -181,18 +205,27 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 		c.Status, c.Reason = agents.StatusDegraded, ReasonVersionProbe
 		return finish()
 	}
-	c.Version = ver.text
-	v, _ := manifests.ParseVersion(ver.text)
+	rate(m, o, &c, ver.text, func() authState { return probeAuth(ctx, m, path, o, &c) }, nil)
+	return finish()
+}
+
+// rate finishes a Connection whose binary answered with version text: the supported range and compat.yaml, then (only when
+// those pass) the sign-in state auth reports, then what degrades it (drift, the last Test, a fallback transport, an untested
+// version). extra lists further degrading problems found on the way (a WSL distro without interop). c.Key names the
+// Connection's kept Test result.
+func rate(m *manifests.Manifest, o Options, c *Connection, version string, auth func() authState, extra []string) {
+	c.Version = version
+	v, _ := manifests.ParseVersion(version)
 	if min, ok := manifests.ParseVersion(m.Versions.Min); ok && m.Versions.Min != "" && v.Less(min) {
 		c.Status, c.Reason = agents.StatusUnsupportedVersion, ReasonVersionBelowMin
-		c.Problems = append(c.Problems, fmt.Sprintf("%s %s is older than the minimum supported %s (recommended %s)", m.Meta.DisplayName, ver.text, m.Versions.Min, m.Versions.Recommended))
-		return finish()
+		c.Problems = append(c.Problems, fmt.Sprintf("%s %s is older than the minimum supported %s (recommended %s)", m.Meta.DisplayName, version, m.Versions.Min, m.Versions.Recommended))
+		return
 	}
 	standing := manifests.StandingUntested
 	if o.Compat != nil {
 		var entry *manifests.CompatEntry
-		standing, entry = o.Compat.Classify(m.Meta.ID, ver.text)
-		if best, ok := o.Compat.Best(m.Meta.ID, ver.text); ok {
+		standing, entry = o.Compat.Classify(m.Meta.ID, version)
+		if best, ok := o.Compat.Best(m.Meta.ID, version); ok {
 			c.CompatClass = string(best.Class)
 		} else if entry != nil {
 			c.CompatClass = string(entry.Class)
@@ -200,20 +233,29 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	}
 	if standing == manifests.StandingBlocked {
 		c.Status, c.Reason = agents.StatusUnsupportedVersion, ReasonVersionBlocked
-		c.Problems = append(c.Problems, fmt.Sprintf("%s %s is on the blocked list in compat.yaml", m.Meta.DisplayName, ver.text))
-		return finish()
+		c.Problems = append(c.Problems, fmt.Sprintf("%s %s is on the blocked list in compat.yaml", m.Meta.DisplayName, version))
+		return
 	}
 
 	// 4. authentication (only after the cheap checks pass)
-	if st := probeAuth(ctx, m, path, o, &c); st == authNo {
+	if st := auth(); st == authNo {
 		c.Status, c.Reason = agents.StatusUnauthenticated, ReasonAuthProbeFalse
-		c.Problems = append(c.Problems, "not signed in: run the CLI's own login in the embedded terminal")
-		return finish()
+		if c.RunMode == agents.RunModeWSL {
+			c.Problems = append(c.Problems, "not signed in inside the distro: open a terminal in it (wsl -d "+c.Distro+") and run `claude auth login`; this sign-in is the distro's own, not the Windows one")
+		} else {
+			c.Problems = append(c.Problems, "not signed in: run the CLI's own login in the embedded terminal")
+		}
+		return
 	}
 
 	// 5. degraded conditions
+	key := c.Key
+	if key == "" {
+		key = m.Meta.ID
+	}
 	var degraded []string
-	last, haveLast := o.Last[m.Meta.ID]
+	fallback := c.fallback
+	last, haveLast := o.Last[key]
 	drift, haveDrift := o.Drift[m.Meta.ID]
 	switch {
 	case haveDrift:
@@ -226,17 +268,19 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	case fallback != "":
 		c.Reason = ReasonTransport + ":" + fallback
 		degraded = append(degraded, fallback)
-	case standing == manifests.StandingUntested && !(haveLast && last.OK && last.Version == ver.text):
+	case len(extra) > 0:
+		c.Reason = ReasonWSL
+	case standing == manifests.StandingUntested && !(haveLast && last.OK && last.Version == version):
 		c.Reason = ReasonVersionUntested
-		degraded = append(degraded, fmt.Sprintf("%s %s has not been verified by Drydock yet; run Test connection", m.Meta.DisplayName, ver.text))
+		degraded = append(degraded, fmt.Sprintf("%s %s has not been verified by Drydock yet; run Test connection", m.Meta.DisplayName, version))
 	}
+	degraded = append(degraded, extra...)
 	if len(degraded) > 0 {
 		c.Status = agents.StatusDegraded
 		c.Problems = append(c.Problems, degraded...)
-		return finish()
+		return
 	}
 	c.Status = agents.StatusReady
-	return finish()
 }
 
 func envHas(env []string, key string) bool {

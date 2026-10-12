@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -72,6 +73,8 @@ type Install struct {
 	Command  string        `yaml:"command"`
 	Note     string        `yaml:"note"`
 	Requires []Requirement `yaml:"requires"`
+	// RunMode is "wsl" for a line run inside a WSL distro (shown on the distro's Connection); empty for Windows.
+	RunMode string `yaml:"run_mode"`
 }
 
 // Requirement is a prerequisite tool.
@@ -367,6 +370,15 @@ func (m *Manifest) Validate() error {
 		}
 		if in.Shell != "powershell" && in.Shell != "cmd" && in.Shell != "sh" {
 			add("install[%d].shell must be powershell, cmd or sh, got %q", i, in.Shell)
+		}
+		switch in.RunMode {
+		case "":
+		case "wsl":
+			if in.Shell != "sh" || !slices.Contains(m.Meta.RunModes, "wsl") {
+				add("install[%d]: a run_mode wsl line needs shell sh and wsl in meta.run_modes", i)
+			}
+		default:
+			add("install[%d].run_mode must be empty or wsl, got %q", i, in.RunMode)
 		}
 		for _, r := range in.Requires {
 			p = append(p, checkReq(fmt.Sprintf("install[%d].requires", i), r)...)

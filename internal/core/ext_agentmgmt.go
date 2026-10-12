@@ -151,6 +151,9 @@ type AgentUpdate struct {
 	Practices      *bool   `json:"practices"`
 	// RouteModels replaces the models the router may choose between (an empty list turns routing off).
 	RouteModels *[]RouteModel `json:"routeModels"`
+	// RunMode ("" follows the project, native, wsl) and WSLDistro change where the CLI runs (decision P41).
+	RunMode   *string `json:"runMode"`
+	WSLDistro *string `json:"wslDistro"`
 }
 
 // validateAgentFields checks what would otherwise only fail (or misbehave) when the CLI starts: an effort the adapter does not
@@ -213,6 +216,23 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		a.Practices = *u.Practices
 		changed = append(changed, "practices")
 	}
+	if u.RunMode != nil || u.WSLDistro != nil {
+		mode, distro := a.RunMode, a.WSLDistro
+		if u.RunMode != nil {
+			mode = *u.RunMode
+		}
+		if u.WSLDistro != nil {
+			distro = *u.WSLDistro
+		}
+		m, d, err := c.checkRunMode(ctx, a.ProjectID, a.Adapter, mode, distro)
+		if err != nil {
+			return Agent{}, err
+		}
+		if m != a.RunMode || d != a.WSLDistro {
+			a.RunMode, a.WSLDistro = m, d
+			changed = append(changed, "runMode")
+		}
+	}
 	if u.RouteModels != nil {
 		rm, err := c.validateRouteModels(a.Adapter, *u.RouteModels)
 		if err != nil {
@@ -242,8 +262,8 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		if len(a.RouteModels) == 0 {
 			routes = nil
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE agents SET name=?, role=?, purpose=?, model=?, effort=?, permission_mode=?, practices=?, route_models=?, version=version+1 WHERE id=? AND archived_at=0`,
-			a.Name, a.Role, a.Purpose, a.Model, a.Effort, a.PermissionMode, b2i(a.Practices), string(routes), a.ID)
+		_, err := tx.ExecContext(ctx, `UPDATE agents SET name=?, role=?, purpose=?, model=?, effort=?, permission_mode=?, practices=?, route_models=?, run_mode=?, wsl_distro=?, version=version+1 WHERE id=? AND archived_at=0`,
+			a.Name, a.Role, a.Purpose, a.Model, a.Effort, a.PermissionMode, b2i(a.Practices), string(routes), a.RunMode, a.WSLDistro, a.ID)
 		return err
 	})
 	if err != nil {

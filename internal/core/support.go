@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -85,11 +84,10 @@ func parseGitHubRemote(url string) (owner, name string, ok bool) {
 
 // remoteRepo reads the GitHub owner and repository from the project's origin remote.
 func remoteRepo(ctx context.Context, repo *git.Repo) (owner, name string, err error) {
-	out, err := exec.CommandContext(ctx, "git", "-C", repo.Root, "remote", "get-url", "origin").Output()
+	url, err := repo.RemoteURL(ctx, "origin")
 	if err != nil {
 		return "", "", errors.New("pull requests need an 'origin' remote on github.com, and this repository has no 'origin' remote")
 	}
-	url := strings.TrimSpace(string(out))
 	owner, name, ok := parseGitHubRemote(url)
 	if !ok {
 		return "", "", fmt.Errorf("origin %q is not a github.com remote", url)

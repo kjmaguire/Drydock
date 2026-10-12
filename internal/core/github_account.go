@@ -146,7 +146,7 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 		}
 		return CloneResult{}, fmt.Errorf("cloning %s failed: %v: %s", fullName, err, msg)
 	}
-	root, branch, err := openProjectRepo(ctx, dest)
+	root, branch, err := c.openProjectRepo(ctx, dest)
 	if err != nil {
 		return CloneResult{}, err
 	}

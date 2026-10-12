@@ -54,6 +54,10 @@ func (d Deps) sandboxTurn(ctx context.Context, t tasks.Task, cfg *rt.Config) err
 	if cfg.Adapter != "claude" {
 		return fmt.Errorf("this project runs commands in a sandbox, which works with Claude Code agents in this build; this turn's agent uses %s. Assign a Claude Code agent, or turn the sandbox off in the project settings", cfg.Adapter)
 	}
+	if cfg.Spec.IsWSL() {
+		// decision P41: the sandbox's container runs the commands of an agent on Windows; one inside WSL would run its own there
+		return fmt.Errorf("this project runs commands in a sandbox, which needs the agent to run on Windows; this turn's agent runs in WSL (%s). Run it natively (its settings), or turn the sandbox off in the project settings", cfg.Spec.WSLDistro)
+	}
 	desc, err := d.Sandbox.Prepare(ctx, t)
 	if err != nil {
 		return err

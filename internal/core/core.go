@@ -37,6 +37,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/watchdog"
 	"github.com/kjmaguire/drydock/internal/workflow"
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // Config configures a Core.
@@ -64,6 +65,9 @@ type Config struct {
 	// MCPCatalog replaces the built-in MCP catalog that the library and the connector gallery offer. TEST HARNESS ONLY: the
 	// browser end-to-end harness adds an entry for its fake OAuth server (a test double); the product leaves it nil.
 	MCPCatalog *mcp.Catalog
+	// WSL reaches the WSL distros (the WSL run mode, decision P41). Default: the machine's wsl.exe through Procs; tests use
+	// the labelled stand-in (internal/wsl/wsltest).
+	WSL *wsl.Host
 }
 
 // Core is the running application.
@@ -92,6 +96,7 @@ type Core struct {
 	perm       *permissionService
 	lead       atomic.Pointer[pipeline.Lead] // the team lead service (ext_lead.go)
 	secrets    providers.SecretStore         // API keys and tokens (Credential Manager plus an encrypted overflow); nil when the host has no store
+	wsl        *wsl.Host                     // the WSL distros (ext_wsl.go)
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
@@ -138,11 +143,15 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	// Checks, previews and the dependency scan get the same extra names agents get (the person's list in settings).
 	checks.PassEnv = func() []string { return passEnvNames(context.Background(), db) }
+	c.wsl = cfg.WSL
+	if c.wsl == nil {
+		c.wsl = &wsl.Host{PM: cfg.Procs}
+	}
 	// Adapters come from the embedded manifests (Claude headless; Codex, Gemini, OpenCode and Goose over ACP; Antigravity is
 	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
 	c.Connections, err = connections.NewService(connections.Config{
-		Manifests: manifests.Options{ScrubEnv: true, PassEnv: func() []string { return passEnvNames(context.Background(), db) }},
-		Detection: connections.Options{PM: cfg.Procs, Acked: acked, Last: c.loadTestOutcomes(ctx), Drift: c.loadDrift(ctx)},
+		Manifests: manifests.Options{ScrubEnv: true, PassEnv: func() []string { return passEnvNames(context.Background(), db) }, WSL: c.wsl},
+		Detection: connections.Options{PM: cfg.Procs, Acked: acked, Last: c.loadTestOutcomes(ctx), Drift: c.loadDrift(ctx), WSL: c.wsl},
 	})
 	if err != nil {
 		cancel()
@@ -180,7 +189,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding}
-	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions}
+	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions,
+		RunMode: c.agentRunMode}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,
@@ -340,11 +350,11 @@ func scanProject(sc interface{ Scan(...any) error }) (Project, error) {
 }
 
 // openProjectRepo validates a local repository for a project: it must be a Git repository with a checked-out branch.
-func openProjectRepo(ctx context.Context, repoPath string) (root, branch string, err error) {
+func (c *Core) openProjectRepo(ctx context.Context, repoPath string) (root, branch string, err error) {
 	if err := needFullPath("the repository folder", repoPath); err != nil {
 		return "", "", err
 	}
-	repo, err := git.Open(ctx, repoPath)
+	repo, err := c.openRepo(ctx, repoPath)
 	if err != nil {
 		return "", "", fmt.Errorf("%s is not a usable Git repository: %w", repoPath, err)
 	}
@@ -374,7 +384,7 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	root, branch := "", ""
 	if repoPath != "" {
 		var err error
-		if root, branch, err = openProjectRepo(ctx, repoPath); err != nil {
+		if root, branch, err = c.openProjectRepo(ctx, repoPath); err != nil {
 			return Project{}, err
 		}
 		if name == "" {
@@ -419,7 +429,7 @@ func (c *Core) AttachRepository(ctx context.Context, projectID, repoPath string)
 	if strings.TrimSpace(repoPath) == "" {
 		return p, errors.New("choose a local Git repository to attach")
 	}
-	root, branch, err := openProjectRepo(ctx, strings.TrimSpace(repoPath))
+	root, branch, err := c.openProjectRepo(ctx, strings.TrimSpace(repoPath))
 	if err != nil {
 		return p, err
 	}
@@ -524,7 +534,7 @@ func (c *Core) repo(ctx context.Context, projectID string) (*git.Repo, error) {
 	if !p.HasRepo {
 		return nil, ErrNoRepository
 	}
-	r, err = git.Open(ctx, p.RepoPath)
+	r, err = c.openRepo(ctx, p.RepoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -589,6 +599,10 @@ type Agent struct {
 	Archived  bool   `json:"archived,omitempty"`
 	// RouteModels are the models the model router may choose between for this agent's turns. Empty: always Model.
 	RouteModels []RouteModel `json:"routeModels"`
+	// RunMode is where the agent's CLI runs (decision P41): "" follows the project's default, "native" on Windows, "wsl"
+	// inside the WSL distro WSLDistro.
+	RunMode   string `json:"runMode"`
+	WSLDistro string `json:"wslDistro"`
 }
 
 // RouteModel is one model the router may choose for an agent, with the tier the router's ladder treats it as.
@@ -610,6 +624,9 @@ type AgentSpec struct {
 	Purpose        string `json:"purpose"`
 	// Practices turns the Claude best-practices text on or off; omitted means on.
 	Practices *bool `json:"practices"`
+	// RunMode and WSLDistro: where the CLI runs ("" follows the project, "native", or "wsl" with a distro).
+	RunMode   string `json:"runMode"`
+	WSLDistro string `json:"wslDistro"`
 }
 
 // CreateAgent adds an agent to the team. The adapter must be one Drydock knows.
@@ -647,10 +664,15 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if err := c.checkPermissionMode(s.Adapter, s.PermissionMode); err != nil {
 		return Agent{}, err
 	}
-	a := Agent{ID: ids.New("agt"), ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED"}
-	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO agents(id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-			a.ID, a.ProjectID, a.Name, a.Adapter, a.Role, a.Model, a.Effort, a.ProviderID, a.PermissionMode, a.Purpose, b2i(a.Practices), storage.Now())
+	var err error
+	if s.RunMode, s.WSLDistro, err = c.checkRunMode(ctx, s.ProjectID, s.Adapter, s.RunMode, s.WSLDistro); err != nil {
+		return Agent{}, err
+	}
+	a := Agent{ID: ids.New("agt"), ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED",
+		RunMode: s.RunMode, WSLDistro: s.WSLDistro}
+	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO agents(id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,run_mode,wsl_distro,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			a.ID, a.ProjectID, a.Name, a.Adapter, a.Role, a.Model, a.Effort, a.ProviderID, a.PermissionMode, a.Purpose, b2i(a.Practices), a.RunMode, a.WSLDistro, storage.Now())
 		return err
 	})
 	if err != nil {
@@ -672,7 +694,7 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 
 // Agents lists a project's team.
 func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -682,7 +704,7 @@ func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
 		var a Agent
 		var archived, practices int64
 		var routes string
-		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes); err != nil {
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro); err != nil {
 			return nil, err
 		}
 		a.Archived, a.Practices = archived != 0, practices != 0
@@ -696,8 +718,8 @@ func (c *Core) agent(ctx context.Context, id string) (Agent, error) {
 	var a Agent
 	var archived, practices int64
 	var routes string
-	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models FROM agents WHERE id=?`, id).
-		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes)
+	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE id=?`, id).
+		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro)
 	a.Archived, a.Practices = archived != 0, practices != 0
 	a.RouteModels = parseRouteModels(routes)
 	return a, err
@@ -723,6 +745,7 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 		return rt.Config{AgentID: id, Adapter: "missing:" + id} // surfaces as a clear "unknown adapter" failure on the node
 	}
 	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
+	spec.RunMode, spec.WSLDistro = c.effectiveRunMode(context.Background(), a)
 	if role == "review" {
 		spec.PermissionMode, spec.ReadOnly = "plan", true // the reviewer reads; it never edits (the prompt also says so)
 		spec.Role = "reviewer"

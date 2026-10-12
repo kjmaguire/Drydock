@@ -5,6 +5,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -94,6 +95,32 @@ type RunSpec struct {
 	// Empty: the CLI's own permission mode and rules decide alone (a headless Claude then refuses what they do not allow).
 	PermissionPromptTool string
 	ExtraArgs            []string // adapter-specific escape hatch
+	// RunMode is where the CLI runs: RunModeNative ("" too) or RunModeWSL, inside the WSL distro WSLDistro (decision P41).
+	// Only an adapter whose Capabilities list the mode accepts it; the others refuse to start.
+	RunMode   string
+	WSLDistro string
+}
+
+// Run modes (Capabilities.RunModes, RunSpec.RunMode).
+const (
+	RunModeNative = "native"
+	RunModeWSL    = "wsl"
+)
+
+// IsWSL reports whether the spec asks for the WSL run mode.
+func (s RunSpec) IsWSL() bool { return s.RunMode == RunModeWSL }
+
+// CheckRunMode refuses a run mode the adapter does not list (empty and native are always accepted).
+func CheckRunMode(a Adapter, spec RunSpec) error {
+	if spec.RunMode == "" || spec.RunMode == RunModeNative {
+		return nil
+	}
+	for _, m := range a.Capabilities().RunModes {
+		if m == spec.RunMode {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s cannot run in the %s run mode on this machine", a.ID(), spec.RunMode)
 }
 
 // Session is a running agent CLI process speaking a normalized chunk stream.

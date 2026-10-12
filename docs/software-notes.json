@@ -154,6 +154,10 @@
       "role": "Installs Node in CI.",
       "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
     },
+    "action:Vampire/setup-wsl": {
+      "role": "Installs an Ubuntu 24.04 WSL 2 distro on the GitHub-hosted Windows runner for CI's wsl job, which proves the WSL run mode against it with a stand-in claude (decision P41).",
+      "note": "Major tag v7 (v7.0.0, Node 24), the newest; only the wsl job uses it, and that job always runs on a GitHub-hosted runner so no distro is installed on a self-hosted one."
+    },
     "action:actions/upload-artifact": {
       "role": "Keeps test output from CI runs.",
       "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."

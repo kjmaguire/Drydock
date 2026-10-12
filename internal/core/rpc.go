@@ -105,8 +105,9 @@ func (c *Core) Methods() map[string]Method {
 		"connection.test": bind(func(ctx context.Context, p struct {
 			Adapter string `json:"adapter"`
 			Prompt  bool   `json:"prompt"` // also send one tiny prompt on the cheapest model (uses the human's account)
+			Distro  string `json:"distro"` // test the install inside this WSL distro instead of the native one
 		}) (any, error) {
-			return c.TestConnection(ctx, p.Adapter, p.Prompt)
+			return c.TestConnectionIn(ctx, p.Adapter, p.Distro, p.Prompt)
 		}),
 		"adapter.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.DescribeAdapters(ctx), nil }),
 		"agent.create": bind(func(ctx context.Context, p struct {

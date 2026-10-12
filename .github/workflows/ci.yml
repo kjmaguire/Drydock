@@ -58,6 +58,37 @@ jobs:
           Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+\.go:\d+:' | ForEach-Object { $_.Line }
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
+  wsl:
+    # The WSL run mode (decision P41) against a real distro: Vampire/setup-wsl installs Ubuntu 24.04 under WSL 2 on the
+    # GitHub-hosted Windows runner (WSL 2 is available on its images; the action defaults to it since v6), and the tests drive
+    # it through the real wsl.exe with the LABELLED stand-in claude (internal/wsl/wsltest), never a real Claude Code: the
+    # UTF-16 distro list, detection through a login shell, the launch with translated paths, stream-json both ways over
+    # wsl.exe's pipes, the MCP shim (a Windows program) started from inside through interop with only what WSLENV names, a
+    # repository inside the distro with its worktree next to it, and that stopping kills the run's Linux processes.
+    # It always runs on a GitHub-hosted runner, never on WINDOWS_RUNS_ON: it installs a distro, which a self-hosted runner on
+    # the owner's PC must not get by surprise.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: git
+      - name: Git identity for tests
+        run: |
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: The WSL run mode against the real distro (stand-in claude; nothing is signed in, nothing is spent)
+        env:
+          DRYDOCK_NO_REAL_AGENTS: "1"
+          DRYDOCK_WSL_TEST_DISTRO: Ubuntu-24.04
+        run: go test ./internal/wsl/ ./internal/git/ ./internal/agents/claude/ -run "TestRealWSL" -count=1 -v
   trial-suite:
     # every trial task's hidden check fails on the fixture and passes on its reference solution (docs/evals.md section 13)
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}

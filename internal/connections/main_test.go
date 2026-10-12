@@ -12,6 +12,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents/acp/fakeacp"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
 
 // TestMain turns the test binary into one of three stand-in processes when asked to:
@@ -26,6 +27,8 @@ import (
 // conformance run against the real CLI, which the *Real* and *Live* tests do when the CLI is present.
 func TestMain(m *testing.M) {
 	switch {
+	case wsltest.IsStandIn(): // the LABELLED stand-in wsl.exe (internal/wsl/wsltest)
+		os.Exit(wsltest.StandIn(os.Args[1:]))
 	case os.Getenv("DRYDOCK_STUB_CLI") == "1":
 		os.Exit(stubMain(os.Args, os.Stdout, os.Stderr))
 	case os.Getenv("DRYDOCK_FAKE_AGENT") == "1":

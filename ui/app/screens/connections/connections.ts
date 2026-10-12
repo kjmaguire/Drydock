@@ -18,6 +18,28 @@ export function reportMeta(r: ConnectionReport): string {
   return `${r.adapter}${r.cliVersion ? ` ${r.cliVersion}` : ''} via ${r.transport || 'unknown transport'} on ${r.platform}; ${r.form} form, took ${(r.elapsed / 1e9).toFixed(1)} s. Tokens used by the test: ${r.tokensUsed > 0 ? r.tokensUsed : 'not reported'}.`;
 }
 
+/** The card's key: the Windows install is the adapter id, one inside a WSL distro has its own (decision P41). */
+export const connectionKey = (c: Pick<Connection, 'adapter' | 'key'>): string => c.key || c.adapter;
+
+export const isWSL = (c: Pick<Connection, 'runMode'>): boolean => c.runMode === 'wsl';
+
+/** "claude" for the Windows install, "claude in WSL (Ubuntu)" for one inside a distro. */
+export const connectionTitle = (c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>): string => (isWSL(c) ? `${c.adapter} in WSL (${c.distro ?? ''})` : c.adapter);
+
+/** Where the CLI runs, in plain words. */
+export function runsText(c: Pick<Connection, 'runMode' | 'distro' | 'wsl'>): string {
+  if (!isWSL(c)) return 'on Windows';
+  const v = c.wsl?.wsl2 || c.wsl?.wslVersion === 2 ? 'WSL 2' : c.wsl?.wslVersion === 1 ? 'WSL 1' : 'WSL';
+  return `inside the ${v} distro ${c.distro ?? ''}${c.wsl?.default ? ' (the default distro)' : ''}`;
+}
+
+/** The networking mode and what it means for Drydock's tools. */
+export function netModeText(mode: string | undefined): string {
+  if (!mode) return 'not reported (WSL uses NAT unless .wslconfig says otherwise)';
+  if (mode === 'mirrored') return 'mirrored: the distro shares Windows localhost';
+  return `${mode}: the distro cannot reach Windows localhost directly`;
+}
+
 export function prereqText(p: Prereq): string {
   return `${p.tool}${p.min ? ` (needs ${p.min} or newer)` : ''}: ${p.found ? `found${p.version ? ` ${p.version}` : ''}` : 'not found'}`;
 }

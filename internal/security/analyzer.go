@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // Confidence is how much the analyzer knows about what a command will do. The order matters: combining two results
@@ -60,6 +62,10 @@ type CommandInput struct {
 	Shell ShellKind
 	Cwd   string // working directory of the command; empty means Root
 	Root  string // the worktree root every path is checked against
+	// WSL is set for an agent running inside a WSL distro (decision P41): the command is a Linux shell's, Cwd and Root are
+	// Windows paths of the worktree (a drive or \\wsl.localhost), and every path in the command is mapped into the distro,
+	// checked there and reported as its real location on Windows (Guard.ResolveWSL).
+	WSL *wsl.Paths
 }
 
 // Arg is one evaluated argument. Dynamic means its value is not known statically (variable, substitution, glob
@@ -197,6 +203,8 @@ type run struct {
 	cwd      string
 	cwdKnown bool
 	root     string
+	g        Guard      // the guard paths are checked with: the analyzer's, or POSIX inside a WSL distro
+	wsl      *wsl.Paths // set for an agent inside a WSL distro: root and cwd are its Linux paths
 
 	vars   map[string]string
 	funcs  map[string]bool
@@ -249,14 +257,30 @@ func (a *RuleAnalyzer) Analyze(ctx context.Context, in CommandInput) (CommandRep
 	rep := CommandReport{Confidence: ParsedExact, Shell: in.Shell}
 	r := &run{ctx: ctx, a: a, in: in, rep: &rep, conf: ParsedExact, vars: map[string]string{}, funcs: map[string]bool{},
 		classSet: map[Class]bool{}, kindSet: map[string]bool{}, ruleSet: map[string]bool{}, reasonSet: map[string]bool{}, pathSeen: map[string]bool{}}
-	r.root = in.Root
+	r.root, r.g = in.Root, a.guard
 	cwd := in.Cwd
 	if cwd == "" {
 		cwd = in.Root
 	}
+	if in.WSL != nil {
+		// inside a distro the command is a Linux shell's: check it in the distro's terms, report real locations
+		in.Shell = ShellBash
+		rep.Shell = ShellBash
+		r.wsl, r.g = in.WSL, posixLexical
+		r.root, r.cwd = "", ""
+		if l, err := in.WSL.ToLinux(in.Root); err == nil {
+			r.root = l
+		}
+		if l, err := in.WSL.ToLinux(cwd); err == nil {
+			cwd = l
+		} else {
+			cwd = ""
+		}
+		r.in = in
+	}
 	r.cwd, r.cwdKnown = cwd, cwd != ""
-	if r.cwdKnown && in.Root != "" {
-		if _, err := a.guard.Resolve(in.Root, cwd); err != nil {
+	if r.cwdKnown && r.root != "" {
+		if _, err := r.g.Resolve(r.root, cwd); err != nil {
 			// a working directory outside the root is allowed to exist; relative paths then resolve outside
 			r.reason("working directory is outside the worktree")
 		}

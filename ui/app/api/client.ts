@@ -13,6 +13,7 @@ import { createProviderClient, type ProviderClient } from './providerClient.ts';
 import { createSetupClient, type SetupClient } from './setupClient.ts';
 import { createLeadClient, type LeadClient } from './leadClient.ts';
 import { createChatClient, type ChatClient } from './chatClient.ts';
+import { createWSLClient, type WSLClient } from './wslClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -49,7 +50,7 @@ import type {
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const gitConfig = (v: GitConfigStatus | null): GitConfigStatus => ({ trusted: v?.trusted === true, changed: arr(v?.changed), fingerprint: v?.fingerprint ?? '' });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -92,7 +93,8 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   connectionList(): Promise<Connection[]>;
   connectionAcknowledge(gateId: string): Promise<void>;
   /** With prompt, also one tiny prompt on the adapter's cheapest model (uses the person's account). */
-  connectionTest(adapter: string, prompt?: boolean): Promise<ConnectionReport>;
+  /** distro tests the install inside that WSL distro (its own Connection) instead of the Windows one. */
+  connectionTest(adapter: string, prompt?: boolean, distro?: string): Promise<ConnectionReport>;
   providerList(): Promise<Provider[]>;
   providerCreate(p: NewProvider): Promise<Provider>;
   providerDelete(id: string): Promise<void>;
@@ -126,6 +128,7 @@ export function createClient(t: Transport): Client {
     ...createSetupClient(t),
     ...createLeadClient(t),
     ...createChatClient(t),
+    ...createWSLClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
@@ -171,8 +174,8 @@ export function createClient(t: Transport): Client {
     connectionAcknowledge: async (gateId) => {
       await t.call('connection.acknowledge', { gateId });
     },
-    connectionTest: async (adapter, prompt = false) => {
-      const r = await t.call<ConnectionReport>('connection.test', { adapter, prompt });
+    connectionTest: async (adapter, prompt = false, distro = '') => {
+      const r = await t.call<ConnectionReport>('connection.test', { adapter, prompt, distro });
       return { ...r, steps: arr(r.steps), matrix: r.matrix ?? {} };
     },
     providerList: async () => arr(await t.call<Provider[] | null>('provider.list')),

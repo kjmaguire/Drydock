@@ -176,7 +176,7 @@ Legend: **Done** = answered from evidence in this session; **Partial** = answere
 | 5 | Model/effort flags, resume, interrupt, permission modes | Partial | Flags and ACP cancel confirmed. Headless interrupt behavior UNVERIFIED for Codex exec, Gemini, OpenCode run, Goose. |
 | 5a | Tool-call visibility | Done | Claude true; Gemini true; OpenCode true (ACP full, `run` completed-only); Codex exec partial, ACP true; Goose ACP true, headless shape UNVERIFIED. |
 | 6 | MCP config and usage/cost reporting | Done | agent-clis per-CLI tables. |
-| 7 | Auth, native vs WSL | Partial | Credential locations and flows recorded; WSL and Windows behavior not run. |
+| 7 | Auth, native vs WSL | Partial | Credential locations and flows recorded. The WSL run mode for Claude Code is built (decision P41): a distro's install is its own Connection with its own sign-in (the CLI's own `auth status` inside the distro). Proven against a labelled stand-in claude on the Linux host and, by CI's `wsl` job, against a real WSL 2 distro on the GitHub-hosted Windows runner (detection, launch, paths, stream-json, interop, stopping the Linux processes). A real signed-in Claude Code inside a distro, and every other CLI under WSL, not run. |
 | 8 | Prompt cache across model changes | Partial | Anthropic (Claude Code docs quote), Gemini and OpenRouter quoted; OpenAI first-party quote UNVERIFIED. |
 | 9 | Provider terms on automation | Partial | Anthropic and Gemini quoted from primary sources (D1, D2); OpenAI and Antigravity UNVERIFIED. |
 | 10 | Claude Design | Done | A product surface (`claude.ai/design`, `/design`), not a CLI or ACP agent. Not an adapter target. |
@@ -234,7 +234,7 @@ Declarative manifest scope (spawn argv, detection, version range, env, auth prob
 
 Run these on a Windows 10/11 machine, in this order, before the corresponding code is trusted:
 
-1. **Process trees (item 2).** A fixture agent that spawns grandchildren (for example a script that runs `npm test`, which spawns `node`); kill via per-agent Job Object and via app-level job; confirm no orphans, in native mode and in `wsl` mode (does killing the Windows-side process stop Linux processes; if not, signal the process group in the distro). Test nested jobs, `CREATE_SUSPENDED` plus job assignment, and ConPTY children.
+1. **Process trees (item 2).** A fixture agent that spawns grandchildren (for example a script that runs `npm test`, which spawns `node`); kill via per-agent Job Object and via app-level job; confirm no orphans, in native mode and in `wsl` mode (does killing the Windows-side process stop Linux processes; if not, signal the process group in the distro). For `wsl` mode Drydock no longer depends on the answer (P41): every process of a run carries a marker and Stop kills the marked processes and their process groups inside the distro; `TestRealWSLListsProbesAndKillsByMarker` logs what the Job Object kill left alive on the CI runner. Test nested jobs, `CREATE_SUSPENDED` plus job assignment, and ConPTY children.
 2. **tree-sitter CGO build in CI (item 17).** `windows-latest`, MinGW gcc, 10 grammars: build, run the parse test, measure exe size, scan the exe with Defender.
 3. **Wails v3 run and packaging.** Window, WebView2, service calls, event streaming latency; NSIS user-scope installer; signed vs unsigned SmartScreen behavior; updater swap in a user-scope install.
 4. **SQLite on NTFS with Defender active**, rerunning the concurrency and batch benchmarks (the Windows lib is built with `SQLITE_MUTEX_NOOP`).

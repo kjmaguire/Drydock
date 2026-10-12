@@ -641,9 +641,9 @@ func TestOlderSchemaIsMigratedForwardOnImport(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, q := range []string{`ALTER TABLE agent_templates DROP COLUMN practices`, `DROP TABLE agent_templates`, `DROP TABLE agent_mcp_access`, `DROP TABLE project_mcp_servers`, `DROP TABLE mcp_library`, `DROP TABLE integration_outbox`, `DROP TABLE integration_rule_matches`, `DROP TABLE integration_rules`, `DROP TABLE external_items`,
-			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN practices`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DROP TABLE IF EXISTS room_attachments`, `ALTER TABLE agents DROP COLUMN route_models`, `ALTER TABLE projects DROP COLUMN brief`,
+			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN practices`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DROP TABLE IF EXISTS room_attachments`, `ALTER TABLE agents DROP COLUMN route_models`, `ALTER TABLE agents DROP COLUMN wsl_distro`, `ALTER TABLE agents DROP COLUMN run_mode`, `ALTER TABLE projects DROP COLUMN brief`,
 			`DROP TABLE chats_fts`, `DROP TABLE chat_messages_fts`, `DROP TABLE chat_turns`, `DROP TABLE chat_messages`, `DROP TABLE chats`,
-			`DROP INDEX IF EXISTS events_project`, `ALTER TABLE task_reviews DROP COLUMN commit_sha`, `ALTER TABLE skills DROP COLUMN audience`, `DROP TABLE agent_skills`, `DROP TABLE lead_interventions`, `ALTER TABLE skills DROP COLUMN parse_notes`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 106, 107, 108, 109, 110, 111, 112)`} {
+			`DROP INDEX IF EXISTS events_project`, `ALTER TABLE task_reviews DROP COLUMN commit_sha`, `ALTER TABLE skills DROP COLUMN audience`, `DROP TABLE agent_skills`, `DROP TABLE lead_interventions`, `ALTER TABLE skills DROP COLUMN parse_notes`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 106, 107, 108, 109, 110, 111, 112, 113)`} {
 			if _, err := raw.Exec(q); err != nil {
 				t.Fatalf("%s: %v", q, err)
 			}

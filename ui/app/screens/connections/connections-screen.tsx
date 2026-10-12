@@ -3,7 +3,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { Check, CircleCheck, FlaskConical, Link2, Minus, ScrollText, TriangleAlert, X } from 'lucide';
-import type { Connection, ConnectionReport, GateStatus } from '../../api/types.ts';
+import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import { query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, muted } from '../../ui/data.tsx';
@@ -12,7 +12,7 @@ import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { cellText, matrixRows, prereqText, provTone, reportMeta, signedInText, statusTone, stepTone } from './connections.ts';
+import { cellText, connectionKey, connectionTitle, isWSL, matrixRows, netModeText, prereqText, provTone, reportMeta, runsText, signedInText, statusTone, stepTone } from './connections.ts';
 
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 const grid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: t.s4, alignItems: 'start', '@media (max-width: 520px)': { gridTemplateColumns: '1fr' } });
@@ -169,6 +169,53 @@ function Gate(handle: Handle<{ g: GateStatus; onAck: (id: string) => Promise<voi
   };
 }
 
+/** What the probe found in a WSL distro, in plain words. */
+function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
+  return () => {
+    const { f } = handle.props;
+    return (
+      <details mix={detailsCss} data-testid="wsl-facts">
+        <summary>The distro</summary>
+        <dl mix={kv} style={{ marginTop: '8px' }}>
+          <dt>Windows programs from inside (interop)</dt>
+          <dd>{f.interop ? 'on' : 'off: Drydock’s tools cannot reach an agent here'}</dd>
+          <dt>Networking</dt>
+          <dd>{netModeText(f.netMode)}</dd>
+          {f.mountRoot ? (
+            <>
+              <dt>Windows drives at</dt>
+              <dd>
+                <code>{f.mountRoot}</code>
+              </dd>
+            </>
+          ) : null}
+          {f.home ? (
+            <>
+              <dt>Linux home</dt>
+              <dd>
+                <code>{f.home}</code>
+              </dd>
+            </>
+          ) : null}
+          {f.git ? (
+            <>
+              <dt>Git</dt>
+              <dd>{f.git}</dd>
+            </>
+          ) : null}
+        </dl>
+        <ul>
+          {(f.notes ?? []).map((n, i) => (
+            <li key={i} mix={lineCss}>
+              {n}
+            </li>
+          ))}
+        </ul>
+      </details>
+    );
+  };
+}
+
 function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>) {
   const s = services(handle);
   let confirming = false;
@@ -196,7 +243,8 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
       confirming = false;
     });
     try {
-      report = await s.client.connectionTest(handle.props.c.adapter, prompt);
+      const c = handle.props.c;
+      report = isWSL(c) ? await s.client.connectionTest(c.adapter, prompt, c.distro) : await s.client.connectionTest(c.adapter, prompt);
       handle.props.onChanged();
     } catch (e) {
       error = e as Error;
@@ -207,17 +255,27 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
 
   return () => {
     const { c } = handle.props;
+    const inWSL = isWSL(c);
     return (
-      <article mix={[card, cardCss]} data-testid="connection" data-adapter={c.adapter} data-usable={String(c.usable)}>
+      <article
+        mix={[card, cardCss]}
+        data-testid="connection"
+        data-adapter={c.adapter}
+        data-key={connectionKey(c)}
+        data-run-mode={inWSL ? 'wsl' : 'native'}
+        data-usable={String(c.usable)}
+      >
         <header mix={head}>
           <Avatar id={c.adapter} name={c.adapter} size={32} square />
-          <h2>{c.adapter}</h2>
+          <h2>{connectionTitle(c)}</h2>
           <Badge tone={statusTone(c.status)}>{c.status}</Badge>
           <Badge tone={c.usable ? 'ok' : 'warn'} title="Usable means the CLI is ready and every notice below is accepted">
             {c.usable ? 'usable' : 'not usable yet'}
           </Badge>
         </header>
         <dl mix={kv}>
+          <dt>Runs</dt>
+          <dd>{runsText(c)}</dd>
           <dt>Installed</dt>
           <dd>{c.installed ? 'yes' : 'no'}</dd>
           {c.version ? (
@@ -257,6 +315,13 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
           ) : null}
         </dl>
         {c.authDetail ? <p mix={muted}>{c.authDetail}</p> : null}
+        {inWSL ? (
+          <p mix={faint}>
+            This install has its own sign-in, separate from Windows. To sign in, open a terminal in the distro (<code>wsl -d {c.distro}</code>) and run <code>claude auth login</code>. Drydock
+            never reads or copies it.
+          </p>
+        ) : null}
+        {c.wsl ? <DistroFacts f={c.wsl} /> : null}
         {(c.problems ?? []).map((p, i) => (
           <p key={i} mix={problemCss}>
             {p}
@@ -300,7 +365,9 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
           </div>
         ) : (
           <div mix={confirmCss}>
-            <p>Test starts the real {c.adapter} CLI on this machine and checks that it starts, answers and stops.</p>
+            <p>
+              Test starts the real {c.adapter} CLI {inWSL ? `inside the WSL distro ${c.distro ?? ''}` : 'on this machine'} and checks that it starts, answers and stops.
+            </p>
             <Checkbox
               label="Also send one tiny prompt"
               description="On the cheapest model. It uses your account: a fraction of a cent. Without it the answer is not checked."
@@ -333,7 +400,7 @@ export function ConnectionsScreen(handle: Handle) {
       <Page title="Connections" icon={Link2} subtitle={q.data ? `${usable} of ${list.length} usable` : undefined}>
         <p mix={introCss}>
           Agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials. A CLI is usable only when it is ready
-          and every notice below has been accepted by you.
+          and every notice below has been accepted by you. A CLI installed inside a WSL distro has a card of its own, with its own sign-in.
         </p>
         <ErrorNote error={q.error} what="Could not list connections" />
         {q.loading && !q.data ? <Loading label="Detecting..." /> : null}
@@ -346,7 +413,7 @@ export function ConnectionsScreen(handle: Handle) {
         ) : null}
         <div mix={grid}>
           {list.map((c) => (
-            <ConnectionCard key={c.adapter} c={c} onChanged={q.reload} />
+            <ConnectionCard key={connectionKey(c)} c={c} onChanged={q.reload} />
           ))}
         </div>
       </Page>

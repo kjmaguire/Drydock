@@ -63,7 +63,7 @@ func (p *permissionService) Permit(ctx context.Context, req mcp.PermissionReques
 	}
 	out := gate.Decide(ctx,
 		security.PermissionScope{Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID},
-		security.ToolRequest{Tool: req.ToolName, Input: json.RawMessage(req.Input), Root: req.Run.Worktree})
+		security.ToolRequest{Tool: req.ToolName, Input: json.RawMessage(req.Input), Root: req.Run.Worktree, WSL: req.Run.WSL})
 	return mcp.PermissionAnswer{Allow: out.Allow, Message: out.Message, Outcome: out.Outcome}
 }
 

@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // Names fixed by docs/mcp.md.
@@ -198,6 +200,9 @@ type RunInfo struct {
 	AgentID   string
 	Role      string
 	Worktree  string
+	// WSL is set when the agent runs inside a WSL distro (decision P41): its tool requests name Linux paths, which the
+	// permission prompt maps to their real Windows locations before checking them against Worktree.
+	WSL *wsl.Paths
 }
 
 // RunPolicy is the per-run tool policy built by the Context Engine (docs/mcp.md section 3). Deny by default.
