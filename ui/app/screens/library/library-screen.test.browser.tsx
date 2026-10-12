@@ -88,7 +88,10 @@ describe('Library page', () => {
     const sec = await one(r, '[data-testid="library-prebuilt"]');
     await waitFor(() => expect(sec.querySelectorAll('[data-testid="prebuilt"]').length).toBe(CATALOG.length), r);
     expect(sec.textContent).toContain('Cloudflare Engineer');
-    expect(sec.querySelectorAll('[data-testid="prebuilt"] button').length).toBe(0);
+    // read-only: nothing adds an agent here; every card can still be opened to see what it comes with (decision P43)
+    const names = Array.from(sec.querySelectorAll('[data-testid="prebuilt"] button')).map((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').trim());
+    expect(names.filter((n) => n.startsWith('Add')).length).toBe(0);
+    expect(names).toContain('What Cloudflare Engineer comes with');
   });
 
   it('dropping a server on a project puts it there', async () => {

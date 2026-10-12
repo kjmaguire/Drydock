@@ -16,6 +16,7 @@ import { Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section, stack } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ConnectorGallery } from './gallery.tsx';
 import { whereOf } from './server-input.ts';
 
 export const cardHead = css({
@@ -342,20 +343,37 @@ export function McpScreen(handle: Handle) {
   return () => {
     const projectId = s.workspace.projectId;
     const project = s.workspace.project;
-    if (!projectId && !s.workspace.projects.data) {
-      return (
-        <Page title="MCP servers" icon={Server}>
-          <Loading />
-        </Page>
-      );
-    }
+    const intro = (
+      <p mix={introCss}>
+        An MCP server gives agents extra tools: documentation search, an issue tracker, a database. Connect a server once, here or in the <a href={routes.library.href()}>Library</a>, put
+        it into the projects that should have it, and choose which agents of each project may use it. A server nobody was granted is never reached. Anything a server returns is
+        treated as outside text, and every tool you have not marked read-only waits for your approval, call by call. Secrets stay in the Windows credential store. Claude Code
+        agents receive these servers; another agent CLI receives them only after you allow it under Agent CLIs in the <a href={routes.library.href()}>Library</a>, because no real run has shown yet that it uses them.
+      </p>
+    );
+    const libraryLink = (
+      <a href={routes.library.href()} mix={buttonStyle('ghost', 'sm')}>
+        <Icon icon={Wrench} size={14} />
+        Connect servers in the Library
+      </a>
+    );
     if (!projectId) {
       return (
-        <Page title="MCP servers" icon={Server}>
-          <Empty title="No project selected" icon={Server}>
-            <p>MCP servers are put into a project and granted to its agents. Create or choose a project first.</p>
-            <a href={routes.projectNew.href()}>Create a project</a>
-          </Empty>
+        <Page title="MCP servers" icon={Server} actions={libraryLink}>
+          {intro}
+          <ConnectorGallery />
+          {s.workspace.projects.data ? (
+            <Section title="In a project">
+              <div mix={card}>
+                <Empty title="No project selected" icon={Server}>
+                  <p>MCP servers are put into a project and granted to its agents. Connect them above now; create or choose a project to add them to.</p>
+                  <a href={routes.projectNew.href()}>Create a project</a>
+                </Empty>
+              </div>
+            </Section>
+          ) : (
+            <Loading />
+          )}
         </Page>
       );
     }
@@ -366,21 +384,12 @@ export function McpScreen(handle: Handle) {
         title="MCP servers"
         icon={Server}
         subtitle={project ? `${project.name}${q.data ? ` · ${servers.length} server${servers.length === 1 ? '' : 's'}` : ''}` : undefined}
-        actions={
-          <a href={routes.library.href()} mix={buttonStyle('ghost', 'sm')}>
-            <Icon icon={Wrench} size={14} />
-            Connect servers in the Library
-          </a>
-        }
+        actions={libraryLink}
       >
-        <p mix={introCss}>
-          An MCP server gives agents extra tools: documentation search, an issue tracker, a database. You connect a server once in the <a href={routes.library.href()}>Library</a>, put
-          it into the projects that should have it, and choose which agents of each project may use it. A server nobody was granted is never reached. Anything a server returns is
-          treated as outside text, and every tool you have not marked read-only waits for your approval, call by call. Secrets stay in the Windows credential store. Claude Code
-          agents receive these servers; another agent CLI receives them only after you allow it under Agent CLIs in the <a href={routes.library.href()}>Library</a>, because no real run has shown yet that it uses them.
-        </p>
+        {intro}
         <ErrorNote error={q.error} what="Could not load the servers" />
         <Approvals projectId={projectId} agents={agents} />
+        <ConnectorGallery />
         <Section title="In this project">
           {q.loading && !q.data ? <Loading /> : null}
           {q.data && servers.length === 0 ? (
