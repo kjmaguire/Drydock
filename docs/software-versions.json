@@ -1,11 +1,11 @@
 {
-  "generated": "2026-10-12T16:27:45Z",
-  "commit": "110c4db",
+  "generated": "2026-10-12T16:57:10Z",
+  "commit": "b755878",
   "summary": {
-    "current": 281,
+    "current": 283,
     "major": 8,
     "minor": 89,
-    "patch": 80,
+    "patch": 78,
     "prerelease": 2,
     "unknown": 1
   },
@@ -1021,6 +1021,8 @@
       "usedDate": "2026-09-09",
       "latestDate": "2026-10-09",
       "where": "go.mod",
+      "role": "Listed by openai-go's own module file (its AWS Bedrock support); no Drydock package imports it, so it is not built into Drydock.",
+      "hold": "Its version is the one openai-go asks for: pinning a newer one in go.mod would be removed again by go mod tidy, since nothing here needs the module. It moves when openai-go does.",
       "inBuild": false
     },
     {
@@ -2955,11 +2957,10 @@
       "group": "Go libraries pulled in by other libraries",
       "name": "github.com/klauspost/compress",
       "kind": "indirect",
-      "used": "1.20.1",
+      "used": "1.20.3",
       "latest": "1.20.3",
-      "status": "patch",
-      "usedDate": "2026-09-25",
-      "latestDate": "2026-10-12",
+      "status": "current",
+      "usedDate": "2026-10-12",
       "where": "go.mod",
       "inBuild": true
     },
@@ -5775,9 +5776,9 @@
       "group": "UI libraries (shipped in the app)",
       "name": "marked",
       "kind": "direct",
-      "used": "18.1.0",
+      "used": "18.1.1",
       "latest": "18.1.1",
-      "status": "patch",
+      "status": "current",
       "where": "ui/package.json",
       "role": "Turns Markdown (agent messages, task text) into HTML for the screen.",
       "note": "It handles text agents write, so XSS tests cover it (e2e/xss.spec.ts). Any upgrade has to keep those passing."

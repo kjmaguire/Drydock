@@ -39,6 +39,10 @@
       "role": "Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose.",
       "note": "Pre-1.0; the protocol is still changing."
     },
+    "go:github.com/aws/aws-sdk-go-v2/feature/ec2/imds": {
+      "role": "Listed by openai-go's own module file (its AWS Bedrock support); no Drydock package imports it, so it is not built into Drydock.",
+      "hold": "Its version is the one openai-go asks for: pinning a newer one in go.mod would be removed again by go mod tidy, since nothing here needs the module. It moves when openai-go does."
+    },
     "go:github.com/google/jsonschema-go": {
       "role": "Describes the workspace tools' inputs to MCP clients as JSON Schema."
     },
