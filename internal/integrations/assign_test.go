@@ -3,6 +3,7 @@ package integrations_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -150,12 +151,100 @@ func TestSentryAssignmentNeedsAnOrganizationAndListsProjects(t *testing.T) {
 	if len(orgs) != 1 || orgs[0].Value != "acme" || err != nil || len(projs) != 2 {
 		t.Fatalf("%+v %+v %v", orgs, projs, err)
 	}
-	if _, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "prj1", Config: map[string]string{"organization": "acme", "project": "api"}}); err != nil {
+	// the issues endpoint filters by project id, so a project choice's value is the id and its label the name
+	var api integrations.Choice
+	for _, p := range projs {
+		if p.Label == "API" {
+			api = p
+		}
+	}
+	if api.Value != fx.ProjectID("api") || api.Value == "" {
+		t.Fatalf("%+v", projs)
+	}
+	if _, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "prj1", Config: map[string]string{"organization": "acme", "project": api.Value}}); err != nil {
 		t.Fatal(err)
 	}
 	r := h.sync(c.ID, integrations.SyncOpts{})
-	if r.New != 1 || fx.ListArgs()[0]["project"] != "api" || fx.ListArgs()[0]["query"] != "is:unresolved" || fx.ListArgs()[0]["sort"] != "date" {
+	if r.New != 1 || fx.ListArgs()[0]["project"] != api.Value || fx.ListArgs()[0]["query"] != "is:unresolved" || fx.ListArgs()[0]["sort"] != "date" {
 		t.Fatalf("%+v %v", r, fx.ListArgs())
+	}
+	if its := h.items(c.ID); len(its) != 1 || its[0].ExternalID != "a1" || its[0].Meta["project"] != "api" {
+		t.Fatalf("only the chosen project's issues: %+v", its)
+	}
+}
+
+// An assignment made when Drydock sent the project's slug still syncs: the slug is looked up once in the organization's
+// projects and the id is stored on the assignment. A slug that is no longer there fails that assignment in plain words.
+func TestSentryLegacyProjectSlugIsResolvedToItsIDOnce(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	fx, url := sentryFixture(t)
+	putSentry(fx, "w1", "error", "web", 10, 1)
+	putSentry(fx, "a1", "error", "api", 10, 2)
+	c, err := h.svc.Connect(ctx, human, integrations.ConnectReq{Kind: integrations.KindSentry, Token: sentryToken, BaseURL: url})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the stored scope of an older assignment: a slug, which Sentry's issues endpoint refuses (the fixture answers 400 like it)
+	a, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "prj1", Config: map[string]string{"organization": "acme", "project": "web"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := h.sync(c.ID, integrations.SyncOpts{})
+	webID := fx.ProjectID("web")
+	if r.New != 1 || fx.ListArgs()[0]["project"] != webID || fx.Calls("projects") != 1 {
+		t.Fatalf("%+v %v projects %d", r, fx.ListArgs(), fx.Calls("projects"))
+	}
+	if its := h.items(c.ID); len(its) != 1 || its[0].ExternalID != "w1" {
+		t.Fatalf("%+v", its)
+	}
+	av := assignmentView(t, h, c.ID, a.ID)
+	if av.Config["project"] != webID || av.Sync.Watermark == 0 {
+		t.Fatalf("the id was not stored, or the cursor was reset: %+v", av)
+	}
+	// the next sync needs no lookup
+	h.clk.Advance(time.Hour)
+	h.sync(c.ID, integrations.SyncOpts{})
+	if fx.Calls("projects") != 1 || fx.ListArgs()[1]["project"] != webID {
+		t.Fatalf("projects %d %v", fx.Calls("projects"), fx.ListArgs())
+	}
+
+	// a second older assignment names a project that was deleted since
+	gone, err := h.svc.Assign(ctx, human, integrations.AssignReq{IntegrationID: c.ID, ProjectID: "prj2", Config: map[string]string{"organization": "acme", "project": "api"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx.RemoveProject("api")
+	_, err = h.svc.SyncAssignment(ctx, gone.ID, integrations.SyncOpts{})
+	var f *integrations.Failure
+	if !errors.As(err, &f) || f.Code != integrations.CodeNotFound || !strings.Contains(f.Message, `The Sentry project "api"`) || !strings.Contains(f.Message, "Choose the Sentry project again") {
+		t.Fatalf("%v", err)
+	}
+	if gv := assignmentView(t, h, c.ID, gone.ID); gv.Config["project"] != "api" || gv.Sync.LastErrorCode != integrations.CodeNotFound {
+		t.Fatalf("%+v", gv)
+	}
+	if v, _ := h.svc.Get(ctx, c.ID); v.Status != integrations.StatusOK {
+		t.Fatalf("one assignment's missing project changed the connection: %s", v.Status)
+	}
+}
+
+// The fixture answers like Sentry: the issues endpoint takes project ids only.
+func TestSentryFixtureRefusesAProjectSlug(t *testing.T) {
+	fx, url := sentryFixture(t)
+	for _, tc := range []struct {
+		project string
+		status  int
+	}{{"web", 400}, {fx.ProjectID("web"), 200}, {"999999", 403}} {
+		req, _ := http.NewRequest("GET", url+"/api/0/organizations/acme/issues/?project="+tc.project, nil)
+		req.Header.Set("Authorization", "Bearer "+sentryToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.status {
+			t.Errorf("project=%s: HTTP %d, want %d", tc.project, resp.StatusCode, tc.status)
+		}
 	}
 }
 

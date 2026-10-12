@@ -84,6 +84,13 @@ type Adapter interface {
 	TaskMapping(it Item) TaskMapping
 }
 
+// scopeResolver is an adapter whose stored scope can name something in a form its API no longer takes (a Sentry project slug
+// where the issues endpoint wants the project id). ResolveScope returns the scope in the current form; changed=false when it
+// already is. Sync stores a changed scope on the assignment (the same scope, so the cursor and items stay).
+type scopeResolver interface {
+	ResolveScope(ctx context.Context, a *API, cfg map[string]string) (out map[string]string, changed bool, err error)
+}
+
 // OutCall is the exact outbound call: the API operation, its arguments and a preview for the human. Endpoint and Args are what
 // the approval is bound to.
 type OutCall struct {

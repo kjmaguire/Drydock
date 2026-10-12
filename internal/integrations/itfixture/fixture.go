@@ -588,16 +588,22 @@ type SentryIssue struct {
 	First, Last                                                           time.Time
 }
 
+// SentryProject is one project of the Sentry fixture's organization. Sentry serializes project ids as strings of digits.
+type SentryProject struct{ ID, Slug, Name string }
+
 // Sentry is the Sentry web API fixture: GET /api/0/ (user and auth.scopes), GET /api/0/organizations/, GET
-// /api/0/organizations/{org}/projects/, GET /api/0/organizations/{org}/issues/ (project, query, sort=date, limit, cursor; a
-// Link header with rel="next" results="true|false" cursor="..."), GET .../issues/{id}/events/latest/ (exception entries), PUT
-// .../issues/{id}/. Every answer carries the X-Sentry-Rate-Limit-* headers.
+// /api/0/organizations/{org}/projects/ (id, slug, name), GET /api/0/organizations/{org}/issues/ (project: repeated integer
+// project ids, as Sentry documents it; a slug is a 400 and an id outside the organization a 403; query, sort=date, limit,
+// cursor; a Link header with rel="next" results="true|false" cursor="..."), GET .../issues/{id}/events/latest/ (exception
+// entries), PUT .../issues/{id}/. Every answer carries the X-Sentry-Rate-Limit-* headers. An issue's Project is its project's
+// slug; Put registers a project it has not seen.
 type Sentry struct {
 	Common
-	mu2     sync.Mutex
-	issues  map[string]SentryIssue
-	Updates []map[string]any
-	Org     string
+	mu2      sync.Mutex
+	issues   map[string]SentryIssue
+	projects []SentryProject
+	Updates  []map[string]any
+	Org      string
 	// Remaining is what X-Sentry-Rate-Limit-Remaining says (default 39 of 40).
 	Remaining int
 	ResetAt   time.Time
@@ -605,7 +611,8 @@ type Sentry struct {
 
 // NewSentry creates the fixture (Authorization: Bearer <token>) for organization "acme".
 func NewSentry(token string) *Sentry {
-	s := &Sentry{issues: map[string]SentryIssue{}, Org: "acme", Remaining: 39}
+	s := &Sentry{issues: map[string]SentryIssue{}, Org: "acme", Remaining: 39,
+		projects: []SentryProject{{ID: "4505321", Slug: "web", Name: "Web"}, {ID: "4505322", Slug: "api", Name: "API"}}}
 	s.Scheme, s.Token = "Bearer", token
 	return s
 }
@@ -614,7 +621,41 @@ func NewSentry(token string) *Sentry {
 func (s *Sentry) Put(i SentryIssue) {
 	s.mu2.Lock()
 	defer s.mu2.Unlock()
+	if i.Project != "" && s.projectBySlug(i.Project) == nil {
+		s.projects = append(s.projects, SentryProject{ID: strconv.Itoa(4505321 + len(s.projects)), Slug: i.Project, Name: strings.ToUpper(i.Project)})
+	}
 	s.issues[i.ID] = i
+}
+
+func (s *Sentry) projectBySlug(slug string) *SentryProject {
+	for i := range s.projects {
+		if s.projects[i].Slug == slug {
+			return &s.projects[i]
+		}
+	}
+	return nil
+}
+
+// ProjectID returns the id of a project by its slug ("" when there is none).
+func (s *Sentry) ProjectID(slug string) string {
+	s.mu2.Lock()
+	defer s.mu2.Unlock()
+	if p := s.projectBySlug(slug); p != nil {
+		return p.ID
+	}
+	return ""
+}
+
+// RemoveProject deletes a project (its issues stay, unreachable by that project's id).
+func (s *Sentry) RemoveProject(slug string) {
+	s.mu2.Lock()
+	defer s.mu2.Unlock()
+	for i := range s.projects {
+		if s.projects[i].Slug == slug {
+			s.projects = append(s.projects[:i], s.projects[i+1:]...)
+			return
+		}
+	}
 }
 
 // Get returns an issue by id.
@@ -653,7 +694,13 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, []any{map[string]any{"slug": s.Org, "name": "Acme Corp"}})
 	case r.Method == "GET" && p == orgPrefix+"projects/":
 		s.count("projects", nil, false)
-		writeJSON(w, 200, []any{map[string]any{"slug": "web", "name": "Web"}, map[string]any{"slug": "api", "name": "API"}})
+		s.mu2.Lock()
+		out := []any{}
+		for _, pr := range s.projects {
+			out = append(out, map[string]any{"id": pr.ID, "slug": pr.Slug, "name": pr.Name, "platform": "go"})
+		}
+		s.mu2.Unlock()
+		writeJSON(w, 200, out)
 	case r.Method == "GET" && p == orgPrefix+"issues/":
 		q := r.URL.Query()
 		args := map[string]any{"project": q.Get("project"), "query": q.Get("query"), "sort": q.Get("sort"), "cursor": q.Get("cursor"), "limit": q.Get("limit")}
@@ -661,11 +708,37 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 			writeFail(w, f)
 			return
 		}
+		// "project": an array of integer project ids. Sentry refuses anything else, and an id the organization does not have
+		want := map[string]bool{}
+		for _, pid := range q["project"] {
+			if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
+				writeJSON(w, 400, map[string]any{"detail": "Invalid project parameter. Values must be numbers."})
+				return
+			}
+			want[pid] = true
+		}
 		limit, _ := strconv.Atoi(q.Get("limit"))
 		s.mu2.Lock()
+		slugs := map[string]bool{}
+		for pid := range want {
+			found := false
+			for _, pr := range s.projects {
+				if pr.ID == pid {
+					slugs[pr.Slug], found = true, true
+				}
+			}
+			if !found && pid != "-1" { // -1 is "every project"
+				s.mu2.Unlock()
+				writeJSON(w, 403, map[string]any{"detail": "You do not have permission to perform this action."})
+				return
+			}
+		}
+		if want["-1"] {
+			slugs = map[string]bool{}
+		}
 		all := make([]SentryIssue, 0, len(s.issues))
 		for _, i := range s.issues {
-			if pr := q.Get("project"); pr != "" && i.Project != pr {
+			if len(slugs) > 0 && !slugs[i.Project] {
 				continue
 			}
 			all = append(all, i)
@@ -682,8 +755,14 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Link", `<`+base+`?cursor=0:0:1>; rel="previous"; results="false"; cursor="0:0:1", <`+base+`?cursor=`+nc+`>; rel="next"; results="`+results+`"; cursor="`+nc+`"`)
 		out := []any{}
 		for _, i := range pg {
+			s.mu2.Lock()
+			pid := ""
+			if pr := s.projectBySlug(i.Project); pr != nil {
+				pid = pr.ID
+			}
+			s.mu2.Unlock()
 			out = append(out, map[string]any{"id": i.ID, "shortId": i.ShortID, "title": i.Title, "culprit": i.Culprit, "level": i.Level, "status": i.Status, "permalink": i.Permalink,
-				"project": map[string]any{"id": "1", "slug": i.Project, "name": strings.ToUpper(i.Project), "platform": "go"}, "count": strconv.Itoa(i.Count), "userCount": i.Users,
+				"project": map[string]any{"id": pid, "slug": i.Project, "name": strings.ToUpper(i.Project), "platform": "go"}, "count": strconv.Itoa(i.Count), "userCount": i.Users,
 				"firstSeen": i.First.UTC().Format(time.RFC3339Nano), "lastSeen": i.Last.UTC().Format(time.RFC3339Nano), "metadata": map[string]any{"type": "Error", "value": i.Title},
 				"assignedTo": nil, "priority": "high"})
 		}

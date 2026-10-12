@@ -14,7 +14,7 @@ import (
 // (getsentry/sentry-docs docs/api).
 //
 // Endpoints: GET /api/0/ (who the token is, with auth.scopes), GET /api/0/organizations/, GET
-// /api/0/organizations/{org}/projects/, GET /api/0/organizations/{org}/issues/ (sort=date, query, project, limit at most 100,
+// /api/0/organizations/{org}/projects/, GET /api/0/organizations/{org}/issues/ (sort=date, query, project (integer ids), limit at most 100,
 // Link-header cursors), GET .../issues/{id}/events/latest/ (the stack trace), PUT .../issues/{id}/ (status). Auth: a user,
 // organization or internal-integration token, or an OAuth access token, as "Authorization: Bearer <token>".
 type sentryAdapter struct{}
@@ -81,6 +81,18 @@ func (sentryAdapter) Choices(ctx context.Context, a *API, key string, cfg map[st
 	default:
 		return nil, errf(ErrBadRequest, "Sentry has no setting %q", key)
 	}
+	if key == "project" {
+		// the issues endpoint filters by project id (an array of integers): the value is the id, the label the name
+		projects, err := sentryProjects(ctx, a, cfg["organization"])
+		if err != nil {
+			return nil, err
+		}
+		out := []Choice{}
+		for _, p := range projects {
+			out = append(out, Choice{Value: p.ID, Label: firstNonEmpty(p.Name, p.Slug)})
+		}
+		return out, nil
+	}
 	var list []any
 	if _, err := a.HTTP.json(ctx, "GET", path, url.Values{"per_page": {"100"}}, nil, &list); err != nil {
 		return nil, err
@@ -93,6 +105,86 @@ func (sentryAdapter) Choices(ctx context.Context, a *API, key string, cfg map[st
 		}
 	}
 	return out, nil
+}
+
+type sentryProject struct{ ID, Slug, Name string }
+
+// sentryProjects lists an organization's projects (GET /api/0/organizations/{org}/projects/, Link-header cursors). Projects
+// without a numeric id are skipped: the issues endpoint could not filter by them.
+func sentryProjects(ctx context.Context, a *API, org string) ([]sentryProject, error) {
+	var out []sentryProject
+	cursor := ""
+	for page := 0; page < 20; page++ {
+		v := url.Values{"per_page": {"100"}}
+		if cursor != "" {
+			v.Set("cursor", cursor)
+		}
+		var list []any
+		r, err := a.HTTP.json(ctx, "GET", "/api/0/organizations/"+url.PathEscape(org)+"/projects/", v, nil, &list)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range list {
+			m := asMap(e)
+			if id := str(m["id"]); isDigits(id) {
+				out = append(out, sentryProject{ID: id, Slug: str(m["slug"]), Name: str(m["name"])})
+			}
+		}
+		if cursor = nextLinkCursor(r.Header); cursor == "" {
+			break
+		}
+	}
+	return out, nil
+}
+
+func isDigits(s string) bool {
+	if s == "" || len(s) > 20 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// sentryProjectID returns the numeric id of the assignment's project setting. Assignments made before Drydock sent ids hold
+// the project's slug, which the issues endpoint does not accept; it is looked up in the organization's projects.
+func sentryProjectID(ctx context.Context, a *API, org, project string) (string, error) {
+	if isDigits(project) {
+		return project, nil
+	}
+	projects, err := sentryProjects(ctx, a, org)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range projects {
+		if p.Slug == project {
+			return p.ID, nil
+		}
+	}
+	return "", &Failure{Code: CodeNotFound, Message: fmt.Sprintf("The Sentry project %q in this project's Sentry settings is not in organization %s any more, or the token cannot see it. Choose the Sentry project again.",
+		clampText(project, 60), clampText(org, 60))}
+}
+
+// ResolveScope turns a legacy project slug in an assignment's settings into the project's id, so the assignment is stored
+// with the id once and later syncs need no lookup.
+func (sentryAdapter) ResolveScope(ctx context.Context, a *API, cfg map[string]string) (map[string]string, bool, error) {
+	p := cfg["project"]
+	if p == "" || isDigits(p) || cfg["organization"] == "" {
+		return cfg, false, nil
+	}
+	id, err := sentryProjectID(ctx, a, cfg["organization"], p)
+	if err != nil {
+		return cfg, false, err
+	}
+	out := make(map[string]string, len(cfg))
+	for k, v := range cfg {
+		out[k] = v
+	}
+	out["project"] = id
+	return out, true, nil
 }
 
 func (sentryAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error) {
@@ -110,7 +202,12 @@ func (sentryAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 	}
 	v := url.Values{"query": {query}, "sort": {"date"}, "limit": {fmt.Sprint(limit)}}
 	if p := q.Config["project"]; p != "" {
-		v.Set("project", p)
+		// "project": an array of integer project ids; a slug is refused (sync stores the id after its first lookup)
+		id, err := sentryProjectID(ctx, a, org, p)
+		if err != nil {
+			return Page{}, err
+		}
+		v.Set("project", id)
 	}
 	if q.After != "" {
 		v.Set("cursor", q.After)

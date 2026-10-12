@@ -249,6 +249,25 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 		return res, s.fail(ctx, conn, asg, cur, fail)
 	}
 
+	if rs, ok := ad.(scopeResolver); ok {
+		rctx, rcancel := context.WithTimeout(ctx, s.o.CallTimeout)
+		cfg, changed, rerr := rs.ResolveScope(rctx, api, asg.Config)
+		rcancel()
+		if rerr != nil {
+			var f *Failure
+			if !errors.As(rerr, &f) {
+				f = Classify(conn.Kind, rerr, "")
+			}
+			return res, s.fail(ctx, conn, asg, cur, f)
+		}
+		if changed {
+			asg.Config = cfg
+			// stored once, so later syncs need no lookup; a concurrent edit by a person wins (this run still uses cfg)
+			if upd, uerr := s.st.UpdateAssignment(ctx, asg, asg.Version, false); uerr == nil {
+				asg = upd
+			}
+		}
+	}
 	if o.Full && cur.After == "" {
 		cur.Watermark, cur.Pending = 0, 0
 	}
