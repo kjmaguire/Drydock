@@ -56,7 +56,7 @@ export function Monogram(handle: Handle<{ name?: string; size?: number }>) {
   return () => {
     const { name, size = 20 } = handle.props;
     return (
-      <span mix={monoCss} aria-hidden="true" style={{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.45)}px` }}>
+      <span mix={monoCss} aria-hidden="true" style={{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.max(10, Math.round(size * 0.45))}px` }}>
         {name ? initials(name) : <Icon icon={FolderClosed} size={Math.round(size * 0.65)} />}
       </span>
     );

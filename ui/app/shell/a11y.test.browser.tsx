@@ -102,7 +102,7 @@ describe('the details panel', () => {
     });
     s.ui.setDetails(true);
     s.ui.setTab('task');
-    const r = mount(<Details taskId="t1" />, s);
+    const r = mount(<Details taskId="t1" page="conversation" />, s);
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('task store is locked'), r);
     expect(r.container.textContent).not.toContain('Loading...');
   });
@@ -110,7 +110,7 @@ describe('the details panel', () => {
   it('its tabs name no panel that is not in the page', async () => {
     const s = testServices({});
     s.ui.setDetails(true);
-    const r = mount(<Details taskId="t1" />, s);
+    const r = mount(<Details taskId="t1" page="conversation" />, s);
     const tabs = await waitFor(() => {
       const t = Array.from(r.$$('[role="tab"]'));
       if (t.length < 2) throw new Error('tabs not rendered');

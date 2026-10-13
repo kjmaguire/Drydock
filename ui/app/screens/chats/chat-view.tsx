@@ -375,7 +375,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             trigger={(mix) => (
               <button type="button" mix={[chipsBtn, mix]} aria-label="Chat settings" aria-expanded={settingsOpen ? 'true' : 'false'} title="Change the model, effort, permission mode or history access">
                 <span mix={chipCss} data-testid="chip-adapter">
-                  <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={12} kind="agent" />
+                  <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={16} kind="agent" />
                   {adapterLabel(chat.adapter)}
                 </span>
                 <span mix={chipCss} data-testid="chip-model">

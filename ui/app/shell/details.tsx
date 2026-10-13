@@ -14,7 +14,7 @@ import { Avatar, PresenceDot, StatusChip, kv, presenceColor } from '../ui/data.t
 import { ErrorNote, Loading } from '../ui/feedback.tsx';
 import { Tabs, type TabItem } from '../ui/tabs.tsx';
 import { t } from '../ui/tokens.ts';
-import type { DetailsTab } from '../state/ui.ts';
+import type { DetailsPage, DetailsTab } from '../state/ui.ts';
 
 const panelCss = css({
   display: 'flex',
@@ -48,13 +48,14 @@ const agentRow = css({
 });
 const sectionLabel = css({ margin: `${t.s1} ${t.s2} ${t.s2}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase' });
 
-export function Details(handle: Handle<{ taskId: string | undefined }>) {
+export function Details(handle: Handle<{ taskId: string | undefined; page: DetailsPage }>) {
   const s = services(handle);
   watch(handle, s.ui);
   watch(handle, s.project);
   return () => {
-    const { taskId } = handle.props;
+    const { taskId, page } = handle.props;
     const ui = s.ui;
+    ui.detailsPage(page);
     if (!ui.detailsOpen) {
       return (
         <aside mix={closedCss} aria-label="Details">
@@ -95,7 +96,8 @@ export function Details(handle: Handle<{ taskId: string | undefined }>) {
                         {a.name} <span style={{ color: t.textFaint, fontWeight: '400', fontSize: t.textSm }}>{a.role}</span>
                       </span>
                       <PresenceDot presence={pr} />
-                      {pr?.activity ? <span class="act">{pr.activity}</span> : null}
+                      {/* the activity, unless the presence line already says it ("Paused (stopped)" over "stopped") */}
+                      {pr?.activity && pr.activity !== pr.label ? <span class="act">{pr.activity}</span> : null}
                     </div>
                     <button type="button" mix={[inspectBtn, on('click', () => ui.openInspector(a.id))]} aria-label={`Inspect ${a.name}`}>
                       Inspect

@@ -158,14 +158,15 @@ export function Avatar(handle: Handle<{ id: string; name: string; size?: number;
         style={{
           width: `${size}px`,
           height: `${size}px`,
-          fontSize: `${Math.max(8, Math.round(size * 0.4))}px`,
+          // never under 10 px: initials at 8-9 px (the 16-18 px avatars of lists) could not be read
+          fontSize: `${Math.max(10, Math.round(size * 0.4))}px`,
           background: bg,
           color: fg,
           borderRadius: round ? '50%' : `${avatarRadius(size)}px`,
           boxShadow: `inset 0 0 0 1px ${t.border}`,
         }}
       >
-        {initials(name)}
+        {size < 22 ? initials(name).slice(0, 1) : initials(name)}
         {status ? <span mix={avatarStatus} style={{ background: status }} /> : kind === 'agent' && size >= 24 ? <span mix={avatarBot} class="avatar-bot"><Icon icon={Bot} size={9} strokeWidth={2.25} /></span> : null}
       </span>
     );

@@ -54,7 +54,7 @@ const rowCss = css({
   '& .who strong': { fontSize: t.textMd, fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& .who span': { color: t.textMuted, fontSize: t.textSm },
 });
-const kindCss = css({ flex: 'none', padding: '1px 6px', borderRadius: t.rSm, fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' });
+const kindCss = css({ flex: 'none', padding: '1px 6px', borderRadius: t.rSm, fontSize: t.textXs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' });
 
 const KIND_TONE: Record<string, Tone> = { human: 'ok', agent: 'accent', tool: 'info', system: 'muted' };
 

@@ -37,7 +37,9 @@ const tableCss = css({
   '& td.time': { color: t.textMuted, whiteSpace: 'nowrap', width: '1%', fontVariantNumeric: 'tabular-nums' },
   '& td.type': { whiteSpace: 'nowrap' },
   '& td.type code': { display: 'inline-flex', alignItems: 'center', gap: '6px' },
-  '& td.scope': { color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs, maxWidth: '260px', overflowWrap: 'anywhere' },
+  // one id per line, never broken inside: a squeezed column broke them a character per line (task_ / 945cb / a6343 ...)
+  '& td.scope': { color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs, width: '1%' },
+  '& td.scope > span': { display: 'block', whiteSpace: 'nowrap' },
   '& td.data': { color: t.textMuted, maxWidth: '0', width: '50%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
 });
 
@@ -135,7 +137,11 @@ export function ActivityScreen(handle: Handle) {
                           {e.type}
                         </code>
                       </td>
-                      <td class="scope">{[e.taskId, e.agentId, e.runId].filter(Boolean).join(' ')}</td>
+                      <td class="scope">
+                        {[e.taskId, e.agentId, e.runId].filter(Boolean).map((id) => (
+                          <span key={id}>{id}</span>
+                        ))}
+                      </td>
                       <td class="data" title={data || undefined}>
                         <span mix={mono}>{data}</span>
                       </td>

@@ -126,7 +126,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
             </main>
             {project ? <Dock projectId={project.id} taskId={taskContext} /> : null}
           </div>
-          {project ? <Details taskId={taskContext} /> : null}
+          {project ? <Details taskId={taskContext} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} /> : null}
         </div>
         <CommandPalette onMessage={(id) => void openDM(id)} />
       </div>

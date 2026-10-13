@@ -6,6 +6,8 @@ import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'task' | 'thread' | 'inspector';
 export type DockTab = 'terminal' | 'diff' | 'logs' | 'activity';
+/** The kind of page the details panel sits beside: a room, a task or a run ('conversation'), or any other page. */
+export type DetailsPage = 'conversation' | 'other';
 
 interface DockState {
   open: boolean;
@@ -37,7 +39,11 @@ export class UiModel extends Model {
   tab: DetailsTab = 'agents';
   inspectId: string | undefined;
   thread: { roomId: string; rootId: string } | undefined;
-  detailsOpen = readJSON(DETAILS_KEY, { open: true }).open;
+  // open or closed is remembered per kind of page: on a room, a task or a run the panel has the context of the page (the
+  // task, the thread, who is talking) and starts open; elsewhere it only repeats the team, so it starts as the slim strip
+  // and leaves the page its width (owner, 2026-10-13: pages read cramped at 1366-1536 px)
+  #open = readJSON(DETAILS_KEY, { open: true, other: false });
+  #page: DetailsPage = 'conversation';
   paletteOpen = false;
   theme: ThemeChoice = 'system';
   #newChat = false;
@@ -75,9 +81,21 @@ export class UiModel extends Model {
     this.changed();
   }
 
+  /** Whether the details panel is open on the kind of page showing now. */
+  get detailsOpen(): boolean {
+    return this.#page === 'conversation' ? this.#open.open : this.#open.other;
+  }
+
+  /** The panel says which kind of page it sits beside (no change event: it is read while rendering). */
+  detailsPage(page: DetailsPage): void {
+    this.#page = page;
+  }
+
+  /** Open or close the details panel for the kind of page showing now (the other kind keeps its own choice). */
   setDetails(open: boolean): void {
-    this.detailsOpen = open;
-    writeJSON(DETAILS_KEY, { open });
+    if (this.#page === 'conversation') this.#open.open = open;
+    else this.#open.other = open;
+    writeJSON(DETAILS_KEY, this.#open);
     this.changed();
   }
 

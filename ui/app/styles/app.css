@@ -14,12 +14,14 @@
     --font-sans: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
     --font-mono: 'Cascadia Code', 'Cascadia Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
 
-    --text-xs: 11px;
-    --text-sm: 12px;
-    --text-md: 13px;
-    --text-lg: 15px;
-    --text-xl: 18px;
-    --text-2xl: 22px;
+    /* one step above the first dense scale (11/12/13): at 11-12 px, secondary text in Segoe UI on a Windows laptop at 125-150 %
+       scaling read as too small and cramped (owner, 2026-10-13); the e2e layout audit keeps text at 12 px or more */
+    --text-xs: 12px;
+    --text-sm: 13px;
+    --text-md: 14px;
+    --text-lg: 16px;
+    --text-xl: 20px;
+    --text-2xl: 24px;
 
     --space-1: 4px;
     --space-2: 8px;

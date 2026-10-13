@@ -33,7 +33,7 @@ const quietCss = css({ color: t.textMuted, fontSize: t.textSm });
 const gutterCss = css({ display: 'flex', justifyContent: 'center', paddingTop: '1px' });
 const gutterTime = css({
   paddingTop: '2px',
-  fontSize: '10px',
+  fontSize: t.textXs,
   color: t.textFaint,
   opacity: '0',
   whiteSpace: 'nowrap',
