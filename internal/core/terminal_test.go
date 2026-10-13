@@ -57,3 +57,23 @@ func TestTerminalThroughTheCoreCalls(t *testing.T) {
 		t.Fatalf("task terminal %+v", in)
 	}
 }
+
+// Decision P50: a Connection's sign-in starts the CLI's own login in a terminal; a CLI that is not there, or a Connection the
+// core does not list, is refused with the reason, and no terminal opens.
+func TestSignInRefusesWhatIsNotThere(t *testing.T) {
+	a := open(t, "")
+	for _, c := range []struct{ params, want string }{
+		{`{"adapter":"nope"}`, "no Connection named nope"},
+		{`{"adapter":"claude","distro":"Ubuntu-26.04"}`, "inside the WSL distro Ubuntu-26.04"},
+	} {
+		_, err := a.c.Call(t.Context(), "connection.signIn", []byte(c.params))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Fatalf("%s: %v", c.params, err)
+		}
+	}
+	var list []terminal.Info
+	a.call("terminal.list", nil, &list)
+	if len(list) != 0 {
+		t.Fatalf("a terminal opened: %+v", list)
+	}
+}

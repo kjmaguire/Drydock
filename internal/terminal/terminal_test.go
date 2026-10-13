@@ -178,3 +178,36 @@ func gone(pid int) bool {
 	i := strings.LastIndexByte(s, ')')
 	return i >= 0 && strings.HasPrefix(strings.TrimSpace(s[i+1:]), "Z")
 }
+
+// OpenProgram runs a program instead of a shell (a CLI's own sign-in, decision P50); the terminal ends when the program does.
+func TestOpenProgramRunsTheProgramAndEndsWithIt(t *testing.T) {
+	m := &Manager{Shell: sh}
+	dir := t.TempDir()
+	in, err := m.OpenProgram(dir, "Sign in: claude", 100, 30, "/bin/sh", "-c", "echo prog-$((40+2)); exit 3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.CloseAll()
+	if in.Title != "Sign in: claude" || in.Shell != "/bin/sh" || in.Cwd != dir {
+		t.Fatalf("info %+v", in)
+	}
+	out, _ := readUntil(t, m, in.ID, 0, "prog-42")
+	if strings.Contains(out, "$((") {
+		t.Fatalf("the program's argument was not run by it: %q", out)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if code, err := m.Exited(ctx, in.ID); err != nil || code != 3 {
+		t.Fatalf("the terminal did not end with its program: code %d, %v", code, err)
+	}
+	if _, err := m.Exited(ctx, "nope"); err != ErrNotFound {
+		t.Fatalf("unknown terminal: %v", err)
+	}
+}
+
+func TestOpenProgramNeedsAProgram(t *testing.T) {
+	m := &Manager{}
+	if _, err := m.OpenProgram(t.TempDir(), "x", 80, 24, ""); err == nil {
+		t.Fatal("no program")
+	}
+}

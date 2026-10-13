@@ -21,7 +21,10 @@ test('Connections: Claude Code inside a WSL distro is its own card with its own 
   await expect(card).toHaveAttribute('data-run-mode', 'wsl');
   await expect(card.getByRole('heading', { level: 2 })).toHaveText(`claude in WSL (${distro()})`);
   await expect(card).toContainText(`inside the WSL 2 distro ${distro()}`);
-  await expect(card).toContainText('its own sign-in, separate from Windows');
+  // its own sign-in (decision P50): the card starts claude's login inside the distro from a button; the browser unit test
+  // drives the click, the stand-in wsl.exe here runs no login
+  await expect(card.getByRole('button', { name: 'Sign in inside Ubuntu' })).toBeVisible();
+  await expect(card).toContainText("this install's sign-in is separate from the Windows one");
   await card.getByText('The distro', { exact: true }).click();
   await expect(card.getByTestId('wsl-facts')).toContainText('Windows drives at');
 

@@ -20,9 +20,15 @@ export const tileGrid = css({
 export const tileCss = css({
   display: 'flex',
   alignItems: 'center',
+  // the app stylesheet centres every button's content and forbids wrapping (one-line buttons); a tile is a card whose
+  // blurb and state wrap inside it
+  justifyContent: 'flex-start',
+  whiteSpace: 'normal',
   gap: t.s3,
   width: '100%',
   height: '100%',
+  minWidth: '0',
+  overflow: 'hidden',
   padding: `${t.s3} ${t.s3}`,
   border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
@@ -35,6 +41,8 @@ export const tileCss = css({
   '&[aria-pressed="true"]': { borderColor: t.accent, background: t.accentSoft },
   '&[data-dragging="true"]': { opacity: '0.55', borderStyle: 'dashed' },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  '& > :first-child': { flex: 'none' },
+  '& > span:last-child': { flex: '1 1 auto', minWidth: '0' },
   '& strong': { display: 'block', fontWeight: '600', overflowWrap: 'anywhere' },
   '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },
   '& small[data-tone="ok"]': { color: t.success },

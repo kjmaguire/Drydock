@@ -4,7 +4,7 @@
 // and each WSL distro's own, with the CLI's logo, what it is and its state. The selected tile's full card opens below the grid.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, FlaskConical, Link2, Minus, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
+import { Check, CircleCheck, FlaskConical, Link2, LogIn, Minus, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import { query, services } from '../../state/services.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
@@ -24,6 +24,7 @@ import {
   connectionState,
   connectionTitle,
   defaultConnection,
+  canSignIn,
   distroBrand,
   isWSL,
   matrixRows,
@@ -33,6 +34,7 @@ import {
   reportMeta,
   runsText,
   signedInText,
+  signInCommand,
   statusTone,
   stepTone,
 } from './connections.ts';
@@ -258,6 +260,24 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
       upd(() => (error = e as Error));
     }
   };
+  // the CLI's own sign-in, started in a terminal of the dock (inside the distro for a WSL install): Drydock never reads
+  // what it stores; the card re-probes once the person is done
+  let signingIn = false;
+  const signIn = async () => {
+    upd(() => {
+      signingIn = true;
+      error = undefined;
+    });
+    try {
+      const c = handle.props.c;
+      const term = await s.client.connectionSignIn(c.adapter, isWSL(c) ? c.distro : undefined);
+      s.ui.showTerminal(term.id);
+    } catch (e) {
+      error = e as Error;
+    } finally {
+      upd(() => (signingIn = false));
+    }
+  };
   const runTest = async () => {
     upd(() => {
       testing = true;
@@ -338,10 +358,22 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
           ) : null}
         </dl>
         {c.authDetail ? <p mix={muted}>{c.authDetail}</p> : null}
-        {inWSL ? (
+        {c.installed && canSignIn(c.adapter) ? (
+          <div mix={rowCss}>
+            <Button size="sm" icon={LogIn} disabled={signingIn} data-testid="sign-in" mix={on('click', () => void signIn())}>
+              {signingIn ? 'Starting the sign-in...' : inWSL ? `Sign in inside ${c.distro}` : 'Sign in'}
+            </Button>
+            <span mix={faint}>
+              {inWSL
+                ? `Runs the CLI's own sign-in (${signInCommand(c.adapter)}) inside the distro, in a terminal below: this install's sign-in is separate from the Windows one.`
+                : `Runs the CLI's own sign-in (${signInCommand(c.adapter)}) in a terminal below.`}{' '}
+              Drydock never reads or copies what it stores, and this card re-checks itself when the sign-in ends.
+            </span>
+          </div>
+        ) : inWSL ? (
           <p mix={faint}>
-            This install has its own sign-in, separate from Windows. To sign in, open a terminal in the distro (<code>wsl -d {c.distro}</code>) and run <code>claude auth login</code>. Drydock
-            never reads or copies it.
+            This install has its own sign-in, separate from Windows: open a terminal in the distro (<code>wsl -d {c.distro}</code>) and run <code>claude auth login</code>. Drydock never
+            reads or copies it.
           </p>
         ) : null}
         {c.wsl ? <DistroFacts f={c.wsl} /> : null}

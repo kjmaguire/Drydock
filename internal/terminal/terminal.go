@@ -100,6 +100,23 @@ func DefaultShell() (string, []string) {
 
 // Open starts a shell in dir.
 func (m *Manager) Open(dir, title string, cols, rows int) (Info, error) {
+	shell, args := DefaultShell()
+	if m.Shell != nil {
+		shell, args = m.Shell()
+	}
+	return m.open(dir, title, cols, rows, shell, args)
+}
+
+// OpenProgram starts program with args in dir instead of a shell: a command the person watches and answers in the terminal
+// (an agent CLI's own sign-in). The terminal ends when the program exits.
+func (m *Manager) OpenProgram(dir, title string, cols, rows int, program string, args ...string) (Info, error) {
+	if program == "" {
+		return Info{}, errors.New("terminal: no program to run")
+	}
+	return m.open(dir, title, cols, rows, program, args)
+}
+
+func (m *Manager) open(dir, title string, cols, rows int, shell string, args []string) (Info, error) {
 	m.mu.Lock()
 	if m.terms == nil {
 		m.terms = map[string]*term{}
@@ -117,10 +134,6 @@ func (m *Manager) Open(dir, title string, cols, rows int) (Info, error) {
 		return Info{}, fmt.Errorf("terminal: %s is not a folder", dir)
 	}
 	cols, rows = clamp(cols, 20, 500, 80), clamp(rows, 5, 200, 24)
-	shell, args := DefaultShell()
-	if m.Shell != nil {
-		shell, args = m.Shell()
-	}
 	p, err := pty.New()
 	if err != nil {
 		return Info{}, fmt.Errorf("terminal: %w", err)
@@ -206,6 +219,29 @@ func (m *Manager) get(id string) (*term, error) {
 		return nil, ErrNotFound
 	}
 	return t, nil
+}
+
+// Exited waits until the terminal's program has ended and returns its exit code.
+func (m *Manager) Exited(ctx context.Context, id string) (int, error) {
+	t, err := m.get(id)
+	if err != nil {
+		return 0, err
+	}
+	for {
+		t.mu.Lock()
+		if t.exited {
+			code := t.code
+			t.mu.Unlock()
+			return code, nil
+		}
+		ch := t.changed
+		t.mu.Unlock()
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
 }
 
 // Read returns output from offset from, waiting up to wait for some to arrive (a long poll).

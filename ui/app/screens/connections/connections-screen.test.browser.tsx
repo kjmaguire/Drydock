@@ -197,8 +197,8 @@ describe('Connections page', () => {
     expect(c.querySelector('[data-brand="ubuntu"]')!.getAttribute('aria-label')).toBe('Ubuntu');
     const text = c.textContent ?? '';
     expect(text).toContain('inside the WSL 2 distro Ubuntu (the default distro)');
-    expect(text).toContain('its own sign-in, separate from Windows');
-    expect(text).toContain('wsl -d Ubuntu');
+    expect(text).toContain("this install's sign-in is separate from the Windows one");
+    expect(byText<HTMLButtonElement>(c, 'button', 'Sign in inside Ubuntu').disabled).toBe(false);
     const facts = c.querySelector('[data-testid="wsl-facts"]')!;
     expect(facts.textContent).toContain('nat: the distro cannot reach Windows localhost directly');
     expect(facts.textContent).toContain('/mnt/');
@@ -279,5 +279,45 @@ describe('Connections page', () => {
     await waitFor(() => expect(r.container.textContent).toContain('No agent CLIs found'), r);
     expect(r.$('[data-testid="connection-tile"]')).toBeNull();
     expect(r.$('[data-testid="connection"]')).toBeNull();
+  });
+
+  it("Sign in starts the CLI's own login through the core (inside the distro for a WSL install) and opens the dock on that terminal", async () => {
+    const calls: [string, string | undefined][] = [];
+    const term = { id: 'term_9', title: 'Sign in: claude in Ubuntu-26.04', cwd: 'C:\\Users\\k', shell: 'wsl.exe', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 };
+    const r = show({
+      connectionList: async () => [
+        conn({ key: 'claude@wsl:Ubuntu-26.04', runMode: 'wsl', distro: 'Ubuntu-26.04', status: 'unauthenticated', platform: 'linux', gates: [] }),
+        conn({ key: 'gemini', adapter: 'gemini', gates: [] }),
+      ],
+      connectionSignIn: async (adapter: string, distro?: string) => (calls.push([adapter, distro]), term),
+    });
+    // the WSL install's tile opens its card below the grid
+    const tile = await waitFor(() => {
+      const x = r.$('[data-testid="connection-tile"][data-key="claude@wsl:Ubuntu-26.04"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLButtonElement;
+    }, r);
+    await r.act(() => tile.click());
+    const wsl = await waitFor(() => {
+      const c = r.$('[data-testid="connection"][data-run-mode="wsl"]');
+      if (!c) throw new Error('not yet');
+      return c as HTMLElement;
+    }, r);
+    expect(r.services.ui.dock.open).toBe(false);
+    const btn = byText<HTMLButtonElement>(wsl, 'button', 'Sign in inside Ubuntu-26.04');
+    expect(wsl.textContent).toContain("Runs the CLI's own sign-in (claude auth login) inside the distro");
+    expect(wsl.textContent).toContain('never reads or copies');
+    await r.act(() => btn.click());
+    await waitFor(() => expect(calls).toEqual([['claude', 'Ubuntu-26.04']]), r);
+    await waitFor(() => expect(r.services.ui.dock).toMatchObject({ open: true, tab: 'terminal' }), r);
+    expect(r.services.ui.terminalToShow).toBe('term_9');
+    // a CLI without a sign-in Drydock can start has no button
+    await r.act(() => (r.$('[data-testid="connection-tile"][data-key="gemini"]') as HTMLButtonElement).click());
+    const gem = await waitFor(() => {
+      const c = r.$('[data-testid="connection"][data-adapter="gemini"]');
+      if (!c) throw new Error('not yet');
+      return c as HTMLElement;
+    }, r);
+    expect(gem.querySelector('[data-testid="sign-in"]')).toBeNull();
   });
 });

@@ -6,7 +6,7 @@ import { createExtClient, type ExtClient } from './extClient.ts';
 import { createPkgClient, type PkgClient } from './pkgClient.ts';
 import { createMcpClient, type McpClient } from './mcpClient.ts';
 import { createLibraryClient, type LibraryClient } from './libraryClient.ts';
-import { createDockClient, type DockClient } from './dockClient.ts';
+import { createDockClient, type DockClient, type TerminalInfo } from './dockClient.ts';
 import { createRunClient, type RunClient } from './runClient.ts';
 import { createAttachClient, type AttachClient } from './attachClient.ts';
 import { createProviderClient, type ProviderClient } from './providerClient.ts';
@@ -96,6 +96,8 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   /** With prompt, also one tiny prompt on the adapter's cheapest model (uses the person's account). */
   /** distro tests the install inside that WSL distro (its own Connection) instead of the Windows one. */
   connectionTest(adapter: string, prompt?: boolean, distro?: string): Promise<ConnectionReport>;
+  /** Starts the CLI's own sign-in in a terminal of the dock (inside the WSL distro for that install) and returns the terminal. */
+  connectionSignIn(adapter: string, distro?: string): Promise<TerminalInfo>;
   providerList(): Promise<Provider[]>;
   providerCreate(p: NewProvider): Promise<Provider>;
   providerDelete(id: string): Promise<void>;
@@ -180,6 +182,7 @@ export function createClient(t: Transport): Client {
       const r = await t.call<ConnectionReport>('connection.test', { adapter, prompt, distro });
       return { ...r, steps: arr(r.steps), matrix: r.matrix ?? {} };
     },
+    connectionSignIn: (adapter, distro = '') => t.call<TerminalInfo>('connection.signIn', { adapter, distro }),
     providerList: async () => arr(await t.call<Provider[] | null>('provider.list')),
     providerCreate: (p) => t.call('provider.create', p),
     providerDelete: async (id) => {
