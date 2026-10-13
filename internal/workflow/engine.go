@@ -227,6 +227,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		return
 	}
 
+	parked := false // the last step's commit already set WAITING_HUMAN
 	for {
 		if ctx.Err() != nil {
 			e.onStopped(info)
@@ -236,7 +237,9 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		if len(ready) == 0 {
 			if len(st.Pending) > 0 {
 				st.Status = StatusWaitingHuman
-				_ = e.st.setStatus(context.Background(), info.ID, StatusWaitingHuman, "")
+				if !parked {
+					e.park(info)
+				}
 				e.emit(context.Background(), "workflow.paused", info, map[string]any{"reason": "waiting_human", "pending": len(st.Pending)})
 				return
 			}
@@ -312,7 +315,13 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		st.Step = step
 		st.LastNodes = append([]NodeID(nil), ready...)
 		cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: info.ID, Workflow: g.Name, Step: step, Kind: CheckpointStep, Parent: parent, State: st, Created: storage.Now()}
-		if err := e.st.commit(ctx, stepCommit{cp: cp, status: StatusRunning, newRequests: reqs, owner: e.cfg.Owner, ttl: e.cfg.LeaseTTL}); err != nil {
+		// a step after which only requests remain parks the run in its own fenced commit: a separate status write after it
+		// could fail, leaving the run RUNNING with nobody driving it (the driver drops its lease, so recovery skips it)
+		status := StatusRunning
+		if len(e.ready(g, st)) == 0 && len(st.Pending) > 0 {
+			status = StatusWaitingHuman
+		}
+		if err := e.st.commit(ctx, stepCommit{cp: cp, status: status, newRequests: reqs, owner: e.cfg.Owner, ttl: e.cfg.LeaseTTL}); err != nil {
 			if errors.Is(err, ErrLeaseHeld) || errors.Is(err, ErrRunTerminal) {
 				e.onStopped(info) // fenced out (another owner took over) or ended meanwhile (cancelled): do not touch the run
 				return
@@ -321,6 +330,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 			return
 		}
 		parent = cp.ID
+		parked = status == StatusWaitingHuman
 		e.emit(ctx, "workflow.step_completed", info, map[string]any{"step": step})
 		e.emit(ctx, "workflow.checkpoint_written", info, map[string]any{"checkpoint": cp.ID, "kind": cp.Kind, "step": step})
 		for _, r := range reqs {
@@ -332,6 +342,19 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 
 func (e *Engine) onStopped(info RunInfo) {
 	// The driver was cancelled (Cancel or Close). Cancel marks the run itself; Close leaves it RUNNING for Recover.
+}
+
+// park sets WAITING_HUMAN for a run whose driver stops at requests without a step of its own (it was resumed or recovered
+// with requests still open). The write is retried: a run left RUNNING with no driver is driven by nobody until a restart.
+func (e *Engine) park(info RunInfo) {
+	var err error
+	for try := 0; try < 5; try++ {
+		if err = e.st.setStatus(context.Background(), info.ID, StatusWaitingHuman, ""); err == nil || errors.Is(err, ErrRunTerminal) {
+			return
+		}
+		time.Sleep(time.Duration(try+1) * 100 * time.Millisecond)
+	}
+	e.emit(context.Background(), "workflow.status_write_failed", info, map[string]any{"status": StatusWaitingHuman, "error": err.Error()})
 }
 
 func (e *Engine) heartbeat(ctx context.Context, run RunID) {

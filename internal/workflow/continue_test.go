@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/storage"
 	wf "github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -102,5 +104,54 @@ func TestDeliverAnswerAppendsTheHumanAnswerToTheRestoredInbox(t *testing.T) {
 	}
 	if err := json.Unmarshal(inbox[1].Value, &ans); err != nil || ans.Decision != "answered" || ans.By != "human:t" || string(ans.Data) != `{"text":"try the cache"}` {
 		t.Fatalf("the answer must be the last message: %s", inbox[1].Value)
+	}
+}
+
+// statusAtBus reads the run's status at the moment a given event is published (the driver publishes synchronously).
+type statusAtBus struct {
+	events.Bus
+	db   *storage.DB
+	typ  string
+	seen chan string
+}
+
+func (b *statusAtBus) Publish(ctx context.Context, e events.Event) (uint64, error) {
+	if e.Type == b.typ {
+		var st string
+		_ = b.db.Reader().QueryRowContext(ctx, `SELECT status FROM workflow_runs WHERE id=?`, e.RunID).Scan(&st)
+		select {
+		case b.seen <- st:
+		default:
+		}
+	}
+	return b.Bus.Publish(ctx, e)
+}
+
+// A step that raises a request and leaves nothing else to run parks the run in the same commit: by the time the request is
+// announced the run is already WAITING_HUMAN. Parking with a second write after it left a window where that write could fail
+// and leave the run RUNNING with nobody driving it (seen once on a loaded Windows runner).
+func TestAStepThatRaisesTheOnlyWorkLeftParksTheRunInItsCommit(t *testing.T) {
+	dir := t.TempDir()
+	db, err := storage.OpenTemp(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bus := events.NewSQLBus(db, 4096)
+	spy := &statusAtBus{Bus: bus, db: db, typ: "workflow.request_raised", seen: make(chan string, 1)}
+	eng := wf.New(wf.Config{DB: db, Bus: spy, DataDir: dir, LeaseTTL: leaseTTL})
+	t.Cleanup(func() { eng.Close(); bus.Close(); db.Close() })
+	g := wf.NewGraph("park").
+		Add(wf.AgentTask("work", eff(dir, "work", "")), wf.Request("ask", wf.RequestSpec{Kind: "question", Title: "ask"})).
+		Edge("work", "ask").Start("work")
+	eng.Register(g)
+	run, _ := eng.Start(context.Background(), "park", "in", wf.StartOptions{})
+	waitStatus(t, eng, run, wf.StatusWaitingHuman)
+	select {
+	case st := <-spy.seen:
+		if st != string(wf.StatusWaitingHuman) {
+			t.Fatalf("status when the request was announced: %s, want WAITING_HUMAN", st)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no workflow.request_raised")
 	}
 }
