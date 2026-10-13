@@ -9,7 +9,6 @@ describe('BrandLogo', () => {
   it('maps integration, MCP catalog and agent CLI ids to one mark per brand', () => {
     expect(brandKey('gh')).toBe('github');
     expect(brandKey('github')).toBe('github');
-    expect(brandKey('sentryx')).toBe('sentry');
     expect(brandKey('cfdocs')).toBe('cloudflare');
     expect(brandKey('ctx7')).toBe('context7');
     expect(brandKey('mslearn')).toBe('microsoft');

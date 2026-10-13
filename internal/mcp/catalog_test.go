@@ -86,8 +86,16 @@ func TestBuiltinCatalogLoadsAndMatchesTheDocs(t *testing.T) {
 			t.Errorf("%s: id longer than 8", s.ID)
 		}
 	}
-	if !get("aikido").Template || !strings.HasPrefix(get("aikido").License.Server, "AGPL") {
-		t.Error("aikido template")
+	// decision P45: the shipped catalog is hosted servers only; no local-program template is offered
+	for _, s := range c.Servers {
+		if s.Transport == TransportStdio || s.Template {
+			t.Errorf("%s: the shipped catalog offers no local program (P45)", s.ID)
+		}
+	}
+	for _, gone := range []string{"ghlocal", "sentryx", "aikido"} {
+		if _, ok := c.Get(gone); ok {
+			t.Errorf("%s: removed in P45", gone)
+		}
 	}
 	if tools(cf) != "search_cloudflare_documentation" {
 		t.Errorf("cfdocs offers one tool now: %s", tools(cf))
@@ -103,16 +111,6 @@ func TestBuiltinCatalogLoadsAndMatchesTheDocs(t *testing.T) {
 	}
 	if s := get("gh"); s.Identity == nil || s.Identity.Tool != "get_me" || s.Auth.Kind != AuthBearer {
 		t.Errorf("gh: %+v", s)
-	}
-	gl := get("ghlocal")
-	if !gl.Template || gl.Transport != TransportStdio || gl.Command.SecretEnv["GITHUB_PERSONAL_ACCESS_TOKEN"] == "" || !contains(gl.Command.Argv, "--read-only") || gl.License.Server != "MIT" {
-		t.Errorf("ghlocal: %+v", gl)
-	}
-	if a := get("aikido"); a.Command.Pin != "@aikidosec/mcp@1.0.28" || !contains(a.Command.Argv, "@aikidosec/mcp@1.0.28") {
-		t.Errorf("aikido pin: %+v", a.Command)
-	}
-	if s := get("sentryx"); !contains(s.Command.Argv, "@sentry/mcp-server@0.42.0") || s.Command.SecretEnv["SENTRY_ACCESS_TOKEN"] == "" {
-		t.Errorf("sentryx must pin an exact version: %+v", s.Command)
 	}
 	// every card has what the gallery shows
 	for _, s := range c.Servers {
@@ -253,7 +251,7 @@ func TestProjectEnableDisableAndCustomServers(t *testing.T) {
 		t.Fatalf("defaults: %v %v", ids(def), err)
 	}
 	pc, err := ParseProjectConfig([]byte(`
-enabled: [gh, ctx7, sentryx]
+enabled: [gh, ctx7]
 disabled: [cfdocs]
 overrides:
   gh: {cache_ttl: 5m, allow_tools: [pull_request_read], critical: true}
@@ -284,7 +282,7 @@ custom:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ids(got) != "ctx7,gh,loc,mslearn,sentryx,wiki" {
+	if ids(got) != "ctx7,gh,loc,mslearn,wiki" {
 		t.Fatalf("resolved: %s", ids(got))
 	}
 	by := map[string]ServerSpec{}

@@ -68,7 +68,7 @@ func TestMCPCatalogServersAreAddedToTheLibraryOnce(t *testing.T) {
 	if added.Server.HasToken || !strings.Contains(added.Next, "token") || !added.Server.Guard {
 		t.Fatalf("gh: %+v", added)
 	}
-	for _, bad := range []string{"aikido", "sentryx", "ghlocal", "nope", ""} {
+	for _, bad := range []string{"nope", ""} {
 		if err := a.callErr("mcplib.addFromCatalog", map[string]string{"catalogId": bad}); err == nil {
 			t.Errorf("%q was added", bad)
 		}

@@ -9,9 +9,10 @@
 # pages were read instead; a fact taken only from a search extract says so. No hosted server below was contacted, so result
 # sizes, rate limits and commercial terms are UNVERIFIED and every entry is terms_status: unverified.
 #
-# D14: Sentry's FSL server, Aikido's AGPL server and Notion's retired local server are never bundled; the stdio entries are
-# user-install templates (template: true, bundled: false) that start only when a project enables them or the human connects
-# them from the gallery, which runs the command the card shows on the human's own computer.
+# D14: Sentry's FSL server, Aikido's AGPL server and Notion's retired local server are never bundled. Decision P45
+# (2026-10-13): the shipped catalog carries hosted servers only; the three local-program templates (GitHub's github-mcp-server,
+# Sentry's @sentry/mcp-server, Aikido's @aikidosec/mcp) were removed from the gallery. A stdio server a person wants is still
+# an ordinary library or project server (the same schema, template: true, bundled: false), started only when that person adds it.
 schema: 1
 servers:
   # Microsoft Learn. Evidence: github.com/MicrosoftDocs/mcp README (endpoint, "No API keys, no logins", the three tools,
@@ -199,38 +200,10 @@ servers:
     # PRs, issues and logs of the user's own repositories: private, short TTL, per project.
     cache: {ttl: 60s, scope: project}
     shape: {max_inline_bytes: 8192}
-    license: {server: MIT, bundled: false, notes: "Hosted by GitHub. The same server runs locally as the github-mcp-server program (see the next entry)."}
+    license: {server: MIT, bundled: false, notes: "Hosted by GitHub. The same server exists as the local github-mcp-server program; Drydock offers the hosted one (P45)."}
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, devops, qa, security, reviewer]
-
-  # GitHub, local. Evidence: github.com/github/github-mcp-server README ("github-mcp-server stdio"; GITHUB_PERSONAL_ACCESS_TOKEN
-  # takes precedence over the browser sign-in; --read-only skips write tools; MIT) and its releases page (v2.0.2, 8 Oct).
-  - id: ghlocal
-    display: GitHub (local program)
-    publisher: GitHub
-    official: true
-    brand: github
-    summary: "The same GitHub server as a program on this computer, read-only. You install github-mcp-server yourself."
-    description: "GitHub's MCP server as a program you install yourself (github-mcp-server v2.0.2 or later on your PATH), started read-only with your personal access token."
-    docs_url: https://github.com/github/github-mcp-server
-    token_help: "A fine-grained personal access token from GitHub, Settings, Developer settings. It goes to the Windows credential store and reaches the program as GITHUB_PERSONAL_ACCESS_TOKEN."
-    integration: github
-    transport: stdio
-    command:
-      argv: ["github-mcp-server", "stdio", "--read-only"]
-      pin: "github-mcp-server@2.0.2"
-      secret_env: {GITHUB_PERSONAL_ACCESS_TOKEN: "mcp/ghlocal"}
-    auth: {kind: none}
-    trust: private_data
-    data_class: private
-    cache: {ttl: 0s, scope: project}
-    shape: {max_inline_bytes: 8192}
-    license: {server: MIT, bundled: false, notes: "Not bundled: the human installs the program. Started with --read-only, so its write tools are not offered."}
-    health: {probe: tools/list, timeout: 10s}
-    terms_status: unverified
-    recommended_roles: [architect, devops, qa, security, reviewer]
-    template: true
 
   # Context7. Evidence: github.com/upstash/context7 README (https://mcp.context7.com/mcp, "pass your API key via the
   # Authorization: Bearer YOUR_API_KEY header", "API Key Recommended ... for higher rate limits", tools resolve-library-id and
@@ -347,65 +320,3 @@ servers:
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [devops, qa, security]
-
-  # ---- user-install templates (never bundled, never started unless a project enables them or the human connects them) ----
-
-  # Sentry, local. Evidence: getsentry/sentry-mcp README (npx @sentry/mcp-server, --access-token or the SENTRY_ACCESS_TOKEN
-  # environment variable, the scopes below, --host for self-hosted Sentry) and npm @sentry/mcp-server 0.42.0 (FSL-1.1-ALv2).
-  - id: sentryx
-    display: Sentry (local program)
-    publisher: Sentry
-    official: true
-    brand: sentry
-    summary: "Sentry as a program on this computer, for self-hosted Sentry or a token instead of a sign-in."
-    description: "Sentry's MCP server as a program you run yourself through npx (needs Node.js): for self-hosted Sentry, or when you prefer a token to a sign-in."
-    docs_url: https://github.com/getsentry/sentry-mcp
-    token_help: "A Sentry user auth token with org:read, project:read, project:write, team:read, team:write and event:write. It reaches the program as SENTRY_ACCESS_TOKEN."
-    integration: sentry
-    transport: stdio
-    command:
-      argv: ["npx", "-y", "@sentry/mcp-server@0.42.0"]
-      pin: "@sentry/mcp-server@0.42.0"
-      # The token goes through the environment (argv is visible to other processes); the README documents SENTRY_ACCESS_TOKEN.
-      secret_env: {SENTRY_ACCESS_TOKEN: "mcp/sentry"}
-    auth: {kind: none}
-    trust: private_data
-    data_class: private
-    cache: {ttl: 0s, scope: project}
-    shape: {max_inline_bytes: 8192}
-    license: {server: FSL-1.1-Apache-2.0, bundled: false, notes: "Not bundled (D14): npx fetches it on your computer when it starts. Scopes needed: org:read project:read project:write team:read team:write event:write."}
-    health: {probe: tools/list, timeout: 10s}
-    terms_status: unverified
-    recommended_roles: [devops, qa, security]
-    template: true
-
-  # Aikido. Evidence: npm @aikidosec/mcp 1.0.28 (license AGPL, published 2026-10-08) and its README: a local stdio program that
-  # "exposes Aikido's Code and Secrets Scan as a tool", sign-in in the browser or a personal access token from Settings,
-  # Integrations, IDE, MCP as AIKIDO_API_KEY. Aikido has no hosted MCP server of its own (a third-party host, MintMCP, runs it).
-  # Its scan sends the code it is given to Aikido, which Drydock's rule against uploading source code forbids: the send guard
-  # stays on and refuses code, so in Drydock it can only report findings Aikido already has.
-  - id: aikido
-    display: Aikido (local program)
-    publisher: Aikido Security
-    official: true
-    brand: aikido
-    summary: "Aikido code and secrets scanning as a program on this computer (AGPL; Drydock never sends it your code)."
-    description: "Aikido's MCP server as a program you run yourself through npx (needs Node.js). Its scan tool would send code to Aikido; Drydock's send guard refuses code, so agents can use it only for what does not need your source."
-    docs_url: https://www.npmjs.com/package/@aikidosec/mcp
-    token_help: "A personal access token from Aikido, Settings, Integrations, IDE, MCP. It reaches the program as AIKIDO_API_KEY."
-    integration: aikido
-    transport: stdio
-    command:
-      argv: ["npx", "-y", "@aikidosec/mcp@1.0.28"]
-      pin: "@aikidosec/mcp@1.0.28"
-      secret_env: {AIKIDO_API_KEY: "mcp/aikido"}
-    auth: {kind: none}
-    trust: private_data
-    data_class: private
-    cache: {ttl: 0s, scope: project}
-    shape: {max_inline_bytes: 8192}
-    license: {server: AGPL-3.0, bundled: false, notes: "AGPL or commercial: never bundled or embedded, user-installed separate process only, legal review first (D14)."}
-    health: {probe: tools/list, timeout: 10s}
-    terms_status: unverified
-    recommended_roles: [security]
-    template: true

@@ -481,7 +481,7 @@ func (s *ServerSpec) Validate(shipped bool) error {
 			add("the shipped catalog may not bundle a stdio server (D14)")
 		}
 		l := strings.ToUpper(s.License.Server)
-		if strings.HasPrefix(l, "FSL") || strings.HasPrefix(l, "AGPL") || s.ID == "aikido" || s.ID == "sentryx" {
+		if strings.HasPrefix(l, "FSL") || strings.HasPrefix(l, "AGPL") {
 			add("license %s must not be bundled (D14)", s.License.Server)
 		}
 	}

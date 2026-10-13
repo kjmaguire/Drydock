@@ -37,19 +37,21 @@ func TestMCPGalleryShowsEveryCatalogServerAsACard(t *testing.T) {
 			t.Errorf("%s: %+v", c.ID, c)
 		}
 	}
-	if strings.Join(ids, ",") != "mslearn,cfdocs,cfapi,gh,ghlocal,ctx7,linear,notion,sentry,sentryx,aikido" {
+	if strings.Join(ids, ",") != "mslearn,cfdocs,cfapi,gh,ctx7,linear,notion,sentry" {
 		t.Fatalf("cards: %v", ids)
 	}
-	want := map[string]string{"mslearn": "none", "cfdocs": "none", "cfapi": "oauth", "gh": "bearer", "ghlocal": "env", "ctx7": "bearer",
-		"linear": "oauth", "notion": "oauth", "sentry": "oauth", "sentryx": "env", "aikido": "env"}
+	want := map[string]string{"mslearn": "none", "cfdocs": "none", "cfapi": "oauth", "gh": "bearer", "ctx7": "bearer",
+		"linear": "oauth", "notion": "oauth", "sentry": "oauth"}
 	for id, auth := range want {
 		if byID[id].Auth != auth {
 			t.Errorf("%s signs in with %q, want %q", id, byID[id].Auth, auth)
 		}
 	}
-	if c := byID["aikido"]; !c.Template || c.SecretEnv != "AIKIDO_API_KEY" || !strings.HasPrefix(c.License, "AGPL") || c.Integration != "aikido" ||
-		strings.Join(c.Command, " ") != "npx -y @aikidosec/mcp@1.0.28" || c.TokenHelp == "" {
-		t.Errorf("aikido: %+v", c)
+	// decision P45: no local-program card in the shipped gallery (templates are still connected from a test catalog below)
+	for _, c := range cards {
+		if c.Template || len(c.Command) > 0 || c.SecretEnv != "" {
+			t.Errorf("%s is a local program; the shipped gallery offers hosted servers only (P45): %+v", c.ID, c)
+		}
 	}
 	if c := byID["gh"]; c.Publisher != "GitHub" || c.Brand != "github" || c.Integration != "github" || c.AuthOptional || c.TokenHelp == "" {
 		t.Errorf("gh: %+v", c)

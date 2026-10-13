@@ -46,7 +46,6 @@ const aliases: Record<string, string> = {
   gh: 'github',
   cfdocs: 'cloudflare',
   ctx7: 'context7',
-  sentryx: 'sentry',
   mslearn: 'microsoft',
   mistralai: 'mistral',
   'lm-studio': 'lmstudio',

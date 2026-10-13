@@ -9,9 +9,9 @@ import (
 )
 
 // Credentials is the MCP gateway's CredentialSource for integrations. A connection's own references
-// ("integrations/<id>/token") resolve directly; the catalog's references ("mcp/linear", "mcp/sentry", "mcp/notion",
-// "mcp/aikido", "mcp/sentryx") resolve to the token of the first enabled connection of that kind, so the token a user pasted
-// once serves both app sync and agent access through the gateway. Agents never see it: the gateway attaches it upstream.
+// ("integrations/<id>/token") resolve directly; the catalog's references ("mcp/linear", "mcp/sentry", "mcp/notion") resolve
+// to the token of the first enabled connection of that kind, so the token a user pasted once serves both app sync and agent
+// access through the gateway. Agents never see it: the gateway attaches it upstream.
 type Credentials struct {
 	Store *Store
 	Vault providers.SecretStore
@@ -49,9 +49,6 @@ func (c Credentials) Credential(ctx context.Context, serverID, ref string) (stri
 		return c.resolve(ctx, ref)
 	}
 	if kind, ok := strings.CutPrefix(ref, "mcp/"); ok {
-		if kind == "sentryx" {
-			kind = KindSentry
-		}
 		conns, err := c.Store.ListConnections(ctx)
 		if err != nil {
 			return "", err
