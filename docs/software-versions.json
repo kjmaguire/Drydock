@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-13T02:48:29Z",
-  "commit": "897e1d1",
+  "generated": "2026-10-13T02:50:08Z",
+  "commit": "0ed4a4a",
   "summary": {
     "current": 145,
     "major": 2,
@@ -6131,13 +6131,5 @@
     "indirect": 410,
     "runtime": 4,
     "tool": 9
-  },
-  "docDrift": [
-    {
-      "name": "@pitlane/vite-plugin-remix",
-      "docs": "0.8.0",
-      "code": "0.9.0",
-      "ref": "docs/decisions.md"
-    }
-  ]
+  }
 }
