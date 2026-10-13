@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createProject, freshGreenRepo } from './helpers';
+import { createProject, freshGreenRepo, workspaceNav, projectNav } from './helpers';
 
 /** Open a project skill's panel from its tile on the Skills page (the page shows tiles; the panel opens below the grid). */
 async function openSkill(page: Page, name: string) {
-  await page.getByTestId('nav-skills').click();
+  await projectNav(page, 'nav-skills');
   await page.locator(`[data-testid=skill-tile][data-name=${name}]`).click();
   return page.locator(`[data-testid=skill][data-skill=${name}]`);
 }
@@ -14,7 +14,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await createProject(page, 'skills-picker', freshGreenRepo());
 
   // the green fixture repository has go-style (roles: Backend); accepted, it goes to every backend agent
-  await page.getByTestId('nav-skills').click();
+  await projectNav(page, 'nav-skills');
   await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
   await expect(page.locator('[data-testid=skill-tile][data-name=go-style]')).toHaveAttribute('data-status', 'offered');
   let card = await openSkill(page, 'go-style');
@@ -23,7 +23,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Every Backend agent');
 
   // a frontend agent is given it in the new-agent form; a backend agent gets it with the team
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   const form = page.getByTestId('agent-form');
   await form.getByLabel('Agent name').fill('Ada');
   await form.getByLabel('Role', { exact: true }).fill('frontend');
@@ -53,7 +53,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Only Ada');
 
   // the editor shows what Ada has and takes it away
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await page.getByTestId('agent').filter({ hasText: 'Ada' }).getByRole('button', { name: 'Edit Ada' }).click();
   const editor = page.getByTestId('agent-editor');
   const mine = editor.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
@@ -65,7 +65,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody: no agent is chosen yet');
 
   // a template carries a registry skill (one a prebuilt agent comes with) and keeps it when it is edited
-  await page.getByTestId('nav-library').click();
+  await workspaceNav(page, 'nav-library');
   await page.getByRole('button', { name: 'New agent template' }).click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('UI dev');

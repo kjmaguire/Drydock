@@ -86,6 +86,14 @@ describe('typed client', () => {
     expect(d.pending).toEqual([]);
   });
 
+  it('deletes a project with the typed name, and fills a missing warnings list', async () => {
+    const f = mock.fn(async () => json({ result: { name: 'gocalc', worktreesRemoved: 1, warnings: null } }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.projectDelete('p', 'gocalc')).toEqual({ name: 'gocalc', worktreesRemoved: 1, warnings: [] });
+    const [url, init] = f.mock.calls.map((c) => c.arguments)[0] as unknown as [string, RequestInit];
+    expect([url, JSON.parse(init.body as string)]).toEqual(['/rpc/project.delete', { id: 'p', confirmName: 'gocalc' }]);
+  });
+
   it('sends the parameter names the core decodes', async () => {
     const f = mock.fn(async () => json({ result: null }));
     const c = createClient(transport(f as unknown as typeof fetch));

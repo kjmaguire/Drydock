@@ -1,4 +1,5 @@
-// Which screen a URL shows, for the shell (navigation highlight, the task in context, whether a project is needed).
+// Which screen a URL shows, for the shell (navigation highlight, the task in context, whether a project is needed, and which
+// sidebar shows: the workspace's or the project's).
 
 export type Route =
   | { name: 'home' }
@@ -31,16 +32,28 @@ export type Route =
     }
   | { name: 'not-found' };
 
-export type WorkspaceRouteName = 'library' | 'integrations' | 'connections' | 'providers' | 'routing' | 'backups' | 'data' | 'support' | 'license' | 'settings';
+export type WorkspaceRouteName = 'workspace' | 'library' | 'library-skills' | 'integrations' | 'connections' | 'providers' | 'routing' | 'backups' | 'data' | 'support' | 'license' | 'settings';
 
 /** Screens about the whole workspace, not one project. They open even when no project exists yet. */
-export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = ['library', 'integrations', 'connections', 'providers', 'routing', 'backups', 'data', 'support', 'license', 'settings'];
+export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = ['workspace', 'library', 'library-skills', 'integrations', 'connections', 'providers', 'routing', 'backups', 'data', 'support', 'license', 'settings'];
 
-const SIMPLE = new Set<string>(['pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', ...WORKSPACE_ROUTES]);
+// screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
+const SIMPLE = new Set<string>([
+  'pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security',
+  ...WORKSPACE_ROUTES.filter((n) => n !== 'workspace' && n !== 'library-skills'),
+]);
 
 export function isWorkspaceRoute(r: Route): boolean {
   // chats open without a project too (a chat may have none); /mcp is an alias of Integrations (decision P47)
   return (WORKSPACE_ROUTES as readonly string[]).includes(r.name) || r.name === 'chats' || r.name === 'chat' || r.name === 'mcp';
+}
+
+/**
+ * Whether the page belongs to the workspace rather than to one project: the shell then shows the workspace sidebar (Home,
+ * the library, connections, the app) instead of the project's. Creating a project is a workspace page too.
+ */
+export function isWorkspacePage(r: Route): boolean {
+  return isWorkspaceRoute(r) || r.name === 'project-new';
 }
 
 /** Parse a pathname. Unknown paths are 'not-found'. */
@@ -68,6 +81,11 @@ export function parseRoute(pathname: string): Route {
     case 'chats':
       if (parts.length === 1) return { name: 'chats' };
       return b && parts.length === 2 ? { name: 'chat', id: b } : { name: 'not-found' };
+    case 'home':
+      return parts.length === 1 ? { name: 'workspace' } : { name: 'not-found' };
+    case 'library':
+      if (parts.length === 1) return { name: 'library' };
+      return b === 'skills' && parts.length === 2 ? { name: 'library-skills' } : { name: 'not-found' };
     case 'project':
       if (parts.length === 1) return { name: 'project' };
       return b === 'new' && parts.length === 2 ? { name: 'project-new' } : { name: 'not-found' };

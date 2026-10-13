@@ -27,9 +27,11 @@ export const routes = route({
   evals: get('/evals'),
   security: get('/security'),
   // workspace screens: they open without a project
+  workspace: get('/home'),
   chats: get('/chats'),
   chat: get('/chats/:id'),
   library: get('/library'),
+  librarySkills: get('/library/skills'),
   integrations: get('/integrations'),
   connections: get('/connections'),
   providers: get('/providers'),

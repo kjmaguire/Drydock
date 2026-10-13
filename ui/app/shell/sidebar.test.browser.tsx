@@ -53,45 +53,77 @@ describe('the sidebar', () => {
     expect(task!.querySelector('[data-testid="unread-count"]')).toBeNull();
   });
 
-  it('offers Chats after the quick links with a project, and alone without one', async () => {
-    const r = mount(<Sidebar route={{ name: 'chat', id: 'c1' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-needs-you"]')).not.toBeNull(), r);
-    const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
-    expect(nav.indexOf('nav-chats')).toBe(nav.indexOf('nav-activity') + 1);
-    expect(nav[0]).toBe('nav-needs-you');
-    expect(r.$('[data-testid="nav-chats"]')!.getAttribute('aria-current')).toBe('page');
-    cleanup();
-    const none = mount(<Sidebar route={{ name: 'chats' }} />, svc({ projectList: async () => [] }));
-    await waitFor(() => expect(none.$('[data-testid="nav-chats"]')).not.toBeNull(), none);
-    expect(none.$('[data-testid="nav-needs-you"]')).toBeNull();
-  });
-
-  it('keeps the needs-you count and the workspace links', async () => {
-    const r = mount(<Sidebar route={{ name: 'home' }} />, svc());
+  it("on a project's page shows the project: Home first, then Needs you, Tasks and the rest, and no workspace links", async () => {
+    const r = mount(<Sidebar route={{ name: 'needs-you' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you'), r);
-    for (const id of ['nav-library', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings']) {
-      expect(r.$(`[data-testid="${id}"]`)).not.toBeNull();
-    }
-    // the Project group starts with Security
     const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
+    expect(nav.slice(0, 3)).toEqual(['nav-workspace', 'nav-needs-you', 'nav-tasks']);
+    expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
+    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
+    for (const id of ['nav-library', 'nav-library-skills', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-chats']) {
+      expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
+    }
+    // the Project group starts with Security; the project's own Skills page is under Knowledge
     expect(nav.indexOf('nav-security')).toBe(nav.indexOf('nav-milestones') - 1);
     expect(r.$('[data-testid="nav-security"]')!.textContent).toBe('Security');
+    expect(nav).toContain('nav-skills');
+    expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
     // the MCP servers page was merged into Integrations (decision P47): no entry of its own
     expect(nav).not.toContain('nav-mcp');
     expect(r.container.querySelector('a[href="/mcp"]')).toBeNull();
   });
 
-  it('marks Integrations current on its alias /mcp', async () => {
-    const r = mount(<Sidebar route={{ name: 'mcp' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-integrations"]')).not.toBeNull(), r);
-    expect(r.$('[data-testid="nav-integrations"]')!.getAttribute('aria-current')).toBe('page');
+  it('on a workspace page shows the workspace: Home, Chats, the projects, Library, Connect and App, and nothing of the project', async () => {
+    const r = mount(<Sidebar route={{ name: 'workspace' }} />, svc());
+    await waitFor(() => expect(r.$$('[data-testid="project-link"]')).toHaveLength(1), r);
+    const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
+    expect(nav.slice(0, 2)).toEqual(['nav-workspace', 'nav-chats']);
+    expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('aria-current')).toBe('page');
+    for (const id of ['nav-library-skills', 'nav-library', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-project-new']) {
+      expect([id, r.$(`[data-testid="${id}"]`) === null]).toEqual([id, false]);
+    }
+    for (const id of ['nav-needs-you', 'nav-tasks', 'nav-team', 'nav-skills', 'nav-project']) {
+      expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
+    }
+    expect(links(r)).toHaveLength(0);
+    expect(r.$('[aria-label="Inspect Backend #1"]')).toBeNull();
+    expect(r.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
+    expect(r.$('[data-testid="project-link"]')!.textContent).toContain('gocalc');
+    expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('Home');
   });
 
-  it('without a project still shows the switcher and the workspace links', async () => {
+  it('marks Chats current on a chat, and Integrations on its alias /mcp', async () => {
+    const r = mount(<Sidebar route={{ name: 'chat', id: 'c1' }} />, svc());
+    await waitFor(() => expect(r.$('[data-testid="nav-chats"]')!.getAttribute('aria-current')).toBe('page'), r);
+    cleanup();
+    const m = mount(<Sidebar route={{ name: 'mcp' }} />, svc());
+    await waitFor(() => expect(m.$('[data-testid="nav-integrations"]')).not.toBeNull(), m);
+    expect(m.$('[data-testid="nav-integrations"]')!.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('a project link selects that project and opens it', async () => {
+    const s = svc({ projectList: async () => [{ id: 'p', name: 'gocalc' }, { id: 'q', name: 'billing' }] as never });
+    // the link's own navigation is the app's; here it is stopped after the link's handler ran, so the test page stays
+    const stop = (e: Event) => e.preventDefault();
+    document.addEventListener('click', stop);
+    try {
+      const r = mount(<Sidebar route={{ name: 'workspace' }} />, s);
+      await waitFor(() => expect(r.$$('[data-testid="project-link"]')).toHaveLength(2), r);
+      const billing = Array.from(r.$$('[data-testid="project-link"]')).find((e) => e.textContent!.includes('billing')) as HTMLAnchorElement;
+      expect(billing.getAttribute('href')).toBe('/');
+      await r.act(() => billing.click());
+      expect(s.workspace.projectId).toBe('q');
+    } finally {
+      document.removeEventListener('click', stop);
+    }
+  });
+
+  it('without a project shows the workspace sidebar on every page', async () => {
     const r = mount(<Sidebar route={{ name: 'library' }} />, svc({ projectList: async () => [] }));
-    await waitFor(() => expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('No project'), r);
-    expect(r.$('[data-testid="nav-library"]')!.getAttribute('aria-current')).toBe('page');
+    await waitFor(() => expect(r.$('[data-testid="nav-library"]')!.getAttribute('aria-current')).toBe('page'), r);
     expect(r.$('[data-testid="nav-tasks"]')).toBeNull();
+    expect(r.$$('[data-testid="project-link"]')).toHaveLength(0);
+    expect(r.$('[data-testid="nav-project-new"]')).not.toBeNull();
   });
 
   it('moves between links with the arrow keys, but leaves keys from the switcher alone', async () => {

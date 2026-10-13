@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createProject, roomLink } from './helpers';
+import { createProject, roomLink, projectNav } from './helpers';
 
 test('message text is inert: no script, no element, no javascript: link, no remote image, nothing becomes an action', async ({ page }) => {
   const dialogs: string[] = [];
@@ -50,7 +50,7 @@ test('message text is inert: no script, no element, no javascript: link, no remo
   expect(page.url()).not.toContain('approve');
 
   // and the text "APPROVED" created no approval: the inbox is still empty
-  await page.getByTestId('nav-needs-you').click();
+  await projectNav(page, 'nav-needs-you');
   await expect(page.getByText('Nothing is waiting for you')).toBeVisible();
 
   // the same text survives a reload as inert text (it is what the core stored, not a render-time accident)

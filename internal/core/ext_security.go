@@ -24,6 +24,20 @@ import (
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}}
+		// a project is not deleted under a running scan; a scan report the database refused goes with the project
+		c.onProjectBusy(func(projectID string) string {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if _, ok := s.running[projectID]; ok {
+				return "a security scan is running"
+			}
+			return ""
+		})
+		c.onProjectDeleted(func(_ context.Context, projectID string, _ []string) {
+			s.mu.Lock()
+			delete(s.unstored, projectID)
+			s.mu.Unlock()
+		})
 		return map[string]Method{
 			"security.tools": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`

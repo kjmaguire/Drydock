@@ -4,14 +4,14 @@
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { createProject } from './helpers';
+import { createProject, workspaceNav, projectNav } from './helpers';
 
 const distro = (): string => process.env.DRYDOCK_E2E_WSL ?? '';
 
 test('Connections: Claude Code inside a WSL distro is its own card with its own sign-in, and its Test runs it in the distro', async ({ page }) => {
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-conn');
-  await page.getByTestId('nav-connections').click();
+  await workspaceNav(page, 'nav-connections');
   // a tile of its own on the overview, named by its distro; the tile opens its card below the grid
   const tile = page.locator(`[data-testid=connection-tile][data-key="claude@wsl:${distro()}"]`);
   await expect(tile).toBeVisible({ timeout: 60_000 });
@@ -46,7 +46,7 @@ test('Connections: Claude Code inside a WSL distro is its own card with its own 
 test("Connections: Sign in runs the CLI's own login inside the distro in a terminal in the card, and the card re-checks itself", async ({ page }) => {
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-signin');
-  await page.getByTestId('nav-connections').click();
+  await workspaceNav(page, 'nav-connections');
   const tile = page.locator(`[data-testid=connection-tile][data-key="claude@wsl:${distro()}"]`);
   const card = page.locator(`[data-testid=connection][data-key="claude@wsl:${distro()}"]`);
   await tile.click({ timeout: 60_000 });
@@ -85,7 +85,7 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-team');
   await expect(async () => {
-    await page.getByTestId('nav-team').click();
+    await projectNav(page, 'nav-team');
     await page.getByLabel('Agent name').fill('Linux worker', { timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
   await page.getByLabel('Role', { exact: true }).fill('backend');
@@ -99,7 +99,7 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
   await expect(card.getByTestId('agent-runs')).toHaveText(`in WSL ${distro()}`);
 
   // the project's default for agents that do not choose
-  await page.getByTestId('nav-project').click();
+  await projectNav(page, 'nav-project');
   const panel = page.getByTestId('run-mode-panel');
   await expect(panel).toBeVisible();
   await panel.getByLabel('Agents run').selectOption(`wsl:${distro()}`);

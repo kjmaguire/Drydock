@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject } from './helpers';
+import { createAgent, createProject, workspaceNav, projectNav } from './helpers';
 
 // Round 6: the Library, against the real Go core. An MCP server is connected once, then dragged into projects and onto agents; a team
 // member is defined once as a template and dragged into a project. The server is a real stdio MCP server (the e2e binary re-executed
@@ -12,8 +12,8 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await createAgent(page, 'Pay', 'backend');
   await createAgent(page, 'Rev', 'reviewer');
   await createProject(page, 'lib-b'); // now the current project
-  await page.getByTestId('nav-library').click();
-  await expect(page.getByRole('heading', { name: 'Library' })).toBeVisible();
+  await workspaceNav(page, 'nav-library');
+  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
 
   // connect once: a refused address says why, then a real server with a secret
   const exe = process.env.DRYDOCK_E2E_EXE!;
@@ -93,16 +93,16 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await expect(projB.getByTestId('proj-server')).toHaveCount(1); // granting also put the server into lib-b
 
   // the project's servers on the Integrations page agree (lib-b is current), and the agent kept the template's settings
-  await page.getByTestId('nav-integrations').click();
+  await workspaceNav(page, 'nav-integrations');
   const onB = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
   await expect(onB.getByLabel('Payments dev may use Test server')).toBeChecked();
   await expect(onB.getByText('reads only')).toHaveCount(1);
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toContainText('effort high');
 
   // disconnecting removes it from every project
   // (a fresh visit shows only the tiles: clicking one opens its panel)
-  await page.getByTestId('nav-library').click();
+  await workspaceNav(page, 'nav-library');
   await expect(page.getByTestId('lib-mcp')).toHaveCount(0);
   await page.getByTestId('lib-mcp-tile').filter({ hasText: 'Test server' }).click();
   const again = page.getByTestId('lib-mcp').filter({ hasText: 'Test server' });

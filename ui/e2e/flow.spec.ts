@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardToReview } from './helpers';
+import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardToReview, projectNav } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -112,7 +112,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 
 test('project delivery settings and the Pull Requests view show the core\'s honest answers (no GitHub origin in this repo)', async ({ page }) => {
   await createProject(page, 'gocalc-pr');
-  await page.getByRole('link', { name: 'Project settings' }).click();
+  await projectNav(page, 'nav-project');
   await page.getByLabel('Mode', { exact: true }).selectOption('pr_flow');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
@@ -122,10 +122,11 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('origin');
 });
 
-test('the sidebar is keyboard navigable and Needs you comes first', async ({ page }) => {
+test("the sidebar is keyboard navigable and Needs you comes first among the project's links (after Home)", async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
-  await expect(items.first()).toHaveAttribute('href', '/needs-you');
+  await expect(items.first()).toHaveAttribute('href', '/home');
+  await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-tasks')).toBeFocused();

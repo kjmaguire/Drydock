@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject } from './helpers';
+import { createAgent, createProject, projectNav } from './helpers';
 
 // Round 5: team management against the real Go core: purpose, model and effort at creation, editing, and removal.
 
 test('team: create an agent with purpose, model and effort; refused values say why; edit it; remove it', async ({ page }) => {
   await createProject(page, 'team-mgmt');
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
 
   await page.getByLabel('Agent name').fill('Pay');
   await page.getByLabel('Role', { exact: true }).fill('backend');
@@ -51,7 +51,7 @@ test('team: create an agent with purpose, model and effort; refused values say w
   await expect(page.getByTestId('inspector-purpose')).toContainText('Billing only.');
 
   // removal needs a confirmation and the agent leaves the team
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await row.getByRole('button', { name: 'Edit Pay' }).click();
   await page.getByTestId('agent-editor').getByRole('button', { name: 'Remove from team' }).click();
   await page.getByTestId('agent-editor').getByRole('button', { name: 'Yes, remove' }).click();

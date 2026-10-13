@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createProject } from './helpers';
+import { createProject, workspaceNav } from './helpers';
 
 // Round 9: OAuth sign-in of a web MCP server, against the real Go core. The provider is a test double (internal/mcp/oauthfake: an
 // MCP server that wants a token, with discovery, dynamic client registration, PKCE, token and refresh); Drydock's side is the real
@@ -10,8 +10,8 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   const provider = process.env.DRYDOCK_E2E_OAUTH_MCP!;
   expect(provider).toContain('/mcp');
   await createProject(page, 'oauth-a');
-  await page.getByTestId('nav-library').click();
-  await expect(page.getByRole('heading', { name: 'Library' })).toBeVisible();
+  await workspaceNav(page, 'nav-library');
+  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Connect an MCP server' }).click();
   const form = page.getByTestId('mcp-form');

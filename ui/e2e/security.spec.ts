@@ -4,7 +4,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createProject, freshRepo } from './helpers';
+import { createProject, freshRepo, projectNav } from './helpers';
 
 const PLANTED = 'AKIA2W7X3KQ5ZV4YBN6T';
 
@@ -13,7 +13,7 @@ test('one button scans the working tree with three engines, names the findings w
   await createProject(page, 'gocalc-security', repo);
   writeFileSync(join(repo, 'notes.txt'), `aws_access_key_id = ${PLANTED}\n`);
 
-  await page.getByTestId('nav-security').click();
+  await projectNav(page, 'nav-security');
   await expect(page.getByTestId('security-scan')).toBeVisible();
   await expect(page.locator('[data-testid=tool][data-tool=osv-scanner][data-found=true]')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-testid=tool][data-tool=opengrep][data-found=true]')).toBeVisible();

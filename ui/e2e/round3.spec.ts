@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink } from './helpers';
+import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav } from './helpers';
 
 // Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; this integrations test has no
 // vendor server, so only the refusal paths are exercised (integrations.spec.ts runs against a protocol fixture).
@@ -8,7 +8,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await createProject(page, 'gocalc-econ');
 
   // budgets
-  await page.getByTestId('nav-budgets').click();
+  await projectNav(page, 'nav-budgets');
   await expect(page.getByText('No budgets')).toBeVisible();
   await page.getByRole('button', { name: 'Add budget' }).first().click();
   await page.getByLabel('Limit in USD').fill('5');
@@ -34,7 +34,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(page.getByTestId('budget')).toHaveCount(1);
 
   // evals
-  await page.getByTestId('nav-evals').click();
+  await projectNav(page, 'nav-evals');
   await expect(page.getByTestId('evals-markdown')).toBeVisible();
   await expect(page.getByTestId('evals-headline')).toBeVisible();
   await expect(page.getByTestId('ratio-completion')).toHaveText('n/a'); // no task has started: a zero denominator is n/a
@@ -42,13 +42,13 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(page.getByTestId('evals-exported')).toContainText('stays on this machine');
 
   // routing
-  await page.getByTestId('nav-routing').click();
+  await workspaceNav(page, 'nav-routing');
   await expect(page.getByTestId('route-rule').first()).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
 
   // telemetry: off by default, local only, a preview of what an export holds
-  await page.getByRole('link', { name: 'Settings and About' }).click();
+  await workspaceNav(page, 'nav-settings');
   const tel = page.getByTestId('telemetry');
   await expect(tel).toContainText('off');
   await expect(tel).toContainText('this device only');
@@ -60,7 +60,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(tel.getByRole('button', { name: 'Turn telemetry on' })).toBeVisible();
 
   // project settings: checks and the development flow
-  await page.getByRole('link', { name: 'Project settings' }).click();
+  await projectNav(page, 'nav-project');
   await page.getByLabel('Dependency vulnerability scan').check();
   await page.getByRole('button', { name: 'Save check settings' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved.' }).first()).toBeVisible();
@@ -89,7 +89,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await createAgent(page, 'Dana', 'backend');
 
   // expert pack from a local directory
-  await page.getByTestId('nav-packs').click();
+  await projectNav(page, 'nav-packs');
   const dir = docsDir().replace(/\\/g, '/');
   await page.getByLabel('Pack manifest (YAML)').fill(`schema: 1\nid: e2edocs\ntitle: E2E docs\nkind: indexed\nvisibility: private\nsources:\n  - {type: local_dir, path: "${dir}"}\nattach: {instructions: "Go concurrency notes."}\n`);
   await page.getByRole('button', { name: 'Install pack' }).click();
@@ -108,7 +108,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(hit).toContainText('goroutine');
 
   // requirements: upload a file, trace, link to a task
-  await page.getByTestId('nav-requirements').click();
+  await projectNav(page, 'nav-requirements');
   // each screen here has a field labelled Title: wait for the new screen before typing, or the text goes into the old one
   await expect(page.getByRole('heading', { name: 'Add requirements' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Checkout');
@@ -120,12 +120,12 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(detail.getByTestId('trace')).toHaveAttribute('data-verified', 'false');
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__xss)).toBeUndefined();
   await expect(detail.locator('script')).toHaveCount(0);
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill('Build checkout');
   await page.getByRole('button', { name: 'Create task' }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Build checkout/ })).toBeVisible();
-  await page.getByTestId('nav-requirements').click();
+  await projectNav(page, 'nav-requirements');
   await page.getByTestId('requirement').filter({ hasText: 'Checkout' }).getByRole('button', { name: 'Open' }).click();
   await page.getByLabel('Task to link').selectOption({ label: '#1 Build checkout' });
   await page.getByLabel(/^Criteria \(one per line/).fill('Given a paid cart, when the order is placed, then an order record exists');
@@ -135,7 +135,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(page.getByTestId('trace-task')).toContainText('no test evidence');
 
   // milestones
-  await page.getByTestId('nav-milestones').click();
+  await projectNav(page, 'nav-milestones');
   await expect(page.getByRole('heading', { name: 'New milestone' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Beta');
   await page.getByRole('button', { name: 'Create milestone' }).click();
@@ -146,7 +146,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(ms).toContainText('0 of 1 completed');
 
   // skills: repository skills are offered, never applied; the human opens the tile and accepts in its panel (decisions P48, P49)
-  await page.getByTestId('nav-skills').click();
+  await projectNav(page, 'nav-skills');
   await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
   await expect(page.getByTestId('skill-scan')).toContainText('1 offered, 0 accepted');
   const goTile = page.locator('[data-testid=skill-tile][data-name=go-style]');
@@ -179,7 +179,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(page.locator('[data-testid=skill][data-skill=wrangler]').getByTestId('skill-status')).toHaveText('accepted ✓');
 
   // memory: propose, accept, delete
-  await page.getByTestId('nav-memory').click();
+  await projectNav(page, 'nav-memory');
   await expect(page.getByRole('heading', { name: 'Propose an entry' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Use gofmt');
   await page.getByLabel('Body').fill('Run gofmt before every commit.');
@@ -212,7 +212,7 @@ test('development flow: the Feature template stops at the spec gate; reject with
   // nothing has been built: no red or green evidence yet
   await expect(page.locator('[data-testid=evidence][data-kind=red_test]')).toHaveCount(0);
   // it is in Needs you with a plain hint
-  await page.getByTestId('nav-needs-you').click();
+  await projectNav(page, 'nav-needs-you');
   await expect(page.getByTestId('needs-item').first()).toContainText('Accept the spec');
   await expect(page.getByTestId('needs-hint').first()).toContainText('spec gate');
   await page.getByTestId('needs-item').first().getByRole('link').click();
@@ -249,7 +249,7 @@ test('development flow: the Feature template stops at the spec gate; reject with
 test('PlanTeam: the planner proposes a task graph, a dependency-closed subset is accepted and the tasks appear', async ({ page }) => {
   await createProject(page, 'gocalc-plan', freshGreenRepo());
   await createAgent(page, 'Priya', 'pm');
-  await page.getByTestId('nav-plan').click();
+  await projectNav(page, 'nav-plan');
   await page.getByLabel('Goal').fill('Add arithmetic helpers');
   await page.getByRole('button', { name: 'Propose a plan' }).click();
   const plan = page.getByTestId('plan');
@@ -263,7 +263,7 @@ test('PlanTeam: the planner proposes a task graph, a dependency-closed subset is
   await plan.getByLabel('Create Add Divide').uncheck();
   await plan.getByRole('button', { name: 'Accept 1 task' }).click();
   await expect(page.getByTestId('plan')).toHaveAttribute('data-status', 'ACCEPTED', { timeout: 60_000 });
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('task-row').filter({ hasText: 'Add Multiply' })).toHaveCount(1);
   await expect(page.getByTestId('task-row').filter({ hasText: 'Add Divide' })).toHaveCount(0);
 });
@@ -272,7 +272,7 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await createProject(page, 'gocalc-budget');
   await createAgent(page, 'Worker B', 'backend');
   await createAgent(page, 'Reviewer B', 'reviewer');
-  await page.getByTestId('nav-budgets').click();
+  await projectNav(page, 'nav-budgets');
   await page.getByRole('button', { name: 'Add budget' }).first().click();
   await page.getByLabel('Limit in turns').fill('1');
   await page.getByRole('button', { name: 'Add budget' }).last().click();
@@ -284,7 +284,7 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await expect(pause).toBeVisible({ timeout: 90_000 });
   await expect(pause).toContainText('Budget limit reached');
   await expect(page.getByTestId('pending-request').first()).toHaveAttribute('data-kind', 'approval');
-  await page.getByTestId('nav-needs-you').click();
+  await projectNav(page, 'nav-needs-you');
   await expect(page.getByTestId('needs-hint').first()).toContainText('budget stopped the next agent turn');
   await page.getByTestId('needs-item').first().getByRole('link').click();
 
@@ -293,7 +293,7 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId('budget-pause')).toHaveCount(0);
-  await page.getByTestId('nav-budgets').click();
+  await projectNav(page, 'nav-budgets');
   await expect(page.getByTestId('budget').first()).toContainText('10 turns');
 });
 
@@ -317,7 +317,7 @@ test('room modes, the scheduler and previews report what the core says', async (
   await page.getByTestId('room-agents').getByRole('button', { name: 'Save mode' }).click();
   await expect(page.getByRole('alert')).toContainText('moderator');
 
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('scheduler')).toContainText('manual');
   await page.getByRole('button', { name: 'Start ready tasks now' }).click();
   await expect(page.getByTestId('tick-result')).toContainText('Started 0');
@@ -325,7 +325,7 @@ test('room modes, the scheduler and previews report what the core says', async (
 
 test('integrations: connecting stores the key without ever showing it; with no vendor server the test does not pass; disconnect removes it', async ({ page }) => {
   await createProject(page, 'gocalc-int');
-  await page.getByTestId('nav-integrations').click();
+  await workspaceNav(page, 'nav-integrations');
   await expect(page.getByText('Nothing is connected.')).toBeVisible();
   await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
   const card = page.locator('[data-testid=integration][data-kind=linear]');

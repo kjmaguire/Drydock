@@ -21,6 +21,7 @@ export interface PaletteItem {
 }
 
 export const SCREENS: [string, string, string[]?][] = [
+  [routes.workspace.href(), 'Home', ['workspace', 'projects', 'start']],
   [routes.needsYou.href(), 'Needs you', ['inbox', 'approvals']],
   [routes.chats.href(), 'Chats', ['claude', 'conversation']],
   [routes.tasks.href(), 'Tasks'],
@@ -30,14 +31,15 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.requirements.href(), 'Requirements'],
   [routes.milestones.href(), 'Milestones'],
   [routes.memory.href(), 'Memory'],
-  [routes.skills.href(), 'Skills'],
+  [routes.skills.href(), 'Project skills', ['skills']],
+  [routes.librarySkills.href(), 'Skill library', ['skills', 'registry', 'registries']],
   [routes.packs.href(), 'Expert packs'],
   [routes.budgets.href(), 'Budgets'],
   [routes.evals.href(), 'Evals'],
   [routes.activity.href(), 'Activity'],
   [routes.security.href(), 'Security scan', ['secrets', 'vulnerabilities', 'gitleaks', 'osv', 'opengrep']],
   [routes.project.href(), 'Project settings'],
-  [routes.library.href(), 'Library'],
+  [routes.library.href(), 'Library: agents and MCP servers', ['templates', 'prebuilt']],
   [routes.integrations.href(), 'Integrations', ['mcp', 'connectors', 'agent tools', 'servers']],
   [routes.connections.href(), 'Connections'],
   [routes.providers.href(), 'Providers'],

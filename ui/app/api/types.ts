@@ -54,6 +54,15 @@ export interface GitConfigStatus {
   fingerprint: string;
 }
 
+/** What deleting a project did (project.delete). */
+export interface ProjectDeleted {
+  name: string;
+  /** Drydock's own worktrees of the project that were removed. */
+  worktreesRemoved: number;
+  /** What could not be cleaned up (a worktree folder in use, for example); the project itself is gone. */
+  warnings: string[];
+}
+
 /** Whether a project has a repository (older cores do not send hasRepo; every project had one then). */
 export const projectHasRepo = (p: Pick<Project, 'hasRepo'> | undefined): boolean => !!p && p.hasRepo !== false;
 

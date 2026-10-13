@@ -42,6 +42,12 @@ type agentsDev struct {
 
 func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	a := &agentsDev{c: c, previews: &previewManager{c: c, running: map[string]*checks.PreviewHandle{}}}
+	// a deleted project's previews serve from worktrees that are about to go
+	c.onProjectDeleted(func(_ context.Context, _ string, taskIDs []string) {
+		for _, t := range taskIDs {
+			a.previews.stop(t)
+		}
+	})
 
 	// concurrency: the same limiter bounds workflow agent turns and room replies
 	a.limiter = pipeline.NewLimiter(

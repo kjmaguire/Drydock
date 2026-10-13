@@ -19,14 +19,15 @@ function svc(projects = [{ id: 'p1', name: 'gocalc-approve' }, { id: 'p2', name:
 const shown = (r: { $: (s: string) => Element | null }) => !!r.$('[role="menu"]')?.closest('[popover]')?.matches(':popover-open');
 const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
 
-async function setup(projects?: { id: string; name: string }[]) {
+async function setup(projects?: { id: string; name: string }[], workspace = false) {
   const s = svc(projects);
   const navigated: string[] = [];
-  const r = mount(<ProjectSwitcher onNavigate={(h) => navigated.push(h)} />, s);
+  const r = mount(<ProjectSwitcher workspace={workspace} onNavigate={(h) => navigated.push(h)} />, s);
   const trigger = await waitFor(() => {
     const b = r.$('button[aria-label="Switch project"]') as HTMLButtonElement | null;
     if (!b) throw new Error('no switcher');
-    if (projects?.length !== 0 && !b.textContent!.includes('gocalc-approve')) throw new Error('projects not loaded yet');
+    if (projects?.length !== 0 && !s.workspace.projects.data) throw new Error('projects not loaded yet');
+    if (!workspace && projects?.length !== 0 && !b.textContent!.includes('gocalc-approve')) throw new Error('projects not loaded yet');
     return b;
   }, r);
   /**
@@ -41,13 +42,15 @@ async function setup(projects?: { id: string; name: string }[]) {
     }, r);
   };
   const items = () => Array.from(r.$$('[role^="menuitem"]')) as HTMLElement[];
-  const radios = () => Array.from(r.$$('[role="menuitemradio"]')) as HTMLElement[];
-  return { s, r, trigger, open, items, radios, navigated };
+  // the projects (the first radio item is Home)
+  const radios = () => (Array.from(r.$$('[role="menuitemradio"]')) as HTMLElement[]).filter((e) => e.getAttribute('data-value') !== 'home');
+  const home = () => r.$('[role="menuitemradio"][data-value="home"]') as HTMLElement;
+  return { s, r, trigger, open, items, radios, home, navigated };
 }
 
 describe('the project switcher', () => {
-  it('shows the current project and opens a menu of projects (radio items), New project and App settings', async () => {
-    const { trigger, open, items, radios, r } = await setup();
+  it('shows the open project and opens a menu: Home, the projects (radio items), New project and App settings', async () => {
+    const { trigger, open, items, radios, home, r } = await setup();
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     await open();
@@ -55,57 +58,51 @@ describe('the project switcher', () => {
     expect(r.$('[role="menu"]')!.getAttribute('aria-label')).toBe('Projects');
     expect(radios().map((e) => e.querySelector('.label')!.textContent)).toEqual(['gocalc-approve', 'lib-a']);
     expect(radios().map((e) => e.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+    expect(home().querySelector('.label')!.textContent).toBe('Home');
+    expect(home().getAttribute('aria-checked')).toBe('false');
     // the projects are never plain buttons, so a name search for a button ("Approve") cannot hit "gocalc-approve"
     expect(Array.from(r.$$('button')).length).toBe(1);
     expect(items().filter((e) => e.getAttribute('role') === 'menuitem').map((e) => e.textContent!.trim())).toEqual(['New project…', 'App settings']);
   });
 
-  it('switches project when a project is chosen', async () => {
-    const { s, open, radios, trigger, r } = await setup();
+  it("opens the chosen project: its home, never the previous project's page", async () => {
+    const { s, open, radios, trigger, r, navigated } = await setup();
     await open();
     await r.act(() => radios()[1]!.click());
     await waitFor(() => expect(s.workspace.projectId).toBe('p2'), r);
     await waitFor(() => expect(trigger.textContent).toContain('lib-a'), r);
     await waitFor(() => expect(shown(r)).toBe(false), r);
-  });
-
-  it("leaves the previous project's page (its room, a task) for the new project's home; workspace pages stay", async () => {
-    const was = window.location.pathname + window.location.search + window.location.hash;
-    try {
-      for (const [path, expected] of [
-        ['/room/room_general_p1', ['/']],
-        ['/task/task_1', ['/']],
-        ['/library', []],
-        ['/chats/chat_a', []],
-      ] as [string, string[]][]) {
-        history.replaceState(history.state, '', path);
-        const { s, open, radios, r, navigated } = await setup();
-        await open();
-        await r.act(() => radios()[1]!.click());
-        await waitFor(() => expect(s.workspace.projectId).toBe('p2'), r);
-        expect([path, navigated]).toEqual([path, expected]);
-        cleanup();
-      }
-    } finally {
-      history.replaceState(history.state, '', was);
-    }
+    expect(navigated).toEqual(['/']);
   });
 
   it('choosing the project that is already open goes nowhere', async () => {
-    const was = window.location.pathname + window.location.search + window.location.hash;
-    history.replaceState(history.state, '', '/room/room_general_p1');
-    try {
-      const { s, open, radios, r, navigated } = await setup();
-      await open();
-      await r.act(() => radios()[0]!.click());
-      // the menu hands over the selection before it closes: once it is closed, the choice has been handled
-      await waitFor(() => expect(shown(r)).toBe(false), r);
-      await drain();
-      expect(s.workspace.projectId).toBe('p1');
-      expect(navigated).toEqual([]);
-    } finally {
-      history.replaceState(history.state, '', was);
-    }
+    const { s, open, radios, r, navigated } = await setup();
+    await open();
+    await r.act(() => radios()[0]!.click());
+    // the menu hands over the selection before it closes: once it is closed, the choice has been handled
+    await waitFor(() => expect(shown(r)).toBe(false), r);
+    await drain();
+    expect(s.workspace.projectId).toBe('p1');
+    expect(navigated).toEqual([]);
+  });
+
+  it('on a workspace page says Home (checked), and choosing the remembered project opens it', async () => {
+    const { s, open, radios, home, trigger, r, navigated } = await setup(undefined, true);
+    expect(trigger.textContent).toContain('Home');
+    expect(trigger.textContent).not.toContain('gocalc-approve');
+    await open();
+    expect(home().getAttribute('aria-checked')).toBe('true');
+    expect(radios().map((e) => e.getAttribute('aria-checked'))).toEqual(['false', 'false']);
+    await r.act(() => radios()[0]!.click());
+    await waitFor(() => expect(navigated).toEqual(['/']), r);
+    expect(s.workspace.projectId).toBe('p1');
+  });
+
+  it('Home opens the workspace', async () => {
+    const { open, home, r, navigated } = await setup();
+    await open();
+    await r.act(() => home().click());
+    await waitFor(() => expect(navigated).toEqual(['/home']), r);
   });
 
   it('works from the keyboard: arrow down opens at the first item, arrows move, Enter selects', async () => {
@@ -116,6 +113,8 @@ describe('the project switcher', () => {
       expect(shown(r)).toBe(true);
       return r.$('[role="menu"]')!;
     }, r);
+    await waitFor(() => expect(r.$('[data-highlighted="true"]')!.getAttribute('data-value')).toBe('home'), r);
+    await r.act(() => key(menu, 'ArrowDown'));
     await waitFor(() => expect(r.$('[data-highlighted="true"]')!.getAttribute('data-value')).toBe('p1'), r);
     await r.act(() => key(menu, 'ArrowDown'));
     await waitFor(() => expect(r.$('[data-highlighted="true"]')!.getAttribute('data-value')).toBe('p2'), r);
@@ -136,11 +135,12 @@ describe('the project switcher', () => {
     await waitFor(() => expect(navigated).toEqual(['/project/new', '/settings']), r);
   });
 
-  it('says "No project" and still offers a new project when there is none', async () => {
-    const { trigger, open, items, radios } = await setup([]);
+  it('says "No project" and still offers Home and a new project when there is none', async () => {
+    const { trigger, open, items, radios, home } = await setup([]);
     expect(trigger.textContent).toContain('No project');
     await open();
     expect(radios()).toHaveLength(0);
-    expect(items().map((e) => e.textContent!.trim())).toEqual(['New project…', 'App settings']);
+    expect(home()).not.toBeNull();
+    expect(items().filter((e) => e.getAttribute('role') === 'menuitem').map((e) => e.textContent!.trim())).toEqual(['New project…', 'App settings']);
   });
 });

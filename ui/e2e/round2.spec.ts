@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, roomLink } from './helpers';
+import { appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav } from './helpers';
 
 test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
-  await page.getByTestId('nav-connections').click();
+  await workspaceNav(page, 'nav-connections');
   // the overview is a grid of tiles; a tile opens its connection's card below the grid
   const customTile = page.locator('[data-testid=connection-tile][data-adapter=custom]');
   await expect(customTile).toHaveAttribute('data-usable', 'false');
@@ -41,7 +41,7 @@ test('Connections: gates need a checkbox and a click by the human; Test is gated
 
 test('Providers: a fake key is stored by the core but never displayed; validation errors are shown verbatim; test and delete work', async ({ page }) => {
   await createProject(page, 'gocalc-prov');
-  await page.getByTestId('nav-providers').click();
+  await workspaceNav(page, 'nav-providers');
   const secret = 'sk-e2e-not-a-real-key-12345';
   // the overview is a grid of tiles; the "Add a provider" tile opens the form below it
   await page.getByTestId('provider-add-tile').click();
@@ -114,7 +114,7 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await expect(page.locator('details.members')).toContainText('Worker R2');
 
   // a direct message with an agent
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await page.getByTestId('agent').filter({ hasText: 'Worker R2' }).getByRole('button', { name: 'Message' }).click();
   await expect(page.getByLabel('Messages in dm:', { exact: false })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Direct messages' })).toBeVisible();

@@ -35,6 +35,12 @@ function writeJSON(key: string, v: unknown): void {
   }
 }
 
+/** A one-time note one page leaves for the next. */
+export interface Flash {
+  text: string;
+  tone: 'ok' | 'warn';
+}
+
 export class UiModel extends Model {
   tab: DetailsTab = 'agents';
   inspectId: string | undefined;
@@ -115,6 +121,20 @@ export class UiModel extends Model {
     const asked = this.#newChat;
     this.#newChat = false;
     return asked;
+  }
+
+  #flash: Flash | undefined;
+
+  /** A one-time note for the next page (the workspace Home says which project was deleted). */
+  flash(text: string, tone: Flash['tone'] = 'ok'): void {
+    this.#flash = { text, tone };
+  }
+
+  /** The note left for this page, once; clears it (no change event: read when the page mounts). */
+  takeFlash(): Flash | undefined {
+    const f = this.#flash;
+    this.#flash = undefined;
+    return f;
   }
 
   setTheme(t: ThemeChoice): void {

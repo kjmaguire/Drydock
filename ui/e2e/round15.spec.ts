@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { createProject, freshRepo } from './helpers';
+import { createProject, freshRepo, projectNav } from './helpers';
 
 // The repository configuration guard (docs/security.md s3), against the real core: a project whose repository gets a new
 // git setting outside Drydock shows the banner on its screens, naming the setting; only the Trust button trusts it, and a
@@ -23,7 +23,7 @@ test('repository git configuration: a changed setting shows the banner, and trus
   await expect(banner).not.toContainText(' cat');
 
   // it stays on another screen of the project
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await expect(banner).toBeVisible();
 
   await banner.getByRole('button', { name: 'Trust this configuration' }).click();

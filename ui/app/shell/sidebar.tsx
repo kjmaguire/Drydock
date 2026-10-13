@@ -1,6 +1,8 @@
-// The sidebar (Linear's single sidebar): the Drydock mark and the project switcher, search, quick links (Needs you,
-// Tasks, ...), channels, task channels, direct messages, then collapsible project, knowledge and workspace sections, and
-// the event stream status. Arrow keys move between items (docs/ui.md section 14).
+// The sidebar (Linear's single sidebar): the Drydock mark and the project switcher, search, then one of two sets of links.
+// On a workspace page (Home, Chats, the library, connections, the app) it shows the workspace: Home, Chats, the projects,
+// Library, Connect and App. On a project's page it shows that project: Home (back to the workspace), Needs you, Tasks, ...,
+// channels, task channels, direct messages, the Project and Knowledge sections and the agents. Last, the event stream
+// status. Arrow keys move between items (docs/ui.md section 14).
 
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import {
@@ -32,18 +34,20 @@ import {
   Sparkles,
   Users,
   Gauge,
+  House,
   Library,
   Link2,
+  Plus,
 } from 'lucide';
 import type { Room } from '../api/types.ts';
 import { roomLabel } from '../lib/format.ts';
-import type { Route } from '../lib/route.ts';
+import { isWorkspacePage, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
 import { Avatar, presenceColor } from '../ui/data.tsx';
 import { Icon, roomIcon, type IconNode } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
-import { ProjectSwitcher } from './project-switcher.tsx';
+import { Monogram, ProjectSwitcher } from './project-switcher.tsx';
 
 const sideCss = css({
   display: 'flex',
@@ -164,12 +168,23 @@ const footCss = css({
 });
 const liveDot = css({ width: '7px', height: '7px', borderRadius: '50%', flex: 'none' });
 
-function NavItem(handle: Handle<{ href: string; current: boolean; icon?: IconNode; lead?: RemixNode; label: RemixNode; badge?: RemixNode; testId?: string; unread?: boolean }>) {
+function NavItem(
+  handle: Handle<{ href: string; current: boolean; icon?: IconNode; lead?: RemixNode; label: RemixNode; badge?: RemixNode; testId?: string; unread?: boolean; onSelect?: () => void }>,
+) {
   return () => {
-    const { href, current, icon, lead, label, badge, testId, unread } = handle.props;
+    const { href, current, icon, lead, label, badge, testId, unread, onSelect } = handle.props;
     return (
       <li>
-        <a href={href} data-nav="" aria-current={current ? 'page' : undefined} data-testid={testId} data-unread={unread ? 'true' : undefined} mix={itemCss}>
+        <a
+          href={href}
+          data-nav=""
+          aria-current={current ? 'page' : undefined}
+          data-testid={testId}
+          data-unread={unread ? 'true' : undefined}
+          // a project link selects the project as it is clicked; the link itself then opens it (the router takes the navigation
+          // after the click), so the page opens under the project just chosen
+          mix={onSelect ? [itemCss, on('click', onSelect)] : itemCss}
+        >
           {lead ?? (icon ? <Icon icon={icon} size={16} /> : null)}
           <span class="label">{label}</span>
           {badge}
@@ -247,6 +262,9 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
   return () => {
     const { route } = handle.props;
     const project = s.workspace.project;
+    const projects = s.workspace.projectList;
+    // workspace pages (and every page while there is no project) show the workspace's sidebar; the others the project's
+    const workspace = !project || isWorkspacePage(route);
     const p = s.project;
     const agents = p.agentList;
     const rooms = p.roomList;
@@ -298,7 +316,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
           <span mix={slashCss} aria-hidden="true">
             /
           </span>
-          <ProjectSwitcher />
+          <ProjectSwitcher workspace={workspace} />
         </div>
         <button type="button" mix={[searchBtn, on('click', () => s.ui.setPalette(true))]} aria-label="Search and jump (Ctrl+K)">
           <Icon icon={Search} size={14} />
@@ -312,15 +330,64 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             ref((n) => (nav = n)),
           ]}
         >
-          {project ? null : (
-            // chats open without a project too; with one, Chats sits at the end of the quick links (Needs you stays first)
-            <ul mix={listCss} style={{ marginTop: '4px' }}>
-              <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
-            </ul>
-          )}
-          {project ? (
+          {workspace ? (
             <>
               <ul mix={listCss} style={{ marginTop: '4px' }}>
+                <NavItem href={routes.workspace.href()} current={at('workspace')} testId="nav-workspace" icon={House} label="Home" />
+                <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
+              </ul>
+              {group(
+                'ws-projects',
+                'Projects',
+                <>
+                  {projects.map((x) => (
+                    <NavItem
+                      key={x.id}
+                      href={routes.home.href()}
+                      current={false}
+                      testId="project-link"
+                      lead={<Monogram name={x.name} size={18} />}
+                      label={x.name}
+                      onSelect={() => s.workspace.selectProject(x.id)}
+                    />
+                  ))}
+                  <NavItem href={routes.projectNew.href()} current={at('project-new')} testId="nav-project-new" icon={Plus} label="New project" />
+                </>,
+              )}
+              {group(
+                'library',
+                'Library',
+                <>
+                  <NavItem href={routes.librarySkills.href()} current={at('library-skills')} testId="nav-library-skills" icon={Cpu} label="Skills" />
+                  <NavItem href={routes.library.href()} current={at('library')} testId="nav-library" icon={Library} label="Agents and MCP servers" />
+                </>,
+              )}
+              {group(
+                'connect',
+                'Connect',
+                <>
+                  <NavItem href={routes.integrations.href()} current={at('integrations', 'mcp')} testId="nav-integrations" icon={Plug} label="Integrations" />
+                  <NavItem href={routes.connections.href()} current={at('connections')} testId="nav-connections" icon={Link2} label="Connections" />
+                  <NavItem href={routes.providers.href()} current={at('providers')} testId="nav-providers" icon={Network} label="Providers" />
+                  <NavItem href={routes.routing.href()} current={at('routing')} testId="nav-routing" icon={RouteIcon} label="Routing" />
+                </>,
+              )}
+              {group(
+                'app',
+                'App',
+                <>
+                  <NavItem href={routes.license.href()} current={at('license')} testId="nav-license" icon={KeyRound} label="License" />
+                  <NavItem href={routes.backups.href()} current={at('backups')} testId="nav-backups" icon={HardDriveDownload} label="Backups" />
+                  <NavItem href={routes.data.href()} current={at('data')} testId="nav-data" icon={Database} label="Export and import" />
+                  <NavItem href={routes.support.href()} current={at('support')} testId="nav-support" icon={LifeBuoy} label="Support bundle" />
+                  <NavItem href={routes.settings.href()} current={at('settings')} testId="nav-settings" icon={Map} label="Settings and About" />
+                </>,
+              )}
+            </>
+          ) : (
+            <>
+              <ul mix={listCss} style={{ marginTop: '4px' }}>
+                <NavItem href={routes.workspace.href()} current={false} testId="nav-workspace" icon={House} label="Home" />
                 <NavItem
                   href={routes.needsYou.href()}
                   current={at('needs-you')}
@@ -340,7 +407,6 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 <NavItem href={routes.plan.href()} current={at('plan')} testId="nav-plan" icon={Sparkles} label="Plan" />
                 <NavItem href={routes.team.href()} current={at('team')} testId="nav-team" icon={Users} label="Team" />
                 <NavItem href={routes.activity.href()} current={at('activity')} testId="nav-activity" icon={Activity} label="Activity" />
-                <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
               </ul>
               {group('channels', 'Channels', rooms.filter((r) => r.kind === 'channel').map(roomItem))}
               {rooms.some((r) => r.kind === 'task') ? group('task-channels', 'Task channels', rooms.filter((r) => r.kind === 'task').map(roomItem)) : null}
@@ -367,24 +433,8 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 </>,
               )}
             </>
-          ) : null}
-          {group(
-            'workspace',
-            'Workspace',
-            <>
-              <NavItem href={routes.library.href()} current={at('library')} testId="nav-library" icon={Library} label="Library" />
-              <NavItem href={routes.integrations.href()} current={at('integrations', 'mcp')} testId="nav-integrations" icon={Plug} label="Integrations" />
-              <NavItem href={routes.connections.href()} current={at('connections')} testId="nav-connections" icon={Link2} label="Connections" />
-              <NavItem href={routes.providers.href()} current={at('providers')} testId="nav-providers" icon={Network} label="Providers" />
-              <NavItem href={routes.routing.href()} current={at('routing')} testId="nav-routing" icon={RouteIcon} label="Routing" />
-              <NavItem href={routes.license.href()} current={at('license')} testId="nav-license" icon={KeyRound} label="License" />
-              <NavItem href={routes.backups.href()} current={at('backups')} testId="nav-backups" icon={HardDriveDownload} label="Backups" />
-              <NavItem href={routes.data.href()} current={at('data')} testId="nav-data" icon={Database} label="Export and import" />
-              <NavItem href={routes.support.href()} current={at('support')} testId="nav-support" icon={LifeBuoy} label="Support bundle" />
-              <NavItem href={routes.settings.href()} current={at('settings')} testId="nav-settings" icon={Map} label="Settings and About" />
-            </>,
           )}
-          {agents.length > 0 && project
+          {agents.length > 0 && !workspace
             ? group(
                 'agents',
                 'Agents',

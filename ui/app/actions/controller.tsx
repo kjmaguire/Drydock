@@ -107,9 +107,17 @@ export const controller = createController(routes, {
       const { ChatsScreen } = await import('../screens/chats/chats-screen.tsx');
       return render(<ChatsScreen key="chats" id={params.id} />);
     },
+    async workspace({ render }) {
+      const { WorkspaceHomeScreen } = await import('../screens/workspace/workspace-home.tsx');
+      return render(<WorkspaceHomeScreen />);
+    },
     async library({ render }) {
       const { LibraryScreen } = await import('../screens/library/library-screen.tsx');
       return render(<LibraryScreen />);
+    },
+    async librarySkills({ render }) {
+      const { SkillLibraryScreen } = await import('../screens/library/library-screen.tsx');
+      return render(<SkillLibraryScreen />);
     },
     integrations,
     async connections({ render }) {

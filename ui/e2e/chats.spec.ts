@@ -2,11 +2,11 @@
 // speaks Claude Code's stream-json): it answers messages that carry "drydock-e2e chat", refuses a Bash call for
 // "drydock-e2e touch" in the default permission mode, and runs it once the rule is allowed and Retry sends the retry text.
 import { expect, test } from '@playwright/test';
-import { createProject, sidebar } from './helpers';
+import { createProject, sidebar, workspaceNav } from './helpers';
 
 test('a chat keeps its history across a reload, continues its session, and a refused tool can be allowed and retried', async ({ page }) => {
   await createProject(page, 'chats-e2e');
-  await sidebar(page).getByTestId('nav-chats').click();
+  await workspaceNav(page, 'nav-chats');
   await expect(page.getByRole('complementary', { name: 'Chats' })).toBeVisible();
 
   // new chat: the current project, Claude Code, reading other chats on by default

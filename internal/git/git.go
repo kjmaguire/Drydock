@@ -707,6 +707,12 @@ func (r *Repo) DeleteWorktree(ctx context.Context, w Worktree, force bool) error
 	return err
 }
 
+// PruneWorktrees makes git forget the worktrees whose folder is gone (git worktree prune). It changes nothing else.
+func (r *Repo) PruneWorktrees(ctx context.Context) error {
+	_, err := r.git(ctx, r.Root, nil, "worktree", "prune")
+	return err
+}
+
 // DeleteBranch deletes a local branch (merged only unless force).
 func (r *Repo) DeleteBranch(ctx context.Context, branch string, force bool) error {
 	flag := "-d"

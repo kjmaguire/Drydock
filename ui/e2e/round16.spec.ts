@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject } from './helpers';
+import { createAgent, createProject, workspaceNav } from './helpers';
 
 // Round 16: the MCP connector cards (decision P43) on the Integrations page (decision P47), against the real Go core. The
 // harness adds one card to the built-in catalog, "Hosted tracker (test double)", whose server is internal/mcp/oauthfake: a
@@ -16,7 +16,7 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
   await expect(page.getByTestId('nav-integrations')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('nav-mcp')).toHaveCount(0);
-  await page.getByTestId('nav-integrations').click();
+  await workspaceNav(page, 'nav-integrations');
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
 
   const gallery = page.getByTestId('connector-gallery');
@@ -79,7 +79,7 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
 
 test('prebuilt agents: opening one shows its skills with what they do, where they come from and their license, and its MCP servers by name', async ({ page }) => {
   await createProject(page, 'prebuilt-details');
-  await page.getByTestId('nav-library').click();
+  await workspaceNav(page, 'nav-library');
   const lib = page.getByTestId('library-prebuilt');
   const ui = lib.locator('[data-testid="prebuilt"][data-id="ui-engineer"]');
   // the badges are readable: the server by its full name, the skills listed on the badge

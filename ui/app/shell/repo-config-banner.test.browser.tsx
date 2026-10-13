@@ -148,7 +148,7 @@ describe('the banner in the shell', () => {
     s.workspace.start();
     s.project.start();
     return mount(
-      <Shell url={new URL('http://localhost/settings')}>
+      <Shell url={new URL('http://localhost/tasks')}>
         <p data-testid="route-content">a page</p>
       </Shell>,
       s,

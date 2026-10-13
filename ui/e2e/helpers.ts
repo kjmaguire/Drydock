@@ -46,7 +46,30 @@ export function roomLink(page: Page, name: string): Locator {
   return sidebar(page).getByRole('link', { name: new RegExp(`^${escaped}(?![\\w-])`) });
 }
 
-/** The project switcher at the top of the sidebar: opens the menu of projects, "New project…" and "App settings". */
+/**
+ * Open a workspace page (Library, Integrations, Connections, Settings...) from the sidebar. On a project's page the sidebar
+ * shows the project, so Home comes first; on a workspace page the link is already there.
+ */
+export async function workspaceNav(page: Page, testId: string): Promise<void> {
+  const link = sidebar(page).getByTestId(testId);
+  if (!(await link.isVisible())) await sidebar(page).getByTestId('nav-workspace').click();
+  await link.click();
+}
+
+/**
+ * Open a page of a project (Team, Tasks, Project settings...) from the sidebar. On a workspace page the sidebar shows the
+ * workspace, so the project is opened first: the one named, else the one the app remembers (its home, "/").
+ */
+export async function projectNav(page: Page, testId: string, project?: string): Promise<void> {
+  const link = sidebar(page).getByTestId(testId);
+  if (!(await link.isVisible())) {
+    if (project) await sidebar(page).getByTestId('project-link').filter({ hasText: project }).click();
+    else await page.goto(new URL('/', page.url()).toString());
+  }
+  await link.click();
+}
+
+/** The project switcher at the top of the sidebar: opens the menu of Home, the projects, "New project…" and "App settings". */
 export const projectSwitcher = (page: Page): Locator => page.getByRole('button', { name: 'Switch project' });
 
 /** Switch to a project through the switcher's menu (exact name: "gocalc-approve" must not match a button "Approve"). */
@@ -124,7 +147,7 @@ export async function createAgent(page: Page, name: string, role: string): Promi
   // The form can be replaced while the page is still settling after a project change (seen once: the field detached and the
   // test waited out its whole timeout), so open the page and fill the name as one step that is retried as a whole.
   await expect(async () => {
-    await page.getByTestId('nav-team').click();
+    await projectNav(page, 'nav-team');
     await page.getByLabel('Agent name').fill(name, { timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
   await page.getByLabel('Role', { exact: true }).fill(role);
@@ -135,7 +158,7 @@ export async function createAgent(page: Page, name: string, role: string): Promi
 
 /** Create a task, assign it, and stop before Start (so a test can pick a template). */
 export async function createAssignedTask(page: Page, title: string, worker: string, reviewer: string, workerRole = 'backend', reviewerRole = 'reviewer'): Promise<void> {
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill(title);
   await page.getByLabel('Description').fill('Add a Multiply function to the gocalc package.');
@@ -148,7 +171,7 @@ export async function createAssignedTask(page: Page, title: string, worker: stri
 }
 
 export async function createAndStartTask(page: Page, title: string, worker: string, reviewer: string): Promise<void> {
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill(title);
   await page.getByLabel('Description').fill('Subtract returns 0; make it return a - b.');

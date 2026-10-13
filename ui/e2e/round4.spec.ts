@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -12,20 +12,20 @@ test('no license keys in this build: no banner, the License page says so plainly
   const banner = page.getByTestId('license-banner');
   await expect(banner).toHaveCount(0);
 
-  await page.getByTestId('nav-license').click();
+  await workspaceNav(page, 'nav-license');
   const box = page.getByTestId('license-unconfigured');
   await expect(box).toContainText('Licensing is not configured in this build');
   await expect(box).toContainText('Every feature is allowed');
   await expect(page.getByLabel('License token')).toHaveCount(0);
   // still no banner, and a mutating control is not disabled
   await expect(banner).toHaveCount(0);
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await expect(page.getByTestId('readonly-note')).toHaveCount(0);
   await page.getByLabel('Agent name').fill('x');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await expect(page.getByRole('button', { name: 'Create agent' })).toBeEnabled();
 
-  await page.getByRole('link', { name: 'Settings and About' }).click();
+  await workspaceNav(page, 'nav-settings');
   const up = page.getByTestId('updates-section');
   await expect(up).toContainText('configured when Drydock is built');
   await expect(up).toContainText('not been run on Windows');
@@ -34,7 +34,7 @@ test('no license keys in this build: no banner, the License page says so plainly
 
 test('backups: back up now, list, verify, stage a restore, see it pending after a reload, cancel it', async ({ page }) => {
   await createProject(page, 'pkg-backups');
-  await page.getByTestId('nav-backups').click();
+  await workspaceNav(page, 'nav-backups');
   await expect(page.getByRole('heading', { level: 1, name: 'Backups' })).toBeVisible();
   const before = await page.getByTestId('backup-row').count();
 
@@ -98,7 +98,7 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
 
 test('export a project, preview what is in it, import it into a second project; everything that comes in is untrusted', async ({ page }) => {
   await createProject(page, 'pkg-export-src');
-  await page.getByTestId('nav-data').click();
+  await workspaceNav(page, 'nav-data');
   await expect(page.getByRole('heading', { level: 1, name: 'Export and import' })).toBeVisible();
 
   await page.getByLabel('Project to export').selectOption({ label: 'pkg-export-src' });
@@ -155,7 +155,7 @@ test('export a project, preview what is in it, import it into a second project; 
   await expect(page.getByTestId('message').filter({ hasText: 'Nothing from the file is trusted yet' })).toBeVisible();
 
   // a path that is not an archive is refused with the core's words
-  await page.getByTestId('nav-data').click();
+  await workspaceNav(page, 'nav-data');
   await page.getByLabel(/Archive path/).fill('/definitely/not/there.zip');
   await page.getByRole('button', { name: 'Preview the import' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -168,7 +168,7 @@ test('support bundle: preview lists files and the scrub report, a planted secret
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('[data-testid=message][data-author-kind=human]').filter({ hasText: 'please do not leak it' })).toBeVisible();
 
-  await page.getByTestId('nav-support').click();
+  await workspaceNav(page, 'nav-support');
   await expect(page.getByTestId('bundle-never-uploaded')).toContainText('never uploads');
   await page.getByRole('button', { name: 'Preview the bundle' }).click();
   const preview = page.getByTestId('bundle-preview');
@@ -231,7 +231,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   expect(await refused.text()).toContain('read-only');
 
   // 2. an expired license: still read-only, with the expired wording
-  await page.getByTestId('nav-license').click();
+  await workspaceNav(page, 'nav-license');
   await expect(page.getByTestId('license-state')).toHaveText('No license');
   await page.getByLabel('License token').fill(expired);
   await page.getByRole('button', { name: 'Import license' }).click();
@@ -265,7 +265,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await createAgent(page, 'lic-worker', 'backend');
 
   // an older token cannot replace the installed license: the core says so and the page shows its words
-  await page.getByTestId('nav-license').click();
+  await workspaceNav(page, 'nav-license');
   await page.getByLabel('License token').fill(expired);
   await page.getByRole('button', { name: 'Import license' }).click();
   await expect(page.locator('.error-note')).toContainText('older than the one installed');
@@ -278,7 +278,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await expect(page.getByTestId('license-banner')).toHaveAttribute('role', 'alert');
   await expect(page.getByTestId('license-banner')).toHaveAttribute('data-state', 'none');
 
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await expect(page.getByTestId('agent').filter({ hasText: 'lic-worker' })).toBeVisible(); // reading still works
   await page.getByLabel('Agent name').fill('blocked');
   await page.getByLabel('Role', { exact: true }).fill('backend');
@@ -290,31 +290,31 @@ test('licensed test harness: no license is read-only and says why; expired is re
   expect(refusedAgent.ok()).toBe(false);
   expect(await refusedAgent.text()).toContain('read-only');
 
-  await page.getByTestId('nav-providers').click();
+  await workspaceNav(page, 'nav-providers');
   await page.getByTestId('provider-add-tile').click();
   await page.getByLabel('Provider name').fill('blocked');
   await expect(page.getByRole('button', { name: 'Add provider' })).toBeDisabled();
 
-  await page.getByTestId('nav-backups').click();
+  await workspaceNav(page, 'nav-backups');
   await page.getByRole('button', { name: 'Back up now' }).click();
   await expect(page.getByTestId('backup-made')).toContainText('written');
-  await page.getByTestId('nav-data').click();
+  await workspaceNav(page, 'nav-data');
   await page.getByLabel('Project to export').selectOption({ label: 'pkg-licensed' });
   await page.getByRole('button', { name: 'Preview the export' }).click();
   await expect(page.getByTestId('export-preview')).toBeVisible();
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await expect(page.getByTestId('export-result')).toBeVisible();
-  await page.getByTestId('nav-support').click();
+  await workspaceNav(page, 'nav-support');
   await page.getByRole('button', { name: 'Preview the bundle' }).click();
   await expect(page.getByTestId('bundle-preview')).toBeVisible();
 
   // 5. importing a license turns it back on without a restart
-  await page.getByTestId('nav-license').click();
+  await workspaceNav(page, 'nav-license');
   await page.getByLabel('License token').fill(active);
   await page.getByRole('button', { name: 'Import license' }).click();
   await expect(page.getByTestId('license-state')).toHaveText('Active');
   await expect(page.getByTestId('license-banner')).toHaveCount(0);
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   await page.getByLabel('Agent name').fill('now-ok');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await expect(page.getByRole('button', { name: 'Create agent' })).toBeEnabled();
@@ -322,6 +322,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
 
 test('the main harness page also loads through appUrl, and no route shows a license banner in a build without licensing', async ({ page }) => {
   await page.goto(appUrl());
+  await page.goto(appUrl() + '/home');
   await expect(page.getByTestId('nav-license')).toBeVisible();
   await expect(page.getByTestId('license-banner')).toHaveCount(0);
   // an old #/ link still opens its screen (the UI routes by path now)

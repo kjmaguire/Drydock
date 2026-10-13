@@ -5,7 +5,7 @@
 import { css, navigate, type Handle, type RemixNode } from 'remix/component';
 import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys } from '../lib/keys.ts';
-import { isWorkspaceRoute, parseRoute } from '../lib/route.ts';
+import { isWorkspacePage, isWorkspaceRoute, parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
 import { services, watch } from '../state/services.tsx';
@@ -100,6 +100,8 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
       center = children;
     }
 
+    // a workspace page shows nothing of a project: no repository banner, no details panel
+    const inProject = !!project && !isWorkspacePage(route);
     const taskContext =
       route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
 
@@ -120,13 +122,13 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
                 <ErrorNote error={dmError} what="Could not open the direct message" />
               </div>
             ) : null}
-            {project && projectHasRepo(project) ? <RepoConfigBanner key={project.id} projectId={project.id} /> : null}
+            {inProject && project && projectHasRepo(project) ? <RepoConfigBanner key={project.id} projectId={project.id} /> : null}
             <main id="main" tabIndex={-1} mix={mainCss}>
               {center}
             </main>
             {project ? <Dock projectId={project.id} taskId={taskContext} /> : null}
           </div>
-          {project ? <Details taskId={taskContext} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} /> : null}
+          {inProject ? <Details taskId={taskContext} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} /> : null}
         </div>
         <CommandPalette onMessage={(id) => void openDM(id)} />
       </div>

@@ -3,9 +3,9 @@
 // core: no visible text under 12 px (avatar initials, which are decoration and hidden from assistive tech, aside), nothing
 // wider than the window, and the details panel takes width only where it has the page's context (a room, a task, a run).
 import { expect, test, type Page } from '@playwright/test';
-import { createAgent, createProject, roomLink } from './helpers';
+import { createAgent, createProject, roomLink, projectNav } from './helpers';
 
-const ROUTES = ['/needs-you', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/plan', '/requirements', '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/chats', '/library', '/connections', '/providers', '/routing', '/backups', '/data', '/support', '/license', '/settings'];
+const ROUTES = ['/needs-you', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/plan', '/requirements', '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/chats', '/library', '/connections', '/providers', '/routing', '/backups', '/data', '/support', '/license', '/settings', '/home', '/library/skills'];
 
 /** The visible text under 12 px, outside decoration hidden from assistive tech, and whether anything overflows the window. */
 async function measure(page: Page) {
@@ -53,12 +53,17 @@ test('every screen reads at a laptop size: text of 12 px or more, nothing wider 
     expect(m.details, `${path}: the details panel takes width beside a page without a conversation`).toBeLessThan(60);
   }
 
-  // opened by hand on such a page it stays open there, and the rooms keep their own choice
+  // a workspace page has no details panel at all (nothing of a project shows there); on a project page without a
+  // conversation, opened by hand it stays open there, and the rooms keep their own choice
+  await expect(page.getByRole('button', { name: 'Show details' })).toHaveCount(0);
+  await page.getByTestId('nav-workspace').click();
+  await page.getByTestId('home-project').filter({ hasText: 'gocalc-layout' }).click();
+  await projectNav(page, 'nav-activity');
   await page.getByRole('button', { name: 'Show details' }).click();
   expect((await measure(page)).details).toBeGreaterThan(200);
   await roomLink(page, 'general').click();
   expect((await measure(page)).details).toBeGreaterThan(200);
   await page.getByRole('button', { name: 'Hide details' }).click();
-  await page.getByTestId('nav-team').click();
+  await projectNav(page, 'nav-team');
   expect((await measure(page)).details).toBeGreaterThan(200);
 });

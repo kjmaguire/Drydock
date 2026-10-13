@@ -7,7 +7,7 @@ import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } f
 import { claude, devLicense, libServer, pay, projects, projServer, rev, tpl } from '../mcp/fixtures.ts';
 import { DRAG_MIME } from './dnd.ts';
 import { CATALOG } from '../project/wizard-fixtures.ts';
-import { LibraryScreen } from './library-screen.tsx';
+import { LibraryScreen, SkillLibraryScreen } from './library-screen.tsx';
 
 afterEach(cleanup);
 
@@ -20,7 +20,7 @@ function rec<R>(calls: Calls, result: (...args: unknown[]) => R) {
   };
 }
 
-function show(client: Partial<Client> = {}) {
+function show(client: Partial<Client> = {}, page: 'library' | 'skills' = 'library') {
   const s = testServices({
     licenseStatus: async () => devLicense,
     appInfo: async () => ({}) as never,
@@ -38,9 +38,11 @@ function show(client: Partial<Client> = {}) {
     ...client,
   });
   s.workspace.start();
-  const r = mount(<LibraryScreen />, s);
+  const r = mount(page === 'skills' ? <SkillLibraryScreen /> : <LibraryScreen />, s);
   return r;
 }
+/** The workspace skill library, its own page (/library/skills). */
+const showSkills = (client: Partial<Client> = {}) => show(client, 'skills');
 type R = ReturnType<typeof show>;
 
 const one = (r: R, sel: string) => waitFor(() => {
@@ -174,7 +176,14 @@ describe('Library page', () => {
     expect(card.querySelector('h3')!.closest('[draggable="true"]')).toBe(card.querySelector('[data-testid="lib-mcp-handle"]'));
   });
 
-  describe('Skills section', () => {
+  it('has no skills section of its own: skills have their own page, linked from the intro', async () => {
+    const r = show();
+    await one(r, '[data-testid="lib-mcp-empty"], [aria-label="MCP servers"]');
+    expect(r.$('[data-testid="library-skills"]')).toBeNull();
+    expect(r.$('a[href="/library/skills"]')).not.toBeNull();
+  });
+
+  describe('Skills section (the skill library page)', () => {
     const cloudflare: SkillRegistry = { id: 'cloudflare-skills', repo: 'cloudflare/skills', trust: 'curated', enabled: true, curated: true };
     const anthropic: SkillRegistry = { id: 'anthropic-skills', repo: 'anthropics/skills', trust: 'curated', enabled: true, curated: true };
     const status = (over: Partial<SkillRegistryStatus>): SkillRegistryStatus => ({
@@ -217,7 +226,7 @@ describe('Library page', () => {
     const stateOf = (el: Element) => el.querySelector('small:last-child')?.textContent ?? '';
 
     it('shows a tile per registry with its sync state; the selected one lists its skills, marking the ones the project has', async () => {
-      const r = show({
+      const r = showSkills({
         skillRegistries: async () => [cloudflare, anthropic],
         skillRegistryStatus: async () => [status({}), status({ registryId: 'anthropic-skills', repo: 'anthropics/skills', checkedAt: undefined, skills: 0 })],
         skillLibraryList: async () => library,
@@ -267,7 +276,7 @@ describe('Library page', () => {
       const adds: Calls = [];
       const addAlls: Calls = [];
       const mine: Record<string, Skill[]> = { prj_1: [], prj_2: [] };
-      const r = show({
+      const r = showSkills({
         skillRegistries: async () => [cloudflare],
         skillRegistryStatus: async () => [status({})],
         skillLibraryList: async () => library.filter((l) => l.registryId === 'cloudflare-skills'),
@@ -311,7 +320,7 @@ describe('Library page', () => {
     it('says the Library is filling and offers Sync now while the registries have brought nothing yet', async () => {
       const checks: Calls = [];
       let library: LibrarySkill[] = [];
-      const r = show({
+      const r = showSkills({
         skillRegistries: async () => [cloudflare],
         skillRegistryStatus: async () => [status({ checkedAt: undefined, skills: 0 })],
         skillLibraryList: async () => library,
@@ -326,7 +335,7 @@ describe('Library page', () => {
     });
 
     it('says so when no registry is allowed, pointing at the Skills page', async () => {
-      const r = show();
+      const r = showSkills();
       const empty = await one(r, '[data-testid="lib-skills-empty"]');
       expect(empty.textContent).toContain('No skill registry is allowed yet.');
       expect(empty.querySelector('a')!.getAttribute('href')).toBe('/skills');

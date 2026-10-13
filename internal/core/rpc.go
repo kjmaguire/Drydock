@@ -63,6 +63,12 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.UpdateProject(ctx, p.ID, p.Mode, p.MergeStrategy)
 		}),
+		"project.delete": bind(func(ctx context.Context, p struct {
+			ID          string `json:"id"`
+			ConfirmName string `json:"confirmName"`
+		}) (any, error) {
+			return c.DeleteProject(ctx, p.ID, p.ConfirmName)
+		}),
 		"github.status": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubAccountStatus(ctx), nil }),
 		"github.owners": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubOwners(ctx) }),
 		"github.repos": bind(func(ctx context.Context, p struct {

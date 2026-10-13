@@ -32,6 +32,7 @@ import type {
   AppInfo,
   DrydockEvent,
   GitConfigStatus,
+  ProjectDeleted,
   GitHubIssue,
   MergeStrategy,
   Message,
@@ -58,6 +59,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   projectList(): Promise<Project[]>;
   projectGet(id: string): Promise<Project>;
   projectUpdate(id: string, mode?: ProjectMode, mergeStrategy?: MergeStrategy): Promise<Project>;
+  /**
+   * Deletes a project from Drydock (decision P51). `confirmName` must be the project's name: the core checks it too. Refused
+   * while work runs in the project. The repository folder is never touched.
+   */
+  projectDelete(id: string, confirmName: string): Promise<ProjectDeleted>;
   /** Whether the repository's own git configuration is the one a person last trusted (errors for a project without one). */
   projectGitConfig(id: string): Promise<GitConfigStatus>;
   /** Trusts exactly the state with this fingerprint (the one shown); a stale fingerprint is an error. Returns the new status. */
@@ -138,6 +144,10 @@ export function createClient(t: Transport): Client {
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
     projectGet: (id) => t.call('project.get', { id }),
     projectUpdate: (id, mode, mergeStrategy) => t.call('project.update', { id, mode: mode ?? '', mergeStrategy: mergeStrategy ?? '' }),
+    projectDelete: async (id, confirmName) => {
+      const r = await t.call<ProjectDeleted | null>('project.delete', { id, confirmName });
+      return { name: r?.name ?? '', worktreesRemoved: r?.worktreesRemoved ?? 0, warnings: arr(r?.warnings) };
+    },
     projectGitConfig: async (id) => gitConfig(await t.call<GitConfigStatus | null>('project.gitConfig', { id })),
     projectTrustGitConfig: async (id, fingerprint) => gitConfig(await t.call<GitConfigStatus | null>('project.trustGitConfig', { id, fingerprint })),
     githubIssues: async (projectId, labels = '') => arr(await t.call<GitHubIssue[] | null>('github.issues', { projectId, labels })),

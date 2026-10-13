@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createProject } from './helpers';
+import { createProject, workspaceNav } from './helpers';
 
 // Decision P42 against the real Go core: a service is connected once, without a project, then assigned to a project and
 // unassigned again. The vendor is a PROTOCOL FIXTURE (a test double of Linear's GraphQL API, started by the harness:
@@ -14,7 +14,7 @@ const linearApi = (): string => {
 test('integrations: connect Linear without a project, see its fixed name and logo, assign it to a project, then unassign it', async ({ page }) => {
   // a project exists, but connecting does not ask for it
   await createProject(page, 'gocalc-linear');
-  await page.getByTestId('nav-integrations').click();
+  await workspaceNav(page, 'nav-integrations');
 
   // the five services with app sync, each with its own logo and fixed name, then the vendors that only have agent tools (P47)
   const tiles = page.locator('[data-testid=integration-tile]:not([data-mcp])');

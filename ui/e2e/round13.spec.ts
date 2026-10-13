@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, freshRepo, roomLink, showNewProjectForm, wizardCreate, wizardNext, wizardToReview } from './helpers';
+import { appUrl, freshRepo, roomLink, showNewProjectForm, wizardCreate, wizardNext, wizardToReview, projectNav } from './helpers';
 
 // A project without a repository: made with the wizard's "Later", opened, given a repository from Project settings, then
 // used. The harness has no gh, so the wizard's GitHub choice explains that instead of listing repositories.
@@ -26,11 +26,11 @@ test('wizard: a project with no repository opens, gets a repository from setting
   await expect(page.getByRole('button', { name: 'Switch project' })).toContainText('later-project');
 
   // nothing that needs a repository pretends to work
-  await page.getByTestId('nav-pulls').click();
+  await projectNav(page, 'nav-pulls');
   await expect(page.getByTestId('pulls-no-repo')).toContainText('Attach a GitHub repository to see pull requests');
 
   // attach a local repository from Project settings; the brief is there too
-  await page.getByTestId('nav-project').click();
+  await projectNav(page, 'nav-project');
   await expect(page.getByTestId('no-repo')).toHaveText('No repository yet');
   await expect(page.getByLabel('Project brief')).toHaveValue('A calculator library. Keep changes small and tested.');
   await expect(page.getByLabel('Mode')).toBeDisabled();
@@ -42,7 +42,7 @@ test('wizard: a project with no repository opens, gets a repository from setting
   await expect(page.getByLabel('Mode')).toBeEnabled();
 
   // now it works like any project: a task can be created
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill('Add Multiply');
   await page.getByLabel('Description').fill('Add a Multiply function to the gocalc package.');

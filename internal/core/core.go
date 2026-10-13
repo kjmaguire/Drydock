@@ -108,6 +108,8 @@ type Core struct {
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
 	repos    map[string]*git.Repo
+	// projHooks are the extensions' parts in deleting a project (project_delete.go)
+	projHooks projectHooks
 	// taskStarts serializes starting a task's run per task (lockTaskStart): a double click or the scheduler racing the
 	// person must not start two runs on one worktree
 	taskStarts sync.Map

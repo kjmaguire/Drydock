@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createAndStartTask, createProject } from './helpers';
+import { createAgent, createAndStartTask, createProject, projectNav } from './helpers';
 
 // Two tasks that change the same file (the scripted worker writes calc.go for both). The second must wait for the first and say
 // why; the human can let it go on; the first is untouched.
@@ -28,7 +28,7 @@ test('collision guard: a task that changes the same file as an earlier running t
   await expect(page.getByTestId('blocked-note')).toHaveCount(0);
 
   // the first task was never disturbed: it is still waiting for its approval
-  await page.getByTestId('nav-tasks').click();
+  await projectNav(page, 'nav-tasks');
   const first = page.getByTestId('task-row').filter({ hasText: 'First change to calc' });
   await expect(first).toContainText(/Waiting|Verification|Review/i);
 });

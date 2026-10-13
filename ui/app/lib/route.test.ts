@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, isWorkspaceRoute, parseRoute } from './route.ts';
+import { hashToPath, isWorkspacePage, isWorkspaceRoute, parseRoute } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -30,6 +30,28 @@ describe('routes', () => {
     expect(isWorkspaceRoute({ name: 'mcp' })).toBe(true);
     expect(isWorkspaceRoute({ name: 'tasks' })).toBe(false);
     expect(parseRoute('/mcp')).toEqual({ name: 'mcp' });
+  });
+
+  it('has a workspace Home and a skill library page, both outside any project', () => {
+    expect(routes.workspace.href()).toBe('/home');
+    expect(routes.librarySkills.href()).toBe('/library/skills');
+    expect(parseRoute('/home')).toEqual({ name: 'workspace' });
+    expect(parseRoute('/library/skills')).toEqual({ name: 'library-skills' });
+    expect(parseRoute('/library')).toEqual({ name: 'library' });
+    expect(parseRoute('/library/other')).toEqual({ name: 'not-found' });
+    expect(parseRoute('/workspace')).toEqual({ name: 'not-found' });
+    expect(parseRoute('/library-skills')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'workspace' })).toBe(true);
+    expect(isWorkspaceRoute({ name: 'library-skills' })).toBe(true);
+  });
+
+  it('tells workspace pages (the workspace sidebar) from project pages', () => {
+    for (const p of ['/home', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
+      expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, true]);
+    }
+    for (const p of ['/', '/needs-you', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team']) {
+      expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, false]);
+    }
   });
 
   it('turns old hash links into paths', () => {

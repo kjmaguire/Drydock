@@ -1,7 +1,8 @@
-// The Library: MCP servers, team members (agent templates) and skills defined once for the whole workspace, then dropped into
-// projects and onto agents. Everything that can be dragged also has a "Put in project" or "Give" control, so the page works from
-// the keyboard. A project only ever reaches the servers it was given, and an agent only the servers you gave it. The skill
-// library fills itself from every enabled registry (decision P48); adding a skill to a project is the person's acceptance.
+// The Library: MCP servers and team members (agent templates) defined once for the whole workspace, then dropped into projects
+// and onto agents. Everything that can be dragged also has a "Put in project" or "Give" control, so the page works from the
+// keyboard. A project only ever reaches the servers it was given, and an agent only the servers you gave it. The skill library
+// has a page of its own (SkillLibraryScreen, /library/skills): it fills itself from every enabled registry (decision P48), and
+// adding a skill to a project is the person's acceptance.
 
 import { css, on, type Handle } from 'remix/component';
 import {
@@ -1065,6 +1066,7 @@ export function LibraryScreen(handle: Handle) {
         <p mix={introCss}>
           Connect an MCP server or define a team member once, here. Then drag its tile onto a project to add it there, or drag a server onto an agent to let that agent use it.
           Click a tile to see its tools and settings. A project only ever reaches the servers it was given, and an agent only the servers you gave it.
+          Skills have a page of their own: <a href={routes.librarySkills.href()}>Skills</a>.
         </p>
         <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
           {note ? (
@@ -1156,8 +1158,6 @@ export function LibraryScreen(handle: Handle) {
               ) : null}
             </Section>
 
-            <SkillsLibrary projects={projects} />
-
             <Section
               title="Prebuilt agents"
               description={
@@ -1222,6 +1222,29 @@ export function LibraryScreen(handle: Handle) {
             />
           ) : null}
         </Dialog>
+      </Page>
+    );
+  };
+}
+
+/** The workspace's skill library on a page of its own (/library/skills): every registry's skills, added to any project from here. */
+export function SkillLibraryScreen(handle: Handle) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  return () => {
+    const projects = s.workspace.projectList;
+    return (
+      <Page title="Skills" icon={Cpu} wide testId="skill-library">
+        <p mix={introCss}>
+          Instructions agents read, from the skill registries you enabled. Pick a registry, then add a skill to a project. A project's own skills (who gets each, usage, the
+          ones found in its repository) are on its Skills page.
+        </p>
+        {s.workspace.projects.data && projects.length === 0 ? (
+          <Notice tone="info" testId="skill-library-no-project">
+            Skills are added to a project. <a href={routes.projectNew.href()}>Create a project</a> first; you can browse the registries meanwhile.
+          </Notice>
+        ) : null}
+        <SkillsLibrary projects={projects} />
       </Page>
     );
   };
