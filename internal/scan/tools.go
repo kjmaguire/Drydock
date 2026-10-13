@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"runtime/debug"
@@ -45,8 +46,17 @@ type Paths struct {
 // probe gets ten seconds.
 func Detect(ctx context.Context, pm proc.Manager, env []string, p Paths, rulesDir string) Tools {
 	t := Tools{Gitleaks: ToolInfo{Tool: "gitleaks", BuiltIn: true, Found: true, Version: gitleaksVersion()}}
-	t.OSV = detectTool(ctx, pm, env, p.OSV, "osv-scanner", []string{"--version"}, osvInstall, p.LookPath)
-	t.Opengrep = detectTool(ctx, pm, env, p.Opengrep, "opengrep", []string{"--version"}, opengrepInstall, p.LookPath)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		t.OSV = detectTool(ctx, pm, env, p.OSV, "osv-scanner", []string{"--version"}, osvInstall, p.LookPath)
+	}()
+	go func() {
+		defer wg.Done()
+		t.Opengrep = detectTool(ctx, pm, env, p.Opengrep, "opengrep", []string{"--version"}, opengrepInstall, p.LookPath)
+	}()
+	wg.Wait()
 	t.RulesDir = rulesDir
 	t.RulesOK, t.RulesNote = checkRules(rulesDir)
 	t.Ready = t.OSV.Found && t.Opengrep.Found && t.RulesOK
@@ -80,6 +90,10 @@ func toolVersion(ctx context.Context, pm proc.Manager, env []string, path string
 func checkRules(dir string) (bool, string) {
 	if strings.TrimSpace(dir) == "" {
 		return false, "No rules folder chosen: the Code engine is skipped until one is."
+	}
+	if !filepath.IsAbs(dir) {
+		// Opengrep runs in the repository and Drydock elsewhere: a relative path would name two different folders
+		return false, "The rules folder must be a full path (for example C:\\tools\\opengrep-rules)."
 	}
 	st, err := os.Stat(dir)
 	if err != nil || !st.IsDir() {

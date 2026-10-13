@@ -32,9 +32,10 @@ type Options struct {
 	RulesDir string
 	// Timeout per engine (default Timeout).
 	Timeout time.Duration
-	// OnChange, when set, is called after an engine changes state (started, finished, skipped, errored) and when the scan
-	// ends, with a copy of the report. Progress counters do not call it: read Snapshot for those.
-	OnChange func(Report)
+	// OnChange, when set, is called after an engine changes state (started, finished, skipped, errored) with a copy of the
+	// report and that engine's id, and once more when the scan ends (engine ""). Progress counters do not call it: read
+	// Snapshot for those.
+	OnChange func(rep Report, engine EngineID)
 }
 
 func (o *Options) redact(s string) string {
@@ -125,8 +126,15 @@ func (r *Run) set(id EngineID, f func(e *EngineResult)) {
 	rep := r.rep.copy()
 	r.mu.Unlock()
 	if r.o.OnChange != nil {
-		r.o.OnChange(rep)
+		r.o.OnChange(rep, id)
 	}
+}
+
+// note changes an engine under the lock without telling OnChange (a version read, a count): nothing a page must react to.
+func (r *Run) note(id EngineID, f func(e *EngineResult)) {
+	r.mu.Lock()
+	f(r.engine(id))
+	r.mu.Unlock()
 }
 
 func (r *Run) progress(id EngineID, done, total int) {
@@ -144,8 +152,8 @@ func (r *Run) finish(id EngineID, fs []Finding, status EngineStatus, reason, ver
 	if version != "" {
 		e.Version = version
 	}
-	if e.Total > 0 {
-		e.Done = e.Total
+	if status == Done && e.Total > 0 {
+		e.Done = e.Total // a cancelled or errored engine keeps the count it reached
 	}
 	for _, f := range fs {
 		r.rep.Counts.Total++
@@ -170,7 +178,7 @@ func (r *Run) finish(id EngineID, fs []Finding, status EngineStatus, reason, ver
 	rep := r.rep.copy()
 	r.mu.Unlock()
 	if r.o.OnChange != nil {
-		r.o.OnChange(rep)
+		r.o.OnChange(rep, id)
 	}
 }
 
@@ -178,19 +186,28 @@ func (r *Run) run(ctx context.Context) {
 	defer close(r.done)
 	defer r.cancel()
 	var wg sync.WaitGroup
-	start := func(id EngineID, version string) {
-		r.set(id, func(e *EngineResult) { e.Status, e.StartedAt, e.Version = Running, time.Now().UnixMilli(), version })
+	start := func(id EngineID) {
+		r.set(id, func(e *EngineResult) { e.Status, e.StartedAt = Running, time.Now().UnixMilli() })
+	}
+	// probe reads a tool's --version once the engine is running, so the page never shows a tool as waiting while it runs
+	probe := func(id EngineID, path string, tool Tool, name string) {
+		v := toolVersion(ctx, r.o.Procs, r.o.env(), path, append(append([]string(nil), tool.Args...), "--version"), name)
+		r.note(id, func(e *EngineResult) { e.Version = v })
 	}
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		start(Secrets, gitleaksVersion())
-		fs, err := scanSecrets(ctx, r.o.Dir, r.o.redact, func(d, t int) { r.progress(Secrets, d, t) })
+		start(Secrets)
+		r.note(Secrets, func(e *EngineResult) { e.Version = gitleaksVersion() })
+		fs, unread, err := scanSecrets(ctx, r.o.Dir, r.o.redact, func(d, t int) { r.progress(Secrets, d, t) })
+		r.note(Secrets, func(e *EngineResult) { e.Unread = unread })
 		switch {
 		case ctx.Err() != nil:
 			r.finish(Secrets, fs, Cancelled, "", "")
 		case err != nil:
 			r.finish(Secrets, nil, Errored, "the secrets engine could not read the tree: "+cleanLine(err.Error(), 160), "")
+		case unread > 0:
+			r.finish(Secrets, fs, Done, fmt.Sprintf("%d folder(s) or file(s) could not be read and were not scanned.", unread), "")
 		default:
 			r.finish(Secrets, fs, Done, "", "")
 		}
@@ -202,7 +219,8 @@ func (r *Run) run(ctx context.Context) {
 			r.finish(Deps, nil, Skipped, "osv-scanner is not installed, so no dependency was checked. "+osvInstall, "")
 			return
 		}
-		start(Deps, toolVersion(ctx, r.o.Procs, r.o.env(), path, append(append([]string(nil), r.o.Paths.OSV.Args...), "--version"), "osv-scanner"))
+		start(Deps)
+		probe(Deps, path, r.o.Paths.OSV, "osv-scanner")
 		fs, st, reason := scanDeps(ctx, &r.o, path, r.o.Paths.OSV)
 		r.finish(Deps, fs, st, reason, "")
 	}()
@@ -217,7 +235,8 @@ func (r *Run) run(ctx context.Context) {
 			r.finish(SAST, nil, Skipped, note, "")
 			return
 		}
-		start(SAST, toolVersion(ctx, r.o.Procs, r.o.env(), path, append(append([]string(nil), r.o.Paths.Opengrep.Args...), "--version"), "opengrep"))
+		start(SAST)
+		probe(SAST, path, r.o.Paths.Opengrep, "opengrep")
 		fs, st, reason, version := scanCode(ctx, &r.o, path, r.o.Paths.Opengrep)
 		r.finish(SAST, fs, st, reason, version)
 	}()
@@ -233,7 +252,7 @@ func (r *Run) run(ctx context.Context) {
 	rep := r.rep.copy()
 	r.mu.Unlock()
 	if r.o.OnChange != nil {
-		r.o.OnChange(rep)
+		r.o.OnChange(rep, "")
 	}
 }
 
@@ -267,6 +286,9 @@ func summarize(rep Report) string {
 		switch e.Status {
 		case Done:
 			found = append(found, plural(e.Findings, engineNoun(e.ID)))
+			if e.Unread > 0 {
+				notRun = append(notRun, fmt.Sprintf("the %s engine could not read %d folder(s) or file(s)", e.Name, e.Unread))
+			}
 		case Skipped:
 			notRun = append(notRun, fmt.Sprintf("the %s engine was skipped (%s)", e.Name, strings.TrimSuffix(firstSentence(e.Reason), ".")))
 		case Errored:

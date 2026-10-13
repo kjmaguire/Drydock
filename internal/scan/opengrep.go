@@ -19,14 +19,14 @@ func scanCode(ctx context.Context, o *Options, path string, tool Tool) ([]Findin
 	out := filepath.Join(tmp, "opengrep.sarif")
 	args := append(append([]string(nil), tool.Args...), "scan", "-f", o.RulesDir, "--sarif-output="+out, "--no-progress-bar", "-q", ".")
 	r := runTool(ctx, o.Procs, path, args, o.Dir, o.env(), "scan:sast", o.timeout())
+	if ctx.Err() != nil {
+		return nil, Cancelled, "", ""
+	}
 	if r.StartErr != nil {
 		return nil, Errored, "opengrep could not be started: " + cleanLine(r.StartErr.Error(), 160), ""
 	}
 	if r.TimedOut {
 		return nil, Errored, fmt.Sprintf("opengrep did not finish within %s", o.timeout()), ""
-	}
-	if ctx.Err() != nil {
-		return nil, Cancelled, "", ""
 	}
 	if r.Code != 0 {
 		reason := firstStderrLine(r.Stderr)

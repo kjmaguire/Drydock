@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/ids"
-	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/scan"
-	"github.com/kjmaguire/drydock/internal/storage"
 )
 
 // The security scan (decision P44, docs/security-scan.md): one button runs the three engines of internal/scan over the
@@ -24,7 +23,7 @@ import (
 
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
-		s := &securityExt{c: c, running: map[string]*scan.Run{}}
+		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}}
 		return map[string]Method{
 			"security.tools": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -72,6 +71,8 @@ type securityExt struct {
 	mu sync.Mutex
 	// running holds each project's scan in progress, by project id
 	running map[string]*scan.Run
+	// unstored holds a project's last finished report when the database refused it (StoreError set), until the next scan
+	unstored map[string]scan.Report
 }
 
 // settingRules + project id holds the project's Opengrep rules folder.
@@ -85,18 +86,9 @@ func (s *securityExt) rulesDir(ctx context.Context, projectID string) string {
 	return s.c.cfg.ScanRulesDir
 }
 
-// toolEnv is what the external tools get: the scrubbed tool environment plus the variables the person passes to project
-// commands, never the app's own (docs/security.md s8).
-func toolEnv() []string {
-	var extra []string
-	if checks.PassEnv != nil {
-		extra = checks.PassEnv()
-	}
-	return proc.ToolEnv(os.Environ(), extra)
-}
-
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
-	return scan.Detect(ctx, s.c.Deps.PM, toolEnv(), s.c.cfg.ScanTools, s.rulesDir(ctx, projectID))
+	// the external tools read the whole project: they get what every project command gets (checks.CommandEnv), no more
+	return scan.Detect(ctx, s.c.Deps.PM, checks.CommandEnv(), s.c.cfg.ScanTools, s.rulesDir(ctx, projectID))
 }
 
 // setRulesDir stores the project's rules folder. Only a person may: the folder decides which rules read the whole project.
@@ -108,6 +100,9 @@ func (s *securityExt) setRulesDir(ctx context.Context, projectID, dir, by string
 		return scan.Tools{}, err
 	}
 	dir = strings.TrimSpace(dir)
+	if dir != "" && !filepath.IsAbs(dir) {
+		return scan.Tools{}, errors.New("give the full path of the rules folder (Opengrep runs in the repository, so a relative path would point elsewhere)")
+	}
 	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingRules+projectID, dir)
 		return err
@@ -136,33 +131,48 @@ func (s *securityExt) start(ctx context.Context, projectID, by string) (scan.Rep
 		return r.Snapshot(), errors.New("a scan of this project is already running")
 	}
 	id := ids.New("scn")
+	delete(s.unstored, projectID)
 	// the scan outlives the request; close() cancels what is still running when the core closes
 	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: projectID, By: by, Dir: p.RepoPath, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
-		Env: toolEnv, Paths: s.c.cfg.ScanTools, RulesDir: s.rulesDir(ctx, projectID), OnChange: func(rep scan.Report) { s.changed(projectID, rep) }})
+		Env: checks.CommandEnv, Paths: s.c.cfg.ScanTools, RulesDir: s.rulesDir(ctx, projectID), OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(projectID, rep, e) }})
 	s.running[projectID] = run
-	s.mu.Unlock()
+	// published under the lock: changed() takes it before it can publish an engine or finished event, so started comes first
 	s.c.publish(ctx, "security.scan.started", projectID, map[string]any{"id": id, "by": by})
+	s.mu.Unlock()
 	return run.Snapshot(), nil
 }
 
-// changed is called by the scan after an engine changed state and when it ends: the end is stored and published.
-func (s *securityExt) changed(projectID string, rep scan.Report) {
+// changed is called by the scan after one engine changed state (one event for that engine) and when it ends: the end is
+// stored and published. A report the database refuses is kept in memory with StoreError set, so the page still shows the
+// scan the person watched and says it was not kept.
+func (s *securityExt) changed(projectID string, rep scan.Report, engine scan.EngineID) {
 	ctx := context.Background()
 	if rep.Status == scan.StatusRunning {
-		for _, e := range rep.Engines {
-			if e.Status != scan.Pending {
-				s.c.publish(ctx, "security.scan.engine", projectID, map[string]any{"id": rep.ID, "engine": e.ID, "status": e.Status})
+		if engine != "" {
+			s.mu.Lock() // after start() has published security.scan.started
+			st := rep.Engines
+			s.mu.Unlock()
+			for _, e := range st {
+				if e.ID == engine {
+					s.c.publish(ctx, "security.scan.engine", projectID, map[string]any{"id": rep.ID, "engine": e.ID, "status": e.Status})
+				}
 			}
 		}
 		return
 	}
+	stored := true
 	if err := s.store(ctx, rep); err != nil {
 		s.c.logf("security scan %s: store: %v", rep.ID, err)
+		rep.StoreError = "this report could not be kept in the database (" + s.c.Scanner.Redact(err.Error()) + "); it is shown until the next scan of this project"
+		stored = false
 	}
 	s.mu.Lock()
 	delete(s.running, projectID)
+	if !stored {
+		s.unstored[projectID] = rep
+	}
 	s.mu.Unlock()
-	s.c.publish(ctx, "security.scan.finished", projectID, map[string]any{"id": rep.ID, "status": rep.Status, "counts": rep.Counts, "summary": rep.Summary})
+	s.c.publish(ctx, "security.scan.finished", projectID, map[string]any{"id": rep.ID, "status": rep.Status, "counts": rep.Counts, "summary": rep.Summary, "stored": stored})
 }
 
 // store writes the finished report, redacted once more as a whole (nothing that looks like a secret survives, even in a
@@ -192,13 +202,17 @@ func (s *securityExt) cancel(projectID string) (any, error) {
 	return r.Snapshot(), nil
 }
 
-// current is the running scan, else the last stored one, else nil.
+// current is the running scan, else a finished one the database refused, else the last stored one, else nil.
 func (s *securityExt) current(ctx context.Context, projectID string) (any, error) {
 	s.mu.Lock()
 	r, ok := s.running[projectID]
+	kept, held := s.unstored[projectID]
 	s.mu.Unlock()
 	if ok {
 		return r.Snapshot(), nil
+	}
+	if held {
+		return kept, nil
 	}
 	var doc string
 	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE project_id=? ORDER BY started_at DESC, id DESC LIMIT 1`, projectID).Scan(&doc)
@@ -275,5 +289,3 @@ func (s *securityExt) close() {
 		<-r.Done()
 	}
 }
-
-var _ = storage.Now

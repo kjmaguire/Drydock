@@ -25,6 +25,7 @@ import {
   countsText,
   durationText,
   elapsed,
+  emptyFindingsText,
   engineCounts,
   engineDeterminate,
   engineFraction,
@@ -464,6 +465,11 @@ export function SecurityScreen(handle: Handle) {
             </span>
           </div>
           <ErrorNote error={act.error} />
+          {report?.storeError ? (
+            <Notice tone="warn" testId="scan-store-error">
+              {report.storeError}
+            </Notice>
+          ) : null}
           {report ? (
             <div mix={overallCss}>
               <Meter value={pct / 100} label={`${pct}% of the scan`} tone={running ? 'accent' : report.status === 'done' ? 'ok' : 'muted'} testId="scan-overall" />
@@ -483,8 +489,8 @@ export function SecurityScreen(handle: Handle) {
 
         {report && report.status !== 'running' && sorted.length === 0 ? (
           <Section title="Findings">
-            <p mix={[card, muted]} data-testid="findings-empty">
-              Nothing found.
+            <p mix={[card, muted]} data-testid="findings-empty" data-checked={String(emptyFindingsText(report) === 'Nothing found.')}>
+              {emptyFindingsText(report)}
             </p>
           </Section>
         ) : null}

@@ -21,7 +21,7 @@ const report = (over: Partial<ScanReport>): ScanReport => ({
   engines: [
     engine({ status: 'done', startedAt: 1_700_000_000_000, finishedAt: 1_700_000_001_200, findings: 1, version: '8.21.0' }),
     engine({ id: 'deps', name: 'Dependencies', tool: 'osv-scanner', status: 'done', startedAt: 1_700_000_000_000, finishedAt: 1_700_000_002_300, findings: 1 }),
-    engine({ id: 'sast', name: 'Code patterns', tool: 'opengrep', status: 'done', startedAt: 1_700_000_000_000, finishedAt: 1_700_000_001_900, findings: 2 }),
+    engine({ id: 'sast', name: 'Code', tool: 'opengrep', status: 'done', startedAt: 1_700_000_000_000, finishedAt: 1_700_000_001_900, findings: 2 }),
   ],
   findings: [],
   counts: counts(),
@@ -80,7 +80,7 @@ describe('Security scan page', () => {
       engines: [
         engine({ status: 'running', startedAt: 1_700_000_000_000, done: 10, total: 20 }),
         engine({ id: 'deps', name: 'Dependencies', tool: 'osv-scanner', status: 'running', startedAt: 1_700_000_000_000 }),
-        engine({ id: 'sast', name: 'Code patterns', tool: 'opengrep', status: 'pending' }),
+        engine({ id: 'sast', name: 'Code', tool: 'opengrep', status: 'pending' }),
       ],
     });
     const { r } = show({ securityScanGet: async () => (gets++, running) });
@@ -184,13 +184,16 @@ describe('Security scan page', () => {
       engines: [
         engine({ status: 'done', findings: 0 }),
         engine({ id: 'deps', name: 'Dependencies', tool: 'osv-scanner', status: 'skipped', reason: 'osv-scanner is not installed.' }),
-        engine({ id: 'sast', name: 'Code patterns', tool: 'opengrep', status: 'errored', reason: 'opengrep exited with status 2.' }),
+        engine({ id: 'sast', name: 'Code', tool: 'opengrep', status: 'errored', reason: 'opengrep exited with status 2.' }),
       ],
     });
     const { r } = show({ securityScanGet: async () => done });
     await waitStatus(r, 'done');
     expect(status(r).textContent).toContain('Nothing found.');
-    expect(r.$('[data-testid="findings-empty"]')!.textContent).toBe('Nothing found.');
+    // two engines did not run, so the empty list never reads as a clean result
+    const empty = r.$('[data-testid="findings-empty"]')!;
+    expect(empty.textContent).toBe('Nothing found by Secrets; Dependencies and Code did not run (see above).');
+    expect(empty.getAttribute('data-checked')).toBe('false');
     expect(r.$('[data-testid="findings"]')).toBeNull();
     const list = rows(r);
     expect(list.map((e) => e.getAttribute('data-status'))).toEqual(['done', 'skipped', 'errored']);

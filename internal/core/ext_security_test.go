@@ -50,6 +50,10 @@ func TestTheSecurityScanRunsThreeEnginesAndKeepsAReportWithoutTheSecret(t *testi
 	if !tools.Gitleaks.BuiltIn || !tools.OSV.Found || !tools.Opengrep.Found || tools.RulesOK || tools.Ready || !strings.Contains(tools.RulesNote, "No rules folder") {
 		t.Fatalf("%+v", tools)
 	}
+	// a relative folder is refused: Opengrep runs in the repository, Drydock elsewhere
+	if _, err := a.c.Call(context.Background(), "security.settings.set", []byte(`{"projectId":"`+p.ID+`","rulesDir":"rules"}`)); err == nil || !strings.Contains(err.Error(), "full path") {
+		t.Fatal(err)
+	}
 	a.call("security.settings.set", map[string]any{"projectId": p.ID, "rulesDir": rules}, &tools)
 	if !tools.RulesOK || !tools.Ready || tools.RulesDir != rules {
 		t.Fatalf("%+v", tools)
@@ -90,13 +94,15 @@ func TestTheSecurityScanRunsThreeEnginesAndKeepsAReportWithoutTheSecret(t *testi
 		t.Fatal("the report carries the secret")
 	}
 
-	// the events: started, each engine running and done, finished
+	// the events, in order: started, one per engine state change (3 engines, running then done), finished
 	seen := map[string]int{}
+	var order []string
 	deadline := time.After(10 * time.Second)
 	for seen["security.scan.finished"] == 0 {
 		select {
 		case e := <-sub:
 			seen[e.Type]++
+			order = append(order, e.Type)
 			if e.ProjectID != p.ID {
 				t.Fatalf("%+v", e)
 			}
@@ -104,8 +110,8 @@ func TestTheSecurityScanRunsThreeEnginesAndKeepsAReportWithoutTheSecret(t *testi
 			t.Fatalf("no finished event: %v", seen)
 		}
 	}
-	if seen["security.scan.started"] != 1 || seen["security.scan.engine"] < 6 {
-		t.Fatalf("%v", seen)
+	if seen["security.scan.started"] != 1 || seen["security.scan.engine"] != 6 || order[0] != "security.scan.started" {
+		t.Fatalf("%v %v", seen, order)
 	}
 
 	// the history and a report by id

@@ -8,7 +8,7 @@ import type { Tone } from '../../ui/tokens.ts';
 export const ENGINES: readonly { id: EngineID; name: string; tool: string; blurb: string }[] = [
   { id: 'secrets', name: 'Secrets', tool: 'gitleaks', blurb: 'Keys, tokens and passwords left in files.' },
   { id: 'deps', name: 'Dependencies', tool: 'osv-scanner', blurb: 'Packages in the lockfiles and manifests with known vulnerabilities.' },
-  { id: 'sast', name: 'Code patterns', tool: 'opengrep', blurb: 'Code patterns the rules folder marks as unsafe.' },
+  { id: 'sast', name: 'Code', tool: 'opengrep', blurb: 'Code patterns the rules folder marks as unsafe.' },
 ];
 
 export const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
@@ -155,3 +155,18 @@ export const advisoryUrl = (id: string): string => `https://osv.dev/vulnerabilit
 
 /** "1,204 of 5,330 files" while the secrets engine runs. */
 export const filesText = (e: Pick<EngineResult, 'done' | 'total'>): string => `${(e.done ?? 0).toLocaleString()} of ${(e.total ?? 0).toLocaleString()} files`;
+
+/**
+ * What an empty findings list means. "Nothing found." only when the scan ran to the end and at least one engine looked;
+ * a cancelled scan or one where every engine was skipped or broke checked nothing, and says so (never a pass).
+ */
+export function emptyFindingsText(report: Pick<ScanReport, 'status' | 'engines'>): string {
+  if (report.status === 'cancelled') return 'No findings to show: the scan was cancelled before it finished.';
+  const ran = report.engines.filter((e) => e.status === 'done');
+  if (ran.length === 0) return 'No findings to show: no engine ran (see the reasons above).';
+  if (ran.length < report.engines.length) {
+    const idle = report.engines.filter((e) => e.status !== 'done').map((e) => e.name);
+    return `Nothing found by ${ran.map((e) => e.name).join(' and ')}; ${idle.join(' and ')} did not run (see above).`;
+  }
+  return 'Nothing found.';
+}

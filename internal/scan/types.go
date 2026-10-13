@@ -59,6 +59,9 @@ type EngineResult struct {
 	Done       int    `json:"done,omitempty"`
 	Total      int    `json:"total,omitempty"`
 	Findings   int    `json:"findings"`
+	// Unread counts the folders and files the secrets engine could not read (permissions); they were not scanned, and
+	// Reason says so.
+	Unread int `json:"unread,omitempty"`
 	// Version is what the tool said about itself (--version), first line, capped; empty for an engine that did not run.
 	Version string `json:"version,omitempty"`
 }
@@ -128,6 +131,9 @@ type Report struct {
 	// Summary is one plain sentence once the scan is done ("Scanned in 12 s: 1 secret, 2 vulnerable packages, 5 code findings").
 	Summary   string `json:"summary,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
+	// StoreError is set when the finished report could not be written to the database: it is then kept in memory until
+	// the next scan of the project and the page says so.
+	StoreError string `json:"storeError,omitempty"`
 }
 
 // Summary is a report without its findings, for the history list.

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,9 @@ func TestCheckRulesWantsAFolderWithRuleFiles(t *testing.T) {
 	}
 	if ok, _ := checkRules(filepath.Join(t.TempDir(), "missing")); ok {
 		t.Fatal("a missing folder is not usable")
+	}
+	if ok, note := checkRules("rules"); ok || !strings.Contains(note, "full path") {
+		t.Fatal("a relative folder would mean two different folders:", ok, note)
 	}
 	d := t.TempDir()
 	if ok, note := checkRules(d); ok || note != "The rules folder has no .yaml or .yml rule files." {

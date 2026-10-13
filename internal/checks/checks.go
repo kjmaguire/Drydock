@@ -29,10 +29,11 @@ import (
 // read at every start). Set by the core; nil passes none.
 var PassEnv func() []string
 
-// commandEnv is the environment every project command starts from (a check, a preview, the dependency scan): the app's
-// environment filtered to what a toolchain needs (proc.ToolEnv), never its tokens. These commands run code an agent may have
-// just written, so they get no more than the agent itself (docs/security.md s8).
-func commandEnv() []string {
+// CommandEnv is the environment every project command starts from (a check, a preview, the dependency scan, the security
+// scan's tools): the app's environment filtered to what a toolchain needs (proc.ToolEnv) plus the variables the person
+// passes, never its tokens. These commands run code an agent may have just written, so they get no more than the agent
+// itself (docs/security.md s8).
+func CommandEnv() []string {
 	var extra []string
 	if PassEnv != nil {
 		extra = PassEnv()
@@ -115,7 +116,7 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	env := append(commandEnv(), spec.Env...)
+	env := append(CommandEnv(), spec.Env...)
 	env = append(env, "CI=1", "NO_COLOR=1", "FORCE_COLOR=0")
 	start := time.Now()
 	p, err := pm.Start(cctx, proc.Spec{Path: spec.Argv[0], Args: spec.Argv[1:], Dir: spec.Dir, Env: env, Label: "check:" + spec.Name})

@@ -14,14 +14,14 @@ import (
 func scanDeps(ctx context.Context, o *Options, path string, tool Tool) ([]Finding, EngineStatus, string) {
 	args := append(append([]string(nil), tool.Args...), "scan", "source", "--format", "json", "-r", ".")
 	r := runTool(ctx, o.Procs, path, args, o.Dir, o.env(), "scan:deps", o.timeout())
+	if ctx.Err() != nil {
+		return nil, Cancelled, ""
+	}
 	if r.StartErr != nil {
 		return nil, Errored, "osv-scanner could not be started: " + cleanLine(r.StartErr.Error(), 160)
 	}
 	if r.TimedOut {
 		return nil, Errored, fmt.Sprintf("osv-scanner did not finish within %s", o.timeout())
-	}
-	if ctx.Err() != nil {
-		return nil, Cancelled, ""
 	}
 	switch r.Code {
 	case 0:

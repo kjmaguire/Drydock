@@ -164,7 +164,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 	if err != nil {
 		return nil, res, err
 	}
-	env := append(commandEnv(), o.Env...)
+	env := append(CommandEnv(), o.Env...)
 	env = append(env, "CI=1", "NO_COLOR=1", "FORCE_COLOR=0")
 	// The process outlives this call, so it is not tied to ctx; ctx only bounds the wait.
 	p, err := pm.Start(context.Background(), proc.Spec{Path: argv[0], Args: argv[1:], Dir: dir, Env: env, Label: "preview"})

@@ -18,9 +18,13 @@ does, what the report never carries, and what is not built.
 
 3. Each engine ends done, skipped (the tool is not installed, there is no rules folder, osv-scanner found no lockfile),
    errored (the tool broke or ran past the ten-minute cap) or cancelled. A skipped or errored engine says why on the page and
-   in the report's summary. **It is never a pass.**
+   in the report's summary. **It is never a pass.** The secrets engine counts the folders and files it could not read
+   (permissions) and says so on its row and in the summary (`unread`); a tree it cannot read at all is an error. A cancelled
+   engine keeps the count it reached, never "all files". A report with no findings reads "Nothing found." only when every
+   engine ran; otherwise the page names the engines that did not.
 4. The report is stored (`security_scans`, migration 00116) once the scan ends; the history on the page lists the last ones
-   and any of them can be opened again.
+   and any of them can be opened again. A report the database refuses is kept in memory with `storeError` set (the page
+   says it was not kept) until the next scan of the project, so the scan the person watched is never replaced by an older one.
 
 The external tools run through the Process Manager with the scrubbed tool environment (`proc.ToolEnv`, docs/security.md s8)
 plus the variables the person passes to project commands: a tool that reads the whole project gets none of Drydock's own
@@ -45,8 +49,9 @@ A report keeps at most 2,000 findings; past that the rest are counted (`counts`)
 
 ## 3. Events and progress
 
-`security.scan.started`, `security.scan.engine` (an engine changed state), `security.scan.finished` and `security.settings`
-are published with the project id. Progress counters (files scanned) are not events: the page reads `security.scan.get`
+`security.scan.started`, `security.scan.engine` (one per engine state change, naming the engine), `security.scan.finished`
+(with `stored`: whether the report reached the database) and `security.settings` are published with the project id, in that
+order (started is published before the scan can report anything). Progress counters (files scanned) are not events: the page reads `security.scan.get`
 every half second while a scan runs and re-reads on the events. A scan in progress lives in memory; closing the app cancels
 it (a cancelled scan is stored as cancelled).
 
@@ -55,7 +60,7 @@ it (a cancelled scan is stored as cancelled).
 | Method | Does |
 |---|---|
 | `security.tools {projectId}` | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (found on PATH, path and `--version`, or an install hint), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
-| `security.settings.set {projectId, rulesDir}` | stores the rules folder. Only a person may: the folder decides which rules read the whole project. |
+| `security.settings.set {projectId, rulesDir}` | stores the rules folder (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. |
 | `security.scan.start {projectId}` | starts a scan; refused while one runs or when the project has no repository. |
 | `security.scan.cancel {projectId}` | cancels the running scan. |
 | `security.scan.get {projectId}` | the running scan's snapshot, else the last stored report, else null. |

@@ -14,6 +14,7 @@ import {
   sortFindings,
   statusText,
   whereText,
+  emptyFindingsText,
 } from './security.ts';
 
 const engine = (over: Partial<EngineResult>): EngineResult => ({ id: 'secrets', name: 'Secrets', tool: 'gitleaks', status: 'pending', findings: 0, ...over });
@@ -149,5 +150,17 @@ describe('findings lists', () => {
     expect(filterFindings(list, 'all', 'sast').map((f) => f.rule)).toEqual(['b', 'e', 'f', 'a']);
     expect(filterFindings(list, 'high', 'secrets').map((f) => f.rule)).toEqual(['d']);
     expect(filterFindings(list, 'info', 'all')).toEqual([]);
+  });
+});
+
+describe('emptyFindingsText', () => {
+  const eng = (id: 'secrets' | 'deps' | 'sast', name: string, status: string) => ({ id, name, tool: '', status, findings: 0 }) as never;
+  it('says nothing found only when every engine ran, and names what did not', () => {
+    expect(emptyFindingsText({ status: 'done', engines: [eng('secrets', 'Secrets', 'done'), eng('deps', 'Dependencies', 'done'), eng('sast', 'Code', 'done')] })).toBe('Nothing found.');
+    expect(emptyFindingsText({ status: 'done', engines: [eng('secrets', 'Secrets', 'done'), eng('deps', 'Dependencies', 'skipped'), eng('sast', 'Code', 'errored')] })).toBe(
+      'Nothing found by Secrets; Dependencies and Code did not run (see above).',
+    );
+    expect(emptyFindingsText({ status: 'done', engines: [eng('secrets', 'Secrets', 'errored'), eng('deps', 'Dependencies', 'skipped')] })).toBe('No findings to show: no engine ran (see the reasons above).');
+    expect(emptyFindingsText({ status: 'cancelled', engines: [eng('secrets', 'Secrets', 'cancelled')] })).toBe('No findings to show: the scan was cancelled before it finished.');
   });
 });

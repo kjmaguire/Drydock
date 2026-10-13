@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -117,9 +118,9 @@ func TestTheExternalEnginesRunThroughTheStandInsAndTheirStatesAreReported(t *tes
 	var seen []string
 	run := scan.Start(context.Background(), scan.Options{ID: "scn_2", Dir: dir, RulesDir: rules(t),
 		Paths: scan.Paths{OSV: tool("osv-scanner", "--sleep-ms=600"), Opengrep: tool("opengrep", "--sleep-ms=600")},
-		OnChange: func(r scan.Report) {
+		OnChange: func(r scan.Report, changed scan.EngineID) {
 			mu.Lock()
-			seen = append(seen, string(engine(r, scan.Deps).Status)+"/"+string(engine(r, scan.SAST).Status))
+			seen = append(seen, string(changed)+":"+string(engine(r, scan.Deps).Status)+"/"+string(engine(r, scan.SAST).Status))
 			mu.Unlock()
 		}})
 	// while the stand-ins sleep, the engines read as running
@@ -176,8 +177,63 @@ func TestTheExternalEnginesRunThroughTheStandInsAndTheirStatesAreReported(t *tes
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(seen) < 4 || seen[len(seen)-1] != "done/done" {
+	// one call per engine state change (3 engines, running then finished) and one for the end of the scan
+	if len(seen) != 7 || seen[len(seen)-1] != ":done/done" {
 		t.Fatalf("%v", seen)
+	}
+	perEngine := map[string]int{}
+	for _, x := range seen {
+		perEngine[strings.SplitN(x, ":", 2)[0]]++
+	}
+	if perEngine["secrets"] != 2 || perEngine["deps"] != 2 || perEngine["sast"] != 2 || perEngine[""] != 1 {
+		t.Fatalf("%v", perEngine)
+	}
+}
+
+func TestCancelDuringTheVersionProbeIsCancelledNotErrored(t *testing.T) {
+	// the stand-in sleeps before answering --version too, so Cancel lands inside the probe
+	run := scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: rules(t),
+		Paths: scan.Paths{OSV: tool("osv-scanner", "--sleep-ms=20000"), Opengrep: tool("opengrep", "--sleep-ms=20000")}})
+	deadline := time.Now().Add(5 * time.Second)
+	for engine(run.Snapshot(), scan.Deps).Status != scan.Running || engine(run.Snapshot(), scan.SAST).Status != scan.Running {
+		if time.Now().After(deadline) {
+			t.Fatalf("the engines never read as running: %+v", run.Snapshot().Engines)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	run.Cancel()
+	rep := run.Wait()
+	for _, id := range []scan.EngineID{scan.Deps, scan.SAST} {
+		if e := engine(rep, id); e.Status != scan.Cancelled || e.Reason != "" {
+			t.Fatalf("%s: %+v", id, e)
+		}
+	}
+}
+
+func TestAFolderTheSecretsEngineCannotReadIsCountedAndSaidNeverHidden(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("needs a user that permissions can refuse")
+	}
+	dir := tree(t)
+	locked := filepath.Join(dir, "locked")
+	os.MkdirAll(locked, 0o755)
+	os.WriteFile(filepath.Join(locked, "x.txt"), []byte("key = "+fakeKey+"\n"), 0o644)
+	os.Chmod(locked, 0o000)
+	t.Cleanup(func() { os.Chmod(locked, 0o755) })
+	rep := scan.Start(context.Background(), scan.Options{Dir: dir, Paths: scan.Paths{LookPath: notFound}}).Wait()
+	e := engine(rep, scan.Secrets)
+	if e.Status != scan.Done || e.Unread != 1 || !strings.Contains(e.Reason, "1 folder(s) or file(s) could not be read") {
+		t.Fatalf("%+v", e)
+	}
+	if !strings.Contains(rep.Summary, "Secrets engine could not read 1 folder(s) or file(s)") {
+		t.Fatalf("%q", rep.Summary)
+	}
+}
+
+func TestAnUnreadableTreeIsAnErrorNotAPass(t *testing.T) {
+	rep := scan.Start(context.Background(), scan.Options{Dir: filepath.Join(t.TempDir(), "gone"), Paths: scan.Paths{LookPath: notFound}}).Wait()
+	if e := engine(rep, scan.Secrets); e.Status != scan.Errored || !strings.Contains(e.Reason, "could not read the tree") {
+		t.Fatalf("%+v", e)
 	}
 }
 

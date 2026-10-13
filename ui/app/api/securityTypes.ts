@@ -18,6 +18,8 @@ export interface EngineResult {
   done?: number;
   total?: number;
   findings: number;
+  /** Folders and files the secrets engine could not read; `reason` says so. */
+  unread?: number;
   version?: string;
 }
 
@@ -60,6 +62,8 @@ export interface ScanReport {
   summary?: string;
   /** True when more findings were counted than kept. */
   truncated?: boolean;
+  /** Set when the finished report could not be written to the database: it is shown until the next scan. */
+  storeError?: string;
 }
 
 export interface ScanSummary {

@@ -20,15 +20,21 @@ var skipDirs = map[string]bool{".git": true, "node_modules": true, ".drydock-wor
 const maxSecretFile = 2 << 20
 
 // scanSecrets walks dir and runs the gitleaks default rules over every text file, calling progress(done, total) as it goes.
-// A finding names the rule, the file and the line; the matched value is dropped before it leaves this function.
-func scanSecrets(ctx context.Context, dir string, redact func(string) string, progress func(done, total int)) ([]Finding, error) {
+// A finding names the rule, the file and the line; the matched value is dropped before it leaves this function. unread
+// counts the folders and files that could not be read (permissions): they were not scanned and the caller says so. A root
+// that cannot be read is an error.
+func scanSecrets(ctx context.Context, dir string, redact func(string) string, progress func(done, total int)) (out []Finding, unread int, err error) {
 	det, err := detect.NewDetectorDefaultConfig()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var files []string
 	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if p == dir {
+				return err // the tree itself cannot be read
+			}
+			unread++
 			if d != nil && d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -53,17 +59,20 @@ func scanSecrets(ctx context.Context, dir string, redact func(string) string, pr
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, unread, err
 	}
 	total := len(files)
 	progress(0, total)
-	var out []Finding
 	for i, p := range files {
 		if ctx.Err() != nil {
-			return out, ctx.Err()
+			return out, unread, ctx.Err()
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(p, dir), string(filepath.Separator)))
-		if b, ok := readText(p); ok {
+		b, ok, readErr := readText(p)
+		if readErr {
+			unread++
+		}
+		if ok {
 			for _, f := range det.DetectContext(ctx, detect.Fragment{Raw: string(b), FilePath: rel, StartLine: 1}) {
 				out = append(out, Finding{Engine: Secrets, Severity: High, Rule: cleanLine(f.RuleID, 120), Title: cleanLine(redact(f.Description), 200),
 					File: cleanLine(rel, 300), Line: f.StartLine, EndLine: endLine(f.StartLine, f.EndLine)})
@@ -73,7 +82,7 @@ func scanSecrets(ctx context.Context, dir string, redact func(string) string, pr
 			progress(i+1, total)
 		}
 	}
-	return out, nil
+	return out, unread, nil
 }
 
 func endLine(start, end int) int {
@@ -83,23 +92,27 @@ func endLine(start, end int) int {
 	return 0
 }
 
-// readText reads a file that looks like text: a NUL byte in its first 8 KiB says it is binary and it is skipped.
-func readText(p string) ([]byte, bool) {
+// readText reads a file that looks like text: a NUL byte in its first 8 KiB says it is binary and it is skipped (ok false,
+// readErr false); a file that cannot be opened or read is reported (readErr true).
+func readText(p string) (b []byte, ok bool, readErr bool) {
 	f, err := os.Open(p)
 	if err != nil {
-		return nil, false
+		return nil, false, true
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxSecretFile+1))
-	if err != nil || len(b) > maxSecretFile {
-		return nil, false
+	b, err = io.ReadAll(io.LimitReader(f, maxSecretFile+1))
+	if err != nil {
+		return nil, false, true
+	}
+	if len(b) > maxSecretFile {
+		return nil, false, false
 	}
 	head := b
 	if len(head) > 8192 {
 		head = head[:8192]
 	}
 	if bytes.IndexByte(head, 0) >= 0 {
-		return nil, false
+		return nil, false, false
 	}
-	return b, true
+	return b, true, false
 }
