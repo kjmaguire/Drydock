@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -136,10 +137,10 @@ func wslSignIn(distro string, in wsl.Info, argv []string) wsl.Launch {
 
 // nativeSignIn is the program and arguments of a native CLI's login: the CLI itself by its absolute path, or on Windows an
 // npm .cmd/.bat shim through cmd.exe by its full path (a pseudo-terminal starts neither a script nor a bare name).
-func nativeSignIn(path string, argv []string, goos, comspec, systemRoot string) (string, []string, error) {
-	if !isAbs(goos, path) {
+func nativeSignIn(exe string, argv []string, goos, comspec, systemRoot string) (string, []string, error) {
+	if !isAbs(goos, exe) {
 		// a BinaryOverride may be relative: it means the process's working folder, never the terminal's
-		p, err := path, error(nil)
+		p, err := exe, error(nil)
 		if !strings.ContainsAny(p, `/\`) {
 			p, err = exec.LookPath(p)
 		}
@@ -147,28 +148,29 @@ func nativeSignIn(path string, argv []string, goos, comspec, systemRoot string) 
 			p, err = filepath.Abs(p)
 		}
 		if err != nil {
-			return "", nil, fmt.Errorf("the sign-in cannot find %s: %w", path, err)
+			return "", nil, fmt.Errorf("the sign-in cannot find %s: %w", exe, err)
 		}
-		path = p
+		exe = p
 	}
 	if goos == "windows" {
-		if l := strings.ToLower(path); strings.HasSuffix(l, ".cmd") || strings.HasSuffix(l, ".bat") {
+		if l := strings.ToLower(exe); strings.HasSuffix(l, ".cmd") || strings.HasSuffix(l, ".bat") {
 			if comspec == "" && systemRoot != "" {
 				comspec = systemRoot + `\System32\cmd.exe`
 			}
 			if comspec == "" {
 				comspec = "cmd.exe" // the terminal looks a bare name up on PATH
 			}
-			return comspec, append([]string{"/c", path}, argv...), nil
+			return comspec, append([]string{"/c", exe}, argv...), nil
 		}
 	}
-	return path, append([]string(nil), argv...), nil
+	return exe, append([]string(nil), argv...), nil
 }
 
-// isAbs is filepath.IsAbs for goos (a Windows drive or UNC path is absolute however the tests run).
+// isAbs reports whether p is absolute by goos's rules, not the host's (a Windows drive or UNC path, a Unix path from /),
+// so the tests of either platform's command run on both.
 func isAbs(goos, p string) bool {
 	if goos == "windows" {
 		return len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') || strings.HasPrefix(p, `\\`)
 	}
-	return filepath.IsAbs(p)
+	return path.IsAbs(p) // a Unix path, judged by Unix rules on any host
 }
