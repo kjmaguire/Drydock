@@ -738,10 +738,12 @@ type MonitorResult struct {
 }
 
 // lastProgress is the time (ms) of the task's latest progress event: anything on the task except the lead's, the scheduler's
-// and the watchdog's own events. Zero when there is none.
-func (l *Lead) lastProgress(ctx context.Context, taskID string) int64 {
+// and the watchdog's own events, and except what the lead agent's own turns publish on it (agent.started, agent.stopped, ...:
+// asking the lead is not progress, and its session's last events can land after the intervention was stored, which would
+// start a new silence the lead is asked about again). Zero when there is none.
+func (l *Lead) lastProgress(ctx context.Context, taskID, leadID string) int64 {
 	var ts sql.NullInt64
-	_ = l.d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT MAX(ts) FROM events WHERE task_id=? AND type NOT LIKE 'lead.%' AND type NOT LIKE 'scheduler.%' AND type NOT LIKE 'watchdog.%'`, taskID).Scan(&ts)
+	_ = l.d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT MAX(ts) FROM events WHERE task_id=? AND type NOT LIKE 'lead.%' AND type NOT LIKE 'scheduler.%' AND type NOT LIKE 'watchdog.%' AND agent_id<>?`, taskID, leadID).Scan(&ts)
 	return ts.Int64
 }
 
@@ -763,7 +765,8 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 	if err != nil {
 		return res, err
 	}
-	if _, ok := FindLead(team); !ok {
+	lead, ok := FindLead(team)
+	if !ok {
 		return res, nil
 	}
 	dev := DefaultDevSettings()
@@ -779,7 +782,7 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 		if t.RunID == "" || !l.runRunning(ctx, t.RunID) {
 			continue
 		}
-		last := l.lastProgress(ctx, t.ID)
+		last := l.lastProgress(ctx, t.ID, lead.ID)
 		if last == 0 {
 			last = t.Updated
 		}
@@ -911,7 +914,7 @@ func (l *Lead) Standup(ctx context.Context, projectID string) (StandupResult, er
 	}
 	now := l.now().UnixMilli()
 	for _, t := range active {
-		lastAct := l.lastProgress(ctx, t.ID)
+		lastAct := l.lastProgress(ctx, t.ID, lead.ID)
 		if lastAct == 0 {
 			lastAct = t.Updated
 		}

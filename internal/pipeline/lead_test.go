@@ -576,6 +576,45 @@ func TestTheMonitorDoesNotAskAgainAfterARestart(t *testing.T) {
 	}
 }
 
+// The lead's own turn is not progress on the task: its agent events (agent.started, agent.failed, agent.stopped carry the
+// task) can land after the intervention was stored, the stopped one from the session's own goroutine, and must not start a
+// new silence that the lead is asked about again (after a restart, or at the next tick). Windows CI caught it as a race.
+func TestTheLeadsOwnTurnIsNotProgressOnTheTask(t *testing.T) {
+	e := newWatchedLeadEnv(t, map[string]fakeagent.Script{
+		agWork:   fakeagent.Script{Default: []fakeagent.Step{{Say: "thinking"}, {Block: true}}},
+		agReview: shipper,
+		agLead:   fakeagent.Script{Default: []fakeagent.Step{{Exit: 3}}},
+	})
+	ctx := context.Background()
+	e.devs.LeadStallMinutes = 15
+	id := e.runIUV(t, 3)
+	deadline := time.Now().Add(60 * time.Second)
+	for len(e.prompts(agWork)) == 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	rid := string(id)
+	e.tasks.Patch(ctx, e.task.ID, tasks.Update{RunID: &rid})
+	e.nowFunc = func() time.Time { return time.Now().Add(20 * time.Minute) }
+	if res, err := e.lead.Tick(ctx, "p1"); err != nil || len(res.Stalled) != 1 {
+		t.Fatalf("tick %+v %v", res, err)
+	}
+	// the lead's session ends after its intervention was stored: what its runtime publishes then is stamped later
+	time.Sleep(20 * time.Millisecond)
+	if _, err := e.bus.Publish(ctx, events.Event{Type: "agent.stopped", ProjectID: "p1", TaskID: e.task.ID, AgentID: agLead, Data: []byte(`{"exitCode":3}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := e.lead.Tick(ctx, "p1"); len(res.Stalled) != 0 {
+		t.Fatalf("the lead's own turn started a new silence: %+v", res)
+	}
+	if res, _ := pipeline.NewLead(e.leadDeps).Tick(ctx, "p1"); len(res.Stalled) != 0 {
+		t.Fatalf("the lead's own turn started a new silence after a restart: %+v", res)
+	}
+	if n := len(e.prompts(agLead)); n != 1 {
+		t.Fatalf("lead turns %d", n)
+	}
+}
+
 // An unassigned task the lead was asked about is not asked about again after a restart, until the task changes.
 func TestTheLeadIsAskedOnceAboutAnUnassignedTaskAcrossRestarts(t *testing.T) {
 	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: leadSays(`{"action":"continue","message":"","reason":"a human will staff it"}`)}, true)
