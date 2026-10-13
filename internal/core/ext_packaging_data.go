@@ -136,6 +136,9 @@ func (p *packaging) importProject(ctx context.Context, r importReq) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	if root != "" {
+		c.trustGitConfigNow(ctx, res.ProjectID)
+	}
 	p.audit(ctx, "project.import", res.ProjectID, map[string]any{"file": filepath.Base(r.Path), "source": res.SourceID, "idsRemapped": res.IDsRemapped})
 	c.publish(ctx, "project.imported", res.ProjectID, map[string]any{"name": res.Name, "from": filepath.Base(r.Path)})
 	// tell the human what is waiting for their decision, in the new project's own room

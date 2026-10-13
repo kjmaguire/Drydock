@@ -138,3 +138,29 @@ func TestTwoStartsOfOneTaskStartOneRun(t *testing.T) {
 		t.Fatalf("%d starts succeeded and %d runs exist for one task", started, runs)
 	}
 }
+
+// The trusted configuration is the one the repository had when the person gave it to the project (created with it or
+// attached it), not the one it has when Drydock first uses it: a setting planted in between is shown, never taken as trusted.
+func TestASettingPlantedBeforeTheFirstUseIsNotTrusted(t *testing.T) {
+	a := open(t, "")
+	plant := func(repo string) {
+		t.Helper()
+		if out, err := exec.Command("git", "-C", repo, "config", "filter.evil.clean", "cat").CombinedOutput(); err != nil {
+			t.Fatalf("plant: %v %s", err, out)
+		}
+	}
+	created, attached := newRepo(t), newRepo(t)
+	var p, q core.Project
+	a.call("project.create", map[string]any{"name": "created", "repoPath": created}, &p)
+	a.call("project.create", map[string]any{"name": "attached"}, &q)
+	a.call("project.attachRepo", map[string]any{"id": q.ID, "repoPath": attached}, &q)
+	plant(created)
+	plant(attached)
+	for _, id := range []string{p.ID, q.ID} {
+		var gc core.GitConfig
+		a.call("project.gitConfig", map[string]string{"id": id}, &gc)
+		if gc.Trusted || !slices.Contains(gc.Changed, "filter.evil.clean") {
+			t.Fatalf("%s: a setting planted before the first use was trusted: %+v", id, gc)
+		}
+	}
+}

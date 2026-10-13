@@ -418,8 +418,20 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	if _, err := c.Room.EnsureDefaultChannels(ctx, p.ID, room.Human(c.cfg.User)); err != nil {
 		return p, fmt.Errorf("project created but channels failed: %w", err)
 	}
+	if p.HasRepo {
+		c.trustGitConfigNow(ctx, p.ID)
+	}
 	c.publish(ctx, "project.created", p.ID, map[string]any{"name": p.Name, "hasRepo": p.HasRepo})
 	return p, nil
+}
+
+// trustGitConfigNow records the repository's git configuration as trusted the moment the person gives the project its
+// repository (create, attach, import). Recorded later, on the repository's first use, a setting planted in between would be
+// taken as trusted without anyone seeing it. A failure is logged: the state is then recorded on first use, as before.
+func (c *Core) trustGitConfigNow(ctx context.Context, projectID string) {
+	if _, err := c.repo(ctx, projectID); err != nil {
+		c.logf("project %s: recording the trusted git configuration: %v", projectID, err)
+	}
 }
 
 // AttachRepository links a local Git repository to a project that has none yet. A project's repository is not swapped once
@@ -452,6 +464,7 @@ func (c *Core) AttachRepository(ctx context.Context, projectID, repoPath string)
 	c.mu.Lock()
 	delete(c.repos, projectID)
 	c.mu.Unlock()
+	c.trustGitConfigNow(ctx, projectID)
 	c.publish(ctx, "project.updated", projectID, map[string]any{"repoAttached": true})
 	return c.GetProject(ctx, projectID)
 }
