@@ -221,33 +221,39 @@ func (c *Core) fileLog(msg string) string {
 // notify posts body as a SYSTEM message in each project's alerts channel. With needsYou it also posts a blocking question
 // from the system, which the inbox shows until a human replies or dismisses it. idem makes a repeat a no-op.
 func (p *packaging) notify(ctx context.Context, idem, body string, needsYou bool) {
-	c := p.c
-	projects, err := c.Projects(ctx)
+	projects, err := p.c.Projects(ctx)
 	if err != nil {
 		return
 	}
 	for _, pr := range projects {
-		rooms, err := c.Room.ListRooms(ctx, pr.ID, false)
-		if err != nil {
-			continue
+		p.c.alertsNotice(ctx, pr.ID, idem, body, needsYou)
+	}
+}
+
+// alertsNotice posts body as a SYSTEM message in one project's alerts channel and, with needsYou, a blocking question from the
+// system that the inbox shows until a human replies or dismisses it. idem makes a repeat a no-op. A project without an alerts
+// channel gets nothing.
+func (c *Core) alertsNotice(ctx context.Context, projectID, idem, body string, needsYou bool) {
+	rooms, err := c.Room.ListRooms(ctx, projectID, false)
+	if err != nil {
+		return
+	}
+	target := ""
+	for _, r := range rooms {
+		if r.Kind == room.KindChannel && r.Name == "alerts" {
+			target = r.ID
 		}
-		target := ""
-		for _, r := range rooms {
-			if r.Kind == room.KindChannel && r.Name == "alerts" {
-				target = r.ID
-			}
-		}
-		if target == "" {
-			continue
-		}
-		if _, err := c.Room.Post(ctx, room.PostParams{RoomID: target, Type: room.TypeSystem, Author: room.System, Body: body, IdempotencyKey: idem}); err != nil {
-			c.logf("notice: %v", err)
-		}
-		if needsYou {
-			if _, err := c.Room.Post(ctx, room.PostParams{RoomID: target, Type: room.TypeQuestion, Author: room.System, Body: noticeTitle(body), IdempotencyKey: idem + ":needs-you",
-				Payload: map[string]any{"blocking": true, "to": ""}}); err != nil {
-				c.logf("needs-you item: %v", err)
-			}
+	}
+	if target == "" {
+		return
+	}
+	if _, err := c.Room.Post(ctx, room.PostParams{RoomID: target, Type: room.TypeSystem, Author: room.System, Body: body, IdempotencyKey: idem}); err != nil {
+		c.logf("notice: %v", err)
+	}
+	if needsYou {
+		if _, err := c.Room.Post(ctx, room.PostParams{RoomID: target, Type: room.TypeQuestion, Author: room.System, Body: noticeTitle(body), IdempotencyKey: idem + ":needs-you",
+			Payload: map[string]any{"blocking": true, "to": ""}}); err != nil {
+			c.logf("needs-you item: %v", err)
 		}
 	}
 }

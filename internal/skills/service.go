@@ -833,13 +833,7 @@ func (s *Service) Import(ctx context.Context, by string, r ImportReq) (Skill, er
 		return k, err
 	}
 	if changed {
-		s.emit(ctx, EventResolved, r.ProjectID, "", "", map[string]any{"skill": k.Name, "origin": OriginRegistry, "registry": reg.ID, "path": rs.Dir, "commit": commit, "status": k.Status})
-		s.emit(ctx, EventImported, r.ProjectID, "", "", map[string]any{"skill": k.Name, "registry": reg.ID, "commit": commit, "status": k.Status, "scripts_skipped": rs.HasScripts, "by": by})
-		if k.Status == StatusBlocked {
-			s.emit(ctx, EventBlocked, r.ProjectID, "", "", map[string]any{"skill": k.Name, "registry": reg.ID, "commit": commit, "reason": k.BlockReason})
-		} else {
-			s.emit(ctx, EventOffered, r.ProjectID, "", "", map[string]any{"skill": k.Name, "registry": reg.ID, "commit": commit})
-		}
+		s.emitImported(ctx, r.ProjectID, by, reg, commit, rs, k)
 	}
 	return k, nil
 }
