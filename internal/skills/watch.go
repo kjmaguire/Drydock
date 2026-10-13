@@ -10,17 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kjmaguire/drydock/internal/packs"
 	"github.com/kjmaguire/drydock/internal/security"
 )
 
-// Decision P46: a registry is imported whole and watched afterwards. ImportAll brings every valid skill of a registry into a
-// project as OFFERED (a person still accepts each one); CheckRegistry reads the registry again (the core does it twice a day
-// for every registry a project imports from) and remembers what the registry holds, so RegistryStatuses can say, against
-// the project's current skills, which skills are new there and which changed upstream. Nothing is imported or accepted by a
-// check: it only tells.
+// Decisions P46 and P48: every enabled registry is read twice a day (CheckRegistry; the core schedules it) and what it holds
+// goes into the workspace library (library.go). A check also remembers what the sync brought (added, changed), so the page and
+// the notice can say it, and RegistryStatuses computes, against each project's skills as they are now, which project skills
+// are behind the library. Nothing a check does reaches an agent: a project copy changes only when a person updates it.
 
-// EventRegistryUpdates is published by the core when a check finds new or changed skills for a project.
+// EventRegistryUpdates is published by the core when a check brought something new for the projects.
 const EventRegistryUpdates = "skill.registry_updates"
 
 // NamedReason is a skill name with why it was not imported.
@@ -39,9 +37,9 @@ type ImportAllResult struct {
 	Skipped   []NamedReason `json:"skipped"`   // not touched: the repository's own skill wins, or the name is ambiguous
 }
 
-// ImportAll fetches a registry once and imports every skill it holds into the project, each pinned to the same commit and
-// validated like Import does. A registry marked selective_only (the Microsoft repository: 175 skills, and its own warning
-// about loading them all) is refused; its skills are imported one at a time. Human only.
+// ImportAll fetches a registry once and imports every skill it holds into the project as OFFERED, each pinned to the same
+// commit and validated like Import does (the network route; the Skills page adds from the library instead, P48). A registry
+// marked selective_only is refused. Human only.
 func (s *Service) ImportAll(ctx context.Context, by, projectID, registryID, ref string) (ImportAllResult, error) {
 	res := ImportAllResult{Imported: []string{}, Updated: []string{}, Unchanged: []string{}, Blocked: []NamedReason{}, Skipped: []NamedReason{}}
 	if err := security.RequireHuman(by); err != nil {
@@ -140,104 +138,94 @@ func (s *Service) emitImported(ctx context.Context, projectID, by string, reg Re
 	}
 }
 
-// RegistryChange names a skill a check found new or changed for a project.
+// RegistryChange names a skill a sync added or changed, or a project skill that is behind the library.
 type RegistryChange struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
-// RegistryProjectChanges is what a registry holds that a project does not have yet (Additions) or has at an older text
-// (Updates), as of the registry's last check and the project's skills now.
+// RegistryProjectChanges is what a project has from a registry at an older text than the library (Updates).
 type RegistryProjectChanges struct {
-	Additions []RegistryChange `json:"additions"`
-	Updates   []RegistryChange `json:"updates"`
+	Updates []RegistryChange `json:"updates"`
 }
 
-// RegistryStatus is a registry's watch state. Projects holds the changes for every project that imports from it.
+// RegistryStatus is a registry's sync state and what its last sync brought.
 type RegistryStatus struct {
-	RegistryID string `json:"registryId"`
-	Repo       string `json:"repo"`
-	// Watched: an enabled registry at least one project imported from; only those are checked on the schedule.
-	Watched        bool                              `json:"watched"`
-	LastCommit     string                            `json:"lastCommit"`
-	CheckedAt      *time.Time                        `json:"checkedAt,omitempty"`
-	NotifiedCommit string                            `json:"notifiedCommit,omitempty"`
-	LastError      string                            `json:"lastError,omitempty"`
-	Projects       map[string]RegistryProjectChanges `json:"projects"`
+	RegistryID string     `json:"registryId"`
+	Repo       string     `json:"repo"`
+	Enabled    bool       `json:"enabled"`
+	LastCommit string     `json:"lastCommit"`
+	CheckedAt  *time.Time `json:"checkedAt,omitempty"`
+	// NotifiedCommit is the commit whose changes were already told to the projects.
+	NotifiedCommit string `json:"notifiedCommit,omitempty"`
+	LastError      string `json:"lastError,omitempty"`
+	// Skills and Blocked count the library's rows for this registry (gone ones excluded).
+	Skills  int `json:"skills"`
+	Blocked int `json:"blocked"`
+	// Added and Changed are what the last sync that found a new commit brought into the library.
+	Added   []RegistryChange `json:"added"`
+	Changed []RegistryChange `json:"changed"`
+	// Projects holds, for every project that has skills from this registry, the ones behind the library.
+	Projects map[string]RegistryProjectChanges `json:"projects"`
 }
 
-// HasChanges reports whether any project has an addition or an update.
-func (st RegistryStatus) HasChanges() bool {
+// HasNews reports whether the last sync added or changed something, or any project is behind.
+func (st RegistryStatus) HasNews() bool {
+	if len(st.Added) > 0 || len(st.Changed) > 0 {
+		return true
+	}
 	for _, ch := range st.Projects {
-		if len(ch.Additions) > 0 || len(ch.Updates) > 0 {
+		if len(ch.Updates) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
-// remoteSkillSnapshot is what a check remembers about one skill of a registry: enough to compare without the text.
-type remoteSkillSnapshot struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Hash        string `json:"hash"`
-}
-
 type watchRow struct {
 	commit, notified, lastErr string
 	checkedAt                 int64
-	remote                    []remoteSkillSnapshot
+	added, changed            []RegistryChange
+}
+
+type watchChanges struct {
+	Added   []RegistryChange `json:"added"`
+	Changed []RegistryChange `json:"changed"`
 }
 
 func (s *Service) watchRow(ctx context.Context, registryID string) (watchRow, bool, error) {
 	var r watchRow
-	var remoteJSON string
+	var changesJSON string
 	err := s.DB.Reader().QueryRowContext(ctx, `SELECT last_commit,checked_at,notified_commit,remote_json,last_error FROM skill_registry_watch WHERE registry_id=?`, registryID).
-		Scan(&r.commit, &r.checkedAt, &r.notified, &remoteJSON, &r.lastErr)
+		Scan(&r.commit, &r.checkedAt, &r.notified, &changesJSON, &r.lastErr)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, false, nil
 	}
 	if err != nil {
 		return r, false, err
 	}
-	if remoteJSON != "" {
-		_ = json.Unmarshal([]byte(remoteJSON), &r.remote)
+	var ch watchChanges
+	if changesJSON != "" {
+		_ = json.Unmarshal([]byte(changesJSON), &ch)
 	}
+	r.added, r.changed = nz(ch.Added), nz(ch.Changed)
 	return r, true, nil
 }
 
+// saveWatch stores the row; the column remote_json (named before P48) holds what the last sync added and changed.
 func (s *Service) saveWatch(ctx context.Context, registryID string, r watchRow) error {
-	remoteJSON, _ := json.Marshal(nz(r.remote))
+	changesJSON, _ := json.Marshal(watchChanges{Added: nz(r.added), Changed: nz(r.changed)})
 	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO skill_registry_watch(registry_id,last_commit,checked_at,notified_commit,remote_json,last_error) VALUES(?,?,?,?,?,?)
 			ON CONFLICT(registry_id) DO UPDATE SET last_commit=excluded.last_commit,checked_at=excluded.checked_at,notified_commit=excluded.notified_commit,remote_json=excluded.remote_json,last_error=excluded.last_error`,
-			registryID, r.commit, r.checkedAt, r.notified, string(remoteJSON), r.lastErr)
+			registryID, r.commit, r.checkedAt, r.notified, string(changesJSON), r.lastErr)
 		return err
 	})
 }
 
-// watchedRegistryIDs are the enabled registries at least one project imported from.
-func (s *Service) watchedRegistryIDs(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT DISTINCT k.registry_id FROM skills k JOIN skill_registries r ON r.id=k.registry_id WHERE k.origin='registry' AND r.enabled=1`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out[id] = true
-	}
-	return out, rows.Err()
-}
-
-// CheckRegistry reads a registry's default branch once and remembers the skills it holds at that commit. When the commit
-// has not moved since the last check the tarball is not fetched again. A failure (the registry unreachable, the tarball
-// unreadable) is recorded in LastError and returned as a status, not an error, so a scheduled pass continues with the next
-// registry. Nothing is imported.
+// CheckRegistry reads a registry's default branch once and syncs the library with what it holds. When the commit has not
+// moved since the last check nothing is downloaded. A failure (the registry unreachable, the tarball unreadable) is recorded
+// in LastError and returned as a status, not an error, so a scheduled pass continues with the next registry.
 func (s *Service) CheckRegistry(ctx context.Context, registryID string) (RegistryStatus, error) {
 	reg, err := s.registry(ctx, registryID)
 	if err != nil {
@@ -254,95 +242,44 @@ func (s *Service) CheckRegistry(ctx context.Context, registryID string) (Registr
 		return RegistryStatus{}, err
 	}
 	row.checkedAt = s.now().UnixMilli()
+	fail := func(e error) (RegistryStatus, error) {
+		row.lastErr = truncate(e.Error(), 300)
+		if err := s.saveWatch(ctx, registryID, row); err != nil {
+			return RegistryStatus{}, err
+		}
+		return s.status(ctx, reg)
+	}
 	commit, err := s.Fetcher.Resolve(ctx, reg.Repo, "")
 	if err != nil {
-		row.lastErr = truncate(err.Error(), 300)
-		if e := s.saveWatch(ctx, registryID, row); e != nil {
-			return RegistryStatus{}, e
-		}
-		return s.status(ctx, reg, true)
+		return fail(err)
 	}
-	if commit != row.commit || len(row.remote) == 0 {
+	var libCount int
+	_ = s.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM skill_library WHERE registry_id=?`, reg.ID).Scan(&libCount)
+	if commit != row.commit || libCount == 0 {
 		remote, err := s.Fetcher.Fetch(ctx, reg.Repo, commit, reg.Root)
 		if err != nil {
-			row.lastErr = truncate(err.Error(), 300)
-			if e := s.saveWatch(ctx, registryID, row); e != nil {
-				return RegistryStatus{}, e
-			}
-			return s.status(ctx, reg, true)
+			return fail(err)
 		}
-		row.commit, row.remote = commit, snapshot(remote)
+		sync, err := s.syncLibrary(ctx, reg, commit, remote)
+		if err != nil {
+			return RegistryStatus{}, err
+		}
+		row.commit, row.added, row.changed = commit, sync.added, sync.changed
+		if len(sync.added) > 0 || len(sync.changed) > 0 || sync.removedUpstream > 0 {
+			s.emit(ctx, EventLibrarySynced, "", "", "", map[string]any{"registry": reg.ID, "repo": reg.Repo, "commit": commit, "added": len(sync.added), "changed": len(sync.changed), "gone": sync.removedUpstream, "skills": sync.count, "blocked": sync.blocked})
+		}
 	}
 	row.lastErr = ""
 	if err := s.saveWatch(ctx, registryID, row); err != nil {
 		return RegistryStatus{}, err
 	}
-	return s.status(ctx, reg, true)
+	return s.status(ctx, reg)
 }
 
-// snapshot keeps the valid, unambiguous skills of a registry read: name, description and the hash of SKILL.md.
-func snapshot(remote []RemoteSkill) []remoteSkillSnapshot {
-	count := map[string]int{}
-	for _, rs := range remote {
-		count[rs.Name]++
-	}
-	var out []remoteSkillSnapshot
-	for _, rs := range remote {
-		if count[rs.Name] != 1 || rs.SkillMD == nil || ValidateName(rs.Name) != nil {
-			continue
-		}
-		ps, err := ParseRegistrySkill(rs.SkillMD, rs.Name)
-		if err != nil {
-			continue
-		}
-		out = append(out, remoteSkillSnapshot{Name: rs.Name, Description: ps.Description, Hash: packs.HashHex(string(rs.SkillMD))})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}
-
-// CheckWatched checks every watched registry (the scheduled pass). One registry's failure is in its status; a database
-// error stops the pass.
-func (s *Service) CheckWatched(ctx context.Context) ([]RegistryStatus, error) {
-	watched, err := s.watchedRegistryIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ids := make([]string, 0, len(watched))
-	for id := range watched {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	out := []RegistryStatus{}
-	for _, id := range ids {
-		if ctx.Err() != nil {
-			return out, ctx.Err()
-		}
-		st, err := s.CheckRegistry(ctx, id)
-		if err != nil {
-			return out, err
-		}
-		out = append(out, st)
-	}
-	return out, nil
-}
-
-// MarkNotified records that the changes at commit were told to the projects, so they are not told again.
-func (s *Service) MarkNotified(ctx context.Context, registryID, commit string) error {
-	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE skill_registry_watch SET notified_commit=? WHERE registry_id=?`, commit, registryID)
-		return err
-	})
-}
-
-// RegistryStatuses returns the watch state of every enabled registry, with the changes computed against each project's
-// skills as they are now (an addition disappears once the project imports it).
-func (s *Service) RegistryStatuses(ctx context.Context) ([]RegistryStatus, error) {
+// CheckAll checks every enabled registry (the scheduled pass). One registry's failure is in its status; a database error
+// stops the pass.
+func (s *Service) CheckAll(ctx context.Context) ([]RegistryStatus, error) {
 	regs, err := s.Registries(ctx)
-	if err != nil {
-		return nil, err
-	}
-	watched, err := s.watchedRegistryIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +288,36 @@ func (s *Service) RegistryStatuses(ctx context.Context) ([]RegistryStatus, error
 		if !reg.Enabled {
 			continue
 		}
-		st, err := s.status(ctx, reg, watched[reg.ID])
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
+		st, err := s.CheckRegistry(ctx, reg.ID)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, st)
+	}
+	return out, nil
+}
+
+// MarkNotified records that the news at commit was told to the projects, so it is not told again.
+func (s *Service) MarkNotified(ctx context.Context, registryID, commit string) error {
+	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE skill_registry_watch SET notified_commit=? WHERE registry_id=?`, commit, registryID)
+		return err
+	})
+}
+
+// RegistryStatuses returns the state of every registry (disabled ones included, so the page can show them), with each
+// project's skills compared to the library as they are now.
+func (s *Service) RegistryStatuses(ctx context.Context) ([]RegistryStatus, error) {
+	regs, err := s.Registries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []RegistryStatus{}
+	for _, reg := range regs {
+		st, err := s.status(ctx, reg)
 		if err != nil {
 			return nil, err
 		}
@@ -360,57 +326,40 @@ func (s *Service) RegistryStatuses(ctx context.Context) ([]RegistryStatus, error
 	return out, nil
 }
 
-func (s *Service) status(ctx context.Context, reg Registry, watched bool) (RegistryStatus, error) {
-	st := RegistryStatus{RegistryID: reg.ID, Repo: reg.Repo, Watched: watched, Projects: map[string]RegistryProjectChanges{}}
+func (s *Service) status(ctx context.Context, reg Registry) (RegistryStatus, error) {
+	st := RegistryStatus{RegistryID: reg.ID, Repo: reg.Repo, Enabled: reg.Enabled, Added: []RegistryChange{}, Changed: []RegistryChange{}, Projects: map[string]RegistryProjectChanges{}}
+	if err := s.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status='blocked' THEN 1 ELSE 0 END),0) FROM skill_library WHERE registry_id=? AND gone=0`, reg.ID).Scan(&st.Skills, &st.Blocked); err != nil {
+		return st, err
+	}
 	row, ok, err := s.watchRow(ctx, reg.ID)
 	if err != nil {
 		return st, err
 	}
-	if !ok {
-		return st, nil
+	if ok {
+		st.LastCommit, st.NotifiedCommit, st.LastError, st.Added, st.Changed = row.commit, row.notified, row.lastErr, row.added, row.changed
+		if row.checkedAt > 0 {
+			t := time.UnixMilli(row.checkedAt).UTC()
+			st.CheckedAt = &t
+		}
 	}
-	st.LastCommit, st.NotifiedCommit, st.LastError = row.commit, row.notified, row.lastErr
-	if row.checkedAt > 0 {
-		t := time.UnixMilli(row.checkedAt).UTC()
-		st.CheckedAt = &t
-	}
-	if len(row.remote) == 0 {
-		return st, nil
-	}
-	// every skill of every project that imports from this registry, and the names each of those projects already has
-	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT project_id,name,origin,registry_id,content_hash FROM skills
-		WHERE project_id IN (SELECT DISTINCT project_id FROM skills WHERE origin='registry' AND registry_id=?)`, reg.ID)
+	// project skills from this registry whose text is behind the library's
+	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT k.project_id,k.name,l.description FROM skills k JOIN skill_library l ON l.registry_id=k.registry_id AND l.name=k.name
+		WHERE k.origin='registry' AND k.registry_id=? AND l.gone=0 AND l.status='available' AND l.content_hash<>k.content_hash ORDER BY k.project_id,k.name`, reg.ID)
 	if err != nil {
 		return st, err
 	}
 	defer rows.Close()
-	type have struct{ origin, registry, hash string }
-	projects := map[string]map[string]have{}
 	for rows.Next() {
-		var pid, name, origin, rid, hash string
-		if err := rows.Scan(&pid, &name, &origin, &rid, &hash); err != nil {
+		var pid, name, desc string
+		if err := rows.Scan(&pid, &name, &desc); err != nil {
 			return st, err
 		}
-		if projects[pid] == nil {
-			projects[pid] = map[string]have{}
+		ch := st.Projects[pid]
+		if ch.Updates == nil {
+			ch.Updates = []RegistryChange{}
 		}
-		projects[pid][name] = have{origin, rid, hash}
-	}
-	if err := rows.Err(); err != nil {
-		return st, err
-	}
-	for pid, skillsOf := range projects {
-		ch := RegistryProjectChanges{Additions: []RegistryChange{}, Updates: []RegistryChange{}}
-		for _, r := range row.remote {
-			h, has := skillsOf[r.Name]
-			switch {
-			case !has:
-				ch.Additions = append(ch.Additions, RegistryChange{r.Name, r.Description})
-			case h.origin == OriginRegistry && h.registry == reg.ID && h.hash != r.Hash:
-				ch.Updates = append(ch.Updates, RegistryChange{r.Name, r.Description})
-			}
-		}
+		ch.Updates = append(ch.Updates, RegistryChange{name, desc})
 		st.Projects[pid] = ch
 	}
-	return st, nil
+	return st, rows.Err()
 }

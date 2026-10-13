@@ -121,6 +121,9 @@ type ServerSpec struct {
 	// Template (extension): a user-install template that is never started unless the project enables it explicitly.
 	Template bool   `yaml:"template,omitempty"`
 	Notes    string `yaml:"notes,omitempty"`
+	// SkillRegistries (extension, decision P47) names the skill registries (internal/skills registry.yaml ids) the same vendor
+	// publishes, so the merged Integrations page can offer them next to the server. The core checks each id exists.
+	SkillRegistries []string `yaml:"skill_registries,omitempty"`
 
 	// The connector gallery (extension, decision P43): how the server is presented to a human who connects it.
 

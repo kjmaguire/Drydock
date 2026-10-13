@@ -54,6 +54,7 @@ servers:
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, ux, frontend, backend, database, devops, security]
+    skill_registries: [msdocs-mcp-skills, msdocs-agent-skills, microsoft-skills]
     default_enabled: true
 
   # Cloudflare documentation. Evidence: github.com/cloudflare/mcp-server-cloudflare README and apps/docs-ai-search/README
@@ -90,6 +91,7 @@ servers:
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [architect, ux, frontend, backend, database, devops, security]
+    skill_registries: [cloudflare-skills]
     default_enabled: true
 
   # Cloudflare API ("Code Mode"). Evidence: github.com/cloudflare/mcp README: URL https://mcp.cloudflare.com/mcp, "Option 1:
@@ -134,6 +136,7 @@ servers:
     health: {probe: tools/list, timeout: 5s}
     terms_status: unverified
     recommended_roles: [devops, backend]
+    skill_registries: [cloudflare-skills]
 
   # GitHub, hosted. Evidence: github.com/github/github-mcp-server README and docs/remote-server.md: https://api.githubcopilot.com/mcp/
   # over streamable HTTP; OAuth, or a personal access token as Authorization: Bearer; "Each host app must configure a GitHub

@@ -20,6 +20,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/skills"
 )
 
 // The connector gallery (decision P43) shows every catalog server as a card with what a human needs to decide: publisher,
@@ -58,6 +59,26 @@ func TestMCPGalleryShowsEveryCatalogServerAsACard(t *testing.T) {
 	}
 	if !byID["ctx7"].AuthOptional || byID["cfdocs"].Group != "Cloudflare" || byID["cfapi"].Group != "Cloudflare" || byID["mslearn"].Publisher != "Microsoft" {
 		t.Error("ctx7 optional token, Cloudflare group, Microsoft publisher")
+	}
+	// decision P47: a vendor's skill registries ride on its cards, and every id names a registry the Skills page knows
+	if strings.Join(byID["cfdocs"].SkillRegistries, ",") != "cloudflare-skills" || strings.Join(byID["cfapi"].SkillRegistries, ",") != "cloudflare-skills" ||
+		strings.Join(byID["mslearn"].SkillRegistries, ",") != "msdocs-mcp-skills,msdocs-agent-skills,microsoft-skills" || len(byID["gh"].SkillRegistries) != 0 {
+		t.Errorf("skill registries: cfdocs %v mslearn %v gh %v", byID["cfdocs"].SkillRegistries, byID["mslearn"].SkillRegistries, byID["gh"].SkillRegistries)
+	}
+	regs, err := skills.CuratedRegistries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, r := range regs {
+		known[r.ID] = true
+	}
+	for _, c := range cards {
+		for _, id := range c.SkillRegistries {
+			if !known[id] {
+				t.Errorf("%s names an unknown skill registry %q", c.ID, id)
+			}
+		}
 	}
 	if c := byID["mslearn"]; len(c.Tools) != 3 || c.ToolsListed || !c.Tools[0].ReadOnlyHint {
 		t.Errorf("declared tools before connecting: %+v", c.Tools)

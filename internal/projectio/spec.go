@@ -170,6 +170,8 @@ var ExcludedTables = map[string]string{
 	"events":                   "this installation's event log; sequence numbers are install-local and payloads are not part of a project record",
 	"security_scans":           "security scan reports describe one machine's working tree and installed tools at that time (paths included); the importing machine scans again (decision P44)",
 	"skill_registry_watch":     "what each skill registry held at its last check is workspace state, not a project's; the importing machine checks the registries itself (decision P46)",
+	"skill_library":            "the workspace skill library is filled by Drydock from the registries on the importing machine (decision P48); a project's own skills travel in the skills table",
+	"skill_uses":               "which skills agents opened on this machine is measurement, not configuration; counts restart on the importing machine (decision P49)",
 	"workspaces":               "not project data",
 	"model_catalog":            "a cache of what a provider lists; refetched from the provider",
 	"sessions":                 "agent CLI session ids only resume on the exporting machine",

@@ -55,6 +55,7 @@ func (p *Provider) Get(ctx context.Context, run mcp.RunInfo, name string) (mcp.S
 	for _, k := range ks {
 		if k.Name == name {
 			p.S.RecordDelivery(ctx, targetOf(run), run.RunID, k.Name, k.ContentHash, MethodTool, FidelityOnDemand, "")
+			p.S.RecordUse(ctx, targetOf(run), run.RunID, k.Name, UseTool)
 			return toMCP(k, true), nil
 		}
 	}
@@ -81,6 +82,7 @@ func (p *Provider) ForPaths(ctx context.Context, run mcp.RunInfo, paths []string
 	for _, k := range ks {
 		if PathsMatch(k.Globs, norm) {
 			p.S.RecordDelivery(ctx, targetOf(run), run.RunID, k.Name, k.ContentHash, MethodTool, FidelityOnDemand, "")
+			p.S.RecordUse(ctx, targetOf(run), run.RunID, k.Name, UseTool)
 			out = append(out, toMCP(k, true))
 		}
 	}

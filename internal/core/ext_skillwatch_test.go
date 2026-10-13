@@ -22,15 +22,14 @@ import (
 	"github.com/kjmaguire/drydock/internal/skills"
 )
 
-// watchFixture stands in for GitHub as the registry check sees it: GET /repos/<owner>/<name>/commits/HEAD answers the
+// watchFixture stands in for GitHub as the registry sync sees it: GET /repos/<owner>/<name>/commits/HEAD answers the
 // default branch's commit and GET /<owner>/<name>/tar.gz/<sha> the tarball at that commit. The real service was never
-// contacted from here.
+// contacted from here. Registries the fixture does not hold answer 404 (the sync records that as the registry's error).
 type watchFixture struct {
 	*httptest.Server
 	mu    sync.Mutex
 	head  map[string]string            // "owner/name" -> sha
 	trees map[string]map[string]string // "owner/name@sha" -> path -> content
-	tars  int
 }
 
 func newWatchFixture(t *testing.T) *watchFixture {
@@ -54,7 +53,6 @@ func newWatchFixture(t *testing.T) *watchFixture {
 				http.NotFound(w, r)
 				return
 			}
-			f.tars++
 			var buf bytes.Buffer
 			zw := gzip.NewWriter(&buf)
 			tw := tar.NewWriter(zw)
@@ -96,9 +94,10 @@ const (
 	watchSha2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-// Decision P46: a registry is imported whole from the Skills page, and the scheduled check tells a project, once per
-// upstream commit, what is new or changed for it: a notice and a Needs-you item in its alerts channel, and an event.
-func TestImportAllThenTheRegistryCheckTellsTheProjectWhatIsNew(t *testing.T) {
+// Decisions P46 and P48: the scheduled pass fills the library from every enabled registry; a project adds from the library
+// (accepted at once); a later pass tells the project, once per upstream commit, what is new in the library and which of its
+// skills are behind: a notice and a Needs-you item in its alerts channel, and an event. Nothing changes in the project by itself.
+func TestTheLibraryFillsFromTheRegistriesAndTheProjectIsToldWhatIsNew(t *testing.T) {
 	a := open(t, "")
 	p := gitProject(t, a, "cfapp")
 	f := newWatchFixture(t)
@@ -108,56 +107,70 @@ func TestImportAllThenTheRegistryCheckTellsTheProjectWhatIsNew(t *testing.T) {
 	})
 	f.use(a)
 
-	var res skills.ImportAllResult
-	a.call("skill.importAll", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills"}, &res)
-	if res.Commit != watchSha1 || strings.Join(res.Imported, ",") != "durable-objects,wrangler" || len(res.Blocked)+len(res.Skipped) != 0 {
-		t.Fatalf("%+v", res)
+	// the pass syncs every enabled registry: the one the fixture holds fills, the others record their failure and go on
+	sts, err := a.c.RunSkillWatch(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	var list []skills.Skill
-	a.call("skill.list", map[string]any{"projectId": p.ID}, &list)
-	if len(list) != 2 || list[0].Status != skills.StatusOffered || list[1].Status != skills.StatusOffered {
-		t.Fatalf("every imported skill is offered, none accepted: %+v", list)
-	}
-
-	// the first check finds nothing new: no notice
-	var sts []skills.RegistryStatus
-	a.call("skill.registryCheck", map[string]any{}, &sts)
 	st := statusOf(sts, "cloudflare-skills")
-	if !st.Watched || st.LastCommit != watchSha1 || st.NotifiedCommit != watchSha1 || st.CheckedAt == nil || len(st.Projects[p.ID].Additions) != 0 {
+	if st.LastCommit != watchSha1 || st.Skills != 2 || st.Blocked != 0 || len(st.Added) != 2 || st.CheckedAt == nil || st.LastError != "" {
 		t.Fatalf("%+v", st)
 	}
+	if other := statusOf(sts, "vercel-agent-skills"); other.LastError == "" || other.Skills != 0 {
+		t.Fatalf("an unreachable registry records its failure: %+v", other)
+	}
+	var lib []skills.LibrarySkill
+	a.call("skill.libraryList", map[string]any{"registryId": "cloudflare-skills"}, &lib)
+	if len(lib) != 2 || lib[0].Name != "durable-objects" || lib[1].Name != "wrangler" || lib[0].Status != skills.LibraryAvailable || lib[0].Repo != "cloudflare/skills" {
+		t.Fatalf("library: %+v", lib)
+	}
 	alerts := a.alertsRoom(p.ID)
-	if msgs := a.roomMessages(alerts); len(skillNotices(msgs)) != 0 {
-		t.Fatalf("a notice for nothing: %+v", msgs)
+	if n := len(skillNotices(a.roomMessages(alerts))); n != 0 {
+		t.Fatalf("a project without skills from the registry is not told: %d notices", n)
 	}
 
-	// upstream adds one skill and changes one
+	// the project chooses one skill: it arrives accepted, with the person recorded
+	var k skills.Skill
+	a.call("skill.libraryAdd", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills", "name": "wrangler"}, &k)
+	if k.Status != skills.StatusAccepted || k.Origin != skills.OriginRegistry || k.PinnedCommit != watchSha1 || !strings.HasPrefix(k.DecidedBy, "human:") {
+		t.Fatalf("%+v", k)
+	}
+	var res skills.LibraryAddAllResult
+	a.call("skill.libraryAddAll", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills"}, &res)
+	if strings.Join(res.Added, ",") != "durable-objects" || strings.Join(res.Unchanged, ",") != "wrangler" {
+		t.Fatalf("%+v", res)
+	}
+
+	// upstream adds one skill and changes one: the next pass tells the project once
 	f.publish("cloudflare/skills", watchSha2, map[string]string{
 		"skills/wrangler/SKILL.md":        fixtureSkill("wrangler", "", "Use the project's Wrangler version. Never guess flags."),
 		"skills/durable-objects/SKILL.md": fixtureSkill("durable-objects", "", "One object per room."),
 		"skills/queues/SKILL.md":          fixtureSkill("queues", "", "Ack explicitly."),
 	})
-	sts, err := a.c.RunSkillWatch(context.Background())
+	sts, err = a.c.RunSkillWatch(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	st = statusOf(sts, "cloudflare-skills")
-	ch := st.Projects[p.ID]
-	if st.LastCommit != watchSha2 || len(ch.Additions) != 1 || ch.Additions[0].Name != "queues" || len(ch.Updates) != 1 || ch.Updates[0].Name != "wrangler" {
+	if st.LastCommit != watchSha2 || len(st.Added) != 1 || st.Added[0].Name != "queues" || len(st.Changed) != 1 || st.Changed[0].Name != "wrangler" {
 		t.Fatalf("%+v", st)
+	}
+	if up := st.Projects[p.ID].Updates; len(up) != 1 || up[0].Name != "wrangler" {
+		t.Fatalf("the project's wrangler is behind: %+v", st.Projects)
 	}
 	msgs := a.roomMessages(alerts)
 	notices := skillNotices(msgs)
-	if len(notices) != 1 || !strings.Contains(notices[0].Body, "1 new skill (queues)") || !strings.Contains(notices[0].Body, "1 changed (wrangler)") || !strings.Contains(notices[0].Body, "cloudflare/skills") {
+	if len(notices) != 1 || !strings.Contains(notices[0].Body, "1 new skill in the Library (queues)") || !strings.Contains(notices[0].Body, "1 changed upstream (wrangler)") ||
+		!strings.Contains(notices[0].Body, "1 of this project's skills is behind (wrangler)") {
 		t.Fatalf("notice: %+v", notices)
 	}
-	var needsYou []room.Message
+	var needsYou int
 	for _, m := range msgs {
 		if m.Type == room.TypeQuestion && strings.HasPrefix(m.Body, "Skill updates from cloudflare/skills") {
-			needsYou = append(needsYou, m)
+			needsYou++
 		}
 	}
-	if len(needsYou) != 1 {
+	if needsYou != 1 {
 		t.Fatalf("one Needs-you item: %+v", msgs)
 	}
 	evs, _ := a.c.Replay(context.Background(), 0, events.Filter{Types: []string{skills.EventRegistryUpdates}}, 10)
@@ -170,8 +183,13 @@ func TestImportAllThenTheRegistryCheckTellsTheProjectWhatIsNew(t *testing.T) {
 		Projects map[string]map[string]int `json:"projects"`
 	}
 	_ = json.Unmarshal(evs[0].Data, &data)
-	if data.Registry != "cloudflare-skills" || data.Commit != watchSha2 || data.Projects[p.ID]["additions"] != 1 || data.Projects[p.ID]["updates"] != 1 {
+	if data.Registry != "cloudflare-skills" || data.Commit != watchSha2 || data.Projects[p.ID]["added"] != 1 || data.Projects[p.ID]["updates"] != 1 {
 		t.Fatalf("event: %s", evs[0].Data)
+	}
+	// the project copy did not move
+	a.call("skill.get", map[string]any{"projectId": p.ID, "name": "wrangler"}, &k)
+	if k.PinnedCommit != watchSha1 {
+		t.Fatalf("a sync changed the project's copy: %+v", k)
 	}
 
 	// told once: another pass at the same commit says nothing again
@@ -182,19 +200,58 @@ func TestImportAllThenTheRegistryCheckTellsTheProjectWhatIsNew(t *testing.T) {
 		t.Fatalf("told twice: %d notices", n)
 	}
 
-	// the person imports what is new: the status follows the project
-	a.call("skill.importAll", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills"}, &res)
-	if strings.Join(res.Imported, ",") != "queues" || strings.Join(res.Updated, ",") != "wrangler" || strings.Join(res.Unchanged, ",") != "durable-objects" {
-		t.Fatalf("%+v", res)
+	// the person updates: the status follows
+	a.call("skill.libraryAdd", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills", "name": "wrangler"}, &k)
+	if k.PinnedCommit != watchSha2 || k.Status != skills.StatusAccepted {
+		t.Fatalf("%+v", k)
 	}
-	a.call("skill.registryStatus", map[string]any{}, &sts)
-	if ch = statusOf(sts, "cloudflare-skills").Projects[p.ID]; len(ch.Additions)+len(ch.Updates) != 0 {
-		t.Fatalf("still listed after import: %+v", ch)
+	var fresh []skills.RegistryStatus // a fresh value: json.Unmarshal into the old slice would keep the old Projects map entries
+	a.call("skill.registryStatus", map[string]any{}, &fresh)
+	if len(statusOf(fresh, "cloudflare-skills").Projects[p.ID].Updates) != 0 {
+		t.Fatalf("still behind after the update: %+v", statusOf(fresh, "cloudflare-skills"))
 	}
-	// nothing was accepted on the way
-	a.call("skill.list", map[string]any{"projectId": p.ID, "statuses": []string{skills.StatusAccepted}}, &list)
-	if len(list) != 0 {
-		t.Fatalf("accepted without a person: %+v", list)
+}
+
+// Decision P49: an agent reading a skill's on-demand file is recorded as a use, and the usage report counts it.
+func TestAnAgentOpeningASkillFileIsRecordedAsAUse(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "cfapp")
+	f := newWatchFixture(t)
+	f.publish("cloudflare/skills", watchSha1, map[string]string{"skills/wrangler/SKILL.md": fixtureSkill("wrangler", "", "Use the project's Wrangler version.")})
+	f.use(a)
+	if _, err := a.c.RunSkillWatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var k skills.Skill
+	a.call("skill.libraryAdd", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills", "name": "wrangler"}, &k)
+
+	publish := func(name, file string) {
+		data, _ := json.Marshal(map[string]any{"kind": "tool_call", "data": map[string]any{"name": name, "args": map[string]any{"file_path": file}}})
+		if _, err := a.c.Bus.Publish(context.Background(), events.Event{Type: "agent.output", ProjectID: p.ID, TaskID: "task_1", AgentID: "ag_1", RunID: "arun_1", Data: data}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publish("Read", `D:\wt\task\.claude\drydock-skills\wrangler.md`)     // Windows path, absolute
+	publish("Read", skills.OnDemandDir+"/wrangler.md")                   // relative
+	publish("Read", "src/index.ts")                                      // an ordinary file
+	publish("Write", skills.OnDemandDir+"/wrangler.md")                  // not a read
+	publish("Read", "/home/u/wt/.claude/drydock-skills/../secrets/x.md") // not in the folder
+	deadline := time.Now().Add(5 * time.Second)
+	var uses []events.Event
+	for time.Now().Before(deadline) {
+		uses, _ = a.c.Replay(context.Background(), 0, events.Filter{Types: []string{skills.EventUsed}}, 10)
+		if len(uses) >= 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(uses) != 2 {
+		t.Fatalf("uses recorded: %d", len(uses))
+	}
+	var us []skills.SkillUsage
+	a.call("skill.usage", map[string]any{"projectId": p.ID}, &us)
+	if len(us) != 1 || us[0].Name != "wrangler" || us[0].Opened != 2 || us[0].LastUsed == nil {
+		t.Fatalf("%+v", us)
 	}
 }
 

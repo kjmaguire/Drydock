@@ -52,12 +52,15 @@ type MCPGalleryCard struct {
 	SecretEnv    string `json:"secretEnv,omitempty"`
 	TokenHelp    string `json:"tokenHelp,omitempty"`
 	// Template is a program the human installs; Drydock never ships it (D14).
-	Template      bool     `json:"template"`
-	License       string   `json:"license"`
-	LicenseNotes  string   `json:"licenseNotes,omitempty"`
-	Integration   string   `json:"integration,omitempty"`
-	Trust         string   `json:"trust"`
-	ReadOnlyTools []string `json:"readOnlyTools"`
+	Template     bool   `json:"template"`
+	License      string `json:"license"`
+	LicenseNotes string `json:"licenseNotes,omitempty"`
+	Integration  string `json:"integration,omitempty"`
+	// SkillRegistries are the skill registries this vendor publishes (ids of the Skills page's allowlist), offered next to
+	// the server on the Integrations page (decision P47).
+	SkillRegistries []string `json:"skillRegistries"`
+	Trust           string   `json:"trust"`
+	ReadOnlyTools   []string `json:"readOnlyTools"`
 	// Tools are the tools the server offers: the ones it listed when it was last reached, or the catalog's declaration.
 	Tools []mcp.ToolInfo `json:"tools"`
 	// ToolsListed is true when Tools came from the server itself.
@@ -142,7 +145,8 @@ func (c *Core) galleryCard(ctx context.Context, s mcp.ServerSpec) (MCPGalleryCar
 		Description: s.Description, DocsURL: s.DocsURL, Transport: s.Transport, URL: s.URL, Auth: auth, AuthOptional: s.Auth.Optional,
 		SecretEnv: secretEnv, TokenHelp: s.TokenHelp, Template: s.Template, License: s.License.Server, LicenseNotes: s.License.Notes,
 		Integration: s.Integration, Trust: s.Trust, ReadOnlyTools: nonNil(append([]string(nil), s.ReadOnlyTools...)),
-		Tools: []mcp.ToolInfo{}, Status: GalleryNotConnected, Projects: []string{},
+		SkillRegistries: nonNil(append([]string(nil), s.SkillRegistries...)),
+		Tools:           []mcp.ToolInfo{}, Status: GalleryNotConnected, Projects: []string{},
 	}
 	if s.Command != nil {
 		card.Command = append([]string(nil), s.Command.Argv...)

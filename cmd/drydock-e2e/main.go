@@ -14,6 +14,7 @@
 //	DRYDOCK_E2E_GREEN_REPO <path>        (-green-repos N) baseline tests pass, and a repository skill is committed
 //	DRYDOCK_E2E_DOCS <path>              a folder with one Markdown page, for an expert pack of type local_dir
 //	DRYDOCK_E2E_OAUTH_MCP <url>          a fake MCP server that wants an OAuth sign-in (internal/mcp/oauthfake, a test double)
+//	DRYDOCK_E2E_SKILL_REGISTRY <url>     a fake GitHub for the skill registries (cloudflare/skills holds three stand-in skills; decision P48)
 //	DRYDOCK_E2E_LINEAR_API <url>         a Linear GraphQL protocol fixture (internal/integrations/itfixture, a test double)
 //	DRYDOCK_E2E_LICENSE_ACTIVE <token>   (-licensed only) a license signed by this run's throwaway key, valid for 30 days
 //	DRYDOCK_E2E_LICENSE_EXPIRED <token>  (-licensed only) a license signed by the same key that expired 30 days ago
@@ -298,6 +299,17 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		return err
 	}
 	defer c.Close()
+
+	// a PROTOCOL FIXTURE for the skill registries (decision P48): the scheduled sync and "Sync now" read it instead of GitHub
+	reg, err := startSkillRegistryFixture()
+	if err != nil {
+		return err
+	}
+	defer reg.Close()
+	if k := c.Knowledge(); k != nil {
+		k.Skills.Fetcher = reg.fetcher()
+	}
+	fmt.Printf("DRYDOCK_E2E_SKILL_REGISTRY %s\n", reg.url)
 
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
