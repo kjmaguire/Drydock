@@ -130,7 +130,8 @@
     },
     "cli:opencode": {
       "role": "OpenCode: an open-source agent that can use many providers.",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
+      "hold": "1.19.0 is not adopted yet: decision P33 adopts a CLI version only after the contract suite passes on it; the recommended 1.18.35 is the last one checked."
     },
     "cli:cline": {
       "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
@@ -138,10 +139,12 @@
     },
     "bridge:@agentclientprotocol/claude-agent-acp": {
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
-      "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1)."
+      "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1).",
+      "hold": "0.89.1 is not adopted yet: pinned at 0.89.0 after ACP-INIT-01 passed on it (decision P33); the bridge is off in the manifest (D1)."
     },
     "bridge:@agentclientprotocol/codex-acp": {
-      "role": "The ACP bridge Drydock starts with npx for Codex."
+      "role": "The ACP bridge Drydock starts with npx for Codex.",
+      "hold": "2.2.2 is not adopted yet: decision P33 adopts a bridge version only after its ACP contract passes on it, and no contract run has happened here since 2.1.1."
     },
     "action:actions/checkout": {
       "role": "Fetches the repository in CI.",
@@ -171,7 +174,8 @@
       "role": "Runs Taskfile targets (build, test, lint); optional, not bundled."
     },
     "tool:osv-scanner": {
-      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it."
+      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it.",
+      "hold": "2.7.0 is out; 2.6.0 stays documented until a real run on the PC shows the deps check and the security scan read its JSON as before (no osv-scanner here)."
     },
     "tool:opengrep": {
       "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary; you install it and choose a rules folder.",
@@ -212,7 +216,8 @@
     },
     "tool:docker": {
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
-      "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
+      "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified.",
+      "hold": "29.9.0 is out; 29.8.2 is the engine the sandbox was measured with (decision P30); it moves with the next sandbox run."
     },
     "tool:golangci-lint": {
       "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
