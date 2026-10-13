@@ -71,7 +71,7 @@ function AreaTile(handle: Handle<{ href: string; icon: IconNode; title: string; 
 }
 
 /** A project as a link tile: opening it selects the project first, so its pages open under it. */
-function ProjectTile(handle: Handle<{ project: Project; needs: number | undefined; onNavigate?: (href: string) => void }>) {
+function ProjectTile(handle: Handle<{ project: Project; needs: number | null | undefined; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   const open = (e: MouseEvent) => {
     e.preventDefault();
@@ -104,12 +104,16 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
   watch(handle, s.workspace);
   // a note the previous page left (a project was deleted)
   const flash = s.ui.takeFlash();
-  // what needs the human in each project, read per project (a handful of projects; each list is small)
+  // what needs the human in each project, read per project (a handful of projects; each list is small); a project whose list
+  // cannot be read says so on its own tile and the others still show their counts
   const needs = query(handle, {
     load: async () => {
       const list = s.workspace.projectList;
-      const counts = await Promise.all(list.map(async (p) => [p.id, (await s.client.needsYouList(p.id)).length] as const));
-      return Object.fromEntries(counts) as Record<string, number>;
+      const read = await Promise.allSettled(list.map((p) => s.client.needsYouList(p.id)));
+      return Object.fromEntries(list.map((p, i) => {
+        const r = read[i];
+        return [p.id, r?.status === 'fulfilled' ? r.value.length : null];
+      })) as Record<string, number | null>;
     },
     key: () => s.workspace.projectList.map((p) => p.id),
     enabled: () => s.workspace.projectList.length > 0,

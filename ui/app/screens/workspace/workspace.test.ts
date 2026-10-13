@@ -11,6 +11,7 @@ describe('the workspace Home text', () => {
 
   it('says what needs the human, in words, and marks a count above zero', () => {
     expect(needsText(undefined)).toEqual({ text: 'Checking what needs you…', tone: '' });
+    expect(needsText(null)).toEqual({ text: 'Could not check what needs you', tone: '' });
     expect(needsText(0)).toEqual({ text: 'Nothing needs you', tone: '' });
     expect(needsText(1)).toEqual({ text: '1 item needs you', tone: 'warn' });
     expect(needsText(4)).toEqual({ text: '4 items need you', tone: 'warn' });

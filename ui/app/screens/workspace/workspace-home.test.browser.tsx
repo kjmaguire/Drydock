@@ -39,6 +39,19 @@ describe('the workspace Home', () => {
     expect(idea!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('Nothing needs you');
   });
 
+  it("says on one tile that its list could not be read, and still counts the others", async () => {
+    const { r } = show({
+      needsYouList: async (pid: string) => {
+        if (pid === 'p2') throw new Error('core unreachable');
+        return [{}] as never;
+      },
+    });
+    await waitFor(() => expect(tiles(r)).toHaveLength(2), r);
+    const [gocalc, idea] = tiles(r);
+    await waitFor(() => expect(gocalc!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('1 item needs you'), r);
+    expect(idea!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('Could not check what needs you');
+  });
+
   it('opens a project: selects it, then goes to its home', async () => {
     const { r, s, navigated } = show();
     await waitFor(() => expect(tiles(r)).toHaveLength(2), r);

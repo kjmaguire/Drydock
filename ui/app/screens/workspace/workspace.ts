@@ -8,9 +8,10 @@ export function projectWhere(p: Project): string {
   return projectHasRepo(p) ? p.repoPath : 'No repository yet';
 }
 
-/** The project tile's state line: how many items need the human there (unknown while it loads). */
-export function needsText(n: number | undefined): { text: string; tone: TileTone } {
+/** The project tile's state line: how many items need the human there (undefined while it loads, null when it could not be read). */
+export function needsText(n: number | null | undefined): { text: string; tone: TileTone } {
   if (n === undefined) return { text: 'Checking what needs you…', tone: '' };
+  if (n === null) return { text: 'Could not check what needs you', tone: '' };
   if (n === 0) return { text: 'Nothing needs you', tone: '' };
   return { text: `${n} ${n === 1 ? 'item needs' : 'items need'} you`, tone: 'warn' };
 }

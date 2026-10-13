@@ -33,10 +33,16 @@ func init() {
 			}
 			return ""
 		})
+		// a scan that started just before the delete (the busy check runs before its transaction) is stopped; its report
+		// finds no project and is not stored (store)
 		c.onProjectDeleted(func(_ context.Context, projectID string, _ []string) {
 			s.mu.Lock()
 			delete(s.unstored, projectID)
+			r := s.running[projectID]
 			s.mu.Unlock()
+			if r != nil {
+				r.Cancel()
+			}
 		})
 		return map[string]Method{
 			"security.tools": bind(func(ctx context.Context, p struct {
@@ -190,7 +196,7 @@ func (s *securityExt) changed(projectID string, rep scan.Report, engine scan.Eng
 }
 
 // store writes the finished report, redacted once more as a whole (nothing that looks like a secret survives, even in a
-// file name).
+// file name). A report of a project that was deleted meanwhile is dropped: it would outlive its project.
 func (s *securityExt) store(ctx context.Context, rep scan.Report) error {
 	b, err := json.Marshal(rep)
 	if err != nil {
@@ -199,8 +205,9 @@ func (s *securityExt) store(ctx context.Context, rep scan.Report) error {
 	doc := s.c.Scanner.Redact(string(b))
 	counts, _ := json.Marshal(rep.Counts)
 	return s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO security_scans(id,project_id,status,started_by,started_at,finished_at,counts_json,summary,report_json) VALUES(?,?,?,?,?,?,?,?,?)`,
-			rep.ID, rep.ProjectID, rep.Status, rep.By, rep.StartedAt, rep.FinishedAt, string(counts), s.c.Scanner.Redact(rep.Summary), doc)
+		_, err := tx.ExecContext(ctx, `INSERT INTO security_scans(id,project_id,status,started_by,started_at,finished_at,counts_json,summary,report_json)
+			SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=?)`,
+			rep.ID, rep.ProjectID, rep.Status, rep.By, rep.StartedAt, rep.FinishedAt, string(counts), s.c.Scanner.Redact(rep.Summary), doc, rep.ProjectID)
 		return err
 	})
 }

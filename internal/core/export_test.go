@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/license"
+	"github.com/kjmaguire/drydock/internal/scan"
 )
 
 // Test hooks for the packaging extension. They live in a _test file so the product has no clock or key setters.
@@ -59,3 +60,8 @@ func GatedMethodsForTest() map[string]string {
 
 // TestLog writes through Core.logf (stderr and the scrubbed application log).
 func (c *Core) TestLog(format string, a ...any) { c.logf(format, a...) }
+
+// TestStoreScanReport stores a finished security scan report the way the security extension does when a scan ends.
+func (c *Core) TestStoreScanReport(ctx context.Context, rep scan.Report) error {
+	return (&securityExt{c: c}).store(ctx, rep)
+}

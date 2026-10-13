@@ -12,6 +12,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/projectio"
+	"github.com/kjmaguire/drydock/internal/security"
 )
 
 // Deleting a project (decision P51). The person types the project's name; the core checks it again and refuses while work
@@ -77,12 +78,14 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 	if len(busy) > 0 {
 		return ProjectDeleted{}, fmt.Errorf("%w: %s. Stop it, then delete the project", ErrProjectBusy, strings.Join(busy, "; "))
 	}
-	// the repository is opened before its project row goes (c.repo reads the row); a missing repository is no obstacle
-	var repo *git.Repo
+	// the repository is opened before its project row goes (c.repo reads the row); a missing repository is no obstacle, but
+	// the worktrees only git can remove are then named in the warnings
+	var (
+		repo    *git.Repo
+		repoErr error
+	)
 	if p.HasRepo {
-		if r, err := c.repo(ctx, id); err == nil {
-			repo = r
-		}
+		repo, repoErr = c.repo(ctx, id)
 	}
 
 	out := ProjectDeleted{Name: p.Name, Warnings: []string{}}
@@ -124,7 +127,18 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 		var v string
 		_ = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingSandbox+id).Scan(&v)
 		sandbox = strings.Contains(strings.ReplaceAll(v, " ", ""), `"enabled":true`)
-		res, err = projectio.Delete(ctx, tx, id)
+		if res, err = projectio.Delete(ctx, tx, id); err != nil {
+			return err
+		}
+		// audited in the same transaction: the project is never gone without its entry
+		worktrees := 0
+		for _, t := range tasks {
+			if t.worktree != "" {
+				worktrees++
+			}
+		}
+		_, err = security.NewAudit(c.DB, c.Scanner).AppendTx(ctx, tx, security.AuditEntry{Actor: c.Human(), Action: "project.delete", Subject: id,
+			Detail: map[string]any{"name": p.Name, "rows": res.Rows, "worktrees": worktrees}})
 		return err
 	})
 	if err != nil {
@@ -145,7 +159,21 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 
 	// the task worktrees: git removes each one (with any changes not committed in it; the branch and its commits stay), then
 	// Drydock's own folder of the project's worktrees goes
-	if repo != nil {
+	dataWorktrees := filepath.Join(c.cfg.DataDir, "worktrees", id)
+	if repo == nil {
+		// without the repository only the worktrees in Drydock's data folder can go (with that folder, below); one kept
+		// elsewhere (beside a WSL repository) stays, and the person is told where
+		for _, t := range tasks {
+			if t.worktree == "" {
+				continue
+			}
+			if !within(t.worktree, dataWorktrees) {
+				warn("the worktree %s was left: the repository could not be opened (%v)", t.worktree, repoErr)
+			} else if _, err := os.Lstat(t.worktree); err == nil {
+				out.WorktreesRemoved++
+			}
+		}
+	} else {
 		for _, t := range tasks {
 			if t.worktree == "" {
 				continue
@@ -164,7 +192,7 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 			warn("pruning the repository's worktree list: %v", err)
 		}
 	}
-	removeTree(filepath.Join(c.cfg.DataDir, "worktrees", id), warn)
+	removeTree(dataWorktrees, warn)
 
 	// containers of the project's tasks, when the project used a sandbox
 	if sandbox {
@@ -209,10 +237,7 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 		}
 	}
 
-	if err := auditAppend(ctx, c, "project.delete", id, map[string]any{"name": p.Name, "rows": res.Rows, "worktreesRemoved": out.WorktreesRemoved, "warnings": len(out.Warnings)}); err != nil {
-		warn("the audit log: %v", err)
-	}
-	c.publish(ctx, "project.deleted", id, map[string]any{"name": p.Name, "worktreesRemoved": out.WorktreesRemoved})
+	c.publish(ctx, "project.deleted", id, map[string]any{"name": p.Name, "worktreesRemoved": out.WorktreesRemoved, "warnings": len(out.Warnings)})
 	return out, nil
 }
 
@@ -273,6 +298,12 @@ func strings1(ctx context.Context, tx *sql.Tx, q string, args ...any) ([]string,
 // plainName reports whether s is one path element (an id), so joining it never leaves the folder it is joined to.
 func plainName(s string) bool {
 	return s != "" && s != "." && s != ".." && filepath.Base(s) == s && !strings.ContainsAny(s, `/\:`)
+}
+
+// within reports whether path is dir or inside it.
+func within(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 func removeTree(dir string, warn func(string, ...any)) {
