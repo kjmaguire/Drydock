@@ -1,6 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
+import type { LibrarySkill, Skill, SkillRegistry, SkillRegistryStatus } from '../../api/extTypes.ts';
 import type { McpLibraryServer, McpOAuthStatus } from '../../api/mcpClient.ts';
 import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { claude, devLicense, libServer, pay, projects, projServer, rev, tpl } from '../mcp/fixtures.ts';
@@ -30,6 +31,10 @@ function show(client: Partial<Client> = {}) {
     agentTemplateList: async () => [tpl()],
     mcpServerList: async (p: string) => (p === 'prj_1' ? [projServer({ agents: [{ agentId: 'agt_2', tools: ['*'] }] })] : []),
     agentList: async (p: string) => (p === 'prj_1' ? [pay, rev] : []),
+    skillRegistries: async () => [],
+    skillRegistryStatus: async () => [],
+    skillLibraryList: async () => [],
+    skillList: async () => [],
     ...client,
   });
   s.workspace.start();
@@ -167,6 +172,187 @@ describe('Library page', () => {
     // exactly one h3 per panel, inside its draggable header: the e2e suite drags by it
     expect(card.querySelectorAll('h3').length).toBe(1);
     expect(card.querySelector('h3')!.closest('[draggable="true"]')).toBe(card.querySelector('[data-testid="lib-mcp-handle"]'));
+  });
+
+  describe('Skills section', () => {
+    const cloudflare: SkillRegistry = { id: 'cloudflare-skills', repo: 'cloudflare/skills', trust: 'curated', enabled: true, curated: true };
+    const anthropic: SkillRegistry = { id: 'anthropic-skills', repo: 'anthropics/skills', trust: 'curated', enabled: true, curated: true };
+    const status = (over: Partial<SkillRegistryStatus>): SkillRegistryStatus => ({
+      registryId: 'cloudflare-skills',
+      repo: 'cloudflare/skills',
+      enabled: true,
+      lastCommit: 'abc',
+      checkedAt: '2026-10-13T08:00:00Z',
+      skills: 3,
+      blocked: 0,
+      added: [],
+      changed: [],
+      projects: {},
+      ...over,
+    });
+    const lib = (over: Partial<LibrarySkill>): LibrarySkill => ({
+      id: `l-${over.name ?? 'wrangler'}`,
+      registryId: 'cloudflare-skills',
+      repo: 'cloudflare/skills',
+      name: 'wrangler',
+      description: 'Wrangler CLI',
+      license: 'MIT',
+      globs: ['wrangler.*'],
+      roles: [],
+      sourcePath: 'skills/wrangler',
+      pinnedCommit: 'abcdef1234567890',
+      contentHash: 'h',
+      hasScripts: false,
+      status: 'available',
+      blockReason: '',
+      risk: 0,
+      flags: [],
+      gone: false,
+      updated: '',
+      ...over,
+    });
+    const projectSkill = (name: string, projectId = 'prj_1'): Skill =>
+      ({ id: `s-${name}`, projectId, name, description: '', globs: [], roles: [], origin: 'registry', registryId: 'cloudflare-skills', contentHash: 'h', status: 'accepted', audience: 'team', agents: [], created: '', updated: '' }) as Skill;
+    const library = [lib({}), lib({ name: 'durable-objects', description: 'Durable Objects' }), lib({ name: 'evil', status: 'blocked', blockReason: 'contains a secret' }), lib({ name: 'pdf', registryId: 'anthropic-skills', repo: 'anthropics/skills' })];
+    const stateOf = (el: Element) => el.querySelector('small:last-child')?.textContent ?? '';
+
+    it('shows a tile per registry with its sync state; the selected one lists its skills, marking the ones the project has', async () => {
+      const r = show({
+        skillRegistries: async () => [cloudflare, anthropic],
+        skillRegistryStatus: async () => [status({}), status({ registryId: 'anthropic-skills', repo: 'anthropics/skills', checkedAt: undefined, skills: 0 })],
+        skillLibraryList: async () => library,
+        skillList: async (p: string) => (p === 'prj_1' ? [projectSkill('wrangler')] : []),
+      });
+      const sec = await one(r, '[data-testid="library-skills"]');
+      const tiles = await waitFor(() => {
+        const l = Array.from(sec.querySelectorAll<HTMLElement>('[data-testid="lib-skill-registry-tile"]'));
+        if (l.length !== 2) throw new Error('not yet');
+        return l;
+      }, r);
+      expect(tiles[0]!.querySelector('[data-brand="cloudflare"]')).not.toBeNull();
+      await waitFor(() => expect(tiles[0]!.textContent).toContain('Curated · 3 skills'), r);
+      expect(stateOf(tiles[0]!)).toBe(`3 skills in the Library · synced ${new Date('2026-10-13T08:00:00Z').toLocaleString()}`);
+      expect(stateOf(tiles[1]!)).toBe('Not synced yet');
+      expect(sec.querySelector('[data-testid="lib-skill-registry"]')).toBeNull();
+
+      await r.act(() => tiles[0]!.click());
+      const panel = await one(r, '[data-testid="lib-skill-registry"][data-registry="cloudflare-skills"]');
+      const skills = await waitFor(() => {
+        const l = Array.from(panel.querySelectorAll<HTMLElement>('[data-testid="lib-skill-tile"]'));
+        if (l.length !== 3) throw new Error('not yet');
+        return l;
+      }, r);
+      expect(skills.map((x) => x.getAttribute('data-name'))).toEqual(['wrangler', 'durable-objects', 'evil']);
+      // the current project (Alpha, the first) has wrangler: the check badge; the others are available or blocked
+      await waitFor(() => expect(skills[0]!.getAttribute('data-check')).toBe('true'), r);
+      expect(stateOf(skills[0]!)).toBe('In Alpha ✓');
+      expect(skills[0]!.querySelector('small[data-tone="ok"]')).not.toBeNull();
+      expect(stateOf(skills[1]!)).toBe('Available');
+      expect(skills[1]!.getAttribute('data-check')).toBe('false');
+      expect(stateOf(skills[2]!)).toBe('Blocked: contains a secret');
+      expect(panel.textContent).not.toContain('pdf'); // another registry's skill
+      // a skill the project has opens with the badge and no Add button
+      await r.act(() => skills[0]!.click());
+      const w = await one(r, '[data-testid="lib-skill"][data-name="wrangler"]');
+      expect(w.querySelector('[data-testid="lib-skill-in-project"]')!.textContent).toBe('In Alpha ✓');
+      expect(w.querySelector('[data-testid="lib-skill-add"]')).toBeNull();
+      // a blocked one has no Add button either
+      await r.act(() => skills[2]!.click());
+      const evil = await one(r, '[data-testid="lib-skill"][data-name="evil"]');
+      expect(evil.querySelector('[data-testid="lib-skill-add"]')).toBeNull();
+      expect(evil.textContent).toContain('A blocked skill cannot be added');
+    });
+
+    it('Add to <project> adds the skill to the chosen project, says so, and the tile gets its check; Add all adds the registry', async () => {
+      const adds: Calls = [];
+      const addAlls: Calls = [];
+      const mine: Record<string, Skill[]> = { prj_1: [], prj_2: [] };
+      const r = show({
+        skillRegistries: async () => [cloudflare],
+        skillRegistryStatus: async () => [status({})],
+        skillLibraryList: async () => library.filter((l) => l.registryId === 'cloudflare-skills'),
+        skillList: async (p: string) => mine[p] ?? [],
+        skillLibraryAdd: rec(adds, (p, _reg, name) => {
+          const k = projectSkill(String(name), String(p));
+          mine[String(p)] = [...(mine[String(p)] ?? []), k];
+          return k;
+        }) as never,
+        skillLibraryAddAll: rec(addAlls, () => ({ added: ['durable-objects'], unchanged: ['wrangler'], blocked: [{ name: 'evil', reason: 'contains a secret' }], skipped: [] })) as never,
+      });
+      const regTile = await one(r, '[data-testid="lib-skill-registry-tile"]');
+      await r.act(() => regTile.click());
+      const panel = await one(r, '[data-testid="lib-skill-registry"]');
+      const select = await waitFor(() => byLabel<HTMLSelectElement>(panel, 'Project to add skills to'), r);
+      expect(select.value).toBe('prj_1'); // the current project first
+      await r.act(() => type(select, 'prj_2'));
+      const wTile = await one(r, '[data-testid="lib-skill-tile"][data-name="wrangler"]');
+      await r.act(() => wTile.click());
+      const w = await one(r, '[data-testid="lib-skill"][data-name="wrangler"]');
+      const add = await waitFor(() => byText<HTMLButtonElement>(w, 'button', 'Add to Beta'), r);
+      await r.act(() => add.click());
+      await waitFor(() => expect(adds).toEqual([['prj_2', 'cloudflare-skills', 'wrangler']]), r);
+      const note = await one(r, '[data-testid="skill-added"]');
+      expect(note.getAttribute('role')).toBe('status');
+      expect(note.textContent).toContain('wrangler was added to Beta and is accepted ✓');
+      await waitFor(() => expect(r.$('[data-testid="lib-skill-tile"][data-name="wrangler"]')!.getAttribute('data-check')).toBe('true'), r);
+      expect(stateOf(r.$('[data-testid="lib-skill-tile"][data-name="wrangler"]')!)).toBe('In Beta ✓');
+      await waitFor(() => expect(w.querySelector('[data-testid="lib-skill-in-project"]')!.textContent).toBe('In Beta ✓'), r);
+      expect(w.querySelector('[data-testid="lib-skill-add"]')).toBeNull();
+
+      await r.act(() => byText(panel, 'button', 'Add all to Beta').click());
+      await waitFor(() => expect(addAlls).toEqual([['prj_2', 'cloudflare-skills']]), r);
+      const all = await one(r, '[data-testid="skill-added-all"]');
+      expect(all.textContent).toContain('From cloudflare/skills to Beta:');
+      expect(all.textContent).toContain('1 added, 1 unchanged, 1 blocked');
+      expect(all.textContent).toContain('evil blocked: contains a secret');
+      expect(r.$('[data-testid="skill-added"]')).toBeNull(); // one status at a time
+    });
+
+    it('says the Library is filling and offers Sync now while the registries have brought nothing yet', async () => {
+      const checks: Calls = [];
+      let library: LibrarySkill[] = [];
+      const r = show({
+        skillRegistries: async () => [cloudflare],
+        skillRegistryStatus: async () => [status({ checkedAt: undefined, skills: 0 })],
+        skillLibraryList: async () => library,
+        skillRegistryCheck: rec(checks, () => ((library = [lib({})]), [status({})])) as never,
+      });
+      const filling = await one(r, '[data-testid="lib-skills-filling"]');
+      expect(filling.textContent).toContain('The Library is filling from your registries...');
+      await r.act(() => byText(filling, 'button', 'Sync now').click());
+      await waitFor(() => expect(checks).toEqual([[undefined]]), r);
+      await waitFor(() => expect(r.$('[data-testid="lib-skills-filling"]')).toBeNull(), r);
+      await waitFor(() => expect(r.$('[data-testid="lib-skill-registry-tile"]')!.textContent).toContain('1 skill'), r);
+    });
+
+    it('says so when no registry is allowed, pointing at the Skills page', async () => {
+      const r = show();
+      const empty = await one(r, '[data-testid="lib-skills-empty"]');
+      expect(empty.textContent).toContain('No skill registry is allowed yet.');
+      expect(empty.querySelector('a')!.getAttribute('href')).toBe('/skills');
+    });
+
+    it("marks, in a template's skills, the ones the current project already has", async () => {
+      const r = show({
+        agentTemplateList: async () => [
+          tpl({
+            skills: [
+              { registry: 'cloudflare-skills', name: 'wrangler', ref: 'abc' },
+              { registry: 'anthropic-skills', name: 'pdf', ref: 'abc' },
+            ],
+          }),
+        ],
+        skillList: async (p: string) => (p === 'prj_1' ? [projectSkill('wrangler')] : []),
+      });
+      const card = await pick(r, 'lib-template');
+      await waitFor(() => expect(card.querySelector('ul[aria-label="Skills it brings"] > li[data-in-project="true"]')!.textContent).toContain('wrangler'), r);
+      const chips = Array.from(card.querySelectorAll<HTMLElement>('ul[aria-label="Skills it brings"] > li'));
+      expect(chips.length).toBe(2);
+      const pdf = chips.find((x) => x.textContent?.includes('pdf'))!;
+      expect(pdf.getAttribute('data-in-project')).toBe('false');
+      const w = chips.find((x) => x.textContent?.includes('wrangler'))!;
+      expect(w.getAttribute('title')).toContain('already in Alpha');
+    });
   });
 
   it('shows the prebuilt agents as a read-only section next to the templates', async () => {

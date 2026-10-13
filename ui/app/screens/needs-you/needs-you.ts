@@ -11,7 +11,7 @@ export const KIND_LABEL: Record<string, string> = {
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
 export function needsTarget(it: NeedsYouItem): string {
-  // a tool call an agent wants to make: its exact arguments and the Approve button are on the MCP servers page
+  // a tool call an agent wants to make: its exact arguments and the Approve button are on the Integrations page (/mcp is its alias)
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.mcp.href();
   if (it.taskId) return routes.task.href({ id: it.taskId });
   if (it.roomId) return routes.room.href({ id: it.roomId });

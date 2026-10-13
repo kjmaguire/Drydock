@@ -30,6 +30,9 @@ describe('command palette items', () => {
     expect(filterItems(items, 'team')[0]!.label).toBe('Team');
     expect(filterItems(items, 'multiply')[0]!.label).toBe('#7 Add Multiply');
     expect(filterItems(items, '7')[0]!.id).toBe('task:t1');
+    // the MCP servers page was folded into Integrations (decision P47): "mcp" still finds it
+    expect(items.map((i) => i.label)).not.toContain('MCP servers of this project');
+    expect(filterItems(items, 'mcp')[0]!.label).toBe('Integrations');
   });
 
   it('matches letters in order as a last resort and drops non-matches', () => {

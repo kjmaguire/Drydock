@@ -33,7 +33,7 @@ const skillFixtureSha = "e2e0000000000000000000000000000000000e2e"
 func e2eSkill(name, desc, globs, body string) string {
 	meta := ""
 	if globs != "" {
-		meta = "metadata:\n  drydock:\n    globs: [\"" + globs + "\"]\n"
+		meta = "metadata:\n  drydock.globs: \"" + globs + "\"\n"
 	}
 	return fmt.Sprintf("---\nname: %s\ndescription: %s\n%s---\n%s\n", name, desc, meta, body)
 }

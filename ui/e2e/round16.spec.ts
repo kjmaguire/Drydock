@@ -1,28 +1,43 @@
 import { expect, test } from '@playwright/test';
 import { createAgent, createProject } from './helpers';
 
-// Round 16: the MCP connector gallery (decision P43), against the real Go core. The harness adds one card to the built-in
-// catalog, "Hosted tracker (test double)", whose server is internal/mcp/oauthfake: a TEST DOUBLE of a hosted MCP server that
-// wants an OAuth sign-in. Everything on Drydock's side is real: Connect adds it to the MCP library, starts the sign-in, the
-// browser comes back to the core's loopback address, the core reaches the server and learns its tools, its serverInfo and the
-// account from its whoami tool, and the card says Connected as that account. Then it is added to a project and granted to an
-// agent from the card. No real vendor server is contacted: the other cards are only shown.
+// Round 16: the MCP connector cards (decision P43) on the Integrations page (decision P47), against the real Go core. The
+// harness adds one card to the built-in catalog, "Hosted tracker (test double)", whose server is internal/mcp/oauthfake: a
+// TEST DOUBLE of a hosted MCP server that wants an OAuth sign-in. Everything on Drydock's side is real: Connect adds it to the
+// MCP library, starts the sign-in, the browser comes back to the core's loopback address, the core reaches the server and
+// learns its tools, its serverInfo and the account from its whoami tool, and the card says Connected as that account. Then it
+// is added to a project and granted to an agent from the card. No real vendor server is contacted: the other cards are only shown.
 
-test('connector gallery: connect a catalog server with OAuth, see it Connected and add it to a project and grant it to an agent', async ({ page, context }) => {
+test('connector cards: connect a catalog server with OAuth, see it Connected and add it to a project and grant it to an agent', async ({ page, context }) => {
   await createProject(page, 'gallery-a');
   await createAgent(page, 'Tracker reader', 'backend');
-  await page.getByTestId('nav-mcp').click();
-  await expect(page.getByRole('heading', { name: 'MCP servers', level: 1 })).toBeVisible();
+  // the old MCP servers address is an alias of Integrations
+  await page.goto(new URL('/mcp', page.url()).toString());
+  await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('nav-integrations')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('nav-mcp')).toHaveCount(0);
+  await page.getByTestId('nav-integrations').click();
+  await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
 
   const gallery = page.getByTestId('connector-gallery');
-  // the real catalog's cards: logo, name and publisher, nothing connected
+  // the real catalog's cards sit on their vendor's tile: logo, name and publisher, nothing connected
+  await gallery.locator('[data-testid="integration-tile"][data-kind="github"]').click();
   const github = gallery.locator('[data-testid="connector"][data-id="gh"]');
   await expect(github.locator('h4')).toHaveText('GitHub');
   await expect(github.locator('[data-brand="github"]')).toHaveCount(1);
   await expect(github.getByTestId('connector-status')).toHaveText('Not connected');
+  // the two Cloudflare servers share one tile
+  const cfTile = gallery.locator('[data-testid="integration-tile"][data-kind="cloudflare"][data-mcp="true"]');
+  await expect(cfTile).toContainText('Agents: not connected');
+  await cfTile.click();
+  await expect(gallery.getByTestId('integration-agents').locator('[data-testid="connector"]')).toHaveCount(2);
   await expect(gallery.locator('[data-testid="connector"][data-id="cfapi"]')).toContainText('Cloudflare');
-  await expect(gallery.getByRole('region', { name: 'Cloudflare' })).toBeVisible();
+  await expect(gallery.getByTestId('integration-sync')).toHaveCount(0); // no app sync for Cloudflare
 
+  // the test double has no app sync either: an MCP-only tile of its own
+  const trkTile = gallery.locator('[data-testid="integration-tile"][data-kind="faketrk"]');
+  await expect(trkTile).toContainText('Hosted tracker (test double)');
+  await trkTile.click();
   const card = gallery.locator('[data-testid="connector"][data-id="faketrk"]');
   await expect(card.locator('h4')).toHaveText('Hosted tracker (test double)');
   await card.getByRole('button', { name: 'Connect Hosted tracker (test double)' }).click();
@@ -39,6 +54,7 @@ test('connector gallery: connect a catalog server with OAuth, see it Connected a
   await tab.close();
 
   await expect(card.getByTestId('connector-status')).toHaveText('Connected', { timeout: 30_000 });
+  await expect(trkTile).toContainText('Agents: connected');
   await expect(card.getByTestId('connector-account')).toContainText('Connected as alice');
   await expect(card.getByTestId('connector-account')).toContainText('OAuth test double (oauthy 1)');
   await card.getByText('1 tool', { exact: false }).click();

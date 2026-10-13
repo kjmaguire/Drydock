@@ -530,14 +530,6 @@ export interface SkillRegistry {
   curated: boolean;
   addedBy?: string;
 }
-export interface SkillCandidate {
-  name: string;
-  dir: string;
-  description?: string;
-  hasScripts?: boolean;
-  valid: boolean;
-  problem?: string;
-}
 export interface SkillDelivery {
   ts: number;
   taskId: string;
@@ -562,20 +554,74 @@ export interface SkillImportAll {
   blocked: { name: string; reason: string }[];
   skipped: { name: string; reason: string }[];
 }
-/** A skill a registry check found new or changed upstream for a project. */
+/** A skill in the workspace skill library, which the core fills from every enabled registry by itself (decision P48). */
+export interface LibrarySkill {
+  id: string;
+  registryId: string;
+  repo: string;
+  name: string;
+  description: string;
+  license: string;
+  globs: string[] | null;
+  roles: string[] | null;
+  sourcePath: string;
+  pinnedCommit: string;
+  contentHash: string;
+  hasScripts: boolean;
+  /** A `blocked` skill stays in the library with its reason but cannot be added to a project. */
+  status: 'available' | 'blocked' | string;
+  blockReason: string;
+  risk: number;
+  flags: string[] | null;
+  /** The skill left the registry upstream; the library keeps its last text. */
+  gone: boolean;
+  updated: string;
+}
+/** What skill.libraryAddAll did with every library skill of a registry: each name lands in exactly one list. */
+export interface SkillLibraryAddAll {
+  added: string[];
+  unchanged: string[];
+  blocked: { name: string; reason: string }[];
+  skipped: { name: string; reason: string }[];
+}
+/** A skill a library sync brought in or changed, or a project skill whose library text is newer. */
 export interface SkillRegistryChange {
   name: string;
   description: string;
 }
-/** The twice-daily registry check: watched once a project imported from it, with what each project has still to import. */
+/** A registry's place in the library: what the last sync brought, and per project the skills whose copy is behind the library. */
 export interface SkillRegistryStatus {
   registryId: string;
-  watched: boolean;
+  repo: string;
+  enabled: boolean;
   lastCommit: string;
   checkedAt?: string;
-  notifiedCommit?: string;
   lastError?: string;
-  projects: Record<string, { additions: SkillRegistryChange[]; updates: SkillRegistryChange[] }>;
+  /** Skills in the library from this registry, and how many of them are blocked. */
+  skills: number;
+  blocked: number;
+  added: SkillRegistryChange[] | null;
+  changed: SkillRegistryChange[] | null;
+  projects: Record<string, { updates: SkillRegistryChange[] | null }> | null;
+}
+/** How one project skill is used by its runs (skill.usage), with the core's recommendation (decision P49). */
+export interface SkillUsage {
+  name: string;
+  registryId: string;
+  origin: 'repo' | 'registry' | string;
+  status: string;
+  /** Times the full text went into a run. */
+  loaded: number;
+  /** Times it was only listed for on-demand reading. */
+  listed: number;
+  /** Times an agent read it on demand or fetched it through the skills tool. */
+  opened: number;
+  tasks: number;
+  tokensLoaded: number;
+  tokensListed: number;
+  lastUsed?: string;
+  recommendation: '' | 'remove' | 'narrow' | 'keep' | string;
+  reason: string;
 }
 
 // --- memory (internal/memory) ---

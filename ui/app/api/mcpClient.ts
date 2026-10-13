@@ -94,6 +94,8 @@ export interface McpGalleryCard {
   licenseNotes?: string;
   /** The Drydock integration of the same brand. */
   integration?: string;
+  /** The skill registries (internal/skills/registry.yaml ids) this vendor publishes; the Integrations page offers them next to the card. */
+  skillRegistries: string[];
   trust: string;
   readOnlyTools: string[];
   tools: McpToolInfo[];
@@ -219,7 +221,7 @@ export interface McpClient {
   mcpConnect(catalogId: string, token?: string): Promise<McpConnectResult>;
 }
 
-const card = (c: McpGalleryCard): McpGalleryCard => ({ ...c, readOnlyTools: arr(c.readOnlyTools), tools: arr(c.tools), projects: arr(c.projects), command: c.command ? arr(c.command) : undefined });
+const card = (c: McpGalleryCard): McpGalleryCard => ({ ...c, readOnlyTools: arr(c.readOnlyTools), tools: arr(c.tools), projects: arr(c.projects), skillRegistries: arr(c.skillRegistries), command: c.command ? arr(c.command) : undefined });
 
 export function createMcpClient(t: Transport): McpClient {
   return {

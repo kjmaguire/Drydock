@@ -1,7 +1,8 @@
-// The MCP connector gallery (decision P43), the way other apps present connectors: a card per known server with its logo,
-// name, publisher and what it gives agents; one Connect button (the browser sign-in, a token, or the program a template
-// runs); then Connected, as whom, with the tools it offers, and Add to project, Grant to agents and Disconnect. Connecting
-// needs no project. Below it, the servers you described yourself, shown by what each says about itself.
+// The MCP connector cards (decision P43), the way other apps present connectors: a card per known server with its logo, name,
+// publisher and what it gives agents; one Connect button (the browser sign-in, a token, or the program a template runs); then
+// Connected, as whom, with the tools it offers, and Add to project, Grant to agents and Disconnect. Connecting needs no project.
+// Since decision P47 the cards sit on the Integrations page, in the Agent tools section of their vendor's tile; below the tiles,
+// Your own servers shows the servers you described yourself, by what each says about itself.
 
 import { css, on, type Handle } from 'remix/component';
 import { BookOpen, ExternalLink, FileUp, FolderPlus, Plug, Plus, RefreshCw, Unplug, Users } from 'lucide';
@@ -22,14 +23,8 @@ import { ImportServers } from './import-panel.tsx';
 import { OAuthPanel } from './oauth-panel.tsx';
 import { McpServerForm } from './server-form.tsx';
 
-const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
-const groupCss = css({
-  display: 'grid',
-  gap: t.s2,
-  marginTop: t.s4,
-  '& > h3': { margin: '0', fontSize: t.textXs, fontWeight: '600', color: t.textFaint, letterSpacing: '0.04em', textTransform: 'uppercase' },
-  '& > p': { margin: '0' },
-});
+/** The grid the connector cards and the own-server cards sit in. */
+export const connectorGrid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
 const cardCss = css({
   display: 'grid',
   alignContent: 'start',
@@ -72,24 +67,6 @@ const AUTH: Record<string, string> = {
   oauth: 'Sign in (OAuth)',
   env: 'Program on this computer',
 };
-
-/** The provider name of an integration id, for the "Drydock also imports" link. */
-const INTEGRATION_NAME: Record<string, string> = { linear: 'Linear', notion: 'Notion', sentry: 'Sentry', aikido: 'Aikido', github: 'GitHub' };
-
-/** Groups the cards: hosted servers, then each vendor group, then the programs you run yourself. */
-export function galleryGroups(cards: readonly McpGalleryCard[]): { title: string; note?: string; cards: McpGalleryCard[] }[] {
-  const out: { title: string; note?: string; cards: McpGalleryCard[] }[] = [{ title: 'Hosted servers', cards: [] }];
-  const groups = new Map<string, McpGalleryCard[]>();
-  const programs: McpGalleryCard[] = [];
-  for (const c of cards) {
-    if (c.template) programs.push(c);
-    else if (c.group) groups.set(c.group, [...(groups.get(c.group) ?? []), c]);
-    else out[0]!.cards.push(c);
-  }
-  for (const [g, list] of groups) out.push({ title: g, cards: list });
-  if (programs.length) out.push({ title: 'Programs you run on this computer', note: 'Drydock does not ship these: the card shows the command it starts on your computer.', cards: programs });
-  return out.filter((g) => g.cards.length > 0);
-}
 
 /** "Server says it is <title> (<name> <version>)" as plain text. */
 export function identityLine(i: McpServerIdentity | undefined): string {
@@ -207,7 +184,6 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; projects: r
     const connected = card.status === 'connected';
     const needsSecret = card.auth === 'env' || (card.auth === 'bearer' && !card.authOptional);
     const docs = card.docsUrl ? safeHref(card.docsUrl) : undefined;
-    const integ = card.integration ? INTEGRATION_NAME[card.integration] : undefined;
     const inProjects = card.projects.map((id) => projects.find((p) => p.id === id)?.name ?? id);
     const options = projects.filter((p) => !card.projects.includes(p.id));
     const chosen = options.some((p) => p.id === pick) ? pick : (options[0]?.id ?? '');
@@ -386,11 +362,6 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; projects: r
             </Button>
           </div>
         ) : null}
-        {integ ? (
-          <p mix={faint}>
-            Drydock also imports {integ} issues: <a href={routes.integrations.href()}>Integrations</a>
-          </p>
-        ) : null}
       </li>
     );
   };
@@ -474,11 +445,12 @@ function OwnServerCard(handle: Handle<{ server: McpLibraryServer; onChanged: () 
   };
 }
 
-export function ConnectorGallery(handle: Handle) {
+/**
+ * The servers the human described (not from the catalog), by what each says about itself, with Add your own server and Import
+ * from a file. `linked` are the library ids the catalog cards already show, so a server is on one card only.
+ */
+export function OwnServers(handle: Handle<{ linked: readonly (string | undefined)[]; onChanged: () => void }>) {
   const s = services(handle);
-  watch(handle, s.workspace);
-  watch(handle, s.project);
-  const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
   let adding = false;
   let importing = false;
@@ -488,39 +460,15 @@ export function ConnectorGallery(handle: Handle) {
     void handle.update();
   };
   const reload = () => {
-    gallery.reload();
     lib.reload();
+    handle.props.onChanged();
   };
 
   return () => {
-    const cards = gallery.data ?? [];
-    const projects = s.workspace.projectList;
-    const projectId = s.workspace.projectId;
-    const agents = projectId ? s.project.agentList : [];
-    const linked = new Set(cards.map((c) => c.libraryId).filter(Boolean));
+    const linked = new Set(handle.props.linked.filter(Boolean));
     const own = (lib.data ?? []).filter((x) => !x.catalogId && !linked.has(x.id));
     return (
       <>
-        <Section
-          label="Connectors"
-          testId="connector-gallery"
-          title="Connectors"
-          description="Known MCP servers, checked against each vendor's own documentation. Connect one once; then add it to projects and grant it to agents. Connecting needs no project."
-        >
-          <ErrorNote error={gallery.error} what="Could not load the connectors" />
-          {gallery.loading && !gallery.data ? <Loading label="Loading connectors..." /> : null}
-          {galleryGroups(cards).map((g) => (
-            <section key={g.title} mix={groupCss} aria-label={g.title}>
-              <h3>{g.title}</h3>
-              {g.note ? <p mix={faint}>{g.note}</p> : null}
-              <ul mix={gridCss}>
-                {g.cards.map((c) => (
-                  <ConnectorCard key={c.id} card={c} projects={projects} projectId={projectId} agents={agents} onChanged={reload} />
-                ))}
-              </ul>
-            </section>
-          ))}
-        </Section>
         <Section
           label="Your own servers"
           testId="own-servers"
@@ -541,12 +489,13 @@ export function ConnectorGallery(handle: Handle) {
             {note ? <Notice tone="ok">{note}</Notice> : null}
           </div>
           <ErrorNote error={lib.error} what="Could not load your servers" />
+          {lib.loading && !lib.data ? <Loading label="Loading your servers..." /> : null}
           {lib.data && own.length === 0 ? (
             <p mix={faint}>
               <Icon icon={BookOpen} size={12} /> None yet. Add one by its address or command, or import the mcp.json or claude_desktop_config.json another app uses.
             </p>
           ) : null}
-          <ul mix={gridCss}>
+          <ul mix={connectorGrid}>
             {own.map((x) => (
               <OwnServerCard key={x.id} server={x} onChanged={reload} />
             ))}

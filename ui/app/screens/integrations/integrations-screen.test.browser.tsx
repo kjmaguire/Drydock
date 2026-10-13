@@ -4,6 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { ExternalItem, IntegrationAssignment, IntegrationKindInfo, IntegrationView, Outbox } from '../../api/extTypes.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { galleryCard, pay, rev } from '../mcp/fixtures.ts';
 import { IntegrationsScreen, RiskBadge } from './integrations-screen.tsx';
 
 afterEach(cleanup);
@@ -170,15 +171,28 @@ const kinds: IntegrationKindInfo[] = [
 const project = { id: 'prj_1', name: 'gocalc', repoPath: '/r', defaultBranch: 'main', mergeStrategy: 'merge', mode: 'local_merge', created: 0 };
 const project2 = { ...project, id: 'prj_2', name: 'website' };
 
+/** The client the merged page reads: the integrations (this file's subject) and, as empty TEST DOUBLES, the MCP side. */
+const baseClient = (): Partial<Client> => ({
+  licenseStatus: async () => ({ configured: false, devMode: true, state: 'none', readOnly: false, message: '' }) as never,
+  appInfo: async () => ({}) as never,
+  projectList: async () => [project, project2] as never,
+  agentList: async () => [pay, rev],
+  roomList: async () => [],
+  roomUnread: async () => [],
+  needsYouList: async () => [],
+  presenceList: async () => [],
+  taskList: async () => [],
+  integrationKinds: async () => kinds,
+  mcpGallery: async () => [],
+  mcpLibList: async () => [],
+  mcpServerList: async () => [],
+  mcpApprovalList: async () => [],
+});
+
 function show(client: Partial<Client>, opened: string[] = [], initial?: string) {
-  const s = testServices({
-    licenseStatus: async () => ({ configured: false, devMode: true, state: 'none', readOnly: false, message: '' }) as never,
-    appInfo: async () => ({}) as never,
-    projectList: async () => [project, project2] as never,
-    integrationKinds: async () => kinds,
-    ...client,
-  });
+  const s = testServices({ ...baseClient(), ...client });
   s.workspace.start();
+  s.project.start();
   return mount(<IntegrationsScreen openTask={(href) => void opened.push(href)} initial={initial} />, s);
 }
 type R = ReturnType<typeof show>;
@@ -197,24 +211,27 @@ const open = async (r: R, kind: string) => {
 
 describe('Integrations', () => {
   it('shows the five services with their fixed logos and names; clicking Linear opens Linear, which no one can rename', async () => {
-    const r = show({ integrationList: async () => [] });
+    const r = show({ integrationList: async () => [], mcpGallery: async () => [galleryCard({ id: 'linear', display: 'Linear', publisher: 'Linear', brand: 'linear', auth: 'oauth', integration: 'linear', tools: [] })] });
     await waitFor(() => expect(r.container.textContent).toContain('Nothing is connected.'), r);
     const tiles = Array.from(r.$$('[data-testid="integration-tile"]')) as HTMLElement[];
     expect(tiles.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github']);
     for (const t of tiles) {
       expect(t.querySelector('[data-brand]')).not.toBeNull();
-      expect(t.textContent).toContain('Not connected');
+      expect(t.textContent).toContain('Sync: not connected');
     }
+    expect(tiles[0]!.textContent).toContain('Sync: not connected · Agents: not connected'); // Linear has an MCP card too
+    expect(tiles[3]!.textContent).not.toContain('Agents:'); // Aikido has no MCP card
     expect(tiles[3]!.querySelector('[data-brand="aikido"] path')).not.toBeNull(); // Aikido's own mark, not a lettermark
     const card = await open(r, 'linear');
     expect(card.querySelector('[data-testid="integration-name"]')!.textContent).toBe('Linear');
     expect(card.querySelector('[role="img"][aria-label="Linear"]')).not.toBeNull();
     // there is nowhere to type a name
     expect(Array.from(card.querySelectorAll('label')).some((l) => /name/i.test(l.textContent ?? ''))).toBe(false);
-    // agents get Linear's tools on the MCP screen, which this page only links to
-    const mcp = card.querySelector('[data-testid="mcp-link"]') as HTMLAnchorElement;
-    expect(mcp.textContent).toBe("Also give agents Linear's tools: MCP");
-    expect(mcp.getAttribute('href')).toBe('/mcp');
+    // the sync panel and the agents' tools of the same vendor are on one tile (decision P47)
+    expect(r.$('[data-testid="integration-sync"]')!.contains(card)).toBe(true);
+    const agents = await find(r, '[data-testid="integration-agents"]');
+    expect(agents.querySelector('[data-testid="connector"][data-id="linear"]')).not.toBeNull();
+    expect(r.$('[data-testid="mcp-link"]')).toBeNull();
     // the API it calls, and its documentation
     expect(card.querySelector('[data-testid="api-info"]')!.textContent).toContain('2,500 requests per hour');
   });
@@ -334,8 +351,7 @@ describe('Integrations', () => {
       integrationDisconnect: rec(disc, () => undefined) as never,
     });
     const tile = await find(r, '[data-testid="integration-tile"][data-kind="linear"][data-connected="true"]');
-    expect(tile.textContent).toContain('Connected: Kyle Maguire in Acme');
-    expect(tile.textContent).toContain('Assigned to 1 project');
+    expect(tile.textContent).toContain('Sync: connected as Kyle Maguire');
     const card = await open(r, 'linear');
     const id = await find(r, '[data-testid="connection-identity"]');
     expect(id.textContent).toContain('Kyle Maguire');

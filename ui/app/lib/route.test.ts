@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, parseRoute } from './route.ts';
+import { hashToPath, isWorkspaceRoute, parseRoute } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -23,6 +23,13 @@ describe('routes', () => {
     expect(parseRoute('/settings')).toEqual({ name: 'settings' });
     expect(parseRoute('/nope')).toEqual({ name: 'not-found' });
     expect(parseRoute('/team/extra')).toEqual({ name: 'not-found' });
+  });
+
+  it('opens the workspace screens, and /mcp as an alias of Integrations, without a project', () => {
+    expect(isWorkspaceRoute({ name: 'integrations' })).toBe(true);
+    expect(isWorkspaceRoute({ name: 'mcp' })).toBe(true);
+    expect(isWorkspaceRoute({ name: 'tasks' })).toBe(false);
+    expect(parseRoute('/mcp')).toEqual({ name: 'mcp' });
   });
 
   it('turns old hash links into paths', () => {

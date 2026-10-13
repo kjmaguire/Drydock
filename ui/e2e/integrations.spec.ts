@@ -16,16 +16,19 @@ test('integrations: connect Linear without a project, see its fixed name and log
   await createProject(page, 'gocalc-linear');
   await page.getByTestId('nav-integrations').click();
 
-  // five services, each with its own logo and fixed name
-  const tiles = page.getByTestId('integration-tile');
+  // the five services with app sync, each with its own logo and fixed name, then the vendors that only have agent tools (P47)
+  const tiles = page.locator('[data-testid=integration-tile]:not([data-mcp])');
   await expect(tiles).toHaveCount(5);
   await expect(tiles.locator('[data-brand]')).toHaveCount(5);
+  await expect(page.locator('[data-testid=integration-tile][data-mcp=true][data-kind=cloudflare]')).toHaveCount(1);
   await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
   const card = page.locator('[data-testid=integration][data-kind=linear]');
   await expect(card.getByRole('heading', { name: 'Linear', exact: true })).toBeVisible();
   await expect(card.getByRole('img', { name: 'Linear' })).toBeVisible();
   await expect(card.getByLabel(/name/i)).toHaveCount(0); // nothing to rename
-  await expect(card.getByRole('link', { name: "Also give agents Linear's tools: MCP" })).toHaveAttribute('href', '/mcp');
+  // the agents' Linear tools (its MCP card) are on the same tile, not on a page of their own
+  await expect(page.getByTestId('integration-sync')).toContainText('Linear');
+  await expect(page.getByTestId('integration-agents').locator('[data-testid="connector"][data-id="linear"]')).toBeVisible();
 
   // connect: an API key (cleared from the page) and, under Advanced, the fixture's address instead of api.linear.app
   const key = 'lin_api_e2e_made_up_key_123';
@@ -42,8 +45,8 @@ test('integrations: connect Linear without a project, see its fixed name and log
   await expect(card.getByText('Not assigned to a project yet.')).toBeVisible();
   expect(await page.content()).not.toContain(key);
   const tile = page.locator('[data-testid=integration-tile][data-kind=linear]');
-  await expect(tile).toContainText('Connected: Kyle Fixture in Fixture Org');
-  await expect(tile).toContainText('Not assigned to a project');
+  await expect(tile).toContainText('Sync: connected as Kyle Fixture');
+  await expect(tile).toContainText('Agents: not connected');
 
   // assign it to the project, with the team read from Linear
   await card.getByRole('button', { name: 'Assign to project' }).click();
@@ -57,7 +60,6 @@ test('integrations: connect Linear without a project, see its fixed name and log
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('gocalc-linear');
   await expect(row).toContainText('Team: ENG');
-  await expect(tile).toContainText('Assigned to 1 project');
   await row.getByRole('button', { name: 'Sync now' }).click();
   await expect(row).toContainText('2 seen: 2 new');
   await row.getByRole('button', { name: 'Items' }).click();

@@ -1,7 +1,9 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts';
-import { identityLine, KINDS, kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, statusTone, syncText, syncTone, tileState } from './integrations.ts';
+import type { McpGalleryCard } from '../../api/mcpClient.ts';
+import { galleryCard } from '../mcp/fixtures.ts';
+import { agentsStateText, identityLine, KINDS, kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, statusTone, syncStateText, syncText, syncTone, tileState, vendors, vendorStateText, vendorTone } from './integrations.ts';
 
 const view = (over: Partial<IntegrationView> = {}): IntegrationView =>
   ({
@@ -75,5 +77,44 @@ describe('integrations helpers', () => {
     expect(scopeSummary(info, { config: { team: 'ENG', project: 'Launch' } })).toBe('Team: ENG · Linear project: Launch');
     expect(scopeSummary(info, { config: {} })).toBe('Everything the connection can see');
     expect(scopeSummary(undefined, { config: { repo: 'acme/web' } })).toBe('repo: acme/web');
+  });
+
+  it('vendors: every integration kind first (with the gallery cards of its brand), then each MCP-only vendor, a group on one tile', () => {
+    const cards: McpGalleryCard[] = [
+      galleryCard({ id: 'mslearn', skillRegistries: ['microsoft-skills', 'msdocs-mcp-skills'] }),
+      galleryCard({ id: 'cfdocs', display: 'Cloudflare Documentation', brand: 'cloudflare', group: 'Cloudflare', skillRegistries: ['cloudflare-skills'] }),
+      galleryCard({ id: 'gh', display: 'GitHub', brand: 'github', integration: 'github' }),
+      galleryCard({ id: 'cfapi', display: 'Cloudflare API', brand: 'cloudflare', group: 'Cloudflare', skillRegistries: ['cloudflare-skills'] }),
+      galleryCard({ id: 'ctx7', display: 'Context7', brand: 'context7' }),
+      galleryCard({ id: 'linear', display: 'Linear', brand: 'linear', integration: 'linear' }),
+    ];
+    const vs = vendors(KINDS, cards);
+    expect(vs.map((v) => v.key)).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'mslearn', 'cloudflare', 'ctx7']);
+    expect(vs.map((v) => v.cards.map((c) => c.id))).toEqual([['linear'], [], [], [], ['gh'], ['mslearn'], ['cfdocs', 'cfapi'], ['ctx7']]);
+    expect(vs[6]).toMatchObject({ label: 'Cloudflare', logo: 'cloudflare', blurb: 'Documentation, API', skillRegistries: ['cloudflare-skills'] });
+    expect(vs[6]!.kind).toBeUndefined();
+    expect(vs[5]!.skillRegistries).toEqual(['microsoft-skills', 'msdocs-mcp-skills']);
+    expect(vs[0]!.kind).toBe(KINDS[0]);
+    expect(vs[7]!.blurb).toBe('Tools for agents');
+  });
+
+  it('the state line names both channels where the vendor has them', () => {
+    const conn = view({ identity: { account: 'kyle' } });
+    const lin = { kind: KINDS[0], cards: [galleryCard({ id: 'linear', status: 'connected' })] };
+    expect(vendorStateText(lin, conn)).toBe('Sync: connected as kyle · Agents: connected');
+    expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'needs_token' })] }, undefined)).toBe('Sync: not connected · Agents: needs a token');
+    expect(vendorStateText({ kind: KINDS[3], cards: [] }, undefined)).toBe('Sync: not connected');
+    expect(vendorStateText({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toBe('Agents: connected');
+    expect(vendorStateText({ cards: [galleryCard({ status: 'connected' }), galleryCard({ id: 'b', status: 'needs_sign_in' })] }, undefined)).toBe('Agents: 1 of 2 connected, 1 needs sign-in');
+    expect(agentsStateText([galleryCard({ status: 'error' }), galleryCard({ id: 'b' })])).toBe('error');
+    expect(agentsStateText([])).toBe('');
+    expect(syncStateText(view({ identity: {} }))).toBe('connected');
+    expect(syncStateText(view({ status: 'untested', identity: {} }))).toBe('connected, not checked yet');
+    expect(syncStateText(view({ status: 'unauthorized', identity: {} }))).toBe('connected (unauthorized)');
+    // tone: warn when something needs the human, ok when something is connected
+    expect(vendorTone(lin, conn)).toBe('ok');
+    expect(vendorTone({ kind: KINDS[0], cards: [galleryCard({ status: 'needs_token' })] }, conn)).toBe('warn');
+    expect(vendorTone({ kind: KINDS[0], cards: [] }, undefined)).toBe('');
+    expect(vendorTone({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toBe('ok');
   });
 });

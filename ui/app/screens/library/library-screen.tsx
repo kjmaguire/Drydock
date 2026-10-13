@@ -1,12 +1,16 @@
-// The Library: MCP servers and team members (agent templates) defined once for the whole workspace, then dropped into projects
-// and onto agents. Everything that can be dragged also has a "Put in project" or "Give" control, so the page works from the
-// keyboard. A project only ever reaches the servers it was given, and an agent only the servers you gave it.
+// The Library: MCP servers, team members (agent templates) and skills defined once for the whole workspace, then dropped into
+// projects and onto agents. Everything that can be dragged also has a "Put in project" or "Give" control, so the page works from
+// the keyboard. A project only ever reaches the servers it was given, and an agent only the servers you gave it. The skill
+// library fills itself from every enabled registry (decision P48); adding a skill to a project is the person's acceptance.
 
 import { css, on, type Handle } from 'remix/component';
 import {
+  BookOpen,
+  Check,
   Cpu,
   FolderOpen,
   FolderPlus,
+  GitBranch,
   Globe,
   GripVertical,
   KeyRound,
@@ -16,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Trash2,
   Unplug,
   UserPlus,
@@ -24,12 +29,13 @@ import {
 } from 'lucide';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
+import type { LibrarySkill, SkillLibraryAddAll } from '../../api/extTypes.ts';
 import type { McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
-import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
+import { Avatar, Badge, faint, kv, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
@@ -42,6 +48,7 @@ import { actionsRow, cardHead, confirmCss, subhead, tile, whereCss } from '../mc
 import { OAuthPanel } from '../mcp/oauth-panel.tsx';
 import { McpServerForm } from '../mcp/server-form.tsx';
 import { inputOf, whereOf } from '../mcp/server-input.ts';
+import { addAllText, addedText, libraryBlurb, libraryStateText, listOr, registryStatusText, skillBrand } from '../skills/skills.ts';
 import { skillLines } from '../team/team.ts';
 import { TemplateForm } from '../team/template-form.tsx';
 import { joinedNote, startDrag, type Dragged } from './dnd.ts';
@@ -105,6 +112,14 @@ const chips = css({
   },
   '& > li[data-plain]': { paddingRight: '8px' },
   '& > li button': { width: '18px', height: '18px', borderRadius: '50%' },
+  '& > li[data-in-project="true"]': { color: t.success, borderColor: `color-mix(in srgb, ${t.success} 40%, ${t.border})` },
+});
+const skillPanelCss = css({
+  display: 'grid',
+  gap: t.s3,
+  '& h3': { fontFamily: t.mono, fontSize: t.textMd, fontWeight: '600', overflowWrap: 'anywhere' },
+  '& p': { margin: '0' },
+  '& .reasons': { margin: '0', paddingLeft: '16px', fontSize: t.textSm, color: t.textMuted },
 });
 const putRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& select': { width: 'auto', minWidth: '140px', maxWidth: '100%' } });
 const panelCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
@@ -439,6 +454,9 @@ function TemplatePanel(
     servers: readonly McpLibraryServer[];
     projects: readonly Project[];
     adapters: readonly AdapterInfo[];
+    /** The current project's skills by name, to mark the ones a template brings that the project already has. */
+    inProject?: ReadonlySet<string>;
+    projectName?: string;
     onDragging: (d: Dragged | undefined) => void;
     say: Say;
     onChanged: () => void;
@@ -460,7 +478,7 @@ function TemplatePanel(
   );
 
   return () => {
-    const { t: tp, servers, projects, adapters, say, onChanged } = handle.props;
+    const { t: tp, servers, projects, adapters, say, onChanged, inProject, projectName } = handle.props;
     const nameOf = (id: string) => servers.find((x) => x.id === id)?.display ?? id;
     return (
       <>
@@ -495,12 +513,21 @@ function TemplatePanel(
           ) : null}
           {tp.skills.length > 0 ? (
             <ul mix={chips} aria-label="Skills it brings">
-              {tp.skills.map((k) => (
-                <li key={k.name} data-plain title={`${k.registry}${k.ref ? ` at ${k.ref.slice(0, 12)}` : ''}`}>
-                  <Icon icon={Cpu} size={12} />
-                  {k.name}
-                </li>
-              ))}
+              {tp.skills.map((k) => {
+                const has = inProject?.has(k.name) ?? false;
+                return (
+                  <li
+                    key={k.name}
+                    data-plain
+                    data-in-project={String(has)}
+                    title={`${k.registry}${k.ref ? ` at ${k.ref.slice(0, 12)}` : ''}${has ? ` · already in ${projectName ?? 'this project'}` : ''}`}
+                  >
+                    <Icon icon={has ? Check : Cpu} size={12} />
+                    {k.name}
+                    {has ? <span class="sr-only"> (in {projectName ?? 'this project'})</span> : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
           <PutInProject
@@ -566,6 +593,266 @@ function TemplatePanel(
           ) : null}
         </Dialog>
       </>
+    );
+  };
+}
+
+/**
+ * The skill library: a tile per registry with its sync state; the selected registry's skills as tiles, each saying whether the
+ * chosen project has it; Add to <project> (the acceptance) and Add all. The project starts as the current one.
+ */
+function SkillsLibrary(handle: Handle<{ projects: readonly Project[] }>) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  const regs = query(handle, { load: () => s.client.skillRegistries() });
+  const st = query(handle, { load: () => s.client.skillRegistryStatus(), when: (e) => e.type === 'skill.library_synced' || e.type === 'skill.registry_updates' });
+  const lib = query(handle, { load: () => s.client.skillLibraryList(), when: (e) => e.type === 'skill.library_synced' || e.type === 'skill.registry_updates' });
+  let project = '';
+  const target = () => (handle.props.projects.some((p) => p.id === project) ? project : (s.workspace.projectId ?? handle.props.projects[0]?.id ?? ''));
+  const mine = query(handle, {
+    load: () => s.client.skillList(target()),
+    key: target,
+    enabled: () => target() !== '',
+    when: (e) => e.type.startsWith('skill.'),
+  });
+  const act = action(handle);
+  let registry = '';
+  let selected = '';
+  let added: { name: string; project: string } | undefined;
+  let result: { repo: string; project: string; r: SkillLibraryAddAll } | undefined;
+  const set = (f: () => void) => {
+    f();
+    void handle.update();
+  };
+  const projectName = (id: string) => handle.props.projects.find((p) => p.id === id)?.name ?? id;
+  const add = async (l: LibrarySkill) => {
+    const pid = target();
+    const r = await act.run('add', () => s.client.skillLibraryAdd(pid, l.registryId, l.name));
+    if (r) {
+      set(() => {
+        added = { name: l.name, project: projectName(pid) };
+        result = undefined;
+      });
+      mine.reload();
+    }
+  };
+  const addAll = async (registryId: string, repo: string) => {
+    const pid = target();
+    const r = await act.run('addAll', () => s.client.skillLibraryAddAll(pid, registryId));
+    if (r) {
+      set(() => {
+        result = { repo, project: projectName(pid), r };
+        added = undefined;
+      });
+      mine.reload();
+      lib.reload();
+    }
+  };
+  const sync = async (registryId?: string) => {
+    await act.run('sync', () => s.client.skillRegistryCheck(registryId));
+    st.reload();
+    lib.reload();
+  };
+  return () => {
+    const { projects } = handle.props;
+    const pid = target();
+    const pname = projectName(pid);
+    const registries = regs.data ?? [];
+    const statuses = st.data ?? [];
+    const library = lib.data ?? [];
+    const have = new Set((mine.data ?? []).map((k) => k.name));
+    const openReg = registries.find((r) => r.id === registry);
+    const skills = openReg ? library.filter((l) => l.registryId === openReg.id) : [];
+    const openSkill = skills.find((l) => l.name === selected);
+    const openStatus = openReg ? statuses.find((x) => x.registryId === openReg.id) : undefined;
+    return (
+      <Section
+        title="Skills"
+        description="Every skill of your registries, synced by Drydock at start and twice a day. Add one to a project: adding is your acceptance, and it reaches that project's agents at once."
+        testId="library-skills"
+      >
+        <ErrorNote error={regs.error ?? st.error ?? lib.error ?? act.error} what="Skills" />
+        {added ? (
+          <Notice tone="ok" role="status" testId="skill-added">
+            {addedText(added.name, added.project)}
+          </Notice>
+        ) : null}
+        {result ? (
+          <Notice tone={result.r.blocked.length + result.r.skipped.length > 0 ? 'warn' : 'ok'} role="status" testId="skill-added-all" title={`From ${result.repo} to ${result.project}:`}>
+            {addAllText(result.r)}
+            {result.r.blocked.length + result.r.skipped.length > 0 ? (
+              <ul class="reasons" aria-label={`Skills not added from ${result.repo}`} style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
+                {result.r.blocked.map((b) => (
+                  <li key={`b-${b.name}`}>
+                    <code>{b.name}</code> blocked: {b.reason}
+                  </li>
+                ))}
+                {result.r.skipped.map((k) => (
+                  <li key={`s-${k.name}`}>
+                    <code>{k.name}</code> skipped: {k.reason}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Notice>
+        ) : null}
+        {regs.loading && !regs.data ? <Loading /> : null}
+        {regs.data && registries.length === 0 ? (
+          <p mix={emptyLine} data-testid="lib-skills-empty">
+            <Icon icon={BookOpen} size={14} />
+            <strong>No skill registry is allowed yet.</strong> Allow one on the <a href={routes.skills.href()}>Skills</a> page.
+          </p>
+        ) : null}
+        {registries.length > 0 ? (
+          <ul mix={tileGrid} aria-label="Skill registries">
+            {registries.map((r) => {
+              const status = statuses.find((x) => x.registryId === r.id);
+              const state = registryStatusText(status, r.enabled);
+              const n = library.filter((l) => l.registryId === r.id).length;
+              return (
+                <Tile
+                  key={r.id}
+                  title={r.repo}
+                  logo={skillBrand(r.id, 'registry') || undefined}
+                  icon={GitBranch}
+                  blurb={`${r.curated ? 'Curated' : 'Added by you'}${n > 0 ? ` · ${n} skill${n === 1 ? '' : 's'}` : ''}`}
+                  state={state.text}
+                  tone={state.tone}
+                  selected={registry === r.id}
+                  onSelect={() =>
+                    set(() => {
+                      registry = registry === r.id ? '' : r.id;
+                      selected = '';
+                    })
+                  }
+                  testId="lib-skill-registry-tile"
+                  data={{ registry: r.id }}
+                />
+              );
+            })}
+          </ul>
+        ) : null}
+        {lib.data && registries.length > 0 && library.length === 0 ? (
+          <p mix={emptyLine} data-testid="lib-skills-filling">
+            <Icon icon={RefreshCw} size={14} />
+            <strong>The Library is filling from your registries...</strong> It syncs at start and twice a day.
+            <Button size="sm" icon={RefreshCw} disabled={act.busy !== ''} mix={[on('click', () => void sync())]}>
+              {act.busy === 'sync' ? 'Syncing...' : 'Sync now'}
+            </Button>
+          </p>
+        ) : null}
+        {openReg ? (
+          <section mix={[card, skillPanelCss]} data-testid="lib-skill-registry" data-registry={openReg.id} aria-label={openReg.repo}>
+            <header mix={cardHead}>
+              {skillBrand(openReg.id, 'registry') && brandKey(skillBrand(openReg.id, 'registry')) ? (
+                <BrandLogo id={skillBrand(openReg.id, 'registry')} size={32} />
+              ) : (
+                <span mix={tile}>
+                  <Icon icon={GitBranch} size={16} />
+                </span>
+              )}
+              <h3>{openReg.repo}</h3>
+              <Badge tone={openReg.enabled ? 'ok' : 'muted'}>{openReg.enabled ? 'enabled' : 'disabled'}</Badge>
+              {openReg.curated ? <Badge>curated</Badge> : <Badge tone="warn">added by you</Badge>}
+            </header>
+            <p mix={metaRow} data-testid="lib-skill-registry-status">
+              {registryStatusText(openStatus, openReg.enabled).text}
+            </p>
+            {projects.length === 0 ? (
+              <p mix={faint}>Create a project first.</p>
+            ) : (
+              <div mix={putRow}>
+                <label>
+                  Add to project{' '}
+                  <select aria-label="Project to add skills to" value={pid} mix={on('change', (e) => set(() => (project = e.currentTarget.value)))}>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id} selected={p.id === pid}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {skills.some((l) => l.status !== 'blocked' && !have.has(l.name)) ? (
+                  <Button size="sm" icon={Plus} disabled={act.busy !== ''} data-testid="lib-skill-add-all" mix={[on('click', () => void addAll(openReg.id, openReg.repo))]}>
+                    Add all to {pname}
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="ghost" icon={RefreshCw} disabled={!openReg.enabled || act.busy !== ''} mix={[on('click', () => void sync(openReg.id))]}>
+                  {act.busy === 'sync' ? 'Syncing...' : 'Sync now'}
+                </Button>
+              </div>
+            )}
+            {skills.length === 0 ? (
+              <p mix={faint}>No skill from this registry is in the Library yet.</p>
+            ) : (
+              <ul mix={tileGrid} aria-label={`Skills from ${openReg.repo}`}>
+                {skills.map((l) => {
+                  const has = have.has(l.name);
+                  const state = has ? { text: `In ${pname} ✓`, tone: 'ok' as const } : libraryStateText(l);
+                  return (
+                    <Tile
+                      key={l.id}
+                      title={l.name}
+                      logo={skillBrand(l.registryId, 'registry') || undefined}
+                      icon={Sparkles}
+                      blurb={libraryBlurb(l)}
+                      state={state.text}
+                      tone={state.tone}
+                      selected={selected === l.name}
+                      onSelect={() => set(() => (selected = selected === l.name ? '' : l.name))}
+                      testId="lib-skill-tile"
+                      data={{ name: l.name, registry: l.registryId, status: l.status, check: String(has) }}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+            {openSkill ? (
+              <article mix={[card, skillPanelCss]} data-testid="lib-skill" data-name={openSkill.name} aria-label={openSkill.name}>
+                <header mix={cardHead}>
+                  <h3>{openSkill.name}</h3>
+                  {openSkill.license ? <Badge title="License">{openSkill.license}</Badge> : null}
+                  {have.has(openSkill.name) ? (
+                    <Badge tone="ok" testId="lib-skill-in-project">
+                      In {pname} ✓
+                    </Badge>
+                  ) : null}
+                  {openSkill.status === 'blocked' ? <Badge tone="err">blocked</Badge> : null}
+                  {openSkill.risk > 0 ? <Badge tone="warn">risk {openSkill.risk}</Badge> : null}
+                  {openSkill.hasScripts ? (
+                    <Badge tone="warn" title="The skill directory contains scripts. Scripts are never run by Drydock.">
+                      has scripts
+                    </Badge>
+                  ) : null}
+                </header>
+                {openSkill.description ? <p>{openSkill.description}</p> : <p mix={muted}>No description.</p>}
+                <dl mix={kv}>
+                  <dt>Roles it names</dt>
+                  <dd>{listOr(openSkill.roles)}</dd>
+                  <dt>Paths</dt>
+                  <dd>{listOr(openSkill.globs)}</dd>
+                  <dt>Pinned commit</dt>
+                  <dd>
+                    <code>{openSkill.pinnedCommit.slice(0, 12)}</code>
+                  </dd>
+                </dl>
+                {(openSkill.flags ?? []).length > 0 ? <Notice tone="warn">Flags: {(openSkill.flags ?? []).join(', ')}</Notice> : null}
+                {openSkill.status === 'blocked' ? (
+                  <ErrorNote error={`Blocked: ${openSkill.blockReason || 'the core did not say why'}. A blocked skill cannot be added.`} />
+                ) : have.has(openSkill.name) ? (
+                  <p mix={faint}>{pname} already has this skill. Choose it on its Skills page to see who gets it.</p>
+                ) : (
+                  <div mix={actionsRow}>
+                    <Button variant="primary" size="sm" icon={Plus} disabled={act.busy !== '' || pid === ''} data-testid="lib-skill-add" mix={[on('click', () => void add(openSkill))]}>
+                      {act.busy === 'add' ? 'Adding...' : `Add to ${pname}`}
+                    </Button>
+                  </div>
+                )}
+              </article>
+            ) : null}
+          </section>
+        ) : null}
+      </Section>
     );
   };
 }
@@ -731,6 +1018,13 @@ export function LibraryScreen(handle: Handle) {
   const servers = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
   const templates = query(handle, { load: () => s.client.agentTemplateList(), when: (e) => e.type.startsWith('agenttemplate.') });
   const prebuilt = query(handle, { load: () => s.client.agentCatalogList() });
+  // The current project's skills, to mark the ones a template brings that the project already has.
+  const projectSkills = query(handle, {
+    load: () => s.client.skillList(s.workspace.projectId!),
+    key: () => s.workspace.projectId,
+    enabled: () => !!s.workspace.projectId,
+    when: (e) => e.type.startsWith('skill.'),
+  });
   let dragging: Dragged | undefined;
   let note = '';
   let error: Error | undefined;
@@ -759,6 +1053,8 @@ export function LibraryScreen(handle: Handle) {
     const libraryIds = new Set(libServers.map((x) => x.id));
     const openServer = libServers.find((x) => x.id === server);
     const openTemplate = tpls.find((x) => x.id === template);
+    const inProject = new Set((projectSkills.data ?? []).map((k) => k.name));
+    const currentName = projects.find((p) => p.id === s.workspace.projectId)?.name;
     return (
       <Page
         title="Library"
@@ -851,12 +1147,16 @@ export function LibraryScreen(handle: Handle) {
                   servers={libServers}
                   projects={projects}
                   adapters={adapterList}
+                  inProject={inProject}
+                  projectName={currentName}
                   onDragging={onDragging}
                   say={say}
                   onChanged={reload}
                 />
               ) : null}
             </Section>
+
+            <SkillsLibrary projects={projects} />
 
             <Section
               title="Prebuilt agents"

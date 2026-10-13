@@ -57,14 +57,16 @@ import type {
   RouteRule,
   RuleReq,
   SchedulerStatus,
+  LibrarySkill,
   Skill,
-  SkillCandidate,
   SkillCoverage,
   SkillDelivery,
   SkillImportAll,
+  SkillLibraryAddAll,
   SkillRegistry,
   SkillRegistryStatus,
   SkillScan,
+  SkillUsage,
   StartTemplateReq,
   StartTemplateResult,
   TelemetryDocument,
@@ -154,10 +156,16 @@ export interface ExtClient {
   skillRegistryAdd(registry: Partial<SkillRegistry> & { id: string; repo: string }, acknowledged: boolean): Promise<SkillRegistry>;
   skillRegistryEnable(id: string, enabled: boolean): Promise<void>;
   skillRegistryRemove(id: string): Promise<void>;
-  skillCandidates(registryId: string, ref?: string): Promise<{ commit: string; skills: SkillCandidate[] }>;
-  skillImport(projectId: string, registryId: string, name: string, ref?: string): Promise<Skill>;
   /** Import every valid skill of a registry into a project at once; each is offered, never applied. */
   skillImportAll(projectId: string, registryId: string, ref?: string): Promise<SkillImportAll>;
+  /** The workspace skill library: every enabled registry's skills, filled by the core itself (decision P48). */
+  skillLibraryList(registryId?: string): Promise<LibrarySkill[]>;
+  /** Add a library skill to a project. Adding is the person's acceptance: the skill arrives accepted. */
+  skillLibraryAdd(projectId: string, registryId: string, name: string, audience?: 'team' | 'agents', agents?: string[]): Promise<Skill>;
+  /** Add every available library skill of a registry to a project at once. */
+  skillLibraryAddAll(projectId: string, registryId: string): Promise<SkillLibraryAddAll>;
+  /** How each project skill is used by its runs, with the core's recommendation (decision P49). */
+  skillUsage(projectId: string): Promise<SkillUsage[]>;
   /** The twice-daily check of every registry a project imported from. */
   skillRegistryStatus(): Promise<SkillRegistryStatus[]>;
   /** Check one registry (or all of them) now instead of waiting for the schedule. */
@@ -316,15 +324,17 @@ export function createExtClient(t: Transport): ExtClient {
     skillRegistryAdd: (registry, acknowledged) => call('skill.registryAdd', { registry, acknowledged }),
     skillRegistryEnable: (id, enabled) => voidCall('skill.registryEnable', { id, enabled }),
     skillRegistryRemove: (id) => voidCall('skill.registryRemove', { id }),
-    skillCandidates: async (registryId, ref = '') => {
-      const r = await call<{ commit: string; skills: SkillCandidate[] | null }>('skill.candidates', { registryId, ref });
-      return { commit: r.commit, skills: arr(r.skills) };
-    },
-    skillImport: (projectId, registryId, name, ref = '') => call('skill.import', { projectId, registryId, name, ref }),
     skillImportAll: async (projectId, registryId, ref = '') => {
       const r = await call<SkillImportAll>('skill.importAll', { projectId, registryId, ref });
       return { ...r, imported: arr(r.imported), updated: arr(r.updated), unchanged: arr(r.unchanged), blocked: arr(r.blocked), skipped: arr(r.skipped) };
     },
+    skillLibraryList: async (registryId = '') => arr(await call<LibrarySkill[] | null>('skill.libraryList', { registryId })),
+    skillLibraryAdd: (projectId, registryId, name, audience, agents) => call('skill.libraryAdd', { projectId, registryId, name, audience, agents }),
+    skillLibraryAddAll: async (projectId, registryId) => {
+      const r = await call<SkillLibraryAddAll>('skill.libraryAddAll', { projectId, registryId });
+      return { added: arr(r.added), unchanged: arr(r.unchanged), blocked: arr(r.blocked), skipped: arr(r.skipped) };
+    },
+    skillUsage: async (projectId) => arr(await call<SkillUsage[] | null>('skill.usage', { projectId })),
     skillRegistryStatus: async () => arr(await call<SkillRegistryStatus[] | null>('skill.registryStatus', {})),
     skillRegistryCheck: async (registryId) => arr(await call<SkillRegistryStatus[] | null>('skill.registryCheck', { registryId })),
     skillAudience: (projectId, name, audience, agents) => call('skill.audience', { projectId, name, audience, agents }),

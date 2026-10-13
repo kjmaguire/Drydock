@@ -1,22 +1,22 @@
-// MCP servers of one project: which connected servers the project has, which of its agents may use each one, and the tool
-// calls waiting for the human's approval. Servers are connected once in the Library; this page puts them into the project
-// and grants them. A server nobody was granted is never reached.
+// MCP servers of one project: which connected servers the project has (ServerCard), which of its agents may use each one, the
+// tool calls waiting for the human's approval (Approvals) and putting a connected server into the project (AddFromLibrary).
+// Since decision P47 these sit at the bottom of the Integrations page (/integrations, with /mcp as its alias); servers are
+// connected once, on that page or in the Library. A server nobody was granted is never reached.
 
 import { css, on, type Handle } from 'remix/component';
-import { BadgeCheck, CirclePlus, FolderPlus, Power, Server, ShieldAlert, Wrench } from 'lucide';
+import { BadgeCheck, FolderPlus, Power, Server, ShieldAlert } from 'lucide';
 import type { McpApproval, McpServer } from '../../api/mcpClient.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
-import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { card, Page, Section, stack } from '../../ui/layout.tsx';
+import { card, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ConnectorGallery } from './gallery.tsx';
 import { whereOf } from './server-input.ts';
 
 export const cardHead = css({
@@ -74,9 +74,9 @@ const grantRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, cursor:
 const approvalCard = css({ borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})` });
 const argsCss = css({ margin: '0', maxHeight: '240px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
 const addRow = css({ display: 'flex', alignItems: 'flex-end', gap: t.s2, flexWrap: 'wrap', '& > div': { minWidth: '260px' } });
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '78ch' });
 
-function Approvals(handle: Handle<{ projectId: string; agents: readonly Agent[] }>) {
+/** The tool calls of this project's agents that wait for the human; nothing while there are none. */
+export function Approvals(handle: Handle<{ projectId: string; agents: readonly Agent[] }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -142,7 +142,8 @@ function Approvals(handle: Handle<{ projectId: string; agents: readonly Agent[] 
   };
 }
 
-function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent[]; onChanged: () => void }>) {
+/** One connected server as this project has it: its tools, which agents may use it, on or off here, take it out. */
+export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent[]; onChanged: () => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -276,7 +277,8 @@ function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent[]; onC
   };
 }
 
-function AddFromLibrary(handle: Handle<{ projectId: string; have: string[]; onAdded: () => void }>) {
+/** Puts a server that is connected (in the library) but not in this project into it. */
+export function AddFromLibrary(handle: Handle<{ projectId: string; have: string[]; onAdded: () => void }>) {
   const s = services(handle);
   const act = action(handle);
   const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
@@ -325,88 +327,6 @@ function AddFromLibrary(handle: Handle<{ projectId: string; have: string[]; onAd
           </div>
         )}
       </Section>
-    );
-  };
-}
-
-export function McpScreen(handle: Handle) {
-  const s = services(handle);
-  watch(handle, s.workspace);
-  watch(handle, s.project);
-  const q = query(handle, {
-    load: () => s.client.mcpServerList(s.workspace.projectId!),
-    key: () => s.workspace.projectId,
-    enabled: () => !!s.workspace.projectId,
-    when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'),
-  });
-
-  return () => {
-    const projectId = s.workspace.projectId;
-    const project = s.workspace.project;
-    const intro = (
-      <p mix={introCss}>
-        An MCP server gives agents extra tools: documentation search, an issue tracker, a database. Connect a server once, here or in the <a href={routes.library.href()}>Library</a>, put
-        it into the projects that should have it, and choose which agents of each project may use it. A server nobody was granted is never reached. Anything a server returns is
-        treated as outside text, and every tool you have not marked read-only waits for your approval, call by call. Secrets stay in the Windows credential store. Claude Code
-        agents receive these servers; another agent CLI receives them only after you allow it under Agent CLIs in the <a href={routes.library.href()}>Library</a>, because no real run has shown yet that it uses them.
-      </p>
-    );
-    const libraryLink = (
-      <a href={routes.library.href()} mix={buttonStyle('ghost', 'sm')}>
-        <Icon icon={Wrench} size={14} />
-        Connect servers in the Library
-      </a>
-    );
-    if (!projectId) {
-      return (
-        <Page title="MCP servers" icon={Server} actions={libraryLink}>
-          {intro}
-          <ConnectorGallery />
-          {s.workspace.projects.data ? (
-            <Section title="In a project">
-              <div mix={card}>
-                <Empty title="No project selected" icon={Server}>
-                  <p>MCP servers are put into a project and granted to its agents. Connect them above now; create or choose a project to add them to.</p>
-                  <a href={routes.projectNew.href()}>Create a project</a>
-                </Empty>
-              </div>
-            </Section>
-          ) : (
-            <Loading />
-          )}
-        </Page>
-      );
-    }
-    const servers = q.data ?? [];
-    const agents = s.project.agentList;
-    return (
-      <Page
-        title="MCP servers"
-        icon={Server}
-        subtitle={project ? `${project.name}${q.data ? ` · ${servers.length} server${servers.length === 1 ? '' : 's'}` : ''}` : undefined}
-        actions={libraryLink}
-      >
-        {intro}
-        <ErrorNote error={q.error} what="Could not load the servers" />
-        <Approvals projectId={projectId} agents={agents} />
-        <ConnectorGallery />
-        <Section title="In this project">
-          {q.loading && !q.data ? <Loading /> : null}
-          {q.data && servers.length === 0 ? (
-            <div mix={card}>
-              <Empty title="No MCP servers in this project yet." icon={CirclePlus}>
-                <p>Put a connected server into this project below, or drag one onto it in the Library.</p>
-              </Empty>
-            </div>
-          ) : null}
-          <div mix={stack}>
-            {servers.map((srv) => (
-              <ServerCard key={srv.id} s={srv} agents={agents} onChanged={q.reload} />
-            ))}
-          </div>
-        </Section>
-        <AddFromLibrary projectId={projectId} have={servers.map((x) => x.id)} onAdded={q.reload} />
-      </Page>
     );
   };
 }

@@ -145,14 +145,38 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await ms.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(ms).toContainText('0 of 1 completed');
 
-  // skills: repository skills are offered, never applied; the human accepts
+  // skills: repository skills are offered, never applied; the human opens the tile and accepts in its panel (decisions P48, P49)
   await page.getByTestId('nav-skills').click();
   await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
   await expect(page.getByTestId('skill-scan')).toContainText('1 offered, 0 accepted');
+  const goTile = page.locator('[data-testid=skill-tile][data-name=go-style]');
+  await expect(goTile).toHaveAttribute('data-status', 'offered');
+  await expect(goTile).toContainText('Offered');
+  await goTile.click();
   const skill = page.locator('[data-testid=skill][data-skill=go-style]');
   await expect(skill).toHaveAttribute('data-status', 'offered');
   await skill.getByRole('button', { name: 'Accept go-style' }).click();
   await expect(skill).toHaveAttribute('data-status', 'accepted');
+  await expect(goTile).toHaveAttribute('data-check', 'true');
+  await expect(goTile).toContainText('Accepted ✓');
+
+  // the Library holds the registries' skills: Sync now fills it from the harness's registry fixture (cloudflare/skills carries
+  // three stand-in skills); Add to project makes the skill accepted at once, with a status line and a check on its tile
+  const cf = page.locator('[data-testid=registry-tile][data-registry=cloudflare-skills]');
+  await cf.click();
+  await page.locator('[data-testid=registry][data-registry=cloudflare-skills]').getByRole('button', { name: 'Sync now' }).click();
+  await expect(cf).toContainText('3 skills in the Library');
+  const wranglerInLibrary = page.locator('[data-testid=library-skill-tile][data-name=wrangler]');
+  await expect(wranglerInLibrary).toContainText('Available');
+  await wranglerInLibrary.click();
+  await page.locator('[data-testid=library-skill][data-name=wrangler]').getByRole('button', { name: 'Add to project' }).click();
+  await expect(page.getByTestId('skill-added')).toContainText('wrangler was added to gocalc-know and is accepted ✓');
+  const wrangler = page.locator('[data-testid=skill-tile][data-name=wrangler]');
+  await expect(wrangler).toHaveAttribute('data-status', 'accepted');
+  await expect(wrangler).toHaveAttribute('data-check', 'true');
+  await expect(wrangler).toContainText('Accepted ✓');
+  await expect(wranglerInLibrary).toHaveCount(0); // it left the "Add from the Library" grid
+  await expect(page.locator('[data-testid=skill][data-skill=wrangler]').getByTestId('skill-status')).toHaveText('accepted ✓');
 
   // memory: propose, accept, delete
   await page.getByTestId('nav-memory').click();

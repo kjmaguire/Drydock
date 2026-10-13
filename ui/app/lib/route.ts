@@ -39,8 +39,8 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = ['library', 'inte
 const SIMPLE = new Set<string>(['pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', ...WORKSPACE_ROUTES]);
 
 export function isWorkspaceRoute(r: Route): boolean {
-  // chats open without a project too (a chat may have none)
-  return (WORKSPACE_ROUTES as readonly string[]).includes(r.name) || r.name === 'chats' || r.name === 'chat';
+  // chats open without a project too (a chat may have none); /mcp is an alias of Integrations (decision P47)
+  return (WORKSPACE_ROUTES as readonly string[]).includes(r.name) || r.name === 'chats' || r.name === 'chat' || r.name === 'mcp';
 }
 
 /** Parse a pathname. Unknown paths are 'not-found'. */

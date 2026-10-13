@@ -4,8 +4,8 @@ import type { Client } from '../../api/client.ts';
 import type { McpApproval } from '../../api/mcpClient.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { IntegrationsScreen } from '../integrations/integrations-screen.tsx';
 import { devLicense, libServer, pay, projServer, rev } from './fixtures.ts';
-import { McpScreen } from './mcp-screen.tsx';
 
 afterEach(cleanup);
 
@@ -17,6 +17,7 @@ function rec<R>(calls: Calls, result: (...args: unknown[]) => R) {
   };
 }
 
+// The project's servers, approvals and Add from the library sit at the bottom of the Integrations page (decision P47).
 function show(client: Partial<Client>, opts: { projects?: { id: string; name: string }[] } = {}) {
   const s = testServices({
     licenseStatus: async () => devLicense,
@@ -28,6 +29,8 @@ function show(client: Partial<Client>, opts: { projects?: { id: string; name: st
     needsYouList: async () => [],
     presenceList: async () => [],
     taskList: async () => [],
+    integrationList: async () => [],
+    integrationKinds: async () => [],
     mcpApprovalList: async () => [],
     mcpLibList: async () => [libServer()],
     mcpGallery: async () => [],
@@ -35,7 +38,7 @@ function show(client: Partial<Client>, opts: { projects?: { id: string; name: st
   });
   s.workspace.start();
   s.project.start();
-  return mount(<McpScreen />, s);
+  return mount(<IntegrationsScreen />, s);
 }
 type R = ReturnType<typeof show>;
 const server = (r: R) =>
@@ -45,7 +48,7 @@ const server = (r: R) =>
     return c as HTMLElement;
   }, r);
 
-describe('MCP servers page (one project)', () => {
+describe('the MCP servers of one project, on the Integrations page', () => {
   it('lists the project servers, which tools only read, and no secret', async () => {
     const r = show({ mcpServerList: async () => [projServer({ readOnlyTools: ['echo'] })] });
     const card = await server(r);
@@ -54,7 +57,9 @@ describe('MCP servers page (one project)', () => {
     expect(card.textContent).not.toContain('sekret');
     expect(byLabel<HTMLInputElement>(card, 'Pay may use Test server').checked).toBe(false);
     expect(card.textContent).toContain('No agent can use a server until you tick it here.');
-    expect(r.$('h1')!.textContent).toContain('MCP servers');
+    expect(r.$('h1')!.textContent).toContain('Integrations');
+    expect(r.$('[data-testid="own-servers"]')).not.toBeNull(); // the whole page: own servers above, the project's servers below
+    expect(r.$('[data-testid="mcp-server"]')!.compareDocumentPosition(r.$('[data-testid="own-servers"]')!) & Node.DOCUMENT_POSITION_PRECEDING).not.toBe(0);
   });
 
   it('grants and revokes one agent without touching the others', async () => {
@@ -151,9 +156,15 @@ describe('MCP servers page (one project)', () => {
     await waitFor(() => expect(r.$$('[data-testid="mcp-server"]').length).toBe(2), r);
   });
 
-  it('asks for a project when none exists', async () => {
+  it('without a project: one line says servers are put into a project, and offers to create one', async () => {
     const r = show({ mcpServerList: async () => [] }, { projects: [] });
-    await waitFor(() => expect(r.container.textContent).toContain('No project selected'), r);
-    expect(r.$('a[href="/project/new"]')).not.toBeNull();
+    const line = await waitFor(() => {
+      const el = r.$('[data-testid="no-project"]');
+      if (!el) throw new Error('not yet');
+      return el as HTMLElement;
+    }, r);
+    expect(line.querySelector('a[href="/project/new"]')).not.toBeNull();
+    expect(r.$('[data-testid="mcp-approvals"]')).toBeNull();
+    expect(r.$('[data-testid="own-servers"]')).not.toBeNull(); // connecting needs no project
   });
 });

@@ -76,6 +76,15 @@ describe('the sidebar', () => {
     const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
     expect(nav.indexOf('nav-security')).toBe(nav.indexOf('nav-milestones') - 1);
     expect(r.$('[data-testid="nav-security"]')!.textContent).toBe('Security');
+    // the MCP servers page was merged into Integrations (decision P47): no entry of its own
+    expect(nav).not.toContain('nav-mcp');
+    expect(r.container.querySelector('a[href="/mcp"]')).toBeNull();
+  });
+
+  it('marks Integrations current on its alias /mcp', async () => {
+    const r = mount(<Sidebar route={{ name: 'mcp' }} />, svc());
+    await waitFor(() => expect(r.$('[data-testid="nav-integrations"]')).not.toBeNull(), r);
+    expect(r.$('[data-testid="nav-integrations"]')!.getAttribute('aria-current')).toBe('page');
   });
 
   it('without a project still shows the switcher and the workspace links', async () => {

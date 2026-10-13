@@ -2,8 +2,15 @@
 // through live queries, so an action needs nothing but the route params. Keys remount a screen when its params change.
 
 import { createController } from 'remix/router';
+import type { AppContext } from '../router.tsx';
 import { routes } from '../routes.ts';
 import { HomeScreen } from '../shell/home.tsx';
+
+/** The Integrations page; /mcp (the former MCP servers page, merged into it by decision P47) is its alias. */
+async function integrations({ render }: Pick<AppContext, 'render'>) {
+  const { IntegrationsScreen } = await import('../screens/integrations/integrations-screen.tsx');
+  return render(<IntegrationsScreen />);
+}
 
 export const controller = createController(routes, {
   actions: {
@@ -78,10 +85,7 @@ export const controller = createController(routes, {
       const { PacksScreen } = await import('../screens/packs/packs-screen.tsx');
       return render(<PacksScreen />);
     },
-    async mcp({ render }) {
-      const { McpScreen } = await import('../screens/mcp/mcp-screen.tsx');
-      return render(<McpScreen />);
-    },
+    mcp: integrations,
     async budgets({ render }) {
       const { BudgetsScreen } = await import('../screens/budgets/budgets-screen.tsx');
       return render(<BudgetsScreen />);
@@ -107,10 +111,7 @@ export const controller = createController(routes, {
       const { LibraryScreen } = await import('../screens/library/library-screen.tsx');
       return render(<LibraryScreen />);
     },
-    async integrations({ render }) {
-      const { IntegrationsScreen } = await import('../screens/integrations/integrations-screen.tsx');
-      return render(<IntegrationsScreen />);
-    },
+    integrations,
     async connections({ render }) {
       const { ConnectionsScreen } = await import('../screens/connections/connections-screen.tsx');
       return render(<ConnectionsScreen />);

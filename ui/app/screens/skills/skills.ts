@@ -1,7 +1,8 @@
-// Pure helpers for the Skills screen.
+// Pure helpers for the Skills screen and the Library's Skills section.
 
-import type { Skill, SkillCoverage, SkillImportAll, SkillRegistryChange, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
+import type { LibrarySkill, Skill, SkillCoverage, SkillLibraryAddAll, SkillRegistryChange, SkillRegistryStatus, SkillScan, SkillUsage } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
 export const skillTone = (s: string): Tone => (s === 'accepted' ? 'ok' : s === 'offered' ? 'warn' : s === 'blocked' ? 'err' : 'muted');
@@ -14,30 +15,123 @@ export function scanText(scan: SkillScan): string {
 
 export const coverageText = (c: SkillCoverage | undefined): string => (c ? `${c.files} delivered as rule files, ${c.tool} through a tool.` : '');
 
-/** What importing a whole registry did, in one line; blocked and skipped are named only when there were any. */
-export function importAllText(r: SkillImportAll): string {
-  const blocked = r.blocked ?? [];
-  const skipped = r.skipped ?? [];
-  const tail = `${blocked.length > 0 ? `, ${blocked.length} blocked` : ''}${skipped.length > 0 ? `, ${skipped.length} skipped` : ''}`;
-  return `Imported ${(r.imported ?? []).length} new, ${(r.updated ?? []).length} updated, ${(r.unchanged ?? []).length} unchanged${tail}`;
+/** The brand each skill registry shows on its tiles (ui/brand-logo.tsx marks); a registry not named here shows a generic icon. */
+export const SKILL_BRANDS: Record<string, string> = {
+  'cloudflare-skills': 'cloudflare',
+  'microsoft-skills': 'microsoft',
+  'msdocs-agent-skills': 'microsoft',
+  'msdocs-mcp-skills': 'microsoft',
+  'msgraph-community': 'microsoft',
+  'vercel-agent-skills': 'vercel',
+  'anthropic-skills': 'anthropic',
+  'openai-skills': 'openai',
+  'stripe-ai': 'stripe',
+  'react-router': 'remix',
+};
+
+/** The brand id of a skill's tile: its registry's brand; a repository skill (origin `repo`) has none and shows the file icon. */
+export function skillBrand(registryId: string | undefined, origin?: string): string {
+  if (origin === 'repo' || origin === 'repository' || !registryId) return '';
+  return SKILL_BRANDS[registryId] ?? '';
 }
 
-/** What a registry check has still to offer one project: nothing until the registry is watched. */
-export function registryChanges(st: SkillRegistryStatus | undefined, projectId: string): { additions: SkillRegistryChange[]; updates: SkillRegistryChange[] } {
-  const p = st?.projects?.[projectId];
-  return { additions: p?.additions ?? [], updates: p?.updates ?? [] };
+/** The skill library entries whose name is not in the project yet (one name per project, whatever the registry). */
+export function notInProject(library: readonly LibrarySkill[], skills: readonly Pick<Skill, 'name'>[]): LibrarySkill[] {
+  const have = new Set(skills.map((s) => s.name));
+  return library.filter((l) => !have.has(l.name));
+}
+
+/** The registries a list of library skills comes from, with their counts, in the order they first appear. */
+export function libraryGroups(library: readonly LibrarySkill[]): { registryId: string; repo: string; count: number }[] {
+  const out: { registryId: string; repo: string; count: number }[] = [];
+  for (const l of library) {
+    const g = out.find((x) => x.registryId === l.registryId);
+    if (g) g.count++;
+    else out.push({ registryId: l.registryId, repo: l.repo, count: 1 });
+  }
+  return out;
+}
+
+/** A library skill's state line: available, or blocked with the core's reason. */
+export function libraryStateText(l: Pick<LibrarySkill, 'status' | 'blockReason' | 'gone'>): { text: string; tone: TileTone } {
+  if (l.status === 'blocked') return { text: `Blocked: ${l.blockReason || 'the core did not say why'}`, tone: 'bad' };
+  if (l.gone) return { text: 'Available · no longer upstream', tone: 'warn' };
+  return { text: 'Available', tone: '' };
+}
+
+/** A library skill's blurb: what it does, and its license when known. */
+export const libraryBlurb = (l: Pick<LibrarySkill, 'description' | 'license'>): string => [l.description, l.license].filter(Boolean).join(' · ');
+
+/** The names in a project's skills whose library text is newer than the project's copy (registryStatus.projects[pid].updates). */
+export function registryUpdates(statuses: readonly SkillRegistryStatus[] | undefined, projectId: string): Set<string> {
+  const out = new Set<string>();
+  for (const st of statuses ?? []) for (const u of st.projects?.[projectId]?.updates ?? []) out.add(u.name);
+  return out;
 }
 
 /**
- * The registry's check in one line: unwatched until a project imports from it, unchecked until the first check, then when it
- * was checked and what it found for this project.
+ * A project skill's state line on its tile: "Accepted ✓ · whole team" / "Accepted ✓ · 2 agents", "Offered", "Rejected", "Blocked",
+ * or "Update in the Library" when the library's text is newer than this copy.
  */
-export function registryStatusText(st: SkillRegistryStatus | undefined, projectId: string): string {
-  if (!st || !st.watched) return 'Not imported into any project yet; Drydock starts checking it after the first import.';
-  if (!st.checkedAt) return 'Not checked yet.';
-  const { additions, updates } = registryChanges(st, projectId);
-  const found = additions.length === 0 && updates.length === 0 ? 'no new or changed skills' : `${additions.length} new, ${updates.length} changed`;
-  return `Checked ${formatDateTime(st.checkedAt)}: ${found}`;
+export function skillStateText(s: Pick<Skill, 'status' | 'audience' | 'agents'>, hasUpdate: boolean): { text: string; tone: TileTone } {
+  if (hasUpdate) return { text: 'Update in the Library', tone: 'warn' };
+  if (s.status === 'accepted') {
+    const n = (s.agents ?? []).length;
+    const who = s.audience === 'agents' ? `${n} agent${n === 1 ? '' : 's'}` : 'whole team';
+    return { text: `Accepted ✓ · ${who}`, tone: 'ok' };
+  }
+  if (s.status === 'offered') return { text: 'Offered', tone: 'warn' };
+  if (s.status === 'blocked') return { text: 'Blocked', tone: 'bad' };
+  if (s.status === 'rejected') return { text: 'Rejected', tone: '' };
+  return { text: s.status, tone: '' };
+}
+
+/** What adding a whole registry did, in one line; blocked and skipped are named only when there were any. */
+export function addAllText(r: SkillLibraryAddAll): string {
+  const blocked = r.blocked ?? [];
+  const skipped = r.skipped ?? [];
+  const tail = `${blocked.length > 0 ? `, ${blocked.length} blocked` : ''}${skipped.length > 0 ? `, ${skipped.length} skipped` : ''}`;
+  return `${(r.added ?? []).length} added, ${(r.unchanged ?? []).length} unchanged${tail}`;
+}
+
+/** The success line after one skill was added to a project: adding is the acceptance. */
+export const addedText = (name: string, project: string): string => `${name} was added to ${project} and is accepted ✓`;
+
+/**
+ * A registry's state line on its tile: how many of its skills the library holds (and how many are blocked), and when it was
+ * last synced; not synced yet; or the last sync's failure. A disabled registry says so first.
+ */
+export function registryStatusText(st: SkillRegistryStatus | undefined, enabled = st?.enabled ?? true): { text: string; tone: TileTone } {
+  if (!enabled) return { text: 'Disabled: not synced', tone: '' };
+  if (st?.lastError) return { text: `Last sync failed: ${st.lastError}`, tone: 'bad' };
+  if (!st || !st.checkedAt) return { text: 'Not synced yet', tone: 'warn' };
+  const blocked = st.blocked > 0 ? ` (${st.blocked} blocked)` : '';
+  return { text: `${st.skills} skill${st.skills === 1 ? '' : 's'} in the Library${blocked} · synced ${formatDateTime(st.checkedAt)}`, tone: 'ok' };
+}
+
+/** What the last sync of a registry brought into the library, as lists (never null). */
+export function syncChanges(st: SkillRegistryStatus | undefined): { added: SkillRegistryChange[]; changed: SkillRegistryChange[] } {
+  return { added: st?.added ?? [], changed: st?.changed ?? [] };
+}
+
+/** The tokens a skill cost: the full text loaded into runs plus its listing for on-demand reading. */
+export const usageTokens = (u: Pick<SkillUsage, 'tokensLoaded' | 'tokensListed'>): number => (u.tokensLoaded ?? 0) + (u.tokensListed ?? 0);
+
+/** A count with thousands separators, the same in every locale. */
+export const formatCount = (n: number): string => Math.round(n).toLocaleString('en-US');
+
+/** Usage rows in reading order: the ones to remove first, then by tokens spent, most first, then by name. */
+export function sortUsage(rows: readonly SkillUsage[]): SkillUsage[] {
+  const rank = (u: SkillUsage) => (u.recommendation === 'remove' ? 0 : 1);
+  return [...rows].sort((a, b) => rank(a) - rank(b) || usageTokens(b) - usageTokens(a) || a.name.localeCompare(b.name));
+}
+
+/** The tone and words of a usage recommendation; no recommendation reads "no data yet". */
+export function recommendationBadge(rec: string): { tone: Tone; text: string } {
+  if (rec === 'remove') return { tone: 'err', text: 'remove' };
+  if (rec === 'narrow') return { tone: 'warn', text: 'narrow' };
+  if (rec === 'keep') return { tone: 'ok', text: 'keep' };
+  return { tone: 'muted', text: 'no data yet' };
 }
 
 /** A list as words, with a fallback for none ('all'). */

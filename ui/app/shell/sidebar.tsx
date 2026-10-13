@@ -27,7 +27,6 @@ import {
   Plug,
   Route as RouteIcon,
   Search,
-  Server,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -354,7 +353,6 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                   <NavItem href={routes.milestones.href()} current={at('milestones')} testId="nav-milestones" icon={Flag} label="Milestones" />
                   <NavItem href={routes.budgets.href()} current={at('budgets')} testId="nav-budgets" icon={PiggyBank} label="Budgets" />
                   <NavItem href={routes.evals.href()} current={at('evals')} testId="nav-evals" icon={Gauge} label="Evals report" />
-                  <NavItem href={routes.mcp.href()} current={at('mcp')} testId="nav-mcp" icon={Server} label="MCP servers" />
                   <NavItem href={routes.project.href()} current={at('project')} testId="nav-project" icon={Settings2} label="Project settings" />
                 </>,
               )}
@@ -375,7 +373,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             'Workspace',
             <>
               <NavItem href={routes.library.href()} current={at('library')} testId="nav-library" icon={Library} label="Library" />
-              <NavItem href={routes.integrations.href()} current={at('integrations')} testId="nav-integrations" icon={Plug} label="Integrations" />
+              <NavItem href={routes.integrations.href()} current={at('integrations', 'mcp')} testId="nav-integrations" icon={Plug} label="Integrations" />
               <NavItem href={routes.connections.href()} current={at('connections')} testId="nav-connections" icon={Link2} label="Connections" />
               <NavItem href={routes.providers.href()} current={at('providers')} testId="nav-providers" icon={Network} label="Providers" />
               <NavItem href={routes.routing.href()} current={at('routing')} testId="nav-routing" icon={RouteIcon} label="Routing" />

@@ -51,6 +51,7 @@ export const galleryCard = (over: Partial<McpGalleryCard> = {}): McpGalleryCard 
   toolsListed: false,
   status: 'not_connected',
   projects: [],
+  skillRegistries: [],
   ...over,
 });
 

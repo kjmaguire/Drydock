@@ -92,8 +92,8 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await expect(newAgent.getByTestId('agent-server')).toHaveCount(1);
   await expect(projB.getByTestId('proj-server')).toHaveCount(1); // granting also put the server into lib-b
 
-  // the project's own page agrees (lib-b is current), and the agent kept the template's settings
-  await page.getByTestId('nav-mcp').click();
+  // the project's servers on the Integrations page agree (lib-b is current), and the agent kept the template's settings
+  await page.getByTestId('nav-integrations').click();
   const onB = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
   await expect(onB.getByLabel('Payments dev may use Test server')).toBeChecked();
   await expect(onB.getByText('reads only')).toHaveCount(1);

@@ -1,32 +1,51 @@
-// Skills: instructions agents read. Skills found in the repository or imported from an allowlisted registry are offered;
-// nothing is applied until the human accepts it. Skill text is outside text, rendered inert; scripts are never run and
-// requested tool permissions are recorded and ignored.
+// Skills: instructions agents read. The workspace Library fills itself from every enabled registry (decision P48); a project
+// adds skills from the Library, and adding is the person's acceptance. Skills found in the repository are offered and accepted
+// here. Skill text is outside text, rendered inert; scripts are never run and requested tool permissions are recorded and
+// ignored. Usage says which skills earn their tokens (decision P49).
 
 import { css, on, type Handle } from 'remix/component';
-import { Cpu, FileCode2, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
-import type { Skill, SkillCandidate, SkillImportAll, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
+import { BookOpen, Cpu, FileCode2, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Users } from 'lucide';
+import type { LibrarySkill, Skill, SkillDelivery, SkillLibraryAddAll, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
+import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, kv, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
-import { Icon } from '../../ui/icon.tsx';
+import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { Page, Section, card, tableCard } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AudienceEditor } from './audience.tsx';
-import { audienceText, coverageText, importAllText, listOr, onTeam, registryChanges, registryStatusText, scanText, skillTone } from './skills.ts';
+import {
+  addAllText,
+  addedText,
+  audienceText,
+  coverageText,
+  formatCount,
+  libraryBlurb,
+  libraryGroups,
+  libraryStateText,
+  listOr,
+  notInProject,
+  onTeam,
+  recommendationBadge,
+  registryStatusText,
+  registryUpdates,
+  scanText,
+  skillBrand,
+  skillStateText,
+  skillTone,
+  sortUsage,
+  syncChanges,
+  usageTokens,
+} from './skills.ts';
 
-const gridCss = css({
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-  gap: t.s3,
-  alignItems: 'start',
-});
-const skillCss = css({
+const panelCss = css({
   display: 'grid',
   gap: t.s3,
   padding: t.s4,
@@ -52,6 +71,9 @@ const skillCss = css({
   '& .actions': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
   '& details': { fontSize: t.textMd },
   '& details > summary': { fontSize: t.textSm, marginBottom: t.s2 },
+  '& .reasons': { margin: '0', padding: '0', listStyle: 'none', color: t.textMuted, fontSize: t.textSm, display: 'grid', gap: '2px' },
+  '& .changes': { margin: '0', padding: '0', listStyle: 'none', display: 'grid', gap: '2px', fontSize: t.textSm },
+  '& .changes span': { color: t.textMuted },
   '&[data-status="offered"]': {
     borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})`,
   },
@@ -62,45 +84,107 @@ const skillCss = css({
 const iconWrap = css({
   display: 'inline-grid',
   placeItems: 'center',
-  width: '24px',
-  height: '24px',
-  borderRadius: t.rMd,
-  background: t.bgActive,
+  width: '32px',
+  height: '32px',
+  borderRadius: '7px',
+  background: t.bgApp,
   color: t.textMuted,
+  boxShadow: `inset 0 0 0 1px ${t.border}`,
+});
+const confirmCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  padding: `${t.s2} ${t.s3}`,
+  borderRadius: t.rMd,
+  background: t.dangerSoft,
+  fontSize: t.textMd,
+});
+const chipsCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  '& button': {
+    height: '26px',
+    padding: '0 10px',
+    borderRadius: t.rFull,
+    border: `1px solid ${t.border}`,
+    background: t.bgSurface,
+    color: t.textMuted,
+    fontSize: t.textSm,
+    cursor: 'pointer',
+  },
+  '& button[aria-pressed="true"]': { borderColor: t.accent, background: t.accentSoft, color: t.text },
+  '& button:focus-visible': { boxShadow: t.focus, outline: 'none' },
+});
+const rowCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' });
+const formCss = css({ display: 'grid', gap: t.s4 });
+const usageCss = css({
+  '& td, & th': { whiteSpace: 'nowrap' },
+  '& td.num': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+  '& td.why': { whiteSpace: 'normal', color: t.textMuted, fontSize: t.textSm, minWidth: '200px' },
+  '& td .rec': { display: 'inline-flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
 });
 
-/** A skill from outside is offered, never applied: the human accepts or rejects each one, and chooses who gets it. */
-export function SkillCard(
+/** The logo of a skill or registry: its brand's mark, or a neutral square with an icon when the brand has none. */
+function SkillLogo(handle: Handle<{ brand: string; icon?: IconNode }>) {
+  return () => {
+    const { brand, icon = FileCode2 } = handle.props;
+    return brand && brandKey(brand) ? (
+      <BrandLogo id={brand} size={32} />
+    ) : (
+      <span mix={iconWrap} aria-hidden="true">
+        <Icon icon={icon} size={16} />
+      </span>
+    );
+  };
+}
+
+/** The selected project skill: its text, who gets it, the decision buttons and its deliveries. */
+export function SkillPanel(
   handle: Handle<{
     s: Skill;
     onAccept: () => void;
     onReject: () => void;
     onRelease: () => void;
+    /** The Library holds newer text for this skill; onUpdate adds it again from the Library. */
+    update?: boolean;
+    onUpdate?: () => void;
     /** The project's team, for who gets the skill. */
     agents?: readonly Agent[];
     /** Set who gets the skill; resolves true when it was saved. */
     onAudience?: (audience: 'team' | 'agents', agents: string[]) => Promise<boolean>;
+    deliveries?: readonly SkillDelivery[];
     busy: boolean;
   }>,
 ) {
   let editing = false;
+  let confirming = false;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
   return () => {
-    const { s, onAccept, onReject, onRelease, busy, agents = [], onAudience } = handle.props;
+    const { s, onAccept, onReject, onRelease, update, onUpdate, busy, agents = [], onAudience, deliveries = [] } = handle.props;
     const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
     const who = audienceText(onTeam(s, agents), nameOf);
+    const mine = deliveries.filter((d) => d.skill === s.name);
     return (
-      <article mix={skillCss} data-testid="skill" data-skill={s.name} data-status={s.status}>
+      <article mix={panelCss} data-testid="skill" data-skill={s.name} data-status={s.status} aria-label={s.name}>
         <header>
-          <span mix={iconWrap}>
-            <Icon icon={FileCode2} size={14} />
-          </span>
+          <SkillLogo brand={skillBrand(s.registryId, s.origin)} />
           <h3>{s.name}</h3>
-          <Badge tone={skillTone(s.status)}>{s.status}</Badge>
-          <Badge title="Where the skill came from">{s.origin}</Badge>
+          <Badge tone={skillTone(s.status)} testId="skill-status">
+            {s.status === 'accepted' ? 'accepted ✓' : s.status}
+          </Badge>
+          <Badge title="Where the skill came from">{s.origin === 'registry' && s.registryId ? s.registryId : s.origin}</Badge>
+          {update ? (
+            <Badge tone="warn" testId="skill-update">
+              update in the Library
+            </Badge>
+          ) : null}
           {(s.risk ?? 0) > 0 ? <Badge tone="warn">risk {s.risk}</Badge> : null}
           {s.hasScripts ? (
             <Badge tone="warn" title="The skill directory contains scripts. Scripts are never run by Drydock.">
@@ -116,6 +200,12 @@ export function SkillCard(
           <dd>{listOr(s.roles)}</dd>
           <dt>Paths</dt>
           <dd>{listOr(s.globs)}</dd>
+          {s.license ? (
+            <>
+              <dt>License</dt>
+              <dd>{s.license}</dd>
+            </>
+          ) : null}
           {s.pinnedCommit ? (
             <>
               <dt>Pinned commit</dt>
@@ -145,21 +235,26 @@ export function SkillCard(
         <div class="actions">
           {s.status === 'offered' ? (
             <>
-              <Button variant="primary" size="sm" icon={ShieldCheck} disabled={busy} mix={on('click', onAccept)}>
+              <Button variant="primary" size="sm" icon={ShieldCheck} disabled={busy} data-testid="skill-accept" mix={on('click', onAccept)}>
                 Accept {s.name}
               </Button>
-              <Button size="sm" disabled={busy} mix={on('click', onReject)}>
+              <Button size="sm" disabled={busy} data-testid="skill-reject" mix={on('click', onReject)}>
                 Reject {s.name}
               </Button>
             </>
           ) : null}
-          {s.status === 'accepted' ? (
-            <Button size="sm" disabled={busy} mix={on('click', onReject)}>
-              Withdraw (reject) {s.name}
+          {s.status === 'accepted' && update && onUpdate ? (
+            <Button variant="primary" size="sm" icon={RefreshCw} disabled={busy} data-testid="skill-update-from-library" mix={on('click', onUpdate)}>
+              Update from the Library
+            </Button>
+          ) : null}
+          {s.status === 'accepted' && !confirming ? (
+            <Button size="sm" disabled={busy} data-testid="skill-stop" mix={on('click', () => set(() => (confirming = true)))}>
+              Stop using {s.name}
             </Button>
           ) : null}
           {s.status === 'rejected' ? (
-            <Button size="sm" disabled={busy} mix={on('click', onAccept)}>
+            <Button size="sm" disabled={busy} data-testid="skill-accept" mix={on('click', onAccept)}>
               Accept {s.name}
             </Button>
           ) : null}
@@ -181,6 +276,25 @@ export function SkillCard(
             </Button>
           ) : null}
         </div>
+        {confirming ? (
+          <div mix={confirmCss} data-testid="skill-stop-confirm">
+            <span>Stop using {s.name}? Agents no longer get it from the next run on; you can accept it again later.</span>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={busy}
+              mix={on('click', () => {
+                set(() => (confirming = false));
+                onReject();
+              })}
+            >
+              Yes, stop using it
+            </Button>
+            <Button size="sm" mix={on('click', () => set(() => (confirming = false)))}>
+              Keep
+            </Button>
+          </div>
+        ) : null}
         {onAudience && editing ? (
           <AudienceEditor
             skill={onTeam(s, agents)}
@@ -192,69 +306,309 @@ export function SkillCard(
             }}
           />
         ) : null}
+        <p class="note" data-testid="skill-deliveries">
+          {mine.length === 0
+            ? 'Not delivered to an agent yet.'
+            : `Delivered ${mine.length} time${mine.length === 1 ? '' : 's'}, last ${formatDateTime(mine[0]!.ts)} (${mine[0]!.method}, ${mine[0]!.fidelity}).`}
+        </p>
       </article>
     );
   };
 }
 
-const regList = css({
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  background: t.bgSurface,
-  overflow: 'hidden',
-  '& > li': {
-    display: 'grid',
-    gap: t.s2,
-    padding: `${t.s3} ${t.s4}`,
-    borderTop: `1px solid ${t.border}`,
-    minWidth: '0',
-  },
-  '& > li:first-child': { borderTop: '0' },
-  '& .head': {
-    display: 'flex',
-    alignItems: 'center',
-    gap: t.s2,
-    flexWrap: 'wrap',
-  },
-  '& .meta': { color: t.textMuted, fontSize: t.textSm },
-  '& .actions': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
-  '& .result': { fontSize: t.textMd },
-  '& .reasons': { margin: '0', padding: '0', listStyle: 'none', color: t.textMuted, fontSize: t.textSm, display: 'grid', gap: '2px' },
-  '& .status': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', fontSize: t.textSm },
-});
-const candList = css({
-  display: 'grid',
-  gap: t.s2,
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  '& li': {
-    display: 'flex',
-    alignItems: 'center',
-    gap: t.s3,
-    flexWrap: 'wrap',
-    padding: `${t.s2} ${t.s3}`,
-    border: `1px solid ${t.border}`,
-    borderRadius: t.rMd,
-    background: t.bgApp,
-  },
-  '& .what': { flex: '1', minWidth: '200px', display: 'grid', gap: '2px' },
-  '& .what span': { color: t.textMuted, fontSize: t.textSm },
-});
-const formCss = css({ display: 'grid', gap: t.s4 });
+/** The Library's skills not yet in this project, grouped by registry; Add to project is the acceptance (decision P48). */
+function AddFromLibrary(
+  handle: Handle<{
+    projectId: string;
+    projectName: string;
+    skills: readonly Skill[];
+    /** Bumped by the page when a registry was synced from elsewhere on it: the Library is re-read. */
+    epoch?: number;
+    onAdded: (name: string) => void;
+  }>,
+) {
+  const s = services(handle);
+  const lib = query(handle, {
+    load: () => s.client.skillLibraryList(),
+    key: () => handle.props.epoch ?? 0,
+    when: (e) => e.type === 'skill.library_synced' || e.type === 'skill.registry_updates',
+  });
+  const act = action(handle);
+  let registry = '';
+  let selected = '';
+  let added: { name: string; project: string } | undefined;
+  let result: { repo: string; r: SkillLibraryAddAll } | undefined;
+  const set = (f: () => void) => {
+    f();
+    void handle.update();
+  };
+  const add = async (l: LibrarySkill) => {
+    const { projectId, projectName, onAdded } = handle.props;
+    const r = await act.run('add', () => s.client.skillLibraryAdd(projectId, l.registryId, l.name));
+    if (r) {
+      set(() => {
+        added = { name: l.name, project: projectName };
+        result = undefined;
+        selected = '';
+      });
+      onAdded(r.name);
+    }
+  };
+  const addAll = async (registryId: string, repo: string) => {
+    const r = await act.run('addAll', () => s.client.skillLibraryAddAll(handle.props.projectId, registryId));
+    if (r) {
+      set(() => {
+        result = { repo, r };
+        added = undefined;
+        selected = '';
+      });
+      lib.reload();
+      handle.props.onAdded('');
+    }
+  };
+  const sync = async () => {
+    await act.run('sync', () => s.client.skillRegistryCheck());
+    lib.reload();
+  };
+  return () => {
+    const { skills } = handle.props;
+    const all = notInProject(lib.data ?? [], skills);
+    const groups = libraryGroups(all);
+    const chosen = groups.some((g) => g.registryId === registry) ? registry : '';
+    const shown = chosen ? all.filter((l) => l.registryId === chosen) : all;
+    const open = shown.find((l) => l.name === selected && l.registryId === (chosen || l.registryId));
+    const library = lib.data ?? [];
+    return (
+      <Section
+        label="Add from the Library"
+        title="Add from the Library"
+        description="The Library holds every skill of your registries; Drydock fills it by itself. Adding a skill to this project is your acceptance: it reaches the agents at once."
+      >
+        <ErrorNote error={lib.error ?? act.error} what="Library" />
+        {added ? (
+          <Notice tone="ok" role="status" testId="skill-added">
+            {addedText(added.name, added.project)}
+          </Notice>
+        ) : null}
+        {result ? (
+          <Notice tone={result.r.blocked.length + result.r.skipped.length > 0 ? 'warn' : 'ok'} role="status" testId="skill-added-all" title={`From ${result.repo}:`}>
+            {addAllText(result.r)}
+            {result.r.blocked.length + result.r.skipped.length > 0 ? (
+              <ul aria-label={`Skills not added from ${result.repo}`} style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
+                {result.r.blocked.map((b) => (
+                  <li key={`b-${b.name}`}>
+                    <code>{b.name}</code> blocked: {b.reason}
+                  </li>
+                ))}
+                {result.r.skipped.map((k) => (
+                  <li key={`s-${k.name}`}>
+                    <code>{k.name}</code> skipped: {k.reason}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Notice>
+        ) : null}
+        {lib.loading && !lib.data ? <Loading /> : null}
+        {lib.data && library.length === 0 ? (
+          <p mix={emptyLine} data-testid="library-empty">
+            <Icon icon={BookOpen} size={14} />
+            <strong>The Library is filling from your registries...</strong> It syncs at start and twice a day.
+            <Button size="sm" icon={RefreshCw} disabled={act.busy !== ''} mix={on('click', () => void sync())}>
+              {act.busy === 'sync' ? 'Syncing...' : 'Sync now'}
+            </Button>
+          </p>
+        ) : null}
+        {lib.data && library.length > 0 && all.length === 0 ? (
+          <p mix={emptyLine} data-testid="library-all-added">
+            <Icon icon={ShieldCheck} size={14} />
+            <strong>Everything in the Library is in this project.</strong> {library.length} skill{library.length === 1 ? '' : 's'}.
+          </p>
+        ) : null}
+        {all.length > 0 ? (
+          <>
+            <div mix={rowCss}>
+              <div mix={chipsCss} role="group" aria-label="Registry">
+                <button type="button" aria-pressed={chosen === '' ? 'true' : 'false'} mix={on('click', () => set(() => (registry = '')))}>
+                  All ({all.length})
+                </button>
+                {groups.map((g) => (
+                  <button key={g.registryId} type="button" aria-pressed={chosen === g.registryId ? 'true' : 'false'} data-registry={g.registryId} mix={on('click', () => set(() => (registry = g.registryId)))}>
+                    {g.repo} ({g.count})
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ul mix={tileGrid} aria-label="Skills in the Library">
+              {shown.map((l) => {
+                const st = libraryStateText(l);
+                return (
+                  <Tile
+                    key={`${l.registryId}/${l.name}`}
+                    title={l.name}
+                    logo={skillBrand(l.registryId, 'registry') || undefined}
+                    icon={Sparkles}
+                    blurb={libraryBlurb(l)}
+                    state={st.text}
+                    tone={st.tone}
+                    selected={open?.id === l.id}
+                    onSelect={() => set(() => (selected = selected === l.name && open?.id === l.id ? '' : l.name))}
+                    testId="library-skill-tile"
+                    data={{ name: l.name, registry: l.registryId, status: l.status }}
+                  />
+                );
+              })}
+            </ul>
+            {open ? (
+              <article mix={panelCss} data-testid="library-skill" data-name={open.name} data-status={open.status} aria-label={open.name}>
+                <header>
+                  <SkillLogo brand={skillBrand(open.registryId, 'registry')} icon={Sparkles} />
+                  <h3>{open.name}</h3>
+                  <Badge>{open.repo}</Badge>
+                  {open.license ? <Badge title="License">{open.license}</Badge> : null}
+                  {open.status === 'blocked' ? <Badge tone="err">blocked</Badge> : null}
+                  {open.risk > 0 ? <Badge tone="warn">risk {open.risk}</Badge> : null}
+                  {open.hasScripts ? (
+                    <Badge tone="warn" title="The skill directory contains scripts. Scripts are never run by Drydock.">
+                      has scripts
+                    </Badge>
+                  ) : null}
+                  {open.gone ? <Badge tone="warn">no longer upstream</Badge> : null}
+                </header>
+                {open.description ? <p class="desc">{open.description}</p> : null}
+                <dl mix={kv}>
+                  <dt>Roles it names</dt>
+                  <dd>{listOr(open.roles)}</dd>
+                  <dt>Paths</dt>
+                  <dd>{listOr(open.globs)}</dd>
+                  <dt>Pinned commit</dt>
+                  <dd>
+                    <code>{open.pinnedCommit.slice(0, 12)}</code>
+                  </dd>
+                </dl>
+                {(open.flags ?? []).length > 0 ? <Notice tone="warn">Flags: {(open.flags ?? []).join(', ')}</Notice> : null}
+                {open.status === 'blocked' ? (
+                  <ErrorNote error={`Blocked: ${open.blockReason || 'the core did not say why'}. A blocked skill cannot be added.`} />
+                ) : (
+                  <div class="actions">
+                    <Button variant="primary" size="sm" icon={Plus} disabled={act.busy !== ''} data-testid="library-add" mix={on('click', () => void add(open))}>
+                      {act.busy === 'add' ? 'Adding...' : 'Add to project'}
+                    </Button>
+                  </div>
+                )}
+              </article>
+            ) : null}
+            <div mix={rowCss}>
+              {(chosen ? groups.filter((g) => g.registryId === chosen) : groups).map((g) => (
+                <Button
+                  key={g.registryId}
+                  size="sm"
+                  icon={Plus}
+                  disabled={act.busy !== ''}
+                  data-testid="library-add-all"
+                  data-registry={g.registryId}
+                  mix={on('click', () => void addAll(g.registryId, g.repo))}
+                >
+                  Add all from {g.repo}
+                </Button>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </Section>
+    );
+  };
+}
 
-/** The registry allowlist: skills are imported only from GitHub repositories allowed here, pinned to a commit. */
-function Registries(handle: Handle<{ projectId: string; onImported: () => void }>) {
+/** Which skills earn their tokens: loads, listings, on-demand reads, tasks, tokens, and the core's recommendation (decision P49). */
+function Usage(handle: Handle<{ projectId: string; onChanged: () => void }>) {
+  const s = services(handle);
+  const q = query(handle, {
+    load: () => s.client.skillUsage(handle.props.projectId),
+    key: () => handle.props.projectId,
+    when: (e) => e.type.startsWith('skill.') || e.type === 'task.completed',
+  });
+  const act = action(handle);
+  const stop = async (name: string) => {
+    const r = await act.run('stop', () => s.client.skillReject(handle.props.projectId, name));
+    if (r) {
+      q.reload();
+      handle.props.onChanged();
+    }
+  };
+  return () => {
+    const rows = sortUsage(q.data ?? []);
+    return (
+      <Section
+        label="Skill usage"
+        title="Usage"
+        description="What each skill cost and whether it was read. Loaded: its full text went into a run. Listed: it was only named for on-demand reading. Opened: an agent read it on demand. The recommendation is Drydock's; nothing changes until you act on it."
+      >
+        <ErrorNote error={q.error ?? act.error} what="Usage" />
+        {q.loading && !q.data ? <Loading /> : null}
+        {q.data && rows.length === 0 ? <p mix={muted}>No skill has been used in a run yet.</p> : null}
+        {rows.length > 0 ? (
+          <div mix={[tableCard, usageCss]}>
+            <table aria-label="Skill usage">
+              <thead>
+                <tr>
+                  <th scope="col">Skill</th>
+                  <th scope="col">Loaded</th>
+                  <th scope="col">Listed</th>
+                  <th scope="col">Opened</th>
+                  <th scope="col">Tasks</th>
+                  <th scope="col">Tokens</th>
+                  <th scope="col">Last used</th>
+                  <th scope="col">Recommendation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((u) => {
+                  const rec = recommendationBadge(u.recommendation);
+                  return (
+                    <tr key={u.name} data-testid="skill-usage-row" data-skill={u.name} data-recommendation={u.recommendation}>
+                      <td>
+                        <code>{u.name}</code>
+                      </td>
+                      <td class="num">{formatCount(u.loaded)}</td>
+                      <td class="num">{formatCount(u.listed)}</td>
+                      <td class="num">{formatCount(u.opened)}</td>
+                      <td class="num">{formatCount(u.tasks)}</td>
+                      <td class="num" title={`${formatCount(u.tokensLoaded)} loaded + ${formatCount(u.tokensListed)} listed`} data-testid="skill-usage-tokens">
+                        {formatCount(usageTokens(u))}
+                      </td>
+                      <td>{u.lastUsed ? formatDateTime(u.lastUsed) : 'never'}</td>
+                      <td class="why">
+                        <span class="rec">
+                          <Badge tone={rec.tone} testId="skill-recommendation">
+                            {rec.text}
+                          </Badge>
+                          {u.reason ? <span>{u.reason}</span> : null}
+                          {u.recommendation === 'remove' && u.status !== 'rejected' ? (
+                            <Button size="sm" variant="danger" disabled={act.busy !== ''} mix={on('click', () => void stop(u.name))}>
+                              Stop using {u.name}
+                            </Button>
+                          ) : null}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </Section>
+    );
+  };
+}
+
+/** The registry allowlist: the Library fills from these GitHub repositories, pinned to a commit, at start and twice a day. */
+function Registries(handle: Handle<{ projectId: string; statuses: readonly SkillRegistryStatus[]; statusError: Error | undefined; onSynced: () => void }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.skillRegistries() });
-  // The twice-daily check, re-read when the core finds something new.
-  const st = query(handle, { load: () => s.client.skillRegistryStatus(), when: (e) => e.type === 'skill.registry_updates' });
   const act = action(handle);
-  let cands: Record<string, SkillCandidate[]> = {};
-  let results: Record<string, SkillImportAll> = {};
+  let selected = '';
   let adding = false;
   let repo = '';
   let rid = '';
@@ -278,39 +632,27 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
     );
     if (r) {
       adding = false;
+      selected = r.id;
       q.reload();
       void handle.update();
     }
   };
-  const imported = () => {
-    handle.props.onImported();
-    st.reload();
-  };
-  const importOne = async (registryId: string, name: string) => {
-    const r = await act.run('import', () => s.client.skillImport(handle.props.projectId, registryId, name));
-    if (r) imported();
-  };
-  const importAll = async (registryId: string) => {
-    const r = await act.run('importAll', () => s.client.skillImportAll(handle.props.projectId, registryId));
-    if (r) {
-      results = { ...results, [registryId]: r };
-      imported();
-      void handle.update();
-    }
-  };
-  const check = async (registryId: string) => {
-    await act.run('check', () => s.client.skillRegistryCheck(registryId));
-    st.reload();
+  const sync = async (registryId: string) => {
+    await act.run('sync', () => s.client.skillRegistryCheck(registryId));
+    handle.props.onSynced();
   };
   return () => {
     const regs: SkillRegistry[] = q.data ?? [];
-    const statuses: SkillRegistryStatus[] = st.data ?? [];
-    const { projectId } = handle.props;
+    const { statuses, statusError, projectId } = handle.props;
+    const open = regs.find((r) => r.id === selected);
+    const openStatus = open ? statuses.find((x) => x.registryId === open.id) : undefined;
+    const changes = syncChanges(openStatus);
+    const updates = open ? (openStatus?.projects?.[projectId]?.updates ?? []) : [];
     return (
       <Section
         label="Skill registries"
-        title="Registries (allowlist)"
-        description="Skills are imported only from GitHub repositories you have allowed here, pinned to a commit. Import them all or one at a time; every imported skill is offered until you accept it. Drydock checks each registry you import from twice a day and tells you about new or changed skills."
+        title="Registries"
+        description="The Library fills from the GitHub repositories allowed here, pinned to a commit, at start and twice a day. Nothing reaches a project until you add it."
         actions={
           adding ? undefined : (
             <Button size="sm" icon={Plus} mix={on('click', () => set(() => (adding = true)))}>
@@ -319,155 +661,119 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
           )
         }
       >
-        <ErrorNote error={q.error ?? st.error ?? act.error} />
+        <ErrorNote error={q.error ?? statusError ?? act.error} />
         {regs.length > 0 ? (
-          <ul mix={regList}>
+          <ul mix={tileGrid} aria-label="Skill registries">
             {regs.map((r) => {
               const status = statuses.find((x) => x.registryId === r.id);
-              const { additions, updates } = registryChanges(status, projectId);
-              const result = results[r.id];
+              const st = registryStatusText(status, r.enabled);
               return (
-                <li key={r.id} data-testid="registry">
-                  <div class="head">
-                    <Icon icon={GitBranch} size={14} />
-                    <code>{r.repo}</code>
-                    {r.root ? <span mix={muted}>/{r.root}</span> : null}
-                    <Badge tone={r.enabled ? 'ok' : 'muted'}>{r.enabled ? 'enabled' : 'disabled'}</Badge>
-                    {r.curated ? <Badge>curated</Badge> : <Badge tone="warn">added by you</Badge>}
-                  </div>
-                  <div class="meta">
-                    trust {r.trust}
-                    {r.license ? `, license ${r.license}` : ''}
-                  </div>
-                  <div class="actions">
-                    <Button
-                      size="sm"
-                      mix={on('click', async () => {
-                        await act.run('enable', () => s.client.skillRegistryEnable(r.id, !r.enabled));
-                        q.reload();
-                      })}
-                    >
-                      {r.enabled ? 'Disable' : 'Enable'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={!r.enabled}
-                      mix={on('click', async () => {
-                        const c = await act.run('candidates', () => s.client.skillCandidates(r.id));
-                        if (c) set(() => (cands = { ...cands, [r.id]: c.skills }));
-                      })}
-                    >
-                      List skills to import
-                    </Button>
-                    <Button size="sm" disabled={!r.enabled || act.busy !== ''} data-testid="registry-import-all" mix={on('click', () => void importAll(r.id))}>
-                      Import all (they will be offered)
-                    </Button>
-                    <Button
-                      size="sm"
-                      icon={RefreshCw}
-                      disabled={!r.enabled || act.busy !== ''}
-                      data-testid="registry-check-now"
-                      title="Check the repository for new or changed skills now instead of waiting for the next scheduled check"
-                      mix={on('click', () => void check(r.id))}
-                    >
-                      Check now
-                    </Button>
-                    {!r.curated ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        mix={on('click', async () => {
-                          await act.run('remove', () => s.client.skillRegistryRemove(r.id));
-                          q.reload();
-                        })}
-                      >
-                        Remove
-                      </Button>
-                    ) : null}
-                  </div>
-                  {(cands[r.id] ?? []).length > 0 ? (
-                    <ul mix={candList} aria-label={`Skills in ${r.repo}`}>
-                      {(cands[r.id] ?? []).map((c) => (
-                        <li key={c.name} data-testid="skill-candidate">
-                          <div class="what">
-                            <strong>
-                              {c.name} {c.valid ? null : <Badge tone="err">invalid</Badge>} {c.hasScripts ? <Badge tone="warn">has scripts</Badge> : null}
-                            </strong>
-                            <span>{c.description || c.problem}</span>
-                          </div>
-                          <Button size="sm" disabled={!c.valid || act.busy !== ''} mix={on('click', () => void importOne(r.id, c.name))}>
-                            Import {c.name} (it will be offered)
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {result ? (
-                    <>
-                      <p class="result" role="status" data-testid="registry-import-result">
-                        {importAllText(result)}
-                      </p>
-                      {result.blocked.length + result.skipped.length > 0 ? (
-                        <ul class="reasons" aria-label={`Skills not imported from ${r.repo}`}>
-                          {result.blocked.map((b) => (
-                            <li key={`b-${b.name}`}>
-                              <code>{b.name}</code> blocked: {b.reason}
-                            </li>
-                          ))}
-                          {result.skipped.map((k) => (
-                            <li key={`s-${k.name}`}>
-                              <code>{k.name}</code> skipped: {k.reason}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </>
-                  ) : null}
-                  <div class="status meta" data-testid="registry-status">
-                    {registryStatusText(status, projectId)}
-                  </div>
-                  {status?.lastError ? <ErrorNote error={`Last check failed: ${status.lastError}`} /> : null}
-                  {additions.length + updates.length > 0 ? (
-                    <ul mix={candList} aria-label={`New and changed skills in ${r.repo}`}>
-                      {additions.map((c) => (
-                        <li key={`a-${c.name}`} data-testid="registry-addition">
-                          <div class="what">
-                            <strong>
-                              {c.name} <Badge tone="ok">new</Badge>
-                            </strong>
-                            <span>{c.description}</span>
-                          </div>
-                          <Button size="sm" disabled={!r.enabled || act.busy !== ''} mix={on('click', () => void importOne(r.id, c.name))}>
-                            Import
-                          </Button>
-                        </li>
-                      ))}
-                      {updates.map((c) => (
-                        <li key={`u-${c.name}`} data-testid="registry-update">
-                          <div class="what">
-                            <strong>
-                              {c.name} <Badge tone="warn">changed upstream</Badge>
-                            </strong>
-                            {c.description ? <span>{c.description}</span> : null}
-                          </div>
-                          <Button size="sm" disabled={!r.enabled || act.busy !== ''} mix={on('click', () => void importOne(r.id, c.name))}>
-                            Import update
-                          </Button>
-                        </li>
-                      ))}
-                      <li>
-                        <Button size="sm" variant="primary" disabled={!r.enabled || act.busy !== ''} mix={on('click', () => void importAll(r.id))}>
-                          Import all new and changed
-                        </Button>
-                      </li>
-                    </ul>
-                  ) : null}
-                </li>
+                <Tile
+                  key={r.id}
+                  title={r.repo}
+                  logo={skillBrand(r.id, 'registry') || undefined}
+                  icon={GitBranch}
+                  blurb={`${r.curated ? 'Curated' : 'Added by you'} · trust ${r.trust}${r.license ? ` · ${r.license}` : ''}`}
+                  state={st.text}
+                  tone={st.tone}
+                  selected={selected === r.id}
+                  onSelect={() => set(() => (selected = selected === r.id ? '' : r.id))}
+                  testId="registry-tile"
+                  data={{ registry: r.id, enabled: String(r.enabled) }}
+                />
               );
             })}
           </ul>
         ) : q.data ? (
           <p mix={muted}>No repository is allowed yet.</p>
+        ) : null}
+        {open ? (
+          <article mix={panelCss} data-testid="registry" data-registry={open.id} aria-label={open.repo}>
+            <header>
+              <SkillLogo brand={skillBrand(open.id, 'registry')} icon={GitBranch} />
+              <h3>{open.repo}</h3>
+              {open.root ? <span mix={muted}>/{open.root}</span> : null}
+              <Badge tone={open.enabled ? 'ok' : 'muted'}>{open.enabled ? 'enabled' : 'disabled'}</Badge>
+              {open.curated ? <Badge>curated</Badge> : <Badge tone="warn">added by you</Badge>}
+              <Badge title="Trust level">trust {open.trust}</Badge>
+              {open.license ? <Badge title="License">{open.license}</Badge> : null}
+            </header>
+            {open.notes ? <p class="note">{open.notes}</p> : null}
+            <p class="note" data-testid="registry-status">
+              {registryStatusText(openStatus, open.enabled).text}
+              {openStatus?.lastCommit ? (
+                <>
+                  {' · at '}
+                  <code>{openStatus.lastCommit.slice(0, 12)}</code>
+                </>
+              ) : null}
+            </p>
+            {openStatus?.lastError ? <ErrorNote error={`Last sync failed: ${openStatus.lastError}`} /> : null}
+            {changes.added.length > 0 ? (
+              <>
+                <p class="note">New in the Library after the last sync:</p>
+                <ul class="changes" aria-label={`Skills the last sync added from ${open.repo}`}>
+                  {changes.added.map((c) => (
+                    <li key={`a-${c.name}`} data-testid="registry-added">
+                      <code>{c.name}</code> <Badge tone="ok">new</Badge> {c.description ? <span>{c.description}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {changes.changed.length > 0 ? (
+              <>
+                <p class="note">Changed in the Library after the last sync:</p>
+                <ul class="changes" aria-label={`Skills the last sync changed from ${open.repo}`}>
+                  {changes.changed.map((c) => (
+                    <li key={`c-${c.name}`} data-testid="registry-changed">
+                      <code>{c.name}</code> <Badge tone="warn">changed</Badge> {c.description ? <span>{c.description}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {updates.length > 0 ? (
+              <p class="note" data-testid="registry-project-updates">
+                This project is behind the Library on {updates.map((u) => u.name).join(', ')}: open each skill above and press Update from the Library.
+              </p>
+            ) : null}
+            {changes.added.length + changes.changed.length === 0 && openStatus?.checkedAt && !openStatus.lastError ? <p class="note">The last sync found nothing new or changed.</p> : null}
+            <div class="actions">
+              <Button
+                size="sm"
+                icon={RefreshCw}
+                disabled={!open.enabled || act.busy !== ''}
+                data-testid="registry-check-now"
+                title="Sync the Library from this repository now instead of waiting for the next scheduled sync"
+                mix={on('click', () => void sync(open.id))}
+              >
+                {act.busy === 'sync' ? 'Syncing...' : 'Sync now'}
+              </Button>
+              <Button
+                size="sm"
+                mix={on('click', async () => {
+                  await act.run('enable', () => s.client.skillRegistryEnable(open.id, !open.enabled));
+                  q.reload();
+                })}
+              >
+                {open.enabled ? 'Disable' : 'Enable'}
+              </Button>
+              {!open.curated ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  mix={on('click', async () => {
+                    await act.run('remove', () => s.client.skillRegistryRemove(open.id));
+                    set(() => (selected = ''));
+                    q.reload();
+                  })}
+                >
+                  Remove
+                </Button>
+              ) : null}
+            </div>
+          </article>
         ) : null}
         {adding ? (
           <form
@@ -490,7 +796,7 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
               </Field>
             </div>
             <Checkbox
-              label="I understand skills from this repository are third-party text that agents will read if I accept them"
+              label="I understand skills from this repository are third-party text that agents will read if I add them to a project"
               checked={ack}
               onChange={(v) => set(() => (ack = v))}
             />
@@ -531,13 +837,28 @@ export function SkillsScreen(handle: Handle) {
     when: (e) => e.type.startsWith('skill.'),
     ...on_,
   });
+  // The Library's view of each registry: what the last sync brought, and which project skills are behind the Library.
+  const st = query(handle, { load: () => s.client.skillRegistryStatus(), when: (e) => e.type === 'skill.library_synced' || e.type === 'skill.registry_updates' });
   let scan: SkillScan | undefined;
+  let selected = '';
+  let synced = 0;
+  const set = (f: () => void) => {
+    f();
+    void handle.update();
+  };
 
   const decide = (fn: (p: string, n: string) => Promise<Skill>, name: string) => async () => {
     const projectId = pid();
     if (!projectId) return;
     await act.run(name, () => fn(projectId, name));
     q.reload();
+  };
+  const update = (sk: Skill) => async () => {
+    const projectId = pid();
+    if (!projectId || !sk.registryId) return;
+    await act.run('update', () => s.client.skillLibraryAdd(projectId, sk.registryId!, sk.name));
+    q.reload();
+    st.reload();
   };
   const runScan = async () => {
     const projectId = pid();
@@ -552,7 +873,10 @@ export function SkillsScreen(handle: Handle) {
     const skills: Skill[] = q.data ?? [];
     const offered = skills.filter((x) => x.status === 'offered').length;
     const projectId = pid();
+    const projectName = s.workspace.projectList.find((p) => p.id === projectId)?.name ?? projectId ?? '';
     const deliveries = del.data ?? [];
+    const updates = projectId ? registryUpdates(st.data, projectId) : new Set<string>();
+    const open = skills.find((x) => x.name === selected);
     return (
       <Page
         title="Skills"
@@ -565,8 +889,9 @@ export function SkillsScreen(handle: Handle) {
         }
       >
         <p mix={muted}>
-          Skills are instructions agents read. Skills found in the repository or imported from a registry are offered to you; nothing is applied until you
-          accept it. Accepted skills are delivered to agents as path-scoped rule files that stay out of the diff.
+          Skills are instructions agents read. The Library holds every skill of your registries; you choose here which ones this project uses, and adding one is
+          your acceptance. Skills found in the repository are offered until you accept them. Accepted skills reach agents as path-scoped rule files that stay
+          out of the diff.
         </p>
         <ErrorNote error={q.error ?? act.error} what="Skills" />
         {scan ? (
@@ -574,37 +899,86 @@ export function SkillsScreen(handle: Handle) {
             {scanText(scan)}
           </Notice>
         ) : null}
-        {q.loading && !q.data ? <Loading /> : null}
-        {q.data && skills.length === 0 ? (
-          <div mix={card}>
-            <Empty title="No skills yet." icon={Cpu}>
-              <p>Scan the repository, or import one from a registry.</p>
-            </Empty>
-          </div>
+        <Section label="Skills in this project" title="In this project" description={q.data && skills.length > 0 ? 'Click a skill to read it, see who gets it, or stop using it.' : undefined}>
+          {q.loading && !q.data ? <Loading /> : null}
+          {q.data && skills.length === 0 ? (
+            <div mix={card}>
+              <Empty title="No skills in this project yet." icon={Cpu}>
+                <p>Add one from the Library below, or scan the repository for its own skills.</p>
+              </Empty>
+            </div>
+          ) : null}
+          {skills.length > 0 ? (
+            <ul mix={tileGrid} aria-label="Skills in this project">
+              {skills.map((sk) => {
+                const state = skillStateText(sk, updates.has(sk.name));
+                return (
+                  <Tile
+                    key={sk.id}
+                    title={sk.name}
+                    logo={skillBrand(sk.registryId, sk.origin) || undefined}
+                    icon={FileCode2}
+                    blurb={sk.description || (sk.origin === 'registry' ? sk.registryId : 'From this repository')}
+                    state={state.text}
+                    tone={state.tone}
+                    selected={selected === sk.name}
+                    onSelect={() => set(() => (selected = selected === sk.name ? '' : sk.name))}
+                    testId="skill-tile"
+                    data={{ name: sk.name, status: sk.status, check: String(sk.status === 'accepted'), update: String(updates.has(sk.name)) }}
+                  />
+                );
+              })}
+            </ul>
+          ) : null}
+          {open ? (
+            <SkillPanel
+              key={open.id}
+              s={open}
+              busy={act.busy !== ''}
+              update={updates.has(open.name)}
+              onUpdate={update(open)}
+              onAccept={decide(s.client.skillAccept, open.name)}
+              onReject={decide(s.client.skillReject, open.name)}
+              onRelease={decide(s.client.skillRelease, open.name)}
+              agents={s.project.agentList}
+              deliveries={deliveries}
+              onAudience={async (audience, agents) => {
+                const projectId = pid();
+                if (!projectId) return false;
+                const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, open.name, audience, agents)));
+                q.reload();
+                return ok;
+              }}
+            />
+          ) : null}
+        </Section>
+        {projectId ? (
+          <AddFromLibrary
+            key={`lib-${projectId}`}
+            projectId={projectId}
+            projectName={projectName}
+            skills={skills}
+            epoch={synced}
+            onAdded={(name) => {
+              if (name) set(() => (selected = name));
+              q.reload();
+              st.reload();
+            }}
+          />
         ) : null}
-        {skills.length > 0 ? (
-          <div mix={gridCss}>
-            {skills.map((sk) => (
-              <SkillCard
-                key={sk.id}
-                s={sk}
-                busy={act.busy !== ''}
-                onAccept={decide(s.client.skillAccept, sk.name)}
-                onReject={decide(s.client.skillReject, sk.name)}
-                onRelease={decide(s.client.skillRelease, sk.name)}
-                agents={s.project.agentList}
-                onAudience={async (audience, agents) => {
-                  const projectId = pid();
-                  if (!projectId) return false;
-                  const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, sk.name, audience, agents)));
-                  q.reload();
-                  return ok;
-                }}
-              />
-            ))}
-          </div>
+        {projectId ? <Usage key={`usage-${projectId}`} projectId={projectId} onChanged={() => q.reload()} /> : null}
+        {projectId ? (
+          <Registries
+            key={`reg-${projectId}`}
+            projectId={projectId}
+            statuses={st.data ?? []}
+            statusError={st.error}
+            onSynced={() => {
+              st.reload();
+              set(() => synced++);
+            }}
+          />
         ) : null}
-        {projectId ? <Registries key={projectId} projectId={projectId} onImported={() => q.reload()} /> : null}
         <Section title="Deliveries" description={<span data-testid="skill-coverage">{coverageText(cov.data)}</span>}>
           {deliveries.length === 0 ? (
             <p mix={muted}>No skill has been delivered to an agent yet.</p>

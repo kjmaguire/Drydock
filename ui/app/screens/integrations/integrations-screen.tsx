@@ -1,16 +1,21 @@
-// Integrations: Drydock's own connections to Linear, Notion, Sentry, Aikido and GitHub (decision P42). A service is connected
-// once, for the whole workspace; assigning it to a project is a separate step that says which part of the service that
-// project imports. Each service's name and logo are fixed: clicking Linear opens Linear. What a connection reaches (account,
-// workspace, scopes) is read from the service's API, never typed. Everything a service returns is outside text: redacted,
-// scored for injection risk, shown inert and quoted as data when imported; writing back needs the human's approval of the
-// exact text, and rules that create tasks start disabled and in dry-run. Giving agents these services' tools is the MCP
-// screen's business; this page links there.
+// Integrations (decisions P42, P43 and P47): one page for everything Drydock connects to outside itself, a tile per vendor.
+// A vendor's tile opens its panel with up to three sections. App sync is Drydock's own connection to Linear, Notion, Sentry,
+// Aikido or GitHub (P42): connected once for the whole workspace, assigned to projects in a separate step that says which part
+// of the service each project imports; the name and logo are fixed, what a connection reaches (account, workspace, scopes) is
+// read from the service's API, never typed, and everything a service returns is outside text: redacted, scored for injection
+// risk, shown inert and quoted as data when imported; writing back needs the human's approval of the exact text, and rules that
+// create tasks start disabled and in dry-run. Agent tools (MCP) are the vendor's connector cards (P43, screens/mcp/gallery.tsx):
+// connected once, put into projects and granted per agent. Skills from this vendor imports the vendor's skill registries into
+// the current project. Below the tiles: your own MCP servers and, with a project, the calls waiting for approval, the project's
+// servers and Add from the library (screens/mcp/mcp-screen.tsx). /mcp is an alias of this page.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import {
   BadgeCheck,
   Blocks,
   Check,
+  CirclePlus,
+  Cpu,
   ExternalLink,
   FileText,
   FolderPlus,
@@ -27,6 +32,7 @@ import {
   Trash2,
   Unplug,
   Workflow,
+  Wrench,
   X,
 } from 'lucide';
 import type {
@@ -42,8 +48,11 @@ import type {
   IntegrationView,
   NotionPageText,
   Outbox,
+  SkillLibraryAddAll,
+  SkillRegistry,
 } from '../../api/extTypes.ts';
-import type { Project } from '../../api/types.ts';
+import type { McpGalleryCard } from '../../api/mcpClient.ts';
+import type { Agent, Project } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
@@ -55,10 +64,13 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
-import { card, Page, stack } from '../../ui/layout.tsx';
+import { card, Page, Section, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { identityLine, KINDS, kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, statusTone, syncText, syncTone, tileState, type ServiceKind } from './integrations.ts';
+import { ConnectorCard, connectorGrid, OwnServers } from '../mcp/gallery.tsx';
+import { AddFromLibrary, Approvals, ServerCard } from '../mcp/mcp-screen.tsx';
+import { addAllText } from '../skills/skills.ts';
+import { KINDS, kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, statusTone, syncText, syncTone, tileState, vendors, vendorStateText, vendorTone, type ServiceKind, type Vendor } from './integrations.ts';
 
 type OpenTask = (href: string) => void;
 const defaultOpen: OpenTask = (href) => void navigate(href);
@@ -141,6 +153,16 @@ const methodTile = css({
 });
 const identityGrid = css({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
 const codeCss = css({ fontFamily: t.mono, fontSize: t.textLg, fontWeight: '600', letterSpacing: '0.08em' });
+const panelStack = css({ display: 'grid', gap: t.s5, minWidth: '0' });
+const regList = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  '& > li': { display: 'grid', gap: t.s2, padding: t.s3, border: `1px solid ${t.border}`, borderRadius: t.rMd, background: t.bgSurface },
+  '& p': { margin: '0' },
+});
 
 /** The injection-risk score the core computed for outside text, with the reasons. 0 is low; 3 and above are never turned into tasks by a rule. */
 export function RiskBadge(handle: Handle<{ risk: number; flags: string[] | null }>) {
@@ -515,26 +537,6 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
           </div>
         </div>
       </section>
-    );
-  };
-}
-
-/** One service on the overview: its fixed logo and name, and whether it is connected. */
-function ServiceTile(handle: Handle<{ kind: ServiceKind; conn?: IntegrationView; selected: boolean; onSelect: () => void }>) {
-  return () => {
-    const { kind, conn, selected, onSelect } = handle.props;
-    const assigned = conn?.assignments?.length ?? 0;
-    return (
-      <Tile
-        title={kind.label}
-        logo={kind.kind}
-        blurb={conn ? identityLine(conn) : kind.blurb}
-        state={conn ? (assigned === 0 ? 'Not assigned to a project' : assigned === 1 ? 'Assigned to 1 project' : `Assigned to ${assigned} projects`) : 'Not connected'}
-        selected={selected}
-        onSelect={onSelect}
-        testId="integration-tile"
-        data={{ kind: kind.kind, connected: conn ? 'true' : 'false' }}
-      />
     );
   };
 }
@@ -1024,11 +1026,6 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
         <p mix={muted}>
           {info?.blurb ?? kind.blurb}. Drydock reads {info?.items ?? 'items'} through {info?.api ?? 'the service API'} and imports them into the projects you assign.
         </p>
-        <p mix={faint}>
-          <a href={routes.mcp.href()} data-testid="mcp-link">
-            Also give agents {label}'s tools: MCP
-          </a>
-        </p>
         {!conn ? (
           <ConnectForm kind={kind.kind} info={info} onDone={(r) => ((report = r.test), onChanged())} />
         ) : (
@@ -1163,43 +1160,271 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
   };
 }
 
+/** One vendor on the overview: its fixed logo and name, what it offers, and the state of each channel it has. */
+function VendorTile(handle: Handle<{ v: Vendor; conn?: IntegrationView; selected: boolean; onSelect: () => void }>) {
+  return () => {
+    const { v, conn, selected, onSelect } = handle.props;
+    const data: Record<string, string> = { kind: v.key };
+    if (v.kind) data.connected = conn ? 'true' : 'false';
+    else data.mcp = 'true';
+    return <Tile title={v.label} logo={v.logo} icon={Server} blurb={v.blurb} state={vendorStateText(v, conn)} tone={vendorTone(v, conn)} selected={selected} onSelect={onSelect} testId="integration-tile" data={data} />;
+  };
+}
+
+/**
+ * The skill registries a vendor publishes, imported whole into the current project (skill.importAll; the skills are offered,
+ * not accepted). A registry marked selective_only is picked from one skill at a time on the Skills page.
+ */
+function VendorSkills(handle: Handle<{ v: Vendor; registries: SkillRegistry[] | undefined; loading: boolean; error?: Error; project?: Project }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let results: Record<string, SkillLibraryAddAll> = {};
+  return () => {
+    const { v, registries, loading, error, project } = handle.props;
+    const skillsLink = (
+      <a href={routes.skills.href()} data-testid="skills-link">
+        Skills page
+      </a>
+    );
+    return (
+      <Section
+        label="Skills from this vendor"
+        testId="integration-skills"
+        title="Skills from this vendor"
+        description={`Skill registries ${v.label} publishes. The Library holds every skill of each registry; adding them to a project accepts them, and the Skills page is where you narrow or remove them.`}
+      >
+        <ErrorNote error={error ?? act.error} what="Skills" />
+        {loading && !registries ? <Loading label="Loading the registries..." /> : null}
+        {!project ? <p mix={muted}>Choose a project to add this vendor's skills to.</p> : null}
+        <ul mix={regList} aria-label={`Skill registries of ${v.label}`}>
+          {v.skillRegistries.map((id) => {
+            const r = (registries ?? []).find((x) => x.id === id);
+            const result = results[id];
+            const selective = r?.importMode === 'selective_only';
+            return (
+              <li key={id} data-testid="vendor-registry" data-registry={id}>
+                <div mix={head}>
+                  <Icon icon={Cpu} size={14} />
+                  <strong>{r?.repo ?? id}</strong>
+                  {r ? (
+                    <span mix={faint}>
+                      {r.license ? `license ${r.license}` : ''}
+                      {r.enabled ? '' : ' · disabled'}
+                    </span>
+                  ) : registries ? (
+                    <span mix={faint}>not in this workspace's registry list</span>
+                  ) : null}
+                </div>
+                {r && project ? (
+                  <div mix={toolbar}>
+                    <Button
+                      size="sm"
+                      icon={Plus}
+                      disabled={selective || !r.enabled || act.busy !== ''}
+                      data-testid="vendor-add-all"
+                      title={selective ? 'This registry is added one skill at a time' : undefined}
+                      mix={[
+                        on('click', async () => {
+                          const res = await act.run(`add-${id}`, () => s.client.skillLibraryAddAll(project.id, id));
+                          if (res) {
+                            results = { ...results, [id]: res };
+                            void handle.update();
+                          }
+                        }),
+                      ]}
+                    >
+                      {act.busy === `add-${id}` ? 'Adding...' : `Add all to ${project.name}`}
+                    </Button>
+                    {selective ? (
+                      <span mix={muted} data-testid="vendor-selective">
+                        {r.notes ? `${r.notes}: ` : ''}pick its skills one at a time on the {skillsLink}.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {result ? (
+                  <p mix={muted} role="status" data-testid="vendor-add-result">
+                    {addAllText(result)}
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        <p mix={faint}>Every registry, with its skills one by one and who gets each skill, is on the {skillsLink}.</p>
+      </Section>
+    );
+  };
+}
+
+/** The panel of the selected vendor: app sync (an integration kind), agent tools (its connector cards) and its skill registries. */
+function VendorPanel(
+  handle: Handle<{
+    v: Vendor;
+    info?: IntegrationKindInfo;
+    conn?: IntegrationView;
+    projects: Project[];
+    project?: Project;
+    agents: readonly Agent[];
+    registries: SkillRegistry[] | undefined;
+    registriesLoading: boolean;
+    registriesError?: Error;
+    onSyncChanged: () => void;
+    onAgentsChanged: () => void;
+    openTask: OpenTask;
+  }>,
+) {
+  return () => {
+    const { v, info, conn, projects, project, agents, registries, registriesLoading, registriesError, onSyncChanged, onAgentsChanged, openTask } = handle.props;
+    return (
+      <div mix={panelStack} data-testid="integration-panel" data-kind={v.key}>
+        {v.kind ? (
+          <Section
+            label="App sync"
+            testId="integration-sync"
+            title="App sync"
+            description={`Drydock itself reads ${info?.items ?? 'items'} from ${v.label} and imports them into the projects you assign, as untrusted text.`}
+          >
+            <ServicePanel kind={v.kind} info={info} conn={conn} projects={projects} onChanged={onSyncChanged} openTask={openTask} />
+          </Section>
+        ) : null}
+        {v.cards.length > 0 ? (
+          <Section
+            label="Agent tools (MCP)"
+            testId="integration-agents"
+            title="Agent tools (MCP)"
+            description={`${v.label}'s MCP server${v.cards.length === 1 ? '' : 's'}, checked against the vendor's own documentation. Connect once; then add it to projects and grant it to agents. Every tool not marked read-only waits for your approval, call by call.`}
+          >
+            <ul mix={connectorGrid}>
+              {v.cards.map((c) => (
+                <ConnectorCard key={c.id} card={c} projects={projects} projectId={project?.id} agents={agents} onChanged={onAgentsChanged} />
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+        {v.skillRegistries.length > 0 ? <VendorSkills v={v} registries={registries} loading={registriesLoading} error={registriesError} project={project} /> : null}
+      </div>
+    );
+  };
+}
+
 export function IntegrationsScreen(handle: Handle<{ openTask?: OpenTask; initial?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
+  watch(handle, s.project);
   const q = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
   const kinds = query(handle, { load: () => s.client.integrationKinds() });
+  const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
+  // the registries are read once, and only when a vendor on the page publishes some
+  const regs = query(handle, { load: () => s.client.skillRegistries(), enabled: () => (gallery.data ?? []).some((c) => (c.skillRegistries ?? []).length > 0) });
+  const servers = query(handle, {
+    load: () => s.client.mcpServerList(s.workspace.projectId!),
+    key: () => s.workspace.projectId,
+    enabled: () => !!s.workspace.projectId,
+    when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'),
+  });
   let selected = handle.props.initial ?? '';
+  const agentsChanged = () => {
+    gallery.reload();
+    if (s.workspace.projectId) servers.reload();
+  };
   return () => {
     const projects = s.workspace.projectList;
+    const project = s.workspace.project;
+    const projectId = s.workspace.projectId;
+    const agents = projectId ? s.project.agentList : [];
     const list: IntegrationView[] = q.data ?? [];
+    const cards: McpGalleryCard[] = gallery.data ?? [];
     const openTask = handle.props.openTask ?? defaultOpen;
-    const kind = KINDS.find((k) => k.kind === selected);
+    const all = vendors(KINDS, cards);
+    const current = all.find((v) => v.key === selected);
     const info = (kinds.data ?? []).find((k) => k.kind === selected);
+    const connected = list.length + cards.filter((c) => c.status === 'connected').length;
+    const loaded = !!q.data && !!gallery.data;
+    const inProject = servers.data ?? [];
     return (
-      <Page title="Integrations" icon={Blocks} subtitle={q.data ? `${list.length} connected` : undefined}>
-        <p mix={introCss}>
-          Connect a service once for the whole workspace, then assign it to the projects that should import its items. Everything a service returns is outside text: it is
-          redacted, scored for injection risk, shown inert and quoted as data when you import it. Writing back needs your approval of the exact text. Giving agents these services'
-          tools is on the{' '}
-          <a href={routes.mcp.href()}>
-            <Icon icon={Server} size={12} /> MCP screen
+      <Page
+        title="Integrations"
+        icon={Blocks}
+        subtitle={loaded ? `${connected} connected` : undefined}
+        actions={
+          <a href={routes.library.href()} mix={buttonStyle('ghost', 'sm')}>
+            <Icon icon={Wrench} size={14} />
+            Connect servers in the Library
           </a>
-          .
+        }
+      >
+        <p mix={introCss}>
+          Connect a service once for the whole workspace. App sync imports its items into the projects you assign: everything a service returns is outside text, redacted, scored
+          for injection risk and quoted as data, and writing back needs your approval of the exact text. Agent tools reach agents through MCP: a server is connected once, put into
+          projects and granted per agent, a server nobody was granted is never reached, and every tool you have not marked read-only waits for your approval, call by call. Secrets
+          stay in the Windows credential store. Claude Code agents receive MCP servers; another agent CLI receives them only after you allow it under Agent CLIs in the{' '}
+          <a href={routes.library.href()}>Library</a>.
         </p>
-        <ErrorNote error={q.error ?? kinds.error} what="Integrations" />
-        {q.loading && !q.data ? <Loading /> : null}
-        {q.data && list.length === 0 ? (
-          <p mix={emptyLine}>
-            <Icon icon={ShieldAlert} size={14} />
-            <strong>Nothing is connected.</strong> Choose a service below. Its items arrive as untrusted text you can read, score and import.
+        <div data-testid="connector-gallery" mix={panelStack}>
+          <ErrorNote error={q.error ?? kinds.error ?? gallery.error} what="Integrations" />
+          {(q.loading && !q.data) || (gallery.loading && !gallery.data) ? <Loading /> : null}
+          {loaded && connected === 0 ? (
+            <p mix={emptyLine}>
+              <Icon icon={ShieldAlert} size={14} />
+              <strong>Nothing is connected.</strong> Choose a service below. Its items arrive as untrusted text you can read, score and import; its tools reach only the agents you grant.
+            </p>
+          ) : null}
+          <ul mix={tileGrid} aria-label="Services">
+            {all.map((v) => (
+              <VendorTile
+                key={v.key}
+                v={v}
+                conn={v.kind ? tileState(list, v.key) : undefined}
+                selected={selected === v.key}
+                onSelect={() => ((selected = selected === v.key ? '' : v.key), void handle.update())}
+              />
+            ))}
+          </ul>
+          {current ? (
+            <VendorPanel
+              key={current.key}
+              v={current}
+              info={info}
+              conn={current.kind ? tileState(list, current.key) : undefined}
+              projects={projects}
+              project={project}
+              agents={agents}
+              registries={regs.data}
+              registriesLoading={regs.loading}
+              registriesError={regs.error}
+              onSyncChanged={q.reload}
+              onAgentsChanged={agentsChanged}
+              openTask={openTask}
+            />
+          ) : null}
+        </div>
+        <OwnServers linked={cards.map((c) => c.libraryId)} onChanged={agentsChanged} />
+        {projectId ? (
+          <>
+            <Approvals projectId={projectId} agents={agents} />
+            <Section label="In this project" title="In this project" description={project ? `The connected servers ${project.name} has, and which of its agents may use each one.` : undefined}>
+              <ErrorNote error={servers.error} what="Could not load the servers" />
+              {servers.loading && !servers.data ? <Loading /> : null}
+              {servers.data && inProject.length === 0 ? (
+                <p mix={emptyLine} data-testid="no-project-servers">
+                  <Icon icon={CirclePlus} size={14} />
+                  <strong>No MCP servers in this project yet.</strong> Add a connected server to it from its card above or from the library below.
+                </p>
+              ) : null}
+              <div mix={stack}>
+                {inProject.map((srv) => (
+                  <ServerCard key={srv.id} s={srv} agents={agents} onChanged={servers.reload} />
+                ))}
+              </div>
+            </Section>
+            <AddFromLibrary projectId={projectId} have={inProject.map((x) => x.id)} onAdded={servers.reload} />
+          </>
+        ) : s.workspace.projects.data ? (
+          <p mix={muted} data-testid="no-project">
+            MCP servers are put into a project and granted to its agents: connect them now, then <a href={routes.projectNew.href()}>create a project</a> or choose one to add them to.
           </p>
         ) : null}
-        <ul mix={tileGrid} aria-label="Services">
-          {KINDS.map((k) => (
-            <ServiceTile key={k.kind} kind={k} conn={tileState(list, k.kind)} selected={selected === k.kind} onSelect={() => ((selected = selected === k.kind ? '' : k.kind), void handle.update())} />
-          ))}
-        </ul>
-        {kind ? <ServicePanel key={kind.kind} kind={kind} info={info} conn={tileState(list, kind.kind)} projects={projects} onChanged={q.reload} openTask={openTask} /> : null}
       </Page>
     );
   };
