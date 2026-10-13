@@ -553,6 +553,30 @@ export interface SkillCoverage {
   files: number;
   tool: number;
 }
+/** What skill.importAll did with every valid skill in a registry: each name lands in exactly one list. */
+export interface SkillImportAll {
+  commit: string;
+  imported: string[];
+  updated: string[];
+  unchanged: string[];
+  blocked: { name: string; reason: string }[];
+  skipped: { name: string; reason: string }[];
+}
+/** A skill a registry check found new or changed upstream for a project. */
+export interface SkillRegistryChange {
+  name: string;
+  description: string;
+}
+/** The twice-daily registry check: watched once a project imported from it, with what each project has still to import. */
+export interface SkillRegistryStatus {
+  registryId: string;
+  watched: boolean;
+  lastCommit: string;
+  checkedAt?: string;
+  notifiedCommit?: string;
+  lastError?: string;
+  projects: Record<string, { additions: SkillRegistryChange[]; updates: SkillRegistryChange[] }>;
+}
 
 // --- memory (internal/memory) ---
 export interface MemoryEntry {

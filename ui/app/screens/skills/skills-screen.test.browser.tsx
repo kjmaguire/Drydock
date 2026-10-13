@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { Skill, SkillRegistry } from '../../api/extTypes.ts';
+import type { Skill, SkillRegistry, SkillRegistryStatus } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { SkillsScreen } from './skills-screen.tsx';
@@ -30,6 +30,7 @@ function servicesWith(client: Partial<Client>) {
   const s = testServices({
     projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never],
     skillRegistries: async () => [],
+    skillRegistryStatus: async () => [],
     skillDeliveries: async () => [],
     skillCoverage: async () => ({ files: 0, tool: 0 }),
     ...client,
@@ -173,6 +174,135 @@ describe('SkillsScreen', () => {
       r,
     );
     await waitFor(() => expect(r.$$('[data-testid="registry"]').length).toBe(2), r);
+  });
+
+  const anthropic: SkillRegistry = { id: 'anthropic', repo: 'anthropics/skills', trust: 'curated', enabled: true, curated: true };
+  const watched = (over: Partial<SkillRegistryStatus>): SkillRegistryStatus => ({
+    registryId: 'anthropic',
+    watched: true,
+    lastCommit: 'def',
+    checkedAt: '2026-10-13T08:00:00Z',
+    projects: {},
+    ...over,
+  });
+  const statusText = (r: { container: HTMLElement }) => r.container.querySelector('[data-testid="registry-status"]')?.textContent?.trim() ?? '';
+
+  it('imports every skill of a registry at once, says what happened and re-reads the skills', async () => {
+    const calls: unknown[][] = [];
+    let lists = 0;
+    const r = mount(
+      <SkillsScreen />,
+      servicesWith({
+        skillList: async () => (lists++, []),
+        skillRegistries: async () => [anthropic],
+        skillImportAll: async (...a) => (
+          calls.push(a),
+          {
+            commit: 'abc',
+            imported: ['pdf', 'xlsx'],
+            updated: ['docx'],
+            unchanged: [],
+            blocked: [{ name: 'evil', reason: 'contains a secret' }],
+            skipped: [{ name: 'bad', reason: 'no SKILL.md' }],
+          }
+        ),
+      }),
+    );
+    const btn = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'Import all (they will be offered)'), r);
+    expect(btn.getAttribute('data-testid')).toBe('registry-import-all');
+    const before = lists;
+    await r.act(() => btn.click());
+    await waitFor(() => expect(calls).toEqual([['prj_1', 'anthropic']]), r);
+    await waitFor(() => expect(r.$('[data-testid="registry-import-result"]')!.textContent?.trim()).toBe('Imported 2 new, 1 updated, 0 unchanged, 1 blocked, 1 skipped'), r);
+    expect(r.$('[data-testid="registry-import-result"]')!.getAttribute('role')).toBe('status');
+    expect(r.container.textContent).toContain('evil blocked: contains a secret');
+    expect(r.container.textContent).toContain('bad skipped: no SKILL.md');
+    await waitFor(() => expect(lists).toBeGreaterThan(before), r); // onImported re-reads the skills
+  });
+
+  it('shows what the twice-daily check found for this project, imports each one, and re-reads on skill.registry_updates', async () => {
+    const imported: unknown[][] = [];
+    const importedAll: unknown[][] = [];
+    let reads = 0;
+    const s = servicesWith({
+      skillList: async () => [],
+      skillRegistries: async () => [anthropic],
+      skillRegistryStatus: async () => (
+        reads++,
+        [
+          watched({
+            lastError: 'GitHub rate limit',
+            projects: {
+              prj_1: { additions: [{ name: 'pptx', description: 'Slide decks' }], updates: [{ name: 'pdf', description: 'PDF tools' }] },
+              prj_other: { additions: [{ name: 'elsewhere', description: 'Not ours' }], updates: [] },
+            },
+          }),
+        ]
+      ),
+      skillImport: async (...a) => (imported.push(a), skill({ name: String(a[2]) })),
+      skillImportAll: async (...a) => (importedAll.push(a), { commit: 'abc', imported: [], updated: [], unchanged: [], blocked: [], skipped: [] }),
+    });
+    const r = mount(<SkillsScreen />, s);
+    await waitFor(() => expect(statusText(r)).toContain('1 new, 1 changed'), r);
+    expect(statusText(r)).toMatch(/^Checked /);
+    expect(r.$$('[data-testid="registry-addition"]').length).toBe(1);
+    expect(r.$$('[data-testid="registry-update"]').length).toBe(1);
+    const addition = r.$('[data-testid="registry-addition"]')!;
+    expect(addition.textContent).toContain('pptx');
+    expect(addition.textContent).toContain('Slide decks');
+    const update = r.$('[data-testid="registry-update"]')!;
+    expect(update.textContent).toContain('pdf');
+    expect(update.textContent).toContain('changed upstream');
+    expect(r.container.textContent).not.toContain('elsewhere'); // another project's changes are not shown here
+    expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('Last check failed: GitHub rate limit');
+
+    await r.act(() => byText(addition, 'button', 'Import').click());
+    await waitFor(() => expect(imported).toEqual([['prj_1', 'anthropic', 'pptx']]), r);
+    await r.act(() => byText(update, 'button', 'Import update').click());
+    await waitFor(() => expect(imported[1]).toEqual(['prj_1', 'anthropic', 'pdf']), r);
+    await r.act(() => byText(r.container, 'button', 'Import all new and changed').click());
+    await waitFor(() => expect(importedAll).toEqual([['prj_1', 'anthropic']]), r);
+
+    const before = reads;
+    s.emit({ type: 'skill.registry_updates', data: { registry: 'anthropic', commit: 'ghi', projects: ['prj_1'] } });
+    await waitFor(() => expect(reads).toBeGreaterThan(before), r);
+  });
+
+  it('Check now checks that registry and shows the new status', async () => {
+    const checks: unknown[][] = [];
+    let status = watched({ checkedAt: undefined });
+    const r = mount(
+      <SkillsScreen />,
+      servicesWith({
+        skillList: async () => [],
+        skillRegistries: async () => [anthropic, { ...anthropic, id: 'off', repo: 'me/off', enabled: false, curated: false }],
+        skillRegistryStatus: async () => [status],
+        skillRegistryCheck: async (...a) => {
+          checks.push(a);
+          status = watched({});
+          return [status];
+        },
+      }),
+    );
+    await waitFor(() => expect(statusText(r)).toBe('Not checked yet.'), r);
+    const buttons = Array.from(r.$$('[data-testid="registry-check-now"]')) as HTMLButtonElement[];
+    expect(buttons.length).toBe(2);
+    expect(buttons[1]!.disabled).toBe(true); // a disabled registry is not checked
+    await r.act(() => buttons[0]!.click());
+    await waitFor(() => expect(checks).toEqual([['anthropic']]), r);
+    await waitFor(() => expect(statusText(r)).toMatch(/^Checked .*: no new or changed skills$/), r);
+  });
+
+  it('a registry no project imported from is not watched yet', async () => {
+    const r = mount(
+      <SkillsScreen />,
+      servicesWith({
+        skillList: async () => [],
+        skillRegistries: async () => [anthropic],
+        skillRegistryStatus: async () => [watched({ watched: false, checkedAt: undefined })],
+      }),
+    );
+    await waitFor(() => expect(statusText(r)).toBe('Not imported into any project yet; Drydock starts checking it after the first import.'), r);
   });
 
   it('lists deliveries with their coverage', async () => {

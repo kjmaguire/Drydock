@@ -61,7 +61,9 @@ import type {
   SkillCandidate,
   SkillCoverage,
   SkillDelivery,
+  SkillImportAll,
   SkillRegistry,
+  SkillRegistryStatus,
   SkillScan,
   StartTemplateReq,
   StartTemplateResult,
@@ -154,6 +156,12 @@ export interface ExtClient {
   skillRegistryRemove(id: string): Promise<void>;
   skillCandidates(registryId: string, ref?: string): Promise<{ commit: string; skills: SkillCandidate[] }>;
   skillImport(projectId: string, registryId: string, name: string, ref?: string): Promise<Skill>;
+  /** Import every valid skill of a registry into a project at once; each is offered, never applied. */
+  skillImportAll(projectId: string, registryId: string, ref?: string): Promise<SkillImportAll>;
+  /** The twice-daily check of every registry a project imported from. */
+  skillRegistryStatus(): Promise<SkillRegistryStatus[]>;
+  /** Check one registry (or all of them) now instead of waiting for the schedule. */
+  skillRegistryCheck(registryId?: string): Promise<SkillRegistryStatus[]>;
   /** Who receives a skill: the whole team (its roles, plus `agents`) or only the chosen `agents`. */
   skillAudience(projectId: string, name: string, audience: 'team' | 'agents', agents: string[]): Promise<Skill>;
   skillDeliveries(projectId: string, taskId?: string): Promise<SkillDelivery[]>;
@@ -313,6 +321,12 @@ export function createExtClient(t: Transport): ExtClient {
       return { commit: r.commit, skills: arr(r.skills) };
     },
     skillImport: (projectId, registryId, name, ref = '') => call('skill.import', { projectId, registryId, name, ref }),
+    skillImportAll: async (projectId, registryId, ref = '') => {
+      const r = await call<SkillImportAll>('skill.importAll', { projectId, registryId, ref });
+      return { ...r, imported: arr(r.imported), updated: arr(r.updated), unchanged: arr(r.unchanged), blocked: arr(r.blocked), skipped: arr(r.skipped) };
+    },
+    skillRegistryStatus: async () => arr(await call<SkillRegistryStatus[] | null>('skill.registryStatus', {})),
+    skillRegistryCheck: async (registryId) => arr(await call<SkillRegistryStatus[] | null>('skill.registryCheck', { registryId })),
     skillAudience: (projectId, name, audience, agents) => call('skill.audience', { projectId, name, audience, agents }),
     skillDeliveries: async (projectId, taskId = '') => arr(await call<SkillDelivery[] | null>('skill.deliveries', { projectId, taskId })),
     skillCoverage: (projectId, taskId = '') => call('skill.coverage', { projectId, taskId }),

@@ -3,8 +3,8 @@
 // requested tool permissions are recorded and ignored.
 
 import { css, on, type Handle } from 'remix/component';
-import { Cpu, FileCode2, GitBranch, Plus, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
-import type { Skill, SkillCandidate, SkillRegistry, SkillScan } from '../../api/extTypes.ts';
+import { Cpu, FileCode2, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
+import type { Skill, SkillCandidate, SkillImportAll, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -18,7 +18,7 @@ import { Page, Section, card, tableCard } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AudienceEditor } from './audience.tsx';
-import { audienceText, coverageText, listOr, onTeam, scanText, skillTone } from './skills.ts';
+import { audienceText, coverageText, importAllText, listOr, onTeam, registryChanges, registryStatusText, scanText, skillTone } from './skills.ts';
 
 const gridCss = css({
   display: 'grid',
@@ -221,6 +221,9 @@ const regList = css({
   },
   '& .meta': { color: t.textMuted, fontSize: t.textSm },
   '& .actions': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
+  '& .result': { fontSize: t.textMd },
+  '& .reasons': { margin: '0', padding: '0', listStyle: 'none', color: t.textMuted, fontSize: t.textSm, display: 'grid', gap: '2px' },
+  '& .status': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', fontSize: t.textSm },
 });
 const candList = css({
   display: 'grid',
@@ -247,8 +250,11 @@ const formCss = css({ display: 'grid', gap: t.s4 });
 function Registries(handle: Handle<{ projectId: string; onImported: () => void }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.skillRegistries() });
+  // The twice-daily check, re-read when the core finds something new.
+  const st = query(handle, { load: () => s.client.skillRegistryStatus(), when: (e) => e.type === 'skill.registry_updates' });
   const act = action(handle);
   let cands: Record<string, SkillCandidate[]> = {};
+  let results: Record<string, SkillImportAll> = {};
   let adding = false;
   let repo = '';
   let rid = '';
@@ -276,13 +282,35 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
       void handle.update();
     }
   };
+  const imported = () => {
+    handle.props.onImported();
+    st.reload();
+  };
+  const importOne = async (registryId: string, name: string) => {
+    const r = await act.run('import', () => s.client.skillImport(handle.props.projectId, registryId, name));
+    if (r) imported();
+  };
+  const importAll = async (registryId: string) => {
+    const r = await act.run('importAll', () => s.client.skillImportAll(handle.props.projectId, registryId));
+    if (r) {
+      results = { ...results, [registryId]: r };
+      imported();
+      void handle.update();
+    }
+  };
+  const check = async (registryId: string) => {
+    await act.run('check', () => s.client.skillRegistryCheck(registryId));
+    st.reload();
+  };
   return () => {
     const regs: SkillRegistry[] = q.data ?? [];
+    const statuses: SkillRegistryStatus[] = st.data ?? [];
+    const { projectId } = handle.props;
     return (
       <Section
         label="Skill registries"
         title="Registries (allowlist)"
-        description="Skills are imported only from GitHub repositories you have allowed here, pinned to a commit. An imported skill is offered; you still accept it."
+        description="Skills are imported only from GitHub repositories you have allowed here, pinned to a commit. Import them all or one at a time; every imported skill is offered until you accept it. Drydock checks each registry you import from twice a day and tells you about new or changed skills."
         actions={
           adding ? undefined : (
             <Button size="sm" icon={Plus} mix={on('click', () => set(() => (adding = true)))}>
@@ -291,81 +319,152 @@ function Registries(handle: Handle<{ projectId: string; onImported: () => void }
           )
         }
       >
-        <ErrorNote error={q.error ?? act.error} />
+        <ErrorNote error={q.error ?? st.error ?? act.error} />
         {regs.length > 0 ? (
           <ul mix={regList}>
-            {regs.map((r) => (
-              <li key={r.id} data-testid="registry">
-                <div class="head">
-                  <Icon icon={GitBranch} size={14} />
-                  <code>{r.repo}</code>
-                  {r.root ? <span mix={muted}>/{r.root}</span> : null}
-                  <Badge tone={r.enabled ? 'ok' : 'muted'}>{r.enabled ? 'enabled' : 'disabled'}</Badge>
-                  {r.curated ? <Badge>curated</Badge> : <Badge tone="warn">added by you</Badge>}
-                </div>
-                <div class="meta">
-                  trust {r.trust}
-                  {r.license ? `, license ${r.license}` : ''}
-                </div>
-                <div class="actions">
-                  <Button
-                    size="sm"
-                    mix={on('click', async () => {
-                      await act.run('enable', () => s.client.skillRegistryEnable(r.id, !r.enabled));
-                      q.reload();
-                    })}
-                  >
-                    {r.enabled ? 'Disable' : 'Enable'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={!r.enabled}
-                    mix={on('click', async () => {
-                      const c = await act.run('candidates', () => s.client.skillCandidates(r.id));
-                      if (c) set(() => (cands = { ...cands, [r.id]: c.skills }));
-                    })}
-                  >
-                    List skills to import
-                  </Button>
-                  {!r.curated ? (
+            {regs.map((r) => {
+              const status = statuses.find((x) => x.registryId === r.id);
+              const { additions, updates } = registryChanges(status, projectId);
+              const result = results[r.id];
+              return (
+                <li key={r.id} data-testid="registry">
+                  <div class="head">
+                    <Icon icon={GitBranch} size={14} />
+                    <code>{r.repo}</code>
+                    {r.root ? <span mix={muted}>/{r.root}</span> : null}
+                    <Badge tone={r.enabled ? 'ok' : 'muted'}>{r.enabled ? 'enabled' : 'disabled'}</Badge>
+                    {r.curated ? <Badge>curated</Badge> : <Badge tone="warn">added by you</Badge>}
+                  </div>
+                  <div class="meta">
+                    trust {r.trust}
+                    {r.license ? `, license ${r.license}` : ''}
+                  </div>
+                  <div class="actions">
                     <Button
                       size="sm"
-                      variant="ghost"
                       mix={on('click', async () => {
-                        await act.run('remove', () => s.client.skillRegistryRemove(r.id));
+                        await act.run('enable', () => s.client.skillRegistryEnable(r.id, !r.enabled));
                         q.reload();
                       })}
                     >
-                      Remove
+                      {r.enabled ? 'Disable' : 'Enable'}
                     </Button>
+                    <Button
+                      size="sm"
+                      disabled={!r.enabled}
+                      mix={on('click', async () => {
+                        const c = await act.run('candidates', () => s.client.skillCandidates(r.id));
+                        if (c) set(() => (cands = { ...cands, [r.id]: c.skills }));
+                      })}
+                    >
+                      List skills to import
+                    </Button>
+                    <Button size="sm" disabled={!r.enabled || act.busy !== ''} data-testid="registry-import-all" mix={on('click', () => void importAll(r.id))}>
+                      Import all (they will be offered)
+                    </Button>
+                    <Button
+                      size="sm"
+                      icon={RefreshCw}
+                      disabled={!r.enabled || act.busy !== ''}
+                      data-testid="registry-check-now"
+                      title="Check the repository for new or changed skills now instead of waiting for the next scheduled check"
+                      mix={on('click', () => void check(r.id))}
+                    >
+                      Check now
+                    </Button>
+                    {!r.curated ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        mix={on('click', async () => {
+                          await act.run('remove', () => s.client.skillRegistryRemove(r.id));
+                          q.reload();
+                        })}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                  {(cands[r.id] ?? []).length > 0 ? (
+                    <ul mix={candList} aria-label={`Skills in ${r.repo}`}>
+                      {(cands[r.id] ?? []).map((c) => (
+                        <li key={c.name} data-testid="skill-candidate">
+                          <div class="what">
+                            <strong>
+                              {c.name} {c.valid ? null : <Badge tone="err">invalid</Badge>} {c.hasScripts ? <Badge tone="warn">has scripts</Badge> : null}
+                            </strong>
+                            <span>{c.description || c.problem}</span>
+                          </div>
+                          <Button size="sm" disabled={!c.valid || act.busy !== ''} mix={on('click', () => void importOne(r.id, c.name))}>
+                            Import {c.name} (it will be offered)
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
-                </div>
-                {(cands[r.id] ?? []).length > 0 ? (
-                  <ul mix={candList} aria-label={`Skills in ${r.repo}`}>
-                    {(cands[r.id] ?? []).map((c) => (
-                      <li key={c.name} data-testid="skill-candidate">
-                        <div class="what">
-                          <strong>
-                            {c.name} {c.valid ? null : <Badge tone="err">invalid</Badge>} {c.hasScripts ? <Badge tone="warn">has scripts</Badge> : null}
-                          </strong>
-                          <span>{c.description || c.problem}</span>
-                        </div>
-                        <Button
-                          size="sm"
-                          disabled={!c.valid || act.busy !== ''}
-                          mix={on('click', async () => {
-                            await act.run('import', () => s.client.skillImport(handle.props.projectId, r.id, c.name));
-                            handle.props.onImported();
-                          })}
-                        >
-                          Import {c.name} (it will be offered)
+                  {result ? (
+                    <>
+                      <p class="result" role="status" data-testid="registry-import-result">
+                        {importAllText(result)}
+                      </p>
+                      {result.blocked.length + result.skipped.length > 0 ? (
+                        <ul class="reasons" aria-label={`Skills not imported from ${r.repo}`}>
+                          {result.blocked.map((b) => (
+                            <li key={`b-${b.name}`}>
+                              <code>{b.name}</code> blocked: {b.reason}
+                            </li>
+                          ))}
+                          {result.skipped.map((k) => (
+                            <li key={`s-${k.name}`}>
+                              <code>{k.name}</code> skipped: {k.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <div class="status meta" data-testid="registry-status">
+                    {registryStatusText(status, projectId)}
+                  </div>
+                  {status?.lastError ? <ErrorNote error={`Last check failed: ${status.lastError}`} /> : null}
+                  {additions.length + updates.length > 0 ? (
+                    <ul mix={candList} aria-label={`New and changed skills in ${r.repo}`}>
+                      {additions.map((c) => (
+                        <li key={`a-${c.name}`} data-testid="registry-addition">
+                          <div class="what">
+                            <strong>
+                              {c.name} <Badge tone="ok">new</Badge>
+                            </strong>
+                            <span>{c.description}</span>
+                          </div>
+                          <Button size="sm" disabled={!r.enabled || act.busy !== ''} mix={on('click', () => void importOne(r.id, c.name))}>
+                            Import
+                          </Button>
+                        </li>
+                      ))}
+                      {updates.map((c) => (
+                        <li key={`u-${c.name}`} data-testid="registry-update">
+                          <div class="what">
+                            <strong>
+                              {c.name} <Badge tone="warn">changed upstream</Badge>
+                            </strong>
+                            {c.description ? <span>{c.description}</span> : null}
+                          </div>
+                          <Button size="sm" disabled={!r.enabled || act.busy !== ''} mix={on('click', () => void importOne(r.id, c.name))}>
+                            Import update
+                          </Button>
+                        </li>
+                      ))}
+                      <li>
+                        <Button size="sm" variant="primary" disabled={!r.enabled || act.busy !== ''} mix={on('click', () => void importAll(r.id))}>
+                          Import all new and changed
                         </Button>
                       </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         ) : q.data ? (
           <p mix={muted}>No repository is allowed yet.</p>

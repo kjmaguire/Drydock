@@ -1,6 +1,7 @@
 // Pure helpers for the Skills screen.
 
-import type { Skill, SkillCoverage, SkillScan } from '../../api/extTypes.ts';
+import type { Skill, SkillCoverage, SkillImportAll, SkillRegistryChange, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
+import { formatDateTime } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
 export const skillTone = (s: string): Tone => (s === 'accepted' ? 'ok' : s === 'offered' ? 'warn' : s === 'blocked' ? 'err' : 'muted');
@@ -12,6 +13,32 @@ export function scanText(scan: SkillScan): string {
 }
 
 export const coverageText = (c: SkillCoverage | undefined): string => (c ? `${c.files} delivered as rule files, ${c.tool} through a tool.` : '');
+
+/** What importing a whole registry did, in one line; blocked and skipped are named only when there were any. */
+export function importAllText(r: SkillImportAll): string {
+  const blocked = r.blocked ?? [];
+  const skipped = r.skipped ?? [];
+  const tail = `${blocked.length > 0 ? `, ${blocked.length} blocked` : ''}${skipped.length > 0 ? `, ${skipped.length} skipped` : ''}`;
+  return `Imported ${(r.imported ?? []).length} new, ${(r.updated ?? []).length} updated, ${(r.unchanged ?? []).length} unchanged${tail}`;
+}
+
+/** What a registry check has still to offer one project: nothing until the registry is watched. */
+export function registryChanges(st: SkillRegistryStatus | undefined, projectId: string): { additions: SkillRegistryChange[]; updates: SkillRegistryChange[] } {
+  const p = st?.projects?.[projectId];
+  return { additions: p?.additions ?? [], updates: p?.updates ?? [] };
+}
+
+/**
+ * The registry's check in one line: unwatched until a project imports from it, unchecked until the first check, then when it
+ * was checked and what it found for this project.
+ */
+export function registryStatusText(st: SkillRegistryStatus | undefined, projectId: string): string {
+  if (!st || !st.watched) return 'Not imported into any project yet; Drydock starts checking it after the first import.';
+  if (!st.checkedAt) return 'Not checked yet.';
+  const { additions, updates } = registryChanges(st, projectId);
+  const found = additions.length === 0 && updates.length === 0 ? 'no new or changed skills' : `${additions.length} new, ${updates.length} changed`;
+  return `Checked ${formatDateTime(st.checkedAt)}: ${found}`;
+}
 
 /** A list as words, with a fallback for none ('all'). */
 export const listOr = (xs: readonly string[] | null | undefined, none = 'all'): string => (xs ?? []).join(', ') || none;
