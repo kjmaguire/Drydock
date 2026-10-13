@@ -685,6 +685,9 @@ export interface Connection extends Detection {
   distro?: string;
   /** What the probe found in the distro (run mode wsl). */
   wsl?: WSLFacts;
+  /** The CLI's own sign-in command as a person types it ("claude auth login"; the manifest's auth.login), which the card's
+   * Sign in runs in a terminal (decision P50); absent when the CLI names none Drydock can start. */
+  signIn?: string;
 }
 
 /** connections.WSLFacts: the distro behind a WSL Connection. */

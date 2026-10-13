@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,20 +57,36 @@ type Chunk struct {
 
 // Manager owns the open terminals.
 type Manager struct {
-	// Max is the number of terminals that may be open at once (default 8).
+	// Max is the number of terminals that may run at once (default 8). A terminal whose program ended still shows its output
+	// until it is closed, but does not count; the oldest of those are forgotten once there are more than Max of them.
 	Max int
 	// Shell chooses the program and arguments; nil means DefaultShell.
 	Shell func() (string, []string)
 
 	mu    sync.Mutex
 	terms map[string]*term
+	ends  sync.WaitGroup // the terminals' exit waiters, so CloseAll returns after every OnExit ran
+}
+
+// Program is a command the person watches and answers in a terminal instead of a shell (an agent CLI's own sign-in).
+type Program struct {
+	// Path is the program: an absolute path, or a bare name looked up on PATH (a relative path is made absolute against the
+	// process's working folder, never the terminal's).
+	Path string
+	Args []string
+	// Env is the program's whole environment; nil gives it Drydock's own, as a shell gets.
+	Env []string
+	// OnExit runs once when the program has ended, however it ended (it exited, or the terminal was closed and killed it),
+	// with its exit code. It runs on its own goroutine; CloseAll waits for it.
+	OnExit func(code int)
 }
 
 type term struct {
-	info Info
-	pty  pty.Pty
-	cmd  *pty.Cmd
-	kill func() error
+	info   Info
+	pty    pty.Pty
+	cmd    *pty.Cmd
+	kill   func() error
+	onExit func(code int)
 
 	mu      sync.Mutex
 	buf     []byte
@@ -104,19 +122,44 @@ func (m *Manager) Open(dir, title string, cols, rows int) (Info, error) {
 	if m.Shell != nil {
 		shell, args = m.Shell()
 	}
-	return m.open(dir, title, cols, rows, shell, args)
+	return m.open(dir, title, cols, rows, Program{Path: shell, Args: args})
 }
 
-// OpenProgram starts program with args in dir instead of a shell: a command the person watches and answers in the terminal
-// (an agent CLI's own sign-in). The terminal ends when the program exits.
-func (m *Manager) OpenProgram(dir, title string, cols, rows int, program string, args ...string) (Info, error) {
-	if program == "" {
+// OpenProgram starts a program in dir instead of a shell: a command the person watches and answers in the terminal (an
+// agent CLI's own sign-in). The terminal's program ends with it.
+func (m *Manager) OpenProgram(dir, title string, cols, rows int, prog Program) (Info, error) {
+	if prog.Path == "" {
 		return Info{}, errors.New("terminal: no program to run")
 	}
-	return m.open(dir, title, cols, rows, program, args)
+	path, err := resolve(prog.Path)
+	if err != nil {
+		return Info{}, err
+	}
+	prog.Path = path
+	return m.open(dir, title, cols, rows, prog)
 }
 
-func (m *Manager) open(dir, title string, cols, rows int, shell string, args []string) (Info, error) {
+// resolve makes a program name something the pseudo-terminal can start: go-pty does not search PATH, and resolves a bare or
+// relative name against the terminal's folder (on Windows, .\cmd.exe in the person's home).
+func resolve(name string) (string, error) {
+	if filepath.IsAbs(name) {
+		return name, nil
+	}
+	if !strings.ContainsAny(name, `/\`) {
+		p, err := exec.LookPath(name)
+		if err != nil {
+			return "", fmt.Errorf("terminal: %s was not found on PATH", name)
+		}
+		if !filepath.IsAbs(p) {
+			return filepath.Abs(p)
+		}
+		return p, nil
+	}
+	return filepath.Abs(name)
+}
+
+func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, error) {
+	shell, args := prog.Path, prog.Args
 	m.mu.Lock()
 	if m.terms == nil {
 		m.terms = map[string]*term{}
@@ -125,11 +168,32 @@ func (m *Manager) open(dir, title string, cols, rows int, shell string, args []s
 	if max <= 0 {
 		max = 8
 	}
-	if len(m.terms) >= max {
+	running, ended := 0, []*term{}
+	for _, t := range m.terms {
+		t.mu.Lock()
+		if t.exited {
+			ended = append(ended, t)
+		} else {
+			running++
+		}
+		t.mu.Unlock()
+	}
+	if running >= max {
 		m.mu.Unlock()
-		return Info{}, fmt.Errorf("terminal: %d terminals are open; close one first", max)
+		return Info{}, fmt.Errorf("terminal: %d terminals are running; close one first", max)
+	}
+	// terminals whose program ended keep their output for the person, but not without end
+	sort.Slice(ended, func(i, j int) bool { return ended[i].info.StartedAt.Before(ended[j].info.StartedAt) })
+	var forget []*term
+	for len(ended) >= max {
+		forget = append(forget, ended[0])
+		delete(m.terms, ended[0].info.ID)
+		ended = ended[1:]
 	}
 	m.mu.Unlock()
+	for _, t := range forget {
+		_ = t.pty.Close()
+	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return Info{}, fmt.Errorf("terminal: %s is not a folder", dir)
 	}
@@ -144,7 +208,11 @@ func (m *Manager) open(dir, title string, cols, rows int, shell string, args []s
 	}
 	cmd := p.Command(shell, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	env := prog.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = append(append([]string(nil), env...), "TERM=xterm-256color", "COLORTERM=truecolor")
 	if err := cmd.Start(); err != nil {
 		p.Close()
 		return Info{}, fmt.Errorf("terminal: start %s: %w", shell, err)
@@ -155,17 +223,21 @@ func (m *Manager) open(dir, title string, cols, rows int, shell string, args []s
 		p.Close()
 		return Info{}, fmt.Errorf("terminal: %w", err)
 	}
-	t := &term{pty: p, cmd: cmd, kill: kill, changed: make(chan struct{}),
+	t := &term{pty: p, cmd: cmd, kill: kill, onExit: prog.OnExit, changed: make(chan struct{}),
 		info: Info{ID: newID(), Title: title, Cwd: dir, Shell: shell, Cols: cols, Rows: rows, StartedAt: time.Now().UTC()}}
 	// on Unix the parent's copy of the terminal's slave end would keep reads from ever ending
 	if u, ok := p.(pty.UnixPty); ok {
 		_ = u.Slave().Close()
 	}
 	go t.pump()
-	go t.wait()
 	m.mu.Lock()
 	m.terms[t.info.ID] = t
+	m.ends.Add(1)
 	m.mu.Unlock()
+	go func() {
+		defer m.ends.Done()
+		t.wait()
+	}()
 	return t.info, nil
 }
 
@@ -204,6 +276,9 @@ func (t *term) wait() {
 	t.exited, t.code = true, code
 	t.notifyLocked()
 	t.mu.Unlock()
+	if t.onExit != nil {
+		t.onExit(code)
+	}
 }
 
 func (t *term) notifyLocked() {
@@ -324,7 +399,7 @@ func (m *Manager) Close(id string) error {
 	return err
 }
 
-// CloseAll closes every terminal (on shutdown).
+// CloseAll closes every terminal (on shutdown) and waits, up to 20 seconds, until every program's OnExit has run.
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	ids := make([]string, 0, len(m.terms))
@@ -334,6 +409,15 @@ func (m *Manager) CloseAll() {
 	m.mu.Unlock()
 	for _, id := range ids {
 		_ = m.Close(id)
+	}
+	done := make(chan struct{})
+	go func() {
+		m.ends.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
 	}
 }
 

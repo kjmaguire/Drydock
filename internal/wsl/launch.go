@@ -33,10 +33,14 @@ type Launch struct {
 	// (Forward), which copies them from wsl.exe's environment.
 	Env  []string
 	Argv []string // the program (an absolute Linux path, or a name the PATH in Env finds) and its arguments
+	// Interactive starts the program directly instead of through the setsid launcher, so it keeps wsl.exe's terminal as its
+	// controlling terminal: a person answers it (a CLI's sign-in) and Ctrl+C reaches it. The marker still names its processes.
+	Interactive bool
 }
 
 // Args is the argv after wsl.exe: wsl.exe -d <distro> --cd <dir> --exec /usr/bin/env <marker> <Env...> /bin/sh -c <launcher>
-// drydock-run <Argv...>. --exec runs the program without a shell parsing the command line, so no argument is re-quoted.
+// drydock-run <Argv...> (without the launcher when Interactive). --exec runs the program without a shell parsing the command
+// line, so no argument is re-quoted.
 func (l Launch) Args() []string {
 	args := []string{"-d", l.Distro}
 	if l.Dir != "" {
@@ -47,7 +51,9 @@ func (l Launch) Args() []string {
 		args = append(args, RunEnv+"="+l.Marker)
 	}
 	args = append(args, l.Env...)
-	args = append(args, "/bin/sh", "-c", launcher, "drydock-run")
+	if !l.Interactive {
+		args = append(args, "/bin/sh", "-c", launcher, "drydock-run")
+	}
 	return append(args, l.Argv...)
 }
 

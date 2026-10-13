@@ -228,6 +228,15 @@ func TestLaunchArgsPutTheMarkerAndEnvBeforeTheProgramAndNeverUseAShellForTheProg
 	if tail := a[len(a)-5:]; !slices.Equal(tail, l.Argv) {
 		t.Fatalf("the program's arguments must be passed as they are: %q", tail)
 	}
+
+	// a sign-in the person answers keeps wsl.exe's terminal: no setsid launcher, the marker and the login PATH still there
+	l = wsl.Launch{Distro: "Ubuntu", Dir: "/home/k", Marker: "m1", Env: []string{"HOME=/home/k", "PATH=/home/k/.nvm/bin:/usr/bin"},
+		Argv: []string{"/home/k/.local/bin/claude", "auth", "login"}, Interactive: true}
+	want = []string{"-d", "Ubuntu", "--cd", "/home/k", "--exec", "/usr/bin/env", "DRYDOCK_WSL_RUN=m1", "HOME=/home/k", "PATH=/home/k/.nvm/bin:/usr/bin",
+		"/home/k/.local/bin/claude", "auth", "login"}
+	if a := l.Args(); !slices.Equal(a, want) {
+		t.Fatalf("interactive: %q", a)
+	}
 }
 
 // requireHostTools skips where the stand-in distro cannot run (it runs the scripts on this host).

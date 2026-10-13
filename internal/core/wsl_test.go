@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,7 +13,9 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/tasks"
+	"github.com/kjmaguire/drydock/internal/terminal"
 	"github.com/kjmaguire/drydock/internal/wsl"
 	"github.com/kjmaguire/drydock/internal/wsl/wsltest"
 )
@@ -175,4 +178,128 @@ func toStrings(v any) []string {
 		}
 	}
 	return out
+}
+
+// signInMarker is the run marker of the newest sign-in the stand-in wsl.exe was asked to start (its log has every argv).
+func signInMarker(t *testing.T, f *wsltest.Fake) string {
+	t.Helper()
+	b, err := os.ReadFile(f.Log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if !strings.Contains(lines[i], `"login"`) {
+			continue
+		}
+		var argv []string
+		if err := json.Unmarshal([]byte(lines[i]), &argv); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range argv {
+			if m, ok := strings.CutPrefix(a, wsl.RunEnv+"="); ok {
+				return m
+			}
+		}
+	}
+	t.Fatal("no sign-in in the stand-in wsl.exe's log")
+	return ""
+}
+
+func (a *app) readTerm(id, want string) string {
+	a.t.Helper()
+	var all string
+	var from int64
+	deadline := time.Now().Add(20 * time.Second)
+	for !strings.Contains(all, want) && time.Now().Before(deadline) {
+		var c terminal.Chunk
+		a.call("terminal.read", map[string]any{"id": id, "from": from, "waitMs": 500}, &c)
+		all += string(c.Data)
+		from = c.Next
+	}
+	if !strings.Contains(all, want) {
+		a.t.Fatalf("waiting for %q in the terminal: %q", want, all)
+	}
+	return all
+}
+
+// Decision P50 through the core and the stand-in WSL: Sign in on a distro's card runs the CLI's own login inside the distro, in
+// a terminal, with the login shell's PATH, the run marker and a terminal for its input; asking again while it runs returns the
+// same terminal; answering it ends it with connection.sign_in_finished; closing it mid-login leaves nothing running inside
+// the distro (killing wsl.exe alone does not end what it started there).
+func TestSignInInsideADistroRunsInATerminalAndLeavesNothingBehind(t *testing.T) {
+	a, f := openWSL(t)
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-signed-out"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sub, stop := a.c.Bus.Subscribe(events.Filter{Types: []string{"connection.sign_in_*"}})
+	defer stop()
+
+	var in terminal.Info
+	a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": "ubuntu"}, &in)
+	if in.Title != "Sign in: claude in Ubuntu" || in.Shell != f.Exe {
+		t.Fatalf("%+v", in)
+	}
+	out := a.readTerm(in.ID, "Press Enter")
+	if !strings.Contains(out, "marker=yes login-path=yes tty=yes") {
+		t.Fatalf("the login does not run as an agent runs in the distro, or has no terminal: %q", out)
+	}
+	var again terminal.Info
+	a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": "Ubuntu"}, &again)
+	if again.ID != in.ID {
+		t.Fatalf("a second sign-in started while the first runs: %s and %s", in.ID, again.ID)
+	}
+	a.call("terminal.write", map[string]any{"id": in.ID, "data": "\r"}, nil)
+	a.readTerm(in.ID, "Signed in to the stand-in.")
+	var started, finished bool
+	for deadline := time.After(20 * time.Second); !finished; {
+		select {
+		case e := <-sub:
+			var d struct {
+				Key      string `json:"key"`
+				ExitCode int    `json:"exitCode"`
+			}
+			_ = json.Unmarshal(e.Data, &d)
+			if d.Key != "claude@wsl:Ubuntu" {
+				t.Fatalf("%s for %q", e.Type, d.Key)
+			}
+			started = started || e.Type == "connection.sign_in_started"
+			if e.Type == "connection.sign_in_finished" {
+				finished = d.ExitCode == 0
+				if !finished {
+					t.Fatalf("finished with %d", d.ExitCode)
+				}
+			}
+		case <-deadline:
+			t.Fatal("no connection.sign_in_finished")
+		}
+	}
+	if !started {
+		t.Fatal("no connection.sign_in_started")
+	}
+	if _, err := os.Stat(filepath.Join(f.Home, ".drydock-standin-signed-out")); !os.IsNotExist(err) {
+		t.Fatal("the CLI's own login did not run")
+	}
+
+	// a new sign-in once the first ended; closed mid-login, nothing of it is left in the distro
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-login-helper"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var second terminal.Info
+	a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": "Ubuntu"}, &second)
+	if second.ID == in.ID {
+		t.Fatal("the ended sign-in's terminal was returned")
+	}
+	a.readTerm(second.ID, "Press Enter")
+	marker := signInMarker(t, f)
+	host := &wsl.Host{Exe: f.Exe}
+	a.waitFor("the login and its helper to be marked", func() bool {
+		pids, err := host.Marked(context.Background(), "Ubuntu", marker)
+		return err == nil && len(pids) >= 2
+	})
+	a.call("terminal.close", map[string]string{"id": second.ID}, nil)
+	a.waitFor("nothing of the sign-in left in the distro", func() bool {
+		pids, err := host.Marked(context.Background(), "Ubuntu", marker)
+		return err == nil && len(pids) == 0
+	})
 }

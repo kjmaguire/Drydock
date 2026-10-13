@@ -128,21 +128,6 @@ export class UiModel extends Model {
     this.setDock({ open: true, tab });
   }
 
-  /** The terminal the Terminals panel should select next (a sign-in a card started); it takes the id once. */
-  terminalToShow: string | undefined;
-
-  /** Open the dock on the Terminals panel with this terminal selected. */
-  showTerminal(id: string): void {
-    this.terminalToShow = id;
-    this.openDock('terminal');
-  }
-
-  takeTerminalToShow(): string | undefined {
-    const id = this.terminalToShow;
-    this.terminalToShow = undefined;
-    return id;
-  }
-
   toggleDock(): void {
     this.setDock({ open: !this.dock.open });
   }

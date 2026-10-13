@@ -77,6 +77,9 @@ func BaseEnv(env []string) []string {
 	return append(out, "WSL_UTF8=1", "WSLENV=")
 }
 
+// Environ is the environment this host starts wsl.exe with (BaseEnv of Drydock's own unless the host was given another).
+func (h *Host) Environ() []string { return h.env() }
+
 func (h *Host) env() []string {
 	if h.Env != nil {
 		return h.Env()

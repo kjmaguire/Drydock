@@ -3,9 +3,9 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/connections"
@@ -19,6 +19,8 @@ import (
 func init() {
 	RegisterExtension(Extension{Name: "terminal", Start: func(extCtx context.Context, c *Core) (map[string]Method, func(), error) {
 		m := &terminal.Manager{}
+		var signMu sync.Mutex
+		signIns := map[string]string{} // Connection key -> the terminal of its running sign-in
 		return map[string]Method{
 			"terminal.open": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -58,46 +60,65 @@ func init() {
 			}),
 			"terminal.close": bind(func(ctx context.Context, p idParam) (any, error) { return nil, m.Close(p.ID) }),
 			"terminal.list":  bind(func(ctx context.Context, _ struct{}) (any, error) { return m.List(), nil }),
-			// connection.signIn starts a Connection's own sign-in (claude auth login, inside the distro for a WSL install) in a
-			// terminal of the dock, where the person answers it (decision P50). Drydock runs the unmodified CLI and never reads
-			// what the sign-in stores (D1); the Connections page re-probes afterwards like after any change.
+			// connection.signIn starts a Connection's own sign-in (its manifest's auth.login: claude auth login, inside the distro
+			// for a WSL install) in a terminal the person answers (decision P50). Drydock runs the unmodified CLI and never reads
+			// what the sign-in stores (D1). One sign-in per Connection at a time: asking again while it runs returns the same
+			// terminal. When it ends, whatever of it is left inside a distro is killed, and connection.sign_in_finished makes the
+			// Connections page re-check.
 			"connection.signIn": bind(func(ctx context.Context, p struct {
 				Adapter string `json:"adapter"`
 				Distro  string `json:"distro"` // the install inside this WSL distro instead of the native one
 			}) (any, error) {
-				conn, err := c.connectionByKey(ctx, p.Adapter, p.Distro)
+				key := p.Adapter
+				if p.Distro != "" {
+					key = connections.WSLKey(p.Adapter, p.Distro)
+				}
+				signMu.Lock()
+				defer signMu.Unlock()
+				if in, ok := runningSignIn(m, signIns, key); ok {
+					return in, nil
+				}
+				conn, si, err := c.Connections.SignIn(ctx, key)
 				if err != nil {
 					return nil, err
 				}
-				wslExe := ""
-				if conn.RunMode == "wsl" && c.wsl != nil {
-					if wslExe, err = c.wsl.Path(); err != nil {
-						return nil, fmt.Errorf("sign in inside %s: %w", conn.Distro, err)
-					}
-				}
-				prog, args, err := connections.SignInCommand(conn, wslExe)
-				if err != nil {
-					return nil, err
-				}
-				home, err := os.UserHomeDir()
-				if err != nil {
-					return nil, fmt.Errorf("sign in: %w", err)
+				if in, ok := runningSignIn(m, signIns, conn.Key); ok {
+					return in, nil
 				}
 				title := "Sign in: " + conn.Adapter
 				if conn.RunMode == "wsl" {
 					title += " in " + conn.Distro
 				}
-				info, err := m.OpenProgram(home, title, 100, 24, prog, args...)
+				var id string
+				ready := make(chan struct{})
+				info, err := m.OpenProgram(si.Dir, title, 100, 24, terminal.Program{Path: si.Program, Args: si.Args, Env: si.Env, OnExit: func(code int) {
+					<-ready
+					signMu.Lock()
+					if signIns[conn.Key] == id {
+						delete(signIns, conn.Key)
+					}
+					signMu.Unlock()
+					if si.Marker != "" && c.wsl != nil {
+						// killing wsl.exe does not end what it started inside the distro (internal/wsl/launch.go)
+						kctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						if n, err := c.wsl.Kill(kctx, si.Distro, si.Marker); err != nil {
+							c.logf("sign-in in %s: clean-up: %v", si.Distro, err)
+						} else if n > 0 {
+							c.logf("sign-in in %s: %d processes were left and are killed", si.Distro, n)
+						}
+						cancel()
+					}
+					if extCtx.Err() == nil { // not while the core shuts down
+						c.publish(extCtx, "connection.sign_in_finished", "", map[string]any{"key": conn.Key, "exitCode": code})
+					}
+				}})
 				if err != nil {
 					return nil, err
 				}
+				id = info.ID
+				signIns[conn.Key] = id
+				close(ready)
 				c.publish(ctx, "connection.sign_in_started", "", map[string]any{"key": conn.Key, "by": c.Human()})
-				// when the sign-in ends, the Connections page re-probes (it re-reads on every connection.* event)
-				go func(key, id string) {
-					if code, err := m.Exited(extCtx, id); err == nil {
-						c.publish(extCtx, "connection.sign_in_finished", "", map[string]any{"key": key, "exitCode": code})
-					}
-				}(conn.Key, info.ID)
 				return info, nil
 			}),
 		}, m.CloseAll, nil
@@ -128,19 +149,17 @@ func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, 
 	return dir, p.Name, err
 }
 
-// connectionByKey is the detected Connection of an adapter's native install, or of its install inside a WSL distro.
-func (c *Core) connectionByKey(ctx context.Context, adapter, distro string) (connections.Connection, error) {
-	key := adapter
-	if distro != "" {
-		key = adapter + "@wsl:" + distro
-	}
-	for _, conn := range c.Connections.DetectAll(ctx) {
-		if conn.Key == key {
-			return conn, nil
+// runningSignIn is the terminal of key's sign-in while its program runs (keys compare as Windows compares distro names).
+func runningSignIn(m *terminal.Manager, signIns map[string]string, key string) (terminal.Info, bool) {
+	for k, id := range signIns {
+		if !strings.EqualFold(k, key) {
+			continue
+		}
+		for _, in := range m.List() {
+			if in.ID == id && !in.Exited {
+				return in, true
+			}
 		}
 	}
-	if distro != "" {
-		return connections.Connection{}, fmt.Errorf("no Connection of %s inside the WSL distro %s: the distro is not listed, or %s is not installed in it", adapter, distro, adapter)
-	}
-	return connections.Connection{}, fmt.Errorf("no Connection named %s", adapter)
+	return terminal.Info{}, false
 }

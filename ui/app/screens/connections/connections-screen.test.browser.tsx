@@ -1,11 +1,42 @@
 import { expect } from 'remix/assert';
-import { afterEach, describe, it } from 'remix/test';
+import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Connection, ConnectionReport } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, renderPlain, testServices, waitFor } from '../../test/render.tsx';
+import { setTerminalLoader, type TerminalFactory } from '../dock/widgets.ts';
 import { ConnectionsScreen, ReportView } from './connections-screen.tsx';
 
-afterEach(cleanup);
+interface TestTerminal {
+  output: string;
+  type(s: string): void;
+  disposed: boolean;
+}
+const terminals: TestTerminal[] = [];
+/** TEST DOUBLE for xterm.js: keeps what was written as text and types what the test types. */
+const testTerminal: TerminalFactory = () => {
+  const listeners: ((s: string) => void)[] = [];
+  const dec = new TextDecoder();
+  const rec: TestTerminal = { output: '', type: (s) => listeners.forEach((l) => l(s)), disposed: false };
+  terminals.push(rec);
+  return {
+    cols: 80,
+    rows: 24,
+    write: (d) => void (rec.output += typeof d === 'string' ? d : dec.decode(d)),
+    onData: (fn) => void listeners.push(fn),
+    fit: () => {},
+    focus: () => {},
+    dispose: () => void (rec.disposed = true),
+  };
+};
+
+beforeEach(() => {
+  terminals.length = 0;
+  setTerminalLoader(async () => testTerminal);
+});
+afterEach(() => {
+  setTerminalLoader(undefined);
+  cleanup();
+});
 
 const conn = (over: Partial<Connection> = {}): Connection => ({
   adapter: 'claude',
@@ -165,6 +196,7 @@ describe('Connections page', () => {
       path: '/home/k/.local/bin/claude',
       authenticated: false,
       status: 'unauthenticated',
+      signIn: 'claude auth login',
       gates: [],
       prereqs: [],
       warnings: [],
@@ -281,17 +313,29 @@ describe('Connections page', () => {
     expect(r.$('[data-testid="connection"]')).toBeNull();
   });
 
-  it("Sign in starts the CLI's own login through the core (inside the distro for a WSL install) and opens the dock on that terminal", async () => {
+  it("Sign in runs the CLI's own login through the core in a terminal inside the card, with no project and no dock", async () => {
     const calls: [string, string | undefined][] = [];
+    const writes: [string, string][] = [];
+    const closes: string[] = [];
+    const enc = new TextEncoder();
+    let release: (() => void) | undefined;
     const term = { id: 'term_9', title: 'Sign in: claude in Ubuntu-26.04', cwd: 'C:\\Users\\k', shell: 'wsl.exe', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 };
     const r = show({
       connectionList: async () => [
-        conn({ key: 'claude@wsl:Ubuntu-26.04', runMode: 'wsl', distro: 'Ubuntu-26.04', status: 'unauthenticated', platform: 'linux', gates: [] }),
+        conn({ key: 'claude@wsl:Ubuntu-26.04', runMode: 'wsl', distro: 'Ubuntu-26.04', status: 'unauthenticated', platform: 'linux', gates: [], signIn: 'claude auth login' }),
         conn({ key: 'gemini', adapter: 'gemini', gates: [] }),
+        conn({ key: 'agy@wsl:Ubuntu-26.04', adapter: 'agy', runMode: 'wsl', distro: 'Ubuntu-26.04', gates: [] }),
       ],
       connectionSignIn: async (adapter: string, distro?: string) => (calls.push([adapter, distro]), term),
+      terminalRead: async (_id, from) => {
+        if (from === 0) return { data: enc.encode('Press Enter to finish signing in\r\n'), next: 33, dropped: 0, exited: false, exitCode: 0 };
+        await new Promise<void>((res) => (release = res));
+        return { data: new Uint8Array(0), next: 33, dropped: 0, exited: true, exitCode: 0 };
+      },
+      terminalWrite: async (id, d) => void writes.push([id, d]),
+      terminalResize: async () => {},
+      terminalClose: async (id) => void closes.push(id),
     });
-    // the WSL install's tile opens its card below the grid
     const tile = await waitFor(() => {
       const x = r.$('[data-testid="connection-tile"][data-key="claude@wsl:Ubuntu-26.04"]');
       if (!x) throw new Error('not yet');
@@ -303,15 +347,35 @@ describe('Connections page', () => {
       if (!c) throw new Error('not yet');
       return c as HTMLElement;
     }, r);
-    expect(r.services.ui.dock.open).toBe(false);
     const btn = byText<HTMLButtonElement>(wsl, 'button', 'Sign in inside Ubuntu-26.04');
-    expect(wsl.textContent).toContain("Runs the CLI's own sign-in (claude auth login) inside the distro");
+    // the command is the one the core sent with the Connection (its manifest's auth.login)
+    expect(wsl.textContent).toContain("Runs the CLI's own sign-in (claude auth login) inside the distro, in a terminal here");
     expect(wsl.textContent).toContain('never reads or copies');
+    expect(wsl.querySelector('[data-testid="sign-in-terminal"]')).toBeNull();
     await r.act(() => btn.click());
     await waitFor(() => expect(calls).toEqual([['claude', 'Ubuntu-26.04']]), r);
-    await waitFor(() => expect(r.services.ui.dock).toMatchObject({ open: true, tab: 'terminal' }), r);
-    expect(r.services.ui.terminalToShow).toBe('term_9');
-    // a CLI without a sign-in Drydock can start has no button
+    // the terminal opens in the card itself: the dock is only there with a project, the Connections page is not
+    const box = await waitFor(() => {
+      const x = wsl.querySelector('[data-testid="sign-in-terminal"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(r.services.ui.dock.open).toBe(false);
+    await waitFor(() => expect(terminals[0]?.output ?? '').toContain('Press Enter to finish signing in'), r);
+    expect(box.querySelector('[data-testid="sign-in-state"]')!.textContent).toBe('claude auth login is running: answer it here.');
+    expect(btn.disabled).toBe(true); // one sign-in at a time
+    terminals[0]!.type('\r');
+    await waitFor(() => expect(writes).toEqual([['term_9', '\r']]), r);
+    release!();
+    await waitFor(() => expect(terminals[0]!.output).toContain('[the sign-in exited with code 0]'), r);
+    await waitFor(() => expect(box.querySelector('[data-testid="sign-in-state"]')!.textContent).toBe('The sign-in finished. This card has re-checked itself.'), r);
+    expect(btn.disabled).toBe(false);
+    await r.act(() => (box.querySelector('[data-testid="sign-in-close"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(wsl.querySelector('[data-testid="sign-in-terminal"]')).toBeNull(), r);
+    expect(closes).toEqual(['term_9']);
+    expect(terminals[0]!.disposed).toBe(true);
+
+    // a CLI whose manifest names no sign-in Drydock can start has no button; inside WSL the card says how instead
     await r.act(() => (r.$('[data-testid="connection-tile"][data-key="gemini"]') as HTMLButtonElement).click());
     const gem = await waitFor(() => {
       const c = r.$('[data-testid="connection"][data-adapter="gemini"]');
@@ -319,5 +383,13 @@ describe('Connections page', () => {
       return c as HTMLElement;
     }, r);
     expect(gem.querySelector('[data-testid="sign-in"]')).toBeNull();
+    await r.act(() => (r.$('[data-testid="connection-tile"][data-key="agy@wsl:Ubuntu-26.04"]') as HTMLButtonElement).click());
+    const agy = await waitFor(() => {
+      const c = r.$('[data-testid="connection"][data-adapter="agy"]');
+      if (!c) throw new Error('not yet');
+      return c as HTMLElement;
+    }, r);
+    expect(agy.querySelector('[data-testid="sign-in"]')).toBeNull();
+    expect(agy.textContent).toContain('open a terminal in the distro (wsl -d Ubuntu-26.04) and sign in the way the CLI documents');
   });
 });

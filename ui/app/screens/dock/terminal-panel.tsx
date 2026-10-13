@@ -50,19 +50,10 @@ const startingCss = css({ position: 'absolute', inset: '0', margin: '0', padding
 export function TerminalPanel(handle: Handle<{ projectId: string | undefined; taskId: string | undefined }>) {
   const s = services(handle);
   watch(handle, s.workspace);
-  watch(handle, s.ui);
   const list = query<TerminalInfo[]>(handle, { load: () => s.client.terminalList() });
   const act = action(handle);
   let active: string | undefined;
   const exited: Record<string, number> = {};
-  // a terminal another screen opened (a Connection's sign-in) becomes the selected tab
-  const takeWanted = () => {
-    const id = s.ui.takeTerminalToShow();
-    if (id && id !== active) {
-      active = id;
-      list.reload();
-    }
-  };
 
   const open = async (where: { projectId?: string; taskId?: string }) => {
     const term = await act.run('open', () => s.client.terminalOpen(where, 100, 24));
@@ -81,7 +72,6 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
   };
 
   return () => {
-    takeWanted();
     const { projectId, taskId } = handle.props;
     const p = s.workspace.projectList.find((x) => x.id === projectId);
     const noRepo = !!p && !projectHasRepo(p);
@@ -152,8 +142,12 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
   };
 }
 
-/** One terminal of the core in a terminal widget, created in a ref on an EMPTY host and disposed with it. */
-function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => void }>) {
+/**
+ * One terminal of the core in a terminal widget, created in a ref on an EMPTY host and disposed with it. The dock's panel uses
+ * it for shells; a Connection's card uses it for that CLI's own sign-in (decision P50), whatever project is open or none.
+ * `program` names what runs in it for the line printed when it ends ("the shell" by default).
+ */
+export function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => void; program?: string }>) {
   const s = services(handle);
   let starting = true;
   let error: unknown;
@@ -204,7 +198,7 @@ function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => voi
               if (c.data.length) term.write(c.data);
               next = c.next;
               if (c.exited && c.data.length === 0) {
-                term.write(`\r\n[the shell exited with code ${c.exitCode}]\r\n`);
+                term.write(`\r\n[${handle.props.program ?? 'the shell'} exited with code ${c.exitCode}]\r\n`);
                 handle.props.onExit(c.exitCode);
                 return;
               }

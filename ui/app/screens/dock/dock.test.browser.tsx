@@ -361,23 +361,6 @@ describe('the logs panel', () => {
 describe('the terminal panel', () => {
   const info = (id: string, title: string): TerminalInfo => ({ id, title, cwd: '/x', shell: 'sh', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 });
 
-  it('selects the terminal another screen opened (a sign-in) when the ui state names it', async () => {
-    const open = [info('term_1', 'gocalc'), info('term_2', 'Sign in: claude')];
-    const services = testServices({
-      terminalList: async () => open,
-      terminalRead: () => new Promise<TerminalChunk>(() => {}),
-      terminalResize: async () => {},
-    });
-    const r = mount(<TerminalPanel projectId="p1" taskId={undefined} />, services);
-    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('Sign in: claude'), r); // the newest by default
-    await r.act(() => byText(r.container, '[role="tab"]', 'gocalc').click());
-    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('gocalc'), r);
-    await r.act(() => services.ui.showTerminal('term_2'));
-    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('Sign in: claude'), r);
-    expect(services.ui.dock).toMatchObject({ open: true, tab: 'terminal' });
-    expect(services.ui.terminalToShow).toBeUndefined(); // taken once
-  });
-
   it('opens a terminal in the task or the repository and closes it', async () => {
     let open: TerminalInfo[] = [];
     const opens: [{ taskId?: string; projectId?: string }, number, number][] = [];

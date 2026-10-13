@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -179,21 +181,32 @@ func gone(pid int) bool {
 	return i >= 0 && strings.HasPrefix(strings.TrimSpace(s[i+1:]), "Z")
 }
 
-// OpenProgram runs a program instead of a shell (a CLI's own sign-in, decision P50); the terminal ends when the program does.
+// OpenProgram runs a program instead of a shell (a CLI's own sign-in, decision P50): found on PATH by its bare name, with the
+// environment it is given, and the terminal ends when the program does, telling OnExit its code.
 func TestOpenProgramRunsTheProgramAndEndsWithIt(t *testing.T) {
 	m := &Manager{Shell: sh}
 	dir := t.TempDir()
-	in, err := m.OpenProgram(dir, "Sign in: claude", 100, 30, "/bin/sh", "-c", "echo prog-$((40+2)); exit 3")
+	codes := make(chan int, 2)
+	in, err := m.OpenProgram(dir, "Sign in: claude", 100, 30, Program{Path: "sh", Args: []string{"-c", "echo prog-$((40+2)) mark=$MARK; exit 3"},
+		Env: []string{"PATH=/usr/bin:/bin", "MARK=only-this"}, OnExit: func(code int) { codes <- code }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer m.CloseAll()
-	if in.Title != "Sign in: claude" || in.Shell != "/bin/sh" || in.Cwd != dir {
-		t.Fatalf("info %+v", in)
+	if in.Title != "Sign in: claude" || !filepath.IsAbs(in.Shell) || filepath.Base(in.Shell) != "sh" || in.Cwd != dir {
+		t.Fatalf("info %+v (the bare name must be found on PATH: the pseudo-terminal does not search it)", in)
 	}
-	out, _ := readUntil(t, m, in.ID, 0, "prog-42")
-	if strings.Contains(out, "$((") {
+	out, _ := readUntil(t, m, in.ID, 0, "mark=only-this")
+	if strings.Contains(out, "$((") || !strings.Contains(out, "prog-42") {
 		t.Fatalf("the program's argument was not run by it: %q", out)
+	}
+	select {
+	case c := <-codes:
+		if c != 3 {
+			t.Fatalf("OnExit got %d", c)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("OnExit was not called")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -203,11 +216,93 @@ func TestOpenProgramRunsTheProgramAndEndsWithIt(t *testing.T) {
 	if _, err := m.Exited(ctx, "nope"); err != ErrNotFound {
 		t.Fatalf("unknown terminal: %v", err)
 	}
+	select {
+	case c := <-codes:
+		t.Fatalf("OnExit ran twice (%d)", c)
+	default:
+	}
 }
 
-func TestOpenProgramNeedsAProgram(t *testing.T) {
+// Closing the terminal while its program still runs kills it and still tells OnExit (the sign-in's clean-up hangs on it), and
+// CloseAll returns only after every OnExit ran.
+func TestOnExitRunsWhenTheTerminalIsClosed(t *testing.T) {
+	m := &Manager{Shell: sh}
+	ran := make(chan int, 1)
+	var finished atomic.Bool
+	in, err := m.OpenProgram(t.TempDir(), "x", 80, 24, Program{Path: "/bin/sh", Args: []string{"-c", "echo ready; sleep 600"}, OnExit: func(code int) { ran <- code }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readUntil(t, m, in.ID, 0, "ready")
+	if err := m.Close(in.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ran:
+	case <-time.After(10 * time.Second):
+		t.Fatal("closing the terminal did not reach OnExit")
+	}
+
+	in, err = m.OpenProgram(t.TempDir(), "y", 80, 24, Program{Path: "/bin/sh", Args: []string{"-c", "echo ready; sleep 600"}, OnExit: func(int) {
+		time.Sleep(300 * time.Millisecond)
+		finished.Store(true)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readUntil(t, m, in.ID, 0, "ready")
+	m.CloseAll()
+	if !finished.Load() {
+		t.Fatal("CloseAll returned before the program's OnExit finished")
+	}
+}
+
+// The limit counts terminals whose program still runs; ended ones keep their output for the person until there are more than
+// the limit of them, then the oldest is forgotten.
+func TestTheLimitCountsRunningTerminals(t *testing.T) {
+	m := &Manager{Shell: sh, Max: 2}
+	defer m.CloseAll()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	var ids []string
+	for i := 0; i < 3; i++ {
+		in, err := m.OpenProgram(t.TempDir(), "done", 80, 24, Program{Path: "/bin/sh", Args: []string{"-c", "exit 0"}})
+		if err != nil {
+			t.Fatalf("terminal %d: %v (an ended terminal must not count)", i, err)
+		}
+		if _, err := m.Exited(ctx, in.ID); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, in.ID)
+	}
+	if _, err := m.get(ids[0]); err != ErrNotFound {
+		t.Fatalf("the oldest ended terminal was kept past the limit: %v", err)
+	}
+	if _, err := m.get(ids[2]); err != nil {
+		t.Fatalf("the newest ended terminal was dropped: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := m.Open(t.TempDir(), "", 0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := m.Open(t.TempDir(), "", 0, 0); err == nil || !strings.Contains(err.Error(), "running") {
+		t.Fatalf("a third running terminal: %v", err)
+	}
+}
+
+func TestOpenProgramNeedsAProgramItCanFind(t *testing.T) {
 	m := &Manager{}
-	if _, err := m.OpenProgram(t.TempDir(), "x", 80, 24, ""); err == nil {
+	if _, err := m.OpenProgram(t.TempDir(), "x", 80, 24, Program{}); err == nil {
 		t.Fatal("no program")
+	}
+	if _, err := m.OpenProgram(t.TempDir(), "x", 80, 24, Program{Path: "drydock-no-such-program"}); err == nil || !strings.Contains(err.Error(), "not found on PATH") {
+		t.Fatalf("missing program: %v", err)
+	}
+	// a relative path is the process's, never the terminal folder's
+	got, err := resolve(filepath.Join("bin", "tool"))
+	wd, _ := os.Getwd()
+	if err != nil || got != filepath.Join(wd, "bin", "tool") {
+		t.Fatalf("relative: %q %v", got, err)
 	}
 }

@@ -3,6 +3,7 @@ package connections_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -161,5 +162,47 @@ func TestTestConnectionRunsTheDistrosInstallAndKeepsItsOwnResult(t *testing.T) {
 	}
 	if n, _ := svc.Check(context.Background(), "claude"); strings.HasPrefix(n.Reason, connections.ReasonTestFailed) {
 		t.Fatal("the distro's failed Test degraded the native Connection")
+	}
+}
+
+// Decision P50 through the stand-in WSL: the sign-in of a distro's install (named in any case, as Windows names distros) runs
+// the CLI found by the probe with the login shell's PATH and the run marker, starts wsl.exe with nothing of Windows copied in,
+// and is the CLI's own login: answering it signs the install in.
+func TestTheSignInInsideADistroIsTheCLIsOwnLoginWithTheLoginShellsPath(t *testing.T) {
+	needStandInDistro(t)
+	f := wsltest.NewFake(t, true, "Ubuntu")
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-signed-out"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := wslService(t, f)
+	t.Setenv("WSLENV", "ANTHROPIC_API_KEY/u")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-not-for-the-distro")
+	c, si, err := svc.SignIn(context.Background(), "claude@wsl:ubuntu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Key != "claude@wsl:Ubuntu" || c.SignIn != "claude auth login" || si.Program != f.Exe || si.Distro != "Ubuntu" || si.Marker == "" {
+		t.Fatalf("%+v %+v", c, si)
+	}
+	for _, kv := range si.Env {
+		if strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") || strings.HasPrefix(kv, "WSLENV=") && kv != "WSLENV=" {
+			t.Fatalf("wsl.exe would copy %s into the distro", kv)
+		}
+	}
+	cmd := exec.Command(si.Program, si.Args...)
+	cmd.Dir, cmd.Env, cmd.Stdin = si.Dir, si.Env, strings.NewReader("\n")
+	out, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "marker=yes login-path=yes") || !strings.Contains(string(out), "Signed in to the stand-in.") {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if one, err := svc.CheckKey(context.Background(), "claude@wsl:Ubuntu"); err != nil || one.Authenticated == nil || !*one.Authenticated {
+		t.Fatalf("not signed in afterwards: %+v %v", one, err)
+	}
+
+	// what cannot be signed in to is refused with the reason
+	for key, want := range map[string]string{"nope": "no Connection named nope", "antigravity": "has no sign-in command", "claude@wsl:Nope": "no WSL distro named Nope"} {
+		if _, _, err := svc.SignIn(context.Background(), key); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s: %v", key, err)
+		}
 	}
 }

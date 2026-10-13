@@ -26,11 +26,6 @@ export const connectionKey = (c: Pick<Connection, 'adapter' | 'key'>): string =>
 
 export const isWSL = (c: Pick<Connection, 'runMode'>): boolean => c.runMode === 'wsl';
 
-/** The CLIs whose own sign-in Drydock can start in a terminal (the core's connections.SignInCommand table). */
-const SIGN_IN: Record<string, string> = { claude: 'claude auth login', codex: 'codex login', opencode: 'opencode auth login' };
-export const canSignIn = (adapter: string): boolean => adapter in SIGN_IN;
-export const signInCommand = (adapter: string): string => SIGN_IN[adapter] ?? '';
-
 /** "claude" for the Windows install, "claude in WSL (Ubuntu)" for one inside a distro. */
 export const connectionTitle = (c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>): string => (isWSL(c) ? `${c.adapter} in WSL (${c.distro ?? ''})` : c.adapter);
 

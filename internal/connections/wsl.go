@@ -55,6 +55,7 @@ func CheckWSL(ctx context.Context, m *manifests.Manifest, d wsl.Distro, o Option
 	o.defaults()
 	c := Connection{Transport: m.Transports.Primary, Key: WSLKey(m.Meta.ID, d.Name), RunMode: agents.RunModeWSL, Distro: d.Name, Platform: "linux (WSL)"}
 	c.Adapter, c.InstallHint, c.Status = m.Meta.ID, m.WSLInstallHint(), agents.StatusNotInstalled
+	c.SignIn = signInText(m, m.Binaries.WSL)
 	for _, k := range m.Auth.WarnEnv {
 		if envHas(o.Env, k) {
 			c.Warnings = append(c.Warnings, fmt.Sprintf("%s is set in the Windows environment Drydock starts agents in, and it is passed into the distro too: %s (the value is never read by Drydock)", k, envBillingText(k, m)))

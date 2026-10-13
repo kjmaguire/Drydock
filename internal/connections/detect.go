@@ -73,6 +73,9 @@ type Connection struct {
 	RunMode string    `json:"runMode"`          // native | wsl
 	Distro  string    `json:"distro,omitempty"` // the WSL distro (run mode wsl)
 	WSL     *WSLFacts `json:"wsl,omitempty"`    // what the probe found in the distro (run mode wsl)
+	// SignIn is the CLI's own sign-in command as a person types it ("claude auth login", from the manifest's auth.login), which
+	// the card's Sign in button runs in a terminal (decision P50); "" when the CLI names none Drydock can start.
+	SignIn string `json:"signIn,omitempty"`
 
 	fallback string // the transport fallback checkPrereqs reported, for rate
 }
@@ -147,6 +150,7 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	o.defaults()
 	c := Connection{Platform: runtime.GOOS, Transport: m.Transports.Primary, Key: m.Meta.ID, RunMode: agents.RunModeNative}
 	c.Adapter, c.InstallHint, c.Status = m.Meta.ID, m.InstallHint(), agents.StatusNotInstalled
+	c.SignIn = signInText(m, m.Binaries.Native)
 
 	for _, k := range m.Auth.WarnEnv {
 		if envHas(o.Env, k) {

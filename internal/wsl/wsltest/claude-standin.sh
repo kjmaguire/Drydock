@@ -10,6 +10,22 @@
 case "$1" in
   --version) echo "2.1.296 (Claude Code)"; exit 0 ;;
   auth)
+    if [ "$2" = login ]; then
+      # the stand-in's interactive sign-in: it says where it runs (the run marker, whether the login shell's PATH reached it,
+      # whether its input is a terminal), waits for Enter as a real login waits for the browser, then signs the stand-in in
+      if [ -n "$DRYDOCK_WSL_RUN" ]; then mk=yes; else mk=no; fi
+      case ":$PATH:" in *":$HOME/.local/bin:"*) lp=yes ;; *) lp=no ;; esac
+      if [ -t 0 ]; then tty=yes; else tty=no; fi
+      echo "stand-in sign-in (LABELLED TEST DOUBLE): marker=$mk login-path=$lp tty=$tty"
+      # a test asks for a helper in a session of its own, as a login's localhost callback listener can be, which outlives the
+      # terminal's kill of wsl.exe unless Drydock sweeps the run marker
+      if [ -e "$HOME/.drydock-standin-login-helper" ]; then setsid sleep 600 >/dev/null 2>&1 </dev/null & fi
+      echo "Press Enter to finish signing in"
+      IFS= read -r _ || exit 4
+      rm -f "$HOME/.drydock-standin-signed-out"
+      echo "Signed in to the stand-in."
+      exit 0
+    fi
     # a test signs the stand-in out by creating this file in the distro's HOME
     # ... or makes the check itself fail (an error on stderr, no JSON), as a broken install or an unwritable HOME would
     if [ -e "$HOME/.drydock-standin-auth-broken" ]; then echo "Error: EACCES: permission denied, open '$HOME/.claude.json'" >&2; exit 2; fi
