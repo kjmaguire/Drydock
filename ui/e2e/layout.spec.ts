@@ -58,12 +58,19 @@ test('every screen reads at a laptop size: text of 12 px or more, nothing wider 
   await expect(page.getByRole('button', { name: 'Show details' })).toHaveCount(0);
   await page.getByTestId('nav-workspace').click();
   await page.getByTestId('home-project').filter({ hasText: 'gocalc-layout' }).click();
+  // each measurement waits for its page and is retried until the panel settles: a click returns before the next page renders,
+  // and measuring then reads the previous page's panel
+  const details = () => expect.poll(async () => (await measure(page)).details);
   await projectNav(page, 'nav-activity');
+  await expect(page).toHaveURL(/\/activity$/);
   await page.getByRole('button', { name: 'Show details' }).click();
-  expect((await measure(page)).details).toBeGreaterThan(200);
+  await details().toBeGreaterThan(200);
   await roomLink(page, 'general').click();
-  expect((await measure(page)).details).toBeGreaterThan(200);
+  await expect(page.getByRole('log')).toBeVisible();
+  await details().toBeGreaterThan(200);
   await page.getByRole('button', { name: 'Hide details' }).click();
+  await details().toBeLessThan(60);
   await projectNav(page, 'nav-team');
-  expect((await measure(page)).details).toBeGreaterThan(200);
+  await expect(page).toHaveURL(/\/team$/);
+  await details().toBeGreaterThan(200);
 });
