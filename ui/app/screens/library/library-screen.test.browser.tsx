@@ -2,10 +2,9 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LibrarySkill, Skill, SkillRegistry, SkillRegistryStatus } from '../../api/extTypes.ts';
-import type { McpLibraryServer, McpOAuthStatus } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
-import { claude, devLicense, libServer, pay, projects, projServer, rev, tpl } from '../mcp/fixtures.ts';
-import { DRAG_MIME } from './dnd.ts';
+import type { McpGalleryCard, McpLibraryServer, McpOAuthStatus } from '../../api/mcpClient.ts';
+import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { claude, devLicense, galleryCard, libServer, pay, projects, projServer, rev, tpl } from '../mcp/fixtures.ts';
 import { CATALOG } from '../project/wizard-fixtures.ts';
 import { LibraryScreen, SkillLibraryScreen } from './library-screen.tsx';
 
@@ -31,6 +30,7 @@ function show(client: Partial<Client> = {}, page: 'library' | 'skills' = 'librar
     agentTemplateList: async () => [tpl()],
     mcpServerList: async (p: string) => (p === 'prj_1' ? [projServer({ agents: [{ agentId: 'agt_2', tools: ['*'] }] })] : []),
     agentList: async (p: string) => (p === 'prj_1' ? [pay, rev] : []),
+    mcpGallery: async () => [],
     skillRegistries: async () => [],
     skillRegistryStatus: async () => [],
     skillLibraryList: async () => [],
@@ -50,12 +50,6 @@ const one = (r: R, sel: string) => waitFor(() => {
   if (!el) throw new Error(`no ${sel}`);
   return el as HTMLElement;
 }, r);
-const zone = (r: R, testId: string, text: string) =>
-  waitFor(() => {
-    const z = Array.from(r.$$(`[data-testid="${testId}"]`)).find((x) => x.textContent?.includes(text));
-    if (!z) throw new Error(`no ${testId} with ${text}`);
-    return z as HTMLElement;
-  }, r);
 const note = (r: R) => r.$('[data-testid="library-note"]')!.textContent ?? '';
 /** Click the first tile of a grid ('lib-mcp' or 'lib-template') and return the panel that opens below the grid. */
 async function pick(r: R, kind: 'lib-mcp' | 'lib-template'): Promise<HTMLElement> {
@@ -63,18 +57,13 @@ async function pick(r: R, kind: 'lib-mcp' | 'lib-template'): Promise<HTMLElement
   await r.act(() => tile.click());
   return one(r, `[data-testid="${kind}"]`);
 }
-
-/** Drag `from` and drop on `to`, as a browser does: the page learns what is dragged at dragstart, the data comes with the drop. */
-async function dragDrop(r: R, from: Element, to: Element) {
-  const dt = new DataTransfer();
-  const ev = (type: string) => new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt });
-  await r.act(() => from.dispatchEvent(ev('dragstart')));
-  await r.act(() => {
-    to.dispatchEvent(ev('dragenter'));
-    to.dispatchEvent(ev('dragover'));
-    to.dispatchEvent(ev('drop'));
-    from.dispatchEvent(ev('dragend'));
-  });
+/** Open "Connect an MCP server", then "Add a custom server" below the built-in servers, and return the server form. */
+async function customForm(r: R): Promise<HTMLElement> {
+  await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
+  await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
+  const custom = await one(r, '[data-testid="mcp-add-custom"]');
+  await r.act(() => byText(custom, 'button', 'Add a custom server').click());
+  return one(r, '[data-testid="mcp-form"]');
 }
 
 describe('Library page', () => {
@@ -104,7 +93,8 @@ describe('Library page', () => {
     expect(tiles[0]!.querySelector('svg')).not.toBeNull();
     expect(tiles[1]!.querySelector('small[data-tone="warn"]')!.textContent).toBe('Not signed in');
     expect(tiles[2]!.querySelector('small[data-tone="ok"]')!.textContent).toBe('In 2 projects');
-    expect(tiles.every((x) => x.getAttribute('draggable') === 'true' && x.getAttribute('aria-pressed') === 'false')).toBe(true);
+    // nothing is dragged onto projects any more: a tile only opens its panel
+    expect(tiles.every((x) => x.getAttribute('draggable') === null && x.getAttribute('aria-pressed') === 'false')).toBe(true);
 
     const tplTiles = await waitFor(() => {
       const l = r.$$('ul[aria-label="Agent templates"] [data-testid="lib-template-tile"]');
@@ -157,23 +147,45 @@ describe('Library page', () => {
     expect(r.$('ul[aria-label="Agent templates"]')).toBeNull();
   });
 
-  it("shows a server's full panel (secrets as names only), templates and the projects with their team", async () => {
+  it("shows a server's full panel (secrets as names only) and a template's, and says where a project gets them", async () => {
     const r = show();
     const card = await pick(r, 'lib-mcp');
     expect(card.textContent).toContain('API_KEY');
     expect(card.textContent).not.toContain('sekret');
-    expect(card.textContent).toContain('Not in any project yet.');
-    expect((await pick(r, 'lib-template')).textContent).toContain('Payments dev');
-    const alpha = await waitFor(() => {
-      const a = r.$('[aria-label="Project Alpha"]');
-      if (!a?.textContent?.includes('Rev')) throw new Error('not yet');
-      return a;
-    }, r);
-    await waitFor(() => expect(alpha.querySelector('[aria-label="Servers Rev may use"]')!.textContent).toContain('Test server'), r);
+    expect(card.querySelector('[data-testid="lib-mcp-projects"]')!.textContent).toContain("Not in any project yet. Add it to a project, and choose which of its agents may use it, on that project's Integrations page.");
+    const tp = await pick(r, 'lib-template');
+    expect(tp.textContent).toContain('Payments dev');
+    expect(tp.querySelector('[data-testid="lib-template-where"] a')!.getAttribute('href')).toBe('/team');
     expect(r.$('h1')!.textContent).toContain('Library');
-    // exactly one h3 per panel, inside its draggable header: the e2e suite drags by it
     expect(card.querySelectorAll('h3').length).toBe(1);
-    expect(card.querySelector('h3')!.closest('[draggable="true"]')).toBe(card.querySelector('[data-testid="lib-mcp-handle"]'));
+    expect(card.querySelector('[draggable]')).toBeNull();
+  });
+
+  it('carries nothing of a single project: no project names, no agents, no put-in-project controls', async () => {
+    const reads: Calls = [];
+    const r = show({
+      mcpLibList: async () => [libServer({ projects: ['prj_1', 'prj_2'] })],
+      mcpServerList: (async (p: string) => (reads.push(['mcpServerList', p]), [projServer()])) as never,
+      skillList: (async (p: string) => (reads.push(['skillList', p]), [])) as never,
+    });
+    // wait until the workspace knows its projects, so a project column would have rendered by now
+    await waitFor(() => expect(r.services.workspace.projectList.length).toBe(2), r);
+    const card = await pick(r, 'lib-mcp');
+    const tp = await pick(r, 'lib-template');
+    expect(card.querySelector('[data-testid="lib-mcp-projects"]')!.textContent).toContain('In 2 projects.');
+    const text = r.container.textContent ?? '';
+    // neither the projects nor their agents (Pay and Rev in Alpha) are named
+    for (const name of ['Alpha', 'Beta', 'Rev']) expect([name, text.includes(name)]).toEqual([name, false]);
+    expect(r.$('[data-agent]')).toBeNull();
+    // no project's servers or skills are even read
+    expect(reads).toEqual([]);
+    expect(r.$('[data-testid="lib-project"]')).toBeNull();
+    expect(r.$('[data-testid="lib-agent"]')).toBeNull();
+    expect(r.$$('select').length).toBe(0);
+    expect(() => byText(r.container, 'button', 'Put in project')).toThrow();
+    expect(tp.querySelector('[data-in-project]')).toBeNull();
+    // the agent CLIs and the gateway moved to Connections
+    expect(r.$('[data-testid="cli-gateway"]')).toBeNull();
   });
 
   it('has no skills section of its own: skills have their own page, linked from the intro', async () => {
@@ -341,7 +353,7 @@ describe('Library page', () => {
       expect(empty.querySelector('a')!.getAttribute('href')).toBe('/skills');
     });
 
-    it("marks, in a template's skills, the ones the current project already has", async () => {
+    it("lists a template's skills with their registry, and no project's marks (the Library is a workspace page)", async () => {
       const r = show({
         agentTemplateList: async () => [
           tpl({
@@ -354,13 +366,11 @@ describe('Library page', () => {
         skillList: async (p: string) => (p === 'prj_1' ? [projectSkill('wrangler')] : []),
       });
       const card = await pick(r, 'lib-template');
-      await waitFor(() => expect(card.querySelector('ul[aria-label="Skills it brings"] > li[data-in-project="true"]')!.textContent).toContain('wrangler'), r);
       const chips = Array.from(card.querySelectorAll<HTMLElement>('ul[aria-label="Skills it brings"] > li'));
-      expect(chips.length).toBe(2);
-      const pdf = chips.find((x) => x.textContent?.includes('pdf'))!;
-      expect(pdf.getAttribute('data-in-project')).toBe('false');
-      const w = chips.find((x) => x.textContent?.includes('wrangler'))!;
-      expect(w.getAttribute('title')).toContain('already in Alpha');
+      expect(chips.map((x) => x.textContent)).toEqual(['wrangler', 'pdf']);
+      expect(chips[0]!.getAttribute('title')).toBe('cloudflare-skills at abc');
+      expect(card.querySelector('[data-in-project]')).toBeNull();
+      expect(card.textContent).not.toContain('Alpha');
     });
   });
 
@@ -373,149 +383,6 @@ describe('Library page', () => {
     const names = Array.from(sec.querySelectorAll('[data-testid="prebuilt"] button')).map((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').trim());
     expect(names.filter((n) => n.startsWith('Add')).length).toBe(0);
     expect(names).toContain('What Cloudflare Engineer comes with');
-  });
-
-  it('dropping a server tile on a project puts it there', async () => {
-    const calls: Calls = [];
-    const r = show({ mcpServerAdd: rec(calls, () => projServer({ projectId: 'prj_2' })) as never });
-    const card = await one(r, '[data-testid="lib-mcp-tile"]');
-    const beta = await zone(r, 'lib-project', 'Beta');
-    await dragDrop(r, card, beta);
-    await waitFor(() => expect(calls).toEqual([['prj_2', 'tst']]), r);
-    await waitFor(() => expect(note(r)).toContain('Test server is now in Beta.'), r);
-  });
-
-  it("the open panel's header drags like its tile", async () => {
-    const adds: Calls = [];
-    const applies: Calls = [];
-    const r = show({
-      mcpServerAdd: rec(adds, () => projServer({ projectId: 'prj_2' })) as never,
-      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [], skills: { assigned: [], shared: [], pending: [], failed: [] } })) as never,
-    });
-    const panel = await pick(r, 'lib-mcp');
-    const beta = await zone(r, 'lib-project', 'Beta');
-    const head = panel.querySelector('[data-testid="lib-mcp-handle"]')!;
-    await r.act(() => head.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() })));
-    expect(panel.getAttribute('data-dragging')).toBe('true');
-    await r.act(() => head.dispatchEvent(new DragEvent('dragend', { bubbles: true })));
-    expect(panel.getAttribute('data-dragging')).toBe('false');
-    await dragDrop(r, head, beta);
-    await waitFor(() => expect(adds).toEqual([['prj_2', 'tst']]), r);
-    const tp = await pick(r, 'lib-template');
-    await dragDrop(r, tp.querySelector('[data-testid="lib-template-handle"]')!, beta);
-    await waitFor(() => expect(applies).toEqual([['tpl_1', 'prj_2']]), r);
-  });
-
-  it('marks the drop targets while a server is dragged, and only the ones that take it', async () => {
-    const r = show();
-    const card = await one(r, '[data-testid="lib-mcp-tile"]');
-    const payZone = await zone(r, 'lib-agent', 'Pay');
-    const dt = new DataTransfer();
-    await r.act(() => card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt })));
-    expect(card.getAttribute('data-dragging')).toBe('true');
-    expect(payZone.getAttribute('data-can-drop')).toBe('true');
-    expect(r.$('[data-testid="lib-project"]')!.getAttribute('data-can-drop')).toBe('true');
-    expect(r.container.textContent).toContain('drop here');
-    await r.act(() => card.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt })));
-    expect(payZone.getAttribute('data-can-drop')).toBe('false');
-
-    // a template is not taken by an agent row
-    const template = await one(r, '[data-testid="lib-template-tile"]');
-    await r.act(() => template.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() })));
-    expect(payZone.getAttribute('data-can-drop')).toBe('false');
-    expect(r.$('[data-testid="lib-project"]')!.getAttribute('data-can-drop')).toBe('true');
-  });
-
-  it('dropping a server on an agent lets that agent use it', async () => {
-    const calls: Calls = [];
-    const r = show({ mcpServerGrant: rec(calls, () => projServer()) as never });
-    const card = await one(r, '[data-testid="lib-mcp-tile"]');
-    const payZone = await zone(r, 'lib-agent', 'Pay');
-    await dragDrop(r, card, payZone);
-    await waitFor(() => expect(calls).toEqual([['prj_1', 'tst', 'agt_1', true]]), r);
-    await waitFor(() => expect(note(r)).toContain('Pay can now use Test server.'), r);
-  });
-
-  it('dropping a template on a project adds the team member, and the note says what was granted and what was not', async () => {
-    const calls: Calls = [];
-    const r = show({
-      agentTemplateApply: rec(calls, () => ({ agent: { ...pay, name: 'Payments dev' }, granted: ['tst'], skipped: ['docs: there is no MCP server "docs" in the library'], skills: { assigned: ['wrangler'], shared: [], pending: [], failed: [] } })) as never,
-    });
-    const card = await one(r, '[data-testid="lib-template-tile"]');
-    const beta = await zone(r, 'lib-project', 'Beta');
-    await dragDrop(r, card, beta);
-    await waitFor(() => expect(calls).toEqual([['tpl_1', 'prj_2']]), r);
-    await waitFor(() => {
-      expect(note(r)).toContain('Payments dev joined Beta');
-      expect(note(r)).toContain('Test server');
-      expect(note(r)).toContain('Not granted: docs');
-      expect(note(r)).toContain('Skills: wrangler.');
-    }, r);
-  });
-
-  it("ignores what does not belong (a foreign drop, a drop with nothing in it); a template dropped on an agent row lands in that agent's project", async () => {
-    const grants: Calls = [];
-    const applies: Calls = [];
-    const adds: Calls = [];
-    const r = show({
-      mcpServerGrant: rec(grants, () => projServer()) as never,
-      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [], skills: { assigned: [], shared: [], pending: [], failed: [] } })) as never,
-      mcpServerAdd: rec(adds, () => projServer()) as never,
-    });
-    const template = await one(r, '[data-testid="lib-template-tile"]');
-    const payZone = await zone(r, 'lib-agent', 'Pay');
-    await dragDrop(r, template, payZone); // an agent takes servers, not team members: the drop falls through to the project panel
-    const project = r.$$('[data-testid="lib-project"]')[0]!;
-    const foreign = new DataTransfer();
-    foreign.setData('text/plain', 'https://example.com/x');
-    await r.act(() => {
-      project.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: foreign }));
-      project.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() }));
-      const bad = new DataTransfer();
-      bad.setData(DRAG_MIME, '{"kind":"file","id":"x"}');
-      project.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: bad }));
-    });
-    // a drop that is taken calls the core from its handler (the template drop above was recorded that way)
-    await drain();
-    expect(grants).toEqual([]);
-    expect(adds).toEqual([]);
-    expect(applies).toEqual([['tpl_1', 'prj_1']]);
-  });
-
-  it('works without dragging: a project select and a button for servers and templates, and a Give button on an agent', async () => {
-    const adds: Calls = [];
-    const applies: Calls = [];
-    const grants: Calls = [];
-    const r = show({
-      mcpServerAdd: rec(adds, () => projServer()) as never,
-      agentTemplateApply: rec(applies, () => ({ agent: pay, granted: [], skipped: [], skills: { assigned: [], shared: [], pending: [], failed: [] } })) as never,
-      mcpServerGrant: rec(grants, () => projServer()) as never,
-    });
-    const card = await pick(r, 'lib-mcp');
-    await waitFor(() => byLabel<HTMLSelectElement>(card, 'Put Test server in project'), r);
-    await r.act(() => type(byLabel<HTMLSelectElement>(card, 'Put Test server in project'), 'prj_2'));
-    await r.act(() => byText(card, 'button', 'Put in project').click());
-    await waitFor(() => expect(adds).toEqual([['prj_2', 'tst']]), r);
-    const template = await pick(r, 'lib-template');
-    await r.act(() => byText(template, 'button', 'Put in project').click());
-    await waitFor(() => expect(applies).toEqual([['tpl_1', 'prj_1']]), r);
-    const give = await waitFor(() => byText(r.container, 'button', 'Give to Pay'), r);
-    await r.act(() => give.click());
-    await waitFor(() => expect(grants).toEqual([['prj_1', 'tst', 'agt_1', true]]), r);
-  });
-
-  it('removes a server from an agent or from a project with the x on its chip', async () => {
-    const grants: Calls = [];
-    const removes: Calls = [];
-    const r = show({ mcpServerGrant: rec(grants, () => projServer()) as never, mcpServerRemove: rec(removes, () => undefined) as never });
-    const stop = await waitFor(() => byLabel<HTMLButtonElement>(r.container, 'Stop Rev using Test server'), r);
-    await r.act(() => stop.click());
-    await waitFor(() => expect(grants).toEqual([['prj_1', 'tst', 'agt_2', false]]), r);
-    const out = await waitFor(() => byLabel<HTMLButtonElement>(r.container, 'Take Test server out of Alpha'), r);
-    await waitFor(() => expect(out.disabled).toBe(false), r);
-    await r.act(() => out.click());
-    await waitFor(() => expect(removes).toEqual([['prj_1', 'tst']]), r);
-    await waitFor(() => expect(note(r)).toContain('Test server was taken out of Alpha.'), r);
   });
 
   it('marks a tool read-only without sending or losing the stored secrets', async () => {
@@ -542,8 +409,7 @@ describe('Library page', () => {
     const saves: Calls = [];
     const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never });
     await waitFor(() => expect(r.container.textContent).toContain('No servers are connected yet.'), r);
-    await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
-    const f = await one(r, '[data-testid="mcp-form"]');
+    const f = await customForm(r);
     type(byLabel(f, 'Short id'), 'tst');
     type(byLabel(f, 'Name'), 'Test server');
     type(byLabel<HTMLTextAreaElement>(f, /^Command, one argument per line/), 'C:\\tools\\srv.exe\n--flag');
@@ -557,7 +423,83 @@ describe('Library page', () => {
     await waitFor(() => expect(saves.length).toBe(1), r);
     expect(saves[0]![0]).toMatchObject({ id: 'tst', display: 'Test server', transport: 'stdio', argv: ['C:\\tools\\srv.exe', '--flag'], secretEnv: { API_KEY: 'abc123' }, guard: true });
     await waitFor(() => expect(note(r)).toContain('is connected'), r);
+    expect(note(r)).toContain("add it to a project on that project's Integrations page");
     expect(r.$('[data-testid="mcp-form"]')).toBeNull();
+  });
+
+  it('Connect an MCP server lists the servers built into Drydock first, then Add a custom MCP server', async () => {
+    const cards: McpGalleryCard[] = [
+      galleryCard(),
+      galleryCard({ id: 'ctx7', display: 'Context7', publisher: 'Upstash', brand: 'context7', auth: 'bearer', authOptional: true, license: 'MIT', status: 'connected', libraryId: 'ctx7' }),
+    ];
+    const r = show({ mcpLibList: async () => [], mcpGallery: async () => cards });
+    await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
+    await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
+    const dialog = await one(r, 'dialog[open]');
+    const prebuilt = await one(r, '[data-testid="mcp-add-prebuilt"]');
+    const custom = await one(r, '[data-testid="mcp-add-custom"]');
+    expect(dialog.contains(prebuilt) && dialog.contains(custom)).toBe(true);
+    // the built-in servers come before the custom server
+    expect(prebuilt.compareDocumentPosition(custom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(prebuilt.querySelector('h2')!.textContent).toBe('Built into Drydock');
+    expect(custom.querySelector('h2')!.textContent).toBe('Add a custom MCP server');
+    const items = await waitFor(() => {
+      const l = Array.from(prebuilt.querySelectorAll<HTMLElement>('[data-testid="connector"]'));
+      if (l.length !== 2) throw new Error('not yet');
+      return l;
+    }, r);
+    // the gallery's own cards: logo, publisher, sign-in kind, license and Connect; a connected one says so
+    const ml = items[0]!;
+    expect(ml.querySelector('[data-brand="microsoft"]')).not.toBeNull();
+    expect(ml.textContent).toContain('Microsoft · official');
+    expect(ml.textContent).toContain('No account needed');
+    expect(ml.textContent).toContain('License MIT');
+    expect(byText(ml, 'button', 'Connect Microsoft Learn')).not.toBeNull();
+    expect(items[1]!.querySelector('[data-testid="connector-status"]')!.textContent).toBe('Connected');
+    expect(() => byText(items[1]!, 'button', 'Connect Context7')).toThrow();
+    // the custom form waits behind its button, next to the import from a file
+    expect(r.$('[data-testid="mcp-form"]')).toBeNull();
+    expect(byText(custom, 'button', 'Import from a file')).not.toBeNull();
+    await r.act(() => byText(custom, 'button', 'Add a custom server').click());
+    expect(custom.querySelector('[data-testid="mcp-form"]')).not.toBeNull();
+  });
+
+  it('connects a built-in server from the Connect an MCP server dialog, and the new server joins the grid', async () => {
+    const connects: Calls = [];
+    let cards: McpGalleryCard[] = [galleryCard()];
+    let list: McpLibraryServer[] = [];
+    const r = show({
+      mcpLibList: async () => list,
+      mcpGallery: async () => cards,
+      mcpConnect: rec(connects, () => {
+        cards = [galleryCard({ status: 'connected', libraryId: 'mslearn' })];
+        list = [libServer({ id: 'mslearn', display: 'Microsoft Learn', catalogId: 'mslearn', transport: 'http', projects: [] })];
+        return { card: cards[0]! };
+      }) as never,
+    });
+    await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
+    await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
+    const card = await one(r, '[data-testid="mcp-add-prebuilt"] [data-testid="connector"][data-id="mslearn"]');
+    await r.act(() => byText(card, 'button', 'Connect Microsoft Learn').click());
+    await waitFor(() => expect(connects).toEqual([['mslearn', undefined]]), r);
+    await waitFor(() => expect(r.$('[data-testid="connector"][data-id="mslearn"]')!.getAttribute('data-status')).toBe('connected'), r);
+    await waitFor(() => expect(r.$('[data-testid="lib-mcp-tile"][data-server="mslearn"]')).not.toBeNull(), r);
+  });
+
+  it('imports servers from a file in the same dialog, below the built-in servers', async () => {
+    const saves: Calls = [];
+    const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never, mcpLibDiscover: async () => libServer() });
+    await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
+    await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
+    const custom = await one(r, '[data-testid="mcp-add-custom"]');
+    await r.act(() => byText(custom, 'button', 'Import from a file').click());
+    const panel = await one(r, '[data-testid="mcp-import"]');
+    type(byLabel<HTMLTextAreaElement>(panel, 'Configuration (JSON)'), JSON.stringify({ mcpServers: { docs: { url: 'https://learn.microsoft.com/api/mcp' } } }));
+    await r.act(() => byText(panel, 'button', 'Read servers').click());
+    await r.act(() => byText(panel, 'button', 'Import 1 server').click());
+    await waitFor(() => expect(saves.length).toBe(1), r);
+    await waitFor(() => expect(note(r)).toBe('1 server imported.'), r);
+    expect(r.$('dialog[open]')).toBeNull();
   });
 
   it('opens the panel of a server just connected and of a template just made: the next step is there', async () => {
@@ -569,9 +511,7 @@ describe('Library page', () => {
       agentTemplateList: async () => tpls,
       agentTemplateSave: async () => ((tpls = [tpl()]), tpls[0]!),
     } as never);
-    await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
-    await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
-    const f = await one(r, '[data-testid="mcp-form"]');
+    const f = await customForm(r);
     type(byLabel(f, 'Short id'), 'tst');
     type(byLabel(f, 'Name'), 'Test server');
     type(byLabel<HTMLTextAreaElement>(f, /^Command, one argument per line/), 'srv.exe');
@@ -593,9 +533,7 @@ describe('Library page', () => {
   it('says which environment line is wrong and saves nothing', async () => {
     const saves: Calls = [];
     const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never });
-    await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
-    await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
-    const f = await one(r, '[data-testid="mcp-form"]');
+    const f = await customForm(r);
     type(byLabel(f, 'Short id'), 'tst');
     type(byLabel(f, 'Name'), 'Test server');
     type(byLabel<HTMLTextAreaElement>(f, /^Command, one argument per line/), 'srv.exe');
@@ -652,31 +590,6 @@ describe('Library page', () => {
     expect(saves[0]![0]).toMatchObject({ id: 'tst', secretEnv: { API_KEY: '' }, env: { MODE: 'x' } });
   });
 
-  it('agent CLIs: Claude is verified, an unproven CLI is off until the human allows it, one with no mechanism cannot be allowed', async () => {
-    const tries: Calls = [];
-    const rows = (enabled: boolean) => [
-      { adapter: 'claude', attached: true, canTry: false, trying: false },
-      { adapter: 'codex', attached: enabled, canTry: true, trying: enabled, reason: 'codex: unverified' },
-      { adapter: 'antigravity', attached: false, canTry: false, trying: false, reason: 'antigravity: unproven' },
-    ];
-    const r = show({
-      mcpStatus: async () => ({ running: true, address: '', adapters: rows(false) }),
-      mcpTrySet: rec(tries, (_a, enabled) => ({ running: true, address: '', adapters: rows(enabled as boolean) })) as never,
-    });
-    const list = await waitFor(() => {
-      const l = r.$('[data-testid="cli-gateway"]');
-      if (!l?.textContent?.includes('verified')) throw new Error('not yet');
-      return l as HTMLElement;
-    }, r);
-    expect(() => byLabel(list, 'Let claude use the gateway')).toThrow();
-    expect(() => byLabel(list, 'Let antigravity use the gateway')).toThrow();
-    expect(list.textContent).toContain('antigravity: unproven');
-    const box = byLabel<HTMLInputElement>(list, 'Let codex use the gateway');
-    expect(box.checked).toBe(false);
-    await r.act(() => box.click());
-    await waitFor(() => expect(tries).toEqual([['codex', true]]), r);
-  });
-
   describe('OAuth sign-in of a web server', () => {
     const oauthServer = (over: Partial<McpLibraryServer> = {}) =>
       libServer({ id: 'lin', display: 'Linear', transport: 'http', url: 'https://mcp.example.com/mcp', argv: undefined, env: undefined, secretEnv: [], oauth: true, oauthAt: 0, tools: [], projects: [], ...over });
@@ -685,9 +598,7 @@ describe('Library page', () => {
     it('connecting a server with OAuth sends oauth true and no token', async () => {
       const saves: Calls = [];
       const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => oauthServer()) as never });
-      await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
-      await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
-      const f = await one(r, '[data-testid="mcp-form"]');
+      const f = await customForm(r);
       type(byLabel(f, 'Short id'), 'lin');
       type(byLabel(f, 'Name'), 'Linear');
       await r.act(() => type(byLabel<HTMLSelectElement>(f, 'Kind'), 'http'));
@@ -715,7 +626,7 @@ describe('Library page', () => {
       });
       await pick(r, 'lib-mcp');
       const panel = await one(r, '[data-testid="oauth-panel"]');
-      await waitFor(() => expect(panel.textContent).toContain('not signed in'), r);
+      await waitFor(() => expect(panel.getAttribute('data-signed-in')).toBe('false'), r);
       expect(() => byText(panel, 'button', 'Sign out')).toThrow();
       await r.act(() => byText(panel, 'button', 'Sign in').click());
       await waitFor(() => expect(begins).toEqual([['lin']]), r);
@@ -726,6 +637,25 @@ describe('Library page', () => {
       const box = await one(r, '[data-testid="oauth-waiting"]');
       await r.act(() => byText(box, 'button', 'Cancel').click());
       await waitFor(() => expect(cancels).toEqual([['lin']]), r);
+    });
+
+    it('not signed in, the sign-in is exactly one control: a Sign in button, with no heading, badge or explanatory line', async () => {
+      const r = show({ mcpLibList: async () => [oauthServer()], mcpOAuthStatus: async () => status() });
+      await pick(r, 'lib-mcp');
+      const panel = await one(r, '[data-testid="oauth-panel"]');
+      await waitFor(() => expect(panel.getAttribute('data-state')).toBe('idle'), r);
+      const controls = Array.from(panel.querySelectorAll<HTMLElement>('button, a, input, select'));
+      expect(controls.length).toBe(1);
+      expect(controls[0]!.tagName).toBe('BUTTON');
+      expect(controls[0]!.textContent?.trim()).toBe('Sign in');
+      // what happens is said by the button's title, not by a line beside it
+      expect(controls[0]!.getAttribute('title')).toBe("Your browser opens the server's own sign-in page.");
+      expect(panel.textContent?.trim()).toBe('Sign in');
+      expect(panel.textContent).not.toContain('Sign-in');
+      expect(panel.textContent).not.toContain('not signed in');
+      // the whole server panel has one Sign in, too
+      const card = r.$('[data-testid="lib-mcp"]')!;
+      expect(Array.from(card.querySelectorAll('button')).filter((b) => /sign.?in/i.test(b.textContent ?? '')).length).toBe(1);
     });
 
     it('never links an address that is not safe to open', async () => {
@@ -747,7 +677,10 @@ describe('Library page', () => {
       await pick(r, 'lib-mcp');
       const panel = await one(r, '[data-testid="oauth-panel"]');
       await waitFor(() => byText(panel, 'button', 'Sign in again'), r);
-      expect(panel.textContent).toContain('signed in');
+      // one compact line: Signed in (when), Sign out, Sign in again; no separate heading
+      expect(panel.getAttribute('data-signed-in')).toBe('true');
+      expect(panel.querySelector('[data-testid="oauth-signed-in"]')!.textContent).toBe(`Signed in ${new Date(1760000000000).toLocaleString()}`);
+      expect(panel.textContent).not.toContain('Sign-in');
       expect(panel.textContent).not.toContain('not signed in');
       await r.act(() => byText(panel, 'button', 'Sign out').click());
       await waitFor(() => expect(outs).toEqual([['lin']]), r);

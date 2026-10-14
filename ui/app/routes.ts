@@ -16,6 +16,8 @@ export const routes = route({
   activity: get('/activity'),
   project: get('/project'),
   projectNew: get('/project/new'),
+  // the project's own integrations: its MCP servers and grants, the approvals waiting, its app-sync assignments
+  projectIntegrations: get('/project/integrations'),
   plan: get('/plan'),
   requirements: get('/requirements'),
   milestones: get('/milestones'),

@@ -1,5 +1,6 @@
 // Which agent CLIs get the workspace tools and the MCP servers you give them. Claude Code is proven with real runs. For the
-// others the setting is off until you allow it, because no real run has shown that the CLI honours it yet.
+// others the setting is off until you allow it, because no real run has shown that the CLI honours it yet. It sits on the
+// Connections page, below the agent CLIs' tiles.
 
 import { css, type Handle } from 'remix/component';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
@@ -30,10 +31,11 @@ export function CliGateway(handle: Handle) {
     return (
       <Section
         label="Agent CLIs and the MCP gateway"
-        title="Agent CLIs"
-        description="Servers you give an agent reach it through one local gateway. Claude Code is verified with real runs. For the other CLIs, Drydock hands the gateway over when the session starts, but no real run has shown yet that each CLI uses it, so it stays off until you allow it."
+        testId="cli-gateway-section"
+        title="MCP gateway"
+        description="Which agent CLIs receive the MCP servers you give an agent. The servers reach an agent through one local gateway. Claude Code is verified with real runs. For the other CLIs, Drydock hands the gateway over when the session starts, but no real run has shown yet that each CLI uses it, so it stays off until you allow it here."
       >
-        <ErrorNote error={status.error ?? act.error} what="Agent CLIs" />
+        <ErrorNote error={status.error ?? act.error} what="MCP gateway" />
         {status.data && !status.data.running ? (
           <Notice tone="warn">The gateway is not running.</Notice>
         ) : null}

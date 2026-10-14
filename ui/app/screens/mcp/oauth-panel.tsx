@@ -1,5 +1,7 @@
 // Sign-in for a server that uses OAuth. The core runs the flow; this panel shows the address of the server's own sign-in page
-// (it comes from the server, so it is only linked when it is a safe address to open) and what happened.
+// (it comes from the server, so it is only linked when it is a safe address to open) and what happened. Not signed in, it is
+// one button, Sign in (its title says the browser opens the server's own sign-in page); signed in, one compact line with
+// Sign out and Sign in again.
 
 import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, LogIn, LogOut, ShieldCheck } from 'lucide';
@@ -7,23 +9,17 @@ import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
-import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote, Spinner } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 
-const panelCss = css({
-  display: 'grid',
-  gap: t.s2,
-  padding: t.s3,
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rMd,
-  background: t.bgApp,
-  '& p': { margin: '0' },
-});
-const headCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textMd, fontWeight: '500', '& svg': { color: t.textMuted } });
+/** What the Sign in button's title says: the person's browser opens the server's own page, not Drydock's. */
+export const SIGN_IN_HINT = "Your browser opens the server's own sign-in page.";
+
+const panelCss = css({ display: 'grid', gap: t.s2, '& p': { margin: '0' } });
 const actionsCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' });
+const signedCss = css({ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: t.textMd, color: t.textMuted, '& svg': { color: t.success } });
 const failCss = css({ padding: '6px 10px', borderRadius: t.rMd, background: t.dangerSoft, color: t.text, fontSize: t.textSm });
 const waitCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, background: t.infoSoft, fontSize: t.textMd });
 
@@ -50,13 +46,20 @@ export function OAuthPanel(handle: Handle<{ server: McpLibraryServer; onChanged:
     const href = d?.url ? safeHref(d.url) : undefined;
     const signedIn = d?.signedIn ?? (server.oauthAt ?? 0) > 0;
     const at = d?.at ?? server.oauthAt;
+    const begin = (label: string, variant: 'primary' | 'ghost') => (
+      <Button
+        size="sm"
+        variant={variant}
+        icon={LogIn}
+        disabled={act.busy !== '' || ro.readOnly}
+        title={ro.readOnly ? ro.reason : SIGN_IN_HINT}
+        mix={[on('click', () => run('begin', () => s.client.mcpOAuthBegin(server.id)))]}
+      >
+        {label}
+      </Button>
+    );
     return (
-      <div mix={panelCss} data-testid="oauth-panel" data-state={d?.state ?? 'idle'}>
-        <p mix={headCss}>
-          <Icon icon={ShieldCheck} size={15} />
-          Sign-in{' '}
-          {signedIn ? <Badge tone="ok">signed in{at ? ` ${formatDateTime(at)}` : ''}</Badge> : <Badge tone="warn">not signed in</Badge>}
-        </p>
+      <div mix={panelCss} data-testid="oauth-panel" data-state={d?.state ?? 'idle'} data-signed-in={String(signedIn)}>
         <ErrorNote error={act.error ?? st.error} what="Sign-in" />
         {d?.state === 'failed' && d.error ? (
           <p mix={failCss} role="alert" data-testid="oauth-error">
@@ -83,25 +86,19 @@ export function OAuthPanel(handle: Handle<{ server: McpLibraryServer; onChanged:
               </Button>
             </div>
           </div>
-        ) : (
+        ) : signedIn ? (
           <div mix={actionsCss}>
-            <Button
-              size="sm"
-              variant="primary"
-              icon={LogIn}
-              disabled={act.busy !== '' || ro.readOnly}
-              title={ro.readOnly ? ro.reason : undefined}
-              mix={[on('click', () => run('begin', () => s.client.mcpOAuthBegin(server.id)))]}
-            >
-              {signedIn ? 'Sign in again' : 'Sign in'}
+            <span mix={signedCss} data-testid="oauth-signed-in">
+              <Icon icon={ShieldCheck} size={14} />
+              Signed in{at ? ` ${formatDateTime(at)}` : ''}
+            </span>
+            <Button size="sm" variant="ghost" icon={LogOut} disabled={act.busy !== ''} mix={[on('click', () => run('signout', () => s.client.mcpOAuthSignOut(server.id)))]}>
+              Sign out
             </Button>
-            {signedIn ? (
-              <Button size="sm" variant="ghost" icon={LogOut} disabled={act.busy !== ''} mix={[on('click', () => run('signout', () => s.client.mcpOAuthSignOut(server.id)))]}>
-                Sign out
-              </Button>
-            ) : null}
-            {!signedIn ? <span mix={[muted]} style={{ fontSize: 'var(--text-sm)' }}>Your browser opens the server's own sign-in page.</span> : null}
+            {begin('Sign in again', 'ghost')}
           </div>
+        ) : (
+          <div mix={actionsCss}>{begin('Sign in', 'primary')}</div>
         )}
       </div>
     );

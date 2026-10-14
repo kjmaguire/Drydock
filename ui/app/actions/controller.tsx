@@ -57,6 +57,10 @@ export const controller = createController(routes, {
       const { ProjectSettingsScreen } = await import('../screens/project/project-settings-screen.tsx');
       return render(<ProjectSettingsScreen />);
     },
+    async projectIntegrations({ render }) {
+      const { ProjectIntegrationsScreen } = await import('../screens/integrations/project-integrations-screen.tsx');
+      return render(<ProjectIntegrationsScreen />);
+    },
     async projectNew({ render }) {
       const { ProjectCreateScreen } = await import('../screens/project/project-create-screen.tsx');
       return render(<ProjectCreateScreen />);

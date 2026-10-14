@@ -1,13 +1,14 @@
 // The MCP connector cards (decision P43), the way other apps present connectors: a card per known server with its logo, name,
 // publisher and what it gives agents; one Connect button (the browser sign-in, a token, or the program a template runs); then
-// Connected, as whom, with the tools it offers, and Add to project, Grant to agents and Disconnect. Connecting needs no project.
-// Since decision P47 the cards sit on the Integrations page, in the Agent tools section of their vendor's tile; below the tiles,
-// Your own servers shows the servers you described yourself, by what each says about itself.
+// Connected, as whom, with the tools it offers, and Disconnect. Connecting is done once for the workspace and needs no project;
+// a connected server is added to a project and granted to its agents on that project's Integrations page. The cards sit on the
+// Integrations page, in the Agent tools section of their vendor's tile (decision P47), and first in the Library's "Connect an
+// MCP server" dialog (AddMcpServer, before the custom server form). Your own servers shows the servers you described yourself,
+// by what each says about itself.
 
 import { css, on, type Handle } from 'remix/component';
-import { BookOpen, ExternalLink, FileUp, FolderPlus, Plug, Plus, RefreshCw, Unplug, Users } from 'lucide';
-import type { McpGalleryCard, McpLibraryServer, McpServer, McpServerIdentity } from '../../api/mcpClient.ts';
-import type { Agent, Project } from '../../api/types.ts';
+import { BookOpen, ExternalLink, FileUp, Plug, Plus, RefreshCw, Unplug } from 'lucide';
+import type { McpGalleryCard, McpLibraryServer, McpServerIdentity } from '../../api/mcpClient.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
@@ -50,7 +51,6 @@ const cardCss = css({
 });
 const errCss = css({ padding: '6px 10px', borderRadius: t.rMd, background: t.dangerSoft, color: t.text, fontSize: t.textSm, overflowWrap: 'anywhere' });
 const tokenCss = css({ display: 'grid', gap: '6px', '& label': { fontSize: t.textSm, fontWeight: '500' }, '& .hint': { fontSize: t.textXs, color: t.textMuted } });
-const grantCss = css({ display: 'grid', gap: '4px', margin: '0', padding: '0', listStyle: 'none', '& label': { display: 'flex', alignItems: 'center', gap: t.s2, cursor: 'pointer', fontSize: t.textSm } });
 const instrCss = css({ margin: '6px 0 0', maxHeight: '160px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm });
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
@@ -114,59 +114,16 @@ function TokenForm(handle: Handle<{ card: McpGalleryCard; busy: boolean; onSubmi
   };
 }
 
-function GrantAgents(handle: Handle<{ card: McpGalleryCard; projectId: string; agents: readonly Agent[] }>) {
-  const s = services(handle);
-  const act = action(handle);
-  const view = query(handle, {
-    load: () => s.client.mcpServerList(handle.props.projectId),
-    key: () => handle.props.projectId,
-    when: (e) => e.type.startsWith('mcp.'),
-  });
-  const want = new Map<string, boolean>();
-  return () => {
-    const { card, projectId, agents } = handle.props;
-    const mine: McpServer | undefined = (view.data ?? []).find((x) => x.id === card.libraryId);
-    const has = (a: string) => !!mine?.agents.some((g) => g.agentId === a);
-    for (const [a, v] of want) if (has(a) === v) want.delete(a); // the server agrees now
-    if (agents.length === 0) return <p mix={faint}>This project has no agents yet.</p>;
-    return (
-      <div>
-        <ErrorNote error={act.error ?? view.error} what="Not granted" />
-        <ul mix={grantCss} aria-label={`Agents allowed to use ${card.display}`}>
-          {agents.map((a) => (
-            <li key={a.id}>
-              <label>
-                <input
-                  type="checkbox"
-                  aria-label={`${a.name} may use ${card.display}`}
-                  checked={want.get(a.id) ?? has(a.id)}
-                  disabled={act.busy !== ''}
-                  mix={on('change', async (e) => {
-                    const yes = (e.currentTarget as HTMLInputElement).checked;
-                    want.set(a.id, yes); // shown at once; the server's answer replaces it
-                    const ok = await act.run('grant', () => s.client.mcpServerGrant(projectId, card.libraryId!, a.id, yes));
-                    if (!ok) want.delete(a.id);
-                    view.reload();
-                  })}
-                />
-                {a.name} {a.role ? <span mix={faint}>{a.role}</span> : null}
-              </label>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
-}
-
-export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; projects: readonly Project[]; projectId?: string; agents: readonly Agent[]; onChanged: () => void }>) {
+/**
+ * One catalog server: what it is, its state, Connect (or its sign-in or token), its tools, and Disconnect. Nothing of a project:
+ * a connected server is put into a project, and granted to that project's agents, on the project's Integrations page.
+ */
+export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: () => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
   let asking = false; // the token form is open
   let confirm = false;
-  let granting = false;
-  let pick = '';
   const set = (f: () => void) => {
     f();
     void handle.update();
@@ -178,15 +135,13 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; projects: r
   };
 
   return () => {
-    const { card, projects, projectId, agents, onChanged } = handle.props;
+    const { card, onChanged } = handle.props;
     const ro = s.workspace.license;
     const st = STATUS[card.status] ?? STATUS.error!;
     const connected = card.status === 'connected';
     const needsSecret = card.auth === 'env' || (card.auth === 'bearer' && !card.authOptional);
     const docs = card.docsUrl ? safeHref(card.docsUrl) : undefined;
-    const inProjects = card.projects.map((id) => projects.find((p) => p.id === id)?.name ?? id);
-    const options = projects.filter((p) => !card.projects.includes(p.id));
-    const chosen = options.some((p) => p.id === pick) ? pick : (options[0]?.id ?? '');
+    const n = card.projects.length;
     const showToken = asking || card.status === 'needs_token';
     return (
       <li mix={cardCss} data-testid="connector" data-id={card.id} data-status={card.status} aria-label={card.display}>
@@ -268,7 +223,11 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; projects: r
             </p>
           </details>
         ) : null}
-        {card.libraryId && card.projects.length > 0 ? <p mix={faint}>In: {inProjects.join(', ')}.</p> : null}
+        {card.libraryId ? (
+          <p mix={faint} data-testid="connector-projects">
+            {n > 0 ? `In ${n} project${n === 1 ? '' : 's'}. ` : ''}Add it to a project, and grant it to agents, on that project's Integrations page.
+          </p>
+        ) : null}
 
         <div class="row">
           {!card.libraryId && card.auth !== '' ? (
@@ -304,42 +263,12 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; projects: r
               Try again
             </Button>
           ) : null}
-          {card.libraryId && options.length > 0 ? (
-            <span class="row">
-              <select aria-label={`Project to add ${card.display} to`} value={chosen} mix={on('change', (e) => set(() => (pick = (e.currentTarget as HTMLSelectElement).value)))}>
-                {options.map((p) => (
-                  <option key={p.id} value={p.id} selected={p.id === chosen}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                size="sm"
-                icon={FolderPlus}
-                disabled={act.busy !== '' || ro.readOnly}
-                mix={[
-                  on('click', async () => {
-                    await act.run('add', () => s.client.mcpServerAdd(chosen, card.libraryId!));
-                    onChanged();
-                  }),
-                ]}
-              >
-                Add to project
-              </Button>
-            </span>
-          ) : null}
-          {card.libraryId && projectId ? (
-            <Button size="sm" variant="ghost" icon={Users} aria-expanded={granting} mix={[on('click', () => set(() => (granting = !granting)))]}>
-              Grant to agents
-            </Button>
-          ) : null}
           {card.libraryId && !confirm ? (
             <Button size="sm" variant="ghost" icon={Unplug} mix={[on('click', () => set(() => (confirm = true)))]}>
               Disconnect
             </Button>
           ) : null}
         </div>
-        {granting && card.libraryId && projectId ? <GrantAgents card={card} projectId={projectId} agents={agents} /> : null}
         {confirm && card.libraryId ? (
           <div class="row" mix={errCss}>
             <span>Disconnect {card.display}? It leaves every project and its stored sign-in or token is deleted.</span>
@@ -537,6 +466,84 @@ export function OwnServers(handle: Handle<{ linked: readonly (string | undefined
           ) : null}
         </Dialog>
       </>
+    );
+  };
+}
+
+const addCss = css({ display: 'grid', gap: t.s6, minWidth: '0' });
+const addRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' });
+
+/**
+ * Adding an MCP server, prebuilt first: the servers built into Drydock (the connector catalog, mcplib.gallery, as the same
+ * cards the Integrations page shows; one already connected says Connected), then a custom server (the server form) or the
+ * servers another app's claude_desktop_config.json or mcp.json lists. The Library's "Connect an MCP server" dialog.
+ */
+export function AddMcpServer(
+  handle: Handle<{
+    existingIds: readonly string[];
+    /** A built-in server was connected, signed in or disconnected from its card. */
+    onChanged: () => void;
+    /** A custom server was saved. */
+    onSaved: (saved: McpLibraryServer) => void;
+    /** Servers were imported from a file. */
+    onImported: (n: number) => void;
+  }>,
+) {
+  const s = services(handle);
+  const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
+  let custom: '' | 'form' | 'import' = '';
+  const set = (f: () => void) => {
+    f();
+    void handle.update();
+  };
+  const changed = () => {
+    gallery.reload();
+    handle.props.onChanged();
+  };
+
+  return () => {
+    const { existingIds, onSaved, onImported } = handle.props;
+    const cards = gallery.data ?? [];
+    return (
+      <div mix={addCss} data-testid="mcp-add">
+        <Section
+          label="MCP servers built into Drydock"
+          testId="mcp-add-prebuilt"
+          title="Built into Drydock"
+          description="Servers Drydock knows, each checked against its vendor's documentation. Connect one here: it is connected once for the whole workspace."
+        >
+          <ErrorNote error={gallery.error} what="Could not load the built-in servers" />
+          {gallery.loading && !gallery.data ? <Loading label="Loading the built-in servers..." /> : null}
+          {gallery.data && cards.length === 0 ? <p mix={faint}>No server is built into this build.</p> : null}
+          <ul mix={connectorGrid} aria-label="MCP servers built into Drydock">
+            {cards.map((c) => (
+              <ConnectorCard key={c.id} card={c} onChanged={changed} />
+            ))}
+          </ul>
+        </Section>
+        <Section
+          label="Add a custom MCP server"
+          testId="mcp-add-custom"
+          title="Add a custom MCP server"
+          description="A server that is not built in: a web address or a program on this computer, or the servers another app's configuration file lists."
+        >
+          {custom === 'form' ? (
+            <McpServerForm onCancel={() => set(() => (custom = ''))} onDone={(saved) => (set(() => (custom = '')), onSaved(saved))} />
+          ) : custom === 'import' ? (
+            <ImportServers existingIds={existingIds} onCancel={() => set(() => (custom = ''))} onDone={(n) => (set(() => (custom = '')), onImported(n))} />
+          ) : (
+            <div mix={addRow}>
+              <Button size="sm" variant="primary" icon={Plus} mix={[on('click', () => set(() => (custom = 'form')))]}>
+                Add a custom server
+              </Button>
+              <Button size="sm" variant="ghost" icon={FileUp} mix={[on('click', () => set(() => (custom = 'import')))]}>
+                Import from a file
+              </Button>
+              <span mix={faint}>Claude Desktop's claude_desktop_config.json, or the mcp.json of Cursor or VS Code.</span>
+            </div>
+          )}
+        </Section>
+      </div>
     );
   };
 }

@@ -1,86 +1,46 @@
-// The Library: MCP servers and team members (agent templates) defined once for the whole workspace, then dropped into projects
-// and onto agents. Everything that can be dragged also has a "Put in project" or "Give" control, so the page works from the
-// keyboard. A project only ever reaches the servers it was given, and an agent only the servers you gave it. The skill library
-// has a page of its own (SkillLibraryScreen, /library/skills): it fills itself from every enabled registry (decision P48), and
-// adding a skill to a project is the person's acceptance.
+// The Library: MCP servers and team members (agent templates) defined once for the whole workspace, and the prebuilt agents.
+// Nothing of a single project is shown here (decision P51): a connected server is added to a project, and granted to that
+// project's agents, on the project's Integrations page; a team member is made from a template on a project's Team page. Connect
+// an MCP server lists the servers built into Drydock first, then a custom server. The skill library has a page of its own
+// (SkillLibraryScreen, /library/skills): it fills itself from every enabled registry (decision P48), and adding a skill to a
+// project is the person's acceptance.
 
 import { css, on, type Handle } from 'remix/component';
-import {
-  BookOpen,
-  Check,
-  Cpu,
-  FolderOpen,
-  FolderPlus,
-  GitBranch,
-  Globe,
-  GripVertical,
-  KeyRound,
-  Library,
-  Pencil,
-  Plug,
-  Plus,
-  RefreshCw,
-  Search,
-  Sparkles,
-  Trash2,
-  Unplug,
-  UserPlus,
-  Users,
-  X,
-} from 'lucide';
+import { BookOpen, Cpu, FolderOpen, GitBranch, Globe, KeyRound, Library, Pencil, Plug, Plus, RefreshCw, Search, Sparkles, Trash2, Unplug, Users } from 'lucide';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
 import type { LibrarySkill, SkillLibraryAddAll } from '../../api/extTypes.ts';
-import type { McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
-import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
+import type { McpLibraryServer } from '../../api/mcpClient.ts';
+import type { AdapterInfo, Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button, IconButton } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
-import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { card, Page, Section, stack } from '../../ui/layout.tsx';
+import { card, Page, Section } from '../../ui/layout.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
-import { CliGateway } from '../mcp/cli-gateway.tsx';
-import { actionsRow, cardHead, confirmCss, subhead, tile, whereCss } from '../mcp/mcp-screen.tsx';
+import { AddMcpServer } from '../mcp/gallery.tsx';
+import { actionsRow, cardHead, confirmCss, serverLogo, ServerMark, subhead, tile, whereCss } from '../mcp/mcp-screen.tsx';
 import { OAuthPanel } from '../mcp/oauth-panel.tsx';
 import { McpServerForm } from '../mcp/server-form.tsx';
 import { inputOf, whereOf } from '../mcp/server-input.ts';
 import { addAllText, addedText, libraryBlurb, libraryStateText, listOr, registryStatusText, skillBrand } from '../skills/skills.ts';
-import { skillLines } from '../team/team.ts';
 import { TemplateForm } from '../team/template-form.tsx';
-import { joinedNote, startDrag, type Dragged } from './dnd.ts';
-import { DropZone } from './drop-zone.tsx';
 import { serverBlurb, serverState, templateBlurb, templateState } from './tiles.ts';
 
 type Say = (message: string) => void;
 type Fail = (e: Error | undefined) => void;
 
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
-const colsCss = css({
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1.45fr) minmax(300px, 1fr)',
-  gap: t.s6,
-  alignItems: 'start',
-  '@media (max-width: 980px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
-});
-const sideCss = css({ position: 'sticky', top: t.s4, display: 'grid', gap: t.s3 });
+const sectionsCss = css({ display: 'grid', gap: t.s6, minWidth: '0' });
 const noteCss = css({ '&:empty': { display: 'none' } });
 
-// The selected entry's panel below its grid. Its header can be dragged like the tile.
-const dragCard = css({
-  display: 'grid',
-  gap: t.s3,
-  transition: `border-color ${t.fast} ${t.ease}, opacity ${t.fast} ${t.ease}`,
-  '&[data-dragging="true"]': { opacity: '0.55', borderStyle: 'dashed' },
-  '& [data-grip]': { color: t.textFaint, cursor: 'grab', display: 'inline-flex' },
-  '& p': { margin: '0' },
-});
-const dragHead = css({ cursor: 'grab' });
-const dragHint = css({ fontSize: t.textSm, color: t.textFaint });
+// The selected entry's panel below its grid.
+const panelCard = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
 const metaRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', fontSize: t.textSm, color: t.textMuted, '& svg': { color: t.textFaint } });
 const toolsTable = css({
   width: '100%',
@@ -105,15 +65,12 @@ const chips = css({
     alignItems: 'center',
     gap: '4px',
     height: '24px',
-    padding: '0 4px 0 8px',
+    padding: '0 8px',
     borderRadius: t.rFull,
     border: `1px solid ${t.border}`,
     background: t.bgApp,
     fontSize: t.textSm,
   },
-  '& > li[data-plain]': { paddingRight: '8px' },
-  '& > li button': { width: '18px', height: '18px', borderRadius: '50%' },
-  '& > li[data-in-project="true"]': { color: t.success, borderColor: `color-mix(in srgb, ${t.success} 40%, ${t.border})` },
 });
 const skillPanelCss = css({
   display: 'grid',
@@ -123,46 +80,8 @@ const skillPanelCss = css({
   '& .reasons': { margin: '0', paddingLeft: '16px', fontSize: t.textSm, color: t.textMuted },
 });
 const putRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& select': { width: 'auto', minWidth: '140px', maxWidth: '100%' } });
-const panelCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
-const agentRow = css({
-  display: 'grid',
-  gap: '6px',
-  padding: `${t.s2} ${t.s3}`,
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rMd,
-  background: t.bgApp,
-  '& .who': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0' },
-  '& .who strong': { fontWeight: '600' },
-});
 
-/** The brand a server shows, from the catalog entry it was connected from or its own id; '' when it has none. */
-export function serverLogo(s: Pick<McpLibraryServer, 'id' | 'catalogId'>): string {
-  return [s.catalogId, s.id].find((x): x is string => !!x && brandKey(x) !== '') ?? '';
-}
-
-/** The drag handlers of one Library item (a tile or a panel header): what is dragged, and a flag the element dims by. */
-function dragOf(item: () => Dragged, onDragging: (d: Dragged | undefined) => void, flag: (v: boolean) => void) {
-  return {
-    start: (e: DragEvent) => {
-      const it = item();
-      startDrag(e, it);
-      flag(true);
-      onDragging(it);
-    },
-    end: () => {
-      flag(false);
-      onDragging(undefined);
-    },
-  };
-}
-
-function ServerTile(handle: Handle<{ s: McpLibraryServer; selected: boolean; onSelect: () => void; onDragging: (d: Dragged | undefined) => void }>) {
-  let dragging = false;
-  const drag = dragOf(
-    () => ({ kind: 'mcp', id: handle.props.s.id }),
-    (d) => handle.props.onDragging(d),
-    (v) => ((dragging = v), void handle.update()),
-  );
+function ServerTile(handle: Handle<{ s: McpLibraryServer; selected: boolean; onSelect: () => void }>) {
   return () => {
     const { s, selected, onSelect } = handle.props;
     const st = serverState(s);
@@ -178,23 +97,12 @@ function ServerTile(handle: Handle<{ s: McpLibraryServer; selected: boolean; onS
         onSelect={onSelect}
         testId="lib-mcp-tile"
         data={{ server: s.id }}
-        dragging={dragging}
-        onDragStart={drag.start}
-        onDragEnd={drag.end}
       />
     );
   };
 }
 
-function TemplateTile(
-  handle: Handle<{ t: AgentTemplate; libraryIds: ReadonlySet<string>; selected: boolean; onSelect: () => void; onDragging: (d: Dragged | undefined) => void }>,
-) {
-  let dragging = false;
-  const drag = dragOf(
-    () => ({ kind: 'template', id: handle.props.t.id }),
-    (d) => handle.props.onDragging(d),
-    (v) => ((dragging = v), void handle.update()),
-  );
+function TemplateTile(handle: Handle<{ t: AgentTemplate; libraryIds: ReadonlySet<string>; selected: boolean; onSelect: () => void }>) {
   return () => {
     const { t: tp, libraryIds, selected, onSelect } = handle.props;
     const st = templateState(tp, libraryIds);
@@ -210,55 +118,22 @@ function TemplateTile(
         onSelect={onSelect}
         testId="lib-template-tile"
         data={{ template: tp.name }}
-        dragging={dragging}
-        onDragStart={drag.start}
-        onDragEnd={drag.end}
       />
     );
   };
 }
 
-/** Put an item into a project from a select, for people who do not drag. */
-function PutInProject(handle: Handle<{ projects: readonly Project[]; label: string; onPick: (projectId: string) => void; busy: boolean }>) {
-  let id = '';
-  return () => {
-    const { projects, label, onPick, busy } = handle.props;
-    if (projects.length === 0) return <p mix={faint}>Create a project first.</p>;
-    const chosen = projects.some((p) => p.id === id) ? id : projects[0]!.id;
-    return (
-      <div mix={putRow}>
-        <select aria-label={label} value={chosen} mix={on('change', (e) => ((id = e.currentTarget.value), void handle.update()))}>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id} selected={p.id === chosen}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <Button size="sm" icon={FolderPlus} disabled={busy} mix={[on('click', () => onPick(chosen))]}>
-          Put in project
-        </Button>
-      </div>
-    );
-  };
-}
-
-/** The selected server's full panel: where it runs, its secrets, its tools, and what can be done with it. */
-function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Project[]; onDragging: (d: Dragged | undefined) => void; say: Say; fail: Fail; onChanged: () => void }>) {
+/** The selected server's full panel: where it runs, its secrets, its sign-in, its tools, and what can be done with it. */
+function McpPanel(handle: Handle<{ s: McpLibraryServer; say: Say; fail: Fail; onChanged: () => void }>) {
   const svc = services(handle);
   watch(handle, svc.workspace);
   const act = action(handle);
   let editing = false;
   let confirm = false;
-  let dragging = false;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
-  const drag = dragOf(
-    () => ({ kind: 'mcp', id: handle.props.s.id }),
-    (d) => handle.props.onDragging(d),
-    (v) => set(() => (dragging = v)),
-  );
 
   const setReadOnly = async (tool: string, ticked: boolean) => {
     const { s, onChanged } = handle.props;
@@ -270,27 +145,14 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Proje
   };
 
   return () => {
-    const { s, projects, say, fail, onChanged } = handle.props;
+    const { s, say, fail, onChanged } = handle.props;
     const ro = svc.workspace.license;
-    const inProjects = s.projects.map((id) => projects.find((p) => p.id === id)?.name ?? id);
+    const n = s.projects.length;
     return (
       <>
-        <article mix={[card, dragCard]} data-dragging={String(dragging)} data-testid="lib-mcp" data-server={s.id} aria-label={s.display}>
-          <header
-            mix={[cardHead, dragHead, on<HTMLElement, 'dragstart'>('dragstart', drag.start), on<HTMLElement, 'dragend'>('dragend', drag.end)]}
-            draggable="true"
-            data-testid="lib-mcp-handle"
-          >
-            <span data-grip aria-hidden="true">
-              <Icon icon={GripVertical} size={16} />
-            </span>
-            {serverLogo(s) ? (
-              <BrandLogo id={serverLogo(s)} size={32} />
-            ) : (
-              <span mix={tile}>
-                <Icon icon={s.transport === 'http' ? Globe : Plug} size={16} />
-              </span>
-            )}
+        <article mix={[card, panelCard]} data-testid="lib-mcp" data-server={s.id} aria-label={s.display}>
+          <header mix={cardHead}>
+            <ServerMark s={s} />
             <h3>{s.display}</h3>
             <code mix={faint}>{s.id}</code>
             <Badge>{s.transport === 'http' ? 'web address' : 'program'}</Badge>
@@ -302,7 +164,6 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Proje
               <Badge tone="warn">send guard off</Badge>
             )}
           </header>
-          <p mix={dragHint}>Drag its tile or this header onto a project to add it there, or onto an agent to let that agent use it.</p>
           <ErrorNote error={act.error} what="Not changed" />
           <code mix={[mono, whereCss]}>{whereOf(s)}</code>
           {s.oauth ? <OAuthPanel server={s} onChanged={onChanged} /> : null}
@@ -314,7 +175,8 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Proje
           ) : null}
           <p mix={metaRow} data-testid="lib-mcp-projects">
             <Icon icon={FolderOpen} size={14} />
-            {inProjects.length === 0 ? 'Not in any project yet.' : `In: ${inProjects.join(', ')}.`}
+            {n === 0 ? 'Not in any project yet.' : `In ${n} project${n === 1 ? '' : 's'}.`} Add it to a project, and choose which of its agents may use it, on that project's
+            Integrations page.
           </p>
           <h4 mix={subhead}>Tools</h4>
           {s.tools.length === 0 ? (
@@ -365,18 +227,6 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Proje
             </div>
           )}
           <p mix={faint}>Every tool you do not tick needs your approval for each call. Ticking is your statement that the tool cannot change anything.</p>
-          <PutInProject
-            projects={projects}
-            label={`Put ${s.display} in project`}
-            busy={act.busy !== ''}
-            onPick={async (pid) => {
-              const r = await act.run('add', () => svc.client.mcpServerAdd(pid, s.id));
-              if (r) {
-                say(`${s.display} is now in ${projects.find((p) => p.id === pid)?.name ?? pid}.`);
-                onChanged();
-              }
-            }}
-          />
           <div mix={actionsRow}>
             <Button
               size="sm"
@@ -403,7 +253,7 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Proje
           {confirm ? (
             <div mix={confirmCss}>
               <span>
-                Disconnect {s.display}? It leaves {s.projects.length} project(s) and its stored secrets are deleted.
+                Disconnect {s.display}? It leaves {n} project(s) and its stored secrets are deleted.
               </span>
               <Button
                 size="sm"
@@ -449,49 +299,23 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; projects: readonly Proje
 }
 
 /** The selected template's full panel: its purpose, the servers and skills it gives, and what can be done with it. */
-function TemplatePanel(
-  handle: Handle<{
-    t: AgentTemplate;
-    servers: readonly McpLibraryServer[];
-    projects: readonly Project[];
-    adapters: readonly AdapterInfo[];
-    /** The current project's skills by name, to mark the ones a template brings that the project already has. */
-    inProject?: ReadonlySet<string>;
-    projectName?: string;
-    onDragging: (d: Dragged | undefined) => void;
-    say: Say;
-    onChanged: () => void;
-  }>,
-) {
+function TemplatePanel(handle: Handle<{ t: AgentTemplate; servers: readonly McpLibraryServer[]; adapters: readonly AdapterInfo[]; onChanged: () => void }>) {
   const svc = services(handle);
   const act = action(handle);
   let editing = false;
   let confirm = false;
-  let dragging = false;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
-  const drag = dragOf(
-    () => ({ kind: 'template', id: handle.props.t.id }),
-    (d) => handle.props.onDragging(d),
-    (v) => set(() => (dragging = v)),
-  );
 
   return () => {
-    const { t: tp, servers, projects, adapters, say, onChanged, inProject, projectName } = handle.props;
+    const { t: tp, servers, adapters, onChanged } = handle.props;
     const nameOf = (id: string) => servers.find((x) => x.id === id)?.display ?? id;
     return (
       <>
-        <article mix={[card, dragCard]} data-dragging={String(dragging)} data-testid="lib-template" data-template={tp.name} aria-label={tp.name}>
-          <header
-            mix={[cardHead, dragHead, on<HTMLElement, 'dragstart'>('dragstart', drag.start), on<HTMLElement, 'dragend'>('dragend', drag.end)]}
-            draggable="true"
-            data-testid="lib-template-handle"
-          >
-            <span data-grip aria-hidden="true">
-              <Icon icon={GripVertical} size={16} />
-            </span>
+        <article mix={[card, panelCard]} data-testid="lib-template" data-template={tp.name} aria-label={tp.name}>
+          <header mix={cardHead}>
             <Avatar id={tp.id} name={tp.name} size={30} />
             <h3>{tp.name}</h3>
             {tp.role ? <span mix={muted}>{tp.role}</span> : null}
@@ -499,13 +323,12 @@ function TemplatePanel(
             {tp.model ? <Badge>model {tp.model}</Badge> : null}
             {tp.effort ? <Badge>effort {tp.effort}</Badge> : null}
           </header>
-          <p mix={dragHint}>Drag its tile or this header onto a project to add this team member there.</p>
           <ErrorNote error={act.error} what="Not changed" />
           {tp.purpose ? <p>{tp.purpose.length > 200 ? `${tp.purpose.slice(0, 200)}...` : tp.purpose}</p> : <p mix={muted}>No purpose written.</p>}
           {tp.mcpServers.length > 0 ? (
             <ul mix={chips} aria-label="MCP servers it gets">
               {tp.mcpServers.map((id) => (
-                <li key={id} data-plain>
+                <li key={id}>
                   <Icon icon={Plug} size={12} />
                   {nameOf(id)}
                 </li>
@@ -514,36 +337,17 @@ function TemplatePanel(
           ) : null}
           {tp.skills.length > 0 ? (
             <ul mix={chips} aria-label="Skills it brings">
-              {tp.skills.map((k) => {
-                const has = inProject?.has(k.name) ?? false;
-                return (
-                  <li
-                    key={k.name}
-                    data-plain
-                    data-in-project={String(has)}
-                    title={`${k.registry}${k.ref ? ` at ${k.ref.slice(0, 12)}` : ''}${has ? ` · already in ${projectName ?? 'this project'}` : ''}`}
-                  >
-                    <Icon icon={has ? Check : Cpu} size={12} />
-                    {k.name}
-                    {has ? <span class="sr-only"> (in {projectName ?? 'this project'})</span> : null}
-                  </li>
-                );
-              })}
+              {tp.skills.map((k) => (
+                <li key={k.name} title={`${k.registry}${k.ref ? ` at ${k.ref.slice(0, 12)}` : ''}`}>
+                  <Icon icon={Cpu} size={12} />
+                  {k.name}
+                </li>
+              ))}
             </ul>
           ) : null}
-          <PutInProject
-            projects={projects}
-            label={`Put ${tp.name} in project`}
-            busy={act.busy !== ''}
-            onPick={async (pid) => {
-              const r = await act.run('apply', () => svc.client.agentTemplateApply(tp.id, pid));
-              if (r) {
-                const pname = projects.find((p) => p.id === pid)?.name ?? pid;
-                say(joinedNote(r.agent.name, pname, r.granted, r.skipped, nameOf, skillLines(r.skills)));
-                onChanged();
-              }
-            }}
-          />
+          <p mix={faint} data-testid="lib-template-where">
+            A project gets a team member from this template on its <a href={routes.team.href()}>Team</a> page.
+          </p>
           <div mix={actionsRow}>
             <Button size="sm" variant="ghost" icon={Pencil} aria-expanded={editing} mix={[on('click', () => set(() => (editing = !editing)))]}>
               Edit
@@ -858,160 +662,6 @@ function SkillsLibrary(handle: Handle<{ projects: readonly Project[] }>) {
   };
 }
 
-function GiveServer(handle: Handle<{ agent: Agent; options: readonly McpLibraryServer[]; busy: boolean; onGive: (serverId: string) => void }>) {
-  let id = '';
-  return () => {
-    const { agent, options, busy, onGive } = handle.props;
-    const chosen = options.some((o) => o.id === id) ? id : options[0]!.id;
-    return (
-      <span mix={putRow}>
-        <select aria-label={`Server to give ${agent.name}`} value={chosen} mix={on('change', (e) => ((id = e.currentTarget.value), void handle.update()))}>
-          {options.map((x) => (
-            <option key={x.id} value={x.id} selected={x.id === chosen}>
-              {x.display}
-            </option>
-          ))}
-        </select>
-        <Button size="sm" variant="ghost" icon={UserPlus} disabled={busy} mix={[on('click', () => onGive(chosen))]}>
-          Give to {agent.name}
-        </Button>
-      </span>
-    );
-  };
-}
-
-function ProjectPanel(handle: Handle<{ project: Project; servers: readonly McpLibraryServer[]; dragging: Dragged | undefined; say: Say; fail: Fail }>) {
-  const s = services(handle);
-  watch(handle, s.workspace);
-  const act = action(handle);
-  const mine = query(handle, {
-    load: () => s.client.mcpServerList(handle.props.project.id),
-    key: () => handle.props.project.id,
-    when: (e) => e.type.startsWith('mcp.') || e.type.startsWith('agenttemplate.'),
-  });
-  const team = query(handle, {
-    load: () => s.client.agentList(handle.props.project.id),
-    key: () => handle.props.project.id,
-    when: (e) => e.type.startsWith('agent.') || e.type.startsWith('agenttemplate.'),
-  });
-  const reload = () => {
-    mine.reload();
-    team.reload();
-  };
-  const serverName = (id: string) => handle.props.servers.find((x) => x.id === id)?.display ?? id;
-
-  const dropOnProject = async (item: Dragged) => {
-    const { project, say, fail } = handle.props;
-    fail(undefined);
-    if (item.kind === 'mcp') {
-      const r = await act.run('add', () => s.client.mcpServerAdd(project.id, item.id));
-      if (r) say(`${serverName(item.id)} is now in ${project.name}.`);
-    } else {
-      const r = await act.run('apply', () => s.client.agentTemplateApply(item.id, project.id));
-      if (r) say(joinedNote(r.agent.name, project.name, r.granted, r.skipped, serverName, skillLines(r.skills)));
-    }
-    reload();
-  };
-  const grant = async (agent: Agent, serverId: string, enabled: boolean) => {
-    const { say, fail } = handle.props;
-    fail(undefined);
-    const r = await act.run('grant', () => s.client.mcpServerGrant(handle.props.project.id, serverId, agent.id, enabled));
-    if (r) say(enabled ? `${agent.name} can now use ${serverName(serverId)}.` : `${agent.name} can no longer use ${serverName(serverId)}.`);
-    reload();
-  };
-
-  return () => {
-    const { project, servers, dragging, say } = handle.props;
-    const ro = s.workspace.license;
-    const inProject: McpServer[] = mine.data ?? [];
-    const agents: Agent[] = team.data ?? [];
-    const off = act.busy !== '' || ro.readOnly;
-    return (
-      <DropZone
-        accepts={['mcp', 'template']}
-        dragging={dragging}
-        onDropItem={(item) => void dropOnProject(item)}
-        label={`Project ${project.name}: drop an MCP server or an agent template here`}
-        testId="lib-project"
-      >
-        <section mix={[card, panelCss]} data-project={project.name} aria-label={`Project ${project.name}`}>
-          <header mix={cardHead}>
-            <Avatar id={project.id} name={project.name} size={28} square />
-            <h3>{project.name}</h3>
-            {dragging ? <Badge tone="info">drop here</Badge> : null}
-          </header>
-          <ErrorNote error={act.error ?? mine.error ?? team.error} what="Not done" />
-          <h4 mix={subhead}>MCP servers in this project</h4>
-          {inProject.length === 0 ? (
-            <p mix={faint}>None. Drop a server here.</p>
-          ) : (
-            <ul mix={chips} aria-label={`MCP servers in ${project.name}`}>
-              {inProject.map((x) => (
-                <li key={x.id} data-testid="proj-server" data-server={x.id}>
-                  <Icon icon={Plug} size={12} />
-                  {x.display}
-                  <IconButton
-                    icon={X}
-                    size={12}
-                    label={`Take ${x.display} out of ${project.name}`}
-                    disabled={off}
-                    mix={[
-                      on('click', async () => {
-                        await act.run('remove', () => s.client.mcpServerRemove(project.id, x.id));
-                        say(`${x.display} was taken out of ${project.name}.`);
-                        reload();
-                      }),
-                    ]}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-          <h4 mix={subhead}>Team</h4>
-          {agents.length === 0 ? <p mix={faint}>No agents. Drop a template here to add one.</p> : null}
-          {agents.map((a) => {
-            const mineIds = inProject.filter((x) => x.agents.some((g) => g.agentId === a.id));
-            const options = servers.filter((x) => !mineIds.some((m) => m.id === x.id));
-            return (
-              <DropZone
-                key={a.id}
-                inner
-                accepts={['mcp']}
-                dragging={dragging}
-                onDropItem={(item) => void grant(a, item.id, true)}
-                label={`Agent ${a.name}: drop an MCP server here to let it use the server`}
-                testId="lib-agent"
-              >
-                <div mix={agentRow} data-agent={a.name}>
-                  <div class="who">
-                    <Avatar id={a.id} name={a.name} size={20} />
-                    <strong>{a.name}</strong>
-                    {a.role ? <span mix={muted}>{a.role}</span> : null}
-                    <code mix={faint}>{a.adapter}</code>
-                  </div>
-                  {mineIds.length > 0 ? (
-                    <ul mix={chips} aria-label={`Servers ${a.name} may use`}>
-                      {mineIds.map((x) => (
-                        <li key={x.id} data-testid="agent-server" data-server={x.id}>
-                          {x.display}
-                          <IconButton icon={X} size={12} label={`Stop ${a.name} using ${x.display}`} disabled={off} mix={[on('click', () => void grant(a, x.id, false))]} />
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span mix={faint}>no MCP servers</span>
-                  )}
-                  {options.length > 0 ? <GiveServer agent={a} options={options} busy={off} onGive={(sid) => void grant(a, sid, true)} /> : null}
-                </div>
-              </DropZone>
-            );
-          })}
-        </section>
-      </DropZone>
-    );
-  };
-}
-
 export function LibraryScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -1019,14 +669,6 @@ export function LibraryScreen(handle: Handle) {
   const servers = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
   const templates = query(handle, { load: () => s.client.agentTemplateList(), when: (e) => e.type.startsWith('agenttemplate.') });
   const prebuilt = query(handle, { load: () => s.client.agentCatalogList() });
-  // The current project's skills, to mark the ones a template brings that the project already has.
-  const projectSkills = query(handle, {
-    load: () => s.client.skillList(s.workspace.projectId!),
-    key: () => s.workspace.projectId,
-    enabled: () => !!s.workspace.projectId,
-    when: (e) => e.type.startsWith('skill.'),
-  });
-  let dragging: Dragged | undefined;
   let note = '';
   let error: Error | undefined;
   let connecting = false;
@@ -1040,22 +682,18 @@ export function LibraryScreen(handle: Handle) {
   };
   const say: Say = (m) => set(() => (note = m));
   const fail: Fail = (e) => set(() => (error = e));
-  const onDragging = (d: Dragged | undefined) => set(() => (dragging = d));
   const reload = () => {
     servers.reload();
     templates.reload();
   };
 
   return () => {
-    const projects = s.workspace.projectList;
     const libServers = servers.data ?? [];
     const tpls = templates.data ?? [];
     const adapterList = adapters.data ?? [];
     const libraryIds = new Set(libServers.map((x) => x.id));
     const openServer = libServers.find((x) => x.id === server);
     const openTemplate = tpls.find((x) => x.id === template);
-    const inProject = new Set((projectSkills.data ?? []).map((k) => k.name));
-    const currentName = projects.find((p) => p.id === s.workspace.projectId)?.name;
     return (
       <Page
         title="Library"
@@ -1063,142 +701,100 @@ export function LibraryScreen(handle: Handle) {
         wide
         subtitle={servers.data && templates.data ? `${libServers.length} server${libServers.length === 1 ? '' : 's'} · ${tpls.length} template${tpls.length === 1 ? '' : 's'}` : undefined}
       >
-        <p mix={introCss}>
-          Connect an MCP server or define a team member once, here. Then drag its tile onto a project to add it there, or drag a server onto an agent to let that agent use it.
-          Click a tile to see its tools and settings. A project only ever reaches the servers it was given, and an agent only the servers you gave it.
-          Skills have a page of their own: <a href={routes.librarySkills.href()}>Skills</a>.
-        </p>
-        <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
-          {note ? (
-            <Notice tone="ok">
-              {note}
-            </Notice>
-          ) : null}
-        </div>
-        <ErrorNote error={error ?? servers.error ?? templates.error} what="Library" />
-        <div mix={colsCss}>
-          <div mix={stack} style={{ gap: 'var(--space-6)' }}>
-            <Section
-              title="MCP servers"
-              description="Connected once for the whole workspace. Secrets stay in the Windows credential store."
-              actions={
-                <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (connecting = true)))]}>
-                  Connect an MCP server
-                </Button>
-              }
-            >
-              {servers.loading && !servers.data ? <Loading /> : null}
-              {servers.data && libServers.length === 0 ? (
-                <p mix={emptyLine} data-testid="lib-mcp-empty">
-                  <Icon icon={Plug} size={14} />
-                  <strong>No servers are connected yet.</strong> Connect a program on this computer or a web address once. Then press Find tools and drag it onto a project.
-                </p>
-              ) : null}
-              {libServers.length > 0 ? (
-                <ul mix={tileGrid} aria-label="MCP servers">
-                  {libServers.map((x) => (
-                    <ServerTile
-                      key={x.id}
-                      s={x}
-                      selected={x.id === server}
-                      onSelect={() => set(() => (server = server === x.id ? '' : x.id))}
-                      onDragging={onDragging}
-                    />
-                  ))}
-                </ul>
-              ) : null}
-              {openServer ? <McpPanel key={openServer.id} s={openServer} projects={projects} onDragging={onDragging} say={say} fail={fail} onChanged={reload} /> : null}
-            </Section>
-
-            <CliGateway />
-
-            <Section
-              title="Agent templates"
-              description="A team member defined once. Applying it makes an ordinary agent in a project."
-              actions={
-                <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (newTemplate = true)))]}>
-                  New agent template
-                </Button>
-              }
-            >
-              {templates.loading && !templates.data ? <Loading /> : null}
-              {templates.data && tpls.length === 0 ? (
-                <p mix={emptyLine} data-testid="lib-template-empty">
-                  <Icon icon={Users} size={14} />
-                  <strong>No templates yet.</strong> Make one here, or save an agent as a template on the <a href={routes.team.href()}>Team</a> page.
-                </p>
-              ) : null}
-              {tpls.length > 0 ? (
-                <ul mix={tileGrid} aria-label="Agent templates">
-                  {tpls.map((x) => (
-                    <TemplateTile
-                      key={x.id}
-                      t={x}
-                      libraryIds={libraryIds}
-                      selected={x.id === template}
-                      onSelect={() => set(() => (template = template === x.id ? '' : x.id))}
-                      onDragging={onDragging}
-                    />
-                  ))}
-                </ul>
-              ) : null}
-              {openTemplate ? (
-                <TemplatePanel
-                  key={openTemplate.id}
-                  t={openTemplate}
-                  servers={libServers}
-                  projects={projects}
-                  adapters={adapterList}
-                  inProject={inProject}
-                  projectName={currentName}
-                  onDragging={onDragging}
-                  say={say}
-                  onChanged={reload}
-                />
-              ) : null}
-            </Section>
-
-            <Section
-              title="Prebuilt agents"
-              description={
-                <>
-                  Built into Drydock, with their skills and connectors pinned. Add them to a project on the <a href={routes.team.href()}>Team</a> page or when you create a project.
-                </>
-              }
-              testId="library-prebuilt"
-            >
-              <ErrorNote error={prebuilt.error} what="Could not load the prebuilt agents" />
-              {prebuilt.loading && !prebuilt.data ? <Loading /> : null}
-              <AgentGallery entries={prebuilt.data ?? []} label="Prebuilt agents" />
-            </Section>
+        <div mix={sectionsCss}>
+          <p mix={introCss}>
+            Connect an MCP server or define a team member once, here, for the whole workspace. Click a tile to see its tools and settings. A project gets a server on its own
+            Integrations page, where you also choose which of its agents may use it, and a team member from a template on its Team page: a project only ever reaches the servers it
+            was given, and an agent only the servers you gave it. Skills have a page of their own: <a href={routes.librarySkills.href()}>Skills</a>.
+          </p>
+          <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
+            {note ? <Notice tone="ok">{note}</Notice> : null}
           </div>
-          <div mix={sideCss}>
-            <Section title="Projects" description="Drop servers and templates here.">
-              {s.workspace.projects.data && projects.length === 0 ? (
-                <div mix={card}>
-                  <Empty title="No projects yet." icon={FolderOpen}>
-                    <a href={routes.projectNew.href()}>Create a project</a>
-                  </Empty>
-                </div>
-              ) : null}
-              <div mix={stack}>
-                {projects.map((p) => (
-                  <ProjectPanel key={p.id} project={p} servers={libServers} dragging={dragging} say={say} fail={fail} />
+          <ErrorNote error={error ?? servers.error ?? templates.error} what="Library" />
+          <Section
+            title="MCP servers"
+            description="Connected once for the whole workspace: one built into Drydock, or your own. Secrets stay in the Windows credential store."
+            actions={
+              <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (connecting = true)))]}>
+                Connect an MCP server
+              </Button>
+            }
+          >
+            {servers.loading && !servers.data ? <Loading /> : null}
+            {servers.data && libServers.length === 0 ? (
+              <p mix={emptyLine} data-testid="lib-mcp-empty">
+                <Icon icon={Plug} size={14} />
+                <strong>No servers are connected yet.</strong> Connect one built into Drydock, or a program on this computer or a web address of your own. Then press Find tools.
+              </p>
+            ) : null}
+            {libServers.length > 0 ? (
+              <ul mix={tileGrid} aria-label="MCP servers">
+                {libServers.map((x) => (
+                  <ServerTile key={x.id} s={x} selected={x.id === server} onSelect={() => set(() => (server = server === x.id ? '' : x.id))} />
                 ))}
-              </div>
-            </Section>
-          </div>
+              </ul>
+            ) : null}
+            {openServer ? <McpPanel key={openServer.id} s={openServer} say={say} fail={fail} onChanged={reload} /> : null}
+          </Section>
+
+          <Section
+            title="Agent templates"
+            description="A team member defined once. Applying it on a project's Team page makes an ordinary agent in that project."
+            actions={
+              <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (newTemplate = true)))]}>
+                New agent template
+              </Button>
+            }
+          >
+            {templates.loading && !templates.data ? <Loading /> : null}
+            {templates.data && tpls.length === 0 ? (
+              <p mix={emptyLine} data-testid="lib-template-empty">
+                <Icon icon={Users} size={14} />
+                <strong>No templates yet.</strong> Make one here, or save an agent as a template on a project's <a href={routes.team.href()}>Team</a> page.
+              </p>
+            ) : null}
+            {tpls.length > 0 ? (
+              <ul mix={tileGrid} aria-label="Agent templates">
+                {tpls.map((x) => (
+                  <TemplateTile key={x.id} t={x} libraryIds={libraryIds} selected={x.id === template} onSelect={() => set(() => (template = template === x.id ? '' : x.id))} />
+                ))}
+              </ul>
+            ) : null}
+            {openTemplate ? <TemplatePanel key={openTemplate.id} t={openTemplate} servers={libServers} adapters={adapterList} onChanged={reload} /> : null}
+          </Section>
+
+          <Section
+            title="Prebuilt agents"
+            description={
+              <>
+                Built into Drydock, with their skills and connectors pinned. Add them to a project on its <a href={routes.team.href()}>Team</a> page or when you create a project.
+              </>
+            }
+            testId="library-prebuilt"
+          >
+            <ErrorNote error={prebuilt.error} what="Could not load the prebuilt agents" />
+            {prebuilt.loading && !prebuilt.data ? <Loading /> : null}
+            <AgentGallery entries={prebuilt.data ?? []} label="Prebuilt agents" />
+          </Section>
         </div>
 
         <Dialog open={connecting} title="Connect an MCP server" wide onClose={() => set(() => (connecting = false))}>
           {connecting ? (
-            <McpServerForm
-              onCancel={() => set(() => (connecting = false))}
-              onDone={(saved) => {
+            <AddMcpServer
+              existingIds={libServers.map((x) => x.id)}
+              onChanged={reload}
+              onSaved={(saved) => {
                 set(() => {
                   connecting = false;
                   server = saved.id; // open the new server's panel: Find tools is the next step
-                  note = `${saved.display} is connected. Press Find tools, then drag it onto a project.`;
+                  note = `${saved.display} is connected. Press Find tools, then add it to a project on that project's Integrations page.`;
+                });
+                reload();
+              }}
+              onImported={(n) => {
+                set(() => {
+                  connecting = false;
+                  note = `${n} server${n === 1 ? '' : 's'} imported.`;
                 });
                 reload();
               }}

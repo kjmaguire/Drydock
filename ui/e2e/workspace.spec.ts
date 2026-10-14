@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { createProject, freshRepo, projectSwitcher, sidebar } from './helpers';
+import { createAgent, createProject, freshRepo, projectNav, projectSwitcher, sidebar, workspaceNav } from './helpers';
 
 test('Home holds the workspace, a project shows only itself, and deleting a project leaves its repository', async ({ page }) => {
   const repo = freshRepo();
@@ -59,4 +59,37 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   // the repository is still there, files and all
   expect(existsSync(join(repo, 'calc.go'))).toBe(true);
   expect(existsSync(join(repo, '.git'))).toBe(true);
+});
+
+test("workspace pages name no project; a project's own Integrations page is in its sidebar; the agent CLIs and the MCP gateway are on Connections", async ({ page }) => {
+  await createProject(page, 'ws-split');
+  await createAgent(page, 'Split agent', 'backend');
+
+  // the project's Integrations page is in the project's sidebar, and the project sidebar stays
+  await projectNav(page, 'nav-project-integrations');
+  await expect(page).toHaveURL(/\/project\/integrations$/);
+  await expect(page.getByTestId('project-integrations')).toContainText('ws-split');
+  await expect(sidebar(page).getByTestId('nav-project-integrations')).toHaveAttribute('aria-current', 'page');
+  await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
+  await expect(page.getByTestId('project-mcp')).toBeVisible();
+  await expect(page.getByTestId('add-from-library')).toBeVisible();
+  await expect(page.getByTestId('project-app-sync')).toBeVisible();
+
+  // the workspace's Library and Integrations name no project and none of its agents
+  for (const nav of ['nav-library', 'nav-integrations']) {
+    await workspaceNav(page, nav);
+    const main = page.locator('#main');
+    await expect(main.locator('h1')).toBeVisible();
+    await expect(main).not.toContainText('ws-split');
+    await expect(main).not.toContainText('Split agent');
+  }
+  await expect(page.getByTestId('cli-gateway')).toHaveCount(0);
+
+  // Connections: the agent CLIs' tiles, then the MCP gateway that says which of them receive MCP servers
+  await workspaceNav(page, 'nav-connections');
+  const gateway = page.getByRole('region', { name: 'Agent CLIs and the MCP gateway' });
+  await expect(gateway.getByRole('heading', { name: 'MCP gateway' })).toBeVisible();
+  await expect(gateway.getByTestId('cli-gateway')).toBeVisible();
+  const tiles = page.getByRole('list', { name: 'Agent CLIs' }).or(page.getByText('No agent CLIs found.'));
+  await expect(tiles.first()).toBeVisible();
 });

@@ -49,9 +49,19 @@ describe('routes', () => {
     for (const p of ['/home', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, true]);
     }
-    for (const p of ['/', '/needs-you', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team']) {
+    for (const p of ['/', '/needs-you', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team', '/project/integrations']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, false]);
     }
+  });
+
+  it("has a project's own Integrations page, a project page that needs a project", () => {
+    expect(routes.projectIntegrations.href()).toBe('/project/integrations');
+    expect(parseRoute('/project/integrations')).toEqual({ name: 'project-integrations' });
+    expect(parseRoute('/project/integrations/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'project-integrations' })).toBe(false);
+    expect(isWorkspacePage({ name: 'project-integrations' })).toBe(false);
+    // the workspace's Integrations page stays a workspace page
+    expect(isWorkspacePage(parseRoute('/integrations'))).toBe(true);
   });
 
   it('turns old hash links into paths', () => {

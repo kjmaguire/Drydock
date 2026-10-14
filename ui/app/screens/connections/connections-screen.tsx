@@ -2,12 +2,14 @@
 // reads or transmits credentials. A CLI is usable only when it is ready and every notice on it has been accepted by the human.
 // The overview is a grid of tiles (the shared kit in ui/tiles.tsx, as on Integrations): one per connection, the Windows install
 // and each WSL distro's own, with the CLI's logo, what it is and its state. The selected tile's full card opens below the grid.
+// Last, the MCP gateway (screens/mcp/cli-gateway.tsx): which agent CLIs receive the MCP servers given to an agent.
 
 import { css, on, type Handle } from 'remix/component';
 import { Check, CircleCheck, FlaskConical, Link2, LogIn, Minus, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import { query, services } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
+import { CliGateway } from '../mcp/cli-gateway.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, muted } from '../../ui/data.tsx';
@@ -517,7 +519,8 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
       <Page title="Connections" icon={Link2} subtitle={q.data ? `${usable} of ${list.length} usable` : undefined}>
         <p mix={introCss}>
           Agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials. A CLI is usable only when it is ready
-          and every notice on it has been accepted by you. A CLI installed inside a WSL distro has a tile of its own, with its own sign-in. Choose a tile to see it in full.
+          and every notice on it has been accepted by you. A CLI installed inside a WSL distro has a tile of its own, with its own sign-in. Choose a tile to see it in full. Below the
+          tiles, the MCP gateway says which CLIs receive the MCP servers you give an agent.
         </p>
         <ErrorNote error={q.error} what="Could not list connections" />
         {q.loading && !q.data ? <Loading label="Detecting..." /> : null}
@@ -535,6 +538,7 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
           </ul>
         ) : null}
         {open ? <ConnectionCard key={connectionKey(open)} c={open} onChanged={q.reload} /> : null}
+        <CliGateway />
       </Page>
     );
   };

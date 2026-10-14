@@ -1,23 +1,44 @@
 // MCP servers of one project: which connected servers the project has (ServerCard), which of its agents may use each one, the
 // tool calls waiting for the human's approval (Approvals) and putting a connected server into the project (AddFromLibrary).
-// Since decision P47 these sit at the bottom of the Integrations page (/integrations, with /mcp as its alias); servers are
-// connected once, on that page or in the Library. A server nobody was granted is never reached.
+// They sit on the project's own Integrations page (/project/integrations, screens/integrations/project-integrations-screen.tsx);
+// servers are connected once for the workspace, in the Library or on the workspace's Integrations page. A server nobody was
+// granted is never reached.
 
 import { css, on, type Handle } from 'remix/component';
-import { BadgeCheck, FolderPlus, Power, Server, ShieldAlert } from 'lucide';
-import type { McpApproval, McpServer } from '../../api/mcpClient.ts';
+import { BadgeCheck, FolderPlus, Globe, Plug, Power, ShieldAlert } from 'lucide';
+import type { McpApproval, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
+import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
-import { ErrorNote } from '../../ui/feedback.tsx';
-import { Field } from '../../ui/form.tsx';
+import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { card, Section } from '../../ui/layout.tsx';
+import { card, listCard, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { whereOf } from './server-input.ts';
+
+/** The brand a server shows, from the catalog entry it was connected from or its own id; '' when it has none. */
+export function serverLogo(s: Pick<McpLibraryServer, 'id' | 'catalogId'>): string {
+  return [s.catalogId, s.id].find((x): x is string => !!x && brandKey(x) !== '') ?? '';
+}
+
+/** A server's logo when its brand is known, else an icon for how it is reached, on the accent square. */
+export function ServerMark(handle: Handle<{ s: Pick<McpLibraryServer, 'id' | 'catalogId' | 'transport'>; size?: number }>) {
+  return () => {
+    const { s, size = 32 } = handle.props;
+    const logo = serverLogo(s);
+    return logo ? (
+      <BrandLogo id={logo} size={size} />
+    ) : (
+      <span mix={tile} style={{ width: `${size}px`, height: `${size}px` }}>
+        <Icon icon={s.transport === 'http' ? Globe : Plug} size={16} />
+      </span>
+    );
+  };
+}
 
 export const cardHead = css({
   display: 'flex',
@@ -73,7 +94,12 @@ const agentList = css({
 const grantRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, cursor: 'pointer', minWidth: '0' });
 const approvalCard = css({ borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})` });
 const argsCss = css({ margin: '0', maxHeight: '240px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
-const addRow = css({ display: 'flex', alignItems: 'flex-end', gap: t.s2, flexWrap: 'wrap', '& > div': { minWidth: '260px' } });
+const libRow = css({
+  gap: t.s3,
+  '& .who': { display: 'grid', flex: '1', minWidth: '0' },
+  '& .who strong': { fontWeight: '600' },
+  '& .who > span': { fontSize: t.textSm, overflowWrap: 'anywhere' },
+});
 
 /** The tool calls of this project's agents that wait for the human; nothing while there are none. */
 export function Approvals(handle: Handle<{ projectId: string; agents: readonly Agent[] }>) {
@@ -148,17 +174,18 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
   watch(handle, s.workspace);
   const act = action(handle);
   let confirmRemove = false;
+  // a grant ticked or unticked shows at once; the server's answer replaces it
+  const want = new Map<string, boolean>();
 
   return () => {
     const { s: srv, agents, onChanged } = handle.props;
     const ro = s.workspace.license;
     const granted = (agentId: string) => srv.agents.some((a) => a.agentId === agentId);
+    for (const [a, v] of want) if (granted(a) === v) want.delete(a); // the server agrees now
     return (
       <article mix={[card, cardBody]} data-testid="mcp-server" data-server={srv.id}>
         <header mix={cardHead}>
-          <span mix={tile}>
-            <Icon icon={Server} size={16} />
-          </span>
+          <ServerMark s={srv} />
           <h3>{srv.display}</h3>
           <code mix={faint}>{srv.id}</code>
           <Badge tone={srv.enabled ? 'ok' : 'muted'}>{srv.enabled ? 'on' : 'off in this project'}</Badge>
@@ -180,7 +207,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
         <h4 mix={subhead}>Tools</h4>
         {srv.tools.length === 0 ? (
           <p mix={muted} style={{ margin: '0' }}>
-            Tools are not known yet. Open the <a href={routes.library.href()}>Library</a> and press Find tools.
+            Tools are not known yet. Open the <a href={routes.library.href()}>Library</a>, choose the server and press Find tools.
           </p>
         ) : (
           <ul mix={toolList} aria-label={`Tools of ${srv.display}`}>
@@ -208,11 +235,13 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
                 <input
                   type="checkbox"
                   aria-label={`${a.name} may use ${srv.display}`}
-                  checked={granted(a.id)}
+                  checked={want.get(a.id) ?? granted(a.id)}
                   disabled={act.busy !== ''}
                   mix={on('change', async (e) => {
                     const c = e.currentTarget.checked;
-                    await act.run('access', () => s.client.mcpServerGrant(srv.projectId, srv.id, a.id, c));
+                    want.set(a.id, c);
+                    const ok = await act.run('access', () => s.client.mcpServerGrant(srv.projectId, srv.id, a.id, c));
+                    if (!ok) want.delete(a.id);
                     onChanged();
                   })}
                 />
@@ -277,55 +306,66 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
   };
 }
 
-/** Puts a server that is connected (in the library) but not in this project into it. */
-export function AddFromLibrary(handle: Handle<{ projectId: string; have: string[]; onAdded: () => void }>) {
+/**
+ * The workspace's connected servers (the library: the built-in servers you connected and your own) that this project does not
+ * have yet, each with its logo and Add to this project.
+ */
+export function AddFromLibrary(handle: Handle<{ projectId: string; have: readonly string[]; onAdded: () => void }>) {
   const s = services(handle);
+  watch(handle, s.workspace);
   const act = action(handle);
   const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
-  let pick = '';
 
   return () => {
     const { projectId, have, onAdded } = handle.props;
+    const ro = s.workspace.license;
     const all = lib.data ?? [];
     const options = all.filter((x) => !have.includes(x.id));
-    const chosen = options.some((o) => o.id === pick) ? pick : (options[0]?.id ?? '');
     return (
-      <Section label="Add a server from the library" title="Add from the library">
+      <Section
+        label="Add a server from the library"
+        title="Add from the library"
+        description="The servers connected once for the whole workspace: the ones built into Drydock that you connected, and your own."
+        testId="add-from-library"
+      >
         <ErrorNote error={lib.error ?? act.error} what="Not added" />
-        {options.length === 0 ? (
+        {lib.loading && !lib.data ? <Loading /> : null}
+        {lib.data && options.length === 0 ? (
           <p mix={[card, muted]} style={{ margin: '0' }}>
             {all.length === 0 ? 'No servers are connected yet.' : 'Every connected server is already in this project.'} Connect servers once in the{' '}
-            <a href={routes.library.href()}>Library</a>, then put them into projects here or by dragging them there.
+            <a href={routes.library.href()}>Library</a> or on the <a href={routes.integrations.href()}>Integrations</a> page, then add them here.
           </p>
-        ) : (
-          <div mix={[card, addRow]}>
-            <Field label="Server">
-              {(id) => (
-                <select id={id} aria-label="Server to add" value={chosen} mix={on('change', (e) => ((pick = e.currentTarget.value), void handle.update()))}>
-                  {options.map((x) => (
-                    <option key={x.id} value={x.id} selected={x.id === chosen}>
-                      {x.display} ({x.id})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            <Button
-              variant="primary"
-              icon={FolderPlus}
-              disabled={act.busy !== ''}
-              mix={[
-                on('click', async () => {
-                  const r = await act.run('add', () => s.client.mcpServerAdd(projectId, chosen));
-                  pick = '';
-                  if (r) onAdded();
-                }),
-              ]}
-            >
-              Put into this project
-            </Button>
-          </div>
-        )}
+        ) : null}
+        {options.length > 0 ? (
+          <ul mix={listCard} aria-label="Connected servers this project does not have">
+            {options.map((x) => (
+              <li key={x.id} mix={libRow} data-testid="library-server" data-server={x.id}>
+                <ServerMark s={x} size={28} />
+                <span class="who">
+                  <strong>{x.display}</strong>
+                  <span mix={faint}>
+                    <code>{x.id}</code> · {x.catalogId ? 'built into Drydock' : 'your own'} · {x.tools.length > 0 ? `${x.tools.length} tool${x.tools.length === 1 ? '' : 's'}` : 'tools not found yet'}
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  icon={FolderPlus}
+                  disabled={act.busy !== '' || ro.readOnly}
+                  title={ro.readOnly ? ro.reason : undefined}
+                  aria-label={`Add ${x.display} to this project`}
+                  mix={[
+                    on('click', async () => {
+                      const r = await act.run(`add-${x.id}`, () => s.client.mcpServerAdd(projectId, x.id));
+                      if (r) onAdded();
+                    }),
+                  ]}
+                >
+                  {act.busy === `add-${x.id}` ? 'Adding...' : 'Add to this project'}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </Section>
     );
   };

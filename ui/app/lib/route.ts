@@ -11,6 +11,7 @@ export type Route =
   | { name: 'run'; taskId: string; runId?: string }
   | { name: 'project' }
   | { name: 'project-new' }
+  | { name: 'project-integrations' }
   | { name: 'chats' }
   | { name: 'chat'; id: string }
   | {
@@ -88,6 +89,7 @@ export function parseRoute(pathname: string): Route {
       return b === 'skills' && parts.length === 2 ? { name: 'library-skills' } : { name: 'not-found' };
     case 'project':
       if (parts.length === 1) return { name: 'project' };
+      if (b === 'integrations' && parts.length === 2) return { name: 'project-integrations' };
       return b === 'new' && parts.length === 2 ? { name: 'project-new' } : { name: 'not-found' };
     default:
       return SIMPLE.has(a) && parts.length === 1 ? ({ name: a } as Route) : { name: 'not-found' };
