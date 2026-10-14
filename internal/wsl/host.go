@@ -214,6 +214,51 @@ func (h *Host) Kill(ctx context.Context, distro, marker string) (int, error) {
 	return k, nil
 }
 
+// dirScript checks a folder inside the distro, making it first (with its parents) when asked. Exit 3: it could not be made;
+// exit 4: it is not a folder. The path is an argument, never part of the script.
+const dirScript = `if [ "$2" = make ]; then mkdir -p -- "$1" 2>/dev/null || exit 3; fi
+[ -d "$1" ] || exit 4
+echo drydock-dir=ok
+`
+
+// DirArgs is the argv after wsl.exe that checks (and with create set, first creates) the folder linux inside distro.
+func DirArgs(distro, linux string, create bool) []string {
+	mode := "check"
+	if create {
+		mode = "make"
+	}
+	return []string{"-d", distro, "--exec", "/bin/sh", "-c", dirScript, "drydock-dir", linux, mode}
+}
+
+// Dir checks that the absolute Linux path linux is a folder inside distro, creating it first (mkdir -p) when create is set. It
+// runs as the distro's default user, so a folder it makes belongs to that user (the one an agent runs as).
+func (h *Host) Dir(ctx context.Context, distro, linux string, create bool) error {
+	if !strings.HasPrefix(linux, "/") {
+		return fmt.Errorf("wsl: %q is not an absolute Linux path", linux)
+	}
+	res, err := h.run(ctx, DirArgs(distro, linux, create), 60*time.Second)
+	if err != nil {
+		return err
+	}
+	if res.TimedOut {
+		return fmt.Errorf("wsl: the distro %s did not answer within 60 seconds", distro)
+	}
+	if _, ok := field(res.Stdout, "drydock-dir="); ok && res.Exit == 0 {
+		return nil
+	}
+	switch res.Exit {
+	case 3:
+		return fmt.Errorf("the folder %s could not be created in the WSL distro %s", linux, distro)
+	case 4:
+		return fmt.Errorf("the folder %s does not exist in the WSL distro %s", linux, distro)
+	}
+	why := strings.TrimSpace(firstLine(DecodeOutput([]byte(res.Stdout)) + "\n" + DecodeOutput([]byte(res.Stderr))))
+	if why == "" {
+		why = fmt.Sprintf("exit %d", res.Exit)
+	}
+	return fmt.Errorf("the WSL distro %s could not be reached: %s", distro, why)
+}
+
 // Marked lists the processes of the run marked marker that are alive inside distro.
 func (h *Host) Marked(ctx context.Context, distro, marker string) ([]int, error) {
 	res, err := h.run(ctx, ListArgs(distro, marker), 30*time.Second)

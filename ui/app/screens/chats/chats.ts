@@ -1,6 +1,6 @@
 // Pure helpers for the Chats section (no DOM, no services): times, cost, snippets, adapter choices, path checks.
 
-import type { AdapterInfo } from '../../api/types.ts';
+import type { AdapterInfo, Connection } from '../../api/types.ts';
 import type { Chat, ChatMessage } from '../../api/chatClient.ts';
 import { formatUsd } from '../../lib/format.ts';
 
@@ -72,13 +72,70 @@ export function sortChatAdapters(list: readonly AdapterInfo[]): AdapterInfo[] {
   return [...list].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
 }
 
-/** The option text of an adapter in the new chat dialog. */
-export function adapterOptionText(a: AdapterInfo): string {
+/** The option text of an adapter in the new chat dialog; `where` ("on Windows") tells it apart from its installs in WSL. */
+export function adapterOptionText(a: AdapterInfo, where = ''): string {
+  const name = where ? `${adapterLabel(a.id)} ${where}` : adapterLabel(a.id);
   const why = adapterUnavailable(a);
-  if (why) return `${adapterLabel(a.id)} (${why})`;
-  if (a.detection.status === 'unauthenticated') return `${adapterLabel(a.id)} (not signed in)`;
-  return a.detection.version ? `${adapterLabel(a.id)} ${a.detection.version}` : adapterLabel(a.id);
+  if (why) return `${name} (${why})`;
+  if (a.detection.status === 'unauthenticated') return `${name} (not signed in)`;
+  return a.detection.version ? `${name} ${a.detection.version}` : name;
 }
+
+/** "Claude Code in Ubuntu (WSL)": a CLI installed inside a WSL distro, its own Connection (decision P41). */
+export const wslChoiceLabel = (adapter: string, distro: string): string => `${adapterLabel(adapter)} in ${distro} (WSL)`;
+
+/**
+ * Why a CLI install inside a WSL distro cannot start a chat, or '' when it can: as for one on Windows (adapterUnavailable), a
+ * degraded install (an untested version, interop off, a failed Test) is offered, and the Connections page says what it lacks.
+ */
+export function wslUnavailable(c: Pick<Connection, 'status' | 'version' | 'gates'>): string {
+  if (c.status === 'unauthenticated') return 'not signed in';
+  if (c.status === 'unsupported_version') return `unsupported version${c.version ? ` ${c.version}` : ''}`;
+  if ((c.gates ?? []).some((g) => !g.acked)) return 'a notice to accept on the Connections page';
+  return '';
+}
+
+/** One entry of the new chat dialog's Agent CLI picker: an adapter on Windows, or its install inside a WSL distro. */
+export interface ChatChoice {
+  /** The select value: the adapter id, or the WSL Connection's key ("claude@wsl:Ubuntu"). */
+  value: string;
+  adapter: AdapterInfo;
+  /** '' on Windows. */
+  wslDistro: string;
+  text: string;
+  /** Why it cannot start a chat ('' when it can). */
+  why: string;
+}
+
+/**
+ * The Agent CLI choices of the new chat dialog: every adapter on Windows (sortChatAdapters order), each followed by its
+ * installs inside WSL distros (the WSL Connections the Connections page shows, by distro). A distro without the CLI is not
+ * offered; one that cannot start a chat (wslUnavailable) is offered disabled with the reason. With an install in WSL, the
+ * Windows one says "on Windows".
+ */
+export function chatChoices(adapters: readonly AdapterInfo[], connections: readonly Connection[]): ChatChoice[] {
+  const inWSL = connections.filter((c) => c.runMode === 'wsl' && !!c.distro && c.installed && c.status !== 'not_installed');
+  const out: ChatChoice[] = [];
+  for (const a of sortChatAdapters(adapters)) {
+    const mine = (a.capabilities?.runModes ?? []).includes('wsl') ? inWSL.filter((c) => c.adapter === a.id).sort((x, y) => x.distro!.localeCompare(y.distro!)) : [];
+    out.push({ value: a.id, adapter: a, wslDistro: '', text: adapterOptionText(a, mine.length ? 'on Windows' : ''), why: adapterUnavailable(a) });
+    for (const c of mine) {
+      const why = wslUnavailable(c);
+      const label = wslChoiceLabel(a.id, c.distro!);
+      out.push({ value: c.key || `${a.id}@wsl:${c.distro}`, adapter: a, wslDistro: c.distro!, text: why ? `${label} (${why})` : c.version ? `${label} ${c.version}` : label, why });
+    }
+  }
+  return out;
+}
+
+/** The choice the dialog starts with (or keeps): the one picked if it can start, else Claude Code (Windows first), else the first that can. */
+export function pickChatChoice(choices: readonly ChatChoice[], picked: string): ChatChoice | undefined {
+  const ok = choices.filter((c) => !c.why);
+  return ok.find((c) => c.value === picked) ?? ok.find((c) => c.adapter.id === 'claude') ?? ok[0];
+}
+
+/** Where a chat's CLI runs, for its header: "in Ubuntu (WSL)", or '' on Windows. */
+export const chatWhere = (c: Pick<Chat, 'wslDistro'>): string => (c.wslDistro ? `in ${c.wslDistro} (WSL)` : '');
 
 /** Split a search snippet into plain and matched parts ([brackets] mark the matches). */
 export function snippetParts(snippet: string): { text: string; hit: boolean }[] {

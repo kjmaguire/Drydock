@@ -12,6 +12,8 @@ export interface Chat {
   projectId: string;
   title: string;
   adapter: string;
+  /** Where the CLI runs: empty on Windows, else the WSL distro whose own install every turn starts inside (decision P41). */
+  wslDistro?: string;
   model: string;
   effort: string;
   permissionMode: string;
@@ -88,6 +90,8 @@ export interface ChatCreate {
   cwd?: string;
   title?: string;
   adapter?: string;
+  /** Run the CLI inside this WSL distro (its own install and sign-in); omitted: on Windows. */
+  wslDistro?: string;
   model?: string;
   effort?: string;
   permissionMode?: string;

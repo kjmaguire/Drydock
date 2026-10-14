@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Chat, ChatHit, ChatListItem, ChatMessage } from '../../api/chatClient.ts';
-import type { AdapterInfo, Project } from '../../api/types.ts';
+import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { lic } from '../../test/fixtures.ts';
 import { CommandPalette } from '../../shell/palette.tsx';
@@ -366,6 +366,51 @@ describe('New chat dialog', () => {
     expect(warn.textContent).toContain('without asking you');
     type(mode, 'acceptEdits');
     await waitFor(() => expect(dlg.querySelector('[data-testid="skip-warning"]')).toBeNull(), r);
+  });
+
+  it('lists Claude Code installed inside a WSL distro as its own choice and sends the distro on create (decision P41)', async () => {
+    const created: unknown[] = [];
+    const claudeWSL: AdapterInfo = { ...claude, capabilities: { ...claude.capabilities, runModes: ['native', 'wsl'] } };
+    const conn = (distro: string, over: Partial<Connection> = {}) =>
+      ({ adapter: 'claude', key: `claude@wsl:${distro}`, runMode: 'wsl', distro, installed: true, status: 'ready', usable: true, version: '2.1.296', platform: 'linux (WSL 2)', ...over }) as Connection;
+    const { r, navigated } = setup(
+      {
+        adapterList: async () => [claudeWSL, gemini, cline],
+        connectionList: async () => [conn('Ubuntu'), conn('Debian', { status: 'unauthenticated', usable: false })],
+        chatCreate: async (p) => (created.push(p), chat({ id: 'c_wsl', projectId: '', wslDistro: 'Ubuntu' })),
+      },
+      { newChat: true },
+    );
+    const dlg = await waitFor(newChatDialog, r);
+    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Project').value).toBe('prj_1'), r);
+    type(byLabel<HTMLSelectElement>(dlg, 'Project'), ''); // the owner's case: a chat with no project
+    const agent = byLabel<HTMLSelectElement>(dlg, 'Agent CLI');
+    await waitFor(
+      () =>
+        expect(Array.from(agent.options).map((o) => [o.textContent, o.disabled])).toEqual([
+          ['Claude Code on Windows 2.1.295', false],
+          ['Claude Code in Debian (WSL) (not signed in)', true],
+          ['Claude Code in Ubuntu (WSL) 2.1.296', false],
+          ['Cline 3.0.70', false],
+          ['Gemini CLI (not installed)', true],
+        ]),
+      r,
+    );
+    expect(agent.value).toBe('claude'); // Windows stays the default
+    type(agent, 'claude@wsl:Ubuntu');
+    await waitFor(() => expect(dlg.textContent).toContain('Runs inside the WSL distro Ubuntu'), r);
+    expect(byLabel<HTMLInputElement>(dlg, 'Folder').placeholder).toBe('/home/you/notes');
+    // the WSL install has Claude Code's models and modes
+    expect(Array.from(dlg.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'))).toEqual(['opus', 'sonnet', 'haiku']);
+    await r.act(() => byText(dlg, 'button', 'Start chat').click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_wsl']), r);
+    expect(created).toEqual([{ projectId: undefined, cwd: undefined, adapter: 'claude', wslDistro: 'Ubuntu', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true }]);
+  });
+
+  it("shows where a chat in WSL runs on its adapter chip", async () => {
+    const c = chat({ wslDistro: 'Ubuntu', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a' });
+    const { r } = setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }) }, { id: 'chat_a' });
+    await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toContain('Claude Code in Ubuntu (WSL)'), r);
   });
 
   it('shows the error the core gave', async () => {

@@ -21,7 +21,7 @@ import { VirtualList } from '../../ui/virtual-list.tsx';
 import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
 import { ChatMessageRow } from './chat-message.tsx';
-import { adapterLabel, chatTitle, compactNumber, costText, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
+import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
 const titleBtn = css({
@@ -376,7 +376,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               <button type="button" mix={[chipsBtn, mix]} aria-label="Chat settings" aria-expanded={settingsOpen ? 'true' : 'false'} title="Change the model, effort, permission mode or history access">
                 <span mix={chipCss} data-testid="chip-adapter">
                   <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={16} kind="agent" />
-                  {adapterLabel(chat.adapter)}
+                  {chat.wslDistro ? `${adapterLabel(chat.adapter)} ${chatWhere(chat)}` : adapterLabel(chat.adapter)}
                 </span>
                 <span mix={chipCss} data-testid="chip-model">
                   {chat.model || 'default model'}

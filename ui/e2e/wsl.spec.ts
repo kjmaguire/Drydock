@@ -81,6 +81,41 @@ test("Connections: Sign in runs the CLI's own login inside the distro in a termi
   }
 });
 
+test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a private folder in its home, and gets an answer', async ({ page }) => {
+  test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
+  await createProject(page, 'gocalc-wsl-chat');
+  await workspaceNav(page, 'nav-chats');
+  await page.getByTestId('chat-new').click();
+  const dialog = page.getByRole('dialog', { name: 'New chat' });
+  await dialog.getByLabel('Project', { exact: true }).selectOption('');
+  // the distro's install is its own choice, named as on the Connections page (its Connection is probed when the dialog opens)
+  const agent = dialog.getByLabel('Agent CLI', { exact: true });
+  const choice = agent.locator(`option[value="claude@wsl:${distro()}"]`);
+  await expect(choice).toHaveText(new RegExp(`^Claude Code in ${distro()} \\(WSL\\) 2\\.1\\.296$`), { timeout: 60_000 });
+  await expect(choice).toBeEnabled();
+  await expect(agent.locator('option[value=claude]')).toContainText('Claude Code on Windows');
+  await agent.selectOption(`claude@wsl:${distro()}`);
+  await expect(dialog).toContainText(`Runs inside the WSL distro ${distro()}`);
+  await dialog.getByRole('button', { name: 'Start chat' }).click();
+  await expect(page).toHaveURL(/\/chats\/chat_/);
+  const chatId = page.url().split('/').pop() ?? '';
+  await expect(page.getByTestId('chip-adapter')).toContainText(`Claude Code in ${distro()} (WSL)`);
+  // the private folder inside the distro, named the Windows way
+  await expect(page.getByTestId('chat-cwd')).toHaveAttribute('title', new RegExp(`^\\\\\\\\wsl\\.localhost\\\\${distro()}\\\\.*\\\\\\.drydock\\\\chats\\\\${chatId}$`));
+
+  const message = page.getByLabel('Message', { exact: true });
+  await message.fill('hello from a chat in WSL');
+  await message.press('Control+Enter');
+  // the stand-in claude (a LABELLED TEST DOUBLE) says where it ran: in the distro's home folder for this chat, with the run
+  // marker, and with Drydock's tools reached through the Windows shim
+  await expect(page.getByTestId('chat-status')).toHaveText('Session kept', { timeout: 60_000 });
+  const answer = page.getByTestId('chat-log').getByText(/standin turn=1/);
+  await expect(answer).toBeVisible();
+  await expect(answer).toContainText(`/.drydock/chats/${chatId} `);
+  await expect(answer).toContainText('run=set');
+  await expect(answer).toContainText('mcpcmdok=yes');
+});
+
 test('Team: a Claude Code agent is made to run inside the WSL distro and its card says so', async ({ page }) => {
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-team');

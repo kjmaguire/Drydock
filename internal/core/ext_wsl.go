@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
+	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/wsl"
 )
@@ -164,7 +166,8 @@ func (c *Core) effectiveRunMode(ctx context.Context, a Agent) (string, string) {
 	return agents.RunModeNative, ""
 }
 
-// agentRunMode is Runtime.RunMode: an unknown agent (a chat) runs natively.
+// agentRunMode is Runtime.RunMode: an unknown agent runs natively. A chat's turn says its own run mode in its spec (a chat
+// chosen to run in a WSL distro), so this is not asked for it.
 func (c *Core) agentRunMode(ctx context.Context, agentID string) (string, string) {
 	a, err := c.agent(ctx, agentID)
 	if err != nil {
@@ -276,12 +279,97 @@ func (c *Core) WSLDistros(ctx context.Context) WSLStatus {
 		row := WSLDistro{Distro: d}
 		if in, ok := c.wsl.Cached(d.Name, "claude"); ok {
 			row.Probed, row.Claude, row.Interop, row.MountRoot = true, in.Tool, in.Interop, in.Paths.MountRoot
-			if in.AuthExit >= 0 {
-				v := strings.Contains(strings.ReplaceAll(in.Auth, " ", ""), `"loggedIn":true`)
-				row.SignedIn = &v
-			}
+			row.SignedIn = wslSignedIn(in)
 		}
 		st.Distros = append(st.Distros, row)
 	}
 	return st
+}
+
+// wslSignedIn is the sign-in state the probe's run of `claude auth status` printed inside the distro (nil when it did not run).
+// It is the CLI's own answer: Drydock never reads a credential (D1).
+func wslSignedIn(in wsl.Info) *bool {
+	if in.AuthExit < 0 {
+		return nil
+	}
+	v := strings.Contains(strings.ReplaceAll(in.Auth, " ", ""), `"loggedIn":true`)
+	return &v
+}
+
+// checkChatWSL is chats.Deps.CheckWSL: a chat runs adapter inside distro only where an agent could (checkRunMode: Claude Code,
+// a distro this machine has, no sandbox in the chat's project), with the CLI installed and not known to be signed out there.
+// A "signed out" from the probe cache is checked again before it refuses, so signing in on the Connections page counts at
+// once. Every refusal names the distro.
+func (c *Core) checkChatWSL(ctx context.Context, projectID, adapter, distro string) (string, error) {
+	_, d, err := c.checkRunMode(ctx, projectID, adapter, agents.RunModeWSL, distro)
+	if err != nil {
+		return "", err
+	}
+	probe := func(fresh bool) (wsl.Info, error) {
+		return c.wsl.Probe(ctx, d, "claude", claude.WSLVersionArgs, claude.WSLAuthArgs, fresh)
+	}
+	in, err := probe(false)
+	if err == nil && in.Tool != "" {
+		if s := wslSignedIn(in); s != nil && !*s {
+			in, err = probe(true)
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("the WSL distro %s cannot be reached: %w", d, err)
+	}
+	if in.Tool == "" {
+		return "", fmt.Errorf("Claude Code was not found in the WSL distro %s: install it inside the distro, then sign in on its card on the Connections page", d)
+	}
+	if s := wslSignedIn(in); s != nil && !*s {
+		return "", fmt.Errorf("Claude Code in the WSL distro %s is not signed in: sign in on its card on the Connections page (Sign in runs `claude auth login` inside the distro)", d)
+	}
+	return d, nil
+}
+
+// wslChatsDir is where the private folders of WSL chats live, under the distro user's HOME.
+const wslChatsDir = ".drydock/chats"
+
+// isWSLChatFolder reports whether a Linux path is a chat's private folder (<HOME>/.drydock/chats/<chat id>; a fork keeps its
+// source's).
+func isWSLChatFolder(linux string) bool {
+	dir := path.Dir(path.Clean(linux))
+	return path.Base(dir) == path.Base(wslChatsDir) && path.Base(path.Dir(dir)) == path.Dir(wslChatsDir)
+}
+
+// chatWSLFolder is chats.Deps.WSLFolder. A chat without a project and without a folder the person picked runs in a private
+// folder in the distro user's home (<HOME>/.drydock/chats/<chat id>, made by the distro's user through wsl.exe), so its files
+// are on the distro's own disk; the folder is named the Windows way (\\wsl.localhost\<distro>\...) and made again when it is
+// gone. A folder inside the distro (a Linux path, or \\wsl.localhost\<distro>\...) is checked inside the distro; a Windows
+// folder is checked on Windows (the CLI reaches it through the distro's mount root).
+func (c *Core) chatWSLFolder(ctx context.Context, distro, chatID, cwd string) (string, error) {
+	if c.wsl == nil {
+		return "", fmt.Errorf("the chat runs in the WSL distro %s, and WSL is not available here", distro)
+	}
+	if strings.ContainsAny(cwd, "\x00\r\n") {
+		return "", errors.New("the folder path contains a control character")
+	}
+	var linux string
+	switch d, lin, isUNC := wsl.ParseUNC(cwd); {
+	case cwd == "":
+		in, err := c.wslInfo(ctx, distro)
+		if err != nil {
+			return "", fmt.Errorf("the WSL distro %s cannot be reached: %w", distro, err)
+		}
+		if !strings.HasPrefix(in.Home, "/") {
+			return "", fmt.Errorf("the WSL distro %s did not say where its user's home is", distro)
+		}
+		linux = path.Join(in.Home, wslChatsDir, chatID)
+	case isUNC && !strings.EqualFold(d, distro):
+		return "", fmt.Errorf("the folder %s is inside the WSL distro %s, and this chat runs in %s", cwd, d, distro)
+	case isUNC:
+		linux = lin
+	case strings.HasPrefix(cwd, "/") && !strings.HasPrefix(cwd, "//"):
+		linux = path.Clean(cwd)
+	default:
+		return chats.ValidateFolder(cwd)
+	}
+	if err := c.wsl.Dir(ctx, distro, linux, isWSLChatFolder(linux)); err != nil {
+		return "", err
+	}
+	return wsl.UNC(distro, linux), nil
 }

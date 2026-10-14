@@ -6,7 +6,9 @@ message, or looked up by a later chat through the `chats` workspace tool. Code: 
 `internal/core/ext_chats.go` (wiring and methods), migration `internal/storage/migrations/00106_chats.sql`. Tests:
 `internal/core/chats_test.go` (scripted real-process agents), `internal/core/real_claude_chats_test.go` (the real Claude Code,
 skipped without a logged-in `claude`: resume, fallback, a refusal and its allow rule), `internal/chats/text_test.go`,
-`internal/mcp/workspace_chats_test.go`. Not verified: a real ACP chat turn, anything on Windows.
+`internal/mcp/workspace_chats_test.go`, `internal/core/chats_wsl_test.go` (a chat inside a WSL distro, through the stand-in
+wsl.exe and the LABELLED stand-in claude of `internal/wsl/wsltest`). Not verified: a real ACP chat turn, anything on Windows
+(a chat in a real distro is covered by the agent run mode's real-distro tests only as far as the shared start goes).
 
 ## 1. Objects
 
@@ -15,6 +17,7 @@ skipped without a logged-in `claude`: resume, fallback, a refusal and its allow 
 ```json
 {
   "id": "chat_3f9a1c2b7d40", "projectId": "prj_… or empty (no project)", "title": "", "adapter": "claude",
+  "wslDistro": "empty (on Windows) or the WSL distro the CLI runs in, e.g. Ubuntu",
   "model": "", "effort": "", "permissionMode": "default", "skipsApprovals": false,
   "cwd": "C:\\repo", "sessionId": "the CLI's session id, empty before the first turn",
   "allowedTools": ["Bash(npm test)", "Edit"], "readHistory": true,
@@ -62,7 +65,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | Method | Parameters | Result |
 |---|---|---|
 | `chat.list` | `{projectId?, query?, includeArchived?[false], limit?[500, max 500]}` (`projectId` empty = every chat; `query` = full text over titles and messages) | `[ListItem]`, pinned first, then most recently updated, at most 500 |
-| `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], model?, effort?, permissionMode?, readHistory?[true]}` | `Chat` |
+| `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], wslDistro?[""], model?, effort?, permissionMode?, readHistory?[true]}` | `Chat` |
 | `chat.get` | `{id}` | `{chat: Chat, messages: [Message] (latest 200, oldest first), hasMore}` |
 | `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `{messages: [Message] oldest first, hasMore}` (`hasMore`: still older messages exist) |
 | `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
@@ -82,8 +85,21 @@ Rules worth knowing in the UI:
   follow the agent rules (single word, effort from the adapter's list). `permissionMode` defaults to `default` for Claude (it
   then refuses tools outside the mode, and each refusal becomes a `denied` message) and to the agent's own default for ACP
   agents; it is checked against the adapter's modes.
+- `chat.create` with `wslDistro` runs the chat's CLI inside that WSL distro, its own install with its own sign-in (decision
+  P41; the Connection `claude@wsl:<distro>`). Refused, naming the distro: an adapter that cannot run in WSL (only Claude Code
+  can), a distro this machine does not have (or a container engine's own), Claude Code not found there, Claude Code signed out
+  there (the CLI's own `auth status`, from the probe cache; a cached "signed out" is probed again before it refuses, so a
+  fresh sign-in counts at once), or a project whose sandbox is on. Folders: a project's chat runs in the project's folder as
+  usual (the CLI gets its Linux form: `/mnt/<drive>/...`, or the distro's own path for a repository inside it). A chat without a
+  project and without `cwd` gets a private folder in the distro user's home, `~/.drydock/chats/<chat id>`, made by the
+  distro's user through wsl.exe and stored the Windows way (`\\wsl.localhost\<distro>\home\<user>\.drydock\chats\<chat id>`).
+  `cwd` may be a folder inside the distro (its Linux path, or `\\wsl.localhost\<distro>\...`; checked inside the distro, a
+  folder of another distro is refused) or a Windows folder (checked on Windows, reached through the distro's mount root).
+  `wslDistro` is fixed for the chat's life; a fork keeps it.
 - `chat.send` is refused while a turn runs ("a turn is already running in this chat: wait for it to finish or stop it"), for an
-  archived chat, an empty message (limit 100 KiB) or a folder that is gone. `attach` takes up to 5 other chats (not the chat
+  archived chat, an empty message (limit 100 KiB) or a folder that is gone. A chat in WSL is checked again first: its distro
+  gone or its CLI signed out there refuses the send with a message naming the distro, before the chat is claimed; its private
+  folder is made again when it was removed. `attach` takes up to 5 other chats (not the chat
   itself); their transcripts are given to this turn only. The stored user message is only what the human typed.
 - `chat.update` with `archived: true` is refused while a turn runs; `chat.delete` likewise. Model, effort, permission mode and
   allow rules apply from the next turn.
@@ -120,7 +136,12 @@ well, with the chat id as `agentId`.
    `ResumeID` = the stored session id when the adapter can resume (Claude `--resume`, ACP `session/load` or `session/resume`).
    Claude Code starts as for every Drydock session (decision P36): without the person's skills and slash commands, so a message
    such as `/compact` is answered "isn't available" (automatic compaction still works), with the quiet environment and the
-   tools no Drydock session uses denied. The person's full Claude Code setup is in the embedded terminal.
+   tools no Drydock session uses denied. The person's full Claude Code setup is in the embedded terminal. A chat with a
+   `wslDistro` sets the run mode in its spec (`RunMode: wsl`), so the adapter's own WSL start runs it, exactly as an agent's:
+   wsl.exe with the folder and every path converted to the distro's form, the distro's own HOME and PATH, only the allowlisted
+   environment passed through `WSLENV`, the MCP gateway (the `chats` tool) through the Windows shim, and the run marker, so
+   stopping the turn kills every Linux process it started. Drydock never reads, copies or moves the distro's Claude sign-in
+   (D1): the only sign-in check is the CLI's own `auth status`.
 3. If the session cannot be resumed (the CLI fails before any session or output), a system note is stored and a fresh session
    gets the last ~12,000 characters of the chat, quoted line by line as "the earlier conversation in this chat", followed by the
    new message. A fork's first turn and every turn of an adapter that cannot resume start the same way (`fallback: true`).
