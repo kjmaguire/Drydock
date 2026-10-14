@@ -53,6 +53,8 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		ValidateFields: func(adapter, model, effort string) error { return c.validateAgentFields(adapter, model, effort, "") },
 		ProjectDir:     c.chatProjectDir,
 		ScratchDir:     func(id string) string { return filepath.Join(c.cfg.DataDir, "chats", id) },
+		CheckWSL:       c.checkChatWSL,
+		WSLFolder:      c.chatWSLFolder,
 		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
 		Logf:           c.logf,
 	}, chats.Options{})

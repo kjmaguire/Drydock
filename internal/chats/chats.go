@@ -80,10 +80,13 @@ func SkipsApprovals(mode string) bool {
 
 // Chat is one conversation.
 type Chat struct {
-	ID             string `json:"id"`
-	ProjectID      string `json:"projectId"` // "" = not tied to a project
-	Title          string `json:"title"`
-	Adapter        string `json:"adapter"`
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"` // "" = not tied to a project
+	Title     string `json:"title"`
+	Adapter   string `json:"adapter"`
+	// WSLDistro is where the chat's CLI runs: "" on Windows, else the WSL distro whose own install (its own Connection and
+	// sign-in) every turn starts inside (decision P41). Chosen when the chat is created; a fork keeps it.
+	WSLDistro      string `json:"wslDistro"`
 	Model          string `json:"model"`
 	Effort         string `json:"effort"`
 	PermissionMode string `json:"permissionMode"`
@@ -153,6 +156,15 @@ type Deps struct {
 	ProjectDir func(ctx context.Context, projectID string) (string, error)
 	// ScratchDir is the private folder of a chat that has no project and no folder the human picked.
 	ScratchDir func(chatID string) string
+	// CheckWSL refuses running adapter inside the WSL distro for a chat of projectID ("" = none): the adapter cannot run there,
+	// the distro is gone, the CLI is not installed or not signed in there, or the project runs a sandbox. The error names the
+	// distro. It returns the distro's name as WSL spells it. Nil: WSL chats are refused.
+	CheckWSL func(ctx context.Context, projectID, adapter, distro string) (string, error)
+	// WSLFolder is the folder of a WSL chat without a project, as Windows names it: cwd "" makes the chat's private folder in
+	// the distro user's home; the private folder is made again when it is gone; a folder inside the distro (its Linux path or
+	// \\wsl.localhost\<distro>\...) must exist there; a Windows folder must exist on Windows (the distro reaches it through
+	// its mount root).
+	WSLFolder func(ctx context.Context, distro, chatID, cwd string) (string, error)
 	// Licensed refuses starting work while the license is read-only. Optional.
 	Licensed func(ctx context.Context) error
 	Logf     func(format string, args ...any)
@@ -273,10 +285,12 @@ func (s *Service) publish(ctx context.Context, typ, projectID string, data map[s
 
 // CreateReq is chat.create.
 type CreateReq struct {
-	ProjectID      string `json:"projectId"`
-	Cwd            string `json:"cwd"`
-	Title          string `json:"title"`
-	Adapter        string `json:"adapter"`
+	ProjectID string `json:"projectId"`
+	Cwd       string `json:"cwd"`
+	Title     string `json:"title"`
+	Adapter   string `json:"adapter"`
+	// WSLDistro runs the chat's CLI inside this WSL distro ("" = on Windows).
+	WSLDistro      string `json:"wslDistro"`
 	Model          string `json:"model"`
 	Effort         string `json:"effort"`
 	PermissionMode string `json:"permissionMode"`
@@ -303,6 +317,16 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 			return Chat{}, err
 		}
 	}
+	distro := ""
+	if d := strings.TrimSpace(r.WSLDistro); d != "" {
+		if s.d.CheckWSL == nil || s.d.WSLFolder == nil {
+			return Chat{}, errors.New("a chat cannot run in WSL here")
+		}
+		var err error
+		if distro, err = s.d.CheckWSL(ctx, strings.TrimSpace(r.ProjectID), r.Adapter, d); err != nil {
+			return Chat{}, err
+		}
+	}
 	r.Model, r.Effort = strings.TrimSpace(r.Model), strings.TrimSpace(r.Effort)
 	if s.d.ValidateFields != nil {
 		if err := s.d.ValidateFields(r.Adapter, r.Model, r.Effort); err != nil {
@@ -317,7 +341,7 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 	if err != nil {
 		return Chat{}, err
 	}
-	c := Chat{ID: ids.New(strings.TrimSuffix(AgentPrefix, "_")), ProjectID: strings.TrimSpace(r.ProjectID), Title: title, Adapter: r.Adapter, Model: r.Model,
+	c := Chat{ID: ids.New(strings.TrimSuffix(AgentPrefix, "_")), ProjectID: strings.TrimSpace(r.ProjectID), Title: title, Adapter: r.Adapter, WSLDistro: distro, Model: r.Model,
 		Effort: r.Effort, PermissionMode: mode, AllowedTools: []string{}, ReadHistory: r.ReadHistory == nil || *r.ReadHistory, Status: StatusIdle}
 	switch {
 	case c.ProjectID != "":
@@ -325,6 +349,12 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 			return Chat{}, errors.New("a chat in a project runs in the project's folder; pick a folder only for a chat without a project")
 		}
 		dir, err := s.d.ProjectDir(ctx, c.ProjectID)
+		if err != nil {
+			return Chat{}, err
+		}
+		c.Cwd = dir
+	case c.WSLDistro != "":
+		dir, err := s.d.WSLFolder(ctx, c.WSLDistro, c.ID, strings.TrimSpace(r.Cwd))
 		if err != nil {
 			return Chat{}, err
 		}
@@ -358,9 +388,9 @@ func (s *Service) insertChat(ctx context.Context, c Chat) error {
 	rules, _ := json.Marshal(c.AllowedTools)
 	return s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
-			pinned,archived_at,forked_from,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			pinned,archived_at,forked_from,created_at,updated_at,wsl_distro) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			c.ID, c.ProjectID, c.Title, c.Adapter, c.Model, c.Effort, c.PermissionMode, c.Cwd, c.SessionID, string(rules), b2i(c.ReadHistory), c.Status,
-			b2i(c.Pinned), c.ArchivedAt, c.ForkedFrom, c.Created, c.Updated)
+			b2i(c.Pinned), c.ArchivedAt, c.ForkedFrom, c.Created, c.Updated, c.WSLDistro)
 		return err
 	})
 }
@@ -427,7 +457,7 @@ func (s *Service) cleanTitle(t string) (string, error) {
 }
 
 const chatCols = `id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,last_error,pinned,
-	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version`
+	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -437,7 +467,7 @@ func scanChat(r scanner, extra ...any) (Chat, error) {
 	var readHistory, pinned int64
 	var cost sql.NullFloat64
 	dest := []any{&c.ID, &c.ProjectID, &c.Title, &c.Adapter, &c.Model, &c.Effort, &c.PermissionMode, &c.Cwd, &c.SessionID, &rules, &readHistory, &c.Status,
-		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version}
+		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version, &c.WSLDistro}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return c, err
 	}
@@ -730,7 +760,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 // Fork starts a new chat with the messages of another up to and including uptoSeq (0 = all). The fork has no CLI session:
-// its first turn gives a fresh session the transcript. It keeps adapter, model, effort and allow rules; a permission mode
+// its first turn gives a fresh session the transcript. It keeps adapter, WSL distro, model, effort and allow rules; a permission mode
 // that skips approvals is not inherited (the human chooses that per chat).
 func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, error) {
 	src, err := s.Get(ctx, id)
@@ -757,8 +787,8 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 	rules, _ := json.Marshal(n.AllowedTools)
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
-			pinned,archived_at,forked_from,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			n.ID, n.ProjectID, n.Title, n.Adapter, n.Model, n.Effort, n.PermissionMode, n.Cwd, "", string(rules), b2i(n.ReadHistory), n.Status, 0, 0, n.ForkedFrom, n.Created, n.Updated); err != nil {
+			pinned,archived_at,forked_from,created_at,updated_at,wsl_distro) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			n.ID, n.ProjectID, n.Title, n.Adapter, n.Model, n.Effort, n.PermissionMode, n.Cwd, "", string(rules), b2i(n.ReadHistory), n.Status, 0, 0, n.ForkedFrom, n.Created, n.Updated, n.WSLDistro); err != nil {
 			return err
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)

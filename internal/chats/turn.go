@@ -77,13 +77,29 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	if err != nil {
 		return SendResult{}, err
 	}
+	if c.WSLDistro != "" {
+		// the distro may be gone, or its CLI signed out, since the chat was created: say so before anything is claimed
+		if s.d.CheckWSL == nil || s.d.WSLFolder == nil {
+			return SendResult{}, fmt.Errorf("this chat runs in the WSL distro %s, and WSL is not available here", c.WSLDistro)
+		}
+		if _, err := s.d.CheckWSL(ctx, c.ProjectID, c.Adapter, c.WSLDistro); err != nil {
+			return SendResult{}, err
+		}
+	}
 	cwd := c.Cwd
-	if c.ProjectID != "" {
+	switch {
+	case c.ProjectID != "":
 		if cwd, err = s.d.ProjectDir(ctx, c.ProjectID); err != nil {
 			return SendResult{}, err
 		}
-	} else if cwd, err = ValidateFolder(c.Cwd); err != nil {
-		return SendResult{}, fmt.Errorf("this chat's folder cannot be used any more: %w", err)
+	case c.WSLDistro != "":
+		if cwd, err = s.d.WSLFolder(ctx, c.WSLDistro, c.ID, c.Cwd); err != nil {
+			return SendResult{}, fmt.Errorf("this chat's folder cannot be used any more: %w", err)
+		}
+	default:
+		if cwd, err = ValidateFolder(c.Cwd); err != nil {
+			return SendResult{}, fmt.Errorf("this chat's folder cannot be used any more: %w", err)
+		}
 	}
 
 	// one turn at a time: the in-memory reservation, then the row (which also covers a second process on the same data)
@@ -327,6 +343,10 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	var o attemptOut
 	spec := agents.RunSpec{AgentID: c.ID, Role: "chat", Cwd: c.Cwd, Model: c.Model, Effort: c.Effort, PermissionMode: c.PermissionMode,
 		ResumeID: resumeID, AllowedTools: append([]string(nil), c.AllowedTools...)}
+	if c.WSLDistro != "" {
+		// the adapter's own WSL start (decision P41), as for an agent: paths converted, WSLENV, the MCP shim, the marker sweep
+		spec.RunMode, spec.WSLDistro = agents.RunModeWSL, c.WSLDistro
+	}
 	if resumeID != "" {
 		spec.UsageBaseline = s.sessionUsage(ctx, c.ID, resumeID)
 	}

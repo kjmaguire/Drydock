@@ -368,3 +368,41 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+// Dir makes a chat's folder inside the distro (as the distro's user, through wsl.exe) and checks one a person picked; a folder
+// that is not there, or a distro that is gone, is an error naming the distro.
+func TestDirMakesAndChecksAFolderInsideTheDistro(t *testing.T) {
+	requireHostTools(t)
+	f := wsltest.NewFake(t, false, "Ubuntu")
+	h := &wsl.Host{Exe: f.Exe}
+	ctx := context.Background()
+	dir := filepath.Join(f.Home, ".drydock", "chats", "chat_1")
+	if err := h.Dir(ctx, "Ubuntu", dir, false); err == nil || !strings.Contains(err.Error(), "does not exist in the WSL distro Ubuntu") {
+		t.Fatalf("a missing folder: %v", err)
+	}
+	if err := h.Dir(ctx, "Ubuntu", dir, true); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		t.Fatalf("not made: %v", err)
+	}
+	if err := h.Dir(ctx, "Ubuntu", dir, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.Home, "file"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Dir(ctx, "Ubuntu", filepath.Join(f.Home, "file", "sub"), true); err == nil || !strings.Contains(err.Error(), "could not be created in the WSL distro Ubuntu") {
+		t.Fatalf("a folder under a file: %v", err)
+	}
+	if err := h.Dir(ctx, "Gone", dir, false); err == nil || !strings.Contains(err.Error(), "WSL distro Gone could not be reached") || !strings.Contains(err.Error(), "no distribution") {
+		t.Fatalf("a distro that is gone: %v", err)
+	}
+	if err := h.Dir(ctx, "Ubuntu", "relative", false); err == nil {
+		t.Fatal("a relative path was accepted")
+	}
+	evil := "/home/k/x; rm -rf ~"
+	if got := wsl.DirArgs("Ubuntu", evil, true); got[len(got)-2] != evil || got[len(got)-1] != "make" || slices.Contains(got[:len(got)-2], evil) {
+		t.Fatalf("the path must be an argument of the script, never part of it: %q", got)
+	}
+}

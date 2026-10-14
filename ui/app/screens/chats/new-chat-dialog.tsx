@@ -1,15 +1,16 @@
 // The new chat dialog: where it runs (the current project by default, or no project with an optional folder), which agent
-// CLI (Claude Code by default; one that is not installed is listed but disabled with the reason), model, effort, permission
+// CLI (Claude Code by default; one that is not installed is listed but disabled with the reason; a CLI installed inside a WSL
+// distro is its own choice, as on the Connections page, and the chat then runs there: decision P41), model, effort, permission
 // mode (a mode that skips approvals shows a warning) and whether the chat may read the human's other chats.
 
 import { on, type Handle } from 'remix/component';
-import type { AdapterInfo, Project } from '../../api/types.ts';
-import { action, services } from '../../state/services.tsx';
+import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
+import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
-import { adapterOptionText, adapterUnavailable, skipsApprovals, sortChatAdapters } from './chats.ts';
+import { chatChoices, pickChatChoice, skipsApprovals } from './chats.ts';
 
 const NO_PROJECT = '';
 
@@ -18,9 +19,22 @@ export function NewChatDialog(
 ) {
   const s = services(handle);
   const act = action(handle);
+  // the WSL installs are the WSL Connections (each distro probed): read while the dialog is open, and again when a sign-in or
+  // a gate changes one. A core without them offers only the Windows installs.
+  const conns = query(handle, {
+    enabled: () => handle.props.open,
+    when: (e) => e.type.startsWith('connection.'),
+    load: async (): Promise<Connection[]> => {
+      try {
+        return await s.client.connectionList();
+      } catch {
+        return [];
+      }
+    },
+  });
   let project: string | undefined; // undefined = the current project
   let cwd = '';
-  let adapter = '';
+  let adapter = ''; // the picked choice's value: an adapter id, or a WSL Connection key ("claude@wsl:Ubuntu")
   let model = '';
   let effort = '';
   let mode = '';
@@ -47,10 +61,10 @@ export function NewChatDialog(
     const { open, onClose, projects, projectId, adapters, adaptersError } = handle.props;
     if (open && !wasOpen) reset();
     wasOpen = open;
-    const list = sortChatAdapters(adapters ?? []);
-    const usable = list.filter((a) => !adapterUnavailable(a));
-    const chosen = list.find((a) => a.id === adapter && !adapterUnavailable(a)) ?? usable.find((a) => a.id === 'claude') ?? usable[0];
-    const caps = chosen?.capabilities;
+    const choices = chatChoices(adapters ?? [], conns.data ?? []);
+    const chosen = pickChatChoice(choices, adapter);
+    const caps = chosen?.adapter.capabilities;
+    const distro = chosen?.wslDistro ?? '';
     const models = caps?.models ?? [];
     const efforts = caps?.efforts ?? [];
     const modes = caps?.permissionModes ?? [];
@@ -65,7 +79,8 @@ export function NewChatDialog(
         s.client.chatCreate({
           projectId: pid || undefined,
           cwd: pid ? undefined : cwd.trim() || undefined,
-          adapter: chosen.id,
+          adapter: chosen.adapter.id,
+          ...(chosen.wslDistro ? { wslDistro: chosen.wslDistro } : {}),
           model: model.trim() || undefined,
           effort: effort || undefined,
           permissionMode: mode || undefined,
@@ -107,18 +122,36 @@ export function NewChatDialog(
               )}
             </Field>
             {pid === NO_PROJECT ? (
-              <Field label="Folder" hint="An absolute path to an existing folder, checked when the chat starts. Empty: a private folder Drydock creates for this chat.">
-                {(id) => <input id={id} value={cwd} placeholder="C:\work\notes" spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />}
+              <Field
+                label="Folder"
+                hint={
+                  distro
+                    ? `An existing folder inside ${distro} (/home/you/notes) or on Windows (C:\\work\\notes), checked when the chat starts. Empty: a private folder in your home inside ${distro} (~/.drydock/chats).`
+                    : 'An absolute path to an existing folder, checked when the chat starts. Empty: a private folder Drydock creates for this chat.'
+                }
+              >
+                {(id) => <input id={id} value={cwd} placeholder={distro ? '/home/you/notes' : 'C:\\work\\notes'} spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />}
               </Field>
             ) : (
               <div />
             )}
-            <Field label="Agent CLI" hint={chosen ? undefined : 'No agent CLI is installed. Set one up on the Connections page.'}>
+            <Field
+              label="Agent CLI"
+              hint={
+                distro
+                  ? `Runs inside the WSL distro ${distro}, with the Claude Code installed and signed in there.`
+                  : chosen
+                    ? conns.loading && !conns.data
+                      ? 'Looking for agent CLIs inside WSL...'
+                      : undefined
+                    : 'No agent CLI is installed. Set one up on the Connections page.'
+              }
+            >
               {(id) => (
-                <select id={id} value={chosen?.id ?? ''} mix={on('change', (e) => set(() => ((adapter = e.currentTarget.value), (model = ''), (effort = ''), (mode = ''))))}>
-                  {list.map((a) => (
-                    <option key={a.id} value={a.id} disabled={!!adapterUnavailable(a)} selected={a.id === chosen?.id}>
-                      {adapterOptionText(a)}
+                <select id={id} value={chosen?.value ?? ''} mix={on('change', (e) => set(() => ((adapter = e.currentTarget.value), (model = ''), (effort = ''), (mode = ''))))}>
+                  {choices.map((c) => (
+                    <option key={c.value} value={c.value} disabled={!!c.why} selected={c.value === chosen?.value}>
+                      {c.text}
                     </option>
                   ))}
                 </select>
@@ -161,7 +194,7 @@ export function NewChatDialog(
                 </select>
               )}
             </Field>
-            <Field label="Permission mode" hint={chosen?.id === 'claude' && modeNow === 'default' ? 'Tools outside the mode are refused and shown, with a rule you can allow.' : undefined}>
+            <Field label="Permission mode" hint={chosen?.adapter.id === 'claude' && modeNow === 'default' ? 'Tools outside the mode are refused and shown, with a rule you can allow.' : undefined}>
               {(id) => (
                 <select id={id} value={modeNow} disabled={modes.length === 0} mix={on('change', (e) => set(() => (mode = e.currentTarget.value)))}>
                   {modes.length === 0 ? (

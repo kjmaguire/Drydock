@@ -24,6 +24,12 @@ import (
 // whose claude adapter is the product one (from the manifests), so the WSL start path is the real one.
 func openWSL(t *testing.T) (*app, *wsltest.Fake) {
 	t.Helper()
+	return openWSLTTL(t, 0)
+}
+
+// openWSLTTL is openWSL with the probe cache kept for ttl (0: the default five minutes).
+func openWSLTTL(t *testing.T, ttl time.Duration) (*app, *wsltest.Fake) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in wsl.exe runs on a Linux development host; Windows CI drives a real distro (internal/agents/claude TestRealWSLSession)")
 	}
@@ -34,7 +40,7 @@ func openWSL(t *testing.T) (*app, *wsltest.Fake) {
 	}
 	f := wsltest.NewFake(t, true, "Ubuntu", "docker-desktop")
 	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
-		WSL: &wsl.Host{Exe: f.Exe}})
+		WSL: &wsl.Host{Exe: f.Exe, TTL: ttl}})
 	if err != nil {
 		t.Fatal(err)
 	}
