@@ -577,6 +577,48 @@ export interface LibrarySkill {
   gone: boolean;
   updated: string;
 }
+/** A library skill the person picked to add to a project (Library > Skills hands them to the project's Skills page). */
+export interface SkillPick {
+  registryId: string;
+  name: string;
+}
+/** One recommendation (decision P52): give, add or stop using a skill, give an MCP server, or assign an integration. */
+export interface RecommendItem {
+  id: string;
+  kind: 'skill' | 'mcp' | 'integration' | string;
+  action: 'add' | 'give' | 'remove' | string;
+  /** A skill's name, a library MCP server's id, an integration's kind. */
+  name: string;
+  /** What a person reads: the skill's name, the server's display name, the vendor's name. */
+  label: string;
+  registryId?: string;
+  /** Agent ids; empty is the whole team (a skill) or the project (an integration). */
+  agents: string[];
+  reason: string;
+  status: 'open' | 'applied' | 'dismissed' | string;
+  note?: string;
+}
+/** One recommendation turn: who answered, why it ran, its items and what the core dropped from the answer. */
+export interface Recommendation {
+  id: string;
+  projectId: string;
+  agentId: string;
+  trigger: 'manual' | 'skills_added' | 'evolution' | string;
+  status: 'running' | 'done' | 'failed' | string;
+  candidates: SkillPick[];
+  summary: string;
+  items: RecommendItem[];
+  dropped: string[];
+  error?: string;
+  costUsd: number;
+  createdAt: number;
+  finishedAt?: number;
+}
+/** A project's recent recommendation turns, newest first, and whether it asks again by itself as it evolves. */
+export interface Recommendations {
+  auto: boolean;
+  runs: Recommendation[];
+}
 /** What skill.libraryAddAll did with every library skill of a registry: each name lands in exactly one list. */
 export interface SkillLibraryAddAll {
   added: string[];

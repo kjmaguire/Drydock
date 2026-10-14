@@ -2,6 +2,7 @@
 // command palette. Components subscribe with watch(handle, ui). Nothing here comes from the core.
 
 import { applyTheme, loadTheme, type ThemeChoice } from '../lib/theme.ts';
+import type { SkillPick } from '../api/extTypes.ts';
 import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'task' | 'thread' | 'inspector';
@@ -135,6 +136,21 @@ export class UiModel extends Model {
     const f = this.#flash;
     this.#flash = undefined;
     return f;
+  }
+
+  #picks: { projectId: string; picks: SkillPick[] } | undefined;
+
+  /** Skills picked in the workspace Library for a project: its Skills page takes them and offers to add them or ask for advice. */
+  handSkillPicks(projectId: string, picks: SkillPick[]): void {
+    this.#picks = { projectId, picks };
+  }
+
+  /** The picks handed to this project, once (another project's picks stay for it). */
+  takeSkillPicks(projectId: string): SkillPick[] {
+    if (this.#picks?.projectId !== projectId) return [];
+    const p = this.#picks.picks;
+    this.#picks = undefined;
+    return p;
   }
 
   setTheme(t: ThemeChoice): void {

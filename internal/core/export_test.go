@@ -65,3 +65,6 @@ func (c *Core) TestLog(format string, a ...any) { c.logf(format, a...) }
 func (c *Core) TestStoreScanReport(ctx context.Context, rep scan.Report) error {
 	return (&securityExt{c: c}).store(ctx, rep)
 }
+
+// TestMaybeRecommend runs the check a completed task triggers: whether the project asks for recommendations again by itself.
+func (c *Core) TestMaybeRecommend(ctx context.Context, projectID string) { c.maybeRecommend(ctx, projectID) }

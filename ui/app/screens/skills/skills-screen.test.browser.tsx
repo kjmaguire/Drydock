@@ -256,29 +256,33 @@ describe('SkillsScreen', () => {
       if (!g || g.querySelectorAll('[data-testid="library-skill-tile"]').length !== 4) throw new Error('not yet');
       return g;
     }, r);
-    const tiles = Array.from(grid.querySelectorAll<HTMLElement>('[data-testid="library-skill-tile"]'));
-    expect(tiles.map((x) => x.getAttribute('data-name'))).toEqual(['pdf', 'xlsx', 'wrangler', 'evil']);
-    expect(tiles[0]!.textContent).toBe('pdfPDF tools · MITAvailable');
-    expect(tiles[0]!.querySelector('[data-brand="anthropic"]')).not.toBeNull();
-    expect(tiles[2]!.textContent).toBe('wranglerWorkers · Apache-2.0Available');
-    expect(tiles[3]!.textContent).toBe('evilPDF tools · MITBlocked: contains a secret');
-    expect(tiles[3]!.querySelector('small[data-tone="bad"]')).not.toBeNull();
+    const rows = Array.from(grid.querySelectorAll<HTMLElement>('[data-testid="library-skill-tile"]'));
+    expect(rows.map((x) => x.getAttribute('data-name'))).toEqual(['pdf', 'xlsx', 'wrangler', 'evil']);
+    // a row is one line: its name and the description's first sentence; the rest is shown when it is opened
+    expect(rows[0]!.querySelector('.name')!.textContent).toBe('pdf');
+    expect(rows[0]!.querySelector('.short')!.textContent).toBe('PDF tools');
+    expect(rows[3]!.textContent).toContain('blocked');
+    expect(rows[3]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
     // the registry chooser: All, then one chip per registry with its count
     const chips = r.$('[role="group"][aria-label="Registry"]')!;
     expect(Array.from(chips.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['All (4)', 'anthropics/skills (2)', 'cloudflare/skills (2)']);
     await r.act(() => byText(chips, 'button', 'cloudflare/skills (2)').click());
     await waitFor(() => expect(r.$$('[data-testid="library-skill-tile"]').length).toBe(2), r);
     expect(byText(chips, 'button', 'cloudflare/skills (2)').getAttribute('aria-pressed')).toBe('true');
+    const row = (name: string) => (r.$(`[data-testid="library-skill-tile"][data-name="${name}"]`) as HTMLElement);
     // a blocked skill opens but has no Add button
-    await r.act(() => r.$('[data-testid="library-skill-tile"][data-name="evil"]')!.click());
-    const evil = await one(r, '[data-testid="library-skill"][data-name="evil"]');
+    await r.act(() => row('evil').querySelector<HTMLButtonElement>('button.what')!.click());
+    const evil = await one(r, '[data-testid="library-skill-tile"][data-name="evil"] [data-testid="library-skill-tile-detail"]');
     expect(evil.textContent).toContain('A blocked skill cannot be added');
     expect(evil.querySelector('[data-testid="library-add"]')).toBeNull();
-    // Add to project: (projectId, registryId, name), then the success status and the tile moves to the project with its check
-    await r.act(() => r.$('[data-testid="library-skill-tile"][data-name="wrangler"]')!.click());
-    const w = await one(r, '[data-testid="library-skill"][data-name="wrangler"]');
+    // opening a row shows everything about the skill; its Add button adds it: (projectId, registryId, name), then the success
+    // status and the skill moves to the project with its check
+    await r.act(() => row('wrangler').querySelector<HTMLButtonElement>('button.what')!.click());
+    const w = await one(r, '[data-testid="library-skill-tile"][data-name="wrangler"] [data-testid="library-skill-tile-detail"]');
+    expect(w.textContent).toContain('Workers');
+    expect(w.textContent).toContain('Apache-2.0');
     expect(w.textContent).toContain('abcdef123456');
-    await r.act(() => byText(w, 'button', 'Add to project').click());
+    await r.act(() => byText(w, 'button', 'Add to gocalc').click());
     await waitFor(() => expect(added).toEqual([['prj_1', 'cloudflare-skills', 'wrangler']]), r);
     const note = await one(r, '[data-testid="skill-added"]');
     expect(note.getAttribute('role')).toBe('status');
@@ -288,6 +292,43 @@ describe('SkillsScreen', () => {
     expect(r.$('[data-testid="library-skill-tile"][data-name="wrangler"]')).toBeNull();
     // the added skill's panel opens: it says accepted
     expect(r.$('[data-testid="skill"][data-skill="wrangler"]')!.querySelector('[data-testid="skill-status"]')!.textContent).toBe('accepted ✓');
+  });
+
+  it('several picked skills are added with one button, which names how many', async () => {
+    const added: unknown[][] = [];
+    let skills: Skill[] = [];
+    const r = mount(
+      <SkillsScreen />,
+      servicesWith({
+        skillList: async () => skills,
+        skillLibraryList: async () => [lib({}), lib({ id: 'l-xlsx', name: 'xlsx', description: 'Spreadsheets' }), lib({ id: 'l-docx', name: 'docx', description: 'Documents' })],
+        skillLibraryAdd: async (...a: unknown[]) => {
+          added.push(a);
+          const s = skill({ id: `n-${String(a[2])}`, name: String(a[2]), origin: 'registry', registryId: String(a[1]), status: 'accepted' });
+          skills = [...skills, s];
+          return s;
+        },
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="library-skill-tile"]').length).toBe(3), r);
+    const button = r.$('[data-testid="library-add-picked"]') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe('Pick skills to add');
+    const pick = async (name: string) => {
+      const box = r.$(`[data-testid="library-skill-tile"][data-name="${name}"] input[type="checkbox"]`) as HTMLInputElement;
+      await r.act(() => {
+        box.checked = true;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    };
+    await pick('pdf');
+    await pick('docx');
+    await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Add 2 skills to gocalc'), r);
+    await r.act(() => (r.$('[data-testid="library-add-picked"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(added.map((a) => a[2])).toEqual(['pdf', 'docx']), r);
+    const note = await one(r, '[data-testid="skill-added"]');
+    expect(note.textContent).toContain('2 skills were added to gocalc and are accepted ✓: pdf, docx');
+    await waitFor(() => expect(Array.from(r.$$('[data-testid="library-skill-tile"]')).map((x) => x.getAttribute('data-name'))).toEqual(['xlsx']), r);
   });
 
   it('Add all from a registry calls libraryAddAll and reports what happened with the reasons', async () => {
@@ -430,12 +471,13 @@ describe('SkillsScreen', () => {
       return l;
     }, r);
     expect(tiles[0]!.querySelector('[data-brand="anthropic"]')).not.toBeNull();
-    expect(stateOf(tiles[0]!)).toBe(`12 skills in the Library (1 blocked) · synced ${new Date('2026-10-13T08:00:00Z').toLocaleString()}`);
-    expect(tiles[0]!.querySelector('small[data-tone="ok"]')).not.toBeNull();
-    expect(stateOf(tiles[1]!)).toBe('Disabled: not synced');
-    expect(stateOf(tiles[2]!)).toBe('Last sync failed: GitHub rate limit');
+    // the tile is one short line; when it was synced and why a sync failed are in the panel
+    expect(stateOf(tiles[0]!)).toBe('12 skills · 1 blocked · 1 new');
+    expect(tiles[0]!.querySelector('small[data-tone="warn"]')).not.toBeNull();
+    expect(stateOf(tiles[1]!)).toBe('Disabled');
+    expect(stateOf(tiles[2]!)).toBe('Sync failed');
     expect(tiles[2]!.querySelector('small[data-tone="bad"]')).not.toBeNull();
-    expect(tiles[0]!.textContent).toContain('Curated · trust curated');
+    expect(tiles[0]!.textContent).toBe('anthropics/skillsCurated12 skills · 1 blocked · 1 new'); // trust and license are in the panel
     expect(r.$('[data-testid="registry"]')).toBeNull();
     expect(r.$$('[data-testid="skill-candidate"]').length).toBe(0); // the candidates list is gone
     expect(exists(r.container, 'button', 'Import all (they will be offered)')).toBe(false);

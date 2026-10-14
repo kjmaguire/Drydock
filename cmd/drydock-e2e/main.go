@@ -151,6 +151,9 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			// after a human "request changes" the worker's prompt carries "Changes requested by the human:"
 			{Match: "Changes requested by the human", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implDoc}}, {Say: "addressed the feedback: added the doc comment"}}},
 			// the Feature template (spec gate, tests first) and PlanTeam: each Drydock prompt starts with a phase line
+			// recommendations (ui/e2e/recommend.spec.ts, decision P52): the lead says to add the stand-in Wrangler skill for the
+			// whole team and leaves the other pick out; a made-up skill shows the core dropping what does not exist
+			{Match: "Drydock phase: recommend", Steps: []fakeagent.Step{{Say: `{"summary": "The plan deploys Workers: add Wrangler for the whole team; Durable Objects can wait.", "recommendations": [{"kind": "skill", "action": "add", "name": "wrangler", "registry": "cloudflare-skills", "agents": [], "reason": "Every task deploys a Worker."}, {"kind": "skill", "action": "add", "name": "made-up-skill", "agents": [], "reason": "Not real."}]}`}}},
 			{Match: "Drydock phase: plan", Steps: []fakeagent.Step{{Say: planProposal}}},
 			{Match: "Drydock phase: spec", Steps: []fakeagent.Step{{Say: mulSpec}}},
 			{Match: "Drydock phase: write-tests", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "multiply_test.go", Content: mulTests}}, {Say: "wrote the tests first: done multiply_test.go"}}},

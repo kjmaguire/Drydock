@@ -3,6 +3,9 @@
 
 import type { Transport } from './transport.ts';
 import type {
+  Recommendation,
+  Recommendations,
+  SkillPick,
   Budget,
   BudgetResumeReq,
   BudgetResumed,
@@ -79,6 +82,8 @@ import type {
 import type { Room, RoomMember } from './types.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
+/** A recommendation with every list present (the core may send null for an empty one). */
+const rec = (r: Recommendation): Recommendation => ({ ...r, candidates: arr(r.candidates), items: arr(r.items).map((i) => ({ ...i, agents: arr(i.agents) })), dropped: arr(r.dropped) });
 
 export interface ExtClient {
   // budgets
@@ -164,6 +169,14 @@ export interface ExtClient {
   skillLibraryAdd(projectId: string, registryId: string, name: string, audience?: 'team' | 'agents', agents?: string[]): Promise<Skill>;
   /** Add every available library skill of a registry to a project at once. */
   skillLibraryAddAll(projectId: string, registryId: string): Promise<SkillLibraryAddAll>;
+  /** Ask an agent (the team lead unless named) which agent should get which skill, MCP server or integration (decision P52). */
+  recommendStart(projectId: string, agentId?: string, candidates?: SkillPick[]): Promise<Recommendation>;
+  recommendList(projectId: string): Promise<Recommendations>;
+  /** Do what one recommendation says, as the person. */
+  recommendApply(id: string, itemId: string): Promise<Recommendation>;
+  recommendDismiss(id: string, itemId: string): Promise<Recommendation>;
+  /** Whether the project asks again by itself as it evolves. */
+  recommendSetAuto(projectId: string, on: boolean): Promise<Recommendations>;
   /** How each project skill is used by its runs, with the core's recommendation (decision P49). */
   skillUsage(projectId: string): Promise<SkillUsage[]>;
   /** The twice-daily check of every registry a project imported from. */
@@ -335,6 +348,17 @@ export function createExtClient(t: Transport): ExtClient {
       return { added: arr(r.added), unchanged: arr(r.unchanged), blocked: arr(r.blocked), skipped: arr(r.skipped) };
     },
     skillUsage: async (projectId) => arr(await call<SkillUsage[] | null>('skill.usage', { projectId })),
+    recommendStart: async (projectId, agentId = '', candidates = []) => rec(await call<Recommendation>('recommend.start', { projectId, agentId, candidates })),
+    recommendList: async (projectId) => {
+      const r = await call<Recommendations>('recommend.list', { projectId });
+      return { auto: r.auto, runs: arr(r.runs).map(rec) };
+    },
+    recommendApply: async (id, itemId) => rec(await call<Recommendation>('recommend.apply', { id, itemId })),
+    recommendDismiss: async (id, itemId) => rec(await call<Recommendation>('recommend.dismiss', { id, itemId })),
+    recommendSetAuto: async (projectId, on) => {
+      const r = await call<Recommendations>('recommend.setAuto', { projectId, on });
+      return { auto: r.auto, runs: arr(r.runs).map(rec) };
+    },
     skillRegistryStatus: async () => arr(await call<SkillRegistryStatus[] | null>('skill.registryStatus', {})),
     skillRegistryCheck: async (registryId) => arr(await call<SkillRegistryStatus[] | null>('skill.registryCheck', { registryId })),
     skillAudience: (projectId, name, audience, agents) => call('skill.audience', { projectId, name, audience, agents }),

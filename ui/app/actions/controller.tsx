@@ -116,7 +116,7 @@ export const controller = createController(routes, {
       return render(<LibraryScreen />);
     },
     async librarySkills({ render }) {
-      const { SkillLibraryScreen } = await import('../screens/library/library-screen.tsx');
+      const { SkillLibraryScreen } = await import('../screens/skills/skill-library-screen.tsx');
       return render(<SkillLibraryScreen />);
     },
     integrations,

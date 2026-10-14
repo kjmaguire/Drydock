@@ -4,7 +4,7 @@
 // ignored. Usage says which skills earn their tokens (decision P49).
 
 import { css, on, type Handle } from 'remix/component';
-import { BookOpen, Cpu, FileCode2, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Users } from 'lucide';
+import { BookOpen, Cpu, FileCode2, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
 import type { LibrarySkill, Skill, SkillDelivery, SkillLibraryAddAll, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
@@ -21,20 +21,23 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AudienceEditor } from './audience.tsx';
+import { Recommendations } from './recommendations.tsx';
+import { pickKey, SkillRows } from './skill-rows.tsx';
 import {
   addAllText,
+  addSelectedText,
   addedText,
   audienceText,
   coverageText,
   formatCount,
-  libraryBlurb,
   libraryGroups,
-  libraryStateText,
   listOr,
+  newInLibrary,
   notInProject,
   onTeam,
   recommendationBadge,
   registryStatusText,
+  registryTileText,
   registryUpdates,
   scanText,
   skillBrand,
@@ -322,6 +325,7 @@ function AddFromLibrary(
     projectId: string;
     projectName: string;
     skills: readonly Skill[];
+    statuses: readonly SkillRegistryStatus[];
     /** Bumped by the page when a registry was synced from elsewhere on it: the Library is re-read. */
     epoch?: number;
     onAdded: (name: string) => void;
@@ -335,23 +339,30 @@ function AddFromLibrary(
   });
   const act = action(handle);
   let registry = '';
-  let selected = '';
-  let added: { name: string; project: string } | undefined;
+  let picked = new Set<string>();
+  let added: { names: string[]; project: string } | undefined;
   let result: { repo: string; r: SkillLibraryAddAll } | undefined;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
-  const add = async (l: LibrarySkill) => {
+  const addMany = async (ls: readonly LibrarySkill[]) => {
     const { projectId, projectName, onAdded } = handle.props;
-    const r = await act.run('add', () => s.client.skillLibraryAdd(projectId, l.registryId, l.name));
-    if (r) {
+    const done: string[] = [];
+    await act.run('add', async () => {
+      for (const l of ls) {
+        await s.client.skillLibraryAdd(projectId, l.registryId, l.name);
+        done.push(l.name);
+      }
+      return true;
+    });
+    if (done.length > 0) {
       set(() => {
-        added = { name: l.name, project: projectName };
+        added = { names: done, project: projectName };
         result = undefined;
-        selected = '';
+        picked = new Set();
       });
-      onAdded(r.name);
+      onAdded(done.length === 1 ? done[0]! : '');
     }
   };
   const addAll = async (registryId: string, repo: string) => {
@@ -360,7 +371,7 @@ function AddFromLibrary(
       set(() => {
         result = { repo, r };
         added = undefined;
-        selected = '';
+        picked = new Set();
       });
       lib.reload();
       handle.props.onAdded('');
@@ -371,23 +382,24 @@ function AddFromLibrary(
     lib.reload();
   };
   return () => {
-    const { skills } = handle.props;
+    const { skills, projectName, statuses } = handle.props;
     const all = notInProject(lib.data ?? [], skills);
     const groups = libraryGroups(all);
     const chosen = groups.some((g) => g.registryId === registry) ? registry : '';
     const shown = chosen ? all.filter((l) => l.registryId === chosen) : all;
-    const open = shown.find((l) => l.name === selected && l.registryId === (chosen || l.registryId));
     const library = lib.data ?? [];
+    const pickedSkills = all.filter((l) => picked.has(pickKey(l)));
+    const have = new Set(skills.map((k) => k.name));
     return (
       <Section
         label="Add from the Library"
         title="Add from the Library"
-        description="The Library holds every skill of your registries; Drydock fills it by itself. Adding a skill to this project is your acceptance: it reaches the agents at once."
+        description="The Library holds every skill of your registries; Drydock fills it by itself. Pick skills and add them: adding is your acceptance, and they reach the agents at once. Click a name to read what it does."
       >
         <ErrorNote error={lib.error ?? act.error} what="Library" />
         {added ? (
           <Notice tone="ok" role="status" testId="skill-added">
-            {addedText(added.name, added.project)}
+            {added.names.length === 1 ? addedText(added.names[0]!, added.project) : `${added.names.length} skills were added to ${added.project} and are accepted ✓: ${added.names.join(', ')}`}
           </Notice>
         ) : null}
         {result ? (
@@ -439,66 +451,22 @@ function AddFromLibrary(
                 ))}
               </div>
             </div>
-            <ul mix={tileGrid} aria-label="Skills in the Library">
-              {shown.map((l) => {
-                const st = libraryStateText(l);
-                return (
-                  <Tile
-                    key={`${l.registryId}/${l.name}`}
-                    title={l.name}
-                    logo={skillBrand(l.registryId, 'registry') || undefined}
-                    icon={Sparkles}
-                    blurb={libraryBlurb(l)}
-                    state={st.text}
-                    tone={st.tone}
-                    selected={open?.id === l.id}
-                    onSelect={() => set(() => (selected = selected === l.name && open?.id === l.id ? '' : l.name))}
-                    testId="library-skill-tile"
-                    data={{ name: l.name, registry: l.registryId, status: l.status }}
-                  />
-                );
-              })}
-            </ul>
-            {open ? (
-              <article mix={panelCss} data-testid="library-skill" data-name={open.name} data-status={open.status} aria-label={open.name}>
-                <header>
-                  <SkillLogo brand={skillBrand(open.registryId, 'registry')} icon={Sparkles} />
-                  <h3>{open.name}</h3>
-                  <Badge>{open.repo}</Badge>
-                  {open.license ? <Badge title="License">{open.license}</Badge> : null}
-                  {open.status === 'blocked' ? <Badge tone="err">blocked</Badge> : null}
-                  {open.risk > 0 ? <Badge tone="warn">risk {open.risk}</Badge> : null}
-                  {open.hasScripts ? (
-                    <Badge tone="warn" title="The skill directory contains scripts. Scripts are never run by Drydock.">
-                      has scripts
-                    </Badge>
-                  ) : null}
-                  {open.gone ? <Badge tone="warn">no longer upstream</Badge> : null}
-                </header>
-                {open.description ? <p class="desc">{open.description}</p> : null}
-                <dl mix={kv}>
-                  <dt>Roles it names</dt>
-                  <dd>{listOr(open.roles)}</dd>
-                  <dt>Paths</dt>
-                  <dd>{listOr(open.globs)}</dd>
-                  <dt>Pinned commit</dt>
-                  <dd>
-                    <code>{open.pinnedCommit.slice(0, 12)}</code>
-                  </dd>
-                </dl>
-                {(open.flags ?? []).length > 0 ? <Notice tone="warn">Flags: {(open.flags ?? []).join(', ')}</Notice> : null}
-                {open.status === 'blocked' ? (
-                  <ErrorNote error={`Blocked: ${open.blockReason || 'the core did not say why'}. A blocked skill cannot be added.`} />
-                ) : (
-                  <div class="actions">
-                    <Button variant="primary" size="sm" icon={Plus} disabled={act.busy !== ''} data-testid="library-add" mix={on('click', () => void add(open))}>
-                      {act.busy === 'add' ? 'Adding...' : 'Add to project'}
-                    </Button>
-                  </div>
-                )}
-              </article>
-            ) : null}
             <div mix={rowCss}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                disabled={act.busy !== '' || pickedSkills.length === 0}
+                data-testid="library-add-picked"
+                mix={on('click', () => void addMany(pickedSkills))}
+              >
+                {act.busy === 'add' ? 'Adding...' : pickedSkills.length === 0 ? 'Pick skills to add' : addSelectedText(pickedSkills.map((l) => l.name), projectName)}
+              </Button>
+              {pickedSkills.length > 0 ? (
+                <Button size="sm" variant="ghost" mix={on('click', () => set(() => (picked = new Set())))}>
+                  Clear
+                </Button>
+              ) : null}
               {(chosen ? groups.filter((g) => g.registryId === chosen) : groups).map((g) => (
                 <Button
                   key={g.registryId}
@@ -513,6 +481,27 @@ function AddFromLibrary(
                 </Button>
               ))}
             </div>
+            <SkillRows
+              skills={shown}
+              picked={picked}
+              onPick={(k, yes) =>
+                set(() => {
+                  picked = new Set(picked);
+                  if (yes) picked.add(k);
+                  else picked.delete(k);
+                })
+              }
+              have={have}
+              fresh={newInLibrary(statuses)}
+              projectName={projectName}
+              label="Skills in the Library"
+              testId="library-skill-tile"
+              actions={(l) => (
+                <Button variant="primary" size="sm" icon={Plus} disabled={act.busy !== ''} data-testid="library-add" mix={on('click', () => void addMany([l]))}>
+                  {act.busy === 'add' ? 'Adding...' : `Add to ${projectName}`}
+                </Button>
+              )}
+            />
           </>
         ) : null}
       </Section>
@@ -666,14 +655,14 @@ function Registries(handle: Handle<{ projectId: string; statuses: readonly Skill
           <ul mix={tileGrid} aria-label="Skill registries">
             {regs.map((r) => {
               const status = statuses.find((x) => x.registryId === r.id);
-              const st = registryStatusText(status, r.enabled);
+              const st = registryTileText(status, r.enabled);
               return (
                 <Tile
                   key={r.id}
                   title={r.repo}
                   logo={skillBrand(r.id, 'registry') || undefined}
                   icon={GitBranch}
-                  blurb={`${r.curated ? 'Curated' : 'Added by you'} · trust ${r.trust}${r.license ? ` · ${r.license}` : ''}`}
+                  blurb={r.curated ? 'Curated' : 'Added by you'}
                   state={st.text}
                   tone={st.tone}
                   selected={selected === r.id}
@@ -842,6 +831,8 @@ export function SkillsScreen(handle: Handle) {
   let scan: SkillScan | undefined;
   let selected = '';
   let synced = 0;
+  // skills picked for this project in the workspace Library (Library > Skills): offered at the top, once
+  let picks = pid() ? s.ui.takeSkillPicks(pid()!) : [];
   const set = (f: () => void) => {
     f();
     void handle.update();
@@ -898,6 +889,20 @@ export function SkillsScreen(handle: Handle) {
           <Notice tone="info" role="status" testId="skill-scan">
             {scanText(scan)}
           </Notice>
+        ) : null}
+        {projectId ? (
+          <Recommendations
+            key={`rec-${projectId}`}
+            projectId={projectId}
+            projectName={projectName}
+            agents={s.project.agentList}
+            picks={picks}
+            onPicksDone={() => set(() => (picks = []))}
+            onChanged={() => {
+              q.reload();
+              st.reload();
+            }}
+          />
         ) : null}
         <Section label="Skills in this project" title="In this project" description={q.data && skills.length > 0 ? 'Click a skill to read it, see who gets it, or stop using it.' : undefined}>
           {q.loading && !q.data ? <Loading /> : null}
@@ -958,6 +963,7 @@ export function SkillsScreen(handle: Handle) {
             projectId={projectId}
             projectName={projectName}
             skills={skills}
+            statuses={st.data ?? []}
             epoch={synced}
             onAdded={(name) => {
               if (name) set(() => (selected = name));

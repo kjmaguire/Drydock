@@ -198,3 +198,38 @@ export function toggleSkill(c: SkillChanges, name: string, had: boolean, on: boo
 
 /** Whether a skill is ticked in the form: given before and not removed, or added. */
 export const isGiven = (c: SkillChanges, name: string, had: boolean): boolean => (had ? !c.remove.includes(name) : c.add.includes(name));
+
+/**
+ * A registry's tile line, short so the tile stays small: "20 skills · 3 blocked · 2 new" (new: what the last sync brought);
+ * "Sync failed" or "Not synced yet"; the details (when, the error) are in the registry's panel.
+ */
+export function registryTileText(st: SkillRegistryStatus | undefined, enabled = st?.enabled ?? true): { text: string; tone: TileTone } {
+  if (!enabled) return { text: 'Disabled', tone: '' };
+  if (st?.lastError) return { text: 'Sync failed', tone: 'bad' };
+  if (!st || !st.checkedAt) return { text: 'Not synced yet', tone: 'warn' };
+  const fresh = (st.added ?? []).length;
+  const parts = [`${st.skills} skill${st.skills === 1 ? '' : 's'}`];
+  if (st.blocked > 0) parts.push(`${st.blocked} blocked`);
+  if (fresh > 0) parts.push(`${fresh} new`);
+  return { text: parts.join(' · '), tone: fresh > 0 ? 'warn' : 'ok' };
+}
+
+/** The first sentence of a description, at most max characters: what a row shows before it is opened. */
+export function shortDescription(d: string, max = 110): string {
+  const flat = d.replace(/\s+/g, ' ').trim();
+  const end = flat.search(/[.!?](\s|$)/);
+  const first = end >= 0 ? flat.slice(0, end + 1) : flat;
+  return first.length <= max ? first : `${first.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** The names the last sync of each registry added: they are marked new in the lists. */
+export function newInLibrary(statuses: readonly SkillRegistryStatus[] | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const st of statuses ?? []) for (const c of st.added ?? []) out.add(`${st.registryId}/${c.name}`);
+  return out;
+}
+
+/** "Add 3 skills to gocalc" / "Add wrangler to gocalc". */
+export function addSelectedText(names: readonly string[], project: string): string {
+  return names.length === 1 ? `Add ${names[0]} to ${project}` : `Add ${names.length} skills to ${project}`;
+}

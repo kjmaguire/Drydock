@@ -3,6 +3,7 @@ import { describe, it } from 'remix/test';
 import type { LibrarySkill, SkillRegistryStatus, SkillUsage } from '../../api/extTypes.ts';
 import {
   addAllText,
+  addSelectedText,
   addedText,
   audienceText,
   byRole,
@@ -14,15 +15,18 @@ import {
   libraryGroups,
   libraryStateText,
   listOr,
+  newInLibrary,
   noSkillChanges,
   notInProject,
   onTeam,
   reaches,
   recommendationBadge,
   registryStatusText,
+  registryTileText,
   registryUpdates,
   rolesMatch,
   scanText,
+  shortDescription,
   skillBrand,
   skillStateText,
   skillTone,
@@ -190,6 +194,32 @@ describe('Skills helpers', () => {
     expect(registryStatusText(status({ enabled: false })).text).toBe('Disabled: not synced');
     expect(syncChanges(status({ added: [{ name: 'a', description: '' }], changed: null }))).toEqual({ added: [{ name: 'a', description: '' }], changed: [] });
     expect(syncChanges(undefined)).toEqual({ added: [], changed: [] });
+  });
+
+  it('keeps a registry tile to one short line: counts, blocked, what is new; the details stay in the panel', () => {
+    expect(registryTileText(status({}))).toEqual({ text: '12 skills', tone: 'ok' });
+    expect(registryTileText(status({ skills: 20, blocked: 3 }))).toEqual({ text: '20 skills · 3 blocked', tone: 'ok' });
+    expect(registryTileText(status({ skills: 20, added: [{ name: 'a', description: '' }, { name: 'b', description: '' }] }))).toEqual({ text: '20 skills · 2 new', tone: 'warn' });
+    expect(registryTileText(status({ skills: 1 })).text).toBe('1 skill');
+    expect(registryTileText(status({ lastError: 'resolve MicrosoftDocs/Agent-Skills@HEAD: page exceeds crawl.max_page_bytes' }))).toEqual({ text: 'Sync failed', tone: 'bad' });
+    expect(registryTileText(status({ checkedAt: undefined }))).toEqual({ text: 'Not synced yet', tone: 'warn' });
+    expect(registryTileText(status({}), false)).toEqual({ text: 'Disabled', tone: '' });
+    const fresh = newInLibrary([status({ registryId: 'cf', added: [{ name: 'wrangler', description: '' }] }), status({ added: null })]);
+    expect([...fresh]).toEqual(['cf/wrangler']);
+  });
+
+  it("shows a description's first sentence, short, until the row is opened", () => {
+    expect(shortDescription('Creates algorithmic art with p5.js. Use when the user asks for generative art, flow fields or particles.')).toBe('Creates algorithmic art with p5.js.');
+    expect(shortDescription('No full stop here')).toBe('No full stop here');
+    expect(shortDescription('  Spaces\n and   lines.  ')).toBe('Spaces and lines.');
+    const long = 'A'.repeat(150);
+    expect(shortDescription(long, 40)).toBe(`${'A'.repeat(39)}…`);
+    expect(shortDescription('Version 1.2 is supported. More text.')).toBe('Version 1.2 is supported.');
+  });
+
+  it('names what the add button adds', () => {
+    expect(addSelectedText(['wrangler'], 'gocalc')).toBe('Add wrangler to gocalc');
+    expect(addSelectedText(['a', 'b', 'c'], 'gocalc')).toBe('Add 3 skills to gocalc');
   });
 
   it('sorts usage rows: the ones to remove first, then by tokens spent, then by name; tokens add loaded and listed', () => {

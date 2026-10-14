@@ -58,6 +58,7 @@ func populateMore(t testing.TB, db *sql.DB) {
 	x(`INSERT INTO skill_uses(ts,project_id,skill_name,how) VALUES(?,'prj_aaaaaaaaaaaa','style','tool')`, now)
 	x(`INSERT INTO skill_deliveries(ts,project_id,skill_name,method,fidelity) VALUES(?,'prj_aaaaaaaaaaaa','style','tool','on_demand')`, now)
 	x(`INSERT INTO security_scans(id,project_id,status,started_at,finished_at,report_json) VALUES('scan_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','done',?,?,'{}')`, now, now)
+	x(`INSERT INTO recommendations(id,project_id,agent_id,trigger,status,created_at) VALUES('rec_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','agt_aaaaaaaaaaaa','manual','done',?)`, now)
 	x(`INSERT INTO lead_interventions(id,project_id,lead_agent_id,trigger_kind,action,created_at) VALUES('lead_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','agt_aaaaaaaaaaaa','stall','nudge',?)`, now)
 	x(`INSERT INTO generated_files(project_id,path,body_sha,generated_at) VALUES('prj_aaaaaaaaaaaa','AGENTS.md','h',?)`, now)
 	x(`INSERT INTO llm_cache(key,project_id,provider,model,response,data_class,created_at,expires_at) VALUES('k_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','p','m',x'00','private',?,?)`, now, now)
