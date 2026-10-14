@@ -23,7 +23,7 @@ import (
 )
 
 // watchFixture stands in for GitHub as the registry sync sees it: GET /repos/<owner>/<name>/commits/HEAD answers the
-// default branch's commit and GET /<owner>/<name>/tar.gz/<sha> the tarball at that commit. The real service was never
+// default branch's commit (the bare id for Accept: application/vnd.github.sha, the JSON commit otherwise) and GET /<owner>/<name>/tar.gz/<sha> the tarball at that commit. The real service was never
 // contacted from here. Registries the fixture does not hold answer 404 (the sync records that as the registry's error).
 type watchFixture struct {
 	*httptest.Server
@@ -43,6 +43,12 @@ func newWatchFixture(t *testing.T) *watchFixture {
 			sha, ok := f.head[parts[1]+"/"+parts[2]]
 			if !ok {
 				http.NotFound(w, r)
+				return
+			}
+			if strings.Contains(r.Header.Get("Accept"), "application/vnd.github.sha") {
+				// the commit id alone, as GitHub documents for this media type
+				w.Header().Set("Content-Type", "application/vnd.github.sha; charset=utf-8")
+				fmt.Fprint(w, sha)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")

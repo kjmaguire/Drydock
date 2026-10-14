@@ -26,6 +26,8 @@ export const SKILL_BRANDS: Record<string, string> = {
   'anthropic-skills': 'anthropic',
   'openai-skills': 'openai',
   'stripe-ai': 'stripe',
+  remix: 'remix',
+  // retired registry (replaced by remix on 2026-10-14): a project's own copy of one of its skills still names it
   'react-router': 'remix',
 };
 

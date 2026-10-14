@@ -201,14 +201,24 @@ type RegistryFetcher interface {
 	Fetch(ctx context.Context, repo, commit, root string) ([]RemoteSkill, error)
 }
 
-// Tarball limits.
+// Tarball limits. Measured on 2026-10-14: merill/msgraph is about 51 MB gzipped (177 MB unpacked), stripe/ai and
+// remix-run/remix about 19 MB (29 MB and 41 MB unpacked), MicrosoftDocs/Agent-Skills 9.7 MB (53 MB unpacked); the skill
+// files a registry keeps come to at most about 3.5 MB.
 const (
-	maxTarballBytes  = 16 << 20
+	// maxTarballBytes caps the download.
+	maxTarballBytes = 64 << 20
+	// maxUnpackedBytes caps the decompressed stream (a zip-bomb guard). Unpacking costs CPU only: files that are not skill
+	// files are skipped and never kept.
+	maxUnpackedBytes = 512 << 20
+	// maxExtractedSize caps the skill files kept in memory.
 	maxExtractedSize = 8 << 20
 	maxEntries       = 20000
 	maxSkillFiles    = 500
 	maxSkillsFound   = 400
 )
+
+// errUnpackedTooLarge is returned when a registry archive unpacks to more than maxUnpackedBytes.
+var errUnpackedTooLarge = fmt.Errorf("the registry archive unpacks to more than %d MB, Drydock's limit", maxUnpackedBytes>>20)
 
 var commitRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
@@ -221,8 +231,11 @@ type GitHubFetcher struct {
 	TarballBase string // default https://codeload.github.com
 }
 
-// githubAccept is the media type GitHub's REST API documents; it answers 415 to the page crawler's markdown and HTML types.
-const githubAccept = "application/vnd.github+json"
+// githubSHAAccept asks GitHub's commits endpoint for the commit id alone, as text (GitHub documents the media type
+// application/vnd.github.sha for this). The default JSON answer carries the whole commit with its file diffs, which for a
+// large commit (MicrosoftDocs/Agent-Skills) is over the fetcher's 1 MiB cap. GitHub answers 415 to the page crawler's
+// markdown and HTML types, so one of the API's own media types is always named.
+const githubSHAAccept = "application/vnd.github.sha"
 
 // NewGitHubFetcher builds the production fetcher: GitHub hosts only, no robots check (these are API endpoints a human
 // configured, not a crawl), no loopback.
@@ -254,17 +267,31 @@ func (g *GitHubFetcher) Resolve(ctx context.Context, repo, ref string) (string, 
 	if commitRe.MatchString(ref) {
 		return ref, nil
 	}
-	resp, err := g.Fetcher.GetAPI(ctx, g.api()+"/repos/"+repo+"/commits/"+url.PathEscape(ref), githubAccept)
+	resp, err := g.Fetcher.GetAPI(ctx, g.api()+"/repos/"+repo+"/commits/"+url.PathEscape(ref), githubSHAAccept)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s@%s: %w", repo, ref, err)
 	}
-	var out struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(resp.Body, &out); err != nil || !commitRe.MatchString(out.SHA) {
+	sha := parseCommitAnswer(resp.Body)
+	if !commitRe.MatchString(sha) {
 		return "", fmt.Errorf("resolve %s@%s: unexpected response", repo, ref)
 	}
-	return out.SHA, nil
+	return sha, nil
+}
+
+// parseCommitAnswer reads the commit id from the commits endpoint's answer: the bare id (application/vnd.github.sha), or a
+// JSON commit's "sha" when a server or proxy ignored the media type.
+func parseCommitAnswer(body []byte) string {
+	b := bytes.TrimSpace(body)
+	if len(b) > 0 && b[0] == '{' {
+		var out struct {
+			SHA string `json:"sha"`
+		}
+		if json.Unmarshal(b, &out) != nil {
+			return ""
+		}
+		return out.SHA
+	}
+	return string(b)
 }
 
 // Fetch implements RegistryFetcher.
@@ -296,7 +323,7 @@ func ExtractSkills(tgz []byte, root string) ([]RemoteSkill, error) {
 		}
 		rootN = n + "/"
 	}
-	tr := tar.NewReader(io.LimitReader(zr, maxExtractedSize*4))
+	tr := tar.NewReader(&unpackLimit{r: zr, n: maxUnpackedBytes})
 	files := map[string][]byte{}
 	var total int64
 	entries := 0
@@ -306,7 +333,7 @@ func ExtractSkills(tgz []byte, root string) ([]RemoteSkill, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("reading archive: %w", err)
+			return nil, archiveErr(err)
 		}
 		entries++
 		if entries > maxEntries {
@@ -345,7 +372,7 @@ func ExtractSkills(tgz []byte, root string) ([]RemoteSkill, error) {
 		}
 		b, err := io.ReadAll(io.LimitReader(tr, h.Size+1))
 		if err != nil {
-			return nil, err
+			return nil, archiveErr(err)
 		}
 		total += int64(len(b))
 		if total > maxExtractedSize {
@@ -381,6 +408,42 @@ func ExtractSkills(tgz []byte, root string) ([]RemoteSkill, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
 	return out, nil
+}
+
+// unpackLimit passes at most n bytes of the decompressed stream and then fails with errUnpackedTooLarge, so an archive over
+// the bound is reported as such, not as a truncated archive ("unexpected EOF").
+type unpackLimit struct {
+	r io.Reader
+	n int64
+}
+
+func (l *unpackLimit) Read(p []byte) (int, error) {
+	if l.n <= 0 {
+		// one byte more tells a stream that ends exactly at the bound from one that goes on
+		var one [1]byte
+		k, err := l.r.Read(one[:])
+		if k > 0 {
+			return 0, errUnpackedTooLarge
+		}
+		return 0, err
+	}
+	if int64(len(p)) > l.n {
+		p = p[:l.n]
+	}
+	k, err := l.r.Read(p)
+	l.n -= int64(k)
+	return k, err
+}
+
+// archiveErr says what went wrong reading a registry archive in words a person can act on.
+func archiveErr(err error) error {
+	switch {
+	case errors.Is(err, errUnpackedTooLarge):
+		return err
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return errors.New("reading archive: the archive is truncated or damaged (it ends in the middle of a file); the next sync tries again")
+	}
+	return fmt.Errorf("reading archive: %w", err)
 }
 
 // licenseRefused lists license strings that mean "no license".

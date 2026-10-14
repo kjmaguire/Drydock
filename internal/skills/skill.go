@@ -17,10 +17,13 @@ import (
 
 // Limits (docs/expert-packs.md section 9).
 const (
-	MaxNameLen         = 64
-	MaxDescriptionLen  = 1024
-	MaxCompatibility   = 500
-	MaxSkillBytes      = 64 << 10
+	MaxNameLen        = 64
+	MaxDescriptionLen = 1024
+	MaxCompatibility  = 500
+	// MaxSkillBytes caps a SKILL.md. Published skills reach 105,146 bytes (anthropics/skills claude-api, measured on
+	// 2026-10-14) and 90,323 (MicrosoftDocs/Agent-Skills). Size does not reach every turn: relevant delivery lists a skill and
+	// the agent opens it on demand, and the context manifest flags more than 32 KB in every turn.
+	MaxSkillBytes      = 128 << 10
 	GuidanceBodyTokens = 5000
 	GuidanceBodyLines  = 500
 )
