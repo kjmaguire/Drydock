@@ -10,8 +10,10 @@ describe('Needs you targets and hints', () => {
     expect(needsTarget({ ...base, taskId: 'a b' })).toBe('/task/a%20b');
     expect(needsTarget({ ...base, kind: 'question', roomId: 'r1' })).toBe('/room/r1');
     expect(needsTarget({ ...base, kind: 'question' })).toBe('/needs-you');
-    expect(needsTarget({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toBe('/mcp');
-    expect(needsTarget({ ...base, title: 'integration:linear/create_comment' })).toBe('/integrations');
+    // the approvals of a project's tool calls and outbound writes wait on the project's own Integrations page
+    expect(needsTarget({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toBe('/project/integrations');
+    expect(needsTarget({ ...base, title: 'integration:linear/create_comment' })).toBe('/project/integrations');
+    expect(needsHint({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toContain("project's Integrations page");
   });
 
   it('explains the items that need more than a click, from a fixed set of hints', () => {

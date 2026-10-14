@@ -72,6 +72,17 @@ describe('the workspace Home', () => {
     expect(r.$('[data-testid="home-skills"]')!.textContent).toContain('Skills');
   });
 
+  it("holds a project only as a navigation tile: no project's page, agent or server is linked or shown", async () => {
+    const { r } = show({ agentList: async () => [{ id: 'a1', name: 'Backend #1' }] as never });
+    await waitFor(() => expect(tiles(r)).toHaveLength(2), r);
+    await waitFor(() => expect(tiles(r)[0]!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('2 items need you'), r);
+    const hrefs = Array.from(r.$$('a')).map((a) => a.getAttribute('href'));
+    for (const h of ['/project/integrations', '/team', '/tasks', '/skills', '/project', '/needs-you']) expect([h, hrefs.includes(h)]).toEqual([h, false]);
+    expect(r.container.textContent).not.toContain('Backend #1');
+    // the agent CLIs and the MCP gateway are on Connections
+    expect(r.$('[data-testid="home-connections"]')!.textContent).toContain('MCP gateway');
+  });
+
   it('offers the first project when there is none', async () => {
     const { r } = show({ projectList: async () => [] });
     await waitFor(() => expect(r.$('[data-testid="home-projects"]')!.textContent).toContain('No projects yet.'), r);

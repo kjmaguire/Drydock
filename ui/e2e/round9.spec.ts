@@ -14,6 +14,8 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Connect an MCP server' }).click();
+  // the servers built into Drydock come first; this one is a custom server
+  await page.getByTestId('mcp-add-custom').getByRole('button', { name: 'Add a custom server' }).click();
   const form = page.getByTestId('mcp-form');
   await form.getByLabel('Short id', { exact: false }).fill('lin');
   await form.getByLabel('Name', { exact: true }).fill('Hosted tracker');
@@ -25,7 +27,11 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   const card = page.getByTestId('lib-mcp').filter({ hasText: 'Hosted tracker' });
   await expect(card).toBeVisible();
   const panel = card.getByTestId('oauth-panel');
-  await expect(panel).toContainText('not signed in');
+  // not signed in, the sign-in is one control: the Sign in button, nothing else
+  await expect(panel).toHaveAttribute('data-signed-in', 'false');
+  await expect(panel.getByRole('button')).toHaveCount(1);
+  await expect(panel.getByRole('button')).toHaveText('Sign in');
+  await expect(panel).toHaveText('Sign in');
   // without a sign-in the server cannot be reached
   await card.getByRole('button', { name: 'Find tools' }).click();
   await expect(card.getByRole('alert')).toContainText('not signed in');
@@ -43,11 +49,12 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   await expect(tab.locator('body')).toContainText('You are signed in');
   await tab.close();
 
-  await expect(panel).toContainText('signed in', { timeout: 30_000 });
+  await expect(panel.getByTestId('oauth-signed-in')).toContainText('Signed in', { timeout: 30_000 });
   await expect(panel.getByRole('button', { name: 'Sign out' })).toBeVisible();
   await expect(card.getByTestId('mcp-tool').filter({ hasText: 'whoami' })).toBeVisible({ timeout: 30_000 });
 
   await panel.getByRole('button', { name: 'Sign out' }).click();
-  await expect(panel).toContainText('not signed in');
+  await expect(panel).toHaveAttribute('data-signed-in', 'false');
   await expect(panel.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
+  await expect(panel.getByRole('button')).toHaveText('Sign in');
 });

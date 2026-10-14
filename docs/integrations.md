@@ -161,7 +161,7 @@ Every inbound string is cleaned before it is stored: invalid UTF-8, control char
 ### Not built, unverified
 
 - No live vendor API or MCP server was called. Everything vendor-specific above is unverified. Hosted OAuth, the Notion integration-token question, Linear's `/mcp/readonly` versus read-write endpoint behaviour, rate-limit wording and the Windows `npx` resolution of the Aikido template are unverified; Windows behaviour (Credential Manager through the Vault, stdio under Job Objects) was not run, only cross-compiled and vetted.
-- UI (built since): the Integrations screen (`/integrations`, `ui/app/screens/integrations`) connects a service with a token or an OAuth sign-in (section below), and per connection offers Test connection, Sync now, Disconnect, the items with their risk score and Import as a task, the outbound writes (propose, approve or decline the exact text, execute) and the rule editor (rules start disabled and in dry-run). An outbound approval also appears in Needs you, which links to the Integrations page to read the text and decide.
+- UI (built since): the Integrations screen (`/integrations`, `ui/app/screens/integrations`) connects a service with a token or an OAuth sign-in (section below), and per connection offers Test connection, Sync now, Disconnect, the items with their risk score and Import as a task, the outbound writes (propose, approve or decline the exact text, execute) and the rule editor (rules start disabled and in dry-run). An outbound approval also appears in Needs you, which links to the Integrations page to read the text and decide. Since 2026-10-14 the workspace's Integrations page only connects (connect, Test, Reconnect, Disconnect); assigning a connection to a project, Sync now, the items, the outbound writes and the rules are on that project's own Integrations page (`/project/integrations`, `project-integrations-screen.tsx` and `assignments.tsx`), where the Needs-you item for an outbound write now links.
 - Not built: webhooks, REST/GraphQL clients, `integration_mappings`, `link_task` rules, auto-approve classes, comment-marker lookup before retry, the weekly automatic sweep, attachments, Notion databases as typed rows (a database row arrives as a page if the search tool returns it), two-way status sync.
 
 ### Tests
@@ -334,7 +334,7 @@ One connection serves several projects, so a failure is recorded where it belong
 - **The connection's status** (`integrations.status`, shown on the card) only says what is wrong with the connection itself:
   `unauthenticated` (the credential), `unreachable` (network, server errors, time-outs) or `degraded` (the API answered in a
   shape Drydock does not know). Every other failure (forbidden, not found, a rate limit, anything else) is recorded on that
-  assignment's cursor only, and the Integrations page shows it on that project's row (`sync.state`, `sync.lastError`); the
+  assignment's cursor only, and the project's Integrations page shows it on its assignment (`sync.state`, `sync.lastError`); the
   card's sync summary is the worst of its assignments.
 - **A success clears only what it proves.** A complete sync of one assignment proves the credential is accepted and the vendor
   answers, so it turns `unauthenticated`, `unreachable` or `untested` back to `ok`. It turns `degraded` back to `ok` only when

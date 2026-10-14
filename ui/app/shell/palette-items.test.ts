@@ -35,6 +35,15 @@ describe('command palette items', () => {
     expect(filterItems(items, 'mcp')[0]!.label).toBe('Integrations');
   });
 
+  it("offers the project's own Integrations page next to the workspace's", () => {
+    const items = buildItems(rooms, tasks, agents);
+    const proj = items.find((i) => i.label === 'Project integrations')!;
+    expect(proj.href).toBe('/project/integrations');
+    expect(items.find((i) => i.label === 'Integrations')!.href).toBe('/integrations');
+    expect(filterItems(items, 'project integrations')[0]!.label).toBe('Project integrations');
+    expect(filterItems(items, 'approvals').map((i) => i.label)).toContain('Project integrations');
+  });
+
   it('matches letters in order as a last resort and drops non-matches', () => {
     const it0 = { id: 'x', group: 'Navigate' as const, label: 'Settings and About' };
     expect(score(it0, 'stab')).toBeGreaterThan(0);

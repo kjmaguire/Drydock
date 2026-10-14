@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { createProject, workspaceNav } from './helpers';
+import { createProject, projectNav, workspaceNav } from './helpers';
 
-// Decision P42 against the real Go core: a service is connected once, without a project, then assigned to a project and
-// unassigned again. The vendor is a PROTOCOL FIXTURE (a test double of Linear's GraphQL API, started by the harness:
+// Decision P42 against the real Go core: a service is connected once, without a project, on the workspace's Integrations page,
+// then assigned to a project and unassigned again on that project's own Integrations page. The vendor is a PROTOCOL FIXTURE (a test double of Linear's GraphQL API, started by the harness:
 // DRYDOCK_E2E_LINEAR_API); the key typed here is made up.
 
 const linearApi = (): string => {
@@ -11,7 +11,7 @@ const linearApi = (): string => {
   return u;
 };
 
-test('integrations: connect Linear without a project, see its fixed name and logo, assign it to a project, then unassign it', async ({ page }) => {
+test("integrations: connect Linear without a project, see its fixed name and logo, assign it on the project's Integrations page, then unassign it", async ({ page }) => {
   // a project exists, but connecting does not ask for it
   await createProject(page, 'gocalc-linear');
   await workspaceNav(page, 'nav-integrations');
@@ -42,21 +42,26 @@ test('integrations: connect Linear without a project, see its fixed name and log
   await expect(identity).toContainText('Fixture Org');
   await expect(identity).toContainText('Personal API key');
   await expect(card.getByTestId('int-report')).toHaveAttribute('data-ok', 'true');
-  await expect(card.getByText('Not assigned to a project yet.')).toBeVisible();
+  await expect(card.getByTestId('integration-assigned')).toContainText('Not assigned to a project yet.');
   expect(await page.content()).not.toContain(key);
   const tile = page.locator('[data-testid=integration-tile][data-kind=linear]');
   await expect(tile).toContainText('Sync: connected as Kyle Fixture');
   await expect(tile).toContainText('Agents: not connected');
+  // the workspace page assigns nothing: that is the project's own Integrations page
+  await expect(card.getByRole('button', { name: 'Assign to project' })).toHaveCount(0);
 
-  // assign it to the project, with the team read from Linear
-  await card.getByRole('button', { name: 'Assign to project' }).click();
-  const form = card.getByTestId('assign-form');
-  await form.getByLabel('Project', { exact: true }).selectOption({ label: 'gocalc-linear' });
+  // assign it to the project from the project's Integrations page, with the team read from Linear
+  await projectNav(page, 'nav-project-integrations', 'gocalc-linear');
+  const mine = page.locator('[data-testid=project-integration][data-kind=linear]');
+  await expect(mine).toHaveAttribute('data-assigned', 'false');
+  await expect(mine).toContainText('connected as Kyle Fixture');
+  await mine.getByRole('button', { name: 'Assign to gocalc-linear' }).click();
+  const form = mine.getByTestId('assign-form');
   await form.getByRole('button', { name: 'List the Team choices from Linear' }).click();
   await expect(form.locator('datalist option')).toHaveCount(2);
   await form.getByLabel('Team (optional)').fill('ENG');
   await form.getByRole('button', { name: 'Assign', exact: true }).click();
-  const row = card.locator('[data-testid=assignment]');
+  const row = mine.locator('[data-testid=assignment]');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('gocalc-linear');
   await expect(row).toContainText('Team: ENG');
@@ -66,14 +71,23 @@ test('integrations: connect Linear without a project, see its fixed name and log
   await expect(row.getByTestId('ext-item')).toHaveCount(2);
   await expect(row.getByTestId('ext-item').first()).toContainText('ENG-10');
 
-  // unassign: the project's items go, the connection stays
+  // the workspace page counts the assignment without naming the project
+  await workspaceNav(page, 'nav-integrations');
+  await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
+  await expect(card.getByTestId('integration-assigned')).toContainText('Assigned to 1 project.');
+  await expect(card).not.toContainText('gocalc-linear');
+
+  // unassign on the project's page: the project's items go, the connection stays
+  await projectNav(page, 'nav-project-integrations', 'gocalc-linear');
   await row.getByRole('button', { name: 'Unassign' }).click();
   await row.getByRole('button', { name: 'Yes, unassign from gocalc-linear' }).click();
-  await expect(card.locator('[data-testid=assignment]')).toHaveCount(0);
-  await expect(card.getByText('Not assigned to a project yet.')).toBeVisible();
-  await expect(identity).toContainText('Fixture Org');
+  await expect(mine.locator('[data-testid=assignment]')).toHaveCount(0);
+  await expect(mine).toHaveAttribute('data-assigned', 'false');
 
   // leave the workspace as the other tests expect it
+  await workspaceNav(page, 'nav-integrations');
+  await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
+  await expect(identity).toContainText('Fixture Org');
   await card.getByRole('button', { name: 'Disconnect' }).click();
   await card.getByRole('button', { name: 'Yes, disconnect Linear' }).click();
   await expect(page.getByText('Nothing is connected.')).toBeVisible();

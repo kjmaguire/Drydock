@@ -5,7 +5,7 @@ import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { IntegrationsScreen } from '../integrations/integrations-screen.tsx';
-import { devLicense, galleryCard, libServer, pay, projServer, rev } from './fixtures.ts';
+import { devLicense, galleryCard, libServer, pay, rev } from './fixtures.ts';
 import { identityLine } from './gallery.tsx';
 
 afterEach(cleanup);
@@ -163,9 +163,9 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(ml.textContent).toContain('License MIT');
     expect(ml.querySelector('[data-testid="connector-status"]')!.textContent).toBe('Not connected');
     expect(ml.querySelector('a[target="_blank"]')!.getAttribute('href')).toBe('https://github.com/MicrosoftDocs/mcp');
-    // no project yet: connecting still works, putting it in a project waits
-    const line = await waitFor(() => must(r.$('[data-testid="no-project"]')) as HTMLElement, r);
-    expect(line.querySelector('a')!.getAttribute('href')).toBe('/project/new');
+    // no project yet: connecting still works; there is nothing about projects on the card
+    expect(byText<HTMLButtonElement>(ml, 'button', 'Connect Microsoft Learn').disabled).toBe(false);
+    expect(ml.querySelector('select')).toBeNull();
   });
 
   it('connects a server that needs no account with one click', async () => {
@@ -243,6 +243,23 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     await waitFor(() => expect((r.$('[data-testid="integration-tile"][data-kind="linear"]') as HTMLElement).textContent).toContain('Agents: needs sign-in'), r);
   });
 
+  it('a card that needs a sign-in shows one Sign in button, not a Sign-in heading with a badge and a second button', async () => {
+    const r = show({
+      mcpGallery: async () => [{ ...LINEAR, status: 'needs_sign_in', libraryId: 'linear' }],
+      mcpOAuthStatus: async () => ({ id: 'linear', state: 'idle', signedIn: false }),
+    });
+    await openVendor(r, 'linear');
+    const lin = await cardOf(r, 'linear');
+    const panel = await waitFor(() => must(lin.querySelector('[data-testid="oauth-panel"][data-state="idle"]')) as HTMLElement, r);
+    const buttons = Array.from(panel.querySelectorAll('button'));
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Sign in']);
+    expect(buttons[0]!.getAttribute('title')).toBe("Your browser opens the server's own sign-in page.");
+    expect(panel.textContent?.trim()).toBe('Sign in');
+    // the card as a whole: one sign-in control (its status badge still says Needs sign-in)
+    expect(Array.from(lin.querySelectorAll('button')).filter((b) => /sign.?in/i.test(b.textContent ?? '')).length).toBe(1);
+    expect(lin.querySelector('[data-testid="connector-status"]')!.textContent).toBe('Needs sign-in');
+  });
+
   it('says why a server failed and offers to try again', async () => {
     const tries: unknown[][] = [];
     const r = show({
@@ -258,42 +275,29 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     await waitFor(() => expect(tries).toEqual([['mslearn']]), r);
   });
 
-  it('adds a connected server to a project, grants it to an agent, and disconnects it', async () => {
-    const adds: unknown[][] = [];
-    const grants: unknown[][] = [];
+  it("a connected card says how many projects have it, offers no project controls (those are on a project's Integrations page), and disconnects", async () => {
     const deletes: unknown[][] = [];
     const r = show(
       {
-        mcpGallery: async () => [galleryCard({ status: 'connected', libraryId: 'mslearn', projects: ['prj_1'] })],
-        mcpServerAdd: (async (...a: unknown[]) => (adds.push(a), projServer())) as never,
-        mcpServerGrant: (async (...a: unknown[]) => (grants.push(a), projServer())) as never,
+        mcpGallery: async () => [galleryCard({ status: 'connected', libraryId: 'mslearn', projects: ['prj_1', 'prj_2'] })],
         mcpLibDelete: (async (...a: unknown[]) => void deletes.push(a)) as never,
       },
       { projects: [{ id: 'prj_1', name: 'gocalc' }, { id: 'prj_2', name: 'Beta' }] },
     );
     await openVendor(r, 'mslearn');
     const ml = await cardOf(r, 'mslearn');
-    expect(ml.textContent).toContain('In: gocalc.');
-    const sel = await waitFor(() => byLabel<HTMLSelectElement>(ml, 'Project to add Microsoft Learn to'), r);
-    expect(Array.from(sel.options).map((o) => o.textContent)).toEqual(['Beta']);
-    await r.act(() => byText(ml, 'button', 'Add to project').click());
-    await waitFor(() => expect(adds).toEqual([['prj_2', 'mslearn']]), r);
-    await r.act(() => byText(ml, 'button', 'Grant to agents').click());
-    const box = await waitFor(() => byLabel<HTMLInputElement>(ml, 'Pay may use Microsoft Learn'), r);
-    await r.act(() => box.click());
-    await waitFor(() => expect(grants).toEqual([['prj_1', 'mslearn', 'agt_1', true]]), r);
+    expect(ml.querySelector('[data-testid="connector-projects"]')!.textContent).toBe("In 2 projects. Add it to a project, and grant it to agents, on that project's Integrations page.");
+    expect(ml.textContent).not.toContain('gocalc');
+    expect(ml.querySelector('select')).toBeNull();
+    expect(ml.querySelector('input[type="checkbox"]')).toBeNull();
+    for (const name of ['Add to project', 'Grant to agents']) expect(() => byText(ml, 'button', name)).toThrow();
     await r.act(() => byText(ml, 'button', 'Disconnect').click());
     await r.act(() => byText(ml, 'button', 'Yes, disconnect').click());
     await waitFor(() => expect(deletes).toEqual([['mslearn']]), r);
   });
 
-  it("skills from this vendor: Add all puts the vendor's Library skills into the current project, accepted; a selective-only registry points to the Skills page", async () => {
-    const imports: unknown[][] = [];
-    const r = show({
-      mcpGallery: async () => [MSLEARN, CFDOCS, CFAPI],
-      skillRegistries: async () => REGISTRIES as never,
-      skillLibraryAddAll: (async (...a: unknown[]) => (imports.push(a), { added: ['wrangler', 'workers'], unchanged: ['d1'], blocked: [], skipped: [{ name: 'x', reason: 'invalid' }] })) as never,
-    });
+  it("skills from this vendor: each registry by name and license, with the skill library linked; nothing is added to a project here", async () => {
+    const r = show({ mcpGallery: async () => [MSLEARN, CFDOCS, CFAPI], skillRegistries: async () => REGISTRIES as never });
     const cf = await openVendor(r, 'cloudflare');
     const skills = await waitFor(() => must(cf.querySelector('[data-testid="integration-skills"]')) as HTMLElement, r);
     // the two Cloudflare cards name the same registry: listed once
@@ -303,15 +307,11 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
       return li as HTMLElement[];
     }, r);
     expect(regs[0]!.textContent).toContain('license Apache-2.0');
-    const btn = byText<HTMLButtonElement>(regs[0]!, 'button', 'Add all to gocalc');
-    expect(btn.disabled).toBe(false);
-    await r.act(() => btn.click());
-    await waitFor(() => expect(imports).toEqual([['prj_1', 'cloudflare-skills']]), r);
-    const result = await waitFor(() => must(skills.querySelector('[data-testid="vendor-add-result"]')) as HTMLElement, r);
-    expect(result.textContent).toBe('2 added, 1 unchanged, 1 skipped');
-    expect(skills.querySelector('a[href="/skills"]')).not.toBeNull();
+    expect(skills.querySelectorAll('button').length).toBe(0); // no "Add all to <project>"
+    expect(skills.textContent).not.toContain('gocalc');
+    expect(skills.querySelector('[data-testid="skills-link"]')!.getAttribute('href')).toBe('/library/skills');
 
-    // Microsoft publishes two registries; the selective-only one cannot be imported whole
+    // Microsoft publishes two registries; the selective-only one says its skills are picked one at a time in the skill library
     const ms = await openVendor(r, 'mslearn');
     const msSkills = await waitFor(() => must(ms.querySelector('[data-testid="integration-skills"]')) as HTMLElement, r);
     const rows = await waitFor(() => {
@@ -320,21 +320,9 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
       return li as HTMLElement[];
     }, r);
     expect(rows.map((x) => x.getAttribute('data-registry'))).toEqual(['microsoft-skills', 'msdocs-mcp-skills']);
-    const selective = byText<HTMLButtonElement>(rows[0]!, 'button', 'Add all to gocalc');
-    expect(selective.disabled).toBe(true);
-    expect(rows[0]!.querySelector('[data-testid="vendor-selective"]')!.textContent).toContain('pick its skills one at a time on the Skills page');
-    expect(rows[0]!.querySelector('[data-testid="vendor-selective"] a')!.getAttribute('href')).toBe('/skills');
-    expect(byText<HTMLButtonElement>(rows[1]!, 'button', 'Add all to gocalc').disabled).toBe(false);
-  });
-
-  it('skills from this vendor without a project: one line, and the Skills page link', async () => {
-    const r = show({ mcpGallery: async () => [CFDOCS, CFAPI], skillRegistries: async () => REGISTRIES as never }, { projects: [] });
-    const cf = await openVendor(r, 'cloudflare');
-    const skills = await waitFor(() => must(cf.querySelector('[data-testid="integration-skills"]')) as HTMLElement, r);
-    expect(skills.textContent).toContain("Choose a project to add this vendor's skills to.");
-    await waitFor(() => expect(skills.textContent).toContain('cloudflare/skills'), r);
-    expect(skills.querySelector('[data-testid="vendor-import-all"]')).toBeNull();
-    expect(skills.querySelector('a[href="/skills"]')).not.toBeNull();
+    expect(rows[0]!.querySelector('[data-testid="vendor-selective"]')!.textContent).toContain('pick its skills one at a time in the skill library');
+    expect(rows[0]!.querySelector('[data-testid="vendor-selective"] a')!.getAttribute('href')).toBe('/library/skills');
+    expect(rows[1]!.querySelector('[data-testid="vendor-selective"]')).toBeNull();
   });
 
   it('shows your own servers by what they say about themselves, and imports a claude_desktop_config.json', async () => {

@@ -63,8 +63,9 @@ describe('the sidebar', () => {
     for (const id of ['nav-library', 'nav-library-skills', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-chats']) {
       expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
     }
-    // the Project group starts with Security; the project's own Skills page is under Knowledge
-    expect(nav.indexOf('nav-security')).toBe(nav.indexOf('nav-milestones') - 1);
+    // the Project group starts with Security, then the project's own Integrations; the project's own Skills page is under Knowledge
+    expect(nav.indexOf('nav-security')).toBe(nav.indexOf('nav-project-integrations') - 1);
+    expect(nav.indexOf('nav-project-integrations')).toBe(nav.indexOf('nav-milestones') - 1);
     expect(r.$('[data-testid="nav-security"]')!.textContent).toBe('Security');
     expect(nav).toContain('nav-skills');
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
@@ -82,7 +83,7 @@ describe('the sidebar', () => {
     for (const id of ['nav-library-skills', 'nav-library', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-project-new']) {
       expect([id, r.$(`[data-testid="${id}"]`) === null]).toEqual([id, false]);
     }
-    for (const id of ['nav-needs-you', 'nav-tasks', 'nav-team', 'nav-skills', 'nav-project']) {
+    for (const id of ['nav-needs-you', 'nav-tasks', 'nav-team', 'nav-skills', 'nav-project', 'nav-project-integrations']) {
       expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
     }
     expect(links(r)).toHaveLength(0);
@@ -90,6 +91,24 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
     expect(r.$('[data-testid="project-link"]')!.textContent).toContain('gocalc');
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('Home');
+  });
+
+  it("has the project's own Integrations page in the Project group, marked current there, with the project's sidebar", async () => {
+    const r = mount(<Sidebar route={{ name: 'project-integrations' }} />, svc());
+    const link = await waitFor(() => {
+      const l = r.$('[data-testid="nav-project-integrations"]');
+      if (!l) throw new Error('not yet');
+      return l as HTMLAnchorElement;
+    }, r);
+    expect(link.getAttribute('href')).toBe('/project/integrations');
+    expect(link.getAttribute('aria-current')).toBe('page');
+    expect(link.textContent).toBe('Integrations');
+    const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
+    // in the Project group, right after Security
+    expect(nav.indexOf('nav-project-integrations')).toBe(nav.indexOf('nav-security') + 1);
+    // still the project's sidebar: no workspace links
+    expect(r.$('[data-testid="nav-integrations"]')).toBeNull();
+    expect(r.$('[data-testid="nav-tasks"]')).not.toBeNull();
   });
 
   it('marks Chats current on a chat, and Integrations on its alias /mcp', async () => {

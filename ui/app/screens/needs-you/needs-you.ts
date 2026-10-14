@@ -11,12 +11,12 @@ export const KIND_LABEL: Record<string, string> = {
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
 export function needsTarget(it: NeedsYouItem): string {
-  // a tool call an agent wants to make: its exact arguments and the Approve button are on the Integrations page (/mcp is its alias)
-  if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.mcp.href();
+  // a tool call an agent wants to make: its exact arguments and the Approve button are on the project's Integrations page
+  if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.projectIntegrations.href();
   if (it.taskId) return routes.task.href({ id: it.taskId });
   if (it.roomId) return routes.room.href({ id: it.roomId });
-  // an approval with no task is an outbound write to an integration: its exact text is on the Integrations page
-  if (it.kind === 'approval') return routes.integrations.href();
+  // an approval with no task is an outbound write to an integration: its exact text is on the project's Integrations page
+  if (it.kind === 'approval') return routes.projectIntegrations.href();
   return routes.needsYou.href();
 }
 
@@ -30,9 +30,9 @@ export function needsHint(it: NeedsYouItem): string {
     return 'The task cannot go on by itself. Open it to continue with a fresh loop budget (and guidance, if you like) or to stop it.';
   if (/^The team lead asks for a human decision/i.test(it.title)) return "The team lead stopped and asks you. Open the task to read its recommendation, then continue with guidance or stop.";
   if (/^Watchdog paused/i.test(it.title)) return 'The watchdog stopped an agent turn. Open the task to see why, then send guidance and continue, or stop.';
-  if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return 'An agent wants to call a tool that is not marked read-only. Open MCP servers to see the exact call and approve or reject it.';
+  if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return "An agent wants to call a tool that is not marked read-only. Open the project's Integrations page to see the exact call and approve or reject it.";
   if (it.kind === 'approval' && /^Permission request: /.test(it.title))
     return "A worker asks to use a tool its rules do not allow, and its turn waits. Open the task to see the exact tool and input; allow it once or refuse.";
-  if (it.kind === 'approval' && !it.taskId && !it.roomId) return 'An outbound write to a connected service. Open Integrations to read the exact text and approve or decline.';
+  if (it.kind === 'approval' && !it.taskId && !it.roomId) return "An outbound write to a connected service. Open the project's Integrations page to read the exact text and approve or decline.";
   return '';
 }

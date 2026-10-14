@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject, workspaceNav, projectNav } from './helpers';
+import { createAgent, createProject, workspaceNav, projectNav, switchProject } from './helpers';
 
-// Round 6: the Library, against the real Go core. An MCP server is connected once, then dragged into projects and onto agents; a team
-// member is defined once as a template and dragged into a project. The server is a real stdio MCP server (the e2e binary re-executed
-// with DRYDOCK_E2E_MCP_SERVER=1, a test fixture). What an agent does with it is covered by the Go tests.
+// Round 6: the Library, against the real Go core. An MCP server is connected once, for the workspace, in the Library (the dialog
+// lists the servers built into Drydock first, then a custom server); a project adds it from its own Integrations page and grants
+// it to one of its agents there. A team member is defined once as a template and added to another project from its Team page.
+// The Library itself names no project (decision P51). The server is a real stdio MCP server (the e2e binary re-executed with
+// DRYDOCK_E2E_MCP_SERVER=1, a test fixture). What an agent does with it is covered by the Go tests.
 
-test('Library: connect an MCP server once, drag it onto a project and an agent, drag a template into another project; projects stay separate', async ({ page }) => {
-  // tall, so a drag never has to scroll the page between pressing the mouse and dropping
-  await page.setViewportSize({ width: 1500, height: 3200 });
+test("Library: connect an MCP server once; a project adds it and grants it to an agent on its Integrations page; a template joins another project's team; projects stay separate", async ({ page }) => {
   await createProject(page, 'lib-a');
   await createAgent(page, 'Pay', 'backend');
   await createAgent(page, 'Rev', 'reviewer');
@@ -15,9 +15,13 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await workspaceNav(page, 'nav-library');
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
 
-  // connect once: a refused address says why, then a real server with a secret
+  // connect once: the built-in servers come first, then a custom server; a refused address says why, then a real server with a secret
   const exe = process.env.DRYDOCK_E2E_EXE!;
   await page.getByRole('button', { name: 'Connect an MCP server' }).click();
+  const prebuilt = page.getByTestId('mcp-add-prebuilt');
+  await expect(prebuilt.getByTestId('connector').first()).toBeVisible();
+  const custom = page.getByTestId('mcp-add-custom');
+  await custom.getByRole('button', { name: 'Add a custom server' }).click();
   const form = page.getByTestId('mcp-form');
   await form.getByLabel('Short id', { exact: false }).fill('web');
   await form.getByLabel('Name', { exact: true }).fill('Remote');
@@ -53,25 +57,11 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await expect(card.locator('[data-testid="mcp-tool"][data-tool="format"]').getByTestId('mcp-tool-flagged')).toHaveText('held back');
   await card.getByLabel('echo only reads').click();
   await expect(card.getByLabel('echo only reads')).toBeChecked();
+  // the Library is a workspace page: no project is named on it, nothing is dragged onto one
+  await expect(page.getByTestId('lib-project')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Library' })).not.toContainText('lib-a');
 
-  // drag the server onto project lib-a
-  const projA = page.getByTestId('lib-project').filter({ hasText: 'lib-a' });
-  const projB = page.getByTestId('lib-project').filter({ hasText: 'lib-b' });
-  // drop on the project itself (its heading), not on an agent inside its card; the open panel's header drags like the tile
-  await card.locator('h3').dragTo(projA.getByRole('heading', { name: 'lib-a', exact: true }));
-  await expect(page.getByTestId('library-note')).toContainText('Test server is now in lib-a.');
-  await expect(projA.getByTestId('proj-server')).toHaveCount(1);
-  await expect(projB.getByTestId('proj-server')).toHaveCount(0);
-  await expect(card.getByTestId('lib-mcp-projects')).toContainText('lib-a');
-  await expect(serverTile).toContainText('In 1 project');
-
-  // drag its tile onto the agent Pay: only Pay may use it
-  await serverTile.dragTo(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }));
-  await expect(page.getByTestId('library-note')).toContainText('Pay can now use Test server.');
-  await expect(projA.getByTestId('lib-agent').filter({ hasText: 'Pay' }).getByTestId('agent-server')).toHaveCount(1);
-  await expect(projA.getByTestId('lib-agent').filter({ hasText: 'Rev' }).getByTestId('agent-server')).toHaveCount(0);
-
-  // a template: defined once, dragged into the other project
+  // a team member: defined once in the Library
   await page.getByRole('button', { name: 'New agent template' }).click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('Payments dev');
@@ -85,31 +75,49 @@ test('Library: connect an MCP server once, drag it onto a project and an agent, 
   await expect(tpl).toBeVisible();
   const tplTile = page.getByTestId('lib-template-tile').filter({ hasText: 'Payments dev' });
   await expect(tplTile).toContainText('Gets 1 server');
-  await tplTile.dragTo(projB.getByRole('heading', { name: 'lib-b', exact: true }));
-  await expect(page.getByTestId('library-note')).toContainText('Payments dev joined lib-b, with Test server');
-  const newAgent = projB.getByTestId('lib-agent').filter({ hasText: 'Payments dev' });
-  await expect(newAgent).toBeVisible();
-  await expect(newAgent.getByTestId('agent-server')).toHaveCount(1);
-  await expect(projB.getByTestId('proj-server')).toHaveCount(1); // granting also put the server into lib-b
 
-  // the project's servers on the Integrations page agree (lib-b is current), and the agent kept the template's settings
-  await workspaceNav(page, 'nav-integrations');
+  // project lib-a adds the server from its own Integrations page, and only Pay may use it
+  await switchProject(page, 'lib-a');
+  await projectNav(page, 'nav-project-integrations');
+  await expect(page.getByTestId('project-integrations')).toBeVisible();
+  const lib = page.getByTestId('add-from-library');
+  await lib.getByRole('button', { name: 'Add Test server to this project' }).click();
+  const onA = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
+  await expect(onA).toBeVisible();
+  await expect(lib.locator('[data-testid="library-server"][data-server="tst"]')).toHaveCount(0);
+  await onA.getByLabel('Pay may use Test server').check();
+  await expect(onA.getByLabel('Pay may use Test server')).toBeChecked();
+  await expect(onA.getByLabel('Rev may use Test server')).not.toBeChecked();
+  await expect(onA.getByText('reads only')).toHaveCount(1);
+
+  // the template joins lib-b's team from its Team page, with the server it names
+  await switchProject(page, 'lib-b');
+  await projectNav(page, 'nav-team');
+  await expect(page.getByLabel('Template', { exact: true })).toContainText('Payments dev'); // the only template, chosen
+  await page.getByRole('button', { name: 'Add to this team' }).click();
+  await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toContainText('effort high');
+
+  // lib-b's Integrations page agrees: granting put the server into lib-b, for Payments dev only; lib-a's grants are not here
+  await projectNav(page, 'nav-project-integrations');
   const onB = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
   await expect(onB.getByLabel('Payments dev may use Test server')).toBeChecked();
-  await expect(onB.getByText('reads only')).toHaveCount(1);
-  await projectNav(page, 'nav-team');
-  await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toContainText('effort high');
+  await expect(onB.getByLabel('Pay may use Test server')).toHaveCount(0);
+
+  // the Library counts the projects without naming them
+  await workspaceNav(page, 'nav-library');
+  await expect(page.getByTestId('lib-mcp-tile').filter({ hasText: 'Test server' })).toContainText('In 2 projects');
 
   // disconnecting removes it from every project
   // (a fresh visit shows only the tiles: clicking one opens its panel)
-  await workspaceNav(page, 'nav-library');
   await expect(page.getByTestId('lib-mcp')).toHaveCount(0);
   await page.getByTestId('lib-mcp-tile').filter({ hasText: 'Test server' }).click();
   const again = page.getByTestId('lib-mcp').filter({ hasText: 'Test server' });
+  await expect(again.getByTestId('lib-mcp-projects')).toContainText('In 2 projects.');
   await again.getByRole('button', { name: 'Disconnect' }).click();
   await again.getByRole('button', { name: 'Yes, disconnect' }).click();
   await expect(page.getByTestId('lib-mcp-tile')).toHaveCount(0);
   await expect(page.getByTestId('lib-mcp')).toHaveCount(0);
-  await expect(projA.getByTestId('proj-server')).toHaveCount(0);
-  await expect(projB.getByTestId('proj-server')).toHaveCount(0);
+  await projectNav(page, 'nav-project-integrations', 'lib-a');
+  await expect(page.getByTestId('no-project-servers')).toBeVisible();
+  await expect(page.getByTestId('mcp-server')).toHaveCount(0);
 });

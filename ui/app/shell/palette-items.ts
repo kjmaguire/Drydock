@@ -39,6 +39,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.activity.href(), 'Activity'],
   [routes.security.href(), 'Security scan', ['secrets', 'vulnerabilities', 'gitleaks', 'osv', 'opengrep']],
   [routes.project.href(), 'Project settings'],
+  [routes.projectIntegrations.href(), 'Project integrations', ['mcp servers', 'grants', 'approvals', 'app sync', 'assignments']],
   [routes.library.href(), 'Library: agents and MCP servers', ['templates', 'prebuilt']],
   [routes.integrations.href(), 'Integrations', ['mcp', 'connectors', 'agent tools', 'servers']],
   [routes.connections.href(), 'Connections'],

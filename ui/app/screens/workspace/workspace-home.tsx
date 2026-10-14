@@ -174,7 +174,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
           <Section title="Connect" description="What Drydock reaches outside itself." testId="home-connect">
             <ul mix={tileGrid} aria-label="Connect">
               <AreaTile href={routes.integrations.href()} icon={Plug} title="Integrations" blurb="GitHub, Linear, Notion, Sentry and agent tools" testId="home-integrations" />
-              <AreaTile href={routes.connections.href()} icon={Link2} title="Connections" blurb="The agent CLIs on this computer and in WSL" testId="home-connections" />
+              <AreaTile href={routes.connections.href()} icon={Link2} title="Connections" blurb="The agent CLIs on this computer and in WSL, and the MCP gateway" testId="home-connections" />
               <AreaTile href={routes.providers.href()} icon={Network} title="Providers" blurb="Model providers, keys and prices" testId="home-providers" />
               <AreaTile href={routes.routing.href()} icon={RouteIcon} title="Routing" blurb="Which model each kind of turn uses" testId="home-routing" />
             </ul>

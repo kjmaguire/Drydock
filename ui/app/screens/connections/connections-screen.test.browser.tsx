@@ -72,7 +72,9 @@ const report = (over: Partial<ConnectionReport> = {}): ConnectionReport => ({
 });
 
 function show(client: Partial<Client>) {
-  const r = mount(<ConnectionsScreen />, testServices(client));
+  // the MCP gateway's state (the panel below the tiles) is a TEST DOUBLE too: Claude verified, nothing else reported
+  const gateway: Partial<Client> = { mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }) };
+  const r = mount(<ConnectionsScreen />, testServices({ ...gateway, ...client }));
   return r;
 }
 type R = ReturnType<typeof show>;
@@ -391,5 +393,38 @@ describe('Connections page', () => {
     }, r);
     expect(agy.querySelector('[data-testid="sign-in"]')).toBeNull();
     expect(agy.textContent).toContain('open a terminal in the distro (wsl -d Ubuntu-26.04) and sign in the way the CLI documents');
+  });
+
+  it('shows the agent CLIs and the MCP gateway below the tiles: Claude verified, an unproven CLI off until allowed, one with no mechanism not allowed', async () => {
+    const tries: unknown[][] = [];
+    const rows = (enabled: boolean) => [
+      { adapter: 'claude', attached: true, canTry: false, trying: false },
+      { adapter: 'codex', attached: enabled, canTry: true, trying: enabled, reason: 'codex: unverified' },
+      { adapter: 'antigravity', attached: false, canTry: false, trying: false, reason: 'antigravity: unproven' },
+    ];
+    const r = show({
+      connectionList: async () => [conn({ usable: true, gates: [] })],
+      mcpStatus: async () => ({ running: true, address: '', adapters: rows(false) }),
+      mcpTrySet: (async (...a: unknown[]) => (tries.push(a), { running: true, address: '', adapters: rows(a[1] as boolean) })) as never,
+    });
+    const section = await waitFor(() => {
+      const s = r.$('[data-testid="cli-gateway-section"]');
+      if (!s?.querySelector('[data-testid="cli-gateway"]')?.textContent?.includes('verified')) throw new Error('not yet');
+      return s as HTMLElement;
+    }, r);
+    expect(section.getAttribute('aria-label')).toBe('Agent CLIs and the MCP gateway');
+    expect(section.querySelector('h2')!.textContent).toBe('MCP gateway');
+    // after the tiles of the agent CLIs, on the same page
+    const tiles = r.$('ul[aria-label="Agent CLIs"]')!;
+    expect(tiles.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const list = section.querySelector('[data-testid="cli-gateway"]') as HTMLElement;
+    expect(list.querySelector('[data-adapter="claude"]')!.textContent).toContain('verified');
+    expect(() => byLabel(list, 'Let claude use the gateway')).toThrow();
+    expect(() => byLabel(list, 'Let antigravity use the gateway')).toThrow();
+    expect(list.textContent).toContain('antigravity: unproven');
+    const box = byLabel<HTMLInputElement>(list, 'Let codex use the gateway');
+    expect(box.checked).toBe(false);
+    await r.act(() => box.click());
+    await waitFor(() => expect(tries).toEqual([['codex', true]]), r);
   });
 });

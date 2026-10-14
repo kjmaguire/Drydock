@@ -341,11 +341,12 @@ test('integrations: connecting stores the key without ever showing it; with no v
   await card.getByRole('button', { name: 'Test', exact: true }).click();
   await expect(card.getByTestId('int-report')).toHaveAttribute('data-ok', 'false');
   await expect(card.getByTestId('int-report')).toContainText('could not reach Linear');
-  // it is assigned to the project like any other, and a rule there starts disabled and in dry-run
-  await card.getByRole('button', { name: 'Assign to project' }).click();
-  await card.getByTestId('assign-form').getByLabel('Project', { exact: true }).selectOption({ label: 'gocalc-int' });
-  await card.getByTestId('assign-form').getByRole('button', { name: 'Assign', exact: true }).click();
-  const row = card.getByTestId('assignment');
+  // it is assigned to the project like any other, on the project's own Integrations page, and a rule there starts disabled and in dry-run
+  await projectNav(page, 'nav-project-integrations', 'gocalc-int');
+  const mine = page.locator('[data-testid=project-integration][data-kind=linear]');
+  await mine.getByRole('button', { name: 'Assign to gocalc-int' }).click();
+  await mine.getByTestId('assign-form').getByRole('button', { name: 'Assign', exact: true }).click();
+  const row = mine.getByTestId('assignment');
   await expect(row).toContainText('gocalc-int');
   await row.getByRole('button', { name: 'Items' }).click();
   await expect(row.getByText('No items yet. Run a sync.')).toBeVisible();
@@ -356,6 +357,8 @@ test('integrations: connecting stores the key without ever showing it; with no v
   const rule = row.getByTestId('int-rule');
   await expect(rule).toContainText('disabled');
   await expect(rule).toContainText('dry-run');
+  await workspaceNav(page, 'nav-integrations');
+  await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
   await card.getByRole('button', { name: 'Disconnect' }).click();
   await card.getByRole('button', { name: /Yes, disconnect/ }).click();
   await expect(page.getByText('Nothing is connected.')).toBeVisible();

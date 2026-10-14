@@ -3,8 +3,9 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { McpApproval } from '../../api/mcpClient.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
-import { IntegrationsScreen } from '../integrations/integrations-screen.tsx';
+import type { McpServer } from '../../api/mcpClient.ts';
+import { byLabel, byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { ProjectIntegrationsScreen } from '../integrations/project-integrations-screen.tsx';
 import { devLicense, libServer, pay, projServer, rev } from './fixtures.ts';
 
 afterEach(cleanup);
@@ -17,7 +18,7 @@ function rec<R>(calls: Calls, result: (...args: unknown[]) => R) {
   };
 }
 
-// The project's servers, approvals and Add from the library sit at the bottom of the Integrations page (decision P47).
+// The project's servers, approvals and Add from the library are on the project's own Integrations page (/project/integrations).
 function show(client: Partial<Client>, opts: { projects?: { id: string; name: string }[] } = {}) {
   const s = testServices({
     licenseStatus: async () => devLicense,
@@ -33,12 +34,11 @@ function show(client: Partial<Client>, opts: { projects?: { id: string; name: st
     integrationKinds: async () => [],
     mcpApprovalList: async () => [],
     mcpLibList: async () => [libServer()],
-    mcpGallery: async () => [],
     ...client,
   });
   s.workspace.start();
   s.project.start();
-  return mount(<IntegrationsScreen />, s);
+  return mount(<ProjectIntegrationsScreen />, s);
 }
 type R = ReturnType<typeof show>;
 const server = (r: R) =>
@@ -48,7 +48,7 @@ const server = (r: R) =>
     return c as HTMLElement;
   }, r);
 
-describe('the MCP servers of one project, on the Integrations page', () => {
+describe("the MCP servers of one project, on the project's Integrations page", () => {
   it('lists the project servers, which tools only read, and no secret', async () => {
     const r = show({ mcpServerList: async () => [projServer({ readOnlyTools: ['echo'] })] });
     const card = await server(r);
@@ -58,8 +58,13 @@ describe('the MCP servers of one project, on the Integrations page', () => {
     expect(byLabel<HTMLInputElement>(card, 'Pay may use Test server').checked).toBe(false);
     expect(card.textContent).toContain('No agent can use a server until you tick it here.');
     expect(r.$('h1')!.textContent).toContain('Integrations');
-    expect(r.$('[data-testid="own-servers"]')).not.toBeNull(); // the whole page: own servers above, the project's servers below
-    expect(r.$('[data-testid="mcp-server"]')!.compareDocumentPosition(r.$('[data-testid="own-servers"]')!) & Node.DOCUMENT_POSITION_PRECEDING).not.toBe(0);
+    // a project's page: no server is connected or described here, that is done once for the workspace
+    expect(r.$('[data-testid="own-servers"]')).toBeNull();
+    expect(r.$('[data-testid="connector-gallery"]')).toBeNull();
+    // its servers, then Add from the library, then its app sync
+    const order = ['project-mcp', 'add-from-library', 'project-app-sync'].map((id) => r.$(`[data-testid="${id}"]`)!);
+    expect(order[0]!.compareDocumentPosition(order[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(order[1]!.compareDocumentPosition(order[2]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('grants and revokes one agent without touching the others', async () => {
@@ -74,18 +79,69 @@ describe('the MCP servers of one project, on the Integrations page', () => {
     await waitFor(() => expect(grants[1]).toEqual(['prj_1', 'tst', 'agt_2', false]), r);
   });
 
-  it('adds a connected server from the library and says where to connect new ones', async () => {
-    const adds: Calls = [];
+  it('lists the connected servers the project does not have, the built-in ones you connected included, each with its logo', async () => {
     const r = show({
-      mcpServerList: async () => [],
-      mcpLibList: async () => [libServer({ projects: [] }), libServer({ id: 'other', display: 'Other', projects: [] })],
-      mcpServerAdd: rec(adds, () => projServer()) as never,
+      mcpServerList: async () => [projServer()],
+      mcpLibList: async () => [libServer(), libServer({ id: 'ctx7', display: 'Context7', catalogId: 'ctx7', transport: 'http', projects: [] }), libServer({ id: 'other', display: 'Other', projects: [] })],
     });
-    const sel = await waitFor(() => byLabel<HTMLSelectElement>(r.container, 'Server to add'), r);
-    await r.act(() => type(sel, 'other'));
-    await r.act(() => byText(r.container, 'button', 'Put into this project').click());
+    const rows = await waitFor(() => {
+      const l = Array.from(r.$$('[data-testid="add-from-library"] [data-testid="library-server"]')) as HTMLElement[];
+      if (l.length !== 2) throw new Error('not yet');
+      return l;
+    }, r);
+    // Test server is in the project already: not offered again
+    expect(rows.map((x) => x.getAttribute('data-server'))).toEqual(['ctx7', 'other']);
+    expect(rows[0]!.querySelector('[data-brand="context7"]')).not.toBeNull();
+    expect(rows[0]!.textContent).toContain('built into Drydock');
+    expect(rows[1]!.textContent).toContain('your own');
+    expect(byLabel(rows[1]!, 'Add Other to this project')).not.toBeNull();
+  });
+
+  it('adds a connected server from the library and grants it to an agent of the project', async () => {
+    const adds: Calls = [];
+    const grants: Calls = [];
+    let mine: McpServer[] = [];
+    const r = show({
+      mcpServerList: async () => mine,
+      mcpLibList: async () => [libServer({ projects: [] }), libServer({ id: 'other', display: 'Other', projects: [] })],
+      mcpServerAdd: rec(adds, (_p, id) => {
+        mine = [projServer({ id: String(id), display: 'Other' })];
+        return mine[0]!;
+      }) as never,
+      mcpServerGrant: rec(grants, (_p, _id, agentId) => {
+        mine = [projServer({ id: 'other', display: 'Other', agents: [{ agentId: String(agentId), tools: ['*'] }] })];
+        return mine[0]!;
+      }) as never,
+    });
+    await waitFor(() => expect(r.container.textContent).toContain('No MCP servers in this project yet.'), r);
+    const add = await waitFor(() => byLabel<HTMLButtonElement>(r.container, 'Add Other to this project'), r);
+    await r.act(() => add.click());
     await waitFor(() => expect(adds).toEqual([['prj_1', 'other']]), r);
-    expect(r.container.textContent).toContain('No MCP servers in this project yet.');
+    const card = await waitFor(() => {
+      const c = r.$('[data-testid="mcp-server"][data-server="other"]');
+      if (!c?.querySelector('[aria-label="Pay may use Other"]')) throw new Error('not yet');
+      return c as HTMLElement;
+    }, r);
+    // added servers leave the library list
+    await waitFor(() => expect(r.$('[data-testid="library-server"][data-server="other"]')).toBeNull(), r);
+    await r.act(() => byLabel(card, 'Pay may use Other').click());
+    await waitFor(() => expect(grants).toEqual([['prj_1', 'other', 'agt_1', true]]), r);
+    await waitFor(() => expect(byLabel<HTMLInputElement>(card, 'Pay may use Other').checked).toBe(true), r);
+  });
+
+  it('a ticked grant shows at once while the core answers, and goes back when the core refuses', async () => {
+    let release: (ok: boolean) => void = () => {};
+    const r = show({
+      mcpServerList: async () => [projServer()],
+      mcpServerGrant: (() => new Promise((res, rej) => (release = (ok) => (ok ? res(projServer()) : rej(new Error('refused')))))) as never,
+    });
+    const card = await server(r);
+    const box = byLabel<HTMLInputElement>(card, 'Pay may use Test server');
+    await r.act(() => box.click());
+    r.root.flush();
+    expect(byLabel<HTMLInputElement>(card, 'Pay may use Test server').checked).toBe(true);
+    await r.act(() => release(false));
+    await waitFor(() => expect(byLabel<HTMLInputElement>(card, 'Pay may use Test server').checked).toBe(false), r);
   });
 
   it('points to the Library when nothing is connected', async () => {
@@ -164,7 +220,8 @@ describe('the MCP servers of one project, on the Integrations page', () => {
       return el as HTMLElement;
     }, r);
     expect(line.querySelector('a[href="/project/new"]')).not.toBeNull();
+    // connecting needs no project: the line points to the workspace's Integrations page
+    expect(line.querySelector('a[href="/integrations"]')).not.toBeNull();
     expect(r.$('[data-testid="mcp-approvals"]')).toBeNull();
-    expect(r.$('[data-testid="own-servers"]')).not.toBeNull(); // connecting needs no project
   });
 });
