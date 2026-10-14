@@ -36,13 +36,14 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
   await createProject(page, 'pkg-backups');
   await workspaceNav(page, 'nav-backups');
   await expect(page.getByRole('heading', { level: 1, name: 'Backups' })).toBeVisible();
-  const before = await page.getByTestId('backup-row').count();
 
   await page.getByLabel(/^Label \(optional/).fill('e2e-backup');
   await page.getByRole('button', { name: 'Back up now' }).click();
   await expect(page.getByTestId('backup-made')).toContainText('written');
-  await expect(page.getByTestId('backup-row')).toHaveCount(before + 1);
+  // the new backup is listed once; other rows may be there (a scheduled backup the core made at start lands any time), so
+  // the list is not counted against a number read before it loaded
   const row = page.getByTestId('backup-row').filter({ hasText: 'e2e-backup' });
+  await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
   const name = (await row.getAttribute('data-name'))!;
   await expect(page.getByTestId('backup-last-success')).not.toHaveText('none yet');
@@ -75,7 +76,7 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
     await page.reload();
     await expect(page.getByTestId('restore-pending')).toContainText(name);
     // the app still works while a restore is staged
-    await expect(page.getByTestId('backup-row')).toHaveCount(before + 1);
+    await expect(page.getByTestId('backup-row').filter({ hasText: 'e2e-backup' })).toHaveCount(1);
   } finally {
     const cancel = page.getByRole('button', { name: 'Cancel the staged restore' });
     if (await cancel.isVisible()) await cancel.click();
