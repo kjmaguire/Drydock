@@ -67,4 +67,15 @@ func (c *Core) TestStoreScanReport(ctx context.Context, rep scan.Report) error {
 }
 
 // TestMaybeRecommend runs the check a completed task triggers: whether the project asks for recommendations again by itself.
-func (c *Core) TestMaybeRecommend(ctx context.Context, projectID string) { c.maybeRecommend(ctx, projectID) }
+func (c *Core) TestMaybeRecommend(ctx context.Context, projectID string) {
+	c.maybeRecommend(ctx, projectID)
+}
+
+// TestRecommendPrompt returns the prompt a recommendation turn for the project would get now.
+func (c *Core) TestRecommendPrompt(ctx context.Context, projectID string) (string, error) {
+	w, err := c.recommendWorld(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	return c.recommendPrompt(ctx, projectID, w, nil), nil
+}
