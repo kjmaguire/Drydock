@@ -260,7 +260,7 @@ func orEmpty[T any](s []T) []T {
 // recommendWorld is what the turn is told and what its answer is checked against.
 type recommendWorld struct {
 	team      []Agent
-	inProject map[string]skills.Skill         // project skills by name
+	inProject map[string]skills.Skill          // project skills by name
 	library   map[string][]skills.LibrarySkill // available library skills by name (several registries may share a name)
 	servers   map[string]MCPLibraryServer      // connected library servers by id
 	inUse     map[string]MCPServerView         // the project's servers by id
@@ -523,7 +523,9 @@ func parseRecommend(text string, w recommendWorld) ([]RecommendItem, []string, s
 		}
 		kind, action := strings.ToLower(strings.TrimSpace(r.Kind)), strings.ToLower(strings.TrimSpace(r.Action))
 		name := strings.TrimSpace(r.Name)
-		bad := func(why string) { problems = append(problems, fmt.Sprintf("recommendation %d (%s %s): %s", i+1, kind, name, why)) }
+		bad := func(why string) {
+			problems = append(problems, fmt.Sprintf("recommendation %d (%s %s): %s", i+1, kind, name, why))
+		}
 		var agentsOut []string
 		var list []string
 		if len(r.Agents) > 0 && string(r.Agents) != "null" {
@@ -555,8 +557,13 @@ func parseRecommend(text string, w recommendWorld) ([]RecommendItem, []string, s
 			_, inProject := w.inProject[name]
 			switch {
 			case action == "add" && inProject:
-				it.Action = "give"
-				if len(agentsOut) == 0 {
+				// already in the project: named agents are a give; none widens it to the whole team, unless it reaches them already
+				switch {
+				case len(agentsOut) > 0:
+					it.Action = "give"
+				case w.inProject[name].Audience == skills.AudienceAgents:
+					it.Action = "team"
+				default:
 					bad("already in the project for the whole team")
 					continue
 				}
@@ -684,7 +691,6 @@ func (c *Core) runRecommend(r Recommendation, advisor Agent) {
 		}
 	}
 }
-
 
 // recommendTurn runs one read-only turn as the advisor through the agent runtime (the same path as every turn: its CLI, run
 // mode, practices and budgets) and returns its text and cost.
@@ -828,6 +834,15 @@ func (c *Core) RecommendApply(ctx context.Context, id, itemID string) (Recommend
 			}
 		}
 		note = "given to the agents"
+	case "skill/team":
+		// the whole team from now on; the agents it was given to keep it
+		var cur skills.Skill
+		if k := c.Knowledge(); k == nil {
+			err = errors.New("no skills service")
+		} else if cur, err = k.Skills.Get(ctx, pid, it.Name); err == nil {
+			err = call("skill.audience", map[string]any{"projectId": pid, "name": it.Name, "audience": skills.AudienceTeam, "agents": cur.Agents})
+		}
+		note = "given to the whole team"
 	case "skill/remove":
 		err = call("skill.release", map[string]any{"projectId": pid, "name": it.Name})
 		note = "no longer used by the project"

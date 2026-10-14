@@ -16,6 +16,8 @@ export function itemText(it: RecommendItem, names: ReadonlyMap<string, string>):
       return `Add the skill ${it.label || it.name} for ${who}`;
     case 'skill/give':
       return `Give the skill ${it.label || it.name} to ${who}`;
+    case 'skill/team':
+      return `Give the skill ${it.label || it.name} to the whole team`;
     case 'skill/remove':
       return `Stop using the skill ${it.label || it.name}`;
     case 'mcp/give':

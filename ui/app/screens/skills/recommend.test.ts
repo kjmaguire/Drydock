@@ -19,6 +19,7 @@ describe('recommendation text', () => {
   it('says what each kind of item does', () => {
     expect(itemText(item({}), names)).toBe('Add the skill wrangler for the whole team');
     expect(itemText(item({ action: 'give', agents: ['agt_1'] }), names)).toBe('Give the skill wrangler to Backend #1');
+    expect(itemText(item({ action: 'team' }), names)).toBe('Give the skill wrangler to the whole team');
     expect(itemText(item({ action: 'remove' }), names)).toBe('Stop using the skill wrangler');
     expect(itemText(item({ kind: 'mcp', action: 'give', name: 'cfdocs', label: 'Cloudflare docs', agents: ['agt_2'] }), names)).toBe('Give the MCP server Cloudflare docs to Lead');
     expect(itemText(item({ kind: 'integration', action: 'add', name: 'linear', label: 'Linear' }), names)).toBe('Assign Linear to this project');

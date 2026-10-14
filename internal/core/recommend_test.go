@@ -43,6 +43,34 @@ func (a *app) recommendDone(projectID, id string) core.Recommendation {
 	return r
 }
 
+// waitGeneral waits for the project's #general to say text: a turn the project asked for by itself is announced there just
+// after it is marked done, so reading the room the moment the turn reads done can miss it.
+func (a *app) waitGeneral(projectID, text string) {
+	a.t.Helper()
+	var rooms []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	a.call("room.list", map[string]any{"projectId": projectID}, &rooms)
+	general := ""
+	for _, rm := range rooms {
+		if rm.Name == "general" {
+			general = rm.ID
+		}
+	}
+	if general == "" {
+		a.t.Fatal("the project has no #general")
+	}
+	a.waitFor("#general to announce the recommendations", func() bool {
+		for _, m := range a.roomMessages(general) {
+			if strings.Contains(m.Body, text) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 // Decision P52: the team lead's read-only turn says which agent gets which skill and MCP server; the core keeps only what
 // exists (a library skill, a connected server, the team's agents) and says why it dropped the rest; the person applies or
 // dismisses each item, and applying does exactly what the item says through the pages' own methods.
@@ -191,24 +219,7 @@ func TestTheProjectAsksForRecommendationsAgainAsItEvolves(t *testing.T) {
 	if r.Status != "done" || len(r.Items) != 1 {
 		t.Fatalf("%+v", r)
 	}
-	var general string
-	var rooms []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	a.call("room.list", map[string]any{"projectId": p.ID}, &rooms)
-	for _, rm := range rooms {
-		if rm.Name == "general" {
-			general = rm.ID
-		}
-	}
-	found := false
-	for _, m := range a.roomMessages(general) {
-		found = found || strings.Contains(m.Body, "Lead has 1 new recommendation")
-	}
-	if !found {
-		t.Fatal("#general does not announce the recommendations the project asked for by itself")
-	}
+	a.waitGeneral(p.ID, "Lead has 1 new recommendation")
 	// five more within a day: not again
 	complete(5)
 	a.c.TestMaybeRecommend(ctx, p.ID)
@@ -221,5 +232,44 @@ func TestTheProjectAsksForRecommendationsAgainAsItEvolves(t *testing.T) {
 	a.c.TestMaybeRecommend(ctx, p.ID)
 	if list = runs(); list.Auto || len(list.Runs) != 1 {
 		t.Fatalf("switched off: %+v", list)
+	}
+}
+
+// A skill the project has for chosen agents only, recommended for the whole team, is widened to the team (the agents it was
+// given to keep it); recommended again once the whole team has it, it is dropped with that reason. Before, the first was
+// dropped as "already in the project for the whole team", which was not true.
+func TestARecommendationWidensASkillToTheWholeTeam(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "widen")
+	f := newWatchFixture(t)
+	f.publish("cloudflare/skills", watchSha1, map[string]string{"skills/wrangler/SKILL.md": fixtureSkill("wrangler", "", "Use the project's Wrangler version.")})
+	f.use(a)
+	if _, err := a.c.RunSkillWatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var lead, dev core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &dev)
+	a.call("skill.libraryAdd", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills", "name": "wrangler", "audience": skills.AudienceAgents, "agents": []string{dev.ID}}, nil)
+
+	everyone := `{"summary": "Everyone deploys now.", "recommendations": [{"kind": "skill", "action": "add", "name": "wrangler", "agents": [], "reason": "The whole team deploys Workers."}]}`
+	recommendScript(t, everyone)
+	var r core.Recommendation
+	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
+	r = a.recommendDone(p.ID, r.ID)
+	if r.Status != "done" || len(r.Items) != 1 || r.Items[0].Action != "team" || len(r.Items[0].Agents) != 0 {
+		t.Fatalf("widening to the team: %+v", r)
+	}
+	a.call("recommend.apply", map[string]any{"id": r.ID, "itemId": r.Items[0].ID}, &r)
+	var got skills.Skill
+	a.call("skill.get", map[string]any{"projectId": p.ID, "name": "wrangler"}, &got)
+	if got.Audience != skills.AudienceTeam || !slices.Equal(got.Agents, []string{dev.ID}) || r.Items[0].Status != "applied" {
+		t.Fatalf("after applying: skill %+v, item %+v", got, r.Items[0])
+	}
+
+	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
+	r = a.recommendDone(p.ID, r.ID)
+	if r.Status != "done" || len(r.Items) != 0 || len(r.Dropped) != 1 || !strings.Contains(r.Dropped[0], "already in the project for the whole team") {
+		t.Fatalf("the team has it already: %+v", r)
 	}
 }

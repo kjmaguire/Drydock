@@ -25,8 +25,9 @@ func realSkill(name, description string) string {
 // Decision P52 with the REAL Claude Code as the team lead (haiku): one read-only recommendation turn over a Cloudflare
 // Workers storefront whose Library also holds skills that do not fit it. The answer must parse, name only what exists, give
 // the Cloudflare skills or the Cloudflare docs server to someone, leave the unrelated skills out, and every item it keeps
-// must apply through the pages' own methods. It spends real money (one or two haiku turns, about a cent), so it runs only
-// with DRYDOCK_REAL_CLAUDE=1 and a signed-in claude.
+// must apply through the pages' own methods. Then the project evolves and must ask again by itself (below). It spends real
+// money: two haiku turns (up to four when an answer needs the retry), measured at about $0.0013 each, so it runs only with
+// DRYDOCK_REAL_CLAUDE=1 and a signed-in claude.
 func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 	if why := contract.RealClaudeSkip(); why != "" {
 		t.Skip(why)
@@ -104,18 +105,9 @@ func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 	if r.AgentID != lead.ID {
 		t.Fatalf("asked %s, not the lead", r.AgentID)
 	}
-	finish := func(r core.Recommendation) core.Recommendation {
-		deadline := time.Now().Add(5 * time.Minute)
-		for r.Status == "running" && time.Now().Before(deadline) {
-			time.Sleep(time.Second)
-			var list core.Recommendations
-			a.call("recommend.list", map[string]any{"projectId": p.ID}, &list)
-			for _, x := range list.Runs {
-				if x.ID == r.ID {
-					r = x
-				}
-			}
-		}
+	// the shared wait (bounded by the test's own -timeout), then what the lead said, for the person reading the log
+	finish := func(id string) core.Recommendation {
+		r := a.recommendDone(p.ID, id)
 		t.Logf("%s: status %s, cost $%.4f, summary: %s", r.Trigger, r.Status, r.CostUSD, r.Summary)
 		for _, it := range r.Items {
 			t.Logf("  item %s %s %s (registry %q) agents %v: %s", it.Kind, it.Action, it.Name, it.RegistryID, it.Agents, it.Reason)
@@ -128,7 +120,7 @@ func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 		}
 		return r
 	}
-	r = finish(r)
+	r = finish(r.ID)
 	if r.CostUSD <= 0 {
 		t.Error("the turn's cost was not recorded")
 	}
@@ -151,16 +143,13 @@ func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 		if it.Kind == "integration" {
 			continue
 		}
-		if err := a.callErr("recommend.apply", map[string]any{"id": r.ID, "itemId": it.ID}); err != nil {
-			// a skill the lead wants given or removed may sit behind one it added; the order is the lead's, so say which failed
+		// the core already checked every item names what exists, so a failure here is a bug in applying it
+		after, err := c.RecommendApply(context.Background(), r.ID, it.ID)
+		if err != nil {
 			t.Errorf("applying %s %s %s: %v", it.Kind, it.Action, it.Name, err)
 			continue
 		}
-		after, err := c.RecommendList(context.Background(), p.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, x := range after.Runs[0].Items {
+		for _, x := range after.Items {
 			if x.ID == it.ID && x.Status != "applied" {
 				t.Errorf("%s %s is %s after applying", it.Kind, it.Name, x.Status)
 			}
@@ -173,10 +162,12 @@ func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 	// The project evolves: the frontend agent's last five tasks were Stripe checkout work, and the Stripe skill reaches only the
 	// backend. The project asks the lead again by itself; the lead must notice and give the frontend agent the Stripe skill,
 	// and say so in #general.
-	if _, err := c.Knowledge().Skills.SetAudience(context.Background(), c.Human(), p.ID, "stripe-best-practices", skills.AudienceAgents, []string{back.ID}); err != nil {
-		// the lead did not add it in the first turn: it is in the library still, and the lead may add it now
-		t.Logf("stripe-best-practices is not in the project (%v)", err)
+	// whatever the first turn did with it, the Stripe skill now reaches the backend agent only
+	if _, err := c.Knowledge().Skills.Get(context.Background(), p.ID, "stripe-best-practices"); err != nil {
+		a.call("skill.libraryAdd", map[string]any{"projectId": p.ID, "registryId": "stripe-ai", "name": "stripe-best-practices",
+			"audience": skills.AudienceAgents, "agents": []string{back.ID}}, nil)
 	}
+	a.call("skill.audience", map[string]any{"projectId": p.ID, "name": "stripe-best-practices", "audience": skills.AudienceAgents, "agents": []string{back.ID}}, nil)
 	db := c.DB.Writer()
 	for i, title := range []string{
 		"Checkout page: redirect to Stripe Checkout with the cart's line items",
@@ -190,7 +181,7 @@ func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// the first turn is "a day" older, so only the five tasks decide
+	// the first turn is made two days older, past the one-day gap, so only the five tasks decide
 	if _, err := db.Exec(`UPDATE recommendations SET created_at=created_at-2*86400000 WHERE project_id=?`, p.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -200,30 +191,18 @@ func TestRealLeadRecommendsSkillsAndServersThatFitTheProject(t *testing.T) {
 	if len(list.Runs) != 2 || list.Runs[0].Trigger != "evolution" {
 		t.Fatalf("the project did not ask again after five completed tasks: %+v", list.Runs)
 	}
-	ev := finish(list.Runs[0])
+	ev := finish(list.Runs[0].ID)
 	gave := false
 	for _, it := range ev.Items {
-		if it.Name == "stripe-best-practices" && (slices.Contains(it.Agents, front.ID) || (it.Action == "add" && len(it.Agents) == 0)) {
+		// a give to the frontend agent, or widening the skill to the whole team
+		if it.Name == "stripe-best-practices" && (slices.Contains(it.Agents, front.ID) || it.Action == "team") {
 			gave = true
 		}
 	}
 	if !gave {
 		t.Error("the frontend agent now does Stripe checkout work and the lead did not recommend it the Stripe skill")
 	}
-	var rooms []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	a.call("room.list", map[string]any{"projectId": p.ID}, &rooms)
-	announced := false
-	for _, rm := range rooms {
-		if rm.Name == "general" {
-			for _, m := range a.roomMessages(rm.ID) {
-				announced = announced || strings.Contains(m.Body, "Lead has ")
-			}
-		}
-	}
-	if len(ev.Items) > 0 && !announced {
-		t.Error("#general does not announce the recommendations the project asked for by itself")
+	if len(ev.Items) > 0 {
+		a.waitGeneral(p.ID, "Lead has ")
 	}
 }
