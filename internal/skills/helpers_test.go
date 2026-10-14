@@ -145,7 +145,8 @@ const d1Skill = "Never edit an applied migration; add a new numbered file."
 
 // ---- PROTOCOL FIXTURE: GitHub as the registry fetcher sees it ----
 //
-// A local HTTP server answering GET /repos/<owner>/<name>/commits/<ref> with {"sha": ...} and GET /<owner>/<name>/tar.gz/<sha>
+// A local HTTP server answering GET /repos/<owner>/<name>/commits/<ref> with the bare commit id for Accept:
+// application/vnd.github.sha and with the JSON commit ({"sha": ..., "files": [...]}) otherwise, and GET /<owner>/<name>/tar.gz/<sha>
 // with a .tar.gz whose single top-level directory is <name>-<sha>, as api.github.com and codeload.github.com do. It stands in
 // for GitHub because the sandbox cannot reach it; the real services were never contacted (unverified).
 type ghFixture struct {
@@ -154,6 +155,10 @@ type ghFixture struct {
 	commits map[string]string            // "owner/name@ref" -> sha
 	trees   map[string]map[string]string // "owner/name@sha" -> path -> content
 	hits    map[string]int
+	// padDiff is the size of the file diff the JSON commit answer carries (GitHub sends the whole commit); jsonOnly makes
+	// the commits endpoint ignore the sha media type, as a proxy might.
+	padDiff  int
+	jsonOnly bool
 }
 
 func newGHFixture(t *testing.T) *ghFixture {
@@ -187,8 +192,15 @@ func (g *ghFixture) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"sha":%q}`, sha)
+		if acceptsSHA(r.Header.Get("Accept")) && !g.jsonOnly {
+			// GitHub documents application/vnd.github.sha: the 40-hex commit id alone, as text
+			w.Header().Set("Content-Type", "application/vnd.github.sha; charset=utf-8")
+			fmt.Fprint(w, sha)
+			return
+		}
+		// the JSON commit carries its file diffs; padDiff stands in for a large commit
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprintf(w, `{"sha":%q,"files":[{"filename":"big.md","patch":%q}]}`, sha, strings.Repeat("+x\n", g.padDiff/3))
 	case len(parts) == 4 && parts[2] == "tar.gz":
 		tree, ok := g.trees[parts[0]+"/"+parts[1]+"@"+parts[3]]
 		if !ok {
@@ -200,6 +212,15 @@ func (g *ghFixture) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func acceptsSHA(accept string) bool {
+	for _, t := range strings.Split(accept, ",") {
+		if strings.TrimSpace(strings.SplitN(t, ";", 2)[0]) == "application/vnd.github.sha" {
+			return true
+		}
+	}
+	return false
 }
 
 func githubAccepts(accept string) bool {

@@ -17,7 +17,8 @@ import (
 )
 
 // skillRegistryFixture is a PROTOCOL FIXTURE (test double) for GitHub as the skill registry sync sees it (decision P48):
-// GET /repos/<owner>/<name>/commits/HEAD answers the default branch's commit and GET /<owner>/<name>/tar.gz/<sha> the
+// GET /repos/<owner>/<name>/commits/HEAD answers the default branch's commit (the bare id for Accept:
+// application/vnd.github.sha, the JSON commit otherwise) and GET /<owner>/<name>/tar.gz/<sha> the
 // tarball at that commit, as api.github.com and codeload.github.com do. Every curated registry resolves, so the scheduled sync
 // records no failure in the browser tests; cloudflare/skills holds three stand-in skills written for the tests (not Cloudflare's
 // text), the others are empty. The real GitHub is never contacted by the harness.
@@ -73,6 +74,12 @@ func (f *skillRegistryFixture) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	case len(parts) == 5 && parts[0] == "repos" && parts[3] == "commits":
 		if _, ok := f.trees[parts[1]+"/"+parts[2]]; !ok {
 			http.NotFound(w, r)
+			return
+		}
+		if strings.Contains(r.Header.Get("Accept"), "application/vnd.github.sha") {
+			// the commit id alone, as GitHub documents for this media type
+			w.Header().Set("Content-Type", "application/vnd.github.sha; charset=utf-8")
+			_, _ = fmt.Fprint(w, skillFixtureSha)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

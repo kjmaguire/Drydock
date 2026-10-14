@@ -305,3 +305,32 @@ func TestRefreshAbortsWhenMostPagesFail(t *testing.T) {
 }
 
 var _ = httptest.NewServer
+
+// GitHub answers Accept: application/vnd.github.sha with the bare commit id under that same media type. GetAPI takes a type
+// the caller asked for as text; a type it did not ask for, a wildcard, or a NUL byte in the body is still refused.
+func TestGetAPITakesTheMediaTypeItAskedForAsText(t *testing.T) {
+	d := newDocSite(t)
+	d.extra["/sha"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.github.sha; charset=utf-8")
+		fmt.Fprint(w, "0123456789abcdef0123456789abcdef01234567")
+	}
+	d.extra["/sha-nul"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.github.sha")
+		w.Write([]byte("0123\x00"))
+	}
+	f := fetcherFor(d, func(p *FetchPolicy) { p.NoRobots = true })
+	ctx := context.Background()
+	r, err := f.GetAPI(ctx, d.URL+"/sha", "application/vnd.github.sha")
+	if err != nil || string(r.Body) != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("the asked-for type is text: %v", err)
+	}
+	if _, err := f.GetAPI(ctx, d.URL+"/sha", "application/vnd.github+json"); !errors.Is(err, ErrContentType) {
+		t.Errorf("a vendor type not asked for is refused: %v", err)
+	}
+	if _, err := f.GetAPI(ctx, d.URL+"/sha", "*/*"); !errors.Is(err, ErrContentType) {
+		t.Errorf("a wildcard does not make a vendor type text: %v", err)
+	}
+	if _, err := f.GetAPI(ctx, d.URL+"/sha-nul", "application/vnd.github.sha"); !errors.Is(err, ErrContentType) {
+		t.Errorf("a NUL byte is refused: %v", err)
+	}
+}

@@ -1,6 +1,7 @@
 package packs
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -221,8 +222,10 @@ func (f *Fetcher) Get(ctx context.Context, rawURL string, cond Conditional) (*Re
 	return f.do(ctx, u, cond, true, false, f.policy.MaxBytes, "")
 }
 
-// GetAPI fetches a JSON document from an API endpoint with the API's own media type as Accept (GitHub's REST API answers 415
-// to the markdown and HTML types a page fetch asks for). The address, host, redirect, size and text checks are Get's.
+// GetAPI fetches a document from an API endpoint with the API's own media type as Accept (GitHub's REST API answers 415 to
+// the markdown and HTML types a page fetch asks for). The address, host, redirect, size and text checks are Get's, except that
+// a media type the caller named in accept is taken as text (GitHub answers application/vnd.github.sha, the bare commit id,
+// with that type); its body still may not hold a NUL byte.
 func (f *Fetcher) GetAPI(ctx context.Context, rawURL, accept string) (*Response, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -313,11 +316,26 @@ func (f *Fetcher) do(ctx context.Context, u *url.URL, cond Conditional, polite, 
 	if int64(len(body)) > maxBytes {
 		return out, fmt.Errorf("%w: more than %d bytes", ErrTooLarge, maxBytes)
 	}
-	if !binary && !textual(out.ContentType, body) {
+	if !binary && !textual(out.ContentType, body) && (!askedFor(accept, out.ContentType) || bytes.IndexByte(body, 0) >= 0) {
 		return out, fmt.Errorf("%w: %q", ErrContentType, out.ContentType)
 	}
 	out.Body = body
 	return out, nil
+}
+
+// askedFor reports whether ct's media type is one the request's Accept header named (wildcards do not count).
+func askedFor(accept, ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
+	if ct == "" {
+		return false
+	}
+	for _, t := range strings.Split(accept, ",") {
+		t = strings.ToLower(strings.TrimSpace(strings.SplitN(t, ";", 2)[0]))
+		if t == ct && !strings.Contains(t, "*") {
+			return true
+		}
+	}
+	return false
 }
 
 func textual(ct string, body []byte) bool {

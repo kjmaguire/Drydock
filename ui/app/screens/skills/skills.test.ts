@@ -118,6 +118,7 @@ describe('Skills helpers', () => {
     expect(skillBrand('anthropic-skills')).toBe('anthropic');
     expect(skillBrand('openai-skills')).toBe('openai');
     expect(skillBrand('stripe-ai')).toBe('stripe');
+    expect(skillBrand('remix')).toBe('remix');
     expect(skillBrand('react-router')).toBe('remix');
     expect(skillBrand('someone/else')).toBe('');
     expect(skillBrand('anthropic-skills', 'repo')).toBe('');

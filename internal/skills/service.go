@@ -598,22 +598,93 @@ func (s *Service) Release(ctx context.Context, by, projectID, name string) (Skil
 
 // ---- registries (the allowlist a human edits) ----
 
-// EnsureRegistries stores the curated registries that are missing. A curated entry a human disabled stays disabled.
+// EnsureRegistries brings the stored curated registries in line with the shipped registry.yaml, at every start:
+//   - a shipped registry that is missing is added, enabled;
+//   - a stored curated registry takes the shipped repo, root, license, trust, import mode and notes; a human's choice to
+//     disable it stays. When its repo or root changed, its library rows and watch state are dropped (they describe the old
+//     source) and the next sync fills them from the new one;
+//   - a curated registry the app no longer ships (react-router, replaced by remix on 2026-10-14) is removed with its library
+//     rows and watch state, so nothing syncs it or offers its skills as current.
+//
+// A project's own copies of skills (the skills table) are never touched: they stay as they are, with their pins. Registries
+// a human added (curated = 0) are left alone, including one whose id a shipped entry later takes.
 func (s *Service) EnsureRegistries(ctx context.Context) error {
 	cur, err := CuratedRegistries()
 	if err != nil {
 		return err
 	}
 	now := s.now().UnixMilli()
-	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	var changed []map[string]any
+	err = s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		type stored struct{ repo, root string }
+		have := map[string]stored{}
+		rows, err := tx.QueryContext(ctx, `SELECT id,repo,root FROM skill_registries WHERE curated=1`)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var id string
+			var st stored
+			if err := rows.Scan(&id, &st.repo, &st.root); err != nil {
+				rows.Close()
+				return err
+			}
+			have[id] = st
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		forget := func(id string) error {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM skill_library WHERE registry_id=?`, id); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `DELETE FROM skill_registry_watch WHERE registry_id=?`, id)
+			return err
+		}
+		shipped := map[string]bool{}
 		for _, r := range cur {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO skill_registries(id,repo,root,license,license_scope,trust,import_mode,notes,enabled,curated,added_by,created_at) VALUES(?,?,?,?,?,?,?,?,1,1,'curated',?)
-				ON CONFLICT(id) DO NOTHING`, r.ID, r.Repo, r.Root, r.License, r.LicenseScope, r.Trust, r.Import, r.Notes, now); err != nil {
+			shipped[r.ID] = true
+			old, ok := have[r.ID]
+			if !ok {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO skill_registries(id,repo,root,license,license_scope,trust,import_mode,notes,enabled,curated,added_by,created_at) VALUES(?,?,?,?,?,?,?,?,1,1,'curated',?)
+					ON CONFLICT(id) DO NOTHING`, r.ID, r.Repo, r.Root, r.License, r.LicenseScope, r.Trust, r.Import, r.Notes, now); err != nil {
+					return err
+				}
+				continue
+			}
+			if old.repo != r.Repo || old.root != r.Root {
+				if err := forget(r.ID); err != nil {
+					return err
+				}
+				changed = append(changed, map[string]any{"registry": r.ID, "repo": r.Repo, "root": r.Root, "action": "source_changed", "by": "system"})
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE skill_registries SET repo=?,root=?,license=?,license_scope=?,trust=?,import_mode=?,notes=? WHERE id=? AND curated=1`,
+				r.Repo, r.Root, r.License, r.LicenseScope, r.Trust, r.Import, r.Notes, r.ID); err != nil {
 				return err
 			}
 		}
+		for id, old := range have {
+			if shipped[id] {
+				continue
+			}
+			if err := forget(id); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM skill_registries WHERE id=? AND curated=1`, id); err != nil {
+				return err
+			}
+			changed = append(changed, map[string]any{"registry": id, "repo": old.repo, "action": "retired", "by": "system"})
+		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	for _, c := range changed {
+		s.emit(ctx, EventRegistryChanged, "", "", "", c)
+	}
+	return nil
 }
 
 // Registries lists the allowlist.
