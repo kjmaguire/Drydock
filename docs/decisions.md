@@ -132,3 +132,13 @@ Open, owner action:
     threshold the best are kept; a "no endpoints" answer while skipping is resent without. Changes publish
     `provider.endpoints_avoided` and the provider's panel lists what is skipped. Details and what is unverified:
     `docs/model-routing.md`, "As built: OpenRouter endpoint uptime".
+- **P54. Agents are told the SDK versions the repository uses (2026-10-15, on the owner's request).** Asked whether syncing
+  vendors' SDKs (Linear, Microsoft) into Drydock is worth it: not as Drydock's own dependencies (Linear and Notion publish no Go
+  SDK, Microsoft Graph's Go SDK is very large for an integration Drydock does not have, Sentry's is for reporting errors; the
+  direct API clients are about 1,400 lines with their rate limits tested), and not as copied reference text (the skill
+  registries, Context7 and Microsoft Learn already give agents current documentation, and P37 measured that preloading costs
+  without helping). The gap was the version: an agent asks for the latest documentation while the repository pins an older
+  major. AGENTS.md now has a "Library versions" section read from the worktree's manifests and lockfiles (npm, pnpm, yarn,
+  Go, NuGet, Python), curated SDKs and frameworks only, at most 40, validated so a manifest cannot inject text; the lead's
+  recommendation turn sees the same list. Files only, nothing is run or contacted. `docs/token-control.md`, "As built:
+  library versions in the instructions".

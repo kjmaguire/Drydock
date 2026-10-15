@@ -15,6 +15,7 @@ import (
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/libver"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/skills"
@@ -398,6 +399,7 @@ func (c *Core) recommendPrompt(ctx context.Context, projectID string, w recommen
 	b.WriteString("Drydock phase: recommend\n\n")
 	b.WriteString("You advise the person who runs this software project in Drydock. Recommend which agent of the team should get which skill, MCP server or integration, ")
 	b.WriteString("based on what the project is building and what its agents do. Recommend only what helps the work; fewer good recommendations beat many. ")
+	b.WriteString("When the repository uses a vendor's SDK and that vendor's documentation server or skills are available below, that is a good reason to recommend them to the agents who write that code. ")
 	b.WriteString("You only advise: the person applies each recommendation. Do not edit files.\n\n")
 	fmt.Fprintf(&b, "## Project\nName: %s\n", p.Name)
 	if p.Brief != "" {
@@ -419,6 +421,12 @@ func (c *Core) recommendPrompt(ctx context.Context, projectID string, w recommen
 				}
 				fmt.Fprintf(&b, "- planned: %s\n", clip(t.Title, 160))
 			}
+		}
+	}
+	if p.HasRepo && p.RepoPath != "" {
+		// the SDKs and frameworks the code uses, so a matching documentation server or vendor skill can be recommended (P54)
+		if r, err := libver.Scan(p.RepoPath, libver.Options{MaxLibs: 30}); err == nil && r.Libs() > 0 {
+			fmt.Fprintf(&b, "Libraries the repository uses: %s\n", clip(r.Line(), 1500))
 		}
 	}
 	names := map[string]string{}

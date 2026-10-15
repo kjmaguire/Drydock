@@ -11,6 +11,7 @@ import (
 	"time"
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
+	"github.com/kjmaguire/drydock/internal/libver"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/packs"
@@ -254,6 +255,9 @@ func (k *Knowledge) wireContext() {
 		}
 		t := k.worktreeTarget(ctx, projectID, worktree)
 		var out []ctxeng.Section
+		if sec, ok := libraryVersionsSection(worktree); ok {
+			out = append(out, sec)
+		}
 		ins, err := k.Packs.Instructions(ctx, projectID, t.AgentID, t.Role)
 		if err != nil {
 			return nil, err
@@ -747,4 +751,16 @@ func (k *Knowledge) DecideMemory(ctx context.Context, by, id, status string) (me
 	k.audit(ctx, "memory."+map[string]string{memory.Accepted: "accept", memory.RejectedSt: "reject"}[status], id, map[string]any{"project": e.ProjectID, "kind": e.Kind})
 	k.c.publish(ctx, "memory."+map[string]string{memory.Accepted: "accepted", memory.RejectedSt: "rejected"}[status], e.ProjectID, map[string]any{"id": id, "kind": e.Kind, "by": by})
 	return k.Memory.Get(ctx, id)
+}
+
+// libraryVersionsSection lists the versions of the SDKs and frameworks the worktree's manifests and lockfiles pin, so the
+// agent writes code for them and asks documentation for them (decision P54). A worktree whose files cannot be read, or that
+// uses none of the curated libraries, gets no section.
+func libraryVersionsSection(worktree string) (ctxeng.Section, bool) {
+	r, err := libver.Scan(worktree, libver.Options{})
+	if err != nil || r.Libs() == 0 {
+		return ctxeng.Section{}, false
+	}
+	return ctxeng.Section{Title: "Library versions", Body: r.Section(), Source: "libver:" + strings.Join(r.Sources(), ","),
+		Reason: fmt.Sprintf("%d SDK and framework versions read from the repository's manifests and lockfiles", r.Libs()), Priority: 34}, true
 }

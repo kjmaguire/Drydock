@@ -335,3 +335,34 @@ Proving tests: `TestAResumedSessionRecordsOnlyItsOwnCost`, `TestACompactionIsCou
 (`internal/agents/acp`), `TestAnACPChatCountsEachTurnsCostOnce` (`internal/core`), `TestOccupancyThresholdTriggersHandoff`
 (`internal/pipeline`), `TestOpenCodeInlineConfigStatesCompaction` (`internal/mcp`),
 `TestOnlyTheOpenCodeManifestOptsInToAgentExtensions` (`internal/agents/manifests`).
+
+## As built: library versions in the instructions (2026-10-15, decision P54)
+
+An agent that looks up an SDK's documentation gets the latest version's, and writes code for it even when the repository pins
+an older major (Stripe 18 against a lockfile on 15). Drydock now says which version the repository uses.
+
+- **What is read** (`internal/libver`): every `package.json` (exact versions from the nearest `package-lock.json`,
+  `pnpm-lock.yaml` or `yarn.lock`, including a workspace's own nested copy), `go.mod` (direct requirements, not `// indirect`),
+  `.csproj`/`.fsproj`/`.vbproj` (`PackageReference`, with `Directory.Packages.props` for central versions), `requirements.txt`
+  and `pyproject.toml` (pins and ranges, exact from `uv.lock` or `poetry.lock`). Up to three folder levels down; never
+  `node_modules`, `vendor`, build output, tool state, `testdata` or fixtures; no symbolic link is followed; at most 24 manifests
+  and 20,000 entries. Files only: no package manager runs and nothing is contacted.
+- **What is reported**: only libraries on a curated list (`internal/libver/curated.go`): vendor SDKs (payments, issue trackers,
+  Microsoft, the clouds, observability, AI, auth, messaging) and the frameworks whose API changes between majors, at most 40
+  in all. Every other library's version stays in the files the section names. A name or version that does not look like one
+  (spaces, newlines, backticks, shell text) is dropped, so a manifest cannot put text of its own into the instructions.
+- **Where it goes**: a "Library versions" section of AGENTS.md (so every CLI gets it, and Claude Code in its cached system
+  prompt), one line per manifest, for example
+  ``- `package.json` (exact versions from `package-lock.json`): @linear/sdk 58.1.0, stripe 15.4.0``, with the instruction to
+  write code for these versions and to ask Context7, Microsoft Learn or the vendor's site for them, not the latest. A
+  repository that uses none of the curated libraries gets no section. Typical size: a few hundred bytes; it changes only when
+  the manifests do, and holds no worktree path, so worktrees of one base share the prompt cache. The instruction writer's
+  manifest records it (`libver:<files>`).
+- **Recommendations**: the lead's recommendation turn (P52) is told "Libraries the repository uses: ..." and that a vendor SDK
+  in use is a good reason to recommend that vendor's documentation server or skills.
+
+Proving tests: `internal/libver` (lockfiles of npm, pnpm and yarn, workspaces, go.mod, central .NET versions, Python pins and
+uv.lock, the bounds, the curated list, and `TestAManifestCannotWriteIntoTheInstructions`), and in `internal/core`
+`TestAWorkersInstructionsNameTheSDKVersionsTheRepositoryPins` and `TestTheRecommendationPromptNamesTheRepositorysSDKs` (both
+fail on the code before P54) and `TestARepositoryWithoutManifestsGetsNoLibrarySection`. Not verified: a real agent following
+the section (no paid turn was run), Bun's `bun.lock`, Gradle, Maven, Cargo and Ruby (not read yet).
