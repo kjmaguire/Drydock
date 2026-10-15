@@ -1,13 +1,14 @@
 // Overview (Crew HQ, decision P64): the project's home. A greeting with the day's numbers, what needs you (the first few,
-// each a link to where it is decided), the crew as dots with what each agent is doing right now, the tasks in motion, and
-// the rooms. Everything here is a projection of the core's lists; nothing is approved from this page.
+// each a link to where it is decided), the crew as dots with what each agent is doing right now, the tasks in motion, the
+// rooms, and Insights: the spend against the budget, what merged this week, the first-check pass rate and the last security
+// scan's findings, each a link to its page. Everything here is a projection of the core's reads; nothing is approved here.
 
 import { css, type Handle } from 'remix/component';
 import { ArrowRight, Inbox, Sparkles } from 'lucide';
-import type { Agent, NeedsYouItem, PresenceState, Task } from '../../api/types.ts';
+import type { Agent, NeedsYouItem, Task } from '../../api/types.ts';
 import { agentName, presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
-import { services, watch } from '../../state/services.tsx';
+import { query, services, watch } from '../../state/services.tsx';
 import { RoomLink } from '../../shell/hubnav.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
 import { Avatar, StatusChip, presenceColor } from '../../ui/data.tsx';
@@ -15,7 +16,12 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { Meter } from '../budgets/meter.tsx';
+import { findingsText } from '../security/security.ts';
 import { KIND_LABEL, needsTarget } from '../needs-you/needs-you.ts';
+import { DONE, WEEK_MS, WORKING, dayStart, doing, firstCheckText, greeting, mergedSince, spendLine } from './overview.ts';
+
+export { doing, greeting };
 
 const layoutCss = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: t.s6, alignItems: 'start', '@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)' } });
 const colCss = css({ display: 'grid', gap: t.s6, minWidth: '0' });
@@ -102,24 +108,23 @@ const panelTitle = css({ display: 'flex', alignItems: 'baseline', justifyContent
 const roomsList = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
 const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '550', color: t.textMuted, '&:hover': { color: t.text } });
 
-const DONE = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
-const WORKING = /^(working|thinking)/i;
-
-/** A core timestamp in milliseconds: the core writes seconds in some fields and milliseconds in others. */
-function ms(n: number | undefined): number {
-  if (!n) return 0;
-  return n < 1e11 ? n * 1000 : n;
-}
-
-export function greeting(hour: number): string {
-  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-}
-
-/** What an agent is doing, in one line: its activity, else its presence label, else the presence name. */
-export function doing(p: PresenceState | undefined): string {
-  if (!p) return 'Resting';
-  return p.activity || p.label || p.presence;
-}
+// Insights: a 2x2 of linked numbers, each with the words that say what it measures
+const insightGrid = css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: t.s2 });
+const insightCss = css({
+  display: 'grid',
+  gap: '3px',
+  alignContent: 'start',
+  padding: '12px 14px',
+  borderRadius: t.rMd,
+  background: t.bgSidebar,
+  color: t.text,
+  textDecoration: 'none',
+  minWidth: '0',
+  '&:hover': { background: t.bgHover, textDecoration: 'none' },
+  '& small': { color: t.textFaint, fontSize: t.textXs, lineHeight: '1.35' },
+  '& b': { display: 'block', fontSize: '22px', fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' },
+  '& b[data-na]': { color: t.textFaint },
+});
 
 function NeedCard(handle: Handle<{ item: NeedsYouItem; agents: readonly Agent[] }>) {
   return () => {
@@ -149,6 +154,25 @@ export function OverviewScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.project);
+  const pid = () => s.workspace.projectId;
+  const budget = query(handle, {
+    load: () => s.client.budgetStatus({ projectId: pid()! }),
+    when: (e) => e.type.startsWith('budget.') || e.type.startsWith('task.') || e.type === 'room.message_posted',
+    key: pid,
+    enabled: () => !!pid(),
+  });
+  const evals = query(handle, {
+    load: () => s.client.evalsReport({ projectId: pid()!, sinceMs: Date.now() - WEEK_MS }),
+    when: (e) => e.type.startsWith('task.'),
+    key: pid,
+    enabled: () => !!pid(),
+  });
+  const scan = query(handle, {
+    load: () => s.client.securityScanGet(pid()!),
+    when: (e) => e.type.startsWith('security.'),
+    key: pid,
+    enabled: () => !!pid(),
+  });
   return () => {
     const project = s.workspace.project;
     const p = s.project;
@@ -158,10 +182,14 @@ export function OverviewScreen(handle: Handle) {
     const needs = p.needs.data ?? [];
     const rooms = p.roomList.filter((r) => !r.archived);
     const working = agents.filter((a) => WORKING.test(presenceFor(a.id, presence)?.presence ?? '')).length;
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const mergedToday = tasks.filter((x) => x.status === 'COMPLETED' && ms(x.completed ?? x.updated) >= dayStart.getTime()).length;
+    const now = Date.now();
+    const mergedToday = mergedSince(tasks, dayStart(now));
+    const mergedWeek = mergedSince(tasks, now - WEEK_MS);
     const inMotion = tasks.filter((x) => !DONE.has(x.status) && x.status !== 'BACKLOG').slice(0, 6);
+    const spend = budget.data ? spendLine(budget.data.usage['project'], budget.data.statuses) : undefined;
+    const firstCheck = evals.data ? firstCheckText(evals.data.report) : undefined;
+    const report = scan.data;
+    const lastScan = report && report.status !== 'running' ? report : undefined;
     const numbers = [
       working ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`,
       `${mergedToday} merged today`,
@@ -258,6 +286,35 @@ export function OverviewScreen(handle: Handle) {
                   <b>{needs.length}</b>
                   <small>need you</small>
                 </div>
+              </div>
+            </div>
+            <div mix={card} data-testid="overview-insights">
+              <h2 mix={panelTitle}>
+                Insights <span>{project?.name}</span>
+              </h2>
+              <ErrorNote error={budget.error ?? evals.error ?? scan.error} what="Could not read the insights" />
+              <div mix={insightGrid}>
+                <a href={routes.budgets.href()} mix={insightCss} data-testid="overview-spend">
+                  <small>Spend so far</small>
+                  <b data-na={spend && spend.amount === 'n/a' ? '' : undefined}>{spend ? spend.amount : '…'}</b>
+                  <small>{spend ? spend.note : 'reading the budget'}</small>
+                  {spend?.fraction !== undefined ? <Meter value={spend.fraction} label={`Budget used: ${Math.round(spend.fraction * 100)}%`} tone={spend.fraction >= 1 ? 'err' : spend.fraction >= 0.8 ? 'warn' : 'ok'} /> : null}
+                </a>
+                <a href={routes.tasks.href()} mix={insightCss} data-testid="overview-merged-week">
+                  <small>Merged</small>
+                  <b>{mergedWeek}</b>
+                  <small>{mergedWeek === 1 ? 'task' : 'tasks'} completed this week</small>
+                </a>
+                <a href={routes.evals.href()} mix={insightCss} data-testid="overview-first-check">
+                  <small>Passed first check</small>
+                  <b data-na={firstCheck === 'n/a' ? '' : undefined}>{firstCheck ?? '…'}</b>
+                  <small>{firstCheck === 'n/a' ? 'no task checked in 7 days' : 'of tasks checked in 7 days'}</small>
+                </a>
+                <a href={routes.security.href()} mix={insightCss} data-testid="overview-findings">
+                  <small>Security</small>
+                  <b data-na={scan.data === null || (lastScan && lastScan.counts.total === 0) ? '' : undefined}>{scan.data === undefined ? '…' : lastScan ? lastScan.counts.total : report ? '…' : '–'}</b>
+                  <small>{scan.data === undefined ? 'reading the last scan' : lastScan ? `${findingsText(lastScan.counts.total)} in the last scan` : report ? 'a scan is running' : 'no scan yet'}</small>
+                </a>
               </div>
             </div>
             <div mix={card} data-rooms="">
