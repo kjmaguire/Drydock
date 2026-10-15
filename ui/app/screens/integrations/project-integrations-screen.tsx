@@ -3,7 +3,9 @@
 // human's approval, its MCP servers with which of its agents may use each one (ServerCard), adding a server the workspace has
 // connected (your own, or one built into Drydock that you connected) from the library, and the app-sync connections assigned to
 // it: what each imports, its items, rules and outbound writes (assignments.tsx). Services and servers are connected once for the
-// workspace, on the workspace's Integrations page and in the Library; this page only puts them into the project.
+// workspace, on the workspace's Integrations page and in the Library; this page only puts them into the project. Laid out like
+// Home and the workspace's Integrations page (P59): groups under a heading, the connected services as tiles (logo, name, the
+// scope this project imports, a state badge) with the selected one's panel under them.
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { Blocks, CirclePlus, FolderPlus, Plug, ShieldAlert } from 'lucide';
@@ -17,17 +19,17 @@ import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section, stack } from '../../ui/layout.tsx';
-import { emptyLine } from '../../ui/tiles.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AddFromLibrary, Approvals, ServerCard } from '../mcp/mcp-screen.tsx';
 import { AssignForm, AssignmentRow, head, type OpenTask } from './assignments.tsx';
-import { kindLabel, statusTone } from './integrations.ts';
+import { kindLabel, projectConnState, statusTone } from './integrations.ts';
 
 const defaultOpen: OpenTask = (href) => void navigate(href);
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
-const sectionsCss = css({ display: 'grid', gap: t.s6, minWidth: '0' });
-const connCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' }, '& h3': { fontSize: t.textLg, fontWeight: '600', margin: '0' } });
+const sectionsCss = css({ display: 'grid', gap: t.s8, minWidth: '0' });
+// the selected service's panel, right under the tiles (the same card as the workspace page's panel)
+const connCss = css({ display: 'grid', gap: t.s3, minWidth: '0', borderColor: t.borderStrong, '& p': { margin: '0' }, '& h3': { fontSize: t.textLg, fontWeight: '600', margin: '0' } });
 
 /** One connected service as this project has it: assigned (its scope, sync, items, rules, outbound) or Assign to <project>. */
 function ProjectConnection(handle: Handle<{ conn: IntegrationView; info?: IntegrationKindInfo; project: Project; onChanged: () => void; openTask: OpenTask }>) {
@@ -40,7 +42,7 @@ function ProjectConnection(handle: Handle<{ conn: IntegrationView; info?: Integr
     return (
       <article mix={[card, connCss]} data-testid="project-integration" data-kind={conn.kind} data-assigned={String(!!a)} aria-label={label}>
         <header mix={head}>
-          <BrandLogo id={conn.kind} size={28} label />
+          <BrandLogo id={conn.kind} size={32} label />
           <h3>{label}</h3>
           <Badge tone={statusTone(conn.status)}>{conn.status}</Badge>
           {account ? <span mix={muted}>connected as {account}</span> : null}
@@ -90,6 +92,8 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
     enabled: () => !!s.workspace.projectId,
     when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'),
   });
+  // the service whose panel is open: undefined = the first one assigned to this project (else the first), '' = none
+  let selected: string | undefined;
 
   return () => {
     const project = s.workspace.project;
@@ -111,10 +115,13 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
     const agents = s.project.agentList;
     const inProject = servers.data ?? [];
     const list: IntegrationView[] = conns.data ?? [];
+    const mine = (c: IntegrationView) => (c.assignments ?? []).some((a) => a.projectId === project.id);
+    const current = selected === undefined ? (list.find(mine) ?? list[0]) : list.find((c) => c.id === selected);
     return (
       <Page
         title="Integrations"
         icon={Blocks}
+        wide
         subtitle={project.name}
         testId="project-integrations"
         actions={
@@ -125,17 +132,18 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
         }
       >
         <div mix={sectionsCss}>
-          <p mix={introCss}>
-            What {project.name} reaches outside Drydock: the MCP servers its agents may use and the services whose items it imports. Services and servers are connected once for the
-            whole workspace, on the <a href={routes.integrations.href()}>Integrations</a> page and in the <a href={routes.library.href()}>Library</a>; here you put them into{' '}
-            {project.name}. A server nobody was granted is never reached, and every tool not marked read-only waits for your approval, call by call.
-          </p>
           <Approvals projectId={project.id} agents={agents} />
           <Section
             label="MCP servers in this project"
             testId="project-mcp"
             title="MCP servers"
-            description={`The connected servers ${project.name} has, and which of its agents may use each one.`}
+            description={
+              <>
+                The connected servers {project.name} has, and which of its agents may use each one. Servers are connected once for the workspace, on the{' '}
+                <a href={routes.integrations.href()}>Integrations</a> page and in the <a href={routes.library.href()}>Library</a>. A server nobody was granted is never reached,
+                and every tool not marked read-only waits for your approval, call by call.
+              </>
+            }
           >
             <ErrorNote error={servers.error} what="Could not load the servers" />
             {servers.loading && !servers.data ? <Loading /> : null}
@@ -156,7 +164,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
             label="App sync"
             testId="project-app-sync"
             title="App sync"
-            description={`The connected services whose items ${project.name} imports, as untrusted text: what each imports, its items, its rules and its writes back.`}
+            description={`The services connected for the workspace, and what ${project.name} imports from each, as untrusted text: its scope, items, rules and writes back. Choose a service to open it.`}
           >
             <ErrorNote error={conns.error ?? kinds.error} what="Could not load the services" />
             {conns.loading && !conns.data ? <Loading /> : null}
@@ -166,11 +174,39 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
                 <strong>No service is connected yet.</strong> Connect one once on the <a href={routes.integrations.href()}>Integrations</a> page, then assign it here.
               </p>
             ) : null}
-            <div mix={stack}>
-              {list.map((c) => (
-                <ProjectConnection key={c.id} conn={c} info={(kinds.data ?? []).find((k) => k.kind === c.kind)} project={project} onChanged={conns.reload} openTask={openTask} />
-              ))}
-            </div>
+            {list.length > 0 ? (
+              <ul mix={tileGrid} aria-label="Connected services">
+                {list.map((c) => {
+                  const info = (kinds.data ?? []).find((k) => k.kind === c.kind);
+                  const st = projectConnState(info, c, project.id);
+                  return (
+                    <Tile
+                      key={c.id}
+                      title={info?.label ?? kindLabel(c.kind)}
+                      logo={c.kind}
+                      blurb={info?.blurb}
+                      state={st.text}
+                      tone={st.tone}
+                      badge={st.badge}
+                      selected={current?.id === c.id}
+                      onSelect={() => ((selected = current?.id === c.id ? '' : c.id), void handle.update())}
+                      testId="project-integration-tile"
+                      data={{ kind: c.kind, assigned: String(c.assignments?.some((a) => a.projectId === project.id) ?? false) }}
+                    />
+                  );
+                })}
+              </ul>
+            ) : null}
+            {current ? (
+              <ProjectConnection
+                key={current.id}
+                conn={current}
+                info={(kinds.data ?? []).find((k) => k.kind === current.kind)}
+                project={project}
+                onChanged={conns.reload}
+                openTask={openTask}
+              />
+            ) : null}
           </Section>
         </div>
       </Page>

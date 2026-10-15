@@ -851,6 +851,37 @@ export interface IntegrationView {
   checkedAt?: number;
   assignments?: IntegrationAssignment[] | null;
   legacyItems?: number;
+  /** The last check against the person's account (integration.verify, decision P59); absent: never, or not since a reconnect. */
+  verified?: IntegrationVerifyRecord;
+}
+/** What is kept of the last check against the account: no content, no secret. */
+export interface IntegrationVerifyRecord {
+  at: number;
+  ok: boolean;
+  summary: string;
+  calls: number;
+  failedCalls: number;
+  items: number;
+  mismatches: number;
+}
+/** One HTTP call the check made, with the status it answered (0: no answer arrived). */
+export interface IntegrationVerifyCall {
+  endpoint: string;
+  status: number;
+  ok: boolean;
+}
+/** The outcome of Check against your account: the steps, the calls, what was read (counts) and what did not match. */
+export interface IntegrationVerifyReport {
+  integrationId: string;
+  kind: string;
+  ok: boolean;
+  at: number;
+  summary: string;
+  steps: { id: string; name: string; ok: boolean; skipped?: boolean; detail: string }[] | null;
+  calls: IntegrationVerifyCall[] | null;
+  read: { accountNamed: boolean; workspaceNamed: boolean; scopes: number; choices: number; assignments: number; items: number; morePages: boolean; detailRead: boolean };
+  mismatches: string[] | null;
+  notes: string[] | null;
 }
 export interface ConnectIntegrationReq {
   /** Set to reconnect (a new credential for the same connection). */

@@ -79,20 +79,22 @@ const sectionHead = css({
   alignItems: 'flex-end',
   justifyContent: 'space-between',
   gap: t.s3,
-  '& h2': { fontSize: t.textMd, fontWeight: '600' },
+  '& h2, & h3': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
   '& p': { color: t.textMuted, fontSize: t.textSm, marginTop: '2px' },
 });
 
-/** A titled group within a page. */
-export function Section(handle: Handle<{ title?: RemixNode; description?: RemixNode; actions?: RemixNode; children?: RemixNode; label?: string; testId?: string }>) {
+/** A titled group within a page. `level` 3 is a group inside another section (an h3 under the page's h2 groups). */
+export function Section(
+  handle: Handle<{ title?: RemixNode; description?: RemixNode; actions?: RemixNode; children?: RemixNode; label?: string; testId?: string; level?: 2 | 3 }>,
+) {
   return () => {
-    const { title, description, actions, children, label, testId } = handle.props;
+    const { title, description, actions, children, label, testId, level = 2 } = handle.props;
     return (
       <section mix={sectionCss} aria-label={label} data-testid={testId}>
         {title || actions ? (
           <div mix={sectionHead}>
             <div>
-              {title ? <h2>{title}</h2> : null}
+              {title ? level === 3 ? <h3>{title}</h3> : <h2>{title}</h2> : null}
               {description ? <p>{description}</p> : null}
             </div>
             {actions ? <div>{actions}</div> : null}

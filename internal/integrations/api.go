@@ -121,8 +121,10 @@ func (c *apiClient) do(ctx context.Context, method, path string, q url.Values, b
 		}
 		resp, err := c.hc.Do(req)
 		if err != nil {
+			traceCall(ctx, method, path, 0)
 			return nil, Classify(c.kind, err, "")
 		}
+		traceCall(ctx, method, path, resp.StatusCode)
 		b, rerr := io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
 		resp.Body.Close()
 		if rerr != nil {

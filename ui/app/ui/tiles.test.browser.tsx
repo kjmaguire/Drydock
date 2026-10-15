@@ -23,6 +23,21 @@ describe('Tile', () => {
     expect(clicks).toBe(1);
   });
 
+  it('shows a state badge on the name line when it has one', () => {
+    const { container } = renderPlain(
+      <ul mix={tileGrid}>
+        <Tile title="Linear" logo="linear" blurb="Issues and projects" state="Sync: connected" badge={{ text: 'verified', tone: 'ok' }} testId="t" />
+        <Tile title="Notion" logo="notion" testId="n" />
+      </ul>,
+    );
+    const b = container.querySelector('[data-testid="t"]') as HTMLButtonElement;
+    const badge = b.querySelector('[data-tile-title] [data-testid="tile-badge"]') as HTMLElement;
+    expect(badge.textContent).toBe('verified');
+    expect(badge.previousElementSibling!.textContent).toBe('Linear');
+    expect(b.textContent).toBe('LinearverifiedIssues and projectsSync: connected');
+    expect(container.querySelector('[data-testid="n"] [data-testid="tile-badge"]')).toBeNull();
+  });
+
   it('shows an icon on a neutral square when the thing has no brand, and colours the state by its tone', () => {
     // The plain test page has no theme stylesheet; define the one colour this checks.
     document.documentElement.style.setProperty('--success', 'rgb(1, 128, 2)');

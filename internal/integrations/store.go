@@ -167,7 +167,8 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) error {
 				return err
 			}
 		}
-		return nil
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, verifyKey(id))
+		return err
 	})
 }
 

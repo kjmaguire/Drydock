@@ -1,5 +1,7 @@
-// Integrations (decisions P42, P43 and P47): one workspace page for everything Drydock connects to outside itself, a tile per
-// vendor. A vendor's tile opens its panel with up to three sections. App sync is Drydock's own connection to Linear, Notion,
+// Integrations (decisions P42, P43, P47 and P59): one workspace page for everything Drydock connects to outside itself, laid out
+// like Home (P59): groups of tiles under a heading (Services, the vendors with app sync; Agent tools, the vendors that only have
+// MCP servers; then your own servers), a tile per vendor with its logo, name, what it is, its state and a state badge. A
+// vendor's tile opens its panel under its group, with up to three parts. App sync is Drydock's own connection to Linear, Notion,
 // Sentry, Aikido or GitHub (P42): connected once for the whole workspace; the name and logo are fixed, what a connection reaches
 // (account, workspace, scopes) is read from the service's API, never typed. Agent tools (MCP) are the vendor's connector cards
 // (P43, screens/mcp/gallery.tsx): connected once. Skills from this vendor names the vendor's skill registries and links to the
@@ -9,8 +11,16 @@
 // (project-integrations-screen.tsx, /project/integrations). /mcp is an alias of this page.
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { Blocks, Check, Cpu, ExternalLink, KeyRound, LogIn, Server, ShieldAlert, Stethoscope, Trash2, Wrench, X } from 'lucide';
-import type { IntegrationAuthMethod, IntegrationKindInfo, IntegrationOAuthSession, IntegrationTestReport, IntegrationView, SkillRegistry } from '../../api/extTypes.ts';
+import { Blocks, Check, Cpu, ExternalLink, KeyRound, LogIn, Minus, Server, ShieldAlert, ShieldCheck, Stethoscope, Trash2, Wrench, X } from 'lucide';
+import type {
+  IntegrationAuthMethod,
+  IntegrationKindInfo,
+  IntegrationOAuthSession,
+  IntegrationTestReport,
+  IntegrationVerifyReport,
+  IntegrationView,
+  SkillRegistry,
+} from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -28,10 +38,29 @@ import { safeHref } from '../../ui/markdown.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { ConnectorCard, connectorGrid, OwnServers } from '../mcp/gallery.tsx';
 import { full, head, panel, push, toolbar } from './assignments.tsx';
-import { KINDS, kindLabel, statusTone, syncTone, tileState, vendors, vendorStateText, vendorTone, type ServiceKind, type Vendor } from './integrations.ts';
+import {
+  KINDS,
+  kindLabel,
+  statusTone,
+  syncTone,
+  tileState,
+  vendorBadge,
+  verifiedText,
+  vendors,
+  vendorStateText,
+  vendorTone,
+  type ServiceKind,
+  type Vendor,
+} from './integrations.ts';
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
-const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
+const sectionsCss = css({ display: 'grid', gap: t.s8, minWidth: '0' });
+const cardCss = css({ display: 'grid', gap: t.s3, minWidth: '0', '& p': { margin: '0' } });
+// a surface inside the selected tile's panel (a form, a report): quieter than the panel's own card
+const inset = css({ padding: t.s4, border: `1px solid ${t.border}`, borderRadius: t.rMd, background: t.bgApp, minWidth: '0' });
+// the selected tile's panel, right under its grid: one card, its parts separated by the same gap as Home's sections
+const detailCss = css({ display: 'grid', gap: t.s5, minWidth: '0', borderColor: t.borderStrong });
+const reportList = css({ display: 'grid', gap: '4px', margin: '0', paddingLeft: t.s5, fontSize: t.textMd });
+const callList = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textSm, '& li': { display: 'flex', gap: t.s2, alignItems: 'baseline' } });
 const stats = css({
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
@@ -53,7 +82,7 @@ const serviceHead = css({
   alignItems: 'center',
   gap: t.s3,
   flexWrap: 'wrap',
-  '& h2': { fontSize: t.textXl, fontWeight: '600', margin: '0' },
+  '& h3': { fontSize: t.textLg, fontWeight: '600', margin: '0' },
 });
 const linkList = css({ display: 'flex', gap: t.s3, flexWrap: 'wrap', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textSm });
 const methodGrid = css({ gridColumn: '1 / -1', display: 'flex', gap: t.s2, flexWrap: 'wrap', margin: '0', padding: '0', border: '0', '& legend': { fontSize: t.textSm, fontWeight: '500', marginBottom: '6px', padding: '0' } });
@@ -71,7 +100,6 @@ const methodTile = css({
 });
 const identityGrid = css({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
 const codeCss = css({ fontFamily: t.mono, fontSize: t.textLg, fontWeight: '600', letterSpacing: '0.08em' });
-const panelStack = css({ display: 'grid', gap: t.s5, minWidth: '0' });
 const regList = css({
   display: 'grid',
   gap: t.s2,
@@ -103,6 +131,105 @@ export function ReportView(handle: Handle<{ r: IntegrationTestReport }>) {
             </li>
           ))}
         </ol>
+      </div>
+    );
+  };
+}
+
+/**
+ * The report of Check against your account (decision P59): the verdict, what was read (counts only: the core never sends item
+ * text, names or the credential), what did not match what Drydock expects, each step, and the calls made with their status codes.
+ */
+export function VerifyReportView(handle: Handle<{ r: IntegrationVerifyReport }>) {
+  return () => {
+    const { r } = handle.props;
+    const read = r.read;
+    const mismatches = r.mismatches ?? [];
+    const notes = r.notes ?? [];
+    const calls = r.calls ?? [];
+    const yes = (b: boolean) => (b ? 'yes' : 'no');
+    // what was read means something only once the vendor accepted the credential
+    const reached = (r.steps ?? []).some((st) => st.id === 'identity' && st.ok);
+    return (
+      <div mix={reportCss} data-testid="verify-report" data-ok={String(r.ok)}>
+        <p>
+          <Badge tone={r.ok ? 'ok' : 'err'}>{r.ok ? 'verified' : 'did not pass'}</Badge> {r.summary}
+        </p>
+        {reached ? (
+        <dl mix={stats} data-testid="verify-read" aria-label="What was read">
+          <div>
+            <dt>Account named</dt>
+            <dd>{yes(read.accountNamed)}</dd>
+          </div>
+          <div>
+            <dt>Workspace named</dt>
+            <dd>{yes(read.workspaceNamed)}</dd>
+          </div>
+          <div>
+            <dt>Choices listed</dt>
+            <dd>{read.choices}</dd>
+          </div>
+          <div>
+            <dt>Items read</dt>
+            <dd>
+              {read.items}
+              {read.morePages ? ' (more not read)' : ''}
+            </dd>
+          </div>
+          <div>
+            <dt>Full text read</dt>
+            <dd>{read.detailRead ? 'yes, not kept' : 'no'}</dd>
+          </div>
+          <div>
+            <dt>Calls</dt>
+            <dd>{calls.length === 0 ? 'through gh' : `${calls.filter((c) => c.ok).length} of ${calls.length} answered`}</dd>
+          </div>
+        </dl>
+        ) : null}
+        {mismatches.length > 0 ? (
+          <div>
+            <p>
+              <strong>Did not match what Drydock expects</strong>
+            </p>
+            <ul mix={reportList}>
+              {mismatches.map((m) => (
+                <li key={m} data-testid="verify-mismatch">
+                  {m}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <ol mix={steps}>
+          {(r.steps ?? []).map((st) => (
+            <li key={st.id} data-testid="verify-step" data-ok={String(st.ok)}>
+              <span style={{ color: st.skipped ? tone.muted.fg : st.ok ? tone.ok.fg : tone.err.fg, display: 'inline-flex' }}>
+                <Icon icon={st.skipped ? Minus : st.ok ? Check : X} size={14} />
+              </span>
+              <span>
+                {st.name}: {st.skipped ? 'skipped' : st.ok ? 'ok' : 'failed'} <span mix={faint}>{st.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        {notes.map((n) => (
+          <p key={n} mix={faint}>
+            {n}
+          </p>
+        ))}
+        {calls.length > 0 ? (
+          <details mix={detailsCss}>
+            <summary>Calls made ({calls.length})</summary>
+            <ul mix={callList} data-testid="verify-calls">
+              {calls.map((c, i) => (
+                <li key={`${i}-${c.endpoint}`} data-testid="verify-call" data-status={String(c.status)}>
+                  <Badge tone={c.ok ? 'ok' : 'err'}>{c.status ? `HTTP ${c.status}` : 'no answer'}</Badge>
+                  <span mix={mono}>{c.endpoint}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
     );
   };
@@ -214,7 +341,7 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
       </Field>
     );
     return (
-      <form mix={[card, formGrid, on<HTMLFormElement, 'submit'>('submit', submit)]} autocomplete="off" aria-label={reconnectId ? `Reconnect ${label}` : `Connect ${label}`}>
+      <form mix={[inset, formGrid, on<HTMLFormElement, 'submit'>('submit', submit)]} autocomplete="off" aria-label={reconnectId ? `Reconnect ${label}` : `Connect ${label}`}>
         <div mix={full}>
           <ErrorNote error={act.error} what="Not connected" />
         </div>
@@ -308,6 +435,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
   const s = services(handle);
   const act = action(handle);
   let report: IntegrationTestReport | undefined;
+  let checked: IntegrationVerifyReport | undefined;
   let reconnect = false;
   let confirm = false;
   return () => {
@@ -315,15 +443,17 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
     const label = info?.label ?? kind.label;
     const id = conn?.identity ?? {};
     const assigned = (conn?.assignments ?? []).length;
+    const verified = conn?.verified;
     return (
-      <article mix={[card, cardCss]} data-testid="integration" data-kind={kind.kind} data-name={label} aria-labelledby={`svc-${handle.id}`}>
+      <article mix={cardCss} data-testid="integration" data-kind={kind.kind} data-name={label} aria-labelledby={`svc-${handle.id}`}>
         <header mix={serviceHead}>
-          <BrandLogo id={kind.kind} size={40} label />
-          <h2 id={`svc-${handle.id}`} data-testid="integration-name">
+          <BrandLogo id={kind.kind} size={32} label />
+          <h3 id={`svc-${handle.id}`} data-testid="integration-name">
             {label}
-          </h2>
+          </h3>
           {conn ? <Badge tone={statusTone(conn.status)}>{conn.status}</Badge> : <Badge tone="muted">not connected</Badge>}
           {conn ? <Badge tone={syncTone(conn.sync.state)}>sync: {conn.sync.state}</Badge> : null}
+          {verified ? <Badge tone={verified.ok ? 'ok' : 'err'}>{verified.ok ? 'verified' : 'check did not pass'}</Badge> : null}
         </header>
         <p mix={muted}>
           {info?.blurb ?? kind.blurb}. Drydock reads {info?.items ?? 'items'} through {info?.api ?? 'the service API'} and imports them into the projects you assign.
@@ -367,8 +497,12 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
                 <dd>{conn.kind === 'github' ? 'your gh sign-in (Drydock stores no GitHub token)' : conn.hasCredential ? 'stored in the credential store (never shown)' : 'none'}</dd>
               </div>
             </dl>
+            <p mix={muted} data-testid="integration-verified" data-ok={verified ? String(verified.ok) : undefined}>
+              {verifiedText(conn)}
+            </p>
             <ErrorNote error={act.error} />
             {report ? <ReportView r={report} /> : null}
+            {checked ? <VerifyReportView r={checked} /> : null}
             <div mix={toolbar}>
               <Button
                 size="sm"
@@ -384,6 +518,21 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
               >
                 Test
               </Button>
+              <Button
+                size="sm"
+                icon={ShieldCheck}
+                disabled={act.busy !== ''}
+                title={`Reads your ${label} account with the credential Drydock already holds: who it is, one list, one page of ${info?.items ?? 'items'}. Nothing is written and nothing read is kept.`}
+                mix={[
+                  on('click', async () => {
+                    const r = await act.run('verify', () => s.client.integrationVerify(conn.id));
+                    if (r) checked = r;
+                    onChanged();
+                  }),
+                ]}
+              >
+                {act.busy === 'verify' ? 'Checking...' : 'Check against your account'}
+              </Button>
               <Button size="sm" icon={KeyRound} aria-expanded={reconnect ? 'true' : 'false'} mix={[on('click', () => ((reconnect = !reconnect), void handle.update()))]}>
                 Reconnect
               </Button>
@@ -397,6 +546,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
                         on('click', async () => {
                           await act.run('disconnect', () => s.client.integrationDisconnect(conn.id));
                           report = undefined;
+                          checked = undefined;
                           confirm = false;
                           onChanged();
                         }),
@@ -416,7 +566,9 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
               </span>
             </div>
             {confirm ? <p mix={faint}>Disconnecting removes the credential, every project assignment and the items that never became tasks.</p> : null}
-            {reconnect ? <ConnectForm kind={kind.kind} info={info} reconnectId={conn.id} onDone={(r) => ((report = r.test), (reconnect = false), onChanged())} /> : null}
+            {reconnect ? (
+              <ConnectForm kind={kind.kind} info={info} reconnectId={conn.id} onDone={(r) => ((report = r.test), (checked = undefined), (reconnect = false), onChanged())} />
+            ) : null}
             <section aria-label="Projects" mix={panel}>
               <h4>Projects</h4>
               {(conn.legacyItems ?? 0) > 0 ? (
@@ -465,7 +617,21 @@ function VendorTile(handle: Handle<{ v: Vendor; conn?: IntegrationView; selected
     const data: Record<string, string> = { kind: v.key };
     if (v.kind) data.connected = conn ? 'true' : 'false';
     else data.mcp = 'true';
-    return <Tile title={v.label} logo={v.logo} icon={Server} blurb={v.blurb} state={vendorStateText(v, conn)} tone={vendorTone(v, conn)} selected={selected} onSelect={onSelect} testId="integration-tile" data={data} />;
+    return (
+      <Tile
+        title={v.label}
+        logo={v.logo}
+        icon={Server}
+        blurb={v.blurb}
+        state={vendorStateText(v, conn)}
+        tone={vendorTone(v, conn)}
+        badge={vendorBadge(v, conn)}
+        selected={selected}
+        onSelect={onSelect}
+        testId="integration-tile"
+        data={data}
+      />
+    );
   };
 }
 
@@ -483,6 +649,7 @@ function VendorSkills(handle: Handle<{ v: Vendor; registries: SkillRegistry[] | 
     );
     return (
       <Section
+        level={3}
         label="Skills from this vendor"
         testId="integration-skills"
         title="Skills from this vendor"
@@ -523,7 +690,11 @@ function VendorSkills(handle: Handle<{ v: Vendor; registries: SkillRegistry[] | 
   };
 }
 
-/** The panel of the selected vendor: app sync (an integration kind), agent tools (its connector cards) and its skill registries. */
+/**
+ * The panel of the selected vendor, right under the grid that holds its tile: one card with app sync (an integration kind: the
+ * service's own card, whose header names the vendor), agent tools (its connector cards) and its skill registries. A vendor without
+ * app sync gets a header of its own, so every panel starts the way its tile does: the logo, the name, what it is.
+ */
 function VendorPanel(
   handle: Handle<{
     v: Vendor;
@@ -539,19 +710,21 @@ function VendorPanel(
   return () => {
     const { v, info, conn, registries, registriesLoading, registriesError, onSyncChanged, onAgentsChanged } = handle.props;
     return (
-      <div mix={panelStack} data-testid="integration-panel" data-kind={v.key}>
+      <div mix={[card, detailCss]} data-testid="integration-panel" data-kind={v.key} role="region" aria-label={v.label}>
         {v.kind ? (
-          <Section
-            label="App sync"
-            testId="integration-sync"
-            title="App sync"
-            description={`Drydock itself reads ${info?.items ?? 'items'} from ${v.label}, as untrusted text, and imports them into each project it is assigned to on that project's Integrations page.`}
-          >
+          <section aria-label="App sync" data-testid="integration-sync" mix={cardCss}>
             <ServicePanel kind={v.kind} info={info} conn={conn} onChanged={onSyncChanged} />
-          </Section>
-        ) : null}
+          </section>
+        ) : (
+          <header mix={serviceHead}>
+            <BrandLogo id={v.logo} size={32} label />
+            <h3>{v.label}</h3>
+            <span mix={muted}>{v.blurb}</span>
+          </header>
+        )}
         {v.cards.length > 0 ? (
           <Section
+            level={3}
             label="Agent tools (MCP)"
             testId="integration-agents"
             title="Agent tools (MCP)"
@@ -570,7 +743,10 @@ function VendorPanel(
   };
 }
 
-/** The workspace's Integrations page: connect each service and MCP server once. `initial` opens that vendor's tile. */
+/**
+ * The workspace's Integrations page, laid out like Home: groups of tiles under a heading, each tile a vendor with its logo, name,
+ * what it is, its state and a state badge; the selected tile's panel opens right under its group. `initial` opens that vendor.
+ */
 export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
@@ -583,15 +759,46 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
     const list: IntegrationView[] = q.data ?? [];
     const cards: McpGalleryCard[] = gallery.data ?? [];
     const all = vendors(KINDS, cards);
+    const synced = all.filter((v) => v.kind);
+    const toolsOnly = all.filter((v) => !v.kind);
     const current = all.find((v) => v.key === selected);
     const info = (kinds.data ?? []).find((k) => k.kind === selected);
     const connected = list.length + cards.filter((c) => c.status === 'connected').length;
     const loaded = !!q.data && !!gallery.data;
+    const grid = (vs: Vendor[], label: string) => (
+      <ul mix={tileGrid} aria-label={label}>
+        {vs.map((v) => (
+          <VendorTile
+            key={v.key}
+            v={v}
+            conn={v.kind ? tileState(list, v.key) : undefined}
+            selected={selected === v.key}
+            onSelect={() => ((selected = selected === v.key ? '' : v.key), void handle.update())}
+          />
+        ))}
+      </ul>
+    );
+    const panelFor = (vs: Vendor[]) =>
+      current && vs.includes(current) ? (
+        <VendorPanel
+          key={current.key}
+          v={current}
+          info={info}
+          conn={current.kind ? tileState(list, current.key) : undefined}
+          registries={regs.data}
+          registriesLoading={regs.loading}
+          registriesError={regs.error}
+          onSyncChanged={q.reload}
+          onAgentsChanged={gallery.reload}
+        />
+      ) : null;
     return (
       <Page
         title="Integrations"
         icon={Blocks}
-        subtitle={loaded ? `${connected} connected` : undefined}
+        wide
+        testId="integrations"
+        subtitle={loaded ? `${connected} connected · each once for the whole workspace` : 'Each connected once for the whole workspace'}
         actions={
           <a href={routes.library.href()} mix={buttonStyle('ghost', 'sm')}>
             <Icon icon={Wrench} size={14} />
@@ -599,51 +806,48 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
           </a>
         }
       >
-        <p mix={introCss}>
-          Connect a service once for the whole workspace. App sync imports its items into the projects it is assigned to: everything a service returns is outside text, redacted,
-          scored for injection risk and quoted as data, and writing back needs your approval of the exact text. Agent tools reach agents through MCP: a server is connected once,
-          then added to a project and granted per agent, a server nobody was granted is never reached, and every tool you have not marked read-only waits for your approval, call
-          by call. Secrets stay in the Windows credential store. Assigning a service to a project, adding a server to it and granting it to its agents are on that project's
-          Integrations page. Claude Code agents receive MCP servers; another agent CLI receives them only after you allow it under MCP gateway on the{' '}
-          <a href={routes.connections.href()}>Connections</a> page.
-        </p>
-        <div data-testid="connector-gallery" mix={panelStack}>
-          <ErrorNote error={q.error ?? kinds.error ?? gallery.error} what="Integrations" />
-          {(q.loading && !q.data) || (gallery.loading && !gallery.data) ? <Loading /> : null}
-          {loaded && connected === 0 ? (
-            <p mix={emptyLine}>
-              <Icon icon={ShieldAlert} size={14} />
-              <strong>Nothing is connected.</strong> Choose a service below. Its items arrive as untrusted text you can read, score and import; its tools reach only the agents you grant.
-            </p>
-          ) : null}
-          <ul mix={tileGrid} aria-label="Services">
-            {all.map((v) => (
-              <VendorTile
-                key={v.key}
-                v={v}
-                conn={v.kind ? tileState(list, v.key) : undefined}
-                selected={selected === v.key}
-                onSelect={() => ((selected = selected === v.key ? '' : v.key), void handle.update())}
-              />
-            ))}
-          </ul>
-          {current ? (
-            <VendorPanel
-              key={current.key}
-              v={current}
-              info={info}
-              conn={current.kind ? tileState(list, current.key) : undefined}
-              registries={regs.data}
-              registriesLoading={regs.loading}
-              registriesError={regs.error}
-              onSyncChanged={q.reload}
-              onAgentsChanged={gallery.reload}
-            />
-          ) : null}
+        <div mix={sectionsCss}>
+          <div data-testid="connector-gallery" mix={sectionsCss}>
+            <ErrorNote error={q.error ?? kinds.error ?? gallery.error} what="Integrations" />
+            {(q.loading && !q.data) || (gallery.loading && !gallery.data) ? <Loading /> : null}
+            {loaded && connected === 0 ? (
+              <p mix={emptyLine}>
+                <Icon icon={ShieldAlert} size={14} />
+                <strong>Nothing is connected.</strong> Choose a service below. Its items arrive as untrusted text you can read, score and import; its tools reach only the agents you grant.
+              </p>
+            ) : null}
+            <Section
+              title="Services"
+              testId="integrations-services"
+              description="Drydock reads their items through each service's own API, as untrusted text: redacted, scored for injection risk and quoted as data. Assign a service to a project, and choose what it imports, on that project's Integrations page; writing back needs your approval of the exact text. Secrets stay in the Windows credential store."
+            >
+              {grid(synced, 'Services')}
+              {panelFor(synced)}
+            </Section>
+            {toolsOnly.length > 0 ? (
+              <Section
+                title="Agent tools"
+                testId="integrations-tools"
+                description={
+                  <>
+                    MCP servers that give agents a vendor's tools. Connect one once, then add it to a project and grant it per agent on that project's Integrations page; every tool
+                    not marked read-only waits for your approval, call by call. Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on
+                    the <a href={routes.connections.href()}>Connections</a> page.
+                  </>
+                }
+              >
+                {grid(toolsOnly, 'Agent tools')}
+                {panelFor(toolsOnly)}
+              </Section>
+            ) : (
+              <p mix={muted}>
+                Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on the <a href={routes.connections.href()}>Connections</a> page.
+              </p>
+            )}
+          </div>
+          <OwnServers linked={cards.map((c) => c.libraryId)} onChanged={gallery.reload} />
         </div>
-        <OwnServers linked={cards.map((c) => c.libraryId)} onChanged={gallery.reload} />
       </Page>
     );
   };
 }
-

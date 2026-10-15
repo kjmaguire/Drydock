@@ -29,6 +29,7 @@ import type {
   IntegrationRule,
   IntegrationSyncResult,
   IntegrationTestReport,
+  IntegrationVerifyReport,
   IntegrationView,
   ConnectIntegrationReq,
   IntegrationAssignment,
@@ -227,6 +228,8 @@ export interface ExtClient {
   integrationOAuthBegin(kind: string, baseUrl?: string): Promise<{ libraryId: string; oauthRef: string; status: { state: string; url?: string; error?: string; signedIn?: boolean } }>;
   integrationDisconnect(id: string): Promise<void>;
   integrationTest(id: string): Promise<IntegrationTestReport>;
+  /** Check against your account (P59): read-only calls with the credential Drydock holds; counts only. */
+  integrationVerify(id: string): Promise<IntegrationVerifyReport>;
   integrationSync(id: string, full?: boolean): Promise<IntegrationSyncResult>;
   integrationItems(filter: { integrationId?: string; assignmentId?: string; projectId?: string; kind?: string; state?: string; imported?: boolean; limit?: number; offset?: number }): Promise<ExternalItem[]>;
   integrationItem(id: string): Promise<ExternalItemDetail>;
@@ -403,6 +406,7 @@ export function createExtClient(t: Transport): ExtClient {
     integrationOAuthBegin: (kind, baseUrl = '') => call('integration.oauthBegin', { kind, baseUrl }),
     integrationDisconnect: (id) => voidCall('integration.disconnect', { id }),
     integrationTest: (id) => call('integration.test', { id }),
+    integrationVerify: (id) => call('integration.verify', { id }),
     integrationSync: (id, full = false) => call('integration.sync', { id, full }),
     integrationItems: async (f) => arr(await call<ExternalItem[] | null>('integration.items', f)),
     integrationItem: (id) => call('integration.item', { id }),

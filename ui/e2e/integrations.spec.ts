@@ -50,6 +50,26 @@ test("integrations: connect Linear without a project, see its fixed name and log
   // the workspace page assigns nothing: that is the project's own Integrations page
   await expect(card.getByRole('button', { name: 'Assign to project' })).toHaveCount(0);
 
+  // the page reads like Home: the services as one group of tiles under a heading, each with a state badge
+  const servicesGroup = page.getByTestId('integrations-services');
+  await expect(servicesGroup.getByRole('heading', { name: 'Services', level: 2 })).toBeVisible();
+  await expect(tile.getByTestId('tile-badge')).toHaveText('connected');
+
+  // Check against your account (P59): the same read-only checks as the live tests, with the key Drydock already holds
+  // (nothing is typed or shown), here against the fixture standing in for the account
+  await expect(card.getByTestId('integration-verified')).toContainText('Not checked against your account yet');
+  await card.getByRole('button', { name: 'Check against your account' }).click();
+  const check = card.getByTestId('verify-report');
+  await expect(check).toHaveAttribute('data-ok', 'true');
+  await expect(check).toContainText('nothing differed from what Drydock expects');
+  await expect(check.getByTestId('verify-read')).toContainText('Items read3'); // not assigned yet: everything the key can see
+  await expect(check.getByTestId('verify-call')).toHaveCount(3);
+  await expect(check.getByTestId('verify-call').first()).toHaveAttribute('data-status', '200');
+  await expect(card.getByTestId('integration-verified')).toContainText('Verified against your account on');
+  await expect(tile.getByTestId('tile-badge')).toHaveText('verified');
+  expect(await page.content()).not.toContain(key);
+  expect(await page.content()).not.toContain('From the Linear fixture.'); // item text is never reported
+
   // assign it to the project from the project's Integrations page, with the team read from Linear
   await projectNav(page, 'nav-project-integrations', 'gocalc-linear');
   const mine = page.locator('[data-testid=project-integration][data-kind=linear]');

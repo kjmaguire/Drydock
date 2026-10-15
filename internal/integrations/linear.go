@@ -44,7 +44,7 @@ type gqlError struct {
 // graphql posts one GraphQL operation and decodes data into out. Linear reports some failures (rate limit, authentication)
 // as GraphQL errors, sometimes with HTTP 400; they are classified here.
 func (c *apiClient) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
-	r, err := c.do(ctx, "POST", "/graphql", nil, map[string]any{"query": query, "variables": vars})
+	r, err := c.do(withCallOp(ctx, graphqlOpName(query)), "POST", "/graphql", nil, map[string]any{"query": query, "variables": vars})
 	var env struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []gqlError      `json:"errors"`

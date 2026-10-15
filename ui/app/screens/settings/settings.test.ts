@@ -12,6 +12,8 @@ describe('settings data', () => {
     ]);
     expect(NOT_BUILT.map((x) => x.slice)).toEqual(['gated by decision D5', 'Slice 5', 'never']);
     expect(NOT_BUILT[2]!.meanwhile).toBe('Drydock has no cloud component.');
+    // the vendors are verified by the person, from the app (P59)
+    expect(NOT_BUILT[1]!.meanwhile).toContain('Check against your account');
   });
 
   it('offers System, Dark and Light', () => {
