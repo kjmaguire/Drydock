@@ -197,7 +197,7 @@ install: [{shell: cmd, command: 'scoop install opencode'}, {shell: cmd, command:
 detect: {version: {argv: [--version], regex: '^(\d+\.\d+\.\d+)'}}
 versions: {min: "1.18.35", recommended: "1.18.35"}
 auth: {login: {argv: [providers, login], terminal: true}, probe: {argv: [providers, list], parse: text_providers}}
-transports: {primary: acp, acp: {argv: [opencode, acp]}, headless: none}      # D11: `run` cannot answer permissions, drops deltas
+transports: {primary: acp, acp: {argv: [opencode, acp], env: {OPENCODE_CONFIG_CONTENT: '{"compaction":{"auto":true}}'}, client_meta: {opencode/child-session-updates: true}}, headless: none}      # D11: `run` cannot answer permissions, drops deltas; env and client_meta: P53 (a)
 provider_config: {writer: opencode_inline_json, env: OPENCODE_CONFIG_CONTENT, template: {provider: {"<id>": {npm: "@ai-sdk/openai-compatible", name: "<name>", options: {baseURL: "<url>"}, models: {}}}}}
 ---
 meta: {id: goose, license: Apache-2.0, tier: cheap}   # aaif-goose/goose (the agent, not the migrations tool)

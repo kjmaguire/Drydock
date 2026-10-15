@@ -11,6 +11,9 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,6 +97,39 @@ type Step struct {
 	MCPCall     *MCPCall       `json:"mcpCall,omitempty"`
 	ErrorPrompt string         `json:"errorPrompt,omitempty"` // fail the prompt request with this message
 	Rate        map[string]any `json:"rate,omitempty"`        // _meta["_claude/rateLimit"] on the next usage update
+	// Compaction reports a context compaction the way OpenCode 2 does to a client that did not advertise ACP's own
+	// compaction capability: a session_info_update whose _meta["opencode/compaction"] carries the status.
+	Compaction *Compaction `json:"compaction,omitempty"`
+	// Child runs a sub-agent the way OpenCode's task tool does (see Child).
+	Child *Child `json:"child,omitempty"`
+	// Notify sends an arbitrary notification (an extension the client may not know), written as the agent wrote it.
+	Notify *Notify `json:"notify,omitempty"`
+	// ReportClientMeta reports the clientCapabilities._meta keys of initialize as an agent message ("clientMeta=k1,k2").
+	ReportClientMeta bool `json:"reportClientMeta,omitempty"`
+}
+
+// Compaction is OpenCode's compaction marker.
+type Compaction struct {
+	Status string `json:"status"`          // started | completed | failed
+	Child  string `json:"child,omitempty"` // the marker of a child session forwarded on the session's stream
+}
+
+// Child is a sub-agent's work, forwarded as OpenCode 2 does (its acp/child.ts): on the notification
+// "opencode/session/child_update" when the client sent _meta["opencode/child-session-updates"], else on the session's own
+// stream with the child's id in front of each tool call id and _meta["opencode/child-session"] set.
+type Child struct {
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+	Say   string `json:"say,omitempty"`  // the child's own text
+	Tool  *Tool  `json:"tool,omitempty"` // one tool call of the child
+	// Root overrides rootSessionId (another session's child).
+	Root string `json:"root,omitempty"`
+}
+
+// Notify is a raw notification.
+type Notify struct {
+	Method string `json:"method"`
+	Params any    `json:"params,omitempty"`
 }
 
 // Tool is a tool call: tool_call, then tool_call_update to completed (or failed).
@@ -116,6 +152,10 @@ type UsageUpdate struct {
 	Used int      `json:"used"`
 	Size int      `json:"size"`
 	Cost *float64 `json:"cost,omitempty"` // cumulative USD
+	// TurnCost is this turn's cost: the agent adds it to the session's cumulative cost and reports the total, as OpenCode
+	// does (the stored session's cost). With DRYDOCK_FAKE_ACP_STATE_DIR set the total outlives the process, so a process that
+	// loads or resumes the session reports a total that includes the earlier processes.
+	TurnCost *float64 `json:"turnCost,omitempty"`
 }
 
 // Perm is a tool call that needs permission. The outcome is reported back as an agent message.
@@ -171,8 +211,9 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 		fmt.Fprintln(os.Stderr, "fakeacp: bad script:", err)
 		return 2
 	}
-	ag := &agent{script: sc, sessions: map[string]*sess{}}
-	asc := acp.NewAgentSideConnection(ag, out, in)
+	lw := &lockedWriter{w: out}
+	ag := &agent{script: sc, sessions: map[string]*sess{}, raw: lw}
+	asc := acp.NewAgentSideConnection(ag, lw, in)
 	asc.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ag.conn = asc
 	select {
@@ -184,6 +225,8 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 }
 
 type sess struct {
+	id      string
+	cost    float64 // cumulative session cost (UsageUpdate.TurnCost)
 	cwd     string
 	mcp     []string
 	servers []acp.McpServer
@@ -196,13 +239,64 @@ type sess struct {
 }
 
 type agent struct {
-	conn     *acp.AgentSideConnection
-	script   Script
-	mu       sync.Mutex
-	sessions map[string]*sess
-	seq      int
-	exitCh   chan int
-	once     sync.Once
+	conn       *acp.AgentSideConnection
+	raw        *lockedWriter // the connection's own writer, for notifications the SDK refuses to send (Notify, Child)
+	script     Script
+	mu         sync.Mutex
+	sessions   map[string]*sess
+	seq        int
+	exitCh     chan int
+	once       sync.Once
+	clientMeta map[string]any
+}
+
+// lockedWriter makes each Write (the SDK writes one whole message per call) atomic, so raw notifications never interleave.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
+// notify writes a JSON-RPC notification as it is, whatever its method name.
+func (a *agent) notify(method string, params any) {
+	b, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
+	if err != nil {
+		return
+	}
+	_, _ = a.raw.Write(append(b, '\n'))
+}
+
+// sessionCostPath is the file that keeps a session's cumulative cost under DRYDOCK_FAKE_ACP_STATE_DIR ("" without it).
+func sessionCostPath(id string) string {
+	dir := os.Getenv("DRYDOCK_FAKE_ACP_STATE_DIR")
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, id+".cost")
+}
+
+func loadSessionCost(id string) float64 {
+	p := sessionCostPath(id)
+	if p == "" {
+		return 0
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return 0
+	}
+	v, _ := strconv.ParseFloat(strings.TrimSpace(string(b)), 64)
+	return v
+}
+
+func saveSessionCost(id string, v float64) {
+	if p := sessionCostPath(id); p != "" {
+		_ = os.WriteFile(p, []byte(strconv.FormatFloat(v, 'g', -1, 64)), 0o644)
+	}
 }
 
 func (a *agent) exit() chan int {
@@ -210,7 +304,10 @@ func (a *agent) exit() chan int {
 	return a.exitCh
 }
 
-func (a *agent) Initialize(_ context.Context, _ acp.InitializeRequest) (acp.InitializeResponse, error) {
+func (a *agent) Initialize(_ context.Context, p acp.InitializeRequest) (acp.InitializeResponse, error) {
+	a.mu.Lock()
+	a.clientMeta = p.ClientCapabilities.Meta
+	a.mu.Unlock()
 	sc := a.script
 	caps := acp.AgentCapabilities{
 		LoadSession:        sc.LoadSession,
@@ -292,15 +389,16 @@ func (a *agent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.NewS
 	a.mu.Lock()
 	a.seq++
 	id := fmt.Sprintf("fake-sess-%d", a.seq)
-	s := &sess{cwd: p.Cwd, mcp: mcpNames(p.McpServers), servers: p.McpServers}
+	s := &sess{id: id, cwd: p.Cwd, mcp: mcpNames(p.McpServers), servers: p.McpServers}
 	a.sessions[id] = s
 	a.mu.Unlock()
+	saveSessionCost(id, 0) // a new session starts from nothing, whatever an earlier process kept under the same id
 	return a.newSessionResponse(id, s), nil
 }
 
 func (a *agent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
 	a.mu.Lock()
-	s := &sess{cwd: p.Cwd, mcp: mcpNames(p.McpServers), resumed: "load:" + string(p.SessionId)}
+	s := &sess{id: string(p.SessionId), cost: loadSessionCost(string(p.SessionId)), cwd: p.Cwd, mcp: mcpNames(p.McpServers), resumed: "load:" + string(p.SessionId)}
 	a.sessions[string(p.SessionId)] = s
 	a.mu.Unlock()
 	for _, m := range a.script.ReplayOnLoad {
@@ -312,7 +410,7 @@ func (a *agent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.
 
 func (a *agent) ResumeSession(_ context.Context, p acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
 	a.mu.Lock()
-	s := &sess{cwd: p.Cwd, mcp: mcpNames(p.McpServers), resumed: "resume:" + string(p.SessionId)}
+	s := &sess{id: string(p.SessionId), cost: loadSessionCost(string(p.SessionId)), cwd: p.Cwd, mcp: mcpNames(p.McpServers), resumed: "resume:" + string(p.SessionId)}
 	a.sessions[string(p.SessionId)] = s
 	a.mu.Unlock()
 	r := a.newSessionResponse(string(p.SessionId), s)
@@ -446,6 +544,14 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 			if st.UsageUpdate.Cost != nil {
 				u.Cost = &acp.Cost{Amount: *st.UsageUpdate.Cost, Currency: "USD"}
 			}
+			if st.UsageUpdate.TurnCost != nil {
+				a.mu.Lock()
+				s.cost += *st.UsageUpdate.TurnCost
+				total := s.cost
+				a.mu.Unlock()
+				saveSessionCost(s.id, total)
+				u.Cost = &acp.Cost{Amount: total, Currency: "USD"}
+			}
 			if rate != nil {
 				u.Meta = map[string]any{"_claude/rateLimit": rate}
 				rate = nil
@@ -489,6 +595,25 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 			a.mu.Unlock()
 		case st.ErrorPrompt != "":
 			return acp.PromptResponse{}, acp.NewInternalError(map[string]any{"error": st.ErrorPrompt})
+		case st.Compaction != nil:
+			meta := map[string]any{"opencode/compaction": map[string]any{"status": st.Compaction.Status, "messageId": "msg_compaction", "reason": "auto"}}
+			if st.Compaction.Child != "" {
+				meta["opencode/child-session"] = map[string]any{"id": st.Compaction.Child, "parentID": string(sid), "depth": 1}
+			}
+			send(acp.SessionUpdate{SessionInfoUpdate: &acp.SessionSessionInfoUpdate{SessionUpdate: "session_info_update", Meta: meta}})
+		case st.Child != nil:
+			a.runChild(sid, send, st.Child)
+		case st.Notify != nil:
+			a.notify(st.Notify.Method, st.Notify.Params)
+		case st.ReportClientMeta:
+			a.mu.Lock()
+			keys := make([]string, 0, len(a.clientMeta))
+			for k := range a.clientMeta {
+				keys = append(keys, k)
+			}
+			a.mu.Unlock()
+			sort.Strings(keys)
+			say("clientMeta=" + strings.Join(keys, ","))
 		}
 	}
 	if ctx.Err() != nil {
@@ -568,6 +693,71 @@ func (a *agent) runTool(send func(acp.SessionUpdate), t *Tool) {
 	}
 	upd.RawOutput = t.RawOutput
 	send(acp.SessionUpdate{ToolCallUpdate: &upd})
+}
+
+// runChild forwards a sub-agent's text and one tool call as OpenCode 2 does (its acp/child.ts and translate.ts route).
+func (a *agent) runChild(sid acp.SessionId, send func(acp.SessionUpdate), c *Child) {
+	a.mu.Lock()
+	opted, _ := a.clientMeta["opencode/child-session-updates"].(bool)
+	a.mu.Unlock()
+	child := map[string]any{"id": c.ID, "parentID": string(sid), "depth": 1}
+	if c.Title != "" {
+		child["title"] = c.Title
+	}
+	meta := map[string]any{"opencode/child-session": child}
+	var updates []acp.SessionUpdate
+	if c.Say != "" {
+		updates = append(updates, acp.SessionUpdate{AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{SessionUpdate: "agent_message_chunk",
+			Content: acp.TextBlock(c.Say), Meta: meta}})
+	}
+	if t := c.Tool; t != nil {
+		id := acp.ToolCallId(c.ID + ":" + t.ID)
+		title := t.Title
+		if c.Title != "" {
+			title = c.Title + ": " + title
+		}
+		kind := acp.ToolKind(t.Kind)
+		if kind == "" {
+			kind = acp.ToolKindOther
+		}
+		start := acp.SessionUpdateToolCall{SessionUpdate: "tool_call", ToolCallId: id, Title: title, Kind: kind, Status: acp.ToolCallStatusPending,
+			RawInput: t.Input, Meta: meta}
+		st := acp.ToolCallStatusCompleted
+		if t.Fail {
+			st = acp.ToolCallStatusFailed
+		}
+		upd := acp.SessionToolCallUpdate{SessionUpdate: "tool_call_update", ToolCallId: id, Status: &st, Meta: meta}
+		if t.Output != "" {
+			upd.Content = []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Output))}
+		}
+		updates = append(updates, acp.SessionUpdate{ToolCall: &start}, acp.SessionUpdate{ToolCallUpdate: &upd})
+	}
+	if !opted {
+		for _, u := range updates {
+			send(u)
+		}
+		return
+	}
+	root := string(sid)
+	if c.Root != "" {
+		root = c.Root
+	}
+	msg := func(kv map[string]any) map[string]any {
+		m := map[string]any{"rootSessionId": root, "childSessionId": c.ID, "parentSessionId": string(sid), "depth": 1}
+		if c.Title != "" {
+			m["title"] = c.Title
+		}
+		for k, v := range kv {
+			m[k] = v
+		}
+		return m
+	}
+	const method = "opencode/session/child_update" // sent as OpenCode sends it: no "_" in front
+	a.notify(method, msg(map[string]any{"type": "status", "status": "running"}))
+	for _, u := range updates {
+		a.notify(method, msg(map[string]any{"type": "update", "update": u}))
+	}
+	a.notify(method, msg(map[string]any{"type": "status", "status": "completed"}))
 }
 
 func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.SessionUpdate), say func(string), p *Perm) {

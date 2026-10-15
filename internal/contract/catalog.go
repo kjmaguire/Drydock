@@ -211,6 +211,29 @@ func All() []Contract {
 			Tests:      []TestRef{{Package: pkgContract, Test: "TestACPPromptTurn", Subtest: t.Name, EstUSD: 0.05}},
 		})
 	}
+	cs = append(cs,
+		Contract{
+			ID: "OPENCODE-USAGE-01", CLI: "opencode", Adapter: "opencode",
+			Assumption: "usage_update.cost is the session's cumulative cost, including the processes that served the session before (session/load or session/resume in a new process); started from the session's last totals (RunSpec.UsageBaseline), Drydock's ACP adapter records only the resumed turn's share.",
+			Why:        "Every chat turn after the first, and every continued work turn (P39), loads the session in a new process; from zero the first report would count every earlier turn again (read from OpenCode's acp/turn.ts: the cost is the stored session's info.cost).",
+			Files:      []string{"internal/agents/acp/usage.go", "internal/agents/acp/session.go", "internal/chats/turn.go", "internal/pipeline/session.go"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestOpenCodeResumedSessionReportsCumulativeCost", EstUSD: 0.05}},
+		},
+		Contract{
+			ID: "OPENCODE-COMPACT-01", CLI: "opencode", Adapter: "opencode",
+			Assumption: "To a client that does not advertise ACP's compaction capability, OpenCode reports a compaction of the session's context as a session_info_update whose _meta[\"opencode/compaction\"] has status completed; the adapter counts it into the turn's usage.",
+			Why:        "A compaction replaces the transcript with OpenCode's own summary; the session policy (P39) then hands the next work turn to a fresh session instead of continuing it. Unseen, a compacted session would look like one with room to spare.",
+			Files:      []string{"internal/agents/acp/ext.go", "internal/agents/acp/usage.go", "internal/pipeline/session.go"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestOpenCodeReportsACompaction", EstUSD: 0.05}},
+		},
+		Contract{
+			ID: "OPENCODE-CHILD-01", CLI: "opencode", Adapter: "opencode",
+			Assumption: "OpenCode advertises _meta \"opencode/child-session-updates\", and to a client that sends it in clientCapabilities._meta it reports a sub-agent's updates on the notification opencode/session/child_update {rootSessionId, childSessionId, type: update, update}; the adapter turns the child's tool calls into the turn's tool events.",
+			Why:        "The watchdog's loop detection and the activity feed read tool events; without the opt-in a sub-agent's text would join the parent's message. The method is sent without the \"_\" ACP reserves for extensions, so the adapter renames it before the SDK (which would drop it).",
+			Files:      []string{"internal/agents/acp/ext.go", "internal/agents/acp/adapter.go", "internal/agents/manifests/cli/opencode.yaml"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestOpenCodeForwardsSubAgentToolCalls", EstUSD: 0.10}},
+		},
+	)
 	cs = append(cs, Contract{
 		ID: "WIN-ARGV-01", CLI: "claude", Adapter: "claude", Platform: "windows",
 		Assumption: "On Windows a multi-line argument to the npm-installed claude.cmd does not arrive whole (cmd.exe ends the command line at the first line break), while the same text through --append-system-prompt-file does.",

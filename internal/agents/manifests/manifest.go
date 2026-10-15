@@ -143,6 +143,9 @@ type ACPTransport struct {
 	Requires   []Requirement     `yaml:"requires"`
 	EnableWhen string            `yaml:"enable_when"`
 	Note       string            `yaml:"note"`
+	// ClientMeta is sent as clientCapabilities._meta in initialize: an agent-specific opt-in this CLI's agent reads (OpenCode:
+	// "opencode/child-session-updates"; internal/agents/acp/ext.go). Declared per manifest, never for every agent.
+	ClientMeta map[string]any `yaml:"client_meta"`
 }
 
 // Headless is the prompt-and-exit contract (docs/connections.md section 9). Argv excludes the executable.
@@ -557,6 +560,12 @@ func checkACP(a *ACPTransport) []string {
 			if !knownVars[name] {
 				p = append(p, fmt.Sprintf("transports.acp.env.%s: unknown placeholder {{%s}}", k, name))
 			}
+		}
+	}
+	for k := range a.ClientMeta {
+		// ACP reserves _meta for extensions; an agent's own keys are namespaced ("opencode/child-session-updates")
+		if !strings.Contains(k, "/") || strings.TrimSpace(k) != k {
+			p = append(p, fmt.Sprintf("transports.acp.client_meta: key %q must be namespaced (vendor/name)", k))
 		}
 	}
 	// bridge packages are pinned exactly (decision D9), and the deprecated @zed-industries/* bridges must not be used

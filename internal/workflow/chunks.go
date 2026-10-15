@@ -48,7 +48,10 @@ type UsageChunk struct {
 	CostUSD          float64 `json:"costUsd,omitempty"`
 	ContextUsed      int64   `json:"contextUsed,omitempty"`
 	ContextSize      int64   `json:"contextSize,omitempty"`
-	Source           string  `json:"source"`
+	// Compactions is how many times the CLI compacted the session's context during the turn (replaced earlier messages with
+	// a summary of its own; OpenCode reports it over ACP). The session policy treats it as context pressure (P39).
+	Compactions int    `json:"compactions,omitempty"`
+	Source      string `json:"source"`
 	// Totals are the adapter's running totals of the CLI session after this turn, opaque to everything else. A later process
 	// that resumes the session passes them back (agents.RunSpec.UsageBaseline), so it records only its own share when the CLI
 	// reports totals that include the session's earlier processes.

@@ -85,6 +85,17 @@ func (c ClientConfig) ArgsFor(configPath string) []string {
 	return out
 }
 
+// OpenCodeCompaction is the `compaction` section of every inline OpenCode configuration (OPENCODE_CONFIG_CONTENT) Drydock
+// writes; the OpenCode manifest (internal/agents/manifests/cli/opencode.yaml, transports.acp.env) passes the same section.
+// Drydock owns the session's context (decision P39: between turns, a session at or above 70 % occupancy is not continued; a
+// fresh one gets a handoff Drydock writes), so OpenCode's own compaction is stated rather than left to the user's
+// configuration: automatic, as the guard against a single turn that overflows the window. OpenCode compacts only when the
+// window is nearly full (its usable context minus a reserve), far above 70 %, so the two do not compete; switching it off would
+// fail such a turn instead. A compaction OpenCode does report is read by the ACP adapter and makes the next work turn a handoff
+// (internal/agents/acp/ext.go, internal/pipeline/session.go). Only "auto" is set: it is the one key OpenCode 1.x and 2.x both
+// accept ("keep" and "buffer" are 2.x; 1.x's "reserved" and "prune" are legacy or unsupported in 2.x).
+func OpenCodeCompaction() map[string]any { return map[string]any{"auto": true} }
+
 // ClaudeToolName is the name Claude Code gives a gateway tool (docs/phase0/agent-clis.md section 1).
 func ClaudeToolName(exposedTool string) string { return "mcp__" + ServerName + "__" + exposedTool }
 
@@ -173,7 +184,8 @@ func ConfigFor(provider string, ep Endpoint, opts ...ConfigOptions) (ClientConfi
 		} else {
 			oc = map[string]any{"type": "remote", "url": ep.URL, "headers": map[string]string{"Authorization": "Bearer " + ep.Token}, "enabled": true, "timeout": 30000}
 		}
-		b, _ := json.Marshal(map[string]any{"mcp": map[string]any{ServerName: oc}})
+		// the inline config replaces the one the adapter manifest passes (opencode.yaml), so it repeats its compaction section
+		b, _ := json.Marshal(map[string]any{"mcp": map[string]any{ServerName: oc}, "compaction": OpenCodeCompaction()})
 		cfg.Inline = string(b)
 		cfg.Env = []string{"OPENCODE_CONFIG_CONTENT=" + string(b)}
 		cfg.Notes = append(cfg.Notes, "UNVERIFIED: no live OpenCode run; mechanism from agent-clis section 4 (OPENCODE_CONFIG_CONTENT, or ACP session/new). Its MCP timeout defaults to 5000 ms: raised here to 30000")

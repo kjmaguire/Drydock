@@ -1,6 +1,9 @@
 package acp
 
 import (
+	"encoding/json"
+	"math"
+
 	"github.com/coder/acp-go-sdk"
 
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -14,14 +17,38 @@ import (
 //  1. PromptResponse.usage (input/output/cachedRead/cachedWrite/thought tokens),
 //  2. PromptResponse._meta.quota (Gemini: token_count and per-model model_usage; no cache split),
 //  3. usage_update{used,size,cost}: context occupancy always, and cost as the delta of the cumulative session cost.
+//
+// The cost in usage_update is the session's, not the process's: OpenCode sends the stored session's total (`info.cost`,
+// its acp/turn.ts), which includes every earlier process that served the session. A process that resumes or loads a
+// session therefore starts from the session's last total (RunSpec.UsageBaseline, passed back from UsageChunk.Totals and
+// kept per chat in chats.cli_usage), or its first turn would count every earlier turn again (contract OPENCODE-USAGE-01;
+// the same class of bug as CLAUDE-USAGE-03).
+
+// acpTotals is UsageChunk.Totals for an ACP session: the session's cumulative cost as the agent last reported it.
+type acpTotals struct {
+	CostUSD float64 `json:"costUsd"`
+}
 
 // usageTracker accumulates one turn's usage signals.
 type usageTracker struct {
-	costBase float64 // cumulative session cost already attributed to earlier turns
+	costBase float64 // cumulative session cost already attributed to earlier turns (of this process or, from the baseline, earlier ones)
 	update   *acp.SessionUsageUpdate
 	costUSD  float64 // cost attributed to the current turn so far
+	cumCost  float64 // the session's cumulative cost in the latest usage_update that carried one
 	haveCost bool
 	rateMeta any // raw _meta["_claude/rateLimit"] from a usage_update, if any
+	// compactions counts the context compactions the agent completed during the current turn (ext.go).
+	compactions int
+}
+
+// setBaseline starts the cost accounting from a resumed session's last totals (RunSpec.UsageBaseline); a baseline that does
+// not parse is ignored, so the session's totals start at zero as before.
+func (u *usageTracker) setBaseline(raw json.RawMessage) {
+	var b acpTotals
+	if len(raw) == 0 || json.Unmarshal(raw, &b) != nil || b.CostUSD < 0 || math.IsNaN(b.CostUSD) || math.IsInf(b.CostUSD, 0) {
+		return
+	}
+	u.costBase = b.CostUSD
 }
 
 // onUpdate records a usage_update notification.
@@ -33,6 +60,7 @@ func (u *usageTracker) onUpdate(upd *acp.SessionUsageUpdate) {
 			d = upd.Cost.Amount
 		}
 		u.costUSD = d
+		u.cumCost = upd.Cost.Amount
 		u.haveCost = true
 	}
 	if upd.Meta != nil {
@@ -71,12 +99,16 @@ func (u *usageTracker) finishTurn(resp acp.PromptResponse, model string) []workf
 		}
 		if u.haveCost {
 			chunks[0].CostUSD = u.costUSD
-			if u.update != nil && u.update.Cost != nil {
-				u.costBase = u.update.Cost.Amount
-			}
+			u.costBase = u.cumCost
+			chunks[0].Totals, _ = json.Marshal(acpTotals{CostUSD: u.cumCost})
 		}
 	}
-	u.update, u.costUSD, u.haveCost = nil, 0, false
+	// a compaction is reported only with the turn's usage: a turn that reported none has no occupancy either, and the session
+	// policy never continues such a session (docs/token-control.md, P39)
+	if u.compactions > 0 && len(chunks) > 0 {
+		chunks[0].Compactions = u.compactions
+	}
+	u.update, u.costUSD, u.haveCost, u.compactions = nil, 0, false, 0
 	return chunks
 }
 

@@ -836,6 +836,44 @@ func TestACPChatLoadsItsSessionAndShowsRefusedPermissions(t *testing.T) {
 	}
 }
 
+// An ACP agent that reports its session's cumulative cost (OpenCode's usage_update; contract OPENCODE-USAGE-01): every chat
+// turn after the first loads the session in a new process, whose first report includes the earlier processes. The chat
+// keeps the session's totals (chats.cli_usage) and passes them back, so each turn is counted once.
+func TestAnACPChatCountsEachTurnsCostOnce(t *testing.T) {
+	dir := t.TempDir()
+	turnCost := 0.01
+	sc, _ := json.Marshal(fakeacp.Script{LoadSession: true,
+		Default: []fakeacp.Step{{UsageUpdate: &fakeacp.UsageUpdate{Used: 500, Size: 100_000, TurnCost: &turnCost}}, {Say: "ok"}}})
+	sp := filepath.Join(dir, "acp.json")
+	if err := os.WriteFile(sp, sc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(dir, "state")
+	if err := os.MkdirAll(state, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ad := acp.New(acp.Config{ID: "acpcost", Command: os.Args[0],
+		Env: []string{"DRYDOCK_FAKE_ACP=1", "DRYDOCK_FAKE_ACP_SCRIPT=" + sp, "DRYDOCK_FAKE_ACP_STATE_DIR=" + state}})
+	e := openChats(t, fakeagent.Script{}, map[string]agents.Adapter{"acpcost": ad})
+	p, _ := e.setup("acpcost")
+	c := e.create(map[string]any{"projectId": p.ID, "adapter": "acpcost"})
+	for i, q := range []string{"first", "second", "third"} {
+		ev := e.send(c.ID, q)
+		u, _ := ev["usage"].(map[string]any)
+		if cost, _ := u["costUsd"].(float64); math.Abs(cost-0.01) > 1e-12 || (i > 0) != (ev["resumed"] == true) {
+			t.Fatalf("turn %d is not counted once: %v", i+1, ev)
+		}
+	}
+	d := e.get(c.ID)
+	if d.Chat.CostUSD == nil || math.Abs(*d.Chat.CostUSD-0.03) > 1e-12 || d.Chat.CostUnknownTurns != 0 {
+		t.Fatalf("three turns of 0.01: %v", d.Chat.CostUSD)
+	}
+	var stored string
+	if err := e.c.DB.Reader().QueryRow(`SELECT cli_usage FROM chats WHERE id=?`, c.ID).Scan(&stored); err != nil || !strings.Contains(stored, `"costUsd":0.03`) {
+		t.Fatalf("stored session totals %q %v", stored, err)
+	}
+}
+
 // A turn left running by a crash is marked failed when the app starts again; it is never re-run.
 func TestChatTurnInterruptedByACrashIsMarkedFailed(t *testing.T) {
 	dir := t.TempDir()

@@ -12,7 +12,12 @@ auth:
   probe: {argv: [providers, list], parse: text_providers, ready_when: 'exit == 0', unverified: true}
 transports:
   primary: acp
-  acp: {argv: [opencode, acp]}
+  # env: Drydock owns the session policy (decision P39: a fresh session with a handoff at 70 % occupancy, decided between
+  # turns), so the inline config states OpenCode's own compaction explicitly: automatic, kept only as the guard against a
+  # turn that overflows the window, which OpenCode reaches far above 70 % and Drydock cannot prevent mid-turn. "auto" is the
+  # one compaction key both 1.x and 2.x accept (docs/token-control.md). Keep it equal to mcp.OpenCodeCompaction().
+  # client_meta: OpenCode 2 sends sub-agent updates on their own notification instead of the session's stream (ext.go).
+  acp: {argv: [opencode, acp], env: {OPENCODE_CONFIG_CONTENT: '{"compaction":{"auto":true}}'}, client_meta: {opencode/child-session-updates: true}}
   headless: none
 provider_config: {writer: opencode_inline_json, env: OPENCODE_CONFIG_CONTENT, template: {provider: {"<id>": {npm: "@ai-sdk/openai-compatible", name: "<name>", options: {baseURL: "<url>"}, models: {}}}}}
 mcp: {inject: acp_session_new, transports: [stdio, http, sse]}
