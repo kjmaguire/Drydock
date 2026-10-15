@@ -133,6 +133,12 @@ func prevTurn(used, size int64) *pipeline.WorkOutput {
 		Agent: "a1", Adapter: "claude", Model: "m-1"}
 }
 
+func compactedTurn(used, size int64) *pipeline.WorkOutput {
+	w := prevTurn(used, size)
+	w.Usage[0].Compactions = 1
+	return w
+}
+
 // The occupancy at which the next turn hands off: at or above 70 % of the model's window, never below; and the other reasons a
 // session is not continued. Then end to end: a first turn that ends at 75 % makes the second turn a fresh session seeded with a
 // handoff artifact, recorded in the turn's output, its manifest, an agent.session event and the handoffs table.
@@ -157,6 +163,10 @@ func TestOccupancyThresholdTriggersHandoff(t *testing.T) {
 		{"another agent", prevTurn(10, 200_000), func(p *pipeline.SessionPlan) { p.Agent = "a9" }, pipeline.SessionHandoff, pipeline.HandoffAgentChange},
 		{"interrupted attempt", prevTurn(10, 200_000), func(p *pipeline.SessionPlan) { p.Interrupted = true }, pipeline.SessionHandoff, pipeline.HandoffInterrupted},
 		{"after a watchdog pause", prevTurn(10, 200_000), func(p *pipeline.SessionPlan) { p.WatchdogPause = true }, pipeline.SessionHandoff, pipeline.HandoffWatchdog},
+		// the CLI compacted its context during the turn (OpenCode over ACP): low occupancy afterwards, but a handoff
+		{"compacted at 10 %", compactedTurn(20_000, 200_000), nil, pipeline.SessionHandoff, pipeline.HandoffContextPressure},
+		{"compacted, no occupancy reported", compactedTurn(0, 0), nil, pipeline.SessionHandoff, pipeline.HandoffContextPressure},
+		{"compacted, CLI cannot resume", compactedTurn(20_000, 200_000), func(p *pipeline.SessionPlan) { p.CanResume = false }, pipeline.SessionFresh, ""},
 	} {
 		p := plan
 		if tc.plan != nil {
@@ -169,6 +179,9 @@ func TestOccupancyThresholdTriggersHandoff(t *testing.T) {
 	}
 	if d := pipeline.DecideSession(prevTurn(150_000, 200_000), plan); d.OccupancyPct != 75 || d.ContextUsed != 150_000 || d.ContextSize != 200_000 || d.PrevSession != "s-1" {
 		t.Errorf("the decision records the occupancy: %+v", d)
+	}
+	if d := pipeline.DecideSession(compactedTurn(20_000, 200_000), plan); d.Compactions != 1 || !strings.Contains(d.Reason, "compacted") {
+		t.Errorf("the decision records the compaction: %+v", d)
 	}
 
 	e := sessionEnv(t, twoPassScript(150_000))

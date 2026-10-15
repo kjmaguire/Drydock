@@ -63,9 +63,11 @@ type SessionDecision struct {
 	ContextSize  int64   `json:"contextSize,omitempty"`
 	OccupancyPct float64 `json:"occupancyPct,omitempty"`
 	ThresholdPct int     `json:"thresholdPct"`
-	FromModel    string  `json:"fromModel,omitempty"`
-	ToModel      string  `json:"toModel,omitempty"`
-	Handoff      string  `json:"handoff,omitempty"` // the handoff artifact's id, for SessionHandoff
+	// Compactions is how many times the CLI compacted the previous turn's context (a handoff for context pressure).
+	Compactions int    `json:"compactions,omitempty"`
+	FromModel   string `json:"fromModel,omitempty"`
+	ToModel     string `json:"toModel,omitempty"`
+	Handoff     string `json:"handoff,omitempty"` // the handoff artifact's id, for SessionHandoff
 }
 
 // SessionPlan is what the next turn will be.
@@ -106,6 +108,15 @@ func (w WorkOutput) Occupancy() (used, size int64, totals json.RawMessage) {
 	return used, size, totals
 }
 
+// Compactions is how many times the turn's CLI compacted the session's context during the turn (UsageChunk.Compactions).
+func (w WorkOutput) Compactions() int {
+	n := 0
+	for _, u := range w.Usage {
+		n += u.Compactions
+	}
+	return n
+}
+
 // DecideSession decides whether the next work turn continues the previous turn's session. prev is the previous work turn of
 // the run (nil for the first).
 func DecideSession(prev *WorkOutput, p SessionPlan) SessionDecision {
@@ -138,6 +149,11 @@ func DecideSession(prev *WorkOutput, p SessionPlan) SessionDecision {
 	case !p.CanResume:
 		d.Action, d.Reason = SessionFresh, "the agent's CLI cannot continue a stored session here: a fresh session with the task and the latest feedback"
 		return d
+	case prev.Compactions() > 0:
+		// the CLI ran out of room during the turn and replaced the transcript with a summary of its own: past the threshold by
+		// definition, and the session no longer holds what continuing it would assume (OpenCode reports this over ACP)
+		d.Compactions = prev.Compactions()
+		return handoff(HandoffContextPressure, "the agent's CLI compacted the session's context during the previous turn (it ran out of room)")
 	case d.ContextSize <= 0:
 		d.Action, d.Reason = SessionFresh, "the previous turn reported no context occupancy: a fresh session with the task and the latest feedback"
 		return d

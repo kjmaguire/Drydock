@@ -1,5 +1,10 @@
 package acp
 
+import "io"
+
+// NewExtRenamerForTest exposes the child-update method renamer to the external test package.
+func NewExtRenamerForTest(r io.Reader) io.Reader { return newExtRenamer(r) }
+
 // BuildEnvForTest exposes buildEnv to the external test package.
 func BuildEnvForTest(parent []string, scrub bool, extra ...[]string) []string {
 	return buildEnv(parent, scrub, extra...)

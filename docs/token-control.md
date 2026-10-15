@@ -281,6 +281,7 @@ Built in `internal/pipeline/session.go` for the worker's turns of every task wor
 | The model changed for another reason | fresh session, handoff | `model_change` |
 | The CLI cannot continue a stored session (`Capabilities.SessionResume` false, or `--no-session-persistence`) | fresh session with the task and the latest feedback | |
 | The previous turn reported no context occupancy | fresh session with the task and the latest feedback | |
+| The CLI compacted the session's context during the previous turn (`UsageChunk.Compactions`; OpenCode reports it over ACP) | fresh session, handoff | `context_pressure` |
 | Occupancy at or above 70 % of the model's window (`ContextUsed` / `ContextSize`, Claude: `modelUsage.contextWindow`) | fresh session, handoff | `context_pressure` |
 | Otherwise | **the same session continues** (`--resume <session>`, with the session's running usage totals as the baseline so each turn records only its own usage) | |
 
@@ -291,3 +292,46 @@ A turn is never cut: the decision uses what the previous turn reported when it e
 **Where the decision is recorded**: the work node's output (`session`: action, trigger, reason, occupancy, threshold, previous session, models, handoff id), the turn's context manifest (the `previous session transcript` entry says continued or not and why; a `handoff:<id>` entry when one was given), an `agent.session` event per work turn, and for a handoff a `handoffs` row with `handoff.created`.
 
 **Differences from the design above**: the handoff is synthesized by Drydock rather than requested from the agent and verified (no extra paid turn; the agent's own `handoff` tool can still write one); the switch happens at the start of the next turn rather than "when idle" inside the same turn; continuation is per run (a new run of a task starts a fresh session); a CLI that reports no occupancy (Gemini over ACP) is never continued, since Drydock's own estimate is not built. Below the threshold the session is continued even after corrections; the best-practices advice to restart a session after two corrections (`claude-best-practices.md` s2) is not applied.
+
+## As built: OpenCode's compaction, sub-agents and resumed cost (2026-10-15, decision P53 a)
+
+Read from OpenCode's own ACP code (v2, `packages/cli/src/acp`); Drydock pins OpenCode 1.18.35, and everything below is harmless
+on 1.x (it ignores what it does not know and sends none of it).
+
+- **Who owns compaction.** Drydock does: between work turns a session at or above 70 % occupancy is handed to a fresh session
+  with Drydock's own handoff (P39). OpenCode's automatic compaction is stated explicitly in the inline configuration Drydock
+  passes it (`OPENCODE_CONFIG_CONTENT`, from `transports.acp.env` in `internal/agents/manifests/cli/opencode.yaml`, and the
+  same section in `mcp.OpenCodeCompaction()` for the MCP inline config): `{"compaction":{"auto":true}}`. It stays on because it
+  is the only guard against a single turn that overflows the window (Drydock never cuts a turn); OpenCode compacts only when
+  the window is nearly full (usable context minus a reserve), far above 70 %, so the two do not compete, and switching it off
+  would fail such a turn instead. The inline configuration is merged over the global and project files, so a user's own
+  `compaction.auto: false` does not apply to Drydock's sessions (OpenCode's managed configuration still wins). Only
+  `auto` is written: it is the one key both 1.x and 2.x accept (2.x has `keep.tokens` and `buffer`; 1.x's `reserved` and
+  `preserve_recent_tokens` are legacy aliases in 2.x and `prune` is unsupported there).
+- **A compaction is seen.** OpenCode 2 reports a compaction to a client that did not advertise ACP's own (unstable)
+  `clientCapabilities.session.compaction` as a `session_info_update` with `_meta["opencode/compaction"]`
+  `{status: started|completed|failed, messageId, reason}`. The ACP adapter counts each completed one of the session itself
+  (not a sub-agent's) into the turn's usage chunk (`UsageChunk.Compactions`), and the session policy treats it as context
+  pressure: the next work turn is a fresh session with a handoff, whatever occupancy the CLI reported after compacting, since
+  the session now holds OpenCode's summary instead of the transcript (`internal/agents/acp/ext.go`, `DecideSession`). Drydock
+  does not advertise the standard capability: the pinned acp-go-sdk 0.13.5 cannot send it (no `session` field in its
+  ClientCapabilities) and decodes a `compaction_update` as a `session_info_update` without its status. Contract
+  OPENCODE-COMPACT-01.
+- **Sub-agents.** OpenCode's task tool runs a child session. The OpenCode manifest opts in with
+  `clientCapabilities._meta["opencode/child-session-updates"]: true` (`transports.acp.client_meta`; no other manifest declares
+  anything), and OpenCode then sends the child's updates on `opencode/session/child_update` instead of the session's own
+  stream, where a child's text would have joined the parent's message. The adapter maps the child's tool calls (ids
+  `<child>:<id>`, titles `<child title>: <tool>`) into the turn's tool events, which the watchdog's loop detection and the
+  activity feed read, and drops its text, thoughts, plans and usage. OpenCode sends the method without the `_` ACP reserves
+  for extensions and the SDK drops such a notification, so the adapter renames it on the way in (only for an adapter that
+  opted in). Other unknown notifications and session updates are ignored as before. Contract OPENCODE-CHILD-01.
+- **Resumed cost.** `usage_update.cost` is the stored session's cumulative cost, so the first turn of a process that loads or
+  resumes a session reported every earlier turn's cost as its own. The adapter now reports the session's cumulative cost in
+  `UsageChunk.Totals` and starts a resumed session from `RunSpec.UsageBaseline` (a chat keeps it in `chats.cli_usage`, a work
+  turn passes the previous turn's), as the Claude parser does since CLAUDE-USAGE-03. Contract OPENCODE-USAGE-01.
+
+Proving tests: `TestAResumedSessionRecordsOnlyItsOwnCost`, `TestACompactionIsCountedInTheTurnsUsage`,
+`TestChildSessionToolCallsBecomeTheTurnsToolEvents`, `TestWithoutTheOptInChildUpdatesStayOnTheSessionStream`
+(`internal/agents/acp`), `TestAnACPChatCountsEachTurnsCostOnce` (`internal/core`), `TestOccupancyThresholdTriggersHandoff`
+(`internal/pipeline`), `TestOpenCodeInlineConfigStatesCompaction` (`internal/mcp`),
+`TestOnlyTheOpenCodeManifestOptsInToAgentExtensions` (`internal/agents/manifests`).

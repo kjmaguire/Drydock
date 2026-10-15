@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -69,6 +70,10 @@ type Session struct {
 	cancelled  bool
 	perms      map[string]context.CancelFunc
 	permSeq    int
+	// compactions counts the context compactions the agent reported for this session (ext.go); childUpdates counts the
+	// sub-agent updates that arrived on the child-session extension notification.
+	compactions  int
+	childUpdates int
 }
 
 var _ agents.Session = (*Session)(nil)
@@ -94,7 +99,15 @@ func newSession(a *Adapter, pm proc.Manager, p proc.Proc, g *guard, spec agents.
 	s := &Session{adapter: a, spec: spec, pm: pm, proc: p, guard: g, out: make(chan workflow.Chunk, 256), stopCh: make(chan struct{}),
 		ctx: ctx, cancel: cancel, exited: make(chan struct{}), tools: map[acp.ToolCallId]*toolState{}, perms: map[string]context.CancelFunc{}}
 	s.terms = newTerminals(s)
-	s.conn = acp.NewClientSideConnection(&client{s: s}, p.Stdin(), p.Stdout())
+	if spec.ResumeID != "" {
+		// the session's cumulative cost so far, so the first turn of this process records only its own share (usage.go)
+		s.usage.setBaseline(spec.UsageBaseline)
+	}
+	var stdout io.Reader = p.Stdout()
+	if declaresChildUpdates(a.cfg.ClientMeta) {
+		stdout = newExtRenamer(stdout)
+	}
+	s.conn = acp.NewClientSideConnection(&client{s: s}, p.Stdin(), stdout)
 	if a.cfg.Logger != nil {
 		s.conn.SetLogger(a.cfg.Logger)
 	} else {
@@ -157,6 +170,12 @@ func (s *Session) Info() AgentInfo { s.mu.Lock(); defer s.mu.Unlock(); return s.
 
 // SessionInfo returns the model/mode/effort choices the agent exposed in session/new.
 func (s *Session) SessionInfo() SessionInfo { s.mu.Lock(); defer s.mu.Unlock(); return s.sinfo }
+
+// Compactions is how many context compactions the agent reported for this session so far.
+func (s *Session) Compactions() int { s.mu.Lock(); defer s.mu.Unlock(); return s.compactions }
+
+// ChildUpdates is how many sub-agent updates arrived on the child-session extension notification so far.
+func (s *Session) ChildUpdates() int { s.mu.Lock(); defer s.mu.Unlock(); return s.childUpdates }
 
 // Capabilities merges the adapter's declared capabilities with this session's observations.
 func (s *Session) Capabilities() agents.Capabilities {

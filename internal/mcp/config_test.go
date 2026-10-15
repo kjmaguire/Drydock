@@ -126,6 +126,30 @@ func TestConfigForOthersAreMarkedUnverified(t *testing.T) {
 	}
 }
 
+// The inline OpenCode configuration states who owns compaction (decision P39): OpenCode's automatic compaction stays on as the
+// guard against a turn that overflows the window, with only the key OpenCode 1.x and 2.x both accept, in both transports.
+func TestOpenCodeInlineConfigStatesCompaction(t *testing.T) {
+	for _, tr := range []string{TransportShim, TransportDirectHTTP} {
+		oc, err := ConfigFor("opencode", testEndpoint(), ConfigOptions{Transport: tr})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Compaction map[string]any `json:"compaction"`
+			MCP        map[string]any `json:"mcp"`
+		}
+		if err := json.Unmarshal([]byte(oc.Inline), &doc); err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Compaction) != 1 || doc.Compaction["auto"] != true || doc.MCP[ServerName] == nil {
+			t.Fatalf("%s: %s", tr, oc.Inline)
+		}
+		if oc.Env[0] != "OPENCODE_CONFIG_CONTENT="+oc.Inline {
+			t.Fatalf("%s: env %v", tr, oc.Env)
+		}
+	}
+}
+
 func TestEndpointNeverPrintsItsToken(t *testing.T) {
 	ep := testEndpoint()
 	for _, s := range []string{

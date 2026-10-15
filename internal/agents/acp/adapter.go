@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"strings"
@@ -44,6 +45,10 @@ type Config struct {
 	Terminal bool
 	// NoFS stops advertising fs/read_text_file and fs/write_text_file. By default both are served and confined to the cwd.
 	NoFS bool
+	// ClientMeta is sent as `clientCapabilities._meta` in initialize: optional agent behaviour a manifest opts in to
+	// (transports.acp.client_meta), never declared for every agent. OpenCode's "opencode/child-session-updates" moves its
+	// sub-agents' updates off the session's own stream onto an extension notification (ext.go).
+	ClientMeta map[string]any
 	// ScrubEnv starts the child from a small allowlist of the process environment instead of inheriting all of it.
 	ScrubEnv bool
 	// PassEnv returns extra variable names to keep when ScrubEnv is on (read at every start).
@@ -196,13 +201,17 @@ func (a *Adapter) launch(ctx context.Context, pm proc.Manager, spec agents.RunSp
 	s := newSession(a, pm, p, g, spec)
 	ictx, cancel := context.WithTimeout(ctx, a.cfg.StartTimeout)
 	defer cancel()
+	caps := acp.ClientCapabilities{
+		Fs:       acp.FileSystemCapabilities{ReadTextFile: !a.cfg.NoFS, WriteTextFile: !a.cfg.NoFS},
+		Terminal: a.cfg.Terminal,
+	}
+	if len(a.cfg.ClientMeta) > 0 {
+		caps.Meta = maps.Clone(a.cfg.ClientMeta)
+	}
 	resp, err := s.conn.Initialize(ictx, acp.InitializeRequest{
-		ProtocolVersion: acp.ProtocolVersionNumber,
-		ClientInfo:      &acp.Implementation{Name: "drydock", Title: acp.Ptr("Drydock"), Version: "0"},
-		ClientCapabilities: acp.ClientCapabilities{
-			Fs:       acp.FileSystemCapabilities{ReadTextFile: !a.cfg.NoFS, WriteTextFile: !a.cfg.NoFS},
-			Terminal: a.cfg.Terminal,
-		},
+		ProtocolVersion:    acp.ProtocolVersionNumber,
+		ClientInfo:         &acp.Implementation{Name: "drydock", Title: acp.Ptr("Drydock"), Version: "0"},
+		ClientCapabilities: caps,
 	})
 	if err != nil {
 		_ = s.Stop(context.Background())

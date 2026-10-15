@@ -149,7 +149,9 @@ well, with the chat id as `agentId`.
    recorded; the process is stopped. With no title yet, the first line of the first message (60 characters) becomes the title.
    Claude Code reports a resumed session's cost and tokens including every earlier process of that session, so the chat keeps
    the session's running totals (`chats.cli_usage`) and the next turn starts its parser from them: each turn is counted once
-   (contract CLAUDE-USAGE-03; a new or fallback session starts from zero).
+   (contract CLAUDE-USAGE-03; a new or fallback session starts from zero). An ACP agent's `usage_update.cost` is the session's
+   cumulative cost too (OpenCode), so the ACP adapter keeps the same totals and starts a loaded or resumed session from them
+   (contract OPENCODE-USAGE-01, decision P53 a).
 5. `chat.stop` cancels the turn: streamed text so far is kept as an assistant message and "Stopped by you." is added; the session
    (when it started) is kept, so the next message continues it. The CLI is killed before it saves the partial answer to its own
    session (observed with claude 2.1.296), so when the next turn resumes that session Drydock puts a note in front of the new

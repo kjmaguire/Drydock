@@ -146,42 +146,12 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) err
 			s.emitKind(workflow.ChunkThinking, workflow.TextDelta{Text: t})
 		}
 	case u.ToolCall != nil:
-		tc := u.ToolCall
 		s.flushMessage() // a tool call ends the assistant message before it
-		st := s.toolFor(tc.ToolCallId)
-		s.mu.Lock()
-		st.title = firstNonEmpty(tc.Title, st.title)
-		st.kind = firstNonEmpty(string(tc.Kind), st.kind)
-		st.status = firstNonEmpty(string(tc.Status), st.status)
-		st.metaName = firstNonEmpty(metaToolName(tc.Meta), st.metaName)
-		if tc.RawInput != nil {
-			st.input = tc.RawInput
-		}
-		st.locations = locPaths(tc.Locations, st.locations)
-		st.absorbOutput(tc.Content, tc.RawOutput)
-		s.mu.Unlock()
-		s.progressTool(st)
+		s.onToolCall(u.ToolCall)
 	case u.ToolCallUpdate != nil:
-		tu := u.ToolCallUpdate
-		st := s.toolFor(tu.ToolCallId)
-		s.mu.Lock()
-		if tu.Title != nil {
-			st.title = *tu.Title
-		}
-		if tu.Kind != nil {
-			st.kind = string(*tu.Kind)
-		}
-		if tu.Status != nil {
-			st.status = string(*tu.Status)
-		}
-		st.metaName = firstNonEmpty(metaToolName(tu.Meta), st.metaName)
-		if tu.RawInput != nil {
-			st.input = tu.RawInput
-		}
-		st.locations = locPaths(tu.Locations, st.locations)
-		st.absorbOutput(tu.Content, tu.RawOutput)
-		s.mu.Unlock()
-		s.progressTool(st)
+		s.onToolCallUpdate(u.ToolCallUpdate)
+	case u.SessionInfoUpdate != nil:
+		s.onSessionInfo(u.SessionInfoUpdate)
 	case u.Plan != nil:
 		s.emitKind(workflow.ChunkPlan, planChunk(u.Plan.Entries))
 	case u.PlanUpdate != nil:
@@ -199,6 +169,46 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) err
 		s.mu.Unlock()
 	}
 	return nil
+}
+
+// onToolCall records a tool_call (the session's own, or a sub-agent's from ext.go).
+func (s *Session) onToolCall(tc *acp.SessionUpdateToolCall) {
+	st := s.toolFor(tc.ToolCallId)
+	s.mu.Lock()
+	st.title = firstNonEmpty(tc.Title, st.title)
+	st.kind = firstNonEmpty(string(tc.Kind), st.kind)
+	st.status = firstNonEmpty(string(tc.Status), st.status)
+	st.metaName = firstNonEmpty(metaToolName(tc.Meta), st.metaName)
+	if tc.RawInput != nil {
+		st.input = tc.RawInput
+	}
+	st.locations = locPaths(tc.Locations, st.locations)
+	st.absorbOutput(tc.Content, tc.RawOutput)
+	s.mu.Unlock()
+	s.progressTool(st)
+}
+
+// onToolCallUpdate records a tool_call_update (the session's own, or a sub-agent's from ext.go).
+func (s *Session) onToolCallUpdate(tu *acp.SessionToolCallUpdate) {
+	st := s.toolFor(tu.ToolCallId)
+	s.mu.Lock()
+	if tu.Title != nil {
+		st.title = *tu.Title
+	}
+	if tu.Kind != nil {
+		st.kind = string(*tu.Kind)
+	}
+	if tu.Status != nil {
+		st.status = string(*tu.Status)
+	}
+	st.metaName = firstNonEmpty(metaToolName(tu.Meta), st.metaName)
+	if tu.RawInput != nil {
+		st.input = tu.RawInput
+	}
+	st.locations = locPaths(tu.Locations, st.locations)
+	st.absorbOutput(tu.Content, tu.RawOutput)
+	s.mu.Unlock()
+	s.progressTool(st)
 }
 
 func planChunk(es []acp.PlanEntry) workflow.PlanChunk {
