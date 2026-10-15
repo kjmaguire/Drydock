@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createProject, roomLink, projectNav } from './helpers';
+import { createProject, roomLink, projectNav, openRoom } from './helpers';
 
 test('message text is inert: no script, no element, no javascript: link, no remote image, nothing becomes an action', async ({ page }) => {
   const dialogs: string[] = [];
@@ -11,7 +11,7 @@ test('message text is inert: no script, no element, no javascript: link, no remo
   page.on('request', (r) => requests.push(r.url()));
 
   await createProject(page, 'gocalc-xss');
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
 
   const payload = [
     '<img src=x onerror="window.__xss=1;alert(1)">',
@@ -55,7 +55,7 @@ test('message text is inert: no script, no element, no javascript: link, no remo
 
   // the same text survives a reload as inert text (it is what the core stored, not a render-time accident)
   await page.reload();
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await expect(page.locator('[data-testid=message]').filter({ hasText: '<script>window.__xss=2</script>' })).toBeVisible();
   expect(await page.locator('.msg-body script, .msg-body img').count()).toBe(0);
 });

@@ -123,7 +123,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
           {agentMembers.length ? (
             <span mix={stackCss} aria-hidden="true">
               {agentMembers.slice(0, 5).map((m) => (
-                <Avatar key={m.member.id} id={m.member.id} name={name(m.member.id)} size={20} />
+                <Avatar key={m.member.id} id={m.member.id} name={name(m.member.id)} size={20} kind="agent" />
               ))}
             </span>
           ) : null}
@@ -262,7 +262,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
               <ul mix={listCss}>
                 {agentMembers.map((m) => (
                   <li key={memberKey(m)} mix={memberRow}>
-                    <Avatar id={m.member.id} name={name(m.member.id)} size={28} />
+                    <Avatar id={m.member.id} name={name(m.member.id)} size={28} kind="agent" />
                     <div class="who">
                       <strong>{name(m.member.id)}</strong>
                       <span>

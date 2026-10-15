@@ -90,7 +90,7 @@ export function Details(handle: Handle<{ taskId: string | undefined; page: Detai
                 const pr = presenceFor(a.id, presence);
                 return (
                   <div key={a.id} mix={agentRow}>
-                    <Avatar id={a.id} name={a.name} size={32} status={presenceColor(pr)} />
+                    <Avatar id={a.id} name={a.name} size={32} status={presenceColor(pr)} kind="agent" />
                     <div class="who">
                       <span class="name">
                         {a.name} <span style={{ color: t.textFaint, fontWeight: '400', fontSize: t.textSm }}>{a.role}</span>

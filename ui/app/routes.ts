@@ -7,6 +7,8 @@ export const routes = route({
   home: get('/'),
   needsYou: get('/needs-you'),
   room: get('/room/:id'),
+  // the Rooms tab: opens the project's general channel (decision P64)
+  rooms: get('/rooms'),
   tasks: get('/tasks'),
   taskNew: get('/tasks/new'),
   task: get('/task/:id'),
@@ -30,6 +32,8 @@ export const routes = route({
   security: get('/security'),
   // the project's repo map: its most important code, ranked (decision P62)
   repoMap: get('/repo-map'),
+  // the Knowledge tab: what the crew knows and where it came from (decision P64)
+  knowledge: get('/knowledge'),
   // workspace screens: they open without a project
   workspace: get('/home'),
   chats: get('/chats'),

@@ -11,11 +11,11 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   const repo = freshRepo();
   await createProject(page, 'ws-delete-me', repo);
 
-  // a project page: the project's links, Home first, and nothing of the workspace
+  // a project page: the project's tabs and the bell, the Drydock mark as the way home, none of the workspace's tabs (the gear is on every page)
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-workspace')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-library')).toHaveCount(0);
-  await expect(sidebar(page).getByTestId('nav-settings')).toHaveCount(0);
+  await expect(sidebar(page).getByTestId('nav-settings')).toBeVisible();
 
   // Home: the projects and the workspace areas; the switcher says Home
   await sidebar(page).getByTestId('nav-workspace').click();
@@ -26,19 +26,19 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   await expect(sidebar(page).getByTestId('nav-needs-you')).toHaveCount(0);
   await expect(page.getByRole('complementary', { name: 'Details' })).toHaveCount(0);
 
-  // the skill library is a workspace page of its own
-  await sidebar(page).getByTestId('nav-library-skills').click();
+  // the skill library is a page of the Library tab
+  await workspaceNav(page, 'nav-library-skills');
   await expect(page).toHaveURL(/\/library\/skills$/);
   await expect(page.getByTestId('skill-library')).toBeVisible();
   await expect(page.getByTestId('library-skills')).toBeVisible();
 
-  // back into the project from the workspace sidebar's project link
-  await sidebar(page).getByTestId('project-link').filter({ hasText: 'ws-delete-me' }).click();
+  // back into the project from its card on Home
+  await projectNav(page, 'nav-overview', 'ws-delete-me');
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(projectSwitcher(page)).toContainText('ws-delete-me');
 
-  // delete it from Project settings: the name must be typed
-  await sidebar(page).getByTestId('nav-project').click();
+  // delete it from Project settings (behind the gear): the name must be typed
+  await projectNav(page, 'nav-project');
   const section = page.getByTestId('delete-project');
   await expect(section).toContainText('its branches and its commits are not touched');
   await section.getByTestId('delete-project-open').click();
@@ -52,7 +52,6 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByTestId('home-flash')).toHaveText('ws-delete-me was deleted.');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toHaveCount(0);
-  await expect(sidebar(page).getByTestId('project-link').filter({ hasText: 'ws-delete-me' })).toHaveCount(0);
   await projectSwitcher(page).click();
   await expect(page.getByRole('menuitemradio', { name: 'ws-delete-me', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -61,15 +60,15 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   expect(existsSync(join(repo, '.git'))).toBe(true);
 });
 
-test("workspace pages name no project; a project's own Integrations page is in its sidebar; the agent CLIs and the MCP gateway are on Connections", async ({ page }) => {
+test("workspace pages name no project; a project's own Integrations page is in its Settings rail; the agent CLIs and the MCP gateway are on Connections", async ({ page }) => {
   await createProject(page, 'ws-split');
   await createAgent(page, 'Split agent', 'backend');
 
-  // the project's Integrations page is in the project's sidebar, and the project sidebar stays
+  // the project's Integrations page is in the Settings rail, and the project's bar stays
   await projectNav(page, 'nav-project-integrations');
   await expect(page).toHaveURL(/\/project\/integrations$/);
   await expect(page.getByTestId('project-integrations')).toContainText('ws-split');
-  await expect(sidebar(page).getByTestId('nav-project-integrations')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByTestId('nav-project-integrations')).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(page.getByTestId('project-mcp')).toBeVisible();
   await expect(page.getByTestId('add-from-library')).toBeVisible();
@@ -123,7 +122,7 @@ test('a project from scratch: Choose folder..., and Drydock makes the Git reposi
   await expect(roomLink(page, 'general')).toBeVisible();
   expect(existsSync(join(folder, '.git'))).toBe(true);
   // the project works in it: Project settings show no attach form
-  await sidebar(page).getByTestId('nav-project').click();
+  await projectNav(page, 'nav-project');
   // the project shows the folder's full path (Windows' temp folders can be short 8.3 paths)
   await expect(page.locator('code').filter({ hasText: realpathSync.native(folder) }).first()).toBeVisible();
   await expect(page.getByTestId('no-repo')).toHaveCount(0);

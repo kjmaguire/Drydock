@@ -34,39 +34,93 @@ export function freshRepo(): string {
   return claim('repo', repos, 'out of fresh repositories: raise REPOS in global-setup.ts');
 }
 
-/** The sidebar (the app's main navigation). */
+/** The top bar (the app's main navigation): the project switcher, the tabs, the bell and the gear. */
 export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
 
 /**
- * A room's link in the sidebar. Rooms are named without a "#" (an icon, then the name, then an unread count such as
- * ", 3 unread"), so the accessible name starts with the room name and nothing word-like follows it.
+ * Which hub holds a link that is not in the top bar itself (Crew HQ, decision P64): the sub-pages of a tab are pills under
+ * it, and every settings page is in the Settings rail behind the gear.
+ */
+const HUB_OF: Record<string, string> = {
+  'nav-plan': 'nav-tasks',
+  'nav-pulls': 'nav-tasks',
+  'nav-milestones': 'nav-tasks',
+  'nav-activity': 'nav-overview',
+  'nav-budgets': 'nav-overview',
+  'nav-evals': 'nav-overview',
+  'nav-security': 'nav-overview',
+  'nav-requirements': 'nav-knowledge',
+  'nav-packs': 'nav-knowledge',
+  'nav-skills': 'nav-knowledge',
+  'nav-memory': 'nav-knowledge',
+  'nav-repo-map': 'nav-knowledge',
+  'nav-library-skills': 'nav-library',
+  'nav-project': 'nav-settings',
+  'nav-project-integrations': 'nav-settings',
+  'nav-integrations': 'nav-settings',
+  'nav-mcp': 'nav-settings',
+  'nav-connections': 'nav-settings',
+  'nav-providers': 'nav-settings',
+  'nav-routing': 'nav-settings',
+  'nav-license': 'nav-settings',
+  'nav-backups': 'nav-settings',
+  'nav-data': 'nav-settings',
+  'nav-support': 'nav-settings',
+};
+
+/** Click a navigation link by test id: the tab or pill itself, or its hub first when the link is not on the page yet. */
+async function navTo(page: Page, testId: string): Promise<void> {
+  const link = page.getByTestId(testId);
+  if (!(await link.isVisible())) {
+    const hub = HUB_OF[testId];
+    if (hub) await page.getByTestId(hub).click();
+  }
+  await link.click();
+}
+
+/**
+ * A room's link: in the Rooms rail, or in the Overview's rooms card. Rooms are named without a "#" (an icon, then the name,
+ * then an unread count such as ", 3 unread"), so the accessible name starts with the room name and nothing word-like follows it.
  */
 export function roomLink(page: Page, name: string): Locator {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return sidebar(page).getByRole('link', { name: new RegExp(`^${escaped}(?![\\w-])`) });
+  return page.locator('[data-rooms]').getByRole('link', { name: new RegExp(`^${escaped}(?![\\w-])`) });
 }
 
-/**
- * Open a workspace page (Library, Integrations, Connections, Settings...) from the sidebar. On a project's page the sidebar
- * shows the project, so Home comes first; on a workspace page the link is already there.
- */
-export async function workspaceNav(page: Page, testId: string): Promise<void> {
-  const link = sidebar(page).getByTestId(testId);
-  if (!(await link.isVisible())) await sidebar(page).getByTestId('nav-workspace').click();
-  await link.click();
-}
-
-/**
- * Open a page of a project (Team, Tasks, Project settings...) from the sidebar. On a workspace page the sidebar shows the
- * workspace, so the project is opened first: the one named, else the one the app remembers (its home, "/").
- */
-export async function projectNav(page: Page, testId: string, project?: string): Promise<void> {
-  const link = sidebar(page).getByTestId(testId);
+/** Open a room: from the Overview's rooms card or the Rooms rail when one is on the page, else through the Rooms tab. */
+export async function openRoom(page: Page, name: string): Promise<void> {
+  const link = roomLink(page, name);
   if (!(await link.isVisible())) {
-    if (project) await sidebar(page).getByTestId('project-link').filter({ hasText: project }).click();
+    const tab = sidebar(page).getByTestId('nav-rooms');
+    if (await tab.isVisible()) await tab.click();
     else await page.goto(new URL('/', page.url()).toString());
   }
   await link.click();
+}
+
+/**
+ * Open a workspace page (Library, Integrations, Connections, Settings...). A settings page is behind the gear on any page;
+ * the others are tabs (or pills) of the workspace bar, which a project's page reaches through the Drydock mark (Home).
+ */
+export async function workspaceNav(page: Page, testId: string): Promise<void> {
+  if (HUB_OF[testId] !== 'nav-settings' && testId !== 'nav-settings' && !(await sidebar(page).getByTestId('nav-chats').isVisible())) {
+    await sidebar(page).getByTestId('nav-workspace').click();
+  }
+  await navTo(page, testId);
+}
+
+/**
+ * Open a page of a project (Crew, Tasks, Project settings...). On a workspace page the bar shows the workspace, so the
+ * project is opened first: the one named (its card on Home), else the one the app remembers (its home, "/").
+ */
+export async function projectNav(page: Page, testId: string, project?: string): Promise<void> {
+  if (!(await sidebar(page).getByTestId('nav-overview').isVisible())) {
+    if (project) {
+      if (!(await page.getByTestId('home-project').first().isVisible())) await sidebar(page).getByTestId('nav-workspace').click();
+      await page.getByTestId('home-project').filter({ hasText: project }).click();
+    } else await page.goto(new URL('/', page.url()).toString());
+  }
+  await navTo(page, testId);
 }
 
 /** The project switcher at the top of the sidebar: opens the menu of Home, the projects, "New project…" and "App settings". */

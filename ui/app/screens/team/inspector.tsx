@@ -143,7 +143,7 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined; onN
     return (
       <div mix={rootCss} data-testid="inspector" data-agent={a.id}>
         <div mix={headCss}>
-          <Avatar id={a.id} name={a.name} size={40} status={presenceColor(p)} />
+          <Avatar id={a.id} name={a.name} size={40} status={presenceColor(p)} kind="agent" />
           <div class="who">
             <h3 title={a.name}>{a.name}</h3>
             <span class="sub">

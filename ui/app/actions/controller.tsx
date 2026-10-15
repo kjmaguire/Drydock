@@ -4,7 +4,6 @@
 import { createController } from 'remix/router';
 import type { AppContext } from '../router.tsx';
 import { routes } from '../routes.ts';
-import { HomeScreen } from '../shell/home.tsx';
 
 /** The Integrations page; /mcp (the former MCP servers page, merged into it by decision P47) is its alias. */
 async function integrations({ render }: Pick<AppContext, 'render'>) {
@@ -14,8 +13,17 @@ async function integrations({ render }: Pick<AppContext, 'render'>) {
 
 export const controller = createController(routes, {
   actions: {
-    home({ render }) {
-      return render(<HomeScreen />);
+    async home({ render }) {
+      const { OverviewScreen } = await import('../screens/overview/overview-screen.tsx');
+      return render(<OverviewScreen />);
+    },
+    async rooms({ render }) {
+      const { RoomsScreen } = await import('../screens/rooms/rooms-screen.tsx');
+      return render(<RoomsScreen />);
+    },
+    async knowledge({ render }) {
+      const { KnowledgeScreen } = await import('../screens/knowledge/knowledge-screen.tsx');
+      return render(<KnowledgeScreen />);
     },
     async room({ render, params }) {
       const { RoomScreen } = await import('../screens/room/room-screen.tsx');

@@ -1,4 +1,4 @@
-// The project switcher at the top of the sidebar (Linear's workspace menu): a button with the current project's monogram
+// The project switcher in the top bar (Linear's workspace menu): a button with the current project's monogram
 // and name (or "Home" on a workspace page) that opens a menu: Home, the projects (radio items, the open one checked), then
 // "New project..." and "App settings". Choosing a project opens it; Home opens the workspace. The kit's Menu (@remix-run/ui) gives it the keyboard: Enter, Space or the arrow keys open it, the arrows
 // move, Enter selects, Escape closes and focus returns to the button.
@@ -16,20 +16,21 @@ const triggerCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s2,
-  flex: '1',
+  flex: 'none',
   minWidth: '0',
-  height: '32px',
-  padding: `0 ${t.s2} 0 6px`,
-  border: '0',
+  maxWidth: '260px',
+  height: '38px',
+  padding: `0 ${t.s2} 0 8px`,
+  border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
-  background: 'transparent',
+  background: t.bgSurface,
   color: t.text,
   fontSize: t.textMd,
-  fontWeight: '600',
+  fontWeight: '650',
   textAlign: 'left',
   justifyContent: 'flex-start',
-  transition: `background-color ${t.fast} ${t.ease}`,
-  '&:hover, &[aria-expanded="true"]': { background: t.bgHover },
+  transition: `background-color ${t.fast} ${t.ease}, border-color ${t.fast} ${t.ease}`,
+  '&:hover, &[aria-expanded="true"]': { background: t.bgHover, borderColor: t.borderStrong },
   '& > .name': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& > .name[data-empty="true"]': { color: t.textMuted, fontWeight: '500' },
   '& > .chev': { display: 'inline-flex', color: t.textFaint },

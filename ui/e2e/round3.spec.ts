@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav } from './helpers';
+import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
 
 // Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; this integrations test has no
 // vendor server, so only the refusal paths are exercised (integrations.spec.ts runs against a protocol fixture).
@@ -323,7 +323,7 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await page.getByRole('button', { name: 'Save development settings' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved.' }).first()).toBeVisible();
 
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   const box = page.getByLabel('Message to #general');
   await box.fill('@rita drydock-e2e routed reply: what does Subtract do?');
   await box.press('Control+Enter');
@@ -339,7 +339,7 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
 test('room modes, the scheduler and previews report what the core says', async ({ page }) => {
   await createProject(page, 'gocalc-room');
   await createAgent(page, 'Dana', 'backend');
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   const panel = page.getByTestId('room-agents');
   await panel.locator('summary').click();
   await panel.getByLabel('Mode', { exact: true }).selectOption('sequential');
@@ -348,7 +348,7 @@ test('room modes, the scheduler and previews report what the core says', async (
   await panel.getByRole('button', { name: 'Save mode' }).click();
   await expect(panel).toContainText('Current mode: sequential');
   await page.reload();
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await page.getByTestId('room-agents').locator('summary').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
   // moderator mode needs a moderator: the core refuses and says so

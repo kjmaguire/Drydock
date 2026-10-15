@@ -9,13 +9,13 @@ const base = css({
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '6px',
-  height: '30px',
-  padding: '0 12px',
+  gap: '7px',
+  height: '34px',
+  padding: '0 15px',
   border: '1px solid transparent',
-  borderRadius: t.rMd,
+  borderRadius: t.rFull,
   fontSize: t.textMd,
-  fontWeight: '500',
+  fontWeight: '600',
   lineHeight: '1',
   whiteSpace: 'nowrap',
   userSelect: 'none',
@@ -29,15 +29,14 @@ export const buttonVariant: Record<ButtonVariant, ReturnType<typeof css>> = {
   primary: css({
     background: t.accent,
     color: t.onAccent,
-    boxShadow: `inset 0 1px 0 rgb(255 255 255 / 0.12), ${t.shadowSm}`,
+    boxShadow: t.shadowSm,
     '&:hover': { background: t.accentHover, color: t.onAccent },
   }),
   secondary: css({
-    background: t.bgRaised,
+    background: t.bgSurface,
     color: t.text,
     borderColor: t.borderStrong,
-    boxShadow: t.shadowSm,
-    '&:hover': { background: t.bgOverlay, color: t.text },
+    '&:hover': { background: t.bgHover, color: t.text },
   }),
   ghost: css({
     background: 'transparent',
@@ -60,7 +59,7 @@ export const buttonVariant: Record<ButtonVariant, ReturnType<typeof css>> = {
   }),
 };
 
-const small = css({ height: '26px', padding: '0 8px', fontSize: t.textSm, gap: '4px' });
+const small = css({ height: '28px', padding: '0 11px', fontSize: t.textSm, gap: '5px' });
 
 /** The mixins that make any element (a link, a label) look like a button. */
 export function buttonStyle(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md') {
@@ -85,11 +84,11 @@ export function Button(handle: Handle<ButtonProps>) {
 const iconOnly = css({
   display: 'inline-grid',
   placeItems: 'center',
-  width: '28px',
-  height: '28px',
+  width: '30px',
+  height: '30px',
   padding: '0',
   border: '0',
-  borderRadius: t.rMd,
+  borderRadius: t.rFull,
   background: 'transparent',
   color: t.textMuted,
   transition: `background-color ${t.fast} ${t.ease}, color ${t.fast} ${t.ease}`,

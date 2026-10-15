@@ -245,7 +245,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
                     onChanged();
                   })}
                 />
-                <Avatar id={a.id} name={a.name} size={18} />
+                <Avatar id={a.id} name={a.name} size={18} kind="agent" />
                 <span>{a.name}</span>
                 {a.role ? <span mix={faint}>{a.role}</span> : null}
               </label>

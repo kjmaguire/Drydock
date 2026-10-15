@@ -1,10 +1,12 @@
 // Which screen a URL shows, for the shell (navigation highlight, the task in context, whether a project is needed, and which
-// sidebar shows: the workspace's or the project's).
+// top bar and hub show: the workspace's or the project's).
 
 export type Route =
   | { name: 'home' }
   | { name: 'needs-you' }
   | { name: 'room'; id: string }
+  | { name: 'rooms' }
+  | { name: 'knowledge' }
   | { name: 'tasks' }
   | { name: 'task-new' }
   | { name: 'task'; id: string }
@@ -68,7 +70,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
 
 // screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
 const SIMPLE = new Set<string>([
-  'pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map',
+  'pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map', 'rooms', 'knowledge',
   ...WORKSPACE_ROUTES.filter((n) => n !== 'workspace' && n !== 'library-skills'),
 ]);
 
@@ -128,4 +130,64 @@ export function parseRoute(pathname: string): Route {
 export function hashToPath(hash: string): string | undefined {
   if (!hash.startsWith('#/')) return undefined;
   return hash.slice(1) || '/';
+}
+
+/**
+ * The hub a screen belongs to (Crew HQ, decision P64): one of the five tabs of a project, the gear (settings), or a
+ * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills.
+ */
+export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'chats' | 'library' | 'scan' | 'project-new' | 'none';
+
+const HUB_OF: Record<Route['name'], Hub> = {
+  home: 'overview',
+  'needs-you': 'overview',
+  activity: 'overview',
+  budgets: 'overview',
+  evals: 'overview',
+  security: 'overview',
+  tasks: 'tasks',
+  'task-new': 'tasks',
+  task: 'tasks',
+  run: 'tasks',
+  pulls: 'tasks',
+  plan: 'tasks',
+  milestones: 'tasks',
+  room: 'rooms',
+  rooms: 'rooms',
+  team: 'crew',
+  knowledge: 'knowledge',
+  requirements: 'knowledge',
+  packs: 'knowledge',
+  skills: 'knowledge',
+  memory: 'knowledge',
+  'repo-map': 'knowledge',
+  project: 'settings',
+  'project-integrations': 'settings',
+  integrations: 'settings',
+  mcp: 'settings',
+  connections: 'settings',
+  providers: 'settings',
+  routing: 'settings',
+  license: 'settings',
+  backups: 'settings',
+  data: 'settings',
+  support: 'settings',
+  settings: 'settings',
+  workspace: 'home',
+  chats: 'chats',
+  chat: 'chats',
+  library: 'library',
+  'library-skills': 'library',
+  'security-scan': 'scan',
+  'project-new': 'project-new',
+  'not-found': 'none',
+};
+
+export function hubOf(r: Route): Hub {
+  return HUB_OF[r.name];
+}
+
+/** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
+export function isWorkspaceHub(h: Hub): boolean {
+  return h === 'home' || h === 'chats' || h === 'library' || h === 'scan' || h === 'project-new';
 }

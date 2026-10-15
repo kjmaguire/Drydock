@@ -97,7 +97,7 @@ export function ReviewList(handle: Handle<{ reviews: readonly ReviewRecord[]; ag
           const name = agentName(r.reviewer, agents);
           return (
             <li key={r.id} data-testid="review" data-verdict={r.verdict}>
-              <Avatar id={r.reviewer} name={name} size={24} />
+              <Avatar id={r.reviewer} name={name} size={24} kind="agent" />
               <div class="head">
                 <Badge tone={r.verdict === 'SHIP' ? 'ok' : 'warn'}>{r.verdict}</Badge>
                 <span>

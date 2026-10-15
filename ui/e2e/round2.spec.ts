@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav } from './helpers';
+import { appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
 
 test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
@@ -98,7 +98,7 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await createAgent(page, 'Reviewer R2', 'reviewer');
 
   // a thread in #general
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await page.getByLabel('Message to #general').fill('who owns the parser?');
   await page.getByRole('button', { name: 'Send' }).click();
   const root = page.locator('[data-testid=message]').filter({ hasText: 'who owns the parser?' });

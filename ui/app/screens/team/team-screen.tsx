@@ -195,7 +195,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                 return (
                   <li key={a.id} mix={agentCard} data-testid="agent" data-name={a.name}>
                     <div class="head">
-                      <Avatar id={a.id} name={a.name} size={38} status={presenceColor(p)} />
+                      <Avatar id={a.id} name={a.name} size={38} status={presenceColor(p)} kind="agent" />
                       <div class="who">
                         <h3 title={a.name}>{a.name}</h3>
                         <div class="sub">

@@ -3,7 +3,7 @@
 // core: no visible text under 12 px (avatar initials, which are decoration and hidden from assistive tech, aside), nothing
 // wider than the window, and the details panel takes width only where it has the page's context (a room, a task, a run).
 import { expect, test, type Page } from '@playwright/test';
-import { createAgent, createProject, roomLink, projectNav } from './helpers';
+import { createAgent, createProject, roomLink, projectNav, openRoom } from './helpers';
 
 const ROUTES = ['/needs-you', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/project/integrations', '/plan', '/requirements', '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/chats', '/library', '/connections', '/providers', '/routing', '/backups', '/data', '/support', '/license', '/settings', '/home', '/library/skills', '/security-scan'];
 
@@ -35,7 +35,7 @@ test('every screen reads at a laptop size: text of 12 px or more, nothing wider 
   await createAgent(page, 'Worker One', 'backend');
 
   // beside a room the panel has the room's context and starts open
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await expect(page.getByRole('log')).toBeVisible();
   let m = await measure(page);
   expect(m.small, 'room').toEqual([]);
@@ -65,7 +65,7 @@ test('every screen reads at a laptop size: text of 12 px or more, nothing wider 
   await expect(page).toHaveURL(/\/activity$/);
   await page.getByRole('button', { name: 'Show details' }).click();
   await details().toBeGreaterThan(200);
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await expect(page.getByRole('log')).toBeVisible();
   await details().toBeGreaterThan(200);
   await page.getByRole('button', { name: 'Hide details' }).click();

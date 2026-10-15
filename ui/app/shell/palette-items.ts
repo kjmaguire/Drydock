@@ -22,10 +22,13 @@ export interface PaletteItem {
 
 export const SCREENS: [string, string, string[]?][] = [
   [routes.workspace.href(), 'Home', ['workspace', 'projects', 'start']],
+  [routes.home.href(), 'Overview', ['project', 'crew', 'today', 'dashboard']],
   [routes.needsYou.href(), 'Needs you', ['inbox', 'approvals']],
+  [routes.rooms.href(), 'Rooms', ['channels', 'chat', 'general']],
+  [routes.knowledge.href(), 'Knowledge', ['requirements', 'packs', 'memory', 'repo map']],
   [routes.chats.href(), 'Chats', ['claude', 'conversation']],
   [routes.tasks.href(), 'Tasks'],
-  [routes.team.href(), 'Team', ['agents']],
+  [routes.team.href(), 'Crew', ['agents', 'team']],
   [routes.plan.href(), 'Plan with PlanTeam'],
   [routes.pulls.href(), 'Pull requests', ['pr', 'github']],
   [routes.requirements.href(), 'Requirements'],

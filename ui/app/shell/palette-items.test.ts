@@ -17,7 +17,7 @@ describe('command palette items', () => {
     expect(labels).toContain('#general');
     expect(labels).toContain('Direct message Ada');
     expect(labels.some((l) => l.includes('old'))).toBe(false);
-    expect(labels).toContain('Team');
+    expect(labels).toContain('Crew');
     expect(labels).toContain('#7 Add Multiply');
     expect(labels).toContain('Workflow of #7 Add Multiply');
     expect(labels).toContain('Inspect Ada');
@@ -27,7 +27,7 @@ describe('command palette items', () => {
 
   it('ranks an exact screen name first', () => {
     const items = buildItems(rooms, tasks, agents);
-    expect(filterItems(items, 'team')[0]!.label).toBe('Team');
+    expect(filterItems(items, 'team')[0]!.label).toBe('Crew');
     expect(filterItems(items, 'multiply')[0]!.label).toBe('#7 Add Multiply');
     expect(filterItems(items, '7')[0]!.id).toBe('task:t1');
     // the MCP servers page was folded into Integrations (decision P47): "mcp" still finds it

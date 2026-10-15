@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject, roomLink } from './helpers';
+import { createAgent, createProject, roomLink, openRoom } from './helpers';
 
 // The composer's typing aids, attachments and the command palette against the real Go core.
 test('mentions autocomplete, slash commands, attachments and the Ctrl+K palette', async ({ page }) => {
   await createProject(page, 'gocalc-composer');
   await createAgent(page, 'Backend One', 'backend');
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   const box = page.getByLabel('Message to #general');
   await expect(box).toBeVisible();
 

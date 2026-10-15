@@ -86,7 +86,7 @@ export function NeedsYouScreen(handle: Handle) {
                     <span class="meta">
                       {it.agentId ? (
                         <>
-                          <Avatar id={it.agentId} name={agentName(it.agentId, agents)} size={16} />
+                          <Avatar id={it.agentId} name={agentName(it.agentId, agents)} size={16} kind="agent" />
                           <span>{agentName(it.agentId, agents)}</span>
                           <span aria-hidden="true">·</span>
                         </>

@@ -4,13 +4,14 @@ import { t } from './tokens.ts';
 
 const pageCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0' });
 
+/** The bar of a full-height screen (a room, a chat): a 56px row with the title, used by the conversation screens. */
 export const headerCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s3,
   flex: 'none',
-  height: 'var(--header-height)',
-  padding: `0 ${t.s4} 0 ${t.s5}`,
+  height: '56px',
+  padding: `0 ${t.s5}`,
   borderBottom: `1px solid ${t.border}`,
   background: t.bgApp,
   '& h1': {
@@ -19,28 +20,28 @@ export const headerCss = css({
     gap: t.s2,
     minWidth: '0',
     fontSize: t.textLg,
-    fontWeight: '600',
+    fontWeight: '650',
+    letterSpacing: '-0.01em',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
 });
 
-const headerIcon = css({ display: 'inline-flex', color: t.textMuted });
-const headerSub = css({
-  minWidth: '0',
-  paddingLeft: t.s3,
-  borderLeft: `1px solid ${t.border}`,
-  color: t.textMuted,
-  fontSize: t.textMd,
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
+// A page's head sits in the page itself (Crew HQ): a large title, the subtitle under it, the actions on the right.
+const pageHead = css({
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: t.s4,
+  flexWrap: 'wrap',
+  '& h1': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0', fontSize: '28px', fontWeight: '700', letterSpacing: '-0.025em', lineHeight: '1.15' },
 });
-const headerActions = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none' });
+const headerIcon = css({ display: 'inline-flex', color: t.textMuted });
+const headerSub = css({ color: t.textMuted, fontSize: t.textMd, marginTop: '6px', maxWidth: '80ch' });
+const headerActions = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none', flexWrap: 'wrap' });
 
 const bodyCss = css({ flex: '1', minHeight: '0', overflow: 'auto' });
-const innerCss = css({ display: 'grid', gap: t.s6, padding: `${t.s6} ${t.s6} ${t.s8}`, maxWidth: '1120px', margin: '0 auto', width: '100%' });
+const innerCss = css({ display: 'grid', gap: t.s6, padding: `${t.s6} ${t.s8} 56px`, maxWidth: '1320px', margin: '0 auto', width: '100%' });
 const wideCss = css({ maxWidth: 'none' });
 
 /**
@@ -55,19 +56,43 @@ export function Page(
     const { title, icon, subtitle, actions, wide, flush, children, testId } = handle.props;
     return (
       <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>
-        <header mix={headerCss}>
-          <h1 id={titleId}>
-            {icon ? (
-              <span mix={headerIcon}>
-                <Icon icon={icon} size={16} />
-              </span>
-            ) : null}
-            {title}
-          </h1>
-          {subtitle ? <div mix={headerSub}>{subtitle}</div> : null}
-          {actions ? <div mix={headerActions}>{actions}</div> : null}
-        </header>
-        <div mix={bodyCss}>{flush ? children : <div mix={[innerCss, wide ? wideCss : undefined]}>{children}</div>}</div>
+        {flush ? (
+          <header mix={headerCss}>
+            <h1 id={titleId}>
+              {icon ? (
+                <span mix={headerIcon}>
+                  <Icon icon={icon} size={16} />
+                </span>
+              ) : null}
+              {title}
+            </h1>
+            {subtitle ? <div mix={headerSub} style={{ marginTop: '0' }}>{subtitle}</div> : null}
+            {actions ? <div mix={headerActions}>{actions}</div> : null}
+          </header>
+        ) : null}
+        <div mix={bodyCss}>
+          {flush ? (
+            children
+          ) : (
+            <div mix={[innerCss, wide ? wideCss : undefined]}>
+              <header mix={pageHead}>
+                <div style={{ minWidth: '0' }}>
+                  <h1 id={titleId}>
+                    {icon ? (
+                      <span mix={headerIcon}>
+                        <Icon icon={icon} size={22} />
+                      </span>
+                    ) : null}
+                    {title}
+                  </h1>
+                  {subtitle ? <div mix={headerSub}>{subtitle}</div> : null}
+                </div>
+                {actions ? <div mix={headerActions}>{actions}</div> : null}
+              </header>
+              {children}
+            </div>
+          )}
+        </div>
       </section>
     );
   };
@@ -79,8 +104,9 @@ const sectionHead = css({
   alignItems: 'flex-end',
   justifyContent: 'space-between',
   gap: t.s3,
-  '& h2, & h3': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
-  '& p': { color: t.textMuted, fontSize: t.textSm, marginTop: '2px' },
+  '& h2': { fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em', margin: '0' },
+  '& h3': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
+  '& p': { color: t.textMuted, fontSize: t.textSm, marginTop: '3px' },
 });
 
 /** A titled group within a page. `level` 3 is a group inside another section (an h3 under the page's h2 groups). */
@@ -111,7 +137,7 @@ export const card = css({
   border: `1px solid ${t.border}`,
   borderRadius: t.rLg,
   background: t.bgSurface,
-  padding: t.s4,
+  padding: '18px',
   minWidth: '0',
 });
 
@@ -128,7 +154,7 @@ export const listCard = css({
     display: 'flex',
     alignItems: 'center',
     gap: t.s3,
-    padding: `10px ${t.s4}`,
+    padding: `11px 18px`,
     borderTop: `1px solid ${t.border}`,
     minWidth: '0',
   },

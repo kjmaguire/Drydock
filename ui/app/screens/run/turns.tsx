@@ -176,7 +176,7 @@ export function Turns(
                 {name ? (
                   <span class="who">
                     <span class="sep">·</span>
-                    <Avatar id={e.agentId!} name={name} size={16} />
+                    <Avatar id={e.agentId!} name={name} size={16} kind="agent" />
                     {name}
                   </span>
                 ) : null}

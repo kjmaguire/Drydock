@@ -215,7 +215,7 @@ function Person(handle: Handle<{ id: string | undefined; agents: readonly Agent[
     const name = agentName(id, agents);
     return (
       <>
-        <Avatar id={id} name={name} size={20} />
+        <Avatar id={id} name={name} size={20} kind="agent" />
         <strong style={{ fontWeight: '500' }}>{name}</strong>
       </>
     );

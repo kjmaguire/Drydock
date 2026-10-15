@@ -173,7 +173,7 @@ export function NodePanel(
             <>
               <dt>Agent</dt>
               <dd style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Avatar id={last!.agentId!} name={agent} size={18} />
+                <Avatar id={last!.agentId!} name={agent} size={18} kind="agent" />
                 {agent}
               </dd>
             </>

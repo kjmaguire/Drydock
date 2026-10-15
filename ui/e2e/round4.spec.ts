@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -151,7 +151,7 @@ test('export a project, preview what is in it, import it into a second project; 
   // projects are chosen in the switcher at the top of the sidebar (a menu of radio items)
   await switchProject(page, 'pkg-export-copy');
   await expect(roomLink(page, 'general')).toBeVisible();
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();
   await expect(page.getByTestId('message').filter({ hasText: 'Nothing from the file is trusted yet' })).toBeVisible();
 
@@ -164,7 +164,7 @@ test('export a project, preview what is in it, import it into a second project; 
 
 test('support bundle: preview lists files and the scrub report, a planted secret never appears, create writes a local file that does not contain it', async ({ page }) => {
   await createProject(page, 'pkg-support');
-  await roomLink(page, 'general').click();
+  await openRoom(page, 'general');
   await page.getByLabel('Message to #general').fill(`my token is ${PLANTED} please do not leak it`);
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('[data-testid=message][data-author-kind=human]').filter({ hasText: 'please do not leak it' })).toBeVisible();

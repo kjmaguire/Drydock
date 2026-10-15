@@ -1,8 +1,6 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import type { PresenceState } from '../api/types.ts';
 import { statusLabel, statusTone } from '../lib/format.ts';
-import { Bot } from 'lucide';
-import { Icon } from './icon.tsx';
 import { t, tone, type Tone } from './tokens.ts';
 
 const badgeCss = css({
@@ -13,7 +11,7 @@ const badgeCss = css({
   padding: '0 7px',
   borderRadius: t.rFull,
   fontSize: t.textXs,
-  fontWeight: '500',
+  fontWeight: '600',
   lineHeight: '1',
   whiteSpace: 'nowrap',
   verticalAlign: 'middle',
@@ -70,7 +68,7 @@ export function PresenceDot(handle: Handle<{ presence: PresenceState | undefined
     const color = PRESENCE_TONE[name.toLowerCase().split(/\s/)[0] ?? ''] ?? t.textFaint;
     return (
       <span mix={presenceCss} title={p?.activity ? `${label}: ${p.activity}` : label} data-testid="presence">
-        <span mix={dotCss} aria-hidden="true" style={{ background: color }} />
+        <span mix={dotCss} aria-hidden="true" data-pulse={/^(working|thinking)/i.test(name) ? 'true' : undefined} style={{ background: color, color }} />
         <span class={handle.props.compact ? 'sr-only' : undefined}>{label}</span>
       </span>
     );
@@ -118,35 +116,65 @@ const avatarStatus = css({
   border: `2px solid ${t.bgApp}`,
 });
 
-const avatarBot = css({
-  position: 'absolute',
-  right: '-3px',
-  bottom: '-3px',
-  display: 'grid',
-  placeItems: 'center',
-  width: '13px',
-  height: '13px',
-  borderRadius: '4px',
-  background: t.bgRaised,
-  color: t.textMuted,
-  boxShadow: `0 0 0 1.5px ${t.bgApp}, inset 0 0 0 1px ${t.border}`,
-});
-
 /** The corner radius of an avatar of this size: a rounded-md square (6px at 24-28px). */
 export function avatarRadius(size: number): number {
   return size <= 16 ? 3 : size <= 20 ? 4 : size <= 30 ? 6 : 8;
 }
 
+const eyesCss = css({
+  position: 'absolute',
+  inset: '0',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingBottom: '8%',
+  pointerEvents: 'none',
+  '& > i': { display: 'block', background: 'currentColor' },
+});
+
+/** The mood an agent's eyes show, from its presence color (the words sit beside the avatar). */
+export function moodFor(status: string | undefined): string {
+  if (!status) return 'idle';
+  for (const [k, v] of Object.entries(PRESENCE_TONE)) if (v === status) return k === 'needs' ? 'waiting' : k;
+  return 'idle';
+}
+
 /**
- * A calm avatar: initials on a neutral surface lightly tinted by a stable per-id hue (low chroma, both themes).
- * People are round; agents, projects and tools are rounded squares, and an agent at 24px or more carries a small bot
- * badge (unless a presence dot takes that corner). `status` is a presence color for the dot.
+ * An avatar. Agents are "dots" (OpenAI Dots, Grok Bot): a disc in the agent's own bright colour with two rounded-square
+ * eyes that blink, look around while the agent works, look up while it waits on you and close while it is paused.
+ * People are round with initials; projects and tools are rounded squares with initials. `status` is a presence color.
  */
 export function Avatar(handle: Handle<{ id: string; name: string; size?: number; square?: boolean; status?: string; kind?: 'agent' | 'human' | 'system' }>) {
   return () => {
     const { id, name, size = 32, status, kind } = handle.props;
     const hue = hueFor(id);
     const neutral = kind === 'system';
+    if (kind === 'agent') {
+      const ew = Math.max(2, Math.round(size * 0.15));
+      const eh = Math.max(3, Math.round(size * 0.24));
+      return (
+        <span
+          mix={avatarCss}
+          aria-hidden="true"
+          data-kind={kind}
+          data-dot="true"
+          style={{
+            width: `${size}px`,
+            height: `${size}px`,
+            borderRadius: '50%',
+            background: `radial-gradient(circle at 32% 26%, hsl(${hue} 95% 78%), hsl(${hue} 78% 58%) 62%, hsl(${hue} 70% 48%))`,
+            color: '#0b0c0e',
+            boxShadow: `inset 0 -${Math.max(1, Math.round(size / 14))}px 0 rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.25)`,
+          }}
+        >
+          <span mix={eyesCss} class="dot-eyes" data-mood={moodFor(status)} style={{ gap: `${Math.max(2, Math.round(size * 0.13))}px`, ['--blink-delay' as string]: `${(hue % 7) * 0.6}s` }}>
+            <i style={{ width: `${ew}px`, height: `${eh}px`, borderRadius: `${Math.max(1, Math.round(ew * 0.38))}px` }} />
+            <i style={{ width: `${ew}px`, height: `${eh}px`, borderRadius: `${Math.max(1, Math.round(ew * 0.38))}px` }} />
+          </span>
+          {status && size >= 20 ? <span mix={avatarStatus} style={{ background: status }} /> : null}
+        </span>
+      );
+    }
     const bg = neutral ? t.bgActive : `color-mix(in oklab, hsl(${hue} 42% 52%) 16%, ${t.bgRaised})`;
     const fg = neutral ? t.textMuted : `color-mix(in oklab, hsl(${hue} 48% 50%) 55%, ${t.text})`;
     const round = kind === 'human';
@@ -167,7 +195,7 @@ export function Avatar(handle: Handle<{ id: string; name: string; size?: number;
         }}
       >
         {size < 22 ? initials(name).slice(0, 1) : initials(name)}
-        {status ? <span mix={avatarStatus} style={{ background: status }} /> : kind === 'agent' && size >= 24 ? <span mix={avatarBot} class="avatar-bot"><Icon icon={Bot} size={9} strokeWidth={2.25} /></span> : null}
+        {status ? <span mix={avatarStatus} style={{ background: status }} /> : null}
       </span>
     );
   };

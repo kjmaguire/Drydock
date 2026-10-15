@@ -303,7 +303,7 @@ function TemplatePanel(handle: Handle<{ t: AgentTemplate; servers: readonly McpL
       <>
         <article mix={[card, panelCard]} data-testid="lib-template" data-template={tp.name} aria-label={tp.name}>
           <header mix={cardHead}>
-            <Avatar id={tp.id} name={tp.name} size={30} />
+            <Avatar id={tp.id} name={tp.name} size={30} kind="agent" />
             <h3>{tp.name}</h3>
             {tp.role ? <span mix={muted}>{tp.role}</span> : null}
             <code mix={faint}>{tp.adapter}</code>

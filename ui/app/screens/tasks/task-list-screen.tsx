@@ -121,7 +121,7 @@ function People(handle: Handle<{ task: Task; agents: readonly Agent[] }>) {
         <span class="sr-only">{label}</span>
         {task.assignee ? (
           <span mix={ringCss}>
-            <Avatar id={task.assignee} name={worker} size={22} />
+            <Avatar id={task.assignee} name={worker} size={22} kind="agent" />
           </span>
         ) : (
           <span class="none">
@@ -130,7 +130,7 @@ function People(handle: Handle<{ task: Task; agents: readonly Agent[] }>) {
         )}
         {task.reviewer ? (
           <span mix={ringCss}>
-            <Avatar id={task.reviewer} name={reviewer} size={22} />
+            <Avatar id={task.reviewer} name={reviewer} size={22} kind="agent" />
           </span>
         ) : null}
       </span>
