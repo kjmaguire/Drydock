@@ -45,8 +45,9 @@ export const tileCss = css({
   '& > :first-child': { flex: 'none' },
   '& > span:last-child': { flex: '1 1 auto', minWidth: '0' },
   '& strong': { display: 'block', fontWeight: '600', overflowWrap: 'anywhere' },
-  // the name, with the state badge (when there is one) at the end of its line
-  '& [data-tile-title]': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s2, minWidth: '0' },
+  // the name, with the state badge (when there is one) at the end of its line; when the two do not fit side by side the
+  // badge moves under the name, so a short name never breaks letter by letter ("Linea r") to make room for it
+  '& [data-tile-title]': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: `2px ${t.s2}`, minWidth: '0' },
   '& [data-tile-title] > strong': { flex: '1 1 auto', minWidth: '0' },
   '& [data-tile-title] > span': { flex: 'none' },
   '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },

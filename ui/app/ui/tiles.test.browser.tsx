@@ -75,6 +75,24 @@ describe('Tile', () => {
     expect(seen).toEqual(['start:dragstart', 'end:dragend']);
   });
 
+  it('moves the badge under the name when the two do not fit on one line, instead of breaking the name letter by letter', () => {
+    const { container } = renderPlain(
+      <div style={{ width: '220px' }}>
+        <ul mix={tileGrid}>
+          <Tile title="Microsoft Learn" logo="microsoft" blurb="Tools for agents" state="Agents: not connected" badge={{ text: 'not connected', tone: 'muted' }} testId="t" />
+        </ul>
+      </div>,
+    );
+    const b = container.querySelector('[data-testid="t"]') as HTMLButtonElement;
+    const name = b.querySelector('[data-tile-title] > strong') as HTMLElement;
+    const badge = b.querySelector('[data-testid="tile-badge"]') as HTMLElement;
+    const n = name.getBoundingClientRect();
+    const g = badge.getBoundingClientRect();
+    expect(n.height).toBeLessThan(28); // one line: the name was not broken
+    expect(g.top).toBeGreaterThanOrEqual(n.bottom - 1); // the badge sits under it
+    expect(g.right).toBeLessThanOrEqual(b.getBoundingClientRect().right + 0.5);
+  });
+
   it('keeps a long blurb and state inside the tile, wrapped, under the app stylesheet that makes every other button one line', () => {
     // the test page carries no stylesheet (the runner serves only scripts); this is app.css's rule for every button
     const style = document.createElement('style');
