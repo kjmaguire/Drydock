@@ -5,7 +5,7 @@
 // action.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, CircleSlash, CircleX, Copy, CornerDownRight, Info, MessageSquareReply, ShieldAlert } from 'lucide';
+import { Check, CircleCheck, CircleSlash, CircleX, Copy, CornerDownRight, Info, MessageSquareReply, ShieldAlert, Wrench } from 'lucide';
 import type { Message } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -19,13 +19,14 @@ import { checkOf, isQuiet, isRecord, markersOf, mentionsHuman, repliesText, shor
 const rowCss = css({
   position: 'relative',
   display: 'grid',
-  gridTemplateColumns: '28px minmax(0, 1fr)',
-  columnGap: '10px',
+  gridTemplateColumns: '32px minmax(0, 1fr)',
+  columnGap: '12px',
   padding: `1px ${t.s6} 1px ${t.s5}`,
   transition: `background-color ${t.fast} ${t.ease}`,
   '&:hover': { background: `color-mix(in srgb, ${t.bgHover} 60%, transparent)` },
 });
-const headCss = css({ marginTop: '10px', paddingTop: '3px' });
+const headCss = css({ marginTop: '12px', paddingTop: '3px' });
+const toolTile = css({ display: 'grid', placeItems: 'center', width: '32px', height: '32px', borderRadius: '10px', background: t.bgActive, color: t.textMuted });
 const mentionCss = css({ background: t.mentionBg, boxShadow: `inset 2px 0 0 ${t.mentionBorder}`, '&:hover': { background: t.mentionBg } });
 const errorCss = css({ background: `color-mix(in srgb, ${t.dangerSoft} 55%, transparent)`, boxShadow: `inset 2px 0 0 ${t.danger}`, '&:hover': { background: t.dangerSoft } });
 const quietCss = css({ color: t.textMuted, fontSize: t.textSm });
@@ -42,7 +43,7 @@ const gutterTime = css({
   // each css() is its own cascade layer, so the row's hover is matched from here (an ancestor selector)
   ':is(.msg:hover) &': { opacity: '1' },
 });
-const quietIcon = css({ display: 'grid', placeItems: 'center', width: '28px', height: '20px', color: t.textFaint });
+const quietIcon = css({ display: 'grid', placeItems: 'center', width: '32px', height: '20px', color: t.textFaint });
 
 const contentCss = css({ minWidth: '0' });
 const metaCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: '0', lineHeight: '20px' });
@@ -134,6 +135,28 @@ const repliesBtn = css({
   '&:hover .hint': { opacity: '1' },
 });
 
+// the person's own message (Crew HQ, decision P64): a dark bubble on the right, its author line above it, no avatar.
+// Each css() rule lives in its own cascade layer, ordered by first use on the page, so the bubble's colours go on the
+// body element itself, mixed in after bodyCss (bubbleCss): a layer declared later always wins there.
+const mineCss = css({
+  '& .msg-head': { justifyContent: 'flex-end' },
+  '& .msg-tools': { right: 'auto', left: t.s5 },
+});
+const bubbleCss = css({
+  justifySelf: 'end',
+  maxWidth: 'min(72%, 720px)',
+  marginTop: '3px',
+  padding: '9px 14px',
+  borderRadius: '18px 4px 18px 18px',
+  background: t.accent,
+  color: t.onAccent,
+  '& a': { color: 'inherit', textDecoration: 'underline' },
+  '& code': { background: 'color-mix(in srgb, currentColor 14%, transparent)', color: 'inherit' },
+  '& pre': { background: 'color-mix(in srgb, currentColor 10%, transparent)', color: 'inherit' },
+  '& blockquote': { borderColor: 'color-mix(in srgb, currentColor 40%, transparent)', color: 'inherit' },
+});
+const mineContent = css({ display: 'grid', justifyItems: 'end' });
+
 const MARKER_TONE: Record<string, Tone> = { DECISION: 'accent', TODO: 'warn', STATUS: 'info', RESULT: 'ok' };
 
 /** The author's name color: plain text (names are not colored by author); system notes are muted. */
@@ -192,6 +215,8 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
     const classes = ['msg', `msg-${m.author.kind}`, `msg-type-${m.type.toLowerCase()}`, m.type === 'ERROR' ? 'msg-error' : '', quiet ? 'msg-quiet' : ''].filter(Boolean).join(' ');
     const showHead = head || quiet;
     const mention = mentionsHuman(m);
+    // the person's own words are a bubble; their records and check results (none today) would stay cards
+    const mine = m.author.kind === 'human' && !quiet && !check && !isRecord(m) && m.type !== 'ERROR';
     return (
       <article
         class={classes}
@@ -201,22 +226,29 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
         data-head={showHead ? 'true' : undefined}
         data-mention={mention ? 'true' : undefined}
         aria-label={`${m.author.kind} ${name}, ${m.type}`}
-        mix={[rowCss, showHead ? headCss : undefined, quiet ? quietCss : undefined, mention ? mentionCss : undefined, m.type === 'ERROR' ? errorCss : undefined]}
+        data-mine={mine ? 'true' : undefined}
+        mix={[rowCss, showHead ? headCss : undefined, quiet ? quietCss : undefined, mention ? mentionCss : undefined, m.type === 'ERROR' ? errorCss : undefined, mine ? mineCss : undefined]}
       >
         <div mix={gutterCss}>
           {quiet ? (
             <span mix={quietIcon} aria-hidden="true">
               <Icon icon={Info} size={15} />
             </span>
-          ) : showHead ? (
-            <Avatar id={m.author.id} name={name} size={28} kind={m.author.kind === 'agent' ? 'agent' : m.author.kind === 'human' ? 'human' : 'system'} />
+          ) : mine ? null : showHead ? (
+            m.author.kind === 'tool' ? (
+              <span mix={toolTile} aria-hidden="true" title={name}>
+                <Icon icon={Wrench} size={15} />
+              </span>
+            ) : (
+              <Avatar id={m.author.id} name={name} size={32} kind={m.author.kind === 'agent' ? 'agent' : m.author.kind === 'human' ? 'human' : 'system'} />
+            )
           ) : (
             <time class="msg-gutter-time" mix={gutterTime} dateTime={m.created_at} title={formatDateTime(m.created_at)}>
               {shortTime(m.created_at)}
             </time>
           )}
         </div>
-        <div mix={contentCss}>
+        <div mix={[contentCss, mine ? mineContent : undefined]}>
           {showHead ? (
             <header class="msg-head" mix={metaCss}>
               <strong class="msg-author" mix={nameCss} style={{ color: nameColor(m) }}>
@@ -274,7 +306,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
             <RecordCard m={m} />
           ) : (
             <>
-              <div class="msg-body" mix={[bodyCss, quiet ? quietBodyCss : undefined]}>
+              <div class="msg-body" mix={[bodyCss, quiet ? quietBodyCss : undefined, mine ? bubbleCss : undefined]}>
                 <Markdown source={m.body} />
               </div>
               <Attachments m={m} />

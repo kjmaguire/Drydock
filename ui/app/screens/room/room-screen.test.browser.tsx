@@ -80,7 +80,10 @@ describe('Conversation', () => {
     // one author line: the name, then the agent's role (or the author kind) as a quiet label; people get none
     expect(messagesOf(r).map((m) => m.querySelector('.msg-role')?.textContent ?? null)).toEqual([null, 'backend', 'tool', 'tool', 'system']);
     expect(messagesOf(r)[1]!.querySelector('[data-kind="agent"]')).not.toBeNull();
-    expect(messagesOf(r)[0]!.querySelector('[data-kind="human"]')).not.toBeNull();
+    // the person's own words are a bubble on the right, without an avatar (Crew HQ, decision P64)
+    expect(messagesOf(r)[0]!.getAttribute('data-mine')).toBe('true');
+    expect(messagesOf(r)[0]!.querySelector('[data-kind="human"]')).toBeNull();
+    expect(messagesOf(r)[1]!.getAttribute('data-mine')).toBeNull();
     expect(qa(r, '[data-testid="message"] span').some((e) => e.textContent === 'DECISION')).toBe(true);
     expect(messagesOf(r)[1]!.textContent).toContain('untrusted');
     const cards = qa(r, '[data-testid="check-card"]');

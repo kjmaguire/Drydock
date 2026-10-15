@@ -2,7 +2,7 @@
 // posts with thread_root. Re-read when a message is posted in the room.
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { SendHorizontal, X } from 'lucide';
+import { ArrowUp, X } from 'lucide';
 import type { Message } from '../../api/types.ts';
 import { authorName, formatDateTime, roomLabel } from '../../lib/format.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -169,9 +169,9 @@ export function ThreadPanel(handle: Handle<{ roomId: string; rootId: string; onC
               <span style={{ flex: '1', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }} aria-hidden="true">
                 <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to reply
               </span>
-              <button type="submit" mix={sendCss} disabled={act.busy !== '' || !text.trim()}>
-                <Icon icon={SendHorizontal} size={15} />
-                Reply
+              <button type="submit" mix={sendCss} disabled={act.busy !== '' || !text.trim()} title="Reply (Ctrl+Enter)">
+                <Icon icon={ArrowUp} size={18} />
+                <span class="sr-only">Reply</span>
               </button>
             </div>
           </div>

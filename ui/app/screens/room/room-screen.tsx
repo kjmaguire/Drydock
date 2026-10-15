@@ -14,7 +14,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
-import { headerCss, Page } from '../../ui/layout.tsx';
+import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { Composer } from './composer.tsx';
@@ -59,17 +59,21 @@ export function RoomScreen(handle: Handle<{ id: string }>) {
 }
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
-const titleIcon = css({ display: 'inline-flex', color: t.textFaint });
-const topicCss = css({
-  minWidth: '0',
-  paddingLeft: t.s3,
-  borderLeft: `1px solid ${t.border}`,
-  color: t.textMuted,
-  fontSize: t.textMd,
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
+// the room's header (Crew HQ, decision P64): a tile with the room's icon, the name with its topic beneath, the actions
+const roomHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s3,
+  flex: 'none',
+  minHeight: '68px',
+  padding: `${t.s3} ${t.s6} ${t.s3} ${t.s5}`,
+  borderBottom: `1px solid ${t.border}`,
+  '& h1': { margin: '0', fontSize: '19px', fontWeight: '650', lineHeight: '24px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& .title': { display: 'grid', minWidth: '0', gap: '1px' },
+  '& .title .line': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
 });
+const titleIcon = css({ display: 'grid', placeItems: 'center', flex: 'none', width: '38px', height: '38px', borderRadius: '12px', background: t.bgActive, color: t.textMuted });
+const topicCss = css({ minWidth: '0', color: t.textMuted, fontSize: t.textSm, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
 const actionsCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none' });
 const modeCss = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap' });
 
@@ -90,11 +94,10 @@ const introIcon = css({
   gridRow: 'span 2',
   display: 'grid',
   placeItems: 'center',
-  width: '36px',
-  height: '36px',
-  borderRadius: t.rLg,
-  background: t.bgSurface,
-  boxShadow: `inset 0 0 0 1px ${t.border}`,
+  width: '40px',
+  height: '40px',
+  borderRadius: '12px',
+  background: t.bgActive,
   color: t.textMuted,
 });
 const dividerCss = css({
@@ -105,7 +108,7 @@ const dividerCss = css({
   color: t.textFaint,
   fontSize: t.textXs,
   fontWeight: '500',
-  '&::after': { content: '""', flex: '1', height: '1px', background: t.border },
+  '&::before, &::after': { content: '""', flex: '1', height: '1px', background: t.border },
 });
 const newCss = css({
   display: 'flex',
@@ -254,23 +257,23 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     handle.queueTask(() => list.settle());
     return (
       <section mix={screenCss} class="conversation" aria-label={`Conversation ${room.name}`}>
-        <header mix={headerCss}>
-          <h1>
-            <span mix={titleIcon}>
-              <Icon icon={roomIcon(room.kind)} size={16} />
-            </span>
-            {label}
-          </h1>
-          {room.archived ? (
-            <Badge tone="muted" title="This channel is archived: it can be read, not written">
-              archived
-            </Badge>
-          ) : null}
-          {room.topic ? (
-            <div mix={topicCss} title={room.topic}>
-              {room.topic}
+        <header mix={roomHead}>
+          <span mix={titleIcon} aria-hidden="true">
+            <Icon icon={roomIcon(room.kind)} size={18} />
+          </span>
+          <div class="title">
+            <div class="line">
+              <h1>{label}</h1>
+              {room.archived ? (
+                <Badge tone="muted" title="This channel is archived: it can be read, not written">
+                  archived
+                </Badge>
+              ) : null}
             </div>
-          ) : null}
+            <div mix={topicCss} title={room.topic || undefined}>
+              {room.topic || (room.kind === 'dm' ? 'A direct conversation' : room.kind === 'task' ? "The task's own room: reports, check results and reviews" : 'The whole crew and you; agents answer when you mention them')}
+            </div>
+          </div>
           <div mix={actionsCss}>
             <span mix={modeCss} title="How agents take turns in this room">
               {room.mode} mode

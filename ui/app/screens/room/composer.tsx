@@ -3,7 +3,7 @@
 // What a mention means is decided by the room core when the message is posted; files go with the message.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { AtSign, Hash, Paperclip, SendHorizontal, SquareSlash, Users, X } from 'lucide';
+import { ArrowUp, AtSign, Hash, Paperclip, SquareSlash, Users, X } from 'lucide';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { activeToken, applySuggestion, mentionHandle, parseSlash, SLASH_COMMANDS, suggest, type MentionTarget, type Suggestion, type Token } from '../../lib/composer.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
@@ -55,7 +55,7 @@ export const composerBox = css({
   '& textarea:focus-visible': { boxShadow: 'none' },
 });
 
-export const composerBar = css({ display: 'flex', alignItems: 'center', gap: t.s1, padding: `4px ${t.s2} ${t.s2}` });
+export const composerBar = css({ display: 'flex', alignItems: 'center', gap: t.s1, padding: `4px ${t.s2} ${t.s2} ${t.s2}` });
 const hintCss = css({
   flex: '1',
   minWidth: '0',
@@ -66,20 +66,22 @@ const hintCss = css({
   textOverflow: 'ellipsis',
   '& kbd': { margin: '0 2px' },
 });
+// the send button is a round black disc with an arrow (Crew HQ, decision P64); its name stays "Send" for readers
 export const sendCss = css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  height: '30px',
+  display: 'grid',
+  placeItems: 'center',
+  flex: 'none',
+  width: '36px',
+  height: '36px',
   minHeight: '0',
-  padding: '0 12px',
+  padding: '0',
   border: '0',
-  borderRadius: t.rLg,
+  borderRadius: t.rFull,
   background: t.accent,
   color: t.onAccent,
-  fontWeight: '600',
-  '&:hover': { background: t.accentHover },
-  '&:disabled': { background: t.bgActive, color: t.textFaint, opacity: '1' },
+  transition: `background-color ${t.fast} ${t.ease}, transform ${t.fast} ${t.ease}`,
+  '&:hover': { background: t.accentHover, transform: 'translateY(-1px)' },
+  '&:disabled': { background: t.bgActive, color: t.textFaint, opacity: '1', transform: 'none' },
 });
 
 const filesCss = css({ display: 'flex', flexWrap: 'wrap', gap: t.s2, margin: '0', padding: `10px 12px 0`, listStyle: 'none' });
@@ -586,9 +588,9 @@ export function Composer(handle: Handle<ComposerProps>) {
                 </>
               )}
             </span>
-            <button type="submit" mix={sendCss} disabled={disabled || busy || (!text.trim() && files.length === 0)}>
-              <Icon icon={SendHorizontal} size={15} />
-              {busy ? 'Sending...' : 'Send'}
+            <button type="submit" mix={sendCss} disabled={disabled || busy || (!text.trim() && files.length === 0)} title={busy ? 'Sending...' : 'Send (Ctrl+Enter)'}>
+              <Icon icon={ArrowUp} size={18} />
+              <span class="sr-only">{busy ? 'Sending...' : 'Send'}</span>
             </button>
           </div>
         </div>

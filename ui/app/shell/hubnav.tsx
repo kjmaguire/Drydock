@@ -201,13 +201,15 @@ export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
     const p = s.project;
     const agents = p.agentList;
     const n = (p.unread.data ?? []).find((u) => u.roomId === r.id)?.unread ?? 0;
-    const agentId = r.kind === 'dm' ? r.name.slice(r.name.lastIndexOf('+') + 1) : '';
+    // a direct message shows the agent, a task room its writer (both as dots); a channel its icon
+    const agentId = r.kind === 'dm' ? r.name.slice(r.name.lastIndexOf('+') + 1) : r.kind === 'task' ? (p.taskList.find((x) => x.id === r.taskId)?.assignee ?? '') : '';
+    const agent = agentId ? agents.find((a) => a.id === agentId) : undefined;
     const label = roomLabel(r, agents);
     return (
       <li>
         <a href={routes.room.href({ id: r.id })} mix={itemCss} data-testid="room-link" aria-current={current ? 'page' : undefined} data-unread={n > 0 ? 'true' : undefined}>
-          {r.kind === 'dm' ? (
-            <Avatar id={agentId} name={label} size={22} kind="agent" status={presenceColor(p.presence.data?.find((x) => x.agentId === agentId))} />
+          {r.kind === 'dm' || (r.kind === 'task' && agent) ? (
+            <Avatar id={agentId} name={agent?.name ?? label} size={24} kind="agent" status={presenceColor(p.presence.data?.find((x) => x.agentId === agentId))} />
           ) : (
             <span class="room-icon">
               <Icon icon={roomIcon(r.kind)} size={14} />

@@ -16,45 +16,52 @@ import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { memberKey, MODE_TEXT } from './messages.ts';
 
+// a pill under the room's header (Crew HQ, decision P64); open, its body is a card below it
 const barCss = css({
   flex: 'none',
+  padding: `${t.s2} ${t.s5}`,
   borderBottom: `1px solid ${t.border}`,
-  background: t.bgApp,
   '& > summary': {
-    display: 'flex',
+    display: 'inline-flex',
     alignItems: 'center',
     gap: t.s2,
-    height: '36px',
-    padding: `0 ${t.s5}`,
+    height: '30px',
+    padding: '0 10px 0 10px',
+    border: `1px solid ${t.border}`,
+    borderRadius: t.rFull,
+    background: t.bgSurface,
     listStyle: 'none',
     color: t.textMuted,
     fontSize: t.textSm,
+    fontWeight: '500',
     userSelect: 'none',
+    cursor: 'pointer',
   },
   '& > summary::-webkit-details-marker': { display: 'none' },
-  '& > summary:hover': { background: t.bgHover, color: t.text },
-  '& > summary .chev': { display: 'inline-flex', marginLeft: 'auto', transition: `transform ${t.fast} ${t.ease}` },
+  '& > summary:hover': { borderColor: t.borderStrong, color: t.text },
+  '& > summary .chev': { display: 'inline-flex', transition: `transform ${t.fast} ${t.ease}` },
   '&[open] > summary .chev': { transform: 'rotate(180deg)' },
-  '&[open] > summary': { color: t.text },
+  '&[open] > summary': { color: t.text, borderColor: t.borderStrong },
 });
-const stackCss = css({ display: 'inline-flex', alignItems: 'center', marginLeft: t.s2, '& > span': { marginLeft: '-6px', boxShadow: `0 0 0 2px ${t.bgApp}`, borderRadius: '50%' }, '& > span:first-child': { marginLeft: '0' } });
+const stackCss = css({ display: 'inline-flex', alignItems: 'center', marginLeft: '2px', '& > span': { marginLeft: '-6px', boxShadow: `0 0 0 2px ${t.bgSurface}`, borderRadius: '50%' }, '& > span:first-child': { marginLeft: '0' } });
 const bodyCss = css({
   display: 'grid',
   gap: t.s4,
   maxHeight: '55vh',
   overflowY: 'auto',
-  padding: `${t.s3} ${t.s5} ${t.s4}`,
-  borderTop: `1px solid ${t.border}`,
-  background: t.bgSidebar,
+  marginTop: t.s2,
+  padding: t.s4,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rXl,
+  background: t.bgSurface,
 });
 const colsCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: t.s4, alignItems: 'start' });
 const cardCss = css({
   display: 'grid',
   gap: t.s3,
   padding: t.s4,
-  border: `1px solid ${t.border}`,
   borderRadius: t.rLg,
-  background: t.bgSurface,
+  background: t.bgApp,
   minWidth: '0',
   '& h3': { display: 'flex', alignItems: 'center', gap: t.s2, margin: '0', fontSize: t.textMd },
   '& .muted': { margin: '0', color: t.textMuted, fontSize: t.textSm },

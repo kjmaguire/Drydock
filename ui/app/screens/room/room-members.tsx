@@ -12,10 +12,12 @@ const wrapCss = css({
     display: 'inline-flex',
     alignItems: 'center',
     gap: '6px',
-    height: '28px',
-    padding: '0 8px 0 4px',
+    height: '30px',
+    padding: '0 10px 0 5px',
     border: `1px solid ${t.border}`,
-    borderRadius: t.rMd,
+    borderRadius: t.rFull,
+    background: t.bgSurface,
+    cursor: 'pointer',
     listStyle: 'none',
     color: t.textMuted,
     fontSize: t.textSm,
@@ -26,7 +28,7 @@ const wrapCss = css({
   '& > summary:hover': { background: t.bgHover, color: t.text },
   '&[open] > summary': { background: t.bgActive, color: t.text },
 });
-const stackCss = css({ display: 'inline-flex', '& > span': { marginLeft: '-5px', boxShadow: `0 0 0 2px ${t.bgApp}`, borderRadius: '50%' }, '& > span:first-child': { marginLeft: '0' } });
+const stackCss = css({ display: 'inline-flex', '& > span': { marginLeft: '-5px', boxShadow: `0 0 0 2px ${t.bgSurface}`, borderRadius: '50%' }, '& > span:first-child': { marginLeft: '0' } });
 const popCss = css({
   position: 'absolute',
   right: '0',
