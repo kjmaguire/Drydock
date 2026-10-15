@@ -349,7 +349,13 @@ describe('Security scan page', () => {
     // a typed path is used as is
     const og = await picker('opengrep');
     type(og.querySelector('[data-testid="tool-path"]') as HTMLInputElement, 'D:\\bin\\opengrep.exe');
-    await r.act(() => (og.querySelector('[data-testid="tool-path-save"]') as HTMLButtonElement).click());
+    // "Use this file" is enabled once the typed path has rendered
+    const save = await waitFor(() => {
+      const b = r.$('[data-testid="tool-pick"][data-tool="opengrep"] [data-testid="tool-path-save"]') as HTMLButtonElement | null;
+      if (!b || b.disabled) throw new Error('not yet');
+      return b;
+    }, r);
+    await r.act(() => save.click());
     await waitFor(() => expect(set.some(([t, p]) => t === 'opengrep' && p === 'D:\\bin\\opengrep.exe')).toBe(true), r);
     await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="opengrep"]')!.getAttribute('data-found')).toBe('true'), r);
 
