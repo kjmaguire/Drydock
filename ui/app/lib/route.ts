@@ -144,7 +144,7 @@ export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'setti
 
 const HUB_OF: Record<Route['name'], Hub> = {
   home: 'overview',
-  'needs-you': 'overview',
+  'needs-you': 'none', // the bell's page: the bell is current, no tab and no pills
   activity: 'overview',
   budgets: 'overview',
   evals: 'overview',

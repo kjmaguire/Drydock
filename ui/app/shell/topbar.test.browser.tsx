@@ -44,7 +44,9 @@ describe('the top bar', () => {
     // Needs you is the bell: current on its page, and its count is read once
     expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('href')).toBe('/needs-you');
-    expect(r.$('[data-testid="nav-overview"]')!.getAttribute('aria-current')).toBe('page');
+    // the bell's page belongs to no tab: only the bell is current
+    expect(r.$('[data-testid="nav-overview"]')!.getAttribute('aria-current')).toBeNull();
+    expect(r.$$('[aria-current="page"]')).toHaveLength(1);
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
     expect(r.$('[data-testid="stream"]')).not.toBeNull();
     for (const id of ['nav-library', 'nav-chats', 'nav-security-scan']) expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
@@ -125,6 +127,8 @@ describe('the hubs', () => {
     expect(l.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
     cleanup();
     expect(mount(<SubNav route={{ name: 'team' }} />).$('nav')).toBeNull();
+    cleanup();
+    expect(mount(<SubNav route={{ name: 'needs-you' }} />).$('nav')).toBeNull();
     cleanup();
     expect(mount(<SubNav route={{ name: 'room', id: 'r1' }} />).$('nav')).toBeNull();
   });

@@ -87,6 +87,7 @@ describe('routes', () => {
     expect(parseRoute('/team')).toEqual({ name: 'team' });
     expect(parseRoute('/team/agt_1')).toEqual({ name: 'agent', id: 'agt_1' });
     expect(hubOf({ name: 'agent', id: 'agt_1' })).toBe('crew');
+    expect(hubOf({ name: 'needs-you' })).toBe('none'); // the bell's page lights no tab
     expect(isWorkspacePage({ name: 'agent', id: 'agt_1' })).toBe(false);
   });
 
