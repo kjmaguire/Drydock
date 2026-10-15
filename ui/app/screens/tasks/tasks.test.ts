@@ -3,11 +3,14 @@ import { describe, it } from 'remix/test';
 import type { PendingRequest, Task } from '../../api/types.ts';
 import {
   ago,
+  boardColumns,
   budgetPayload,
   classifyDiffLine,
+  columnOf,
   criterionLine,
   diffLines,
   editedCriteria,
+  elapsed,
   evidenceResult,
   filterCounts,
   groupByStatus,
@@ -19,6 +22,7 @@ import {
   parseAcceptance,
   payloadOf,
   specPayload,
+  toMs,
 } from './tasks.ts';
 
 const task = (over: Partial<Task>): Task => ({
@@ -74,6 +78,37 @@ describe('task list helpers', () => {
     expect(matchesText(x, '12')).toBe(true);
     expect(matchesText(x, 'drydock/')).toBe(true);
     expect(matchesText(x, 'divide')).toBe(false);
+  });
+
+  it('puts each status in its board column; a task that asks for the person is in Needs you whatever its status', () => {
+    expect(['BACKLOG', 'READY', 'CLAIMED'].map((status) => columnOf({ status }))).toEqual(['next', 'next', 'next']);
+    expect(['IN_PROGRESS', 'REVIEW', 'VERIFICATION', 'BLOCKED'].map((status) => columnOf({ status }))).toEqual(['working', 'working', 'working', 'working']);
+    expect(columnOf({ status: 'WAITING_HUMAN' })).toBe('needs');
+    expect(['COMPLETED', 'FAILED', 'CANCELLED'].map((status) => columnOf({ status }))).toEqual(['done', 'done', 'done']);
+    expect(columnOf({ status: 'NEW_KIND' })).toBe('working');
+    expect(columnOf({ id: 't3', status: 'IN_PROGRESS' }, new Set(['t3']))).toBe('needs');
+  });
+
+  it('the board always has its four columns, Up next lowest number first, the others newest first', () => {
+    const cols = boardColumns([
+      task({ id: 'a', seq: 4, status: 'BACKLOG', updated: 9 }),
+      task({ id: 'b', seq: 2, status: 'READY', updated: 1 }),
+      task({ id: 'c', seq: 3, status: 'COMPLETED', updated: 3 }),
+      task({ id: 'd', seq: 1, status: 'COMPLETED', updated: 8 }),
+      task({ id: 'e', seq: 5, status: 'WAITING_HUMAN', updated: 2 }),
+    ]);
+    expect(cols.map((c) => c.column)).toEqual(['next', 'working', 'needs', 'done']);
+    expect(cols.map((c) => c.tasks.map((x) => x.id))).toEqual([['b', 'a'], [], ['e'], ['d', 'c']]);
+  });
+
+  it('a task\'s elapsed time runs from its start to its completion or now, in seconds or milliseconds', () => {
+    expect(toMs(undefined)).toBe(0);
+    expect(toMs(1_700_000_000)).toBe(1_700_000_000_000);
+    expect(toMs(1_700_000_000_000)).toBe(1_700_000_000_000);
+    expect(elapsed({ started: undefined }, 1000)).toBe('');
+    expect(elapsed({ started: 1_700_000_000_000, completed: 1_700_000_312_000 })).toBe('5 m 12 s');
+    expect(elapsed({ started: 1_700_000_000 }, 1_700_000_040_000)).toBe('40 s');
+    expect(elapsed({ started: 1_700_000_000_000 }, 1_700_003_780_000)).toBe('1 h 03 m');
   });
 
   it('says how long ago in a compact form', () => {

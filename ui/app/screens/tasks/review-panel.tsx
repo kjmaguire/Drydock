@@ -26,15 +26,16 @@ import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.ts
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
 
+// The decide card (Crew HQ, decision P64): a soft yellow card with the requests as white cards inside; the primary answer is
+// the black pill.
 const panelCss = css({
   display: 'grid',
   gap: t.s3,
-  padding: t.s4,
-  borderRadius: t.rLg,
-  border: `1px solid color-mix(in srgb, ${t.warning} 45%, ${t.border})`,
-  background: `linear-gradient(180deg, color-mix(in srgb, ${t.warningSoft} 70%, transparent), ${t.bgSurface} 120px)`,
-  boxShadow: t.shadowSm,
-  '& > h2': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textMd, fontWeight: '600' },
+  padding: '18px',
+  borderRadius: t.rXl,
+  border: `1px solid ${t.mentionBorder}`,
+  background: t.mentionBg,
+  '& > h2': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em' },
   '& > h2 svg': { color: t.warning },
 });
 
@@ -42,7 +43,7 @@ const cardCss = css({
   display: 'grid',
   gap: t.s3,
   padding: t.s4,
-  borderRadius: t.rMd,
+  borderRadius: t.rLg,
   border: `1px solid ${t.border}`,
   background: t.bgSurface,
   minWidth: '0',

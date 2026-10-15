@@ -50,7 +50,8 @@ describe('Task view: header, properties and content', () => {
     await waitFor(() => expect(meta.textContent).toContain('Dana'), r);
     expect(meta.textContent).toContain('Rex');
     expect(meta.textContent).toContain('drydock/t1');
-    expect(meta.textContent).toContain('Attempt 2 of 5');
+    expect(meta.textContent).toContain('2 of 5');
+    expect(meta.querySelectorAll('[data-dot="true"]').length).toBe(2);
     expect(r.$('[data-testid="task-cost"]')!.textContent).toBe('$0.50');
     await waitFor(() => expect(r.$('[data-testid="task-cost"]')!.parentElement!.textContent).toContain('estimated'), r);
     expect(byText(r.container, 'a', 'Open task channel').getAttribute('href')).toBe('/room/room_9');
@@ -62,6 +63,43 @@ describe('Task view: header, properties and content', () => {
     expect(r.$('select[aria-label="Worker"]')).toBeNull();
     expect(buttonNames(r.container)).toContain('Cancel task');
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(1), r);
+    // the step bar: the spec is done (one criterion), the code is being written on attempt 2
+    const steps = Array.from(r.$$('[data-testid="task-steps"] li[data-step]'));
+    expect(steps.map((x) => x.getAttribute('data-step'))).toEqual(['spec', 'code', 'checks', 'review', 'you']);
+    expect(steps.map((x) => x.getAttribute('data-state'))).toEqual(['done', 'current', 'todo', 'todo', 'todo']);
+    expect(steps[0]!.textContent).toContain('1 criteria');
+    expect(steps[1]!.textContent).toContain('attempt 2');
+    expect(steps[1]!.getAttribute('aria-current')).toBe('step');
+    // the task's model and time are properties
+    expect(meta.textContent).toContain('Model');
+    expect(meta.textContent).toContain('Time');
+  });
+
+  it('a task waiting for you shows the decide card beside the work, with You lit on the step bar', async () => {
+    const d = detail({
+      task: task({ status: 'WAITING_HUMAN', iteration: 1, started: 1_700_000_000_000, model: 'model-x' }),
+      evidence: [{ id: 1, taskId: 't1', attempt: 1, kind: 'test', passed: true, summary: 'ok', created: 0 }],
+      reviews: [{ id: 1, taskId: 't1', attempt: 1, reviewer: 'a2', verdict: 'SHIP', feedback: 'Ship it.', created: 0 }],
+      pending: [{ id: 'req-1', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge: Add Multiply' } }],
+      run: { id: 'run-1', workflow: 'iterate-until-verified', status: 'WAITING_HUMAN', topology: '', created: 0, updated: 0, version: 1 },
+    });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
+    await waitFor(() => expect(r.$('[data-testid="review-panel"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="task-status"]')!.textContent).toContain('Waiting for you');
+    // the decide card is in the side column, above the properties
+    const side = r.$('aside')!;
+    const panel = side.querySelector('[data-testid="review-panel"]')!;
+    const meta = side.querySelector('.task-meta')!;
+    expect(panel.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(buttonNames(side)).toContain('Approve');
+    expect(buttonNames(side)).toContain('Request changes');
+    const steps = Array.from(r.$$('[data-testid="task-steps"] li[data-step]'));
+    expect(steps.map((x) => x.getAttribute('data-state'))).toEqual(['done', 'done', 'done', 'done', 'current']);
+    expect(steps[2]!.textContent).toContain('1 of 1');
+    expect(steps[3]!.textContent).toContain('ship it');
+    expect(steps[4]!.textContent).toContain('approve');
+    expect(meta.textContent).toContain('model-x');
+    expect(meta.textContent).not.toContain('not started');
   });
 
   it('a cost with no usage rows is marked as of unknown source; no cost says not reported', async () => {
