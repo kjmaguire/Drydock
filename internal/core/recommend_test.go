@@ -3,16 +3,21 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/skills"
+	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
 // recommendScript makes the labelled stand-in agent (a test double) answer a recommendation turn with answer.
@@ -271,5 +276,146 @@ func TestARecommendationWidensASkillToTheWholeTeam(t *testing.T) {
 	r = a.recommendDone(p.ID, r.ID)
 	if r.Status != "done" || len(r.Items) != 0 || len(r.Dropped) != 1 || !strings.Contains(r.Dropped[0], "already in the project for the whole team") {
 		t.Fatalf("the team has it already: %+v", r)
+	}
+}
+
+// A turn the app's end or a crash cut short stayed "running" in the database and refused every later turn of its project for
+// good. At start every such row is recorded as interrupted, with a reason the person can read, and the project can ask again.
+func TestATurnLeftRunningByACrashIsRecordedAsInterruptedAtStart(t *testing.T) {
+	dir := t.TempDir()
+	a := open(t, dir)
+	p := gitProject(t, a, "crashed")
+	var lead core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
+	// what a crash mid-turn leaves behind
+	if _, err := a.c.DB.Writer().Exec(`INSERT INTO recommendations(id,project_id,agent_id,trigger,status,candidates,tasks_done,created_at) VALUES('rec_crashed',?,?,'manual','running','[]',0,1)`, p.ID, lead.ID); err != nil {
+		t.Fatal(err)
+	}
+	a.c.Close()
+
+	b := open(t, dir)
+	var list core.Recommendations
+	b.call("recommend.list", map[string]any{"projectId": p.ID}, &list)
+	if len(list.Runs) != 1 || list.Runs[0].Status != "failed" || !strings.Contains(list.Runs[0].Error, "interrupted") || list.Runs[0].Finished == 0 {
+		t.Fatalf("the interrupted turn: %+v", list.Runs)
+	}
+	recommendScript(t, `{"summary": "Fine as it is.", "recommendations": []}`)
+	var r core.Recommendation
+	b.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
+	if r = b.recommendDone(p.ID, r.ID); r.Status != "done" {
+		t.Fatalf("asking again after the restart: %+v", r)
+	}
+}
+
+// Checking that an item is open, doing what it says and marking it are one step: many clicks on one item apply it once, and
+// applying one item while dismissing another keeps both marks.
+func TestApplyingAndDismissingAtOnceKeepEveryMarkAndApplyOnce(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "clicks")
+	var lead, dev core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &dev)
+	var srv core.MCPLibraryServer
+	for _, id := range []string{"one", "two", "three", "four"} {
+		a.call("mcplib.save", core.MCPServerInput{ID: id, Display: "Server " + id, Transport: "http", URL: "https://" + id + ".example.com/mcp"}, &srv)
+	}
+	recommendScript(t, `{"summary": "Four servers.", "recommendations": [
+ {"kind": "mcp", "action": "give", "name": "one", "agents": ["Backend #1"], "reason": "a"},
+ {"kind": "mcp", "action": "give", "name": "two", "agents": ["Backend #1"], "reason": "b"},
+ {"kind": "mcp", "action": "give", "name": "three", "agents": ["Backend #1"], "reason": "c"},
+ {"kind": "mcp", "action": "give", "name": "four", "agents": ["Backend #1"], "reason": "d"}]}`)
+	var r core.Recommendation
+	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
+	r = a.recommendDone(p.ID, r.ID)
+	if len(r.Items) != 4 {
+		t.Fatalf("%+v", r)
+	}
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	var applied atomic.Int32
+	for i := 0; i < 8; i++ {
+		wg.Add(4)
+		go func() { // the same item, many times
+			defer wg.Done()
+			if _, err := a.c.RecommendApply(ctx, r.ID, r.Items[0].ID); err == nil {
+				applied.Add(1)
+			}
+		}()
+		go func() { defer wg.Done(); _, _ = a.c.RecommendApply(ctx, r.ID, r.Items[1].ID) }()
+		go func() {
+			defer wg.Done()
+			_, _ = a.c.Call(ctx, "recommend.dismiss", mustJSON(map[string]any{"id": r.ID, "itemId": r.Items[2].ID}))
+		}()
+		go func() { defer wg.Done(); _, _ = a.c.RecommendApply(ctx, r.ID, r.Items[3].ID) }()
+	}
+	wg.Wait()
+	if n := applied.Load(); n != 1 {
+		t.Fatalf("the same item was applied %d times", n)
+	}
+	var list core.Recommendations
+	a.call("recommend.list", map[string]any{"projectId": p.ID}, &list)
+	got := map[string]string{}
+	for _, it := range list.Runs[0].Items {
+		got[it.Name] = it.Status
+	}
+	if want := map[string]string{"one": "applied", "two": "applied", "three": "dismissed", "four": "applied"}; !maps.Equal(got, want) {
+		t.Fatalf("marks %v, want %v", got, want)
+	}
+}
+
+// The project asks again by itself through the real path: a person accepting a task publishes task.completed, and the fifth
+// completed task since the last turn starts one. (TestTheProjectAsksForRecommendationsAgainAsItEvolves drives the check
+// directly; this one would catch a renamed event or a lost subscription.)
+func TestACompletedTaskMakesTheProjectAskAgain(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "accepted")
+	var lead core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
+	recommendScript(t, `{"summary": "Nothing to add.", "recommendations": []}`)
+	db := a.c.DB.Writer()
+	for i := 1; i <= 4; i++ {
+		if _, err := db.Exec(`INSERT INTO tasks(id,project_id,seq,title,status,created_at,updated_at) VALUES(?,?,?,'done','COMPLETED',1,1)`, fmt.Sprintf("task_acc%d", i), p.ID, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "The fifth"}, &task)
+	if _, err := db.Exec(`UPDATE tasks SET status='VERIFICATION' WHERE id=?`, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	passed := true
+	ctx := context.Background()
+	if _, err := a.c.Tasks.AddEvidence(ctx, task.ID, tasks.Evidence{Kind: "test", Passed: &passed, Summary: "go test ./... passed"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.c.Tasks.Transition(ctx, task.ID, tasks.Completed, tasks.TransitionOpts{By: a.c.Human()}); err != nil {
+		t.Fatal(err)
+	}
+	a.waitFor("the project to ask again", func() bool {
+		var list core.Recommendations
+		a.call("recommend.list", map[string]any{"projectId": p.ID}, &list)
+		return len(list.Runs) == 1 && list.Runs[0].Trigger == "evolution"
+	})
+}
+
+// A project is not deleted while one of its agents prepares recommendations: the turn would write into a project that is
+// gone. The check is in the delete's own transaction, like the other running work.
+func TestAProjectIsNotDeletedWhileARecommendationRuns(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "advised")
+	var lead core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
+	if _, err := a.c.DB.Writer().Exec(`INSERT INTO recommendations(id,project_id,agent_id,trigger,status,candidates,tasks_done,created_at) VALUES('rec_busy',?,?,'manual','running','[]',0,1)`, p.ID, lead.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.c.DeleteProject(context.Background(), p.ID, "advised")
+	if !errors.Is(err, core.ErrProjectBusy) || !strings.Contains(err.Error(), "preparing recommendations") {
+		t.Fatalf("deleting while a recommendation runs: %v", err)
+	}
+	if _, err := a.c.DB.Writer().Exec(`UPDATE recommendations SET status='done' WHERE id='rec_busy'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.c.DeleteProject(context.Background(), p.ID, "advised"); err != nil {
+		t.Fatalf("deleting once it ended: %v", err)
 	}
 }

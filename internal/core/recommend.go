@@ -83,7 +83,29 @@ type Recommendations struct {
 	Runs []Recommendation `json:"runs"`
 }
 
-var recommendCtxs sync.Map // *Core -> the extension's context
+// recommendState is the extension's per-core state: the context turns run under (they end with the core), the turns still
+// running (Close waits for them to record how they ended), and the lock that makes applying or dismissing an item one step.
+type recommendState struct {
+	ctx  context.Context
+	runs sync.WaitGroup
+	mu   sync.Mutex
+}
+
+var recommendStates sync.Map // *Core -> *recommendState
+
+// recommendInterrupted is the reason a turn the app's end cut short is recorded with.
+const recommendInterrupted = "interrupted: Drydock was closed while the agent was answering. Ask again."
+
+// recommendCloseWait bounds how long Close waits for running turns to record how they ended.
+const recommendCloseWait = 15 * time.Second
+
+func (c *Core) recommendState() *recommendState {
+	if v, ok := recommendStates.Load(c); ok {
+		return v.(*recommendState)
+	}
+	v, _ := recommendStates.LoadOrStore(c, &recommendState{ctx: context.Background()})
+	return v.(*recommendState)
+}
 
 // ErrRecommendRunning is returned while a turn for the project is still running.
 var ErrRecommendRunning = errors.New("a recommendation is already being prepared for this project")
@@ -91,7 +113,17 @@ var ErrRecommendRunning = errors.New("a recommendation is already being prepared
 func init() {
 	RegisterExtension(Extension{Name: "recommend", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ctx, cancel := context.WithCancel(ctx)
-		recommendCtxs.Store(c, ctx) // turns end with the core
+		st := &recommendState{ctx: ctx} // turns end with the core
+		recommendStates.Store(c, st)
+		// a turn the app's end or a crash cut short is still "running" in the database, and would refuse every later turn of
+		// its project: nothing runs yet, so every such row is one that ended without a word
+		if err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE recommendations SET status='failed', error=?, finished_at=? WHERE status='running'`, recommendInterrupted, storage.Now())
+			return err
+		}); err != nil {
+			cancel()
+			return nil, nil, err
+		}
 		// the project evolves: completed tasks may call for another look (bounded; see maybeRecommend)
 		ch, unsub := c.Bus.Subscribe(events.Filter{Types: []string{"task.completed"}})
 		go func() {
@@ -101,7 +133,7 @@ func init() {
 				}
 			}
 		}()
-		return map[string]Method{
+		methods := map[string]Method{
 			"recommend.start": bind(func(ctx context.Context, p struct {
 				ProjectID  string               `json:"projectId"`
 				AgentID    string               `json:"agentId"`
@@ -128,6 +160,9 @@ func init() {
 				ID     string `json:"id"`
 				ItemID string `json:"itemId"`
 			}) (any, error) {
+				st := c.recommendState()
+				st.mu.Lock()
+				defer st.mu.Unlock()
 				return c.recommendMark(ctx, p.ID, p.ItemID, "dismissed", "")
 			}),
 			"recommend.setAuto": bind(func(ctx context.Context, p struct {
@@ -146,7 +181,20 @@ func init() {
 				}
 				return c.RecommendList(ctx, p.ProjectID)
 			}),
-		}, func() { cancel(); unsub() }, nil
+		}
+		// the turns stop with the context and record how they ended before the database closes
+		closeFn := func() {
+			cancel()
+			unsub()
+			done := make(chan struct{})
+			go func() { st.runs.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(recommendCloseWait):
+				c.logf("recommend: a turn did not end within %s of closing; it is recorded as interrupted at the next start", recommendCloseWait)
+			}
+		}
+		return methods, closeFn, nil
 	}})
 }
 
@@ -246,7 +294,12 @@ func (c *Core) Recommend(ctx context.Context, projectID, agentID, trigger string
 		return Recommendation{}, err
 	}
 	c.publish(ctx, "recommend.started", projectID, map[string]any{"id": r.ID, "agent": advisor.ID, "trigger": trigger})
-	go c.runRecommend(r, advisor)
+	st := c.recommendState()
+	st.runs.Add(1)
+	go func() {
+		defer st.runs.Done()
+		c.runRecommend(r, advisor)
+	}()
 	return r, nil
 }
 
@@ -630,14 +683,14 @@ func parseRecommend(text string, w recommendWorld) ([]RecommendItem, []string, s
 
 // runRecommend runs the turn (one retry when the answer is not the JSON asked for) and stores the result.
 func (c *Core) runRecommend(r Recommendation, advisor Agent) {
-	base := context.Background()
-	if v, ok := recommendCtxs.Load(c); ok {
-		base = v.(context.Context)
-	}
+	base := c.recommendState().ctx
 	ctx, cancel := context.WithTimeout(base, recommendTimeout)
 	defer cancel()
 	fail := func(err error) {
 		msg := c.Scanner.Redact(err.Error())
+		if base.Err() != nil {
+			msg = recommendInterrupted
+		}
 		_ = c.DB.WriteTx(context.Background(), func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(context.Background(), `UPDATE recommendations SET status='failed', error=?, finished_at=? WHERE id=?`, msg, storage.Now(), r.ID)
 			return err
@@ -764,7 +817,8 @@ func (c *Core) recommendation(ctx context.Context, id string) (Recommendation, e
 	return r, nil
 }
 
-// recommendMark sets one item's status (and what applying it did).
+// recommendMark sets one item's status (and what applying it did). The caller holds the recommendState lock: the read, the
+// change and the write of the items must not interleave with another mark.
 func (c *Core) recommendMark(ctx context.Context, id, itemID, status, note string) (Recommendation, error) {
 	r, err := c.recommendation(ctx, id)
 	if err != nil {
@@ -796,6 +850,11 @@ func (c *Core) recommendMark(ctx context.Context, id, itemID, status, note strin
 // RecommendApply does what one item recommends, as the person, through the same methods the pages use (audited there), and
 // marks it applied. An integration is assigned to the project on its Integrations page (the person picks the scope there).
 func (c *Core) RecommendApply(ctx context.Context, id, itemID string) (Recommendation, error) {
+	// checking the item is open, doing what it says and marking it applied are one step: two clicks (two windows, a script)
+	// neither apply an item twice nor undo each other's marks
+	st := c.recommendState()
+	st.mu.Lock()
+	defer st.mu.Unlock()
 	r, err := c.recommendation(ctx, id)
 	if err != nil {
 		return r, err

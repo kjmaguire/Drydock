@@ -241,8 +241,8 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 	return out, nil
 }
 
-// runningWork names the work that is running in the project: workflow runs that have not ended (a task's, a plan's) and
-// agents answering in its rooms.
+// runningWork names the work that is running in the project: workflow runs that have not ended (a task's, a plan's), agents
+// answering in its rooms and a recommendation turn.
 func runningWork(ctx context.Context, tx *sql.Tx, projectID string) ([]string, error) {
 	var out []string
 	rows, err := tx.QueryContext(ctx, `SELECT r.status, COALESCE(t.seq, 0), COALESCE(t.title, ''), r.workflow FROM workflow_runs r LEFT JOIN tasks t ON t.id = r.task_id
@@ -274,6 +274,15 @@ func runningWork(ctx context.Context, tx *sql.Tx, projectID string) ([]string, e
 	}
 	if turns > 0 {
 		out = append(out, "an agent is answering in a channel")
+	}
+	// a recommendation turn writes its result into the project when it ends (recommend.go); a row left running by a crash
+	// is marked failed at start, so this never refuses for one that is not running
+	var recs int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM recommendations WHERE project_id=? AND status='running'`, projectID).Scan(&recs); err != nil {
+		return nil, err
+	}
+	if recs > 0 {
+		out = append(out, "an agent is preparing recommendations")
 	}
 	return out, nil
 }
