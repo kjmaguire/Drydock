@@ -150,7 +150,7 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await expect(insp.getByTestId('usage-row').first()).toBeVisible();
 
   // Activity still works after the stream started at the head: history is backfilled on demand
-  await page.getByRole('link', { name: 'Activity' }).click();
+  await projectNav(page, 'nav-activity');
   await expect(page.locator('[data-testid=event-row][data-type="task.created"]')).toBeVisible();
   await expect(page.locator('[data-testid=event-row][data-type="task.completed"]')).toBeVisible();
   await page.getByLabel('Filter by type prefix').fill('task.*');
