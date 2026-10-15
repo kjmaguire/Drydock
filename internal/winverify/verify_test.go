@@ -164,8 +164,10 @@ func TestTestGitConfigIsAFileThatKeepsTheUsersOwnSettings(t *testing.T) {
 	if set["X"] != "1" || set["GIT_CONFIG_GLOBAL"] == "" || set["GIT_CONFIG_COUNT"] != "" {
 		t.Fatalf("set %v", set)
 	}
+	outside := t.TempDir() // not in a repository: a checkout's own .git/config (user.name, say) would win over the file
 	get := func(key string) string {
 		cmd := exec.Command("git", "config", "--get", key)
+		cmd.Dir = outside
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+set["GIT_CONFIG_GLOBAL"], "GIT_CONFIG_NOSYSTEM=1")
 		out, _ := cmd.Output()
 		return strings.TrimSpace(string(out))
