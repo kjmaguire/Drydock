@@ -300,3 +300,28 @@ func TestContainerLauncherBuildsTheImageOnceAndRunsJobsInIsolatedContainers(t *t
 		t.Fatal(err)
 	}
 }
+
+// Two Windows runners getting ready at the same moment (two repositories switched on together) download and unpack the
+// runner once, and both find it whole.
+func TestHostLauncherPreparesOnceWhenTwoRunnersStartTogether(t *testing.T) {
+	zipBody := makeZip(t, map[string]string{"run.cmd": "@echo off", "bin/Runner.Listener.exe": "MZ"})
+	url := DownloadPrefix + "v2.330.0/actions-runner-win-x64-2.330.0.zip"
+	tr := &githubTransport{files: map[string][]byte{url: zipBody}}
+	rel := Release{Version: "2.330.0", Assets: map[Platform]Asset{WinX64: {Name: "actions-runner-win-x64-2.330.0.zip", URL: url, SHA256: sum(zipBody)}}}
+	h := &HostLauncher{Root: t.TempDir(), Cache: t.TempDir(), Platform: WinX64, HTTP: &http.Client{Transport: tr}}
+	errs := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		go func() { errs <- h.Prepare(context.Background(), rel) }()
+	}
+	for i := 0; i < 4; i++ {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := tr.hits.Load(); n != 1 {
+		t.Fatalf("downloaded %d times", n)
+	}
+	if b, err := os.ReadFile(filepath.Join(h.Cache, "dist", "2.330.0-win-x64", "bin", "Runner.Listener.exe")); err != nil || string(b) != "MZ" {
+		t.Fatalf("%v %q", err, b)
+	}
+}

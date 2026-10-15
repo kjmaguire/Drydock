@@ -147,6 +147,7 @@ type HostLauncher struct {
 
 	mu   sync.Mutex
 	dist string
+	prep sync.Mutex // one Prepare at a time: two runners starting together must not unpack into the same folder
 }
 
 func (h *HostLauncher) Kind() Kind { return Windows }
@@ -164,6 +165,8 @@ func (h *HostLauncher) platform() Platform {
 func (h *HostLauncher) Available(context.Context) error { return nil }
 
 func (h *HostLauncher) Prepare(ctx context.Context, rel Release) error {
+	h.prep.Lock()
+	defer h.prep.Unlock()
 	a, ok := rel.Assets[h.platform()]
 	if !ok {
 		return fmt.Errorf("runner %s has no %s archive", rel.Version, h.platform())
@@ -318,6 +321,7 @@ type ContainerLauncher struct {
 	mu       sync.Mutex
 	image    string
 	platform Platform
+	prep     sync.Mutex // one Prepare at a time: the image is built once
 }
 
 func (c *ContainerLauncher) Kind() Kind { return Linux }
@@ -340,6 +344,8 @@ func (c *ContainerLauncher) Available(ctx context.Context) error {
 func ImageTag(version string) string { return "drydock-runner:" + version }
 
 func (c *ContainerLauncher) Prepare(ctx context.Context, rel Release) error {
+	c.prep.Lock()
+	defer c.prep.Unlock()
 	if err := c.Available(ctx); err != nil {
 		return err
 	}
