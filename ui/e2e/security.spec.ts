@@ -118,7 +118,8 @@ test('Home opens the Security scan, which scans a folder that is not a project a
     await expect(secret).toContainText('notes.txt:1');
     await expect(secret).toContainText('The value is not shown');
     await expect(page.locator('body')).not.toContainText(PLANTED);
-    const item = page.locator(`[data-testid=scan-history-item][data-folder="${dir}"]`);
+    // the path inside a CSS attribute selector: a Windows path's backslashes and any quotes escaped
+    const item = page.locator(`[data-testid=scan-history-item][data-folder="${dir.replace(/[\\"]/g, '\\$&')}"]`);
     await expect(item).toHaveCount(1);
 
     // opened again later, the folder scan is in the history and its report reopens, still without the value

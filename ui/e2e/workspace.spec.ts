@@ -2,7 +2,7 @@
 // workplace stuff, and give an option to delete a project"). Against the real core: Home lists the projects and the
 // workspace areas, the skill library opens without entering a project, a project's page shows only the project, and a
 // project is deleted from its settings without touching its repository.
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { appUrl, createAgent, createProject, freshRepo, projectNav, projectSwitcher, roomLink, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
@@ -124,7 +124,8 @@ test('a project from scratch: Choose folder..., and Drydock makes the Git reposi
   expect(existsSync(join(folder, '.git'))).toBe(true);
   // the project works in it: Project settings show no attach form
   await sidebar(page).getByTestId('nav-project').click();
-  await expect(page.locator('code').filter({ hasText: folder }).first()).toBeVisible();
+  // the project shows the folder's full path (Windows' temp folders can be short 8.3 paths)
+  await expect(page.locator('code').filter({ hasText: realpathSync.native(folder) }).first()).toBeVisible();
   await expect(page.getByTestId('no-repo')).toHaveCount(0);
   await expect(page.getByTestId('attach-repo')).toHaveCount(0);
 });
