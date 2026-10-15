@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -56,6 +57,9 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	// keeps the project's accepted skills
 	ws.Skills = chatSkillsTool{c: c, inner: ws.Skills}
 	ws.Sandbox = mcpSandbox{c} // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
+	if repomap.Available() {
+		ws.RepoMap = mcpRepoMap{c} // ext_repomap.go; without CGO the tool answers mcp.RepoMapGatedMessage
+	}
 	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions()})
 	if err != nil {
 		return nil, nil, err
@@ -155,8 +159,15 @@ type mcpPlan struct {
 	Servers    []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
-// readTools are the Workspace tools every role gets: they only read. repo_map is withheld while it is gated (D5).
-var readTools = []string{"read_range", "search_memory", "search_requirements", "skills"}
+// readTools are the Workspace tools every role gets: they only read. repo_map is among them in a build with the tree-sitter
+// parser (CGO); a build without it has no repo map and does not offer the tool (decisions D5, P62).
+var readTools = func() []string {
+	t := []string{"read_range", "search_memory", "search_requirements", "skills"}
+	if repomap.Available() {
+		t = append(t, "repo_map")
+	}
+	return t
+}()
 
 // adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the configuration can be generated but no real run has proven it, so the human may
 // choose to attach the gateway anyway (mcp.try.set). A CLI with no known mechanism (Antigravity) can never be tried.

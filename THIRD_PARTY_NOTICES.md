@@ -21,8 +21,44 @@ Drydock is proprietary commercial software. It depends on and, in places, re-imp
 | github.com/charmbracelet/x/ansi | v0.11.8 | MIT | ANSI handling |
 | gopkg.in/yaml.v3 | v3.0.1 | MIT and Apache-2.0 | manifests, Taskfile detection |
 | golang.org/x/sys | v0.48.0 | BSD-3-Clause | Windows Job Objects |
-| github.com/tree-sitter/go-tree-sitter and grammars | v0.25.0 / per grammar | MIT | repo map (gated, decision D5; not yet imported) |
+| github.com/tree-sitter/go-tree-sitter (tree-sitter's C library, compiled in with CGO) | v0.25.0 | MIT | repo map parser (decision P62) |
+| github.com/mattn/go-pointer | v0.0.1 | MIT | used by go-tree-sitter to pass Go values through C |
+| github.com/tree-sitter/tree-sitter-go | v0.25.0 | MIT | repo map: Go grammar and its queries/tags.scm |
+| github.com/tree-sitter/tree-sitter-typescript | v0.23.2 | MIT | repo map: TypeScript and TSX grammars and queries/tags.scm |
+| github.com/tree-sitter/tree-sitter-javascript | v0.25.0 | MIT | repo map: JavaScript grammar and queries/tags.scm |
+| github.com/tree-sitter/tree-sitter-python | v0.25.0 | MIT | repo map: Python grammar and queries/tags.scm |
+| github.com/tree-sitter/tree-sitter-c-sharp | v0.23.5 | MIT | repo map: C# grammar and queries/tags.scm |
+| github.com/tree-sitter/tree-sitter-java | v0.23.5 | MIT | repo map: Java grammar and queries/tags.scm |
+| github.com/tree-sitter/tree-sitter-rust | v0.24.2 | MIT | repo map: Rust grammar and queries/tags.scm |
 | go.opentelemetry.io/otel | v1.47.0 | Apache-2.0 | telemetry (not yet imported) |
+
+### Tree-sitter and its grammars (the repo map, decision P62)
+
+The repo map compiles tree-sitter's C library and eight grammars into `drydock.exe`, and its tag queries
+(`internal/repomap/queries/*-tags.scm`) are the grammars' own `queries/tags.scm`, copied unchanged with a header naming
+their origin. Every one is under the MIT License. Copyright notices, from each project's `LICENSE`:
+
+- go-tree-sitter (tree-sitter's Go binding, which includes the tree-sitter C library): Copyright (c) 2024 Amaan Qureshi
+- tree-sitter-go: Copyright (c) 2014 Max Brunsfeld
+- tree-sitter-typescript: Copyright (c) 2017 Max Brunsfeld
+- tree-sitter-javascript: Copyright (c) 2014 Max Brunsfeld
+- tree-sitter-python: Copyright (c) 2016 Max Brunsfeld
+- tree-sitter-c-sharp: Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors
+- tree-sitter-java: Copyright (c) 2017 Ayman Nadeem
+- tree-sitter-rust: Copyright (c) 2017 Maxim Sokolov
+- go-pointer (github.com/mattn/go-pointer): Copyright (c) 2019 Yasuhiro Matsumoto
+
+The MIT License, as each of these projects states it: Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The
+above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The extra queries in `internal/repomap/queries/*-extra.scm` are Drydock's own.
 
 ## Tools Drydock invokes but does not bundle
 
@@ -45,7 +81,7 @@ The marks are trademarks of their owners, shown only to say which service or CLI
 
 ## Reused architecture and algorithms (reimplemented, not copied)
 
-- **Aider** (Apache-2.0): the repo-map technique (tree-sitter tags, personalized PageRank over a file/symbol graph, token-budget binary search). Reimplemented in Go; no Aider source is included. Attribution retained here as required practice.
+- **Aider** (Apache-2.0): the repo-map technique (tree-sitter tags, personalized PageRank over a file/symbol graph, identifier weights, token-budget binary search), reimplemented in Go in `internal/repomap` (decision P62); no Aider source is included. Attribution retained here as required practice.
 - **Microsoft Agent Framework for Go** (MIT): design reference for supersteps, request ports and checkpoint lineage. Not imported.
 - **Agent Room** (MIT): room concepts and the idea of recovering tool calls that models emit as plain text. Reimplemented generally, not copied.
 - **Pregel** (Google, paper): the superstep model.

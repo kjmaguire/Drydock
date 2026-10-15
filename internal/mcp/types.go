@@ -89,8 +89,9 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
-// RepoMapGatedMessage is the exact error returned by repo_map while no RepoMapper is injected (decision D5).
-const RepoMapGatedMessage = "not available: repo map is gated (decision D5): the tree-sitter repo map is built only after the Windows CI job proves CGO"
+// RepoMapGatedMessage is the exact error returned by repo_map when no RepoMapper is injected: the build has no tree-sitter
+// parser because it was built without CGO (decisions D5, P62). A CGO build injects one (internal/core ext_repomap.go).
+const RepoMapGatedMessage = "not available: this build of Drydock has no repo map: it was built without the C parser (tree-sitter needs CGO; decisions D5, P62)"
 
 // Finding is one secret match. Offsets are byte offsets into the scanned text.
 type Finding struct {

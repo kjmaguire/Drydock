@@ -89,7 +89,7 @@ Rendered in Settings > About as a list (feature, slice). Since this table was wr
 | Autonomous multi-agent development, `moderator`/`auto` room modes, group chats | 4 (**proposal**) | Built since: room modes (the room's Mode select), PlanTeam and the scheduler (Plan screen). Group chats exist in the room core only (`room.Service.CreateGroup`); there is no RPC or UI to create one. |
 | Linear, Notion, Sentry, Aikido integrations | 5 | Integrations nav entry absent; Connections shows only `gh` (1E) and agent CLIs. |
 | Milestones; Markdown minutes and ADR-candidate export | unassigned | Built since: the Milestones screen, and a room's Minutes and ADR candidates exports (`ui/app/screens/room/room-exports.tsx`, `room.export`). |
-| Repo map view | gated by D5 | Absent until the Windows CI job is green. |
+| Repo map view | D5, P62 | Built since: the Repo map page (Knowledge group, `/repo-map`, `repomap.get`): the ranked map of the project's repository with a focus-path field and a token budget; a build without CGO says plainly that it has no parser. |
 | Cloud sync, accounts, team sharing | never (brief 0: no cloud component) | Not mentioned in the UI. |
 
 ## 5. Message card types (brief 11)

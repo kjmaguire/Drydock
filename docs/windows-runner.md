@@ -87,9 +87,10 @@ DRYDOCK_BUNDLE_E2E=1 go test -run TestBundleEndToEnd -timeout 60m ./internal/win
 - **Go and Node** are installed for each job by `actions/setup-go` (the version in `go.mod`, today 1.27.2) and
   `actions/setup-node` (Node 24 for the UI, 22 for the probes) into the runner's own tool folder. Install them yourself only
   if you also want to run things by hand.
-- Optional: **gh** (the GitHub CLI; tests that look for it skip without it), **gcc** (MinGW; the tree-sitter jobs
-  `repomap-cgo` and `treesitter` fail without a C compiler), **Chocolatey** with administrator rights (the NSIS installer
-  step of the probes' `wails` job).
+- **gcc** (MinGW, on PATH): the repo map's parser is C (decision P62), so the `go`, `repomap-cgo`, `ui` (its end-to-end
+  harness) and `app` jobs build with CGO and fail without a C compiler, as does the probes' `treesitter` job.
+- Optional: **gh** (the GitHub CLI; tests that look for it skip without it), **Chocolatey** with administrator rights (the
+  NSIS installer step of the probes' `wails` job).
 - A few GB of free disk for the Go build cache and `node_modules`.
 
 ### Register the runner

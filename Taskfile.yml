@@ -47,10 +47,11 @@ tasks:
       - GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-arm64 ./cmd/drydock-egress
 
   build:windows:
-    desc: Build drydock.exe with the UI and the egress proxies into bin/ (CGO off, as Wails v3 needs none on Windows)
+    desc: Build drydock.exe with the UI and the egress proxies into bin/ (CGO on for the repo map's tree-sitter parser; needs MinGW gcc, on Linux x86_64-w64-mingw32-gcc)
     deps: [ui:build, build:egress]
     env:
-      CGO_ENABLED: "0"
+      CGO_ENABLED: "1"
+      CC: '{{if eq OS "windows"}}gcc{{else}}x86_64-w64-mingw32-gcc{{end}}'
       GOOS: windows
       GOARCH: amd64
     cmds:

@@ -11,7 +11,11 @@ import (
 // Hooks let other subsystems (attached expert packs, skills) contribute to a worktree's generated files without this
 // package importing them. Both are optional; with neither set the engine behaves exactly as before.
 
-// Section is text contributed to the generated AGENTS.md (attached pack instructions, a note on how to get skills).
+// RepoMapSectionTitle is the title of the repo map section of AGENTS.md (internal/core ext_repomap.go, decision P62).
+const RepoMapSectionTitle = "Repository map"
+
+// Section is text contributed to the generated AGENTS.md (attached pack instructions, a note on how to get skills). A
+// section with no body is left out of AGENTS.md; when it has a Reason, the manifest records it as left out, with that reason.
 type Section struct {
 	Title    string
 	Body     string

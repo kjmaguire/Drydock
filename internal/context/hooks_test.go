@@ -117,3 +117,35 @@ func TestExtraFileSymlinkOnPathIsRefused(t *testing.T) {
 		t.Fatal("a generated file escaped through a symlink")
 	}
 }
+
+// A section with no body stays out of AGENTS.md; with a reason, the manifest lists it as left out (the repo map in a small
+// repository or a build without CGO, decision P62).
+func TestAnEmptySectionIsRecordedAsLeftOut(t *testing.T) {
+	ctx := context.Background()
+	e, _ := newEngine(t)
+	e.Sections = func(context.Context, string, string) ([]Section, error) {
+		return []Section{
+			{Title: RepoMapSectionTitle, Source: "repo_map", Reason: "not in AGENTS.md: 3 source files, fewer than 25", Priority: 40},
+			{Title: "Silent", Source: "silent"},
+		}, nil
+	}
+	files, m, err := e.Generate(ctx, "p1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(files["AGENTS.md"], "## "+RepoMapSectionTitle) || strings.Contains(files["AGENTS.md"], "Silent") {
+		t.Fatalf("an empty section is written:\n%s", files["AGENTS.md"])
+	}
+	var got *Item
+	for i, it := range m.Items {
+		if it.Source == "silent" {
+			t.Fatal("a section without a reason is not listed")
+		}
+		if it.Source == "repo_map" {
+			got = &m.Items[i]
+		}
+	}
+	if got == nil || got.Included || got.Bytes != 0 || !strings.Contains(got.Reason, "fewer than 25") {
+		t.Fatalf("manifest %+v", m.Items)
+	}
+}

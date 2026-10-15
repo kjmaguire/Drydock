@@ -31,6 +31,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.requirements.href(), 'Requirements'],
   [routes.milestones.href(), 'Milestones'],
   [routes.memory.href(), 'Memory'],
+  [routes.repoMap.href(), 'Repo map', ['symbols', 'code map', 'tree-sitter', 'pagerank', 'definitions']],
   [routes.skills.href(), 'Project skills', ['skills']],
   [routes.librarySkills.href(), 'Skill library', ['skills', 'registry', 'registries']],
   [routes.packs.href(), 'Expert packs'],

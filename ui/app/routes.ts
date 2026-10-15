@@ -28,6 +28,8 @@ export const routes = route({
   budgets: get('/budgets'),
   evals: get('/evals'),
   security: get('/security'),
+  // the project's repo map: its most important code, ranked (decision P62)
+  repoMap: get('/repo-map'),
   // workspace screens: they open without a project
   workspace: get('/home'),
   chats: get('/chats'),

@@ -209,7 +209,7 @@ func TestWorkspaceHonestlyNotAvailable(t *testing.T) {
 		}
 	}
 	r := callTool(t, cs, "repo_map", map[string]any{})
-	if !r.IsError || !strings.Contains(textOf(r), "not available: repo map is gated (decision D5)") {
+	if !r.IsError || !strings.Contains(textOf(r), "built without the C parser") {
 		t.Fatalf("repo_map without a RepoMapper: %s", textOf(r))
 	}
 	if n := len(e.events(EventCall)); n != len(calls)+1 {

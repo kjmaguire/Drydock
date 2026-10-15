@@ -114,6 +114,20 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-tasks"]')).not.toBeNull();
   });
 
+  it('has the Repo map in the Knowledge group, after Memory, marked current there', async () => {
+    const r = mount(<Sidebar route={{ name: 'repo-map' }} />, svc());
+    const link = await waitFor(() => {
+      const l = r.$('[data-testid="nav-repo-map"]');
+      if (!l) throw new Error('not yet');
+      return l as HTMLAnchorElement;
+    }, r);
+    expect(link.getAttribute('href')).toBe('/repo-map');
+    expect(link.getAttribute('aria-current')).toBe('page');
+    expect(link.textContent).toBe('Repo map');
+    const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
+    expect(nav.indexOf('nav-repo-map')).toBe(nav.indexOf('nav-memory') + 1);
+  });
+
   it('marks Chats current on a chat, and Integrations on its alias /mcp', async () => {
     const r = mount(<Sidebar route={{ name: 'chat', id: 'c1' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="nav-chats"]')!.getAttribute('aria-current')).toBe('page'), r);

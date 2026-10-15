@@ -158,8 +158,9 @@ func Build(ctx context.Context, o BuildOptions) (*Manifest, error) {
 	return m, nil
 }
 
-// buildEnv is the environment for cross-compiling: no CGO (the product needs none on Windows), the repository's
-// GOFLAGS convention unless the caller set its own.
+// buildEnv is the environment for cross-compiling: no CGO, so the bundle builds on a development host without a MinGW
+// cross compiler (its repo map tests then check the build without the C parser; CI's go job runs them with the parser on
+// Windows, decision P62), and the repository's GOFLAGS convention unless the caller set its own.
 func buildEnv(goos, goarch string) []string {
 	env := append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 	if os.Getenv("GOFLAGS") == "" {

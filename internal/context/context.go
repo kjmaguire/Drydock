@@ -137,6 +137,9 @@ func (e *Engine) generate(ctx context.Context, projectID, worktree string, exist
 		})
 		for _, sec := range extra {
 			if strings.TrimSpace(sec.Body) == "" {
+				if sec.Reason != "" {
+					m.Add(sec.Source, false, 0, sec.Reason, sec.Priority)
+				}
 				continue
 			}
 			sb.WriteString("\n## " + sec.Title + "\n\n" + strings.TrimSpace(sec.Body) + "\n")

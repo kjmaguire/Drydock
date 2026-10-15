@@ -29,6 +29,7 @@ export type Route =
         | 'budgets'
         | 'evals'
         | 'security'
+        | 'repo-map'
         | WorkspaceRouteName;
     }
   | { name: 'not-found' };
@@ -67,7 +68,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
 
 // screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
 const SIMPLE = new Set<string>([
-  'pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security',
+  'pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map',
   ...WORKSPACE_ROUTES.filter((n) => n !== 'workspace' && n !== 'library-skills'),
 ]);
 

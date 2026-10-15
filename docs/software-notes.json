@@ -226,6 +226,35 @@
     "tool:actions-runner": {
       "role": "The CI runners (decision P56) run GitHub's own runner for a person's private repositories: unpacked on the PC for Windows jobs, built into a container image (FROM ubuntu:24.04, the current Ubuntu LTS) for Linux jobs.",
       "note": "Not pinned: Drydock downloads the newest stable release when a runner starts and runs it only after checking its SHA-256 against the one the release notes publish (GitHub stops serving runners that fall far behind). The version shown is the newest at the last audit. CI downloads, checks and starts it on every push (TestRealRunnerRelease); nothing is registered there."
+    },
+    "go:github.com/tree-sitter/go-tree-sitter": {
+      "role": "The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build needs MinGW gcc. MIT.",
+      "note": "v0.25.0 is the newest release. A build without CGO leaves it out and has no repo map."
+    },
+    "go:github.com/tree-sitter/tree-sitter-go": {
+      "role": "Go grammar of the repo map, with its own queries/tags.scm (copied into internal/repomap/queries). MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-typescript": {
+      "role": "TypeScript and TSX grammars of the repo map, with their queries/tags.scm (combined with JavaScript's, as the grammar does) and Drydock's own extra queries. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-javascript": {
+      "role": "JavaScript (and JSX) grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-python": {
+      "role": "Python grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-c-sharp": {
+      "role": "C# grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-java": {
+      "role": "Java grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-rust": {
+      "role": "Rust grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/mattn/go-pointer": {
+      "role": "Used by go-tree-sitter to hand Go values to C callbacks (the repo map). MIT.",
+      "note": "Indirect: go-tree-sitter's go.mod pins it."
     }
   }
 }

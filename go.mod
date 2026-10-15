@@ -12,6 +12,14 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go/v3 v3.77.0
 	github.com/pressly/goose/v3 v3.29.0
+	github.com/tree-sitter/go-tree-sitter v0.25.0
+	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5
+	github.com/tree-sitter/tree-sitter-go v0.25.0
+	github.com/tree-sitter/tree-sitter-java v0.23.5
+	github.com/tree-sitter/tree-sitter-javascript v0.25.0
+	github.com/tree-sitter/tree-sitter-python v0.25.0
+	github.com/tree-sitter/tree-sitter-rust v0.24.2
+	github.com/tree-sitter/tree-sitter-typescript v0.23.2
 	github.com/wailsapp/wails/v3 v3.0.0-beta.28
 	github.com/zalando/go-keyring v0.2.8
 	github.com/zricethezav/gitleaks/v8 v8.30.1
@@ -67,6 +75,7 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/mholt/archives v0.1.5 // indirect
