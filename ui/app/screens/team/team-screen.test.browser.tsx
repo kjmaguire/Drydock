@@ -122,6 +122,25 @@ describe('Team: purpose, model and effort', () => {
     await waitFor(() => expect(card.querySelector('[data-testid="presence"]')!.textContent).toContain('Working'), r);
   });
 
+  it('the card is a dot with what the agent is doing right now, its name a link to its page, and where it runs (Crew HQ)', async () => {
+    const { r } = show([agent({ runMode: 'wsl', wslDistro: 'Ubuntu' })], {
+      presenceList: async () => [{ agentId: 'agt_1', presence: 'Working', activity: 'Running tests for webhook retries', since: '', updated: '', seq: 1 }],
+    });
+    const card = await waitAgent(r, 'Pay');
+    expect(card.querySelector('[data-dot="true"]')).not.toBeNull();
+    expect(card.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_1');
+    expect(card.querySelector('h3')!.textContent).toBe('Pay');
+    await waitFor(() => expect(card.querySelector('.now')!.textContent).toContain('Running tests for webhook retries'), r);
+    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('in WSL Ubuntu');
+    expect(r.$('h1')!.textContent).toBe('Crew');
+    // without presence the card says the agent rests, in words
+    cleanup();
+    const quiet = show([agent()]);
+    const c2 = await waitAgent(quiet.r, 'Pay');
+    expect(c2.querySelector('.now')!.textContent).toContain('Resting');
+    expect(c2.querySelector('[data-testid="agent-runs"]')).toBeNull();
+  });
+
   it('says what a team needs when there is no agent yet', async () => {
     const { r } = show([]);
     await waitFor(() => expect(r.container.textContent).toContain('A task needs a worker and a different agent as reviewer'), r);

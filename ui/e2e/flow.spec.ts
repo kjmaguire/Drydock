@@ -125,21 +125,26 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await page.getByLabel('Mode', { exact: true }).selectOption('pr_flow');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
-  await page.getByRole('link', { name: 'Pull Requests' }).click();
+  // Pull requests is a pill under the Tasks tab (Crew HQ, decision P64)
+  await projectNav(page, 'nav-pulls');
   await expect(page.getByText('No task has a pull request')).toBeVisible();
   await page.getByRole('button', { name: 'Load open issues' }).click();
   await expect(page.getByRole('alert')).toContainText('origin');
 });
 
-test("the sidebar is keyboard navigable and Needs you comes first among the project's links (after Home)", async ({ page }) => {
+test("the top bar is keyboard navigable: the mark is the way home, Overview is the first tab, the bell (Needs you) is reached with the arrow keys", async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
   await expect(items.first()).toHaveAttribute('href', '/home');
-  await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
-  await page.getByTestId('nav-needs-you').focus();
-  await page.keyboard.press('ArrowDown');
+  await expect(items.nth(1)).toHaveAttribute('href', '/');
+  await page.getByTestId('nav-overview').focus();
+  await page.keyboard.press('ArrowRight');
   await expect(page.getByTestId('nav-tasks')).toBeFocused();
-  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByTestId('nav-overview')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.getByTestId('nav-settings')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { level: 1, name: 'Needs you' })).toBeVisible();

@@ -34,6 +34,8 @@ app/
                       virtual-list (windowed feeds; its arithmetic in virtual.ts)
   shell/              sidebar (with the project switcher), details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
+  screens/team/       the Crew tab: the agents as dots (team-screen.tsx) and an agent's own page (/team/:id, agent-screen.tsx: a hero
+                      with chips, then Overview, Skills & tools, Memory and History); the inspector stays in the details panel
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
                       properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals)
   styles/app.css      design tokens (light-dark()) + base layer for native elements
@@ -115,7 +117,8 @@ Dense and quiet (Linear), chat-first. The shell is one sidebar, the page or conv
 
 Use the kit before writing CSS:
 
-- `Page` (header bar with title, icon, subtitle, actions; scrolling body), `Section`, `card`, `listCard`, `tableCard`,
+- `Page` (header bar with title, icon, subtitle, actions; scrolling body; `head` draws the head itself around the h1 id it is
+  given), `Section`, `card`, `listCard`, `tableCard`,
   `row`, `stack`, `cardGrid` (layout.tsx).
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).
@@ -123,7 +126,7 @@ Use the kit before writing CSS:
   (form.tsx). Native `input`, `select`, `textarea`, `button`, `table`, `kbd`, `code`, `pre` are styled by the base layer.
 - `ErrorNote` (role="alert"), `Notice`, `Loading`, `Spinner`, `Empty` (feedback.tsx).
 - `Badge`, `StatusChip`, `PresenceDot`, `Avatar`, `SourceBadge`, `kv`, `muted`, `faint`, `mono` (data.tsx).
-- `Dialog` (native `<dialog>`), `Tabs`, `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.
+- `Dialog` (native `<dialog>`), `Tabs` (underlined; `pills` for a page's sections), `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.
 - `VirtualList` (virtual-list.tsx) for a long feed: create it in setup with `onChange: () => handle.update()`, render
   `list.rows(items, key, render)` inside the scroller (before reading `list.quiet` for the log's `aria-live`), put
   `ref(list.scroller)` and `on('scroll', () => list.onScroll())` on the scroller and `handle.queueTask(() => list.settle())`

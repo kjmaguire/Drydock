@@ -46,14 +46,34 @@ const wideCss = css({ maxWidth: 'none' });
 
 /**
  * A screen: a header bar with the title (h1), an optional subtitle and actions, then a scrolling body. `wide` lets the body
- * use the full width (tables, boards).
+ * use the full width (tables, boards). `head` draws the page's head itself (an agent's hero beside its crew list): it is
+ * given the id the page's h1 must carry, and replaces the default header and the children.
  */
 export function Page(
-  handle: Handle<{ title: RemixNode; icon?: IconNode; subtitle?: RemixNode; actions?: RemixNode; wide?: boolean; flush?: boolean; children?: RemixNode; testId?: string }>,
+  handle: Handle<{
+    title: RemixNode;
+    icon?: IconNode;
+    subtitle?: RemixNode;
+    actions?: RemixNode;
+    wide?: boolean;
+    flush?: boolean;
+    children?: RemixNode;
+    testId?: string;
+    head?: (titleId: string) => RemixNode;
+  }>,
 ) {
   const titleId = `page-title-${handle.id}`;
   return () => {
-    const { title, icon, subtitle, actions, wide, flush, children, testId } = handle.props;
+    const { title, icon, subtitle, actions, wide, flush, children, testId, head } = handle.props;
+    if (head) {
+      return (
+        <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>
+          <div mix={bodyCss}>
+            <div mix={[innerCss, wide ? wideCss : undefined]}>{head(titleId)}</div>
+          </div>
+        </section>
+      );
+    }
     return (
       <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>
         {flush ? (

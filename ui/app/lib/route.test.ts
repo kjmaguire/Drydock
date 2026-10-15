@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, isWorkspacePage, isWorkspaceRoute, parseRoute } from './route.ts';
+import { hashToPath, hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -22,7 +22,8 @@ describe('routes', () => {
     expect(parseRoute('/project/new')).toEqual({ name: 'project-new' });
     expect(parseRoute('/settings')).toEqual({ name: 'settings' });
     expect(parseRoute('/nope')).toEqual({ name: 'not-found' });
-    expect(parseRoute('/team/extra')).toEqual({ name: 'not-found' });
+    expect(parseRoute('/team/agt%201')).toEqual({ name: 'agent', id: 'agt 1' });
+    expect(parseRoute('/team/agt/x')).toEqual({ name: 'not-found' });
   });
 
   it('opens the workspace screens, and /mcp as an alias of Integrations, without a project', () => {
@@ -79,6 +80,14 @@ describe('routes', () => {
     expect(parseRoute('/repo-map')).toEqual({ name: 'repo-map' });
     expect(parseRoute('/repo-map/x')).toEqual({ name: 'not-found' });
     expect(isWorkspacePage(parseRoute('/repo-map'))).toBe(false);
+  });
+
+  it("has an agent's page under the Crew tab (decision P64)", () => {
+    expect(routes.agent.href({ id: 'agt_1' })).toBe('/team/agt_1');
+    expect(parseRoute('/team')).toEqual({ name: 'team' });
+    expect(parseRoute('/team/agt_1')).toEqual({ name: 'agent', id: 'agt_1' });
+    expect(hubOf({ name: 'agent', id: 'agt_1' })).toBe('crew');
+    expect(isWorkspacePage({ name: 'agent', id: 'agt_1' })).toBe(false);
   });
 
   it('turns old hash links into paths', () => {

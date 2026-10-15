@@ -4,7 +4,7 @@
 
 import { css, type Handle } from 'remix/component';
 import { ArrowRight, Inbox, Sparkles } from 'lucide';
-import type { Agent, NeedsYouItem, PresenceState, Task } from '../../api/types.ts';
+import type { Agent, NeedsYouItem, Task } from '../../api/types.ts';
 import { agentName, presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
@@ -16,6 +16,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { KIND_LABEL, needsTarget } from '../needs-you/needs-you.ts';
+import { doing } from '../team/team.ts';
 
 const layoutCss = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: t.s6, alignItems: 'start', '@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)' } });
 const colCss = css({ display: 'grid', gap: t.s6, minWidth: '0' });
@@ -115,12 +116,6 @@ export function greeting(hour: number): string {
   return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-/** What an agent is doing, in one line: its activity, else its presence label, else the presence name. */
-export function doing(p: PresenceState | undefined): string {
-  if (!p) return 'Resting';
-  return p.activity || p.label || p.presence;
-}
-
 function NeedCard(handle: Handle<{ item: NeedsYouItem; agents: readonly Agent[] }>) {
   return () => {
     const { item: it, agents } = handle.props;
@@ -197,7 +192,7 @@ export function OverviewScreen(handle: Handle) {
                     const busy = WORKING.test(pr?.presence ?? '');
                     return (
                       <li key={a.id}>
-                        <a href={routes.team.href()} mix={crewCard} data-testid="overview-agent" data-name={a.name}>
+                        <a href={routes.agent.href({ id: a.id })} mix={crewCard} data-testid="overview-agent" data-name={a.name}>
                           <Avatar id={a.id} name={a.name} size={64} kind="agent" status={presenceColor(pr)} />
                           <span class="name">{a.name}</span>
                           <span class="role">{a.role}</span>
