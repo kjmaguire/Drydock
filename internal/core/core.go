@@ -31,6 +31,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/runners"
 	"github.com/kjmaguire/drydock/internal/scan"
@@ -131,6 +132,8 @@ type Core struct {
 	lead       atomic.Pointer[pipeline.Lead] // the team lead service (ext_lead.go)
 	secrets    providers.SecretStore         // API keys and tokens (Credential Manager plus an encrypted overflow); nil when the host has no store
 	wsl        *wsl.Host                     // the WSL distros (ext_wsl.go)
+	rmOnce     sync.Once                     // the repo map (ext_repomap.go)
+	rm         *repomap.Mapper
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter

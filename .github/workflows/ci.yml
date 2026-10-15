@@ -17,6 +17,10 @@ jobs:
   go:
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 45
+    # CGO on, said outright: the repo map's tree-sitter parser is C (decision P62), and without a C compiler Go would quietly
+    # build the tests without it. GitHub's Windows images have MinGW gcc on PATH; a self-hosted runner needs it too.
+    env:
+      CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -38,6 +42,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force ui/dist | Out-Null
           Set-Content ui/dist/index.html '<!doctype html><title>Drydock</title>'
+      - name: The C compiler for the repo map (MinGW gcc)
+        run: |
+          gcc --version
+          go env CC CGO_ENABLED
       - run: go vet ./...
       - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are never used here)
         # a self-hosted runner may have a signed-in claude: the paid real-agent tests run only in verify.yml, on request
@@ -58,6 +66,12 @@ jobs:
           Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+\.go:\d+:' | ForEach-Object { $_.Line }
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
+      - name: The build without CGO still works and says it has no repo map
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go vet ./internal/repomap ./internal/mcp ./internal/core
+          go test ./internal/repomap ./internal/mcp -count=1
       - name: The real Actions runner release (downloaded, checked and started; nothing is registered)
         # decision P56: the CI runners feature unpacks the newest runner and passes its one-job configuration in the
         # environment; this proves both on Windows without attaching a runner to any repository
@@ -114,18 +128,29 @@ jobs:
       - name: Self-check of every task of every suite
         run: go test ./internal/trial -count=1 -timeout 30m -run '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' -v
   repomap-cgo:
-    # Decision D5: tree-sitter needs CGO. The repo map ships only if this job is green.
+    # Decisions D5 and P62: the repo map's tree-sitter parser is C, built with MinGW gcc. This job is quick to read on its
+    # own: the parser and every language's tag query on Windows, then the Phase 0 probe (the go job runs the same tests among
+    # all the others).
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
     timeout-minutes: 30
+    env:
+      CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Git identity for tests
+        run: |
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: The repo map with the real parser (every language, a real git checkout)
+        run: |
+          gcc --version
+          go test ./internal/repomap -count=1 -v
       - name: Build and run the tree-sitter probe with CGO
         working-directory: evidence/phase0/go-probes/ts
-        env:
-          CGO_ENABLED: "1"
         run: go run .
   ui:
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
@@ -241,10 +266,19 @@ jobs:
           node-version: "24"
       - run: npm ci && npm run build
         working-directory: ui
-      - name: Build the Wails app (CGO off, as Wails v3 needs none on Windows)
+      - name: Build the Wails app (CGO on, for the repo map's tree-sitter parser; MinGW gcc from the runner image)
+        # Wails v3 needs no CGO on Windows, but the repo map does (decision P62): a build without it has no repo map
         env:
-          CGO_ENABLED: "0"
-        run: go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .
+          CGO_ENABLED: "1"
+        run: |
+          gcc --version
+          go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .
+      - name: The app was built with CGO and the tree-sitter parser
+        shell: pwsh
+        run: |
+          $info = go version -m drydock.exe | Out-String
+          if ($info -notmatch 'CGO_ENABLED=1') { throw "drydock.exe was built without CGO: it has no repo map" }
+          if ($info -notmatch 'github.com/tree-sitter/go-tree-sitter') { throw "drydock.exe has no tree-sitter parser" }
       - uses: actions/upload-artifact@v7
         with:
           name: drydock-windows-unsigned

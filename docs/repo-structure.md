@@ -36,6 +36,9 @@ Scope: where things live and the dependency rules between packages. `internal/` 
   providers/, llm/, router/   provider registry + quota ledger; LLM client; model router
   security/              approvals, path guard, command analysis, secrets, audit
   mcp/                   gateway, workspace server, catalog
+  repomap/               the repo map (decision P62): tree-sitter tags (parser_cgo.go, `//go:build cgo`; parser_nocgo.go
+                         without CGO: no parser), file graph, personalized PageRank, token-budgeted rendering, tag cache;
+                         queries/ holds the grammars' tags.scm (MIT) and our extra queries
   tools/                 build-tag-only dependency pins (not compiled into the product)
 /testdata/
   fixtures/gocalc/       small Go module with failing tests (integration fixture)

@@ -6,14 +6,13 @@ import { envNames, NOT_BUILT, THEMES } from './settings.ts';
 describe('settings data', () => {
   it('keeps the "Not built yet" list as docs/ui.md section 4 has it', () => {
     expect(NOT_BUILT.map((x) => x.feature)).toEqual([
-      'Repo map view',
       'Live verification against vendor accounts (Linear, Notion, Sentry, Aikido)',
       'Cloud sync, accounts, team sharing',
     ]);
-    expect(NOT_BUILT.map((x) => x.slice)).toEqual(['gated by decision D5', 'Slice 5', 'never']);
-    expect(NOT_BUILT[2]!.meanwhile).toBe('Drydock has no cloud component.');
+    expect(NOT_BUILT.map((x) => x.slice)).toEqual(['Slice 5', 'never']);
+    expect(NOT_BUILT[1]!.meanwhile).toBe('Drydock has no cloud component.');
     // the vendors are verified by the person, from the app (P59)
-    expect(NOT_BUILT[1]!.meanwhile).toContain('Check against your account');
+    expect(NOT_BUILT[0]!.meanwhile).toContain('Check against your account');
   });
 
   it('offers System, Dark and Light', () => {

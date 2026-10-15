@@ -29,7 +29,8 @@ type Workspace struct {
 	Packs        PackSearcher
 	Requirements RequirementsSearcher
 	Memory       MemorySearcher
-	// RepoMap is nil until the tree-sitter repo map exists (decision D5): repo_map then returns RepoMapGatedMessage.
+	// RepoMap is nil in a build without CGO, which has no tree-sitter parser (decisions D5, P62): repo_map then returns
+	// RepoMapGatedMessage.
 	RepoMap RepoMapper
 	// Chats backs the chats tool (decisions P29). Only chat sessions whose history reading is on are allowed it by policy.
 	Chats ChatsReader
@@ -226,7 +227,7 @@ func workspaceToolDefs() []*wsTool {
 			{Name: "search_pack", Description: "Search expert-pack documentation. Returns cited chunks, or says nothing was found.", ReadOnly: true, handler: wsSearchPack},
 			{Name: "search_requirements", Description: "Search the project's requirements documents.", ReadOnly: true, handler: wsSearchRequirements},
 			{Name: "search_memory", Description: "Search project or workspace memory.", ReadOnly: true, handler: wsSearchMemory},
-			{Name: "repo_map", Description: "Token-budgeted map of the repository's important symbols (currently gated, decision D5).", ReadOnly: true, handler: wsRepoMap},
+			{Name: "repo_map", Description: "Map of the repository's most important code within a token budget: files ranked by how much the rest of the code uses them (PageRank over references), each with its most important definition lines. focus_paths (files or folders) ranks what they use higher. Paths are worktree-relative.", ReadOnly: true, handler: wsRepoMap, Budget: 49152},
 			{Name: "read_range", Description: "Read a line range of a file in the worktree. Paths are worktree-relative.", ReadOnly: true, handler: wsReadRange, Budget: 65536},
 			{Name: "task", Description: "Read the current task, add a note, or propose BLOCKED, WAITING_HUMAN or REVIEW with evidence. Cannot complete or accept a task.", handler: wsTask},
 			{Name: "skills", Description: "List skills, read one by name, or get the skills that apply to paths.", ReadOnly: true, handler: wsSkills},

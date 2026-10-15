@@ -10,7 +10,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | D2 | Gemini CLI is supported with API-key or Vertex auth, with a warning on the Connection that consumer sign-in was reported retired on 2026-06-18 (re-verify). **Antigravity gets an adapter** because it is now the owner's route into Google's CLI. It drives only the official `agy` binary the user installed and logged into (headless stream-json in and out, `--mode`, `--effort`, `-p "/usage"` for quota), never touches credentials, and is behind an explicit acknowledgement gate. Research found no Google statement permitting third-party orchestration and a terms clause barring third-party tools from accessing the service, with enforcement history (account suspensions in Feb 2026); the gate says so in plain language and recommends an AI Studio or Vertex key where available. The first-party `antigravity-acp` registry binary is a second transport, evaluated later. | locked, with a terms risk the owner accepted |
 | D3 | **Both Codex and OpenCode** are cheap-tier-capable agents. OpenCode is the default (OpenAI-compatible providers, ACP native). Codex uses its subscription or an API key by default; it joins the cheap tier only on a provider that exposes the Responses API (`wire_api = "responses"` is the only value Codex accepts), which Drydock validates in the provider-config writer and which the Connection test proves against the real endpoint. Goose is the third. | locked |
 | D4 | OpenRouter is **model-agnostic**: no model is hard-coded as "the cheap model". At setup and then in the background, the catalog is refreshed from `GET /api/v1/models/user` (the effective filtered catalog), and the router chooses the cheapest `private` model with tool calling that passes a startup tool-call probe. Every request to OpenRouter on a `private` route carries `provider:{data_collection:"deny", zdr:true}` and fails closed. `:free` routes are `trainable` and only used for public-docs CONSULT. Cohere North Mini Code is a candidate when a paid private route or a self-hosted endpoint exists, not an assumption. | locked |
-| D5 | The tree-sitter repo map proceeds, gated by a Windows CI job (MinGW gcc, pinned grammars, parse test, Defender scan). Until that job is green on a Windows runner the repo map is not built and Slice 1 does not depend on it: no tree-sitter code is in the module (only the Phase 0 probe, its own module in `evidence/phase0/go-probes/ts`), and the workspace `repo_map` tool answers with a fixed "gated (decision D5)" message (corrected 2026-10-09: this said "behind a build tag"; there is no build tag). | locked; **blocked on Actions** (see 5) |
+| D5 | The tree-sitter repo map proceeds, gated by a Windows CI job (MinGW gcc, pinned grammars, parse test, Defender scan). Until that job is green on a Windows runner the repo map is not built and Slice 1 does not depend on it: no tree-sitter code is in the module (only the Phase 0 probe, its own module in `evidence/phase0/go-probes/ts`), and the workspace `repo_map` tool answers with a fixed "gated (decision D5)" message (corrected 2026-10-09: this said "behind a build tag"; there is no build tag). | locked; the CI job (`repomap-cgo`) is green and the owner decided to build it (2026-10-15): **built** (P62), `internal/repomap` with tree-sitter through CGO behind `//go:build cgo`; the product build is CGO with MinGW gcc; a build without CGO has no repo map and says so. Defender scan of the CGO exe still to do |
 | D6 | Cloudflare is an **agent-side template**, not part of Drydock's own infrastructure: Drydock is a desktop app. The golden starter (`testdata/starter-cloudflare-saas`) is a project template that agents build in; the preview/production separation applies to those projects: a separate Cloudflare account (or none) for previews, an agent-process command allowlist, no production token in agent processes, separate bindings in the `previews` block. Amends brief section 13a: the "preview-only credential" is an account boundary and an allowlist, not a token scope. | locked |
 | D7 | Process trees: the Drydock process joins a `KILL_ON_JOB_CLOSE` job at startup; each pipe-spawned agent also gets its own job (assigned suspended, then resumed); ConPTY children (the embedded terminal) are tree-killed by walking the job after spawn. The job-list attribute constant (0x2000D) is defined in our code. Proven by the `jobtree` probe on a Windows host before `internal/proc` is called done. | locked; **blocked on Actions** for proof |
 | D8 | Packaging: NSIS installer with `INSTALL_SCOPE=user`, no MSIX or WiX in v1. Updates use Wails v3's built-in updater (`app.Updater`) with a custom `Provider` pointed at Drydock's own release feed (not GitHub Releases, which cannot serve a private commercial repo without tokens in the client), `Channel` set to `stable` or `beta`, SHA-256 digests and an Ed25519-signed manifest with the public key pinned in the app, release notes shown by the built-in update window, and the previous executable kept for rollback. Signing: Azure Artifact Signing or an OV certificate, decided at company-account creation; plain signtool via `wails3 tool sign` until then. | locked |
@@ -26,7 +26,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Layer | Decision | Evidence and caveats |
 |---|---|---|
 | Language and toolchain | Go, `go 1.27.2` in `go.mod` (moved up from 1.26.0 on 2026-10-09) | sqlite, goose, otel, mvdan/sh, x/sys need 1.26 or newer; the whole module graph was updated with it. |
-| Desktop shell | Wails v3 `v3.0.0-beta.28`, isolated in `app/`, pinned | MIT, beta, builds Windows-only with `CGO_ENABLED=0`; bindings generation proven; open issues unchecked. Accepted risk (brief risk register). |
+| Desktop shell | Wails v3 `v3.0.0-beta.28`, isolated in `app/`, pinned | MIT, beta, builds Windows-only with `CGO_ENABLED=0` (Wails needs no CGO; since P62 the product exe is built with `CGO_ENABLED=1` for the repo map's parser); bindings generation proven; open issues unchecked. Accepted risk (brief risk register). |
 | Storage | `modernc.org/sqlite` v1.60.1, WAL, FTS5; migrations with `pressly/goose` v3.29.0 | FTS5/bm25/WAL proven on Linux; single writer connection plus pooled readers; `BEGIN IMMEDIATE`/`_txlock=immediate` for write transactions. Re-run on NTFS. |
 | Secrets | `zalando/go-keyring` v0.2.8; values over 2560 bytes are encrypted into SQLite with the key in Credential Manager | Limit confirmed in source and Microsoft docs. |
 | Workflow engine | In-house on SQLite; agent-framework-go is a design reference only | Experiment: re-runs completed siblings after a partial superstep and double-emits on duplicate resume. We provide idempotency keys, leases and `response_entry` checkpoints. |
@@ -36,7 +36,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
 | Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.9 | Run on Windows to confirm; cannot take a job list (see D7). |
 | Verification tools | osv-scanner v2.6.0, Opengrep 1.30.2, Playwright 1.64.0, Wrangler 4.148.0 as external tools | osv-scanner sends package metadata to osv.dev unless offline: disclosed. Opengrep (LGPL-2.1, native Windows binary) is the security scan's Code engine (P44); Drydock ships no rules for it. |
-| Repo map | `go-tree-sitter` v0.25.0 + MIT grammars, Aider algorithm | D5. SQL grammar pinned to a `gh-pages` pseudo-version; we author TSX, PHP and SQL tag queries. |
+| Repo map | `github.com/tree-sitter/go-tree-sitter` v0.25.0 (CGO) + MIT grammars: Go v0.25.0, TypeScript/TSX v0.23.2, JavaScript v0.25.0, Python v0.25.0, C# v0.23.5, Java v0.23.5, Rust v0.24.2; Aider algorithm | D5, P62: built in `internal/repomap` (Linux; the Windows CI jobs build it with MinGW gcc). The grammars' own `queries/tags.scm` plus our extra queries (TSX and JSX element references, which no upstream query covers, and TS, JS, Python, C#, Java, Rust additions). PHP and SQL, probed in Phase 0, are not built. The product exe is built with `CGO_ENABLED=1`. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
 | Git hosting | `gh` v2.102.0 as a user-installed Connection | `gh` is not bundled. |
@@ -244,3 +244,46 @@ Open, owner action:
   is kept per connection until a reconnect, shown as "Verified against your account on <date>", and published as
   `integration.verified`. `docs/integrations.md`, "As built: check against your account". **Not verified:** against a real
   vendor account; that is what the button is for.
+- **P62. The repo map, with tree-sitter through CGO (2026-10-15, on the owner's decision).** D5 gated the repo map on a
+  Windows CI job proving that CGO tree-sitter builds; that job (`repomap-cgo`) is green, and the owner decided to build it
+  with the real tree-sitter parser (C, through CGO), accepting that the Windows build needs a C compiler. Built:
+  (1) **`internal/repomap`**: Aider's algorithm (docs/phase0/go-platform.md section 13). Files come from `git ls-files
+  --cached --others --exclude-standard` through Drydock's hardened git (so .gitignore is honoured and the configuration
+  guard applies; a repository in a WSL distro is listed by the distro's git); vendored folders (node_modules, vendor,
+  third_party, dist, ...), generated files (a "Code generated ... DO NOT EDIT" or "@generated" header, names such as .min.js
+  or .pb.go), binary files, files over 512 KB and files past the 5,000th are skipped and counted. Each file is parsed with
+  `github.com/tree-sitter/go-tree-sitter` v0.25.0 and its grammar (Go, TypeScript, TSX, JavaScript with JSX, Python, C#,
+  Java, Rust; all MIT), and the grammar's own `queries/tags.scm` (copied unchanged, with its license) plus a query authored
+  here for what it leaves out (`queries/*-extra.scm`: JSX element references for TSX and JavaScript, which no upstream
+  query has; TypeScript type aliases, enums and heritage; Python bases and imports; C# structs, records, enums and
+  static access; Java enums, records and declared types; Rust path calls, uses and type references) give definitions
+  and references. The file graph, Aider's identifier weights (x10 for long camel/snake names, x0.1 for private names and
+  names defined in more than five files, x50 from a focus file), personalized PageRank (networkx's: alpha 0.85,
+  personalised toward the focus paths) and the rank shared out to definitions follow Aider; the rendering prints each
+  file's top definition lines with their enclosing definitions ("│" lines, "⋮" gaps), files in PageRank order (Aider sorts
+  them by name), and a binary search keeps it within the token budget (256 to 8,192, default 2,048, chars/4; a hard
+  limit, where Aider allows 15% over). Tags are cached by content hash in memory and in one file per mapped folder under
+  the project's data folder (`projects/<id>/repomap`, removed with the project), so a repeated map parses only changed
+  files. (2) **Build tags**: only `parser_cgo.go` (`//go:build cgo`) imports tree-sitter; `parser_nocgo.go` makes a build
+  without CGO answer `repomap.ErrNoParser`, and `mcp.RepoMapGatedMessage` now says that this build has no repo map because
+  it was built without the C parser. (3) **Wiring**: the Workspace tool `repo_map` gets the core's mapper (the run's
+  worktree, the project's git) and is one of the read tools every role gets in a CGO build; AGENTS.md gains a section
+  "Repository map" of 1,024 tokens in repositories of 25 or more source files (token rule 9: the initial package carries a
+  token-budgeted map), recorded in the context manifest with its size, or as left out with the reason (a context-engine
+  section with no body and a reason is now recorded as excluded); mapping is bounded to 20 seconds there. (4) **UI**: the
+  Repo map page (Knowledge group, `/repo-map`, `repomap.get`) shows the ranked map of the project's repository with a
+  focus-path field, a token budget and the ranking table; without the parser it says so plainly. The Settings "not built"
+  entry is gone. (5) **CI and build**: the `go` and `repomap-cgo` jobs run with `CGO_ENABLED=1` (and the `go` job also
+  vets and tests the build without CGO), the `app` job builds drydock.exe with CGO and checks with `go version -m` that
+  tree-sitter is in it; `task build:windows` builds with CGO. From Linux the product cross-compiles with
+  `CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .`
+  (verified here: a 100.4 MB PE32+ GUI exe, 11 MB more than without CGO). The Windows verification bundle stays CGO-free
+  (it is cross-compiled on a host that may lack MinGW), so its repo map tests check the build without the parser.
+  Tests: `internal/repomap` (the pure half with a labelled test double of the parser: ranking, focus, budget, filters,
+  caches, in both builds; the real parser over `testdata/polyglot`, every language's definitions and references and a
+  whole map of a real git checkout with ignored, vendored and generated files; the build without CGO), `internal/git`
+  (`ListFiles`), `internal/mcp`, `internal/context`, `internal/pipeline` (the manifest's repo map line),
+  `internal/core` (`TestRepoMapPageAndAgentsSection`, the gateway's `repo_map` through a real MCP client), the page's
+  browser tests and `ui/e2e/repomap.spec.ts` (the real parser in the harness). **Not verified:** the CGO exe run on
+  Windows (CI builds it; nobody has opened it), Defender and SmartScreen on it, whether the AGENTS.md map lowers what a
+  task costs (no eval compares), and a real agent CLI calling `repo_map`.

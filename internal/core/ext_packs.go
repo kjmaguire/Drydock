@@ -283,6 +283,7 @@ func (k *Knowledge) wireContext() {
 			}
 			out = append(out, ctxeng.Section{Title: "Skills", Body: plan.Note, Source: "skills:index", Reason: reason, Priority: 36})
 		}
+		out = append(out, k.c.repoMapSection(ctx, projectID, worktree)) // ext_repomap.go; recorded as left out when it has no body
 		return out, nil
 	}
 	k.c.Context.Files = func(ctx context.Context, projectID, worktree string) ([]ctxeng.ExtraFile, error) {

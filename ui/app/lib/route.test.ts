@@ -74,6 +74,13 @@ describe('routes', () => {
     expect(isWorkspacePage(parseRoute('/security'))).toBe(false);
   });
 
+  it("has the project's Repo map page (decision P62)", () => {
+    expect(routes.repoMap.href()).toBe('/repo-map');
+    expect(parseRoute('/repo-map')).toEqual({ name: 'repo-map' });
+    expect(parseRoute('/repo-map/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspacePage(parseRoute('/repo-map'))).toBe(false);
+  });
+
   it('turns old hash links into paths', () => {
     expect(hashToPath('#/task/x')).toBe('/task/x');
     expect(hashToPath('#/')).toBe('/');

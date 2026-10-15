@@ -413,3 +413,21 @@ func TestStatusIgnoresALineEndingOnlyRewriteUnderAutoCRLF(t *testing.T) {
 		t.Fatalf("only the real change is modified: %+v", st)
 	}
 }
+
+func TestListFilesHonoursGitignoreAndListsUntrackedFiles(t *testing.T) {
+	r, _ := newRepo(t)
+	ctx := context.Background()
+	write(t, r.Root, ".gitignore", "build/\n*.log\n")
+	write(t, r.Root, "build/out.go", "package out\n")
+	write(t, r.Root, "debug.log", "noise\n")
+	write(t, r.Root, "src/new.go", "package main\n") // untracked, not ignored
+	files, err := r.ListFiles(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(files)
+	want := []string{".gitignore", "README.md", "src/main.go", "src/new.go"}
+	if !slices.Equal(files, want) {
+		t.Fatalf("ListFiles = %v, want %v", files, want)
+	}
+}

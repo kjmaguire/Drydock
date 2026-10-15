@@ -8,4 +8,12 @@ What exists and is tested here: event bus and SQLite storage, workflow engine wi
 
 Development on a non-Windows host: `go test ./...`, `GOOS=windows go vet ./...`, `cd ui && npm ci && npm test && npm run build && npx playwright test`, and `go run ./cmd/drydock-dev` to run the core with the development HTTP transport.
 
+Building `drydock.exe` needs a C compiler, because the repo map's tree-sitter parser is C compiled in with CGO (decision P62):
+MinGW gcc on Windows (GitHub's Windows images have it on PATH), the MinGW cross compiler on Linux. Build the UI first
+(`cd ui && npm run build`), then, on Windows, `go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .` with
+`CGO_ENABLED=1`, or from Linux:
+`CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .`
+(`task build:windows` does the same). A build with `CGO_ENABLED=0` still works but has no repo map: the `repo_map` tool and the
+Repo map page say so.
+
 Proof on Windows without GitHub-hosted runners (a verification bundle run by hand, or a self-hosted runner on your PC): [`docs/windows-runner.md`](docs/windows-runner.md).

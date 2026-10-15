@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -145,7 +147,12 @@ func callTool(t *testing.T, s *sdk.ClientSession, name string, args map[string]a
 	return sb.String(), res.IsError
 }
 
+// sameSet compares tool lists. A set that has the read tools (read_range) also has repo_map in a build with the tree-sitter
+// parser (CGO), which gives it to every role with the other read tools (decision P62).
 func sameSet(got []string, want ...string) bool {
+	if repomap.Available() && slices.Contains(want, "read_range") && !slices.Contains(want, "repo_map") {
+		want = append(append([]string(nil), want...), "repo_map")
+	}
 	if len(got) != len(want) {
 		return false
 	}
@@ -701,8 +708,16 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 		t.Errorf("git internals are never served: %s", out)
 	}
 
+	// repo_map: in a CGO build every role has it (the map of the worktree); without CGO it is not offered (decision P62)
+	if out, isErr := callTool(t, bs, "repo_map", map[string]any{"token_budget": 512}); repomap.Available() {
+		if isErr || !strings.Contains(out, "calc.go") || !strings.Contains(out, "Repo map:") {
+			t.Errorf("repo_map: err=%v %s", isErr, out)
+		}
+	} else if !isErr || !strings.Contains(out, "denied") {
+		t.Errorf("repo_map without a parser must be refused: %s", out)
+	}
 	// outside the allowlist: refused with an audit event, and the act tools are absent from the default policy
-	for _, tool := range []string{"task", "room", "handoff", "repo_map"} {
+	for _, tool := range []string{"task", "room", "handoff"} {
 		if out, isErr := callTool(t, bs, tool, map[string]any{"action": "get"}); !isErr || !strings.Contains(out, "denied") {
 			t.Errorf("%s must be refused: %s", tool, out)
 		}
@@ -720,7 +735,7 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 			deniedTools["frontend:search_pack"] = true
 		}
 	}
-	for _, w := range []string{"task", "room", "handoff", "repo_map"} {
+	for _, w := range []string{"task", "room", "handoff"} {
 		if !deniedTools[w] {
 			t.Errorf("no mcp.denied audit event for %s: %v", w, deniedTools)
 		}
@@ -800,7 +815,7 @@ func TestActToolsOverTaskRoomAndHandoffServices(t *testing.T) {
 
 	// off by default
 	s0, _ := spawn(worker)
-	if got := toolNames(t, s0); sameSet(got, "task") || len(got) != 5 {
+	if got := toolNames(t, s0); !sameSet(got, "fetch_range", "read_range", "search_memory", "search_requirements", "skills") {
 		t.Fatalf("default tools: %v", got)
 	}
 	// a human turns them on for the project

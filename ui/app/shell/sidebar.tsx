@@ -17,6 +17,7 @@ import {
   Database,
   FileText,
   Flag,
+  FolderTree,
   GitPullRequest,
   HardDriveDownload,
   Inbox,
@@ -438,6 +439,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                   <NavItem href={routes.requirements.href()} current={at('requirements')} testId="nav-requirements" icon={FileText} label="Requirements" />
                   <NavItem href={routes.skills.href()} current={at('skills')} testId="nav-skills" icon={Cpu} label="Skills" />
                   <NavItem href={routes.memory.href()} current={at('memory')} testId="nav-memory" icon={Brain} label="Memory" />
+                  <NavItem href={routes.repoMap.href()} current={at('repo-map')} testId="nav-repo-map" icon={FolderTree} label="Repo map" />
                 </>,
               )}
             </>

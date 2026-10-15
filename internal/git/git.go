@@ -252,6 +252,29 @@ func (r *Repo) TrackedFiles(ctx context.Context) (int, error) {
 	return strings.Count(out, "\x00"), nil
 }
 
+// ListFiles lists the files of the checkout at dir (the repository's own folder or one of its worktrees; empty: Root) as git
+// sees them: tracked files and untracked files that .gitignore, .git/info/exclude and the global excludes do not ignore.
+// Paths are relative to dir, with forward slashes. Files deleted from the working tree but still in the index are listed
+// too; callers that read the files skip the missing ones.
+func (r *Repo) ListFiles(ctx context.Context, dir string) ([]string, error) {
+	if dir == "" {
+		dir = r.Root
+	}
+	out, err := r.git(ctx, dir, nil, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var files []string
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" && !seen[f] { // a file with merge conflicts is listed once per stage
+			seen[f] = true
+			files = append(files, f)
+		}
+	}
+	return files, nil
+}
+
 func (r *Repo) env() []string {
 	return append(gitEnv(os.Environ()), r.drydockEnv()...)
 }

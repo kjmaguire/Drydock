@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -268,6 +269,24 @@ type mdFile struct {
 	size int
 }
 
+// repoMapSectionBytes is the size of the repo map section of a generated AGENTS.md (0: it has none).
+func repoMapSectionBytes(agentsMD string) int {
+	b, err := os.ReadFile(agentsMD)
+	if err != nil {
+		return 0
+	}
+	s := string(b)
+	i := strings.Index(s, "\n## "+ctxeng.RepoMapSectionTitle+"\n")
+	if i < 0 {
+		return 0
+	}
+	rest := s[i+1:]
+	if j := strings.Index(rest[3:], "\n## "); j >= 0 {
+		return j + 4
+	}
+	return len(rest)
+}
+
 // mdFiles lists the .md files directly in dir, sorted by name.
 func mdFiles(dir string) []mdFile {
 	entries, err := os.ReadDir(dir)
@@ -314,14 +333,22 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 	} else {
 		m.Add("budget:instructions", true, every, fmt.Sprintf("within budget: %d KB of instructions go into every Claude turn (budget %d KB)", (every+1023)>>10, InstructionBudget>>10), 0)
 	}
+	repoMapTool := false
 	if d.MCPStatus == nil {
 		m.Add("mcp:drydock", false, 0, "MCP gateway not wired in this build: the agent has no search_pack, search_requirements, search_memory, skills or read_range tools", 4)
 	} else if st := d.MCPStatus(ctx, t, agentID, role); st.Attached {
 		m.Add("mcp:drydock", true, 0, "one gateway entry (loopback, per-run token): tools "+strings.Join(st.Tools, ", ")+"; results are fetched on demand, nothing is preloaded", 4)
+		repoMapTool = slices.Contains(st.Tools, "repo_map")
 	} else {
 		m.Add("mcp:drydock", false, 0, "not attached: "+st.Reason, 4)
 	}
-	m.Add("repo map", false, 0, "not built: tree-sitter is gated until the Windows CGO job is green (decision D5)", 9)
+	if n := repoMapSectionBytes(filepath.Join(t.Worktree, "AGENTS.md")); n > 0 {
+		m.Add("repo_map", true, n, "token-budgeted repo map in AGENTS.md (section "+ctxeng.RepoMapSectionTitle+"); a bigger or focused one through the repo_map tool (token rule 9)", 9)
+	} else if repoMapTool {
+		m.Add("repo_map", false, 0, "not in AGENTS.md (a small repository, or the map could not be made in time); on demand through the repo_map tool", 9)
+	} else {
+		m.Add("repo_map", false, 0, "no repo map for this turn: this build has no tree-sitter parser (built without CGO), or the agent has no MCP gateway", 9)
+	}
 	m.Add("project memory", false, 0, "the newest accepted entries are in AGENTS.md up to a budget; the rest is retrieved on demand (search_memory)", 8)
 	m.Add("room history", false, 0, "no messages selected for this task channel", 7)
 	switch {
