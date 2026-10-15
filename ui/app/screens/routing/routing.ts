@@ -27,10 +27,35 @@ export function actionChips(then: RouteAction | null | undefined): { key: string
     .filter(([, v]) => v !== undefined && v !== null && v !== false)
     .map(([k, v]) => {
       const label = k.replace(/_/g, ' ');
-      const text = v === true ? label : `${label}: ${Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}`;
+      const list = (xs: unknown[]) => xs.join(k === 'fallback' ? ' → ' : ', ');
+      const text = v === true ? label : `${label}: ${Array.isArray(v) ? list(v) : typeof v === 'object' ? JSON.stringify(v) : String(v)}`;
       const tone = k === 'deny' ? 'err' : k === 'escalate_to' || k === 'penalty' ? 'warn' : k.endsWith('tier') ? 'accent' : 'muted';
       return { key: k, text, tone } as const;
     });
+}
+
+/** The most models a fallback chain may name (router.MaxFallbackChain). */
+export const MAX_CHAIN = 4;
+
+/** The fallback chain typed in the editor: models separated by commas or spaces, in order, each once. */
+export function parseChain(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.split(/[\s,]+/)) if (m && !out.includes(m)) out.push(m);
+  return out;
+}
+
+/** The action without its chain (the editor shows the chain in its own field) and the chain as text. */
+export function splitChain(then: RouteAction | null | undefined): { rest: RouteAction; chain: string } {
+  const rest: RouteAction = { ...then };
+  delete rest.fallback;
+  return { rest, chain: (then?.fallback ?? []).join(', ') };
+}
+
+/** The action with the chain put back: none when the field is empty. */
+export function withChain(then: RouteAction, chain: string[]): RouteAction {
+  const rest: RouteAction = { ...then };
+  delete rest.fallback;
+  return chain.length > 0 ? { ...rest, fallback: chain } : rest;
 }
 
 export const LEVELS = ['cheapest', 'fast', 'balanced', 'quality', 'maximum_quality'];

@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Provider } from '../../api/types.ts';
-import { actionChips, cheapProviders, newRule, parseThen, sortRules } from './routing.ts';
+import { actionChips, cheapProviders, newRule, parseChain, parseThen, sortRules, splitChain, withChain } from './routing.ts';
 
 const rule = (id: string, priority: number) => ({ ...newRule(), id, priority });
 
@@ -26,6 +26,16 @@ describe('routing helpers', () => {
     ]);
     expect(actionChips({})).toEqual([]);
     expect(actionChips(null)).toEqual([]);
+  });
+
+  it('reads a fallback chain in order, each model once, and keeps it apart from the other actions', () => {
+    expect(parseChain(' sonnet, haiku-b  sonnet,,')).toEqual(['sonnet', 'haiku-b']);
+    expect(parseChain('')).toEqual([]);
+    expect(splitChain({ prefer_tier: 'cheap', fallback: ['a', 'b'] })).toEqual({ rest: { prefer_tier: 'cheap' }, chain: 'a, b' });
+    expect(splitChain(null)).toEqual({ rest: {}, chain: '' });
+    expect(withChain({ prefer_tier: 'cheap', fallback: ['old'] }, ['a', 'b'])).toEqual({ prefer_tier: 'cheap', fallback: ['a', 'b'] });
+    expect(withChain({ fallback: ['old'] }, [])).toEqual({});
+    expect(actionChips({ fallback: ['a', 'b'] })).toEqual([{ key: 'fallback', text: 'fallback: a → b', tone: 'muted' }]);
   });
 
   it('cheap selection covers cheap, private providers only', () => {

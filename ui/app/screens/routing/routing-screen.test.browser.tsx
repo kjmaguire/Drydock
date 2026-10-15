@@ -89,6 +89,29 @@ describe('RoutingScreen', () => {
     await waitFor(() => expect(deleted).toEqual(['r1']), r);
   });
 
+  it('edits the fallback chain of a rule in its own field and shows it on the rule', async () => {
+    const sets: RouteRule[] = [];
+    const chained: RouteRule = { ...rule, when: "candidate.tier == 'cheap'", then: { prefer_tier: 'cheap', fallback: ['sonnet', 'haiku-b'] } };
+    const r = mountWith({ routeRulesList: async () => [chained], routeRulesSet: async (x) => (sets.push(x), x) });
+    const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    expect(row.textContent).toContain('fallback: sonnet → haiku-b');
+    await r.act(() => byText(row, 'button', 'Edit').click());
+    const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    const field = byLabel<HTMLInputElement>(ed, /^Fallback chain/);
+    expect(field.value).toBe('sonnet, haiku-b');
+    expect(byLabel<HTMLTextAreaElement>(ed, /^Then/).value.includes('fallback')).toBe(false); // one place to edit it
+    type(field, 'haiku-c, sonnet');
+    await r.act(() => byText(ed, 'button', 'Save rule').click());
+    await waitFor(() => expect(sets[0]).toEqual({ ...chained, then: { prefer_tier: 'cheap', fallback: ['haiku-c', 'sonnet'] } }), r);
+    // emptied, the rule names no chain: its turns do not fall back
+    await waitFor(() => expect(r.$('[data-testid="rule-editor"]')).toBeNull(), r);
+    await r.act(() => byText(need(r, '[data-testid="route-rule"]'), 'button', 'Edit').click());
+    const ed2 = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    type(byLabel<HTMLInputElement>(ed2, /^Fallback chain/), '');
+    await r.act(() => byText(ed2, 'button', 'Save rule').click());
+    await waitFor(() => expect(sets[1]).toEqual({ ...chained, then: { prefer_tier: 'cheap' } }), r);
+  });
+
   it('a preview that is blocked says why; a dry run says nothing was recorded', async () => {
     const asked: unknown[] = [];
     const r = mountWith({

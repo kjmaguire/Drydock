@@ -28,6 +28,10 @@ type Script struct {
 	// MissingSessions are session ids this agent does not have: --resume of one of them prints the error result claude 2.1.295
 	// prints for an unknown session (no init event, the reason in "errors") and exits 1 without reading a prompt.
 	MissingSessions []string `json:"missingSessions,omitempty"`
+	// ModelErrors makes a session started with --model <m> named here end every turn with that message as an error result
+	// (is_error, no tool call, no file written), the shape Claude Code reports a failed API call in: an overloaded or
+	// rate-limited provider, a model that does not exist. The message is the test's; the real wording varies by version.
+	ModelErrors map[string]string `json:"modelErrors,omitempty"`
 }
 
 // Rule selects steps by prompt content.
@@ -129,7 +133,7 @@ func Run(args []string, in io.Reader, out io.Writer) int {
 	}
 	a := &agent{out: out, script: sc, session: session, allowed: splitRules(flagValue(args, "--allowedTools")), interrupt: make(chan struct{}, 1),
 		denied: splitRules(flagValue(args, "--disallowedTools")), mode: flagValue(args, "--permission-mode"),
-		permTool: flagValue(args, "--permission-prompt-tool"), mcpConfig: flagValue(args, "--mcp-config")}
+		permTool: flagValue(args, "--permission-prompt-tool"), mcpConfig: flagValue(args, "--mcp-config"), model: flagValue(args, "--model")}
 	a.loadState()
 	// `claude -p "<prompt>"`, as a user (and the trial harness's plain arm) runs it: one turn on that prompt, then exit. The
 	// adapter's own form is -p followed by flags, with the prompts on stdin.
@@ -272,6 +276,7 @@ type agent struct {
 	// (permission.go) instead of being refused at once
 	permTool  string
 	mcpConfig string
+	model     string // --model
 	turn      int
 	toolSeq   int
 	interrupt chan struct{}
@@ -386,6 +391,10 @@ func (a *agent) runTurn(prompt string) {
 	}
 	steps := a.steps(prompt)
 	a.emit(map[string]any{"type": "system", "subtype": "init", "session_id": a.session, "model": "fake-1", "tools": []string{"Read", "Bash", "Edit"}, "cwd": mustGetwd()})
+	apiErr, failed := a.script.ModelErrors[a.model]
+	if failed {
+		steps = nil
+	}
 	interrupted := false
 	var lastText string
 	denials := []any{}
@@ -506,7 +515,10 @@ loop:
 			}
 		}
 	}
-	if interrupted {
+	if failed {
+		a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "result": apiErr, "session_id": a.session, "total_cost_usd": a.cost,
+			"usage": map[string]any{"input_tokens": 0, "output_tokens": 0}})
+	} else if interrupted {
 		a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "[Request interrupted by user]"}}}})
 		a.mu.Lock()
 		a.cost += 0.0001
