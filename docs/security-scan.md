@@ -1,20 +1,24 @@
 # Drydock: the security scan
 
 One button scans a project's working tree with three engines at once and shows one report (decision P44). The page is
-**Security** in a project's sidebar; the Go side is `internal/scan` (engines, runner, SARIF reader) and
-`internal/core/ext_security.go` (the UI methods, events and storage). This document says what is built, what each engine
-does, what the report never carries, and what is not built.
+**Security** in a project's sidebar. The same scan also reads **any folder on this computer** without a project, a
+repository just downloaded or about to be imported (decision P61, section 8): the workspace page **Security scan**
+(`/security-scan`), opened from Home's "Security scan" tile or the workspace sidebar. The Go side is `internal/scan`
+(engines, runner, SARIF reader) and `internal/core/ext_security.go` (the UI methods, events and storage); the UI's shared
+part is `ui/app/screens/security/scan-panel.tsx`. This document says what is built, what each engine does, what the report
+never carries, and what is not built.
 
 ## 1. What happens when you press Scan
 
-1. The core checks the project has a repository folder on this computer and that no scan of it is running.
+1. The core checks the project has a repository folder on this computer (or, for a folder scan, that the folder may be read:
+   section 8) and that no scan of it is running.
 2. Three engines start together over that folder (`scan.Start`):
 
    | Engine | Tool | What it looks for | How it runs |
    |---|---|---|---|
    | Secrets | gitleaks (compiled into Drydock, the default rules) | keys, tokens and passwords in files | Drydock walks the tree itself and runs the rules over every text file, so it can count files and show "1,204 of 5,330 files". It does not enter `.git`, `node_modules` or `.drydock-worktrees`, skips symlinks, files over 2 MiB and files with a NUL byte in their first 8 KiB. |
-   | Dependencies | osv-scanner (you install it) | packages in lockfiles and manifests with known vulnerabilities | `osv-scanner scan source --format json -r .`, read with the same parser as the `deps` check (`checks.ParseOSV`): only package names, versions and advisory ids are kept. Unless the tool is run offline it sends package names to osv.dev; nothing else leaves the machine. |
-   | Code | Opengrep (you install it) with a rules folder you choose | code patterns the rules mark as unsafe | `opengrep scan -f <rules folder> --sarif-output=<temp file> --no-progress-bar -q .`; the SARIF 2.1.0 file is read (`scan.ParseSARIF`): rule id, level, the message's first line, file and line. |
+   | Dependencies | osv-scanner (you install it) | packages in lockfiles and manifests with known vulnerabilities | `osv-scanner scan source --format json --no-call-analysis=all -r .`, read with the same parser as the `deps` check (`checks.ParseOSV`): only package names, versions and advisory ids are kept. Unless the tool is run offline it sends package names to osv.dev; nothing else leaves the machine. Call analysis is off (P61): it is the one part of osv-scanner that runs other programs (Go's, on by default, runs the go toolchain over the repository). |
+   | Code | Opengrep (you install it) with a rules folder you choose | code patterns the rules mark as unsafe | `opengrep scan -f <rules folder> --sarif-output=<temp file> --no-progress-bar -q [--no-git-ignore] .` (`--no-git-ignore` for a folder scan, section 8); the SARIF 2.1.0 file is read (`scan.ParseSARIF`): rule id, level, the message's first line, file and line. |
 
 3. Each engine ends done, skipped (the tool is not installed, there is no rules folder, osv-scanner found no lockfile),
    errored (the tool broke or ran past the ten-minute cap) or cancelled. A skipped or errored engine says why on the page and
@@ -25,6 +29,8 @@ does, what the report never carries, and what is not built.
 4. The report is stored (`security_scans`, migration 00116) once the scan ends; the history on the page lists the last ones
    and any of them can be opened again. A report the database refuses is kept in memory with `storeError` set (the page
    says it was not kept) until the next scan of the project, so the scan the person watched is never replaced by an older one.
+   A folder scan's report is stored in the same table under the folder's key (`project_id` = `folder:<full path>`, lower
+   case on Windows; no project id has that form), so it belongs to no project and its history is the folder's.
 
 The external tools run through the Process Manager with the scrubbed tool environment (`proc.ToolEnv`, docs/security.md s8)
 plus the variables the person passes to project commands: a tool that reads the whole project gets none of Drydock's own
@@ -51,7 +57,8 @@ A report keeps at most 2,000 findings; past that the rest are counted (`counts`)
 
 `security.scan.started`, `security.scan.engine` (one per engine state change, naming the engine), `security.scan.finished`
 (with `stored`: whether the report reached the database) and `security.settings` are published with the project id, in that
-order (started is published before the scan can report anything). Progress counters (files scanned) are not events: the page reads `security.scan.get`
+order (started is published before the scan can report anything). A folder scan's events carry no project id and name the
+folder (`folder`); the workspace rules folder's `security.settings` carries `workspace: true`. Progress counters (files scanned) are not events: the page reads `security.scan.get`
 every half second while a scan runs and re-reads on the events. A scan in progress lives in memory; closing the app cancels
 it (a cancelled scan is stored as cancelled).
 
@@ -59,14 +66,15 @@ it (a cancelled scan is stored as cancelled).
 
 | Method | Does |
 |---|---|
-| `security.tools {projectId}` | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (path, `--version` and how each was found: `chosen`, `path` or `folder`, or an install hint; a chosen file that is gone is named), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
-| `security.settings.set {projectId, rulesDir}` | stores the rules folder (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. |
+| `security.tools {projectId}` (or `{}`: the folder scans') | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (path, `--version` and how each was found: `chosen`, `path` or `folder`, or an install hint; a chosen file that is gone is named), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
+| `security.settings.set {projectId, rulesDir}` or `{workspace: true, rulesDir}` | stores the project's rules folder, or the one folder scans use (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. |
 | `security.tool.set {projectId, tool, path}` | stores the program a person chose for `osv-scanner` or `opengrep`, for the whole workspace (a program is on the computer, not in a project); `""` goes back to finding it. The path must be a full path to an existing file (an `.exe` on Windows); quotes from Explorer's "Copy as path" are removed. Only a person may: the program reads the whole project. |
 | `security.tool.choose {projectId, tool}` | opens the window's own Open dialog (the desktop app, through Wails; filter `*.exe`) and stores the file chosen; cancelling changes nothing. Where the window has no dialog (the browser in development) it is refused and the page offers only the path field (`security.tools` says `canChoose`). |
-| `security.scan.start {projectId}` | starts a scan; refused while one runs or when the project has no repository. |
-| `security.scan.cancel {projectId}` | cancels the running scan. |
-| `security.scan.get {projectId}` | the running scan's snapshot, else the last stored report, else null. |
-| `security.scan.list {projectId, limit}` | the history, newest first, without findings. |
+| `security.scan.start {projectId}` or `{folder}` | starts a scan; refused while one of the same project or folder runs, when the project has no repository, for a folder section 8 refuses, and for anyone but a person. |
+| `security.scan.cancel {projectId}` or `{folder}` | cancels the running scan. |
+| `security.scan.get {projectId}` or `{folder}` | the running scan's snapshot, else the last stored report, else null. |
+| `security.scan.list {projectId, limit}` or `{folder, limit}` | the history, newest first, without findings (a folder scan's names its `folder`). |
+| `security.scan.folders {limit}` | the recent folder scans of every folder: those running first, then the stored ones, newest first. |
 | `security.scan.report {id}` | a stored report. |
 
 ## 5. Installing the tools (Windows)
@@ -100,7 +108,13 @@ Drydock installs nothing and downloads no rules. The page says what is missing a
 - `internal/core/ext_security_test.go`: the methods above end to end against a core: tools, the rules folder, start, a second
   start refused, the events, the stored report without the secret, history, cancel, no repository.
 - `ui/e2e/security.spec.ts`: the page against the real core and the stand-in tools: Scan, the three engines done, the
-  findings, the key's value absent from the page, the history.
+  findings, the key's value absent from the page, the history; and from Home's tile, a folder that is not a project scanned
+  the same way, its report reopened from the recent folder scans, no project made.
+- Folder scans (P61): `internal/core/ext_security_folder_test.go` (a folder scan runs the three engines with the stand-ins,
+  carries no project in its report, events and history, is found by folder and across folders, the workspace rules folder
+  is not a project's, refused folders, cancel), `ext_security_internal_test.go` (only a person starts a scan of either
+  kind), `internal/scan` (osv-scanner's and Opengrep's arguments), and the browser tests of
+  `workspace-security-screen.test.browser.tsx`, Home and the sidebar.
 
 ## 7. Not built
 
@@ -110,4 +124,41 @@ Drydock installs nothing and downloads no rules. The page says what is missing a
 - The scan runs where Drydock runs (Windows); a repository inside a WSL distro is scanned through its `\\wsl$` path by the
   Windows tools, which is slow and was not measured (decision P41).
 - Real osv-scanner and Opengrep runs were not captured in this repository: the parsers are written from the documented
-  shapes and the SARIF 2.1.0 specification, and proven against the stand-ins.
+  shapes and the SARIF 2.1.0 specification, and proven against the stand-ins. The same holds for `--no-call-analysis=all`
+  and `--no-git-ignore` (P61): written from the tools' documented flags, not run against the real binaries here.
+- A folder is typed or pasted; the folder dialog (`fs.pickFolder`) is a separate change and is not used yet.
+- The `deps` check on a task's diff (`internal/checks`) keeps its own osv-scanner invocation; P61 changed only the scan's.
+
+## 8. Scanning a folder that is not a project (decision P61)
+
+The workspace page **Security scan** (`/security-scan`; Home's "Security scan" tile, the workspace sidebar, Ctrl+K) scans a
+folder by its full path, or one of the projects (its working tree, its rules folder and its history, as on its own page).
+It shows the same engines, progress, findings and tools (`ScanPanel`), and as history the recent folder scans of every folder;
+picking one shows that folder again.
+
+**Which folders.** A full path (Explorer's quotes are removed, a trailing separator is the same folder) to a folder that is
+there. Refused: a relative path, a file, a whole drive, Drydock's own data folder, a folder inside it (the database, the
+task worktrees: a project's are scanned as the project) and a folder that holds it. Symbolic links are resolved before the
+checks, and the engines read the resolved folder.
+
+**Rules folder.** Folder scans use the workspace's rules folder (`security.settings.set {workspace: true}`; the harness's
+`ScanRulesDir` until one is set); each project keeps its own. The tools' programs (P55) are the workspace's already.
+
+**It only reads files.** Nothing in this path runs the folder's own code:
+
+- the secrets engine is Drydock walking the folder and running gitleaks' default rules in process; it reads no file of the
+  repository as configuration (no `.gitleaks.toml`, no `.gitleaksignore`);
+- osv-scanner parses lockfiles and manifests itself; `--no-call-analysis=all` switches off call analysis, the part that runs
+  the go toolchain (Go's is on by default and may fetch a toolchain or modules the repository names) or cargo. It does not
+  run npm, pip, Maven or any package manager or script of the repository. Its network use is the advisory lookup at
+  osv.dev (and, for some manifests, the public registries' dependency data); nothing of the code is sent;
+- Opengrep parses the files with the rules folder's patterns and runs none of them. Inside a git repository it lists the
+  files with `git ls-files`; a folder scan passes `--no-git-ignore`, so git never runs in a folder whose `.git/config` came
+  from somewhere else (a `core.fsmonitor` there would name a program for git to run). A project's own scan keeps git's view.
+
+Two of the tools still read a file of the repository that can narrow what they report: osv-scanner's `osv-scanner.toml`
+(ignored advisories) and Opengrep's `.semgrepignore` (skipped paths). The page says so; the secrets engine follows no file of
+the repository.
+
+The tools run as before: through the Process Manager, with the scrubbed tool environment, in the folder, ten minutes at most.
+Only a person starts a folder scan (`human:` identity, like a project's).

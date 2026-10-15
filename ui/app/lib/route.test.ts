@@ -64,6 +64,16 @@ describe('routes', () => {
     expect(isWorkspacePage(parseRoute('/integrations'))).toBe(true);
   });
 
+  it('has a workspace Security scan of any folder, beside the project\'s own Security page (decision P61)', () => {
+    expect(routes.securityScan.href()).toBe('/security-scan');
+    expect(parseRoute('/security-scan')).toEqual({ name: 'security-scan' });
+    expect(parseRoute('/security-scan/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'security-scan' })).toBe(true);
+    expect(isWorkspacePage(parseRoute('/security-scan'))).toBe(true);
+    // the project's own Security page needs its project
+    expect(isWorkspacePage(parseRoute('/security'))).toBe(false);
+  });
+
   it('turns old hash links into paths', () => {
     expect(hashToPath('#/task/x')).toBe('/task/x');
     expect(hashToPath('#/')).toBe('/');

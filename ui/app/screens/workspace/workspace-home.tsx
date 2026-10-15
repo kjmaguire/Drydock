@@ -19,6 +19,7 @@ import {
   Plug,
   Plus,
   Route as RouteIcon,
+  ShieldCheck,
 } from 'lucide';
 import { projectHasRepo, type Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
@@ -161,6 +162,12 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
                 ))}
               </ul>
             ) : null}
+          </Section>
+
+          <Section title="Security" description="Check a repository before you trust it." testId="home-security">
+            <ul mix={tileGrid} aria-label="Security">
+              <AreaTile href={routes.securityScan.href()} icon={ShieldCheck} title="Security scan" blurb="Scan any folder or project for secrets, vulnerable packages and unsafe code, without running it" testId="home-security-scan" />
+            </ul>
           </Section>
 
           <Section title="Library" description="Defined once for the whole workspace, then given to projects and agents." testId="home-library">

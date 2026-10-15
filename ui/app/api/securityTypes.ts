@@ -1,5 +1,5 @@
-// The security scan (internal/scan, internal/core/ext_security.go): one scan of the project's working tree by three engines
-// at once. These mirror the Go JSON exactly; timestamps are unix milliseconds. A finding never carries a secret's value.
+// The security scan (internal/scan, internal/core/ext_security.go): one scan of a project's working tree, or of any folder
+// (decision P61), by three engines at once. These mirror the Go JSON exactly; timestamps are unix milliseconds. A finding never carries a secret's value.
 
 export type EngineID = 'secrets' | 'deps' | 'sast';
 export type EngineStatus = 'pending' | 'running' | 'done' | 'skipped' | 'errored' | 'cancelled';
@@ -69,6 +69,8 @@ export interface ScanReport {
 export interface ScanSummary {
   id: string;
   projectId: string;
+  /** The folder a folder scan read (decision P61); absent for a project's scan. */
+  folder?: string;
   status: string;
   by: string;
   startedAt: number;

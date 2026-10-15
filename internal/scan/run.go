@@ -30,6 +30,10 @@ type Options struct {
 	Paths Paths
 	// RulesDir is the Opengrep rules folder; empty skips the Code engine.
 	RulesDir string
+	// NoGit keeps the tools from running git in Dir (decision P61): Opengrep then walks the folder itself instead of asking
+	// `git ls-files`, so a .git/config that came with a downloaded folder (core.fsmonitor and the like) can run nothing.
+	// Folder scans set it; a project's own working tree keeps git's view of its files.
+	NoGit bool
 	// Timeout per engine (default Timeout).
 	Timeout time.Duration
 	// OnChange, when set, is called after an engine changes state (started, finished, skipped, errored) with a copy of the

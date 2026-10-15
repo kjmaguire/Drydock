@@ -335,6 +335,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
               <ul mix={listCss} style={{ marginTop: '4px' }}>
                 <NavItem href={routes.workspace.href()} current={at('workspace')} testId="nav-workspace" icon={House} label="Home" />
                 <NavItem href={routes.chats.href()} current={at('chats', 'chat')} testId="nav-chats" icon={MessagesSquare} label="Chats" />
+                <NavItem href={routes.securityScan.href()} current={at('security-scan')} testId="nav-security-scan" icon={ShieldCheck} label="Security scan" />
               </ul>
               {group(
                 'ws-projects',

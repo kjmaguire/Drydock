@@ -60,7 +60,7 @@ describe('the sidebar', () => {
     expect(nav.slice(0, 3)).toEqual(['nav-workspace', 'nav-needs-you', 'nav-tasks']);
     expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
     expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
-    for (const id of ['nav-library', 'nav-library-skills', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-chats']) {
+    for (const id of ['nav-library', 'nav-library-skills', 'nav-integrations', 'nav-connections', 'nav-security-scan', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-chats']) {
       expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
     }
     // the Project group starts with Security, then the project's own Integrations; the project's own Skills page is under Knowledge
@@ -80,9 +80,12 @@ describe('the sidebar', () => {
     const nav = Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
     expect(nav.slice(0, 2)).toEqual(['nav-workspace', 'nav-chats']);
     expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('aria-current')).toBe('page');
-    for (const id of ['nav-library-skills', 'nav-library', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-project-new']) {
+    for (const id of ['nav-library-skills', 'nav-library', 'nav-integrations', 'nav-connections', 'nav-security-scan', 'nav-providers', 'nav-routing', 'nav-backups', 'nav-data', 'nav-support', 'nav-license', 'nav-settings', 'nav-project-new']) {
       expect([id, r.$(`[data-testid="${id}"]`) === null]).toEqual([id, false]);
     }
+    // the workspace's Security scan (any folder, decision P61) is beside Home and Chats
+    expect(nav.slice(0, 3)).toEqual(['nav-workspace', 'nav-chats', 'nav-security-scan']);
+    expect(r.$('[data-testid="nav-security-scan"]')!.getAttribute('href')).toBe('/security-scan');
     for (const id of ['nav-needs-you', 'nav-tasks', 'nav-team', 'nav-skills', 'nav-project', 'nav-project-integrations']) {
       expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
     }

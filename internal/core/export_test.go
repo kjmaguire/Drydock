@@ -63,7 +63,7 @@ func (c *Core) TestLog(format string, a ...any) { c.logf(format, a...) }
 
 // TestStoreScanReport stores a finished security scan report the way the security extension does when a scan ends.
 func (c *Core) TestStoreScanReport(ctx context.Context, rep scan.Report) error {
-	return (&securityExt{c: c}).store(ctx, rep)
+	return (&securityExt{c: c}).store(ctx, target{Key: rep.ProjectID, ProjectID: rep.ProjectID}, rep)
 }
 
 // TestMaybeRecommend runs the check a completed task triggers: whether the project asks for recommendations again by itself.

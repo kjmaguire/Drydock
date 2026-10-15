@@ -115,7 +115,8 @@ const (
 // MaxFindings caps a report: past it, Truncated is set and the rest are counted but not kept.
 const MaxFindings = 2000
 
-// Report is one scan of one directory.
+// Report is one scan of one directory: a project's working tree (ProjectID set) or, for a folder scan (decision P61), any
+// folder on this computer (ProjectID empty, Dir the folder).
 type Report struct {
 	ID        string `json:"id"`
 	ProjectID string `json:"projectId"`
@@ -138,8 +139,10 @@ type Report struct {
 
 // Summary is a report without its findings, for the history list.
 type Summary struct {
-	ID         string `json:"id"`
-	ProjectID  string `json:"projectId"`
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	// Folder is the folder a folder scan read (decision P61); empty for a project's scan.
+	Folder     string `json:"folder,omitempty"`
 	Status     string `json:"status"`
 	By         string `json:"by"`
 	StartedAt  int64  `json:"startedAt"`
@@ -170,7 +173,8 @@ type Tools struct {
 	Gitleaks ToolInfo `json:"gitleaks"`
 	OSV      ToolInfo `json:"osv"`
 	Opengrep ToolInfo `json:"opengrep"`
-	// RulesDir is the folder of Opengrep rules the project uses; RulesOK says it exists and holds at least one .yaml/.yml file.
+	// RulesDir is the folder of Opengrep rules the project uses (asked without a project: the one folder scans use, decision
+	// P61); RulesOK says it exists and holds at least one .yaml/.yml file.
 	RulesDir  string `json:"rulesDir"`
 	RulesOK   bool   `json:"rulesOk"`
 	RulesNote string `json:"rulesNote,omitempty"`
