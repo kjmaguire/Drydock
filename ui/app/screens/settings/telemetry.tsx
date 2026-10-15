@@ -53,7 +53,7 @@ export function TelemetryPanel(handle: Handle) {
         icon={Activity}
         label="Telemetry"
         testId="telemetry"
-        description="Off by default. When on, Drydock records only allowlisted identifier-shaped attributes (no prompts, code, tool output, file contents or secrets) in a local database. Nothing is sent anywhere: there is no network exporter. You can preview exactly what an export contains, and export it to a local file."
+        description="Keeps usage counts in a local database, with only allowlisted identifier-shaped attributes (no prompts, code, tool output, file contents or secrets), so you can see and export them; nothing is sent anywhere. It is off unless you turn it on."
       >
         <ErrorNote error={q.error ?? act.error} what="Telemetry" />
         {!st && q.loading ? <Loading /> : null}
@@ -63,7 +63,7 @@ export function TelemetryPanel(handle: Handle) {
               label={
                 <>
                   Status:{' '}
-                  <Badge tone={st.enabled ? 'warn' : 'ok'} title="Only you can change this">
+                  <Badge tone={st.enabled ? 'ok' : 'muted'} title="Only you can change this" testId="telemetry-status">
                     {st.enabled ? 'on' : 'off'}
                   </Badge>
                 </>

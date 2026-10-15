@@ -129,7 +129,13 @@ describe('TelemetryPanel', () => {
     const r = mount(<TelemetryPanel />, s);
     await waitFor(() => tid(r.container, 'telemetry-counts'), r);
     const box = tid(r.container, 'telemetry');
-    expect(Array.from(box.querySelectorAll('span')).some((x) => x.textContent === 'off')).toBe(true);
+    // off is quiet (muted); the description says what it does first, then that it is off unless turned on
+    expect(tid(r.container, 'telemetry-status').textContent).toBe('off');
+    expect(tid(r.container, 'telemetry-status').getAttribute('data-tone')).toBe('muted');
+    expect(box.textContent).toContain(
+      'Keeps usage counts in a local database, with only allowlisted identifier-shaped attributes (no prompts, code, tool output, file contents or secrets), so you can see and export them; nothing is sent anywhere. It is off unless you turn it on.',
+    );
+    expect(box.textContent).not.toContain('Off by default');
     expect(box.textContent).toContain('this device only');
     expect(Array.from(box.querySelectorAll('dd')).some((d) => d.textContent === 'none')).toBe(true); // network exporter
     await r.act(() => btn(r.container, 'Preview what an export contains').click());
@@ -156,11 +162,15 @@ describe('TelemetryPanel', () => {
     await waitFor(() => expect(tid(r.container, 'telemetry-counts').textContent).toBe('3 spans, 2 metrics, 5 not yet exported'), r);
     expect(tid(r.container, 'telemetry').textContent).toContain('turned on by human:kyle');
     expect(tid(r.container, 'telemetry').textContent).toContain('prompt (2)');
+    // on is the person's own choice and shown green, not as a warning
+    expect(tid(r.container, 'telemetry-status').textContent).toBe('on');
+    expect(tid(r.container, 'telemetry-status').getAttribute('data-tone')).toBe('ok');
     await r.act(() => btn(r.container, 'Export to a local file').click());
     expect((await waitFor(() => tid(r.container, 'telemetry-exported'), r)).textContent).toContain('stays on this machine');
     await r.act(() => btn(r.container, 'Turn telemetry off').click());
     await waitFor(() => expect(enables).toEqual([false]), r);
     await waitFor(() => btn(r.container, 'Turn telemetry on'), r);
+    expect(tid(r.container, 'telemetry-status').getAttribute('data-tone')).toBe('muted');
   });
 });
 

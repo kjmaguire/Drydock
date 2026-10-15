@@ -6,7 +6,7 @@
 // CI runners (ci-runners.tsx, decision P56).
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, FlaskConical, Link2, LogIn, Minus, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
+import { Check, CircleCheck, FlaskConical, Link2, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import { query, services } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
@@ -27,7 +27,6 @@ import {
   connectionKey,
   connectionName,
   connectionState,
-  connectionTitle,
   defaultConnection,
   distroBrand,
   isWSL,
@@ -37,6 +36,7 @@ import {
   provTone,
   reportMeta,
   runsText,
+  signedInLine,
   signedInText,
   statusTone,
   stepTone,
@@ -68,6 +68,7 @@ const tableCss = css({ width: '100%', marginTop: t.s2, borderCollapse: 'collapse
 const signInBox = css({ display: 'flex', flexDirection: 'column', height: '300px', border: `1px solid ${t.border}`, borderRadius: t.rMd, overflow: 'hidden' });
 const signInHead = css({ display: 'flex', alignItems: 'center', gap: t.s2, padding: `${t.s1} ${t.s2}`, borderBottom: `1px solid ${t.border}`, '& > span': { flex: '1' } });
 const problemCss = css({ padding: '6px 10px', borderRadius: t.rMd, background: t.dangerSoft, fontSize: t.textMd });
+const signedInCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', fontSize: t.textMd, fontWeight: '500', color: tone.ok.fg });
 
 function Mark(handle: Handle<{ status: 'pass' | 'fail' | 'skip' }>) {
   return () => {
@@ -81,7 +82,7 @@ function Mark(handle: Handle<{ status: 'pass' | 'fail' | 'skip' }>) {
   };
 }
 
-/** Plain-language result of Test connection: a verdict, the steps, what is degraded, and the capability matrix with provenance. */
+/** Plain-language result of Test connection: a verdict, the steps, what is limited, and the capability matrix with provenance. */
 export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
   return () => {
     const { r } = handle.props;
@@ -107,7 +108,7 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
         </ol>
         {(r.degraded ?? []).length > 0 ? (
           <>
-            <h3 mix={subhead}>What is degraded</h3>
+            <h3 mix={subhead}>What is limited</h3>
             <ul mix={steps}>
               {(r.degraded ?? []).map((d, i) => (
                 <li key={i} mix={lineCss}>
@@ -267,11 +268,35 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
     }
   };
   // the CLI's own sign-in (decision P50), started by the core in a terminal shown here in the card (inside the distro for a WSL
-  // install): Drydock never reads what it stores, and the page re-checks the card when the sign-in ends. Asking again while one
+  // install): Drydock never reads what it stores, and the card checks itself again when the sign-in ends. Asking again while one
   // runs shows the same terminal.
   let signingIn = false;
   let signInTerm: string | undefined;
   let signInEnded: number | undefined;
+  // a check of this one Connection (connection.check: the sign-in asked afresh, past the probe cache), when the sign-in ends or
+  // on "Check again". Its answer is shown until the page's list is read again after it (that read started later, so it is as new).
+  let checking = false;
+  let checkedAfterSignIn = false;
+  let checked: Connection | undefined;
+  let checkedFor: Connection | undefined;
+  const check = async (afterSignIn: boolean) => {
+    upd(() => {
+      checking = true;
+      error = undefined;
+    });
+    try {
+      const c = handle.props.c;
+      const now = await s.client.connectionCheck(c.adapter, isWSL(c) ? c.distro : undefined);
+      checked = now;
+      checkedFor = handle.props.c;
+      if (afterSignIn) checkedAfterSignIn = true;
+      handle.props.onChanged();
+    } catch (e) {
+      error = e as Error;
+    } finally {
+      upd(() => (checking = false));
+    }
+  };
   const signIn = async () => {
     upd(() => {
       signingIn = true;
@@ -280,7 +305,10 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
     try {
       const c = handle.props.c;
       const term = await s.client.connectionSignIn(c.adapter, isWSL(c) ? c.distro : undefined);
-      if (term.id !== signInTerm) signInEnded = undefined;
+      if (term.id !== signInTerm) {
+        signInEnded = undefined;
+        checkedAfterSignIn = false;
+      }
       signInTerm = term.id;
     } catch (e) {
       error = e as Error;
@@ -314,8 +342,15 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
   };
 
   return () => {
-    const { c } = handle.props;
+    if (checked && handle.props.c !== checkedFor) checked = undefined; // the list was read again after the check
+    const c = checked ?? handle.props.c;
     const inWSL = isWSL(c);
+    const signedIn = c.authenticated === true;
+    const checkAgain = (
+      <Button size="sm" variant="ghost" icon={RefreshCw} disabled={checking} data-testid="sign-in-check" mix={on('click', () => void check(false))} title="Ask the CLI again whether it is signed in">
+        {checking ? 'Checking...' : 'Check again'}
+      </Button>
+    );
     return (
       <article
         mix={[card, cardCss]}
@@ -328,7 +363,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
         <header mix={head}>
           {brandKey(c.adapter) ? <BrandLogo id={c.adapter} size={32} /> : <Avatar id={c.adapter} name={c.adapter} size={32} square />}
           {inWSL ? <BrandLogo id={distroBrand(c.distro)} size={24} label /> : null}
-          <h2>{connectionTitle(c)}</h2>
+          <h2>{connectionName(c)}</h2>
           <Badge tone={statusTone(c.status)}>{c.status}</Badge>
           <Badge tone={c.usable ? 'ok' : 'warn'} title="Usable means the CLI is ready and every notice below is accepted">
             {c.usable ? 'usable' : 'not usable yet'}
@@ -375,25 +410,38 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
             </>
           ) : null}
         </dl>
-        {c.authDetail ? <p mix={muted}>{c.authDetail}</p> : null}
+        {signedIn ? (
+          <p mix={signedInCss} data-testid="signed-in" data-tone="ok">
+            <Icon icon={CircleCheck} size={15} />
+            {signedInLine(c)}
+          </p>
+        ) : c.authDetail ? (
+          <p mix={muted}>{c.authDetail}</p>
+        ) : null}
         {c.installed && c.signIn ? (
           <div mix={rowCss}>
             <Button size="sm" icon={LogIn} disabled={signingIn || (!!signInTerm && signInEnded === undefined)} data-testid="sign-in" mix={on('click', () => void signIn())}>
               {signingIn ? 'Starting the sign-in...' : inWSL ? `Sign in inside ${c.distro}` : 'Sign in'}
             </Button>
+            {checkAgain}
             <span mix={faint}>
               {inWSL
                 ? `Runs the CLI's own sign-in (${c.signIn}) inside the distro, in a terminal here: this install's sign-in is separate from the Windows one.`
                 : `Runs the CLI's own sign-in (${c.signIn}) in a terminal here.`}{' '}
-              Drydock never reads or copies what it stores, and this card re-checks itself when the sign-in ends.
+              Drydock never reads or copies what it stores, and this card checks itself again when the sign-in ends.
             </span>
           </div>
-        ) : inWSL ? (
-          <p mix={faint}>
-            This install has its own sign-in, separate from Windows: open a terminal in the distro (<code>wsl -d {c.distro}</code>) and sign in the way the CLI documents. Drydock
-            never reads or copies it.
-          </p>
-        ) : null}
+        ) : (
+          <>
+            {inWSL ? (
+              <p mix={faint}>
+                This install has its own sign-in, separate from Windows: open a terminal in the distro (<code>wsl -d {c.distro}</code>) and sign in the way the CLI documents.
+                Drydock never reads or copies it.
+              </p>
+            ) : null}
+            {c.installed ? <div mix={rowCss}>{checkAgain}</div> : null}
+          </>
+        )}
         {signInTerm ? (
           <div mix={signInBox} data-testid="sign-in-terminal">
             <div mix={signInHead}>
@@ -401,15 +449,29 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
               <span mix={faint} data-testid="sign-in-state">
                 {signInEnded === undefined
                   ? `${c.signIn} is running: answer it here.`
-                  : signInEnded === 0
-                    ? 'The sign-in finished. This card has re-checked itself.'
-                    : `The sign-in ended with code ${signInEnded}. Read what it printed above, then try again.`}
+                  : checking
+                    ? 'The sign-in ended. Checking whether the CLI is signed in now...'
+                    : checkedAfterSignIn && signedIn
+                      ? `The sign-in finished. ${signedInLine(c)}.`
+                      : signInEnded === 0
+                        ? checkedAfterSignIn
+                          ? 'The sign-in finished, but the CLI still does not say it is signed in. Read what it printed above, then check again or sign in again.'
+                          : 'The sign-in finished.'
+                        : `The sign-in ended with code ${signInEnded}. Read what it printed above, then try again.`}
               </span>
               <Button size="sm" variant="ghost" icon={X} data-testid="sign-in-close" mix={on('click', () => void closeSignIn())} title="Close: stops the sign-in if it still runs">
                 Close
               </Button>
             </div>
-            <TerminalHost key={signInTerm} id={signInTerm} program="the sign-in" onExit={(code) => upd(() => (signInEnded = code))} />
+            <TerminalHost
+              key={signInTerm}
+              id={signInTerm}
+              program="the sign-in"
+              onExit={(code) => {
+                signInEnded = code;
+                void check(true);
+              }}
+            />
           </div>
         ) : null}
         {c.wsl ? <DistroFacts f={c.wsl} /> : null}

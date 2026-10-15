@@ -123,7 +123,9 @@ func degradedNotes(m *manifests.Manifest, r *Report, obs *acp.Observed, sessErr 
 		}
 	}
 	if len(unknown) > 0 {
-		out = append(out, "Not verified for this CLI yet (treated as unavailable): "+strings.Join(unknown, ", ")+".")
+		// what turns one of these on: a contract test against the real CLI (docs/contract-tests.md), then the manifest declares it
+		out = append(out, "Not yet seen working with this CLI, so Drydock does not rely on it: "+strings.Join(unknown, ", ")+
+			". A contract test that runs the real CLI (docs/contract-tests.md) verifies it, and the CLI's manifest then declares it; until then Drydock leaves it off.")
 	}
 	if h := m.Transports.Headless; h != nil && h.Unverified && m.Transports.Primary == manifests.TransportHeadless {
 		out = append(out, "The transport for this CLI is marked unverified in its manifest: its protocol has not been captured against a real install.")

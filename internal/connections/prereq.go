@@ -189,6 +189,7 @@ func probeAuth(ctx context.Context, m *manifests.Manifest, path string, o Option
 		if ok, known := cond.EvalJSON([]byte(strings.TrimSpace(res.Stdout))); known {
 			detail := jsonField(res.Stdout, "authMethod")
 			if ok {
+				c.Account = jsonField(res.Stdout, "email")
 				return set(true, detail)
 			}
 			return set(false, "the CLI reports it is not signed in")
