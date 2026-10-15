@@ -34,7 +34,8 @@ app/
                       virtual-list (windowed feeds; its arithmetic in virtual.ts)
   shell/              sidebar (with the project switcher), details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
-  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog
+  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
+                      properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals)
   styles/app.css      design tokens (light-dark()) + base layer for native elements
   test/               labelled test doubles (fakes.ts) and render helpers (render.tsx)
 ```

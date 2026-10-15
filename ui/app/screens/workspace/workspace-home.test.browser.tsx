@@ -1,7 +1,9 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import { cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import type { ChatCreate, ChatListItem } from '../../api/chatClient.ts';
+import type { AdapterInfo } from '../../api/types.ts';
+import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
 afterEach(cleanup);
@@ -16,6 +18,7 @@ function show(client: Partial<Client> = {}) {
       { id: 'p2', name: 'idea', repoPath: '', hasRepo: false },
     ] as never,
     needsYouList: async (pid: string) => (pid === 'p1' ? [{}, {}] : []) as never,
+    chatList: async () => [],
     ...client,
   });
   s.workspace.start();
@@ -102,5 +105,160 @@ describe('the workspace Home', () => {
     const r = mount(<WorkspaceHomeScreen />, s);
     await waitFor(() => expect(r.$('[data-testid="home-flash"]')!.textContent).toContain('gocalc was deleted.'), r);
     expect(s.ui.takeFlash()).toBeUndefined();
+  });
+});
+
+// Decision P60: a chat from Home, without a project. TEST DOUBLES: the chat methods of a partial client.
+const homeChat = (over: Partial<ChatListItem> = {}): ChatListItem => ({
+  id: 'chat_h',
+  projectId: '',
+  title: '',
+  adapter: 'claude',
+  model: '',
+  effort: '',
+  permissionMode: 'default',
+  skipsApprovals: false,
+  cwd: '/data/chats/chat_h',
+  sessionId: '',
+  allowedTools: [],
+  readHistory: true,
+  status: 'idle',
+  lastError: '',
+  pinned: false,
+  archived: false,
+  archivedAt: 0,
+  forkedFrom: '',
+  createdAt: 1,
+  updatedAt: Date.now() - 60_000,
+  tokensIn: 0,
+  tokensOut: 0,
+  costUsd: null,
+  costUnknownTurns: 0,
+  version: 1,
+  preview: '',
+  messageCount: 0,
+  ...over,
+});
+const claudeCli: AdapterInfo = {
+  id: 'claude',
+  detection: { adapter: 'claude', installed: true, status: 'ready', version: '2.1.296' },
+  capabilities: { permissionModes: ['default'] } as AdapterInfo['capabilities'],
+};
+const chatForm = (r: ReturnType<typeof mount>) => r.$('[data-testid="home-chat-form"]') as HTMLFormElement;
+const dialogOpen = (testId: string) => Array.from(document.querySelectorAll<HTMLElement>('dialog[open]')).find((d) => d.querySelector(`[data-testid="${testId}"]`));
+
+describe('Chat from Home', () => {
+  it('starts a chat without a project: makes it, sends what was typed, and opens it', async () => {
+    const created: ChatCreate[] = [];
+    const sent: [string, string][] = [];
+    const { r, navigated } = show({
+      chatCreate: async (p) => (created.push(p), homeChat({ id: 'chat_new' })),
+      chatSend: async (id, text) => (sent.push([id, text]), { turnId: 'cturn_1', version: 2 }),
+    });
+    await waitFor(() => expect(chatForm(r)).not.toBeNull(), r);
+    // the chat comes first on Home
+    expect(r.$('[data-testid="workspace-home"] section')!.getAttribute('data-testid')).toBe('home-chat');
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), '  What is in this folder?  ');
+    await r.act(() => byText(chatForm(r), 'button', 'Start chat').click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/chat_new']), r);
+    // no project, no folder: the core makes a private folder and runs Claude Code
+    expect(created).toEqual([{}]);
+    expect(sent).toEqual([['chat_new', 'What is in this folder?']]);
+    expect(byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code').value).toBe('');
+  });
+
+  it('starts with Ctrl+Enter, and an empty message just opens the new chat', async () => {
+    const sent: unknown[] = [];
+    const { r, navigated } = show({ chatCreate: async () => homeChat({ id: 'chat_e' }), chatSend: async (...a) => (sent.push(a), { turnId: 't', version: 1 }) });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), r);
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    await waitFor(() => expect(navigated).toEqual(['/chats/chat_e']), r);
+    expect(sent).toEqual([]);
+  });
+
+  it('lists the latest chats without a project to reopen, and links every chat', async () => {
+    const { r } = show({
+      chatList: async () => [
+        homeChat({ id: 'c1', title: 'Shell help', preview: 'Use find with -newer' }),
+        homeChat({ id: 'c2', title: 'In a project', projectId: 'p1' }),
+        homeChat({ id: 'c3', title: 'Archived', archived: true, archivedAt: 5 }),
+        ...[4, 5, 6, 7, 8].map((i) => homeChat({ id: `c${i}`, title: `Chat ${i}` })),
+      ],
+    });
+    const rows = await waitFor(() => {
+      const l = Array.from(r.$$('[data-testid="home-chat-recent"]')) as HTMLAnchorElement[];
+      if (!l.length) throw new Error('no rows yet');
+      return l;
+    }, r);
+    expect(rows.map((a) => a.getAttribute('href'))).toEqual(['/chats/c1', '/chats/c4', '/chats/c5', '/chats/c6', '/chats/c7']);
+    expect(rows[0]!.textContent).toContain('Shell help');
+    expect(rows[0]!.textContent).toContain('Use find with -newer');
+    expect(r.$('[data-testid="home-chats-all"]')!.getAttribute('href')).toBe('/chats');
+  });
+
+  it('Options opens the new chat dialog without a project; the chosen folder, skill and server go with the chat, then the message', async () => {
+    const created: ChatCreate[] = [];
+    const sent: string[] = [];
+    const { r, navigated } = show({
+      adapterList: async () => [claudeCli],
+      connectionList: async () => [],
+      skillLibraryList: async () => [
+        { id: 'l1', registryId: 'cloudflare-skills', repo: 'cloudflare/skills', name: 'wrangler', description: 'Wrangler rules.', license: 'MIT', globs: [], roles: [], sourcePath: '', pinnedCommit: '', contentHash: '', hasScripts: false, status: 'available', blockReason: '', risk: 0, flags: [], gone: false, updated: '' },
+      ],
+      mcpLibList: async () => [{ id: 'tst', display: 'Test server', transport: 'stdio', secretEnv: [], hasToken: false, guard: true, readOnlyTools: [], tools: [{ name: 'echo', readOnlyHint: true }], discoveredAt: 1, projects: [], createdAt: 1, updatedAt: 1 }],
+      chatCreate: async (p) => (created.push(p), homeChat({ id: 'chat_o' })),
+      chatSend: async (_id, text) => (sent.push(text), { turnId: 't', version: 1 }),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), r);
+    type(box, 'hello from options');
+    await r.act(() => byText(r.container, 'button', 'Options...').click());
+    const dlg = await waitFor(() => {
+      const d = dialogOpen('new-chat-form');
+      if (!d) throw new Error('no dialog');
+      return d;
+    }, r);
+    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Project').value).toBe(''), r);
+    type(byLabel(dlg, 'Folder'), '/home/me/notes');
+    const skill = await waitFor(() => dlg.querySelector<HTMLInputElement>('[data-testid="chat-skill-option"][data-name="wrangler"] input')!, r);
+    await r.act(() => skill.click());
+    const srv = await waitFor(() => dlg.querySelector<HTMLInputElement>('[data-testid="chat-mcp-option"][data-server="tst"] input')!, r);
+    await r.act(() => srv.click());
+    await r.act(() => byText(dlg, 'button', 'Start chat').click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/chat_o']), r);
+    expect(created).toEqual([
+      {
+        projectId: undefined,
+        cwd: '/home/me/notes',
+        adapter: 'claude',
+        model: undefined,
+        effort: undefined,
+        permissionMode: undefined,
+        readHistory: true,
+        skills: [{ registryId: 'cloudflare-skills', name: 'wrangler' }],
+        mcpServers: [{ serverId: 'tst', tools: [] }],
+      },
+    ]);
+    expect(sent).toEqual(['hello from options']);
+  });
+
+  it('keeps a message that could not be sent, says why, and links the chat that was made', async () => {
+    const { r, navigated } = show({
+      chatCreate: async () => homeChat({ id: 'chat_x' }),
+      chatSend: async () => {
+        throw new Error('Claude Code is not signed in');
+      },
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), r);
+    type(box, 'keep me');
+    await r.act(() => byText(chatForm(r), 'button', 'Start chat').click());
+    const note = await waitFor(() => {
+      const n = r.$('[data-testid="home-chat-unsent"]');
+      if (!n) throw new Error('no note yet');
+      return n;
+    }, r);
+    expect(note.textContent).toContain('not signed in');
+    expect(note.querySelector('a')!.getAttribute('href')).toBe('/chats/chat_x');
+    expect(navigated).toEqual([]);
+    expect(box.value).toBe('keep me');
   });
 });

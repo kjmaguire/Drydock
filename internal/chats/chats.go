@@ -97,16 +97,20 @@ type Chat struct {
 	SessionID      string   `json:"sessionId"` // the CLI's own session id; "" = the next turn starts a fresh session
 	AllowedTools   []string `json:"allowedTools"`
 	ReadHistory    bool     `json:"readHistory"`
-	Status         string   `json:"status"` // idle | running | error
-	LastError      string   `json:"lastError"`
-	Pinned         bool     `json:"pinned"`
-	Archived       bool     `json:"archived"`
-	ArchivedAt     int64    `json:"archivedAt"`
-	ForkedFrom     string   `json:"forkedFrom"`
-	Created        int64    `json:"createdAt"`
-	Updated        int64    `json:"updatedAt"`
-	TokensIn       int64    `json:"tokensIn"`
-	TokensOut      int64    `json:"tokensOut"`
+	// Skills are the workspace library skills chosen for this chat, and MCPServers the workspace library MCP servers its
+	// sessions are granted, with the tools each may call (decision P60). Both reach the CLI through Drydock's MCP gateway.
+	Skills     []SkillRef `json:"skills"`
+	MCPServers []MCPGrant `json:"mcpServers"`
+	Status     string     `json:"status"` // idle | running | error
+	LastError  string     `json:"lastError"`
+	Pinned     bool       `json:"pinned"`
+	Archived   bool       `json:"archived"`
+	ArchivedAt int64      `json:"archivedAt"`
+	ForkedFrom string     `json:"forkedFrom"`
+	Created    int64      `json:"createdAt"`
+	Updated    int64      `json:"updatedAt"`
+	TokensIn   int64      `json:"tokensIn"`
+	TokensOut  int64      `json:"tokensOut"`
 	// CostUSD is the sum of the costs the CLI reported; null when no turn reported one (unknown, never zero).
 	CostUSD *float64 `json:"costUsd"`
 	// CostUnknownTurns counts turns that reported no cost; when it is non-zero CostUSD covers only the other turns.
@@ -114,6 +118,20 @@ type Chat struct {
 	// Version goes up by one with every write to the chat's row. Two snapshots of a chat are ordered by it (never by the clock):
 	// the higher version is the newer state.
 	Version int64 `json:"version"`
+}
+
+// SkillRef names a workspace library skill chosen for a chat (decision P60).
+type SkillRef struct {
+	RegistryID string `json:"registryId"`
+	Name       string `json:"name"`
+}
+
+// MCPGrant is a workspace library MCP server granted to a chat's sessions, with the tools they may call (decision P60). A
+// grant chosen without tools gets the server's tools as they are known when it is chosen, by name, without the flagged ones
+// (the rule for an agent's grant).
+type MCPGrant struct {
+	ServerID string   `json:"serverId"`
+	Tools    []string `json:"tools"`
 }
 
 // ListItem is a chat in chat.list.
@@ -165,6 +183,15 @@ type Deps struct {
 	// \\wsl.localhost\<distro>\...) must exist there; a Windows folder must exist on Windows (the distro reaches it through
 	// its mount root).
 	WSLFolder func(ctx context.Context, distro, chatID, cwd string) (string, error)
+	// CheckSkills validates the library skills chosen for a chat of adapter and returns them cleaned (trimmed, without
+	// repeats, in the order given). It refuses a skill the library does not hold or holds blocked or gone, and an adapter that
+	// cannot reach Drydock's MCP gateway. Nil: chats take no skills.
+	CheckSkills func(ctx context.Context, adapter string, refs []SkillRef) ([]SkillRef, error)
+	// CheckMCP validates the library MCP servers granted to a chat of adapter and returns the grants with their tools named.
+	// Nil: chats take no MCP servers.
+	CheckMCP func(ctx context.Context, adapter string, grants []MCPGrant) ([]MCPGrant, error)
+	// Instructions is what a turn of the chat adds to the CLI's system prompt (the index of its skills; "" for none). Optional.
+	Instructions func(ctx context.Context, c Chat) string
 	// Licensed refuses starting work while the license is read-only. Optional.
 	Licensed func(ctx context.Context) error
 	Logf     func(format string, args ...any)
@@ -295,6 +322,9 @@ type CreateReq struct {
 	Effort         string `json:"effort"`
 	PermissionMode string `json:"permissionMode"`
 	ReadHistory    *bool  `json:"readHistory"`
+	// Skills and MCPServers are the chat's properties (decision P60); see Chat.
+	Skills     []SkillRef `json:"skills"`
+	MCPServers []MCPGrant `json:"mcpServers"`
 }
 
 // Create starts a new, empty chat.
@@ -343,36 +373,14 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 	}
 	c := Chat{ID: ids.New(strings.TrimSuffix(AgentPrefix, "_")), ProjectID: strings.TrimSpace(r.ProjectID), Title: title, Adapter: r.Adapter, WSLDistro: distro, Model: r.Model,
 		Effort: r.Effort, PermissionMode: mode, AllowedTools: []string{}, ReadHistory: r.ReadHistory == nil || *r.ReadHistory, Status: StatusIdle}
-	switch {
-	case c.ProjectID != "":
-		if strings.TrimSpace(r.Cwd) != "" {
-			return Chat{}, errors.New("a chat in a project runs in the project's folder; pick a folder only for a chat without a project")
-		}
-		dir, err := s.d.ProjectDir(ctx, c.ProjectID)
-		if err != nil {
-			return Chat{}, err
-		}
-		c.Cwd = dir
-	case c.WSLDistro != "":
-		dir, err := s.d.WSLFolder(ctx, c.WSLDistro, c.ID, strings.TrimSpace(r.Cwd))
-		if err != nil {
-			return Chat{}, err
-		}
-		c.Cwd = dir
-	case strings.TrimSpace(r.Cwd) != "":
-		dir, err := ValidateFolder(r.Cwd)
-		if err != nil {
-			return Chat{}, err
-		}
-		c.Cwd = dir
-	default:
-		if s.d.ScratchDir == nil {
-			return Chat{}, errors.New("a chat without a project needs a folder")
-		}
-		c.Cwd = s.d.ScratchDir(c.ID)
-		if err := os.MkdirAll(c.Cwd, 0o755); err != nil {
-			return Chat{}, fmt.Errorf("create the chat's folder: %w", err)
-		}
+	if c.Skills, err = s.checkSkills(ctx, c.Adapter, r.Skills); err != nil {
+		return Chat{}, err
+	}
+	if c.MCPServers, err = s.checkMCP(ctx, c.Adapter, r.MCPServers); err != nil {
+		return Chat{}, err
+	}
+	if c.Cwd, err = s.folder(ctx, c.ProjectID, c.WSLDistro, c.ID, r.Cwd); err != nil {
+		return Chat{}, err
 	}
 	c.SkipsApprovals = SkipsApprovals(c.PermissionMode)
 	now := storage.Now()
@@ -385,14 +393,96 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 }
 
 func (s *Service) insertChat(ctx context.Context, c Chat) error {
-	rules, _ := json.Marshal(c.AllowedTools)
-	return s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
-			pinned,archived_at,forked_from,created_at,updated_at,wsl_distro) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			c.ID, c.ProjectID, c.Title, c.Adapter, c.Model, c.Effort, c.PermissionMode, c.Cwd, c.SessionID, string(rules), b2i(c.ReadHistory), c.Status,
-			b2i(c.Pinned), c.ArchivedAt, c.ForkedFrom, c.Created, c.Updated, c.WSLDistro)
-		return err
-	})
+	return s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error { return insertChatTx(ctx, tx, c) })
+}
+
+func insertChatTx(ctx context.Context, tx *sql.Tx, c Chat) error {
+	rules, _ := json.Marshal(nz(c.AllowedTools))
+	sk, _ := json.Marshal(nz(c.Skills))
+	ms, _ := json.Marshal(nz(c.MCPServers))
+	_, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
+		pinned,archived_at,forked_from,created_at,updated_at,wsl_distro,skills,mcp_servers) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.ProjectID, c.Title, c.Adapter, c.Model, c.Effort, c.PermissionMode, c.Cwd, c.SessionID, string(rules), b2i(c.ReadHistory), c.Status,
+		b2i(c.Pinned), c.ArchivedAt, c.ForkedFrom, c.Created, c.Updated, c.WSLDistro, string(sk), string(ms))
+	return err
+}
+
+func nz[T any](v []T) []T {
+	if v == nil {
+		return []T{}
+	}
+	return v
+}
+
+// folder is the folder a chat runs in: the project's for a project chat (cwd must be empty), else the folder the person
+// picked (inside the WSL distro or on Windows for a chat in WSL), else the chat's private folder (made here, or in the
+// distro user's home for a chat in WSL).
+func (s *Service) folder(ctx context.Context, projectID, distro, chatID, cwd string) (string, error) {
+	cwd = strings.TrimSpace(cwd)
+	switch {
+	case projectID != "":
+		if cwd != "" {
+			return "", errors.New("a chat in a project runs in the project's folder; pick a folder only for a chat without a project")
+		}
+		return s.d.ProjectDir(ctx, projectID)
+	case distro != "":
+		return s.d.WSLFolder(ctx, distro, chatID, cwd)
+	case cwd != "":
+		return ValidateFolder(cwd)
+	}
+	if s.d.ScratchDir == nil {
+		return "", errors.New("a chat without a project needs a folder")
+	}
+	dir := s.d.ScratchDir(chatID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create the chat's folder: %w", err)
+	}
+	return dir, nil
+}
+
+// privateFolder reports whether the chat runs in the private folder Drydock made for it (on Windows, or in the distro).
+func (s *Service) privateFolder(c Chat) bool {
+	if s.d.ScratchDir != nil && filepath.Clean(c.Cwd) == filepath.Clean(s.d.ScratchDir(c.ID)) {
+		return true
+	}
+	return strings.HasSuffix(strings.ReplaceAll(c.Cwd, `\`, "/"), "/.drydock/chats/"+c.ID)
+}
+
+// maxChatSkills and maxChatServers bound a chat's properties: each chosen skill is a line of every turn's instructions, each
+// server a set of tools in every request.
+const (
+	maxChatSkills  = 20
+	maxChatServers = 10
+)
+
+// checkSkills cleans the skills chosen for a chat of adapter (none: an empty list).
+func (s *Service) checkSkills(ctx context.Context, adapter string, refs []SkillRef) ([]SkillRef, error) {
+	if len(refs) == 0 {
+		return []SkillRef{}, nil
+	}
+	if s.d.CheckSkills == nil {
+		return nil, errors.New("skills cannot be given to a chat here")
+	}
+	if len(refs) > maxChatSkills {
+		return nil, fmt.Errorf("a chat can have at most %d skills", maxChatSkills)
+	}
+	out, err := s.d.CheckSkills(ctx, adapter, refs)
+	return nz(out), err
+}
+
+// checkMCP validates the MCP servers granted to a chat of adapter (none: an empty list).
+func (s *Service) checkMCP(ctx context.Context, adapter string, grants []MCPGrant) ([]MCPGrant, error) {
+	if len(grants) == 0 {
+		return []MCPGrant{}, nil
+	}
+	if s.d.CheckMCP == nil {
+		return nil, errors.New("MCP servers cannot be given to a chat here")
+	}
+	if len(grants) > maxChatServers {
+		return nil, fmt.Errorf("a chat can have at most %d MCP servers", maxChatServers)
+	}
+	out, err := s.d.CheckMCP(ctx, adapter, grants)
+	return nz(out), err
 }
 
 // ValidateFolder checks a folder the human picked for a chat without a project: absolute, existing, a directory. It returns
@@ -457,22 +547,29 @@ func (s *Service) cleanTitle(t string) (string, error) {
 }
 
 const chatCols = `id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,last_error,pinned,
-	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro`
+	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro,skills,mcp_servers`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanChat(r scanner, extra ...any) (Chat, error) {
 	var c Chat
-	var rules string
+	var rules, skills, servers string
 	var readHistory, pinned int64
 	var cost sql.NullFloat64
 	dest := []any{&c.ID, &c.ProjectID, &c.Title, &c.Adapter, &c.Model, &c.Effort, &c.PermissionMode, &c.Cwd, &c.SessionID, &rules, &readHistory, &c.Status,
-		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version, &c.WSLDistro}
+		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version, &c.WSLDistro,
+		&skills, &servers}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return c, err
 	}
 	c.AllowedTools = []string{}
 	_ = json.Unmarshal([]byte(rules), &c.AllowedTools)
+	_ = json.Unmarshal([]byte(skills), &c.Skills)
+	_ = json.Unmarshal([]byte(servers), &c.MCPServers)
+	c.Skills, c.MCPServers = nz(c.Skills), nz(c.MCPServers)
+	for i := range c.MCPServers {
+		c.MCPServers[i].Tools = nz(c.MCPServers[i].Tools)
+	}
 	c.ReadHistory, c.Pinned, c.Archived = readHistory != 0, pinned != 0, c.ArchivedAt != 0
 	if cost.Valid {
 		v := cost.Float64
@@ -667,17 +764,159 @@ type UpdateReq struct {
 	Effort         *string `json:"effort"`
 	PermissionMode *string `json:"permissionMode"`
 	ReadHistory    *bool   `json:"readHistory"`
+	// The chat's properties (decision P60). Adapter, WSLDistro and Cwd change where the chat runs: refused while a turn runs,
+	// and the next turn starts a new session given the conversation so far. Cwd "" is the chat's private folder; a project
+	// chat runs in its project's folder and takes no Cwd. Skills and MCPServers replace the chat's lists.
+	Adapter    *string     `json:"adapter"`
+	WSLDistro  *string     `json:"wslDistro"`
+	Cwd        *string     `json:"cwd"`
+	Skills     *[]SkillRef `json:"skills"`
+	MCPServers *[]MCPGrant `json:"mcpServers"`
 }
 
-// Update changes a chat's settings. Model, effort and permission mode apply from the next turn. The row is read, changed and
-// written in one transaction, and the committed row (with its new version) is what is returned and published, so a reply never
-// carries a status or counters from before a write that happened meanwhile.
+// placeChange is a change of where a chat runs, checked before the transaction that stores it (the checks start programs).
+type placeChange struct {
+	adapter, distro, cwd string
+	moved                bool // the adapter, the distro or the folder changed: the CLI session cannot be continued
+}
+
+// checkPlace validates a change of the chat's adapter, WSL distro or folder. It returns nil when the request changes none.
+func (s *Service) checkPlace(ctx context.Context, c Chat, r UpdateReq) (*placeChange, error) {
+	if r.Adapter == nil && r.WSLDistro == nil && r.Cwd == nil {
+		return nil, nil
+	}
+	p := &placeChange{adapter: c.Adapter, distro: c.WSLDistro, cwd: c.Cwd}
+	if r.Adapter != nil {
+		if p.adapter = strings.TrimSpace(*r.Adapter); p.adapter == "" {
+			p.adapter = "claude"
+		}
+	}
+	if r.WSLDistro != nil {
+		p.distro = strings.TrimSpace(*r.WSLDistro)
+	}
+	if p.adapter != c.Adapter {
+		if _, ok := s.caps(p.adapter); !ok {
+			return nil, fmt.Errorf("unknown adapter %q", p.adapter)
+		}
+		if s.d.CheckAdapter != nil {
+			if err := s.d.CheckAdapter(ctx, p.adapter); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if p.distro != "" && (p.distro != c.WSLDistro || p.adapter != c.Adapter) {
+		if s.d.CheckWSL == nil || s.d.WSLFolder == nil {
+			return nil, errors.New("a chat cannot run in WSL here")
+		}
+		d, err := s.d.CheckWSL(ctx, c.ProjectID, p.adapter, p.distro)
+		if err != nil {
+			return nil, err
+		}
+		p.distro = d
+	}
+	if c.ProjectID != "" {
+		if r.Cwd != nil && strings.TrimSpace(*r.Cwd) != "" {
+			return nil, errors.New("a chat in a project runs in the project's folder; pick a folder only for a chat without a project")
+		}
+	} else if r.Cwd != nil || p.distro != c.WSLDistro {
+		want := c.Cwd
+		switch {
+		case r.Cwd != nil:
+			want = *r.Cwd
+		case s.privateFolder(c):
+			want = "" // the private folder of the other side
+		}
+		dir, err := s.folder(ctx, "", p.distro, c.ID, want)
+		if err != nil {
+			return nil, err
+		}
+		p.cwd = dir
+	}
+	p.moved = p.adapter != c.Adapter || p.distro != c.WSLDistro || p.cwd != c.Cwd
+	return p, nil
+}
+
+// Update changes a chat's settings. Model, effort, permission mode, skills and MCP servers apply from the next turn, which
+// continues the session; a new adapter, distro or folder starts a new session given the conversation so far. The row is read,
+// changed and written in one transaction, and the committed row (with its new version) is what is returned and published, so a
+// reply never carries a status or counters from before a write that happened meanwhile.
 func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
+	before, err := s.Get(ctx, r.ID)
+	if err != nil {
+		return Chat{}, err
+	}
+	place, err := s.checkPlace(ctx, before, r)
+	if err != nil {
+		return Chat{}, err
+	}
+	adapter := before.Adapter
+	if place != nil {
+		adapter = place.adapter
+	}
+	var skills *[]SkillRef
+	if r.Skills != nil || (adapter != before.Adapter && len(before.Skills) > 0) {
+		in := before.Skills
+		if r.Skills != nil {
+			in = *r.Skills
+		}
+		v, err := s.checkSkills(ctx, adapter, in)
+		if err != nil {
+			return Chat{}, err
+		}
+		skills = &v
+	}
+	var servers *[]MCPGrant
+	if r.MCPServers != nil || (adapter != before.Adapter && len(before.MCPServers) > 0) {
+		in := before.MCPServers
+		if r.MCPServers != nil {
+			in = *r.MCPServers
+		}
+		v, err := s.checkMCP(ctx, adapter, in)
+		if err != nil {
+			return Chat{}, err
+		}
+		servers = &v
+	}
 	var out Chat
-	err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	var notes []string
+	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		notes = nil // WriteTx may run this more than once
 		c, err := getTx(ctx, tx, r.ID)
 		if err != nil {
 			return err
+		}
+		reset := false
+		if place != nil && place.moved {
+			if s.isRunning(c.ID) || c.Status == StatusRunning {
+				return errors.New("stop the running turn before changing where the chat runs")
+			}
+			if c.Adapter != place.adapter {
+				caps, _ := s.caps(place.adapter)
+				// what the old agent took and the new one does not is reset to the new one's defaults
+				if s.d.ValidateFields != nil && s.d.ValidateFields(place.adapter, c.Model, c.Effort) != nil {
+					c.Model, c.Effort = "", ""
+				}
+				if m, err := permissionMode(caps, c.PermissionMode); err == nil {
+					c.PermissionMode = m
+				} else {
+					c.PermissionMode, _ = permissionMode(caps, "")
+				}
+			}
+			c.Adapter, c.WSLDistro, c.Cwd = place.adapter, place.distro, place.cwd
+			reset = true
+			where := adapterName(c.Adapter)
+			if c.WSLDistro != "" {
+				where += " in " + c.WSLDistro + " (WSL)"
+			}
+			notes = append(notes, "Now runs with "+where+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
+		}
+		if skills != nil && !sameSkills(c.Skills, *skills) {
+			c.Skills = *skills
+			notes = append(notes, skillsNote(c.Skills))
+		}
+		if servers != nil && !sameServers(c.MCPServers, *servers) {
+			c.MCPServers = *servers
+			notes = append(notes, serversNote(c.MCPServers))
 		}
 		if r.Title != nil {
 			if c.Title, err = s.cleanTitle(*r.Title); err != nil {
@@ -722,8 +961,15 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 		if r.ReadHistory != nil {
 			c.ReadHistory = *r.ReadHistory
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, updated_at=?, version=version+1 WHERE id=?`,
-			c.Title, b2i(c.Pinned), c.ArchivedAt, c.Model, c.Effort, c.PermissionMode, b2i(c.ReadHistory), storage.Now(), c.ID); err != nil {
+		sk, _ := json.Marshal(nz(c.Skills))
+		ms, _ := json.Marshal(nz(c.MCPServers))
+		q := `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, adapter=?, wsl_distro=?, cwd=?, skills=?, mcp_servers=?, updated_at=?, version=version+1`
+		if reset {
+			// the CLI's session belongs to the old agent or folder: the next turn starts a new one, given the transcript
+			q += `, session_id='', cli_usage=''`
+		}
+		if _, err := tx.ExecContext(ctx, q+` WHERE id=?`, c.Title, b2i(c.Pinned), c.ArchivedAt, c.Model, c.Effort, c.PermissionMode, b2i(c.ReadHistory),
+			c.Adapter, c.WSLDistro, c.Cwd, string(sk), string(ms), storage.Now(), c.ID); err != nil {
 			return err
 		}
 		out, err = getTx(ctx, tx, c.ID)
@@ -732,8 +978,72 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 	if err != nil {
 		return Chat{}, err
 	}
+	if len(notes) > 0 {
+		for _, n := range notes {
+			if _, err := s.insertMessage(ctx, out, "", RoleSystem, n, "", nil); err != nil {
+				s.logf("chats: note a change: %v", err)
+			}
+		}
+		if nc, err := s.Get(ctx, out.ID); err == nil {
+			out = nc // the notes raised the version
+		}
+	}
 	s.publish(ctx, "chat.updated", out.ProjectID, map[string]any{"chatId": out.ID, "chat": out})
 	return out, nil
+}
+
+func adapterName(id string) string {
+	if id == "claude" {
+		return "Claude Code"
+	}
+	return id
+}
+
+func sameSkills(a, b []SkillRef) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameServers(a, b []MCPGrant) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ServerID != b[i].ServerID || strings.Join(a[i].Tools, ",") != strings.Join(b[i].Tools, ",") {
+			return false
+		}
+	}
+	return true
+}
+
+// skillsNote and serversNote are the system notes that record a change of the chat's skills or MCP servers in its history.
+func skillsNote(ks []SkillRef) string {
+	if len(ks) == 0 {
+		return "No skills for this chat from the next message."
+	}
+	var names []string
+	for _, k := range ks {
+		names = append(names, k.Name)
+	}
+	return "Skills for this chat from the next message: " + strings.Join(names, ", ") + "."
+}
+
+func serversNote(gs []MCPGrant) string {
+	if len(gs) == 0 {
+		return "No MCP servers for this chat from the next message."
+	}
+	var names []string
+	for _, g := range gs {
+		names = append(names, g.ServerID)
+	}
+	return "MCP servers for this chat from the next message: " + strings.Join(names, ", ") + "."
 }
 
 // Delete removes a chat with its messages and turns. A running chat must be stopped first.
@@ -760,7 +1070,8 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 // Fork starts a new chat with the messages of another up to and including uptoSeq (0 = all). The fork has no CLI session:
-// its first turn gives a fresh session the transcript. It keeps adapter, WSL distro, model, effort and allow rules; a permission mode
+// its first turn gives a fresh session the transcript. It keeps adapter, WSL distro, folder, model, effort, allow rules, skills
+// and MCP servers; a permission mode
 // that skips approvals is not inherited (the human chooses that per chat).
 func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, error) {
 	src, err := s.Get(ctx, id)
@@ -784,11 +1095,8 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 	n.SkipsApprovals = SkipsApprovals(n.PermissionMode)
 	now := storage.Now()
 	n.Created, n.Updated, n.Version = now, now, 1
-	rules, _ := json.Marshal(n.AllowedTools)
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
-			pinned,archived_at,forked_from,created_at,updated_at,wsl_distro) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			n.ID, n.ProjectID, n.Title, n.Adapter, n.Model, n.Effort, n.PermissionMode, n.Cwd, "", string(rules), b2i(n.ReadHistory), n.Status, 0, 0, n.ForkedFrom, n.Created, n.Updated, n.WSLDistro); err != nil {
+		if err := insertChatTx(ctx, tx, n); err != nil {
 			return err
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)

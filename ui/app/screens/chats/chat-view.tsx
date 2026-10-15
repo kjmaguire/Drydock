@@ -3,7 +3,7 @@
 // streamed assistant text in its own bubble outside the live region) and the composer (Ctrl+Enter, attached chats, Stop).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { ArrowDown, Bot, FolderOpen, GitFork, Pencil, ShieldCheck, TriangleAlert } from 'lucide';
+import { ArrowDown, Bot, FolderOpen, GitFork, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
 import type { Chat } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
@@ -21,7 +21,8 @@ import { VirtualList } from '../../ui/virtual-list.tsx';
 import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
 import { ChatMessageRow } from './chat-message.tsx';
-import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
+import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
+import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
 const titleBtn = css({
@@ -155,7 +156,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   let draftTitle = '';
   let settingsOpen = false;
   let toolsOpen = false;
+  let propsOpen = false; // the properties dialog (decision P60): CLI, folder, skills, MCP servers
   let newRule = '';
+  const openProps = () => ((propsOpen = true), void handle.update());
 
   feed.addEventListener('change', () => void handle.update());
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
@@ -360,6 +363,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               ) : null}
               {toolsOpen ? <ErrorNote error={act.error} /> : null}
             </Popover>
+            <Button size="sm" variant="ghost" icon={SlidersHorizontal} data-testid="chat-properties-open" mix={[on('click', openProps)]} title="Agent CLI, folder, skills and MCP servers">
+              Properties
+            </Button>
             <Button size="sm" variant="secondary" icon={GitFork} disabled={!!act.busy} mix={[on('click', () => void fork())]} title="A new chat with this chat's messages, its own session">
               {act.busy === 'fork' ? 'Forking...' : 'Fork'}
             </Button>
@@ -396,6 +402,20 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           >
             <ChatSettings chat={chat} adapter={adapter} busy={act.busy} error={act.error} onSave={async (u) => (await update(u, 'settings')) && ((settingsOpen = false), void handle.update())} onCancel={() => ((settingsOpen = false), void handle.update())} />
           </Popover>
+          {propsChips(chat).length ? (
+            <button type="button" mix={[chipsBtn, on('click', openProps)]} aria-label={`Skills and MCP servers: ${propsChips(chat).join(', ')}`} title="Change the skills and MCP servers" data-testid="chat-props-chips">
+              {(chat.skills?.length ?? 0) > 0 ? (
+                <span mix={chipCss} data-testid="chip-skills" title={chat.skills!.map((k) => k.name).join(', ')}>
+                  {propsChips({ skills: chat.skills })[0]}
+                </span>
+              ) : null}
+              {(chat.mcpServers?.length ?? 0) > 0 ? (
+                <span mix={chipCss} data-testid="chip-mcp" title={chat.mcpServers!.map((g) => g.serverId).join(', ')}>
+                  {propsChips({ mcpServers: chat.mcpServers })[0]}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
           <span mix={cwdCss} title={chat.cwd} data-testid="chat-cwd">
             <Icon icon={FolderOpen} size={12} />
             <span>{shortPath(chat.cwd)}</span>
@@ -502,6 +522,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             </Notice>
           </div>
         ) : null}
+        <ChatApprovals chat={chat} />
         {!settingsOpen && !toolsOpen && act.error ? (
           <div mix={noteCss}>
             <ErrorNote error={act.error} />
@@ -516,6 +537,17 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           onSend={send}
           onStop={() => void act.run('stop', () => s.client.chatStop(handle.props.id))}
           stopping={act.busy === 'stop'}
+        />
+        <ChatPropertiesDialog
+          open={propsOpen}
+          chat={chat}
+          adapters={adapters}
+          onClose={() => ((propsOpen = false), void handle.update())}
+          onSaved={(c) => {
+            feed.setChat(c);
+            propsOpen = false;
+            void handle.update();
+          }}
         />
       </section>
     );

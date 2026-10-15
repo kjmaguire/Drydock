@@ -350,6 +350,10 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	if resumeID != "" {
 		spec.UsageBaseline = s.sessionUsage(ctx, c.ID, resumeID)
 	}
+	if s.d.Instructions != nil {
+		// the chat's skills (decision P60): an index the CLI reads with every request, their text through the skills tool
+		spec.SystemAppend = s.d.Instructions(ctx, c)
+	}
 	m, err := s.d.Runtime.Spawn(ctx, rt.Config{AgentID: c.ID, ProjectID: c.ProjectID, Adapter: c.Adapter, Spec: spec, Provider: c.Adapter, Tier: "premium"})
 	if err != nil {
 		o.err = err

@@ -7,8 +7,14 @@ message, or looked up by a later chat through the `chats` workspace tool. Code: 
 `internal/core/chats_test.go` (scripted real-process agents), `internal/core/real_claude_chats_test.go` (the real Claude Code,
 skipped without a logged-in `claude`: resume, fallback, a refusal and its allow rule), `internal/chats/text_test.go`,
 `internal/mcp/workspace_chats_test.go`, `internal/core/chats_wsl_test.go` (a chat inside a WSL distro, through the stand-in
-wsl.exe and the LABELLED stand-in claude of `internal/wsl/wsltest`). Not verified: a real ACP chat turn, anything on Windows
-(a chat in a real distro is covered by the agent run mode's real-distro tests only as far as the shared start goes).
+wsl.exe and the LABELLED stand-in claude of `internal/wsl/wsltest`), `internal/core/chat_properties_test.go` (a chat's skills
+and MCP servers reaching its session, decision P60). Not verified: a real ACP chat turn, anything on Windows (a chat in a real
+distro is covered by the agent run mode's real-distro tests only as far as the shared start goes), a real Claude Code reading a
+chat's skill through the skills tool (section 6).
+
+Home (`/home`) starts with a chat (decision P60): type a message and Start chat makes a chat without a project in its private
+folder with Claude Code, sends the message and opens the chat; Options opens the new chat dialog without a project (folder,
+agent CLI and where it runs, model, skills, MCP servers). The five latest chats without a project are listed under it.
 
 ## 1. Objects
 
@@ -21,6 +27,8 @@ wsl.exe and the LABELLED stand-in claude of `internal/wsl/wsltest`). Not verifie
   "model": "", "effort": "", "permissionMode": "default", "skipsApprovals": false,
   "cwd": "C:\\repo", "sessionId": "the CLI's session id, empty before the first turn",
   "allowedTools": ["Bash(npm test)", "Edit"], "readHistory": true,
+  "skills": [{"registryId": "cloudflare-skills", "name": "wrangler"}],
+  "mcpServers": [{"serverId": "tst", "tools": ["echo", "envlen"]}],
   "status": "idle | running | error", "lastError": "",
   "pinned": false, "archived": false, "archivedAt": 0, "forkedFrom": "",
   "createdAt": 1791500000000, "updatedAt": 1791500000000,
@@ -33,7 +41,9 @@ a non-zero value means `costUsd` covers only the other turns. `skipsApprovals` i
 `dontAsk`: the UI must show it. Times are Unix milliseconds. `version` goes up by one with every write to the chat's row: two
 snapshots of a chat (a method's result, a `chat.updated` event, `chat.get`) are ordered by it, never by `updatedAt` (the wall
 clock can step back, and a write can be stamped before an earlier one commits). `chat.update`, `chat.allowTool` and
-`chat.disallowTool` read, change and write the row in one transaction and return the committed row.
+`chat.disallowTool` read, change and write the row in one transaction and return the committed row. `skills` are workspace
+library skills chosen for the chat and `mcpServers` workspace library MCP servers granted to it with the tools each may call
+(both empty lists when none; section 6).
 
 `ListItem` is a `Chat` with two more fields: `"preview"` (the start of the latest user or assistant message, at most 160
 characters) and `"messageCount"`.
@@ -65,12 +75,12 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | Method | Parameters | Result |
 |---|---|---|
 | `chat.list` | `{projectId?, query?, includeArchived?[false], limit?[500, max 500]}` (`projectId` empty = every chat; `query` = full text over titles and messages) | `[ListItem]`, pinned first, then most recently updated, at most 500 |
-| `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], wslDistro?[""], model?, effort?, permissionMode?, readHistory?[true]}` | `Chat` |
+| `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], wslDistro?[""], model?, effort?, permissionMode?, readHistory?[true], skills?[[]], mcpServers?[[]]}` | `Chat` |
 | `chat.get` | `{id}` | `{chat: Chat, messages: [Message] (latest 200, oldest first), hasMore}` |
 | `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `{messages: [Message] oldest first, hasMore}` (`hasMore`: still older messages exist) |
 | `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
 | `chat.stop` | `{id}` | `{stopped}` (false when nothing was running) |
-| `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?}` | `Chat` |
+| `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?, adapter?, wslDistro?, cwd?, skills?, mcpServers?}` | `Chat` |
 | `chat.delete` | `{id}` | `{deleted: true}` |
 | `chat.search` | `{query, projectId?, limit?[50, max 200]}` | `[Hit]` (archived chats included and marked) |
 | `chat.fork` | `{id, uptoSeq?[all]}` | `Chat` (new, messages copied up to and including `uptoSeq`, no session) |
@@ -101,9 +111,20 @@ Rules worth knowing in the UI:
   gone or its CLI signed out there refuses the send with a message naming the distro, before the chat is claimed; its private
   folder is made again when it was removed. `attach` takes up to 5 other chats (not the chat
   itself); their transcripts are given to this turn only. The stored user message is only what the human typed.
-- `chat.update` with `archived: true` is refused while a turn runs; `chat.delete` likewise. Model, effort, permission mode and
-  allow rules apply from the next turn.
-- `chat.fork` keeps adapter, model, effort and allow rules; a mode that skips approvals falls back to the default.
+- `chat.update` with `archived: true` is refused while a turn runs; `chat.delete` likewise. Model, effort, permission mode,
+  allow rules, skills and MCP servers apply from the next turn, which continues the session. `adapter`, `wslDistro` and `cwd`
+  change where the chat runs (decision P60): refused while a turn runs, checked as on create (`cwd` `""` is the chat's private
+  folder; a project chat takes none; a new distro moves a chat in its private folder to the private folder of the other side),
+  and the CLI session is dropped, so the next turn starts a new session given the conversation so far (`fallback: true`). A new
+  adapter keeps model, effort and permission mode only when it takes them, and checks the chat's skills and servers again. Each
+  change of where the chat runs, of its skills and of its servers is recorded as a `system` message.
+- `skills` (at most 20): each `{registryId, name}` must be in the workspace skill library, available (not blocked) and still in
+  its registry; two chosen skills may not share a name. `mcpServers` (at most 10): each `serverId` must be connected in the
+  workspace MCP library; a grant without `tools` gets the server's tools as known now, by name, without the flagged ones
+  (listing them first when they were never listed), as an agent's grant does; named tools are kept as given. Both are refused
+  for an agent CLI that cannot be given Drydock's MCP gateway (Claude Code can; an ACP CLI only after `mcp.try.set`).
+- `chat.fork` keeps adapter, folder, model, effort, allow rules, skills and MCP servers; a mode that skips approvals falls back
+  to the default.
 - `chat.allowTool` takes one Claude `--allowedTools` rule: a tool name (`Edit`, `WebFetch`, `mcp__server__tool`) or a tool with
   a specifier (`Bash(npm test)`, `Bash(npm run test:*)`, `Edit(src/**)`). Refused: commas, newlines, more than 200 characters,
   nested parentheses, a leading `-`, a bare `Bash` or a Bash rule that allows every command, and `; & | $ < >` or backquotes in a
@@ -162,9 +183,32 @@ well, with the chat id as `agentId`.
 
 A chat session whose `readHistory` is on gets the `chats` tool (Claude: `mcp__drydock__chats`) and the gateway's `fetch_range`
 (continues a truncated result; `mcp__drydock__fetch_range`), both callable without a prompt, and nothing else of the workspace
-or the library (`planChatMCP` in `internal/core/ext_chats.go`). Arguments: `{action: "list" | "search" | "read", query?, k?[10], chat_id?, from_seq?[0],
+or the library unless the person chose it for the chat (section 6; `planChatMCP` in `internal/core/ext_chats.go`). Arguments: `{action: "list" | "search" | "read", query?, k?[10], chat_id?, from_seq?[0],
 limit?}`. It reads the chats of the chat's own project and the chats without a project (a chat without a project reads every
 chat). `list` leaves archived chats out (at most 100, default 30); `search` includes them, marked `archived` (at most 20 hits,
 default 10); `read` reads any readable chat by id, archived or not (at most 200 messages, default 50, each cut at 4,000
 characters). Results go through the gateway's usual pipeline (secret scan, untrusted marking, audit).
 For ACP agents the tool is attached only when the human allowed the gateway for that CLI (`mcp.try.set`, decisions P20).
+
+## 6. A chat's skills and MCP servers (decision P60)
+
+Chosen in the new chat dialog (also from Home's Options) or the open chat's Properties dialog, stored with the chat
+(`chats.skills`, `chats.mcp_servers`, migration `00122_chat_properties.sql`), and given to every turn's session from the next
+message on. The session otherwise starts exactly as every Drydock Claude Code session (decision P36: the quiet environment,
+`--disable-slash-commands`, the unattended deny list, `--setting-sources user`).
+
+- **Skills** reach the CLI the on-demand way of decision P37: every turn's system prompt carries an index (`skills.ChatIndex`:
+  "Skills chosen for this chat", one line per skill with its description and globs, and how to read one), and the skill's text
+  comes from the gateway's `skills` tool (`mcp__drydock__skills`, action `get`; `list` and `for_paths` too), which for a chat
+  session (agent id `chat_*`, role `chat`) serves only the library skills chosen for that chat, bodies cut at 20,000
+  characters (`chatSkillsTool` in `internal/core/ext_chats.go`). Nothing is written into the chat's folder, which may be the
+  person's own folder or repository. A skill blocked or gone since it was chosen is left out of the index and the tool. Skill
+  use is not counted in `skill_uses` (that table is per project, decision P49).
+- **MCP servers** are granted through the gateway the way an agent's grants are (`mcpServersForChat`, sharing `specsFor` with
+  `mcpServersForRun`): the library server's spec (credentials only by vault reference), the tools named in the chat's grant,
+  results shaped, secret-scanned and marked untrusted, the guard on, and every tool the person did not declare read-only behind
+  an approval for that exact call. A chat's pending approvals are shown in the chat itself, above the composer, with Approve
+  and Reject (`ChatApprovals`: `mcpserver.approval.list` filtered by the chat's id; the approval carries the chat's project, so
+  a project chat's calls also appear in that project's Needs you). A server disconnected from the library is left out.
+- The session's gateway entry lists `chats` (with `readHistory`), `skills` (with skills), `fetch_range` and the granted
+  servers' tools, and nothing else; with none of them the session has no MCP entry at all.

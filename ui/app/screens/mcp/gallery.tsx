@@ -41,6 +41,8 @@ const cardCss = css({
   '& .who': { display: 'grid', minWidth: '0', flex: '1' },
   '& h4': { margin: '0', fontSize: t.textMd, fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .pub': { fontSize: t.textXs, color: t.textMuted },
+  // the base layer sets code a little smaller than its text: at the smallest size that is under 12 px (the layout guard)
+  '& .pub code': { fontSize: 'inherit' },
   '& .sum': { color: t.textMuted, fontSize: t.textSm, lineHeight: '1.45' },
   '& .meta': { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: t.textXs, color: t.textMuted },
   '& .row': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },

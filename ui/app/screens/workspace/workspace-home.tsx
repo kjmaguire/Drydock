@@ -1,10 +1,13 @@
-// Home (/home): the workspace outside any project. The projects, each with what needs you there, and everything shared by all
-// of them: the skill library, agents and MCP servers, chats, integrations, connections and the app itself. Opening a project
-// card selects that project and opens it.
+// Home (/home): the workspace outside any project. First a chat with Claude Code that needs no project (decision P60): type
+// and start, or open Options for the folder, the agent CLI, skills and MCP servers; the latest chats without a project are
+// one click away. Then the projects, each with what needs you there, and everything shared by all of them: the skill library,
+// agents and MCP servers, chats, integrations, connections and the app itself. Opening a project card selects that project
+// and opens it.
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import {
   Cpu,
+  SlidersHorizontal,
   Database,
   FolderPlus,
   HardDriveDownload,
@@ -23,9 +26,11 @@ import {
 } from 'lucide';
 import { projectHasRepo, type Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
-import { query, services, watch } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Monogram } from '../../shell/project-switcher.tsx';
-import { buttonStyle } from '../../ui/button.tsx';
+import { Button, buttonStyle } from '../../ui/button.tsx';
+import { NewChatDialog } from '../chats/new-chat-dialog.tsx';
+import { chatTitle, relTime } from '../chats/chats.ts';
 import { ErrorNote, Empty, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { card, Page, Section } from '../../ui/layout.tsx';
@@ -100,6 +105,165 @@ function ProjectTile(handle: Handle<{ project: Project; needs: number | null | u
   };
 }
 
+const chatForm = css({
+  display: 'grid',
+  gap: t.s2,
+  '& textarea': { width: '100%', minHeight: '76px', resize: 'vertical', fontSize: t.textMd },
+});
+const chatBar = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, '& small': { flex: '1', minWidth: '220px', color: t.textMuted, fontSize: t.textSm } });
+const recentCss = css({
+  display: 'grid',
+  gap: '2px',
+  margin: `${t.s3} 0 0`,
+  padding: '0',
+  listStyle: 'none',
+  '& a': {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: t.s2,
+    minWidth: '0',
+    padding: '6px 8px',
+    borderRadius: t.rMd,
+    color: t.text,
+    textDecoration: 'none',
+  },
+  '& a:hover': { background: t.bgHover, textDecoration: 'none' },
+  '& .title': { fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '40%' },
+  '& .preview': { flex: '1', minWidth: '0', color: t.textMuted, fontSize: t.textSm, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& time': { color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap' },
+});
+
+/**
+ * Chat from Home (decision P60): a chat with the person's own signed-in Claude Code CLI that needs no project. Start chat makes
+ * the chat in a private folder Drydock creates for it, sends what was typed and opens the chat; Options opens the new chat
+ * dialog without a project (folder, agent CLI, model, skills, MCP servers). Below, the latest chats without a project.
+ */
+function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  const act = action(handle);
+  let text = '';
+  let dialog = false;
+  let unsent: { id: string; error: Error } | undefined;
+  const recent = query(handle, {
+    load: async () => (await s.client.chatList({ limit: 100 })).filter((c) => !c.projectId && !c.archived).slice(0, 5),
+    when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted',
+  });
+  const adapters = query(handle, {
+    enabled: () => dialog,
+    load: () => s.client.adapterList(),
+    when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.'),
+  });
+  const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
+
+  // the chat exists: send what was typed (if anything), then open it; a message that could not be sent stays here with the reason
+  const openChat = async (chatId: string) => {
+    const msg = text.trim();
+    unsent = undefined;
+    if (msg) {
+      try {
+        await s.client.chatSend(chatId, msg);
+      } catch (e) {
+        unsent = { id: chatId, error: e instanceof Error ? e : new Error(String(e)) };
+        void handle.update();
+        return;
+      }
+    }
+    text = '';
+    go(routes.chat.href({ id: chatId }));
+  };
+  const start = async () => {
+    if (act.busy) return;
+    const c = await act.run('start', () => s.client.chatCreate({}));
+    if (c) await openChat(c.id);
+  };
+
+  return () => {
+    const list = recent.data ?? [];
+    return (
+      <Section
+        title="Chat"
+        description="Use Claude Code here as you would in a terminal, without a project. It runs your own signed-in Claude Code CLI, on your subscription, and every chat is kept."
+        actions={
+          <a href={routes.chats.href()} mix={buttonStyle('ghost', 'sm')} data-testid="home-chats-all">
+            All chats
+          </a>
+        }
+        testId="home-chat"
+      >
+        <form
+          mix={[
+            card,
+            chatForm,
+            on('submit', (e) => {
+              e.preventDefault();
+              void start();
+            }),
+          ]}
+          data-testid="home-chat-form"
+        >
+          <textarea
+            aria-label="Message to Claude Code"
+            placeholder="Ask Claude Code anything. Ctrl+Enter starts the chat."
+            value={text}
+            mix={[
+              on('input', (e) => void (text = e.currentTarget.value)),
+              on('keydown', (e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  void start();
+                }
+              }),
+            ]}
+          />
+          <div mix={chatBar}>
+            <small>Runs in a private folder Drydock makes for the chat. A folder of your own, another agent CLI, skills and MCP servers: Options.</small>
+            <Button variant="ghost" icon={SlidersHorizontal} data-testid="home-chat-options" mix={[on('click', () => ((dialog = true), void handle.update()))]}>
+              Options...
+            </Button>
+            <Button variant="primary" type="submit" icon={MessagesSquare} disabled={!!act.busy}>
+              {act.busy === 'start' ? 'Starting...' : 'Start chat'}
+            </Button>
+          </div>
+          <ErrorNote error={act.error} what="Could not start the chat" />
+          {unsent ? (
+            <Notice tone="warn" role="alert" testId="home-chat-unsent" title="The chat was made, but your message was not sent.">
+              {unsent.error.message} <a href={routes.chat.href({ id: unsent.id })}>Open the chat</a>
+            </Notice>
+          ) : null}
+        </form>
+        <ErrorNote error={recent.error} what="Recent chats" />
+        {list.length ? (
+          <ul mix={recentCss} aria-label="Recent chats without a project">
+            {list.map((c) => (
+              <li key={c.id}>
+                <a href={routes.chat.href({ id: c.id })} data-testid="home-chat-recent" data-chat={c.id}>
+                  <span class="title">{chatTitle(c)}</span>
+                  <span class="preview">{c.preview}</span>
+                  <time>{relTime(c.updatedAt)}</time>
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <NewChatDialog
+          open={dialog}
+          onClose={() => ((dialog = false), void handle.update())}
+          projects={s.workspace.projectList}
+          projectId=""
+          adapters={adapters.data}
+          adaptersError={adapters.error}
+          onCreated={(id) => {
+            dialog = false;
+            void handle.update();
+            void openChat(id);
+          }}
+        />
+      </Section>
+    );
+  };
+}
+
 export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -125,13 +289,14 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
     const ws = s.workspace;
     const projects = ws.projectList;
     return (
-      <Page title="Home" icon={House} wide testId="workspace-home" subtitle="Your projects, and everything they share">
+      <Page title="Home" icon={House} wide testId="workspace-home" subtitle="A chat, your projects, and everything they share">
         <div mix={sectionsCss}>
           {flash ? (
             <Notice tone={flash.tone} role="status" testId="home-flash">
               {flash.text}
             </Notice>
           ) : null}
+          <HomeChat onNavigate={handle.props.onNavigate} />
           <Section
             title="Projects"
             description="Open a project to work in it: its channels, tasks, team and settings."

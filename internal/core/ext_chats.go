@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/skills"
 )
 
 // This extension is the Chats section (decisions P29): the human's own conversations with an agent CLI, kept as history that
@@ -55,6 +57,9 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		ScratchDir:     func(id string) string { return filepath.Join(c.cfg.DataDir, "chats", id) },
 		CheckWSL:       c.checkChatWSL,
 		WSLFolder:      c.chatWSLFolder,
+		CheckSkills:    c.checkChatSkills,
+		CheckMCP:       c.checkChatMCP,
+		Instructions:   c.chatInstructions,
 		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
 		Logf:           c.logf,
 	}, chats.Options{})
@@ -156,8 +161,11 @@ func (c *Core) chatProjectDir(ctx context.Context, projectID string) (string, er
 	return c.projectDir(p)
 }
 
-// planChatMCP is the MCP plan of a chat session: only the read-only chats tool, and only when the chat reads history. A chat is
-// not a team member, so it gets none of the project's Workspace tools or library servers.
+// planChatMCP is the MCP plan of a chat session. A chat is not a team member, so it gets none of the project's Workspace tools
+// or a project's servers. It gets what the person chose for it (decision P60): the read-only chats tool when it reads history,
+// the skills tool serving the library skills chosen for it, and the library MCP servers granted to it with the tools named in
+// each grant, under the gateway's usual rules (results scanned and marked untrusted, every tool not declared read-only behind
+// an approval). With none of these the session has no MCP entry at all.
 func (c *Core) planChatMCP(ctx context.Context, cfg *rt.Config) mcpPlan {
 	pl := mcpPlan{DataClass: mcp.DataClassPrivate}
 	no := func(format string, a ...any) mcpPlan { pl.Reason = fmt.Sprintf(format, a...); return pl }
@@ -178,14 +186,245 @@ func (c *Core) planChatMCP(ctx context.Context, cfg *rt.Config) mcpPlan {
 	if err != nil {
 		return no("unknown chat %q", cfg.AgentID)
 	}
-	if !ch.ReadHistory {
-		return no("reading earlier chats is switched off for this chat")
+	allow := []string{}
+	if ch.ReadHistory {
+		allow = append(allow, "chats")
+	}
+	if len(ch.Skills) > 0 {
+		allow = append(allow, "skills")
+	}
+	specs, grants, exposed := c.mcpServersForChat(ctx, ch.MCPServers)
+	if len(allow) == 0 && len(specs) == 0 {
+		return no("this chat reads no other chats and has no skills or MCP servers")
 	}
 	pl.Info = mcp.RunInfo{ProjectID: ch.ProjectID, AgentID: ch.ID, Role: "chat", Worktree: cfg.Spec.Cwd}
-	pl.Policy = mcp.RunPolicy{Allow: map[string][]string{mcp.WorkspaceServerID: {"chats"}}}
-	pl.Tools = []string{"chats", mcp.ToolFetchRange}
+	pl.Policy = mcp.RunPolicy{Allow: map[string][]string{mcp.WorkspaceServerID: allow}}
+	pl.Tools = append(append([]string(nil), allow...), mcp.ToolFetchRange)
+	if len(specs) > 0 {
+		pl.Servers = specs
+		for id, tools := range grants {
+			pl.Policy.Allow[id] = tools
+		}
+		pl.Tools = append(pl.Tools, exposed...)
+	}
 	pl.Attach = true
 	return pl
+}
+
+// chatGateway refuses skills and MCP servers for a chat whose agent CLI cannot be given Drydock's MCP gateway: both reach the
+// chat's session only through it.
+func (c *Core) chatGateway(ctx context.Context, adapter string) error {
+	if ok, canTry, why := adapterMCPKind(adapter); !ok && (!canTry || !c.mcpTryAllowed(ctx, adapter)) {
+		return fmt.Errorf("skills and MCP servers reach a chat only through Drydock's MCP gateway, and %s", why)
+	}
+	return nil
+}
+
+// checkChatSkills is chats.Deps.CheckSkills: each chosen skill must be in the workspace library, available (not blocked) and
+// still in its registry; two chosen skills may not share a name (the skills tool reads them by name).
+func (c *Core) checkChatSkills(ctx context.Context, adapter string, refs []chats.SkillRef) ([]chats.SkillRef, error) {
+	if err := c.chatGateway(ctx, adapter); err != nil {
+		return nil, err
+	}
+	k := c.Knowledge()
+	if k == nil || k.Skills == nil {
+		return nil, errors.New("the skill library is not available")
+	}
+	byName := map[string]string{}
+	out := []chats.SkillRef{}
+	for _, r := range refs {
+		r.RegistryID, r.Name = strings.TrimSpace(r.RegistryID), strings.TrimSpace(r.Name)
+		if r.RegistryID == "" || r.Name == "" {
+			return nil, errors.New("a skill is chosen by its registry and its name")
+		}
+		if reg, ok := byName[r.Name]; ok {
+			if reg == r.RegistryID {
+				continue
+			}
+			return nil, fmt.Errorf("two chosen skills are named %s (from %s and %s): choose one", r.Name, reg, r.RegistryID)
+		}
+		lk, _, err := k.Skills.LibraryGet(ctx, r.RegistryID, r.Name)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case lk.Gone:
+			return nil, fmt.Errorf("the skill %s is no longer in its registry %s", r.Name, r.RegistryID)
+		case !lk.Usable():
+			return nil, fmt.Errorf("the skill %s is blocked in the library: %s", r.Name, firstNonEmpty(lk.BlockReason, "it did not pass the checks"))
+		}
+		byName[r.Name] = r.RegistryID
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// checkChatMCP is chats.Deps.CheckMCP: each server must be connected in the workspace library. A grant that names no tools
+// gets the server's tools as they are known now, by name, without the flagged ones (listing them first when they were never
+// listed), as an agent's grant does; a tool the server adds later is not granted until the person chooses the server again.
+func (c *Core) checkChatMCP(ctx context.Context, adapter string, grants []chats.MCPGrant) ([]chats.MCPGrant, error) {
+	if err := c.chatGateway(ctx, adapter); err != nil {
+		return nil, err
+	}
+	s := c.mcpServerSvc()
+	if s == nil {
+		return nil, errors.New("MCP servers are not available")
+	}
+	seen := map[string]bool{}
+	out := []chats.MCPGrant{}
+	for _, g := range grants {
+		id := strings.TrimSpace(g.ServerID)
+		if id == "" || seen[id] {
+			continue
+		}
+		if _, err := s.load(ctx, id); err != nil {
+			return nil, err
+		}
+		tools, err := cleanList(g.Tools, "tool")
+		if err != nil {
+			return nil, err
+		}
+		if len(tools) == 0 {
+			if tools, err = s.grantable(ctx, id); err != nil {
+				return nil, err
+			}
+		}
+		seen[id] = true
+		out = append(out, chats.MCPGrant{ServerID: id, Tools: tools})
+	}
+	return out, nil
+}
+
+// chatSkillList is the library skills chosen for a chat that can still reach it (a skill blocked or gone since is left out),
+// in the order chosen, with their text.
+func (c *Core) chatSkillList(ctx context.Context, ch chats.Chat) []skillWithText {
+	k := c.Knowledge()
+	if k == nil || k.Skills == nil {
+		return nil
+	}
+	var out []skillWithText
+	for _, r := range ch.Skills {
+		lk, body, err := k.Skills.LibraryGet(ctx, r.RegistryID, r.Name)
+		if err != nil || !lk.Usable() {
+			continue
+		}
+		out = append(out, skillWithText{lk, body})
+	}
+	return out
+}
+
+type skillWithText struct {
+	skills.LibrarySkill
+	body string
+}
+
+// chatInstructions is chats.Deps.Instructions: the index of the chat's skills, for every turn's system prompt.
+func (c *Core) chatInstructions(ctx context.Context, ch chats.Chat) string {
+	var ks []skills.LibrarySkill
+	for _, k := range c.chatSkillList(ctx, ch) {
+		ks = append(ks, k.LibrarySkill)
+	}
+	return skills.ChatIndex(ks)
+}
+
+// chatSkillsTool serves the skills workspace tool. A chat's session (agent id chat_*, role "chat") gets the library skills
+// chosen for the chat; every other run gets the project's accepted skills from the wrapped provider, as before.
+type chatSkillsTool struct {
+	c     *Core
+	inner mcp.SkillsProvider
+}
+
+func isChatRun(run mcp.RunInfo) bool {
+	return strings.HasPrefix(run.AgentID, chats.AgentPrefix) && run.Role == "chat"
+}
+
+func (p chatSkillsTool) chosen(ctx context.Context, run mcp.RunInfo) ([]skillWithText, error) {
+	svc := p.c.Chats()
+	if svc == nil {
+		return nil, errors.New("chats are not running")
+	}
+	ch, err := svc.Get(ctx, run.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	return p.c.chatSkillList(ctx, ch), nil
+}
+
+func chatSkill(k skillWithText, withBody bool) mcp.Skill {
+	out := mcp.Skill{Name: k.Name, Description: k.Description, PinnedCommit: k.PinnedCommit}
+	if withBody {
+		out.Body = k.body
+		if len(out.Body) > skills.MaxToolBodyChars {
+			out.Body = strings.ToValidUTF8(out.Body[:skills.MaxToolBodyChars], "") + "\n[cut: the skill is longer than the tool returns]"
+		}
+	}
+	return out
+}
+
+func (p chatSkillsTool) List(ctx context.Context, run mcp.RunInfo) ([]mcp.Skill, error) {
+	if !isChatRun(run) {
+		if p.inner == nil {
+			return nil, errors.New("the skills library is not built yet")
+		}
+		return p.inner.List(ctx, run)
+	}
+	ks, err := p.chosen(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	out := []mcp.Skill{}
+	for _, k := range ks {
+		out = append(out, chatSkill(k, false))
+	}
+	return out, nil
+}
+
+func (p chatSkillsTool) Get(ctx context.Context, run mcp.RunInfo, name string) (mcp.Skill, error) {
+	if !isChatRun(run) {
+		if p.inner == nil {
+			return mcp.Skill{}, errors.New("the skills library is not built yet")
+		}
+		return p.inner.Get(ctx, run, name)
+	}
+	ks, err := p.chosen(ctx, run)
+	if err != nil {
+		return mcp.Skill{}, err
+	}
+	for _, k := range ks {
+		if k.Name == name {
+			return chatSkill(k, true), nil
+		}
+	}
+	return mcp.Skill{}, fmt.Errorf("%w: no skill named %q was chosen for this chat", mcp.ErrNotFound, name)
+}
+
+func (p chatSkillsTool) ForPaths(ctx context.Context, run mcp.RunInfo, paths []string) ([]mcp.Skill, error) {
+	if !isChatRun(run) {
+		if p.inner == nil {
+			return nil, errors.New("the skills library is not built yet")
+		}
+		return p.inner.ForPaths(ctx, run, paths)
+	}
+	ks, err := p.chosen(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	var norm []string
+	for _, x := range paths {
+		if n, ok := skills.NormalizePath(x); ok {
+			norm = append(norm, n)
+		}
+	}
+	if len(norm) == 0 {
+		return nil, errors.New("no valid paths relative to the chat's folder were given")
+	}
+	out := []mcp.Skill{}
+	for _, k := range ks {
+		if skills.PathsMatch(k.Globs, norm) {
+			out = append(out, chatSkill(k, true))
+		}
+	}
+	return out, nil
 }
 
 // mcpChats backs the chats workspace tool with the chats service; the calling chat is RunInfo.AgentID.

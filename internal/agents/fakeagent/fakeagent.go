@@ -62,6 +62,10 @@ type Step struct {
 	// (an error tool result, and the call listed in the result's permission_denials). With --permission-prompt-tool the
 	// agent asks that MCP tool first, as Claude Code does, and runs the step only when it allows (permission.go).
 	Ask bool `json:"ask,omitempty"`
+	// MCP calls a tool of an MCP server in the session's --mcp-config, named as Claude Code names it (mcp__<server>__<tool>),
+	// with Input as its arguments: a tool use and its result, then the answer said as text ("<tool> answered: ..."). As in
+	// Claude Code, the call is refused unless an --allowedTools rule names the tool (or mcp__<server>__*).
+	MCP string `json:"mcp,omitempty"`
 	// Raw emits this JSON object as one stream line, as it is: a test of what the parser does with an event it does not know.
 	Raw json.RawMessage `json:"raw,omitempty"`
 	// Context, with any other field of the step, sets the context occupancy (tokens) the agent's messages report from this step
@@ -243,6 +247,9 @@ func (a *agent) permits(tool string, input json.RawMessage) bool {
 	_ = json.Unmarshal(input, &in)
 	for _, r := range a.allowed {
 		if r == tool {
+			return true
+		}
+		if p, ok := strings.CutSuffix(r, "*"); ok && strings.HasPrefix(r, "mcp__") && strings.HasPrefix(tool, p) {
 			return true
 		}
 		spec, ok := strings.CutPrefix(r, tool+"(")
@@ -480,6 +487,39 @@ loop:
 					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": "Write", "input": json.RawMessage(in)}}, "usage": a.usage()}})
 				a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user",
 					"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": res, "is_error": werr != nil}}}})
+			case st.MCP != "":
+				a.mu.Lock()
+				a.toolSeq++
+				id := fmt.Sprintf("toolu_fake_%04d", a.toolSeq)
+				a.mu.Unlock()
+				in := st.Input
+				if len(in) == 0 {
+					in = json.RawMessage(`{}`)
+				}
+				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
+					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": st.MCP, "input": in}}, "usage": a.usage()}})
+				var result string
+				var isErr bool
+				if !a.permits(st.MCP, in) {
+					result, isErr = "Claude requested permissions to use "+st.MCP+", but you haven't granted it yet.", true
+					denials = append(denials, map[string]any{"tool_name": st.MCP, "tool_use_id": id, "tool_input": in})
+				} else if text, toolErr, err := callMCPTool(st.MCP, a.mcpConfig, in); err != nil {
+					result, isErr = err.Error(), true
+				} else {
+					result, isErr = text, toolErr
+				}
+				a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user",
+					"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": result, "is_error": isErr}}}})
+				say := st.MCP + " answered: " + result
+				if isErr {
+					say = st.MCP + " failed: " + result
+				}
+				if len(say) > 4000 {
+					say = say[:4000]
+				}
+				lastText = say
+				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
+					"content": []any{map[string]any{"type": "text", "text": say}}, "usage": a.usage()}})
 			case st.Tool != "":
 				a.mu.Lock()
 				a.toolSeq++
