@@ -58,6 +58,13 @@ jobs:
           Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+\.go:\d+:' | ForEach-Object { $_.Line }
       - name: Windows-only process tree tests
         run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
+      - name: The real Actions runner release (downloaded, checked and started; nothing is registered)
+        # decision P56: the CI runners feature unpacks the newest runner and passes its one-job configuration in the
+        # environment; this proves both on Windows without attaching a runner to any repository
+        env:
+          DRYDOCK_REAL_RUNNER_RELEASE: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go test ./internal/runners -run TestRealRunnerRelease -count=1 -v -timeout 20m
   wsl:
     # The WSL run mode (decision P41) against a real distro: Vampire/setup-wsl installs Ubuntu 24.04 under WSL 2 on the
     # GitHub-hosted Windows runner (WSL 2 is available on its images; the action defaults to it since v6), and the tests drive
@@ -203,7 +210,7 @@ jobs:
     # GitHub's Windows runners have no Linux container engine. It proves the network allowlist and the container setup
     # with a real Docker engine; a missing engine fails the job instead of skipping.
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -215,6 +222,11 @@ jobs:
           DRYDOCK_REQUIRE_DOCKER: "1"
           DRYDOCK_NO_REAL_AGENTS: "1"
         run: go test ./internal/sandbox/... -count=1 -timeout 25m -v
+      - name: The real Actions runner image (built from the checked release and started; nothing is registered)
+        env:
+          DRYDOCK_REAL_RUNNER_RELEASE: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go test ./internal/runners -run TestRealRunnerRelease -count=1 -v -timeout 20m
   app:
     needs: [go, ui]
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}

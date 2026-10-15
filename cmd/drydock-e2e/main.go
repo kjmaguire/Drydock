@@ -59,12 +59,15 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/runners"
+	"github.com/kjmaguire/drydock/internal/runners/runnerstest"
 	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/scan/scantest"
 	"github.com/kjmaguire/drydock/internal/scrub"
@@ -309,6 +312,13 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		}
 		return dst, os.WriteFile(dst, b, 0o755)
 	}
+	runnerGitHub := runnerstest.NewGitHub(map[string]runnerstest.Repo{
+		"e2e/private-app": {Private: true, Admin: true},
+		"e2e/public-site": {Private: false, Admin: true},
+	})
+	runnerWin := &runnerstest.Launcher{K: runners.Windows, FreeB: 120 << 30, JobTime: 1500 * time.Millisecond}
+	runnerLinux := &runnerstest.Launcher{K: runners.Linux, JobTime: 1500 * time.Millisecond}
+	runnerLinux.Queue("build", "Succeeded")
 	c, err := core.Open(context.Background(), core.Config{
 		PickFile: pickFile,
 		DataDir:  filepath.Join(root, "data"),
@@ -325,6 +335,14 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		// TEST HARNESS: the built-in MCP catalog plus one entry for the fake OAuth server above, so the connector gallery's
 		// Connect runs the real sign-in against a test double.
 		MCPCatalog: catalog,
+		// TEST DOUBLES for the CI runners (decision P56): a fake GitHub with one private and one public repository, and
+		// stand-in runners that print the real runner's job lines. Nothing reaches GitHub, no runner program or container
+		// engine runs. The Linux stand-in has one job queued, so the first Linux runner added runs it.
+		Runners: func(p *runners.Pool) {
+			p.API = func(context.Context) (host.API, error) { return runnerGitHub, nil }
+			p.Launchers = map[runners.Kind]runners.Launcher{runners.Windows: runnerWin, runners.Linux: runnerLinux}
+			p.Machine = "e2e-pc"
+		},
 	})
 	if err != nil {
 		return err

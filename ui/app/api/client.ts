@@ -14,6 +14,7 @@ import { createSetupClient, type SetupClient } from './setupClient.ts';
 import { createLeadClient, type LeadClient } from './leadClient.ts';
 import { createChatClient, type ChatClient } from './chatClient.ts';
 import { createWSLClient, type WSLClient } from './wslClient.ts';
+import { createRunnersClient, type RunnersClient } from './runnersClient.ts';
 import { createSecurityClient, type SecurityClient } from './securityClient.ts';
 import type {
   AdapterInfo,
@@ -52,7 +53,7 @@ import type {
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const gitConfig = (v: GitConfigStatus | null): GitConfigStatus => ({ trusted: v?.trusted === true, changed: arr(v?.changed), fingerprint: v?.fingerprint ?? '' });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -139,6 +140,7 @@ export function createClient(t: Transport): Client {
     ...createChatClient(t),
     ...createWSLClient(t),
     ...createSecurityClient(t),
+    ...createRunnersClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),

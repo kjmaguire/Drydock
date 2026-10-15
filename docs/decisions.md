@@ -152,3 +152,22 @@ Open, owner action:
   WinGet, Scoop, Chocolatey and `go install` use. `docs/security-scan.md` sections 4 and 5. **Not verified:** the Wails
   dialog and the registry read on a PC (built and vetted for Windows; tested here with the e2e harness's labelled stand-in
   dialog and a replaced folder list).
+- **P56. CI runners on the PC for private repositories (2026-10-15, on the owner's request).** Asked whether Drydock should
+  set up GitHub Actions self-hosted runners, the owner wanted it OS-agnostic: Drydock builds apps of any kind, so the runner
+  for a job should depend on the operating system the job needs. Built: per private repository, a **Windows** runner (on the
+  PC, as the person, in a fresh folder per job on the first Dev Drive, else the app's data folder, or a chosen folder) and a
+  **Linux** runner (a fresh container per job on Docker Desktop, which runs on WSL 2: no drives mounted, no engine socket,
+  resource limits); workflows choose with `runs-on: [self-hosted, Windows|Linux, drydock]`. Every runner is ephemeral and
+  registered just in time (`generate-jitconfig`), takes one job, and its folder or container and its registration are
+  deleted afterwards, so `_work`, tool caches and Docker leftovers never accumulate (the disk-cleanup cron jobs a long-lived
+  runner needs are designed away). The newest runner release is used only after its SHA-256 matches the one in its release
+  notes. Its one-job configuration passes in the runner's environment, never on a command line or in a file, log, event or
+  the database. Rules: private repositories only (public and internal refused, re-checked before every registration;
+  GitHub's own advice, and the reason the owner's public Drydock repository keeps GitHub's runners), an administered
+  repository, a person's action for every change, the person's explicit acceptance that a Windows runner's jobs run as them,
+  at most 8 runners, a job waits while less than 10 GB is free. **Runners only run CI**: Drydock's existing pull-request
+  loop reads the results, has the worker fix a failure and pushes (docs/github.md section 5); a runner never pushes or holds
+  write credentials. Connections page, "CI runners". `docs/ci-runners.md`. **Verified** with test doubles end to end, and in
+  CI on every push against the real newest release on Windows and Linux (download, SHA-256, unpack or image build, start,
+  configuration read from the environment), nothing registered. **Not verified:** a real job on a real private repository on
+  a PC, Docker Desktop on Windows, and `fsutil`'s wording for a Dev Drive.

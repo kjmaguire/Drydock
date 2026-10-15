@@ -32,6 +32,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/runners"
 	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -79,6 +80,9 @@ type Config struct {
 	// app sets it (app/app_windows.go); without it a person types a full path instead. The e2e harness sets a labelled
 	// stand-in.
 	PickFile func(ctx context.Context, p FilePick) (string, error)
+	// Runners, when set, adjusts the CI runners' pool before it starts (decision P56): tests and the e2e harness replace
+	// GitHub, the release and the launchers with labelled test doubles.
+	Runners func(p *runners.Pool)
 }
 
 // FilePick is what a file dialog asks for.

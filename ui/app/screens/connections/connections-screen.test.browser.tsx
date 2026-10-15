@@ -73,7 +73,10 @@ const report = (over: Partial<ConnectionReport> = {}): ConnectionReport => ({
 
 function show(client: Partial<Client>) {
   // the MCP gateway's state (the panel below the tiles) is a TEST DOUBLE too: Claude verified, nothing else reported
-  const gateway: Partial<Client> = { mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }) };
+  const gateway: Partial<Client> = {
+    mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }),
+    runnersGet: async () => ({ kinds: [], devDrives: [], slots: [], minFreeBytes: 10 * 2 ** 30, max: 8 }),
+  };
   const r = mount(<ConnectionsScreen />, testServices({ ...gateway, ...client }));
   return r;
 }

@@ -189,6 +189,7 @@ func tools(ctx context.Context) []Item {
 		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", ""},
 		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", ""},
 		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", ""},
+		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner"},
 	}
 	used := toolUsed()
 	var items []Item

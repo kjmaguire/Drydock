@@ -7,7 +7,8 @@
     "tool:go-licenses": "2.0.1",
     "tool:wrangler": "4.149.0",
     "tool:docker": "29.8.2",
-    "tool:golangci-lint": "2.14.0"
+    "tool:golangci-lint": "2.14.0",
+    "tool:actions-runner": "2.338.0"
   },
   "notes": {
     "go": {
@@ -221,6 +222,10 @@
     },
     "tool:golangci-lint": {
       "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
+    },
+    "tool:actions-runner": {
+      "role": "The CI runners (decision P56) run GitHub's own runner for a person's private repositories: unpacked on the PC for Windows jobs, built into a container image (FROM ubuntu:24.04, the current Ubuntu LTS) for Linux jobs.",
+      "note": "Not pinned: Drydock downloads the newest stable release when a runner starts and runs it only after checking its SHA-256 against the one the release notes publish (GitHub stops serving runners that fall far behind). The version shown is the newest at the last audit. CI downloads, checks and starts it on every push (TestRealRunnerRelease); nothing is registered there."
     }
   }
 }
