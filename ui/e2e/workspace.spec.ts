@@ -20,7 +20,8 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   // Home: the projects and the workspace areas; the switcher says Home
   await sidebar(page).getByTestId('nav-workspace').click();
   await expect(page).toHaveURL(/\/home$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+  // Home greets by the time of day (Crew HQ, decision P64); the switcher says where you are
+  await expect(page.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening)$/ })).toBeVisible();
   await expect(projectSwitcher(page)).toContainText('Home');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-needs-you')).toHaveCount(0);
