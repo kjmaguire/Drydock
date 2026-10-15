@@ -5,6 +5,7 @@ import { css, type Handle } from 'remix/component';
 import { BadgeCheck, CircleHelp, CirclePause, Eye, Inbox, OctagonX } from 'lucide';
 import { agentName, formatDateTime } from '../../lib/format.ts';
 import { services, watch } from '../../state/services.tsx';
+import { buttonStyle } from '../../ui/button.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
@@ -20,39 +21,33 @@ const KIND_ICON: Record<string, IconNode> = {
   watchdog_pause: CirclePause,
 };
 
-const listCss = css({
-  display: 'grid',
-  gap: '0',
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  background: t.bgSurface,
-  overflow: 'hidden',
-});
+// one card per item (Crew HQ): the whole card is the link to where the item is decided
+const listCss = css({ display: 'grid', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
 
 const itemCss = css({
-  borderTop: `1px solid ${t.border}`,
-  '&:first-child': { borderTop: '0' },
   '& > a': {
     display: 'grid',
-    gridTemplateColumns: '32px 1fr auto',
-    gap: `2px ${t.s3}`,
+    gridTemplateColumns: '40px 1fr auto',
+    gap: `3px ${t.s3}`,
     alignItems: 'start',
-    padding: `${t.s3} ${t.s4}`,
+    padding: '18px',
+    border: `1px solid ${t.mentionBorder}`,
+    borderRadius: t.rXl,
+    background: t.mentionBg,
     color: t.text,
     textDecoration: 'none',
-    transition: `background-color ${t.fast} ${t.ease}`,
+    transition: `border-color ${t.fast} ${t.ease}, transform ${t.fast} ${t.ease}`,
   },
-  '& > a:hover': { background: t.bgHover, textDecoration: 'none' },
-  '& .title': { fontWeight: '600', minWidth: '0', overflowWrap: 'anywhere' },
+  '&[data-urgent="true"] > a': { borderColor: t.danger, background: t.dangerSoft },
+  '& > a:hover': { textDecoration: 'none', transform: 'translateY(-1px)' },
+  '& .title': { fontWeight: '650', fontSize: t.textLg, letterSpacing: '-0.01em', minWidth: '0', overflowWrap: 'anywhere' },
   '& .meta': { gridColumn: '2', display: 'flex', alignItems: 'center', gap: t.s2, color: t.textMuted, fontSize: t.textSm },
-  '& .detail, & .hint': { gridColumn: '2', color: t.textMuted, fontSize: t.textSm },
-  '& .hint': { color: t.accentText },
+  '& .detail, & .hint': { gridColumn: '2', color: t.textMuted, fontSize: t.textSm, lineHeight: '1.5' },
+  '& .hint': { color: t.text, marginTop: '4px' },
+  '& .open': { gridColumn: '2', marginTop: t.s2, justifySelf: 'start' },
 });
 
-const kindIcon = css({ display: 'grid', placeItems: 'center', width: '32px', height: '32px', borderRadius: t.rMd });
+const kindIcon = css({ display: 'grid', placeItems: 'center', width: '40px', height: '40px', borderRadius: '50%' });
 
 export function NeedsYouScreen(handle: Handle) {
   const s = services(handle);
@@ -62,7 +57,7 @@ export function NeedsYouScreen(handle: Handle) {
     const items = q.data ?? [];
     const agents = s.project.agentList;
     return (
-      <Page title="Needs you" icon={Inbox} subtitle={q.data ? `${items.length} waiting` : undefined}>
+      <Page title="Needs you" icon={Inbox} subtitle={q.data ? `${items.length} waiting · each opens where you decide it` : undefined}>
         <ErrorNote error={q.error} what="Could not load the inbox" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && items.length === 0 ? (
@@ -76,11 +71,15 @@ export function NeedsYouScreen(handle: Handle) {
               const urgent = it.severity <= 1;
               const hint = needsHint(it);
               return (
-                <li key={it.key} mix={itemCss} data-testid="needs-item" data-kind={it.kind}>
+                <li key={it.key} mix={itemCss} data-testid="needs-item" data-kind={it.kind} data-urgent={urgent ? 'true' : undefined}>
                   <a href={needsTarget(it)}>
-                    <span mix={kindIcon} style={{ background: urgent ? 'var(--danger-soft)' : 'var(--warning-soft)', color: urgent ? 'var(--danger)' : 'var(--warning)' }}>
-                      <Icon icon={KIND_ICON[it.kind] ?? Inbox} size={16} />
-                    </span>
+                    {it.agentId ? (
+                      <Avatar id={it.agentId} name={agentName(it.agentId, agents)} size={40} kind="agent" status={urgent ? 'var(--danger)' : 'var(--warning)'} />
+                    ) : (
+                      <span mix={kindIcon} style={{ background: urgent ? 'var(--danger-soft)' : 'var(--warning-soft)', color: urgent ? 'var(--danger)' : 'var(--warning)' }}>
+                        <Icon icon={KIND_ICON[it.kind] ?? Inbox} size={18} />
+                      </span>
+                    )}
                     <span class="title">{it.title}</span>
                     <Badge tone={urgent ? 'err' : 'warn'}>{KIND_LABEL[it.kind] ?? it.kind}</Badge>
                     <span class="meta">
@@ -99,6 +98,9 @@ export function NeedsYouScreen(handle: Handle) {
                         {hint}
                       </span>
                     ) : null}
+                    <span class="open" mix={buttonStyle('primary', 'sm')}>
+                      Open and decide
+                    </span>
                   </a>
                 </li>
               );

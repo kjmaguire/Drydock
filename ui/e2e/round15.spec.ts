@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { createProject, freshRepo, projectNav } from './helpers';
+import { createProject, freshRepo, projectNav, openRoom } from './helpers';
 
 // The repository configuration guard (docs/security.md s3), against the real core: a project whose repository gets a new
 // git setting outside Drydock shows the banner on its screens, naming the setting; only the Trust button trusts it, and a
@@ -9,6 +9,7 @@ test('repository git configuration: a changed setting shows the banner, and trus
   const repo = freshRepo();
   await createProject(page, 'git-guard', repo);
   const banner = page.getByRole('region', { name: 'Repository git configuration changed' });
+  await openRoom(page, 'general');
   await expect(page.getByRole('textbox', { name: /^Message to/ })).toBeVisible();
   await expect(banner).toHaveCount(0);
 

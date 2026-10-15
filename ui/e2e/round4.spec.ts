@@ -324,7 +324,9 @@ test('licensed test harness: no license is read-only and says why; expired is re
 test('the main harness page also loads through appUrl, and no route shows a license banner in a build without licensing', async ({ page }) => {
   await page.goto(appUrl());
   await page.goto(appUrl() + '/home');
-  await expect(page.getByTestId('nav-license')).toBeVisible();
+  await expect(page.getByTestId('nav-settings')).toBeVisible();
+  await workspaceNav(page, 'nav-license');
+  await expect(page.getByTestId('nav-license')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('license-banner')).toHaveCount(0);
   // an old #/ link still opens its screen (the UI routes by path now)
   await page.goto(appUrl() + '#/settings');

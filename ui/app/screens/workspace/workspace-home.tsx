@@ -29,6 +29,7 @@ import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Monogram } from '../../shell/project-switcher.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Avatar } from '../../ui/data.tsx';
 import { NewChatDialog } from '../chats/new-chat-dialog.tsx';
 import { chatTitle, relTime } from '../chats/chats.ts';
 import { ErrorNote, Empty, Loading, Notice } from '../../ui/feedback.tsx';
@@ -53,7 +54,22 @@ const glyph = css({
 });
 // a tile that is a link: the tile look, without the link underline
 const linkTile = css({ textDecoration: 'none', '&:hover': { textDecoration: 'none' } });
-const projectGrid = css({ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' });
+const projectGrid = css({ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: t.s3 });
+// a project card: the monogram, the name and where it lives, its crew as a stack of dots, and what needs you there
+const projectCard = css({
+  alignItems: 'flex-start',
+  padding: '18px',
+  borderRadius: t.rXl,
+  '& > span:last-child': { display: 'grid', gap: '6px' },
+  '& strong': { fontSize: t.textLg, letterSpacing: '-0.01em' },
+  '& .crew': { display: 'flex', alignItems: 'center', gap: t.s2, marginTop: '4px', color: t.textMuted, fontSize: t.textSm },
+  '& .crew .stack': { display: 'flex' },
+  '& .crew .stack > *': { marginLeft: '-7px', boxShadow: `0 0 0 2px ${t.bgSurface}` },
+  '& .crew .stack > :first-child': { marginLeft: '0' },
+  '& small[data-tone]': { marginTop: '4px', padding: '6px 10px', borderRadius: t.rMd, background: t.bgSidebar, fontWeight: '550' },
+  '& small[data-tone="warn"]': { background: t.warningSoft, color: t.warning },
+  '& small[data-tone="bad"]': { background: t.dangerSoft, color: t.danger },
+});
 const sectionsCss = css({ display: 'grid', gap: t.s8 });
 
 /** One workspace area as a link tile: an icon, its name and what it holds. */
@@ -77,7 +93,7 @@ function AreaTile(handle: Handle<{ href: string; icon: IconNode; title: string; 
 }
 
 /** A project as a link tile: opening it selects the project first, so its pages open under it. */
-function ProjectTile(handle: Handle<{ project: Project; needs: number | null | undefined; onNavigate?: (href: string) => void }>) {
+function ProjectTile(handle: Handle<{ project: Project; needs: number | null | undefined; crew?: readonly { id: string; name: string }[]; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   const open = (e: MouseEvent) => {
     e.preventDefault();
@@ -86,15 +102,27 @@ function ProjectTile(handle: Handle<{ project: Project; needs: number | null | u
     else void navigate(routes.home.href());
   };
   return () => {
-    const { project: p, needs } = handle.props;
+    const { project: p, needs, crew } = handle.props;
     const n = needsText(needs);
     return (
       <li>
-        <a href={routes.home.href()} mix={[tileCss, linkTile, on<HTMLAnchorElement, 'click'>('click', open)]} data-testid="home-project" data-project={p.id} aria-label={`Open ${p.name}`}>
-          <Monogram name={p.name} size={32} />
+        <a href={routes.home.href()} mix={[tileCss, linkTile, projectCard, on<HTMLAnchorElement, 'click'>('click', open)]} data-testid="home-project" data-project={p.id} aria-label={`Open ${p.name}`}>
+          <Monogram name={p.name} size={40} />
           <span>
             <strong>{p.name}</strong>
             <small style={{ fontFamily: projectHasRepo(p) ? t.mono : undefined }}>{projectWhere(p)}</small>
+            {crew && crew.length > 0 ? (
+              <span class="crew" aria-hidden="true">
+                <span class="stack">
+                  {crew.slice(0, 6).map((a) => (
+                    <Avatar key={a.id} id={a.id} name={a.name} size={22} kind="agent" />
+                  ))}
+                </span>
+                <span>
+                  {crew.length} {crew.length === 1 ? 'agent' : 'agents'}
+                </span>
+              </span>
+            ) : null}
             <small data-tone={n.tone || undefined} data-testid="home-project-needs">
               {n.text}
             </small>
@@ -108,7 +136,14 @@ function ProjectTile(handle: Handle<{ project: Project; needs: number | null | u
 const chatForm = css({
   display: 'grid',
   gap: t.s2,
-  '& textarea': { width: '100%', minHeight: '76px', resize: 'vertical', fontSize: t.textMd },
+  padding: `${t.s4} ${t.s4} ${t.s3}`,
+  borderRadius: '24px',
+  borderColor: t.borderStrong,
+  boxShadow: `0 18px 50px -30px ${t.scrim}`,
+  '&:focus-within': { borderColor: t.textFaint },
+  '& .row': { display: 'flex', alignItems: 'flex-start', gap: t.s3 },
+  '& textarea': { width: '100%', minHeight: '72px', resize: 'vertical', padding: '6px 0 0', border: '0', background: 'transparent', fontSize: t.textLg, boxShadow: 'none' },
+  '& textarea:focus-visible': { boxShadow: 'none' },
 });
 const chatBar = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, '& small': { flex: '1', minWidth: '220px', color: t.textMuted, fontSize: t.textSm } });
 const recentCss = css({
@@ -202,7 +237,9 @@ function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
           ]}
           data-testid="home-chat-form"
         >
-          <textarea
+          <div class="row">
+            <Avatar id="claude" name="Claude Code" size={36} kind="agent" />
+            <textarea
             aria-label="Message to Claude Code"
             placeholder="Ask Claude Code anything. Ctrl+Enter starts the chat."
             value={text}
@@ -215,7 +252,8 @@ function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
                 }
               }),
             ]}
-          />
+            />
+          </div>
           <div mix={chatBar}>
             <small>Runs in a private folder Drydock makes for the chat. A folder of your own, another agent CLI, skills and MCP servers: Options.</small>
             <Button variant="ghost" icon={SlidersHorizontal} data-testid="home-chat-options" mix={[on('click', () => ((dialog = true), void handle.update()))]}>
@@ -285,11 +323,27 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
     when: (e) => ['approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived'].some((p) => e.type.startsWith(p)),
   });
 
+  // each project's crew, for the dots on its card (a list that cannot be read leaves the card without them)
+  const crews = query(handle, {
+    load: async () => {
+      const list = s.workspace.projectList;
+      const read = await Promise.allSettled(list.map((p) => s.client.agentList(p.id)));
+      return Object.fromEntries(list.map((p, i) => {
+        const r = read[i];
+        return [p.id, r?.status === 'fulfilled' ? r.value : []];
+      })) as Record<string, { id: string; name: string }[]>;
+    },
+    key: () => s.workspace.projectList.map((p) => p.id),
+    enabled: () => s.workspace.projectList.length > 0,
+    when: (e) => e.type.startsWith('agent.'),
+  });
+
   return () => {
     const ws = s.workspace;
     const projects = ws.projectList;
+    const hour = new Date().getHours();
     return (
-      <Page title="Home" icon={House} wide testId="workspace-home" subtitle="A chat, your projects, and everything they share">
+      <Page title={hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'} icon={House} wide testId="workspace-home" subtitle="A chat, your projects, and everything they share">
         <div mix={sectionsCss}>
           {flash ? (
             <Notice tone={flash.tone} role="status" testId="home-flash">
@@ -323,7 +377,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
             {projects.length > 0 ? (
               <ul mix={[tileGrid, projectGrid]} aria-label="Projects">
                 {projects.map((p) => (
-                  <ProjectTile key={p.id} project={p} needs={needs.data?.[p.id]} onNavigate={handle.props.onNavigate} />
+                  <ProjectTile key={p.id} project={p} needs={needs.data?.[p.id]} crew={crews.data?.[p.id]} onNavigate={handle.props.onNavigate} />
                 ))}
               </ul>
             ) : null}

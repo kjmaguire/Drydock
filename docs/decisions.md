@@ -313,3 +313,23 @@ Open, owner action:
   task outcome and is left out of the routing report (a review finding, fixed the same day). `docs/model-routing.md`, "As built:
   every turn of an agent is routed". **Not routed:** the team lead's and the recommendation turns (P52), the planner. **Not
   verified:** with a real CLI (the scripted fake agent stands in).
+- **P64. Crew HQ: the UI's second design (2026-10-15, on the owner's request).** The owner found the Linear-style UI "okay, but
+  plain", asked for a facelift inspired by OpenAI's Dots, X's Grok Bot and Amp, rejected a first pass that only restyled the
+  sidebar, and chose "Crew HQ" from three full redesigns shown as mockups (an inbox-and-board tool, a conversation-first
+  app, and this). The look: a warm light canvas with white cards, black pill buttons and blue links (the dark theme is the
+  same page at night); every agent is a "dot", a disc in its own bright colour with two rounded-square eyes that blink,
+  look around while it works, look up while it waits on you and close while it is paused (`ui/data.tsx` Avatar; the eyes
+  are decoration, presence is always in words beside them). The navigation: the sidebar's 38 links in 8 groups became one
+  top bar with five tabs of a project (**Overview, Tasks, Rooms, Crew, Knowledge**) or four of the workspace (Home, Chats,
+  Library, Security scan), search, the bell (Needs you, with its count) and the gear (Settings). A tab with sub-pages shows
+  them as pills under the bar (Tasks: Board, Plan, Pull requests, Milestones; Knowledge: Requirements, Expert packs, Skills,
+  Memory, Repo map; Overview: Activity, Budgets, Evals report, Security; Library: Agents and MCP servers, Skills); every
+  settings page sits in a rail behind the gear (this project, the workspace, the app); the rooms in a rail on the Rooms tab.
+  Nothing was removed: every route, screen, label and test id survives, and `ui/e2e/helpers.ts` knows which hub holds
+  which link. The project's home is the new **Overview** (a greeting with the day's numbers, what needs you, the crew as
+  dots with what each is doing, the tasks in motion, the rooms) instead of a redirect to #general; the **Knowledge** tab
+  gathers requirements, expert packs, skills, memory and the repo map. Approvals still happen only where the item is
+  decided (the task page, the project's Integrations), never from a card. Tests: `ui/app/shell/topbar.test.browser.tsx`
+  (the bar, the hubs, the rails), `styles/contrast.test.ts` (every text pair of the new tokens at 4.5:1 in both themes),
+  the screens' browser tests, and the whole e2e suite under the new navigation. **Not verified:** on Windows by a person
+  (CI builds and tests it), and whether the dots read well to someone who did not ask for them.

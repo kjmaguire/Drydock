@@ -139,7 +139,9 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   for (const src of await usage.evaluateAll((els) => els.map((e) => e.getAttribute('data-source')))) expect(['reported', 'estimated']).toContain(src);
   await expect(page.getByTestId('task-cost').locator('xpath=..')).toContainText(/reported|estimated/);
 
-  // the Agent Inspector: runs with PID and working directory, usage with sources
+  // the Agent Inspector (from the details panel's Agents tab: the thread opened earlier still holds the panel): runs with PID
+  // and working directory, usage with sources
+  await page.getByRole('complementary', { name: 'Details' }).getByRole('tab', { name: 'Agents' }).click();
   await page.getByRole('button', { name: 'Inspect' }).first().click();
   const insp = page.getByTestId('inspector');
   await expect(insp).toBeVisible();

@@ -26,25 +26,40 @@ Transport: `ui/app/api/transport.ts` (HTTP + Server-Sent Events) and `ui/app/api
 - The UI holds no authority: SQLite is the single authority (brief 3). The UI is a projection of persisted events plus service calls; it can be closed and reopened at any time and must catch up from the log (brief 24, Slice 1A).
 - Estimated and reported numbers are never mixed silently (brief 7): every token or cost figure carries a source badge (`reported` or `estimated`), and a value a CLI does not report is shown as `not reported`, never as 0.
 
-## 2. Layout (brief 21)
+## 2. Layout (brief 21; rebuilt as Crew HQ, decision P64)
 
 ```
-+-----------+---------------------------------------------+------------------+
-| Left      | Center                                      | Right column     |
-| sidebar   | conversation (message cards + composer)     | tabs: Thread |   |
-|           | or a page (Tasks, Workflow, Connections...) | Task | Inspector |
-|           |                                             |                  |
-|           +---------------------------------------------+------------------+
-|           | Bottom dock: Terminal | Diff | Logs | Activity (model/tokens)   |
-+-----------+-------------------------------------------------------------- +
++----------------------------------------------------------------------------------+
+| Top bar: mark | project switcher | Overview Tasks Rooms Crew Knowledge | search bell gear |
+| Hub pills (Tasks: Board Plan Pull requests Milestones; Knowledge: ...; Overview: ...)     |
++-----------+-----------------------------------------------------+------------------+
+| Rail      | Center: a page (Overview, the Tasks board, a task,   | Right column     |
+| (Rooms or | Crew, Knowledge, Settings...) or a conversation     | tabs: Agents |   |
+| Settings) | (message cards + composer)                          | Task | Thread |  |
+|           |                                                     | Inspector        |
+|           +-----------------------------------------------------+------------------+
+|           | Bottom dock: Terminal | Diff | Logs | Activity (model/tokens)           |
++-----------+-----------------------------------------------------------------------+
 ```
 
-- **Left sidebar (fixed width, collapsible):** the Drydock mark and the project switcher (a menu: Home, the projects as radio items, New project, App settings), the search button, then one of two sets of links (decision P51). **On a workspace page** (Home, Chats, the Library's Skills and Agents and MCP servers, Integrations, Connections, Providers, Routing, License, Backups, Export and import, Support bundle, Settings, New project; and every page while there is no project): Home, Chats, **Projects** (one link per project, which opens it, and New project), **Library** (Skills, Agents and MCP servers), **Connect** (Integrations, Connections, Providers, Routing) and **App** (License, Backups, Export and import, Support bundle, Settings and About); the switcher says Home. **On a project's page**: Home (back to the workspace), **Needs you** with its count, Tasks, Pull Requests, Plan, Team, Activity, the channels, task channels and DMs, the Project section (Security, Integrations (the project's own, `/project/integrations`), Milestones, Budgets, Evals report, Project settings), Knowledge (Expert packs, Requirements, Skills, Memory) and the agents; the switcher names the project. Only entries whose feature exists are rendered; section 4 lists what is absent per slice.
+- **Top bar (`ui/app/shell/topbar.tsx`, the "Main" navigation landmark):** the Drydock mark (on a project's page the way
+  back to Home), the project switcher (a menu: Home, the projects as radio items, New project, App settings), then the tabs.
+  **On a project's page:** Overview (`/`), Tasks, Rooms, Crew (`/team`), Knowledge. **On a workspace page** (Home, Chats, the
+  Library, Security scan, New project; and every page while there is no project): Home, Chats, Library, Security scan; the
+  switcher says Home. Then search (Ctrl+K), the bell (Needs you, `/needs-you`, with the count that needs you; only with a
+  project), the gear (Settings) and the event stream's state. The arrow keys move along the bar.
+- **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a tab with sub-pages shows them as pills under the
+  bar: Tasks (Board, Plan, Pull requests, Milestones), Knowledge (Overview, Requirements, Expert packs, Skills, Memory, Repo
+  map), Overview (Overview, Activity, Budgets, Evals report, Security), Library (Agents and MCP servers, Skills).
+- **Rails:** on the Rooms tab, the project's channels, task rooms and direct messages (the "Rooms" navigation; a room is
+  named without "#"); behind the gear, every settings page grouped as this project (Project settings, Integrations), the
+  workspace (Integrations, Connections, Providers, Routing) and the app (Settings and About, License, Backups, Export and
+  import, Support bundle). Only entries whose feature exists are rendered; section 4 lists what is absent per slice.
 - **Center:** either a conversation (a message list paged newest-first and windowed: only the rows near the view are in the DOM; section 6.4) with the composer (mentions, slash commands, `[DECISION] [TODO] [STATUS] [RESULT]` markers, attachments), or a page (Tasks, Task review, Workflow, Pull Requests, Connections, Providers, Settings). One center view at a time; back/forward history is kept per window.
 - **Repository configuration banner (built 2026-10-11, `ui/app/shell/repo-config-banner.tsx`):** above every screen of a project whose repository's own git configuration, hooks or `info/attributes` changed since a person last trusted them (`project.gitConfig` answers `trusted: false`; docs/security.md s3), a warning region named "Repository git configuration changed" says so in plain words, lists the changed items (config keys, `hooks/<file>`, `info/attributes`; names only, never values) and offers **Trust this configuration**. Only that click trusts, and it sends the fingerprint of the state on screen (`project.trustGitConfig`); a configuration that changed again since is refused by the core, and the banner then shows the newer items to review again. The status is re-read on `security.repo_config_trusted` (also published when a run's approval trusted it), approval and request events, a reopened stream and window focus (a change made in a terminal publishes no event). Not shown for a project without a repository; read-only turns the button off.
 - **Right column (resizable, collapsible):** tabs Thread, Task details, Agent Inspector. Selecting an agent presence dot, a card author or a task opens the matching tab. It never shows a feature that is not built.
 - **Bottom dock (resizable, collapsible):** Terminal (xterm.js, one tab per terminal), Diff (Monaco diff for the selected task), Logs (agent raw output and process stderr), Activity (model and token activity: per-run usage rows, source badges). The dock keeps its tab state per project.
-- Window chrome: Wails window (WebView2). Minimum supported layout width: 1100 px with the right column collapsed; below 900 px the sidebar collapses to icons (**proposal**, not measured on Windows).
+- Window chrome: Wails window (WebView2). Minimum supported layout width: 1100 px with the right column collapsed; below 1100 px the search box shrinks to its icon (measured in the e2e layout audit at 1366 px; narrower windows are a **proposal**, not measured on Windows).
 
 ## 3. Screens that exist in Slices 1A-1E
 

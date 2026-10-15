@@ -32,7 +32,7 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts)
-  shell/              sidebar (with the project switcher), details panel, dock host, command palette, license banner
+  shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
                       properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals)
@@ -92,26 +92,31 @@ export function Thing(handle: Handle<{ id: string }>) {
 
 ## Design
 
-Dense and quiet (Linear), chat-first. The shell is one sidebar, the page or conversation, and the details panel:
+Crew HQ (decision P64): light and friendly, the agents as characters. A warm canvas (`--bg-app`) with white cards
+(radius 16-22px), black pill buttons, blue links; the dark theme is the same page at night (every colour is a
+`light-dark()` token in `styles/app.css`, and `styles/contrast.test.ts` holds every text pair at 4.5:1). The shell is one top
+bar, the hub's pills, the page (with a rail beside it on Rooms and Settings), and the details panel beside a conversation:
 
-- **Sidebar** (`shell/sidebar.tsx`): at the top a monochrome Drydock mark, a slash, and the **project switcher**
-  (`shell/project-switcher.tsx`: neutral monogram square + project name + chevron, accessible name "Switch project"). It
-  opens the kit `Menu` with the projects as `menuitemradio` (the current one checked), then "New project…" and "App
-  settings"; Enter, Space or the arrow keys open it. With no project it reads "No project" and still offers New project.
-  Then search (Ctrl+K), the project's screens, channels, task channels, direct messages, the Project, Knowledge and
-  **Workspace** groups (Library, Integrations, Connections, Providers, Routing, License, Backups, Data, Support,
-  Settings: always present, also in the Ctrl+K palette), agents, and the stream status. There is no project rail.
-- **Rooms are named without "#"**: a small lucide icon at reduced opacity (`roomIcon(kind)` in `ui/icon.tsx`:
-  message-square for channels, git-branch for task channels), then the name. A link's accessible name starts with the
-  room name (an unread count adds ", 3 unread").
-- **Counts are quiet**: the unread count is a plain muted number; "Needs you" keeps red, but as a soft tint
-  (`dangerSoft` with `danger` text), never a bright pill.
-- **Avatars** (`Avatar` in `ui/data.tsx`): initials on a neutral surface tinted by a low-chroma per-id hue, readable in
-  both themes. People are round; agents, projects and tools are rounded squares (6px radius at 24-28px), and an agent at
-  24px or more carries a small bot badge unless a presence dot takes that corner.
-- **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: a 28px avatar, one author line (name,
-  a quiet outlined role label, time), consecutive messages from the same author grouped under it with the time in the
-  gutter on hover, a faint hover tint. Author names are not colored. Day dividers and the "New" line are thin rules.
+- **Top bar** (`shell/topbar.tsx`, landmark "Main"): the Drydock mark (a monochrome dot with the agents' eyes; on a
+  project's page it is the way home), the **project switcher** (`shell/project-switcher.tsx`: monogram + name + chevron,
+  accessible name "Switch project"; it opens the kit `Menu` with the projects as `menuitemradio`, then "New project…" and
+  "App settings"), the project's tabs **Overview, Tasks, Rooms, Crew, Knowledge** (or the workspace's **Home, Chats,
+  Library, Security scan**), search (Ctrl+K), the bell (Needs you, with its count) and the gear (Settings). There is no
+  sidebar.
+- **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills under the bar (landmark "Section"); the Rooms rail lists the
+  rooms (landmark "Rooms", `data-rooms`); the Settings rail lists every settings page (landmark "Settings"). The old
+  sidebar's test ids live on: `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts`
+  opens the hub first when a link is not on the page.
+- **Rooms are named without "#"**: a small lucide icon (`roomIcon(kind)` in `ui/icon.tsx`), then the name; a direct
+  message shows the agent's dot. A link's accessible name starts with the room name (an unread count adds ", 3 unread").
+- **Agents are dots** (`Avatar` with `kind="agent"` in `ui/data.tsx`): a disc in a stable per-id hue with two
+  rounded-square eyes whose mood follows `status` (the presence colour): they blink when idle, look around while working,
+  look up while waiting on you, close while paused. Decoration only: presence is always in words beside the avatar.
+  People are round with initials; projects and tools are rounded squares with initials.
+- **Pages** (`Page` in `ui/layout.tsx`) put a 28px title in the body with the subtitle under it and the actions on the
+  right; `Section` titles are 16px. A conversation screen (`flush`) keeps a 56px bar instead.
+- **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: a 28px dot, one author line (name, a
+  quiet outlined role label, time), consecutive messages from the same author grouped under it, a faint hover tint.
 
 Use the kit before writing CSS:
 
