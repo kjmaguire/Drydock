@@ -8,11 +8,19 @@ import (
 	"github.com/kjmaguire/drydock/internal/checks"
 )
 
-// scanDeps runs osv-scanner over dir (`scan source --format json -r .`) and reads its JSON. Exit codes follow the tool: 0
-// nothing known, 1 vulnerabilities (the JSON names them), 128 no supported lockfile or manifest (skipped), anything else
-// is an error. Only identifiers are kept (checks.ParseOSV): advisory text comes from an outside database.
+// osvArgs are osv-scanner's arguments: `scan source --format json --no-call-analysis=all -r .`. The scan only reads files
+// (decision P61): osv-scanner parses lockfiles and manifests itself, and its call analysis, the one part that runs other
+// programs (Go's is on by default and runs the go toolchain over the repository, which may fetch a toolchain or modules the
+// repository names), is switched off for every language.
+func osvArgs(tool Tool) []string {
+	return append(append([]string(nil), tool.Args...), "scan", "source", "--format", "json", "--no-call-analysis=all", "-r", ".")
+}
+
+// scanDeps runs osv-scanner over dir (osvArgs) and reads its JSON. Exit codes follow the tool: 0 nothing known, 1
+// vulnerabilities (the JSON names them), 128 no supported lockfile or manifest (skipped), anything else is an error. Only
+// identifiers are kept (checks.ParseOSV): advisory text comes from an outside database.
 func scanDeps(ctx context.Context, o *Options, path string, tool Tool) ([]Finding, EngineStatus, string) {
-	args := append(append([]string(nil), tool.Args...), "scan", "source", "--format", "json", "-r", ".")
+	args := osvArgs(tool)
 	r := runTool(ctx, o.Procs, path, args, o.Dir, o.env(), "scan:deps", o.timeout())
 	if ctx.Err() != nil {
 		return nil, Cancelled, ""

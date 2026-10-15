@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -18,9 +19,11 @@ import (
 )
 
 // The security scan (decision P44, docs/security-scan.md): one button runs the three engines of internal/scan over the
-// project's working tree. A scan in progress lives here in memory (its progress counters change many times a second and are
-// read, not published); it is stored when it ends. Events: security.scan.started, security.scan.engine (an engine changed
-// state), security.scan.finished, security.settings. Only a person starts a scan or chooses the rules folder.
+// project's working tree, or (decision P61) over any folder on this computer, without a project: a repository just
+// downloaded can be scanned before it becomes one. A scan in progress lives here in memory (its progress counters change many
+// times a second and are read, not published); it is stored when it ends. Events: security.scan.started, security.scan.engine
+// (an engine changed state), security.scan.finished, security.settings; a folder scan's carry no project and name the folder.
+// Only a person starts a scan or chooses the rules folder.
 
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
@@ -46,15 +49,24 @@ func init() {
 			}
 		})
 		return map[string]Method{
+			// without a project: the tools and the rules folder of folder scans
 			"security.tools": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
 			}) (any, error) {
 				return s.tools(ctx, p.ProjectID), nil
 			}),
+			// {projectId, rulesDir} for a project, {workspace: true, rulesDir} for folder scans
 			"security.settings.set": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
+				Workspace bool   `json:"workspace"`
 				RulesDir  string `json:"rulesDir"`
 			}) (any, error) {
+				if p.Workspace {
+					if p.ProjectID != "" {
+						return nil, errors.New("give a project or the workspace, not both")
+					}
+					return s.setWorkspaceRulesDir(ctx, p.RulesDir, c.Human())
+				}
 				return s.setRulesDir(ctx, p.ProjectID, p.RulesDir, c.Human())
 			}),
 			"security.tool.set": bind(func(ctx context.Context, p struct {
@@ -70,26 +82,39 @@ func init() {
 			}) (any, error) {
 				return s.chooseTool(ctx, p.ProjectID, p.Tool, c.Human())
 			}),
-			"security.scan.start": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-			}) (any, error) {
-				return s.start(ctx, p.ProjectID, c.Human())
+			// the scan methods take {projectId} (the project's working tree) or {folder} (a full path, decision P61)
+			"security.scan.start": bind(func(ctx context.Context, p scanTarget) (any, error) {
+				return s.start(ctx, p, c.Human())
 			}),
-			"security.scan.cancel": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-			}) (any, error) {
-				return s.cancel(p.ProjectID)
+			"security.scan.cancel": bind(func(ctx context.Context, p scanTarget) (any, error) {
+				t, err := s.target(ctx, p, false)
+				if err != nil {
+					return nil, err
+				}
+				return s.cancel(t)
 			}),
-			"security.scan.get": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-			}) (any, error) {
-				return s.current(ctx, p.ProjectID)
+			"security.scan.get": bind(func(ctx context.Context, p scanTarget) (any, error) {
+				t, err := s.target(ctx, p, false)
+				if err != nil {
+					return nil, err
+				}
+				return s.current(ctx, t)
 			}),
 			"security.scan.list": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-				Limit     int    `json:"limit"`
+				scanTarget
+				Limit int `json:"limit"`
 			}) (any, error) {
-				return s.list(ctx, p.ProjectID, p.Limit)
+				t, err := s.target(ctx, p.scanTarget, false)
+				if err != nil {
+					return nil, err
+				}
+				return s.list(ctx, t, p.Limit)
+			}),
+			// the recent folder scans of every folder, running ones first (the workspace Security page's history)
+			"security.scan.folders": bind(func(ctx context.Context, p struct {
+				Limit int `json:"limit"`
+			}) (any, error) {
+				return s.folders(ctx, p.Limit)
 			}),
 			"security.scan.report": bind(func(ctx context.Context, p struct {
 				ID string `json:"id"`
@@ -103,18 +128,139 @@ func init() {
 type securityExt struct {
 	c  *Core
 	mu sync.Mutex
-	// running holds each project's scan in progress, by project id
+	// running holds each scan in progress by its key: the project id, or folderKey of a folder scan
 	running map[string]*scan.Run
-	// unstored holds a project's last finished report when the database refused it (StoreError set), until the next scan
+	// unstored holds a key's last finished report when the database refused it (StoreError set), until the next scan
 	unstored map[string]scan.Report
 }
 
-// settingRules + project id holds the project's Opengrep rules folder.
-const settingRules = "security:rules:"
+// scanTarget is what a scan method is asked about: a project, or a folder by its full path (decision P61).
+type scanTarget struct {
+	ProjectID string `json:"projectId"`
+	Folder    string `json:"folder"`
+}
 
+// target is a resolved scanTarget. Key names its scans in memory and in security_scans.project_id: the project id, or
+// "folder:" + the folder (lower case on Windows, where paths are case-insensitive), which no project id can be.
+type target struct {
+	Key       string
+	ProjectID string
+	Folder    string
+	Dir       string // the folder the engines read (set for a scan that starts)
+}
+
+const folderPrefix = "folder:"
+
+func folderKey(folder string) string {
+	if runtime.GOOS == "windows" {
+		folder = strings.ToLower(folder)
+	}
+	return folderPrefix + folder
+}
+
+// target resolves a project or a folder. forStart checks what a scan needs: the project's repository folder is there, or the
+// folder is one Drydock will read (checkFolder). Without forStart a folder only has to be a full path: its history stays
+// readable after the folder is gone.
+func (s *securityExt) target(ctx context.Context, p scanTarget, forStart bool) (target, error) {
+	p.Folder = cleanFolderInput(p.Folder)
+	switch {
+	case p.ProjectID != "" && p.Folder != "":
+		return target{}, errors.New("give a project or a folder to scan, not both")
+	case p.ProjectID != "":
+		t := target{Key: p.ProjectID, ProjectID: p.ProjectID}
+		if !forStart {
+			return t, nil
+		}
+		pr, err := s.c.GetProject(ctx, p.ProjectID)
+		if err != nil {
+			return target{}, err
+		}
+		if pr.RepoPath == "" {
+			return target{}, errors.New("this project has no repository yet: attach one in Project settings, then scan it")
+		}
+		if st, err := os.Stat(pr.RepoPath); err != nil || !st.IsDir() {
+			return target{}, fmt.Errorf("the repository folder %s is not there", pr.RepoPath)
+		}
+		t.Dir = pr.RepoPath
+		return t, nil
+	case p.Folder != "":
+		if !filepath.IsAbs(p.Folder) {
+			return target{}, fmt.Errorf("give the full path of the folder to scan, for example C:\\code\\shop (%q is not one)", p.Folder)
+		}
+		folder := filepath.Clean(p.Folder)
+		if !forStart {
+			return target{Key: folderKey(folder), Folder: folder}, nil
+		}
+		dir, err := s.checkFolder(folder)
+		if err != nil {
+			return target{}, err
+		}
+		return target{Key: folderKey(dir), Folder: dir, Dir: dir}, nil
+	}
+	return target{}, errors.New("say which project or folder to scan")
+}
+
+// cleanFolderInput trims spaces and the quotes Explorer's "Copy as path" adds.
+func cleanFolderInput(s string) string {
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(s), `"`))
+}
+
+// checkFolder says whether a folder may be scanned and returns the folder the engines read (symbolic links resolved, so the
+// tree walk enters it). Refused: what is not there, a file, a whole drive, Drydock's own data folder, a folder inside it
+// (its worktrees and database) and a folder that holds it.
+func (s *securityExt) checkFolder(folder string) (string, error) {
+	st, err := os.Stat(folder)
+	if err != nil {
+		return "", fmt.Errorf("there is no folder at %s", folder)
+	}
+	if !st.IsDir() {
+		return "", fmt.Errorf("%s is a file: give the folder that holds the repository", folder)
+	}
+	dir := folder
+	if real, err := filepath.EvalSymlinks(folder); err == nil {
+		dir = filepath.Clean(real)
+	}
+	if filepath.Dir(dir) == dir || filepath.Dir(folder) == folder {
+		return "", fmt.Errorf("%s is a whole drive: give the repository's own folder", folder)
+	}
+	if data := s.c.cfg.DataDir; data != "" {
+		if real, err := filepath.EvalSymlinks(data); err == nil {
+			data = real
+		}
+		data = filepath.Clean(data)
+		if withinFolder(dir, data) {
+			return "", fmt.Errorf("%s is Drydock's own data folder or inside it: choose the project from the list instead, or give the repository's own folder", folder)
+		}
+		if withinFolder(data, dir) {
+			return "", fmt.Errorf("%s holds Drydock's own data folder (%s): give the repository's own folder", folder, data)
+		}
+	}
+	return dir, nil
+}
+
+// withinFolder reports whether path is dir or inside it, case-insensitive on Windows (within, project_delete.go, is not).
+func withinFolder(path, dir string) bool {
+	if runtime.GOOS == "windows" {
+		path, dir = strings.ToLower(path), strings.ToLower(dir)
+	}
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// settingRules + project id holds the project's Opengrep rules folder; settingWorkspaceRules the folder scans' (P61).
+const (
+	settingRules          = "security:rules:"
+	settingWorkspaceRules = "security:workspace-rules"
+)
+
+// rulesDir is the project's rules folder, or with no project the folder scans'.
 func (s *securityExt) rulesDir(ctx context.Context, projectID string) string {
+	key := settingRules + projectID
+	if projectID == "" {
+		key = settingWorkspaceRules
+	}
 	var v string
-	if err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingRules+projectID).Scan(&v); err == nil {
+	if err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&v); err == nil {
 		return v
 	}
 	return s.c.cfg.ScanRulesDir
@@ -156,7 +302,7 @@ func (s *securityExt) paths(ctx context.Context) scan.Paths {
 // setToolPath stores the program a person chose for a tool; "" goes back to finding it on PATH. Only a person may: the
 // program reads the whole project.
 func (s *securityExt) setToolPath(ctx context.Context, projectID, tool, path, by string) (scan.Tools, error) {
-	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
+	if !isPerson(by) {
 		return scan.Tools{}, errors.New("only a person may choose a scan tool's program")
 	}
 	label, ok := scanTools[tool]
@@ -199,7 +345,7 @@ func (s *securityExt) chooseTool(ctx context.Context, projectID, tool, by string
 	if s.c.cfg.PickFile == nil {
 		return scan.Tools{}, fmt.Errorf("this window cannot open a file dialog: type the full path of %s's program instead", label)
 	}
-	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
+	if !isPerson(by) {
 		return scan.Tools{}, errors.New("only a person may choose a scan tool's program")
 	}
 	path, err := s.c.cfg.PickFile(ctx, FilePick{Title: "Choose " + label + "'s program (" + tool + ".exe)", FilterName: "Programs", FilterPattern: "*.exe"})
@@ -214,59 +360,91 @@ func (s *securityExt) chooseTool(ctx context.Context, projectID, tool, by string
 
 // setRulesDir stores the project's rules folder. Only a person may: the folder decides which rules read the whole project.
 func (s *securityExt) setRulesDir(ctx context.Context, projectID, dir, by string) (scan.Tools, error) {
-	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
+	if !isPerson(by) {
 		return scan.Tools{}, errors.New("only a person may choose the rules folder")
 	}
 	if _, err := s.c.GetProject(ctx, projectID); err != nil {
 		return scan.Tools{}, err
 	}
-	dir = strings.TrimSpace(dir)
+	return s.saveRulesDir(ctx, settingRules+projectID, projectID, dir, by)
+}
+
+// setWorkspaceRulesDir stores the rules folder of folder scans (decision P61); each project keeps its own.
+func (s *securityExt) setWorkspaceRulesDir(ctx context.Context, dir, by string) (scan.Tools, error) {
+	if !isPerson(by) {
+		return scan.Tools{}, errors.New("only a person may choose the rules folder")
+	}
+	return s.saveRulesDir(ctx, settingWorkspaceRules, "", dir, by)
+}
+
+func (s *securityExt) saveRulesDir(ctx context.Context, key, projectID, dir, by string) (scan.Tools, error) {
+	dir = cleanFolderInput(dir)
 	if dir != "" && !filepath.IsAbs(dir) {
 		return scan.Tools{}, errors.New("give the full path of the rules folder (Opengrep runs in the repository, so a relative path would point elsewhere)")
 	}
 	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingRules+projectID, dir)
+		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, dir)
 		return err
 	}); err != nil {
 		return scan.Tools{}, err
 	}
-	s.c.publish(ctx, "security.settings", projectID, map[string]any{"rulesDir": dir, "by": by})
+	data := map[string]any{"rulesDir": dir, "by": by}
+	if projectID == "" {
+		data["workspace"] = true
+	}
+	s.c.publish(ctx, "security.settings", projectID, data)
 	return s.tools(ctx, projectID), nil
 }
 
-// start begins a scan of the project's working tree; one per project at a time.
-func (s *securityExt) start(ctx context.Context, projectID, by string) (scan.Report, error) {
-	p, err := s.c.GetProject(ctx, projectID)
+// isPerson reports whether an identity is a person's ("human:<name>"): only a person starts a scan or chooses what it runs.
+func isPerson(by string) bool { return strings.HasPrefix(by, "human:") && len(by) > len("human:") }
+
+// publish sends a scan event: with the project id for a project's scan, with no project and the folder for a folder scan.
+func (s *securityExt) publish(ctx context.Context, t target, typ string, data map[string]any) {
+	if t.Folder != "" {
+		data["folder"] = t.Folder
+	}
+	s.c.publish(ctx, typ, t.ProjectID, data)
+}
+
+// start begins a scan of a project's working tree or of a folder (decision P61); one per project or folder at a time. Only a
+// person may start one.
+func (s *securityExt) start(ctx context.Context, p scanTarget, by string) (scan.Report, error) {
+	if !isPerson(by) {
+		return scan.Report{}, errors.New("only a person may start a security scan")
+	}
+	t, err := s.target(ctx, p, true)
 	if err != nil {
 		return scan.Report{}, err
 	}
-	if p.RepoPath == "" {
-		return scan.Report{}, errors.New("this project has no repository yet: attach one in Project settings, then scan it")
-	}
-	if st, err := os.Stat(p.RepoPath); err != nil || !st.IsDir() {
-		return scan.Report{}, fmt.Errorf("the repository folder %s is not there", p.RepoPath)
-	}
 	s.mu.Lock()
-	if r, ok := s.running[projectID]; ok {
+	if r, ok := s.running[t.Key]; ok {
 		s.mu.Unlock()
-		return r.Snapshot(), errors.New("a scan of this project is already running")
+		return r.Snapshot(), fmt.Errorf("a scan of this %s is already running", t.noun())
 	}
 	id := ids.New("scn")
-	delete(s.unstored, projectID)
+	delete(s.unstored, t.Key)
 	// the scan outlives the request; close() cancels what is still running when the core closes
-	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: projectID, By: by, Dir: p.RepoPath, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
-		Env: checks.CommandEnv, Paths: s.paths(ctx), RulesDir: s.rulesDir(ctx, projectID), OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(projectID, rep, e) }})
-	s.running[projectID] = run
+	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: t.ProjectID, By: by, Dir: t.Dir, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
+		Env: checks.CommandEnv, Paths: s.paths(ctx), RulesDir: s.rulesDir(ctx, t.ProjectID), NoGit: t.Folder != "", OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(t, rep, e) }})
+	s.running[t.Key] = run
 	// published under the lock: changed() takes it before it can publish an engine or finished event, so started comes first
-	s.c.publish(ctx, "security.scan.started", projectID, map[string]any{"id": id, "by": by})
+	s.publish(ctx, t, "security.scan.started", map[string]any{"id": id, "by": by})
 	s.mu.Unlock()
 	return run.Snapshot(), nil
+}
+
+func (t target) noun() string {
+	if t.Folder != "" {
+		return "folder"
+	}
+	return "project"
 }
 
 // changed is called by the scan after one engine changed state (one event for that engine) and when it ends: the end is
 // stored and published. A report the database refuses is kept in memory with StoreError set, so the page still shows the
 // scan the person watched and says it was not kept.
-func (s *securityExt) changed(projectID string, rep scan.Report, engine scan.EngineID) {
+func (s *securityExt) changed(t target, rep scan.Report, engine scan.EngineID) {
 	ctx := context.Background()
 	if rep.Status == scan.StatusRunning {
 		if engine != "" {
@@ -275,30 +453,31 @@ func (s *securityExt) changed(projectID string, rep scan.Report, engine scan.Eng
 			s.mu.Unlock()
 			for _, e := range st {
 				if e.ID == engine {
-					s.c.publish(ctx, "security.scan.engine", projectID, map[string]any{"id": rep.ID, "engine": e.ID, "status": e.Status})
+					s.publish(ctx, t, "security.scan.engine", map[string]any{"id": rep.ID, "engine": e.ID, "status": e.Status})
 				}
 			}
 		}
 		return
 	}
 	stored := true
-	if err := s.store(ctx, rep); err != nil {
+	if err := s.store(ctx, t, rep); err != nil {
 		s.c.logf("security scan %s: store: %v", rep.ID, err)
-		rep.StoreError = "this report could not be kept in the database (" + s.c.Scanner.Redact(err.Error()) + "); it is shown until the next scan of this project"
+		rep.StoreError = "this report could not be kept in the database (" + s.c.Scanner.Redact(err.Error()) + "); it is shown until the next scan of this " + t.noun()
 		stored = false
 	}
 	s.mu.Lock()
-	delete(s.running, projectID)
+	delete(s.running, t.Key)
 	if !stored {
-		s.unstored[projectID] = rep
+		s.unstored[t.Key] = rep
 	}
 	s.mu.Unlock()
-	s.c.publish(ctx, "security.scan.finished", projectID, map[string]any{"id": rep.ID, "status": rep.Status, "counts": rep.Counts, "summary": rep.Summary, "stored": stored})
+	s.publish(ctx, t, "security.scan.finished", map[string]any{"id": rep.ID, "status": rep.Status, "counts": rep.Counts, "summary": rep.Summary, "stored": stored})
 }
 
 // store writes the finished report, redacted once more as a whole (nothing that looks like a secret survives, even in a
-// file name). A report of a project that was deleted meanwhile is dropped: it would outlive its project.
-func (s *securityExt) store(ctx context.Context, rep scan.Report) error {
+// file name). A report of a project that was deleted meanwhile is dropped: it would outlive its project. A folder scan's
+// report is kept under the folder's key and belongs to no project.
+func (s *securityExt) store(ctx context.Context, t target, rep scan.Report) error {
 	b, err := json.Marshal(rep)
 	if err != nil {
 		return err
@@ -306,6 +485,12 @@ func (s *securityExt) store(ctx context.Context, rep scan.Report) error {
 	doc := s.c.Scanner.Redact(string(b))
 	counts, _ := json.Marshal(rep.Counts)
 	return s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		if t.Folder != "" {
+			_, err := tx.ExecContext(ctx, `INSERT INTO security_scans(id,project_id,status,started_by,started_at,finished_at,counts_json,summary,report_json)
+				VALUES(?,?,?,?,?,?,?,?,?)`,
+				rep.ID, t.Key, rep.Status, rep.By, rep.StartedAt, rep.FinishedAt, string(counts), s.c.Scanner.Redact(rep.Summary), doc)
+			return err
+		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO security_scans(id,project_id,status,started_by,started_at,finished_at,counts_json,summary,report_json)
 			SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=?)`,
 			rep.ID, rep.ProjectID, rep.Status, rep.By, rep.StartedAt, rep.FinishedAt, string(counts), s.c.Scanner.Redact(rep.Summary), doc, rep.ProjectID)
@@ -313,22 +498,22 @@ func (s *securityExt) store(ctx context.Context, rep scan.Report) error {
 	})
 }
 
-func (s *securityExt) cancel(projectID string) (any, error) {
+func (s *securityExt) cancel(t target) (any, error) {
 	s.mu.Lock()
-	r, ok := s.running[projectID]
+	r, ok := s.running[t.Key]
 	s.mu.Unlock()
 	if !ok {
-		return nil, errors.New("no scan of this project is running")
+		return nil, fmt.Errorf("no scan of this %s is running", t.noun())
 	}
 	r.Cancel()
 	return r.Snapshot(), nil
 }
 
 // current is the running scan, else a finished one the database refused, else the last stored one, else nil.
-func (s *securityExt) current(ctx context.Context, projectID string) (any, error) {
+func (s *securityExt) current(ctx context.Context, t target) (any, error) {
 	s.mu.Lock()
-	r, ok := s.running[projectID]
-	kept, held := s.unstored[projectID]
+	r, ok := s.running[t.Key]
+	kept, held := s.unstored[t.Key]
 	s.mu.Unlock()
 	if ok {
 		return r.Snapshot(), nil
@@ -337,7 +522,7 @@ func (s *securityExt) current(ctx context.Context, projectID string) (any, error
 		return kept, nil
 	}
 	var doc string
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE project_id=? ORDER BY started_at DESC, id DESC LIMIT 1`, projectID).Scan(&doc)
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE project_id=? ORDER BY started_at DESC, id DESC LIMIT 1`, t.Key).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -373,11 +558,18 @@ func (s *securityExt) report(ctx context.Context, id string) (*scan.Report, erro
 	return decodeReport(doc)
 }
 
-func (s *securityExt) list(ctx context.Context, projectID string, limit int) ([]scan.Summary, error) {
+func historyLimit(limit int) int {
 	if limit <= 0 || limit > 100 {
-		limit = 20
+		return 20
 	}
-	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT id,status,started_by,started_at,finished_at,counts_json,summary FROM security_scans WHERE project_id=? ORDER BY started_at DESC, id DESC LIMIT ?`, projectID, limit)
+	return limit
+}
+
+// summaryCols read a history row; a folder scan's folder is the one its report names (the key may be lower case).
+const summaryCols = `id,project_id,status,started_by,started_at,finished_at,counts_json,summary,COALESCE(json_extract(report_json,'$.dir'),'')`
+
+func (s *securityExt) summaries(ctx context.Context, where string, args ...any) ([]scan.Summary, error) {
+	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT `+summaryCols+` FROM security_scans WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -385,15 +577,49 @@ func (s *securityExt) list(ctx context.Context, projectID string, limit int) ([]
 	out := []scan.Summary{}
 	for rows.Next() {
 		var sm scan.Summary
-		var counts string
-		if err := rows.Scan(&sm.ID, &sm.Status, &sm.By, &sm.StartedAt, &sm.FinishedAt, &counts, &sm.Summary); err != nil {
+		var key, counts, dir string
+		if err := rows.Scan(&sm.ID, &key, &sm.Status, &sm.By, &sm.StartedAt, &sm.FinishedAt, &counts, &sm.Summary, &dir); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(counts), &sm.Counts)
-		sm.ProjectID = projectID
+		if strings.HasPrefix(key, folderPrefix) {
+			sm.Folder = dir
+		} else {
+			sm.ProjectID = key
+		}
 		out = append(out, sm)
 	}
 	return out, rows.Err()
+}
+
+func (s *securityExt) list(ctx context.Context, t target, limit int) ([]scan.Summary, error) {
+	return s.summaries(ctx, `project_id=? ORDER BY started_at DESC, id DESC LIMIT ?`, t.Key, historyLimit(limit))
+}
+
+// folders lists the recent folder scans of every folder (decision P61): those running first, then the stored ones, newest
+// first.
+func (s *securityExt) folders(ctx context.Context, limit int) ([]scan.Summary, error) {
+	limit = historyLimit(limit)
+	out := []scan.Summary{}
+	s.mu.Lock()
+	for key, r := range s.running {
+		if !strings.HasPrefix(key, folderPrefix) {
+			continue
+		}
+		rep := r.Snapshot()
+		out = append(out, scan.Summary{ID: rep.ID, Folder: rep.Dir, Status: rep.Status, By: rep.By, StartedAt: rep.StartedAt, Counts: rep.Counts})
+	}
+	s.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt > out[j].StartedAt })
+	stored, err := s.summaries(ctx, `substr(project_id,1,?)=? ORDER BY started_at DESC, id DESC LIMIT ?`, len(folderPrefix), folderPrefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, stored...)
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 // close cancels the scans still running and waits for them, so no tool outlives the core.

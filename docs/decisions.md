@@ -171,3 +171,18 @@ Open, owner action:
   CI on every push against the real newest release on Windows and Linux (download, SHA-256, unpack or image build, start,
   configuration read from the environment), nothing registered. **Not verified:** a real job on a real private repository on
   a PC, Docker Desktop on Windows, and `fsutil`'s wording for a Dev Drive.
+- **P61. A security scan of any folder, from Home (2026-10-15, on the owner's request).** The owner wanted to run the
+  security scan (P44) on any repository at will from Home, for a project imported from elsewhere or a repository to check
+  before trusting it. Built: the workspace page **Security scan** (`/security-scan`, Home's tile, the workspace sidebar),
+  which scans a folder typed by its full path, or one of the projects, with the same engines, progress, findings, tools and
+  history (`ScanPanel`, shared with the project's page). A folder scan belongs to no project: its reports are stored under
+  the folder's key (`folder:<path>` in `security_scans.project_id`, no migration), its events carry no project, its history
+  is the folder's and the recent folder scans list every folder; it uses a workspace rules folder (each project keeps its
+  own). Refused: a relative path, a file, a whole drive, Drydock's data folder, inside it or around it; only a person starts
+  one. **It only reads files**, said plainly on the page: gitleaks runs in process; osv-scanner gets
+  `--no-call-analysis=all` (its call analysis is the one part that runs other programs: the go toolchain); Opengrep gets
+  `--no-git-ignore` on a folder scan, so git, whose `.git/config` may have come with the folder, never runs there. The
+  folder's `osv-scanner.toml` and `.semgrepignore` can still narrow what those two report; the page says so.
+  `docs/security-scan.md` section 8. **Not verified:** the two flags against the real tools (written from their documented
+  options; the stand-ins accept any), Windows paths on a PC (case-insensitive keys and the drive and data-folder checks are
+  built for it and vetted with `GOOS=windows`); the folder is typed until the folder dialog of another change lands.

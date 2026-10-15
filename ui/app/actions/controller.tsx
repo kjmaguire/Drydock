@@ -128,6 +128,10 @@ export const controller = createController(routes, {
       const { ConnectionsScreen } = await import('../screens/connections/connections-screen.tsx');
       return render(<ConnectionsScreen />);
     },
+    async securityScan({ render }) {
+      const { WorkspaceSecurityScreen } = await import('../screens/security/workspace-security-screen.tsx');
+      return render(<WorkspaceSecurityScreen />);
+    },
     async providers({ render }) {
       const { ProvidersScreen } = await import('../screens/providers/providers-screen.tsx');
       return render(<ProvidersScreen />);

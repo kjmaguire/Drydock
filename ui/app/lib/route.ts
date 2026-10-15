@@ -33,10 +33,37 @@ export type Route =
     }
   | { name: 'not-found' };
 
-export type WorkspaceRouteName = 'workspace' | 'library' | 'library-skills' | 'integrations' | 'connections' | 'providers' | 'routing' | 'backups' | 'data' | 'support' | 'license' | 'settings';
+export type WorkspaceRouteName =
+  | 'workspace'
+  | 'library'
+  | 'library-skills'
+  | 'integrations'
+  | 'connections'
+  | 'security-scan'
+  | 'providers'
+  | 'routing'
+  | 'backups'
+  | 'data'
+  | 'support'
+  | 'license'
+  | 'settings';
 
 /** Screens about the whole workspace, not one project. They open even when no project exists yet. */
-export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = ['workspace', 'library', 'library-skills', 'integrations', 'connections', 'providers', 'routing', 'backups', 'data', 'support', 'license', 'settings'];
+export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
+  'workspace',
+  'library',
+  'library-skills',
+  'integrations',
+  'connections',
+  'security-scan',
+  'providers',
+  'routing',
+  'backups',
+  'data',
+  'support',
+  'license',
+  'settings',
+];
 
 // screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
 const SIMPLE = new Set<string>([

@@ -31,6 +31,18 @@ export interface SecurityClient {
   /** The last scans, newest first. */
   securityScanList(projectId: string, limit?: number): Promise<ScanSummary[]>;
   securityScanReport(id: string): Promise<ScanReport>;
+  // Folder scans (decision P61): any folder on this computer, without a project. The scan only reads files.
+  /** The scan tools on this computer and the Opengrep rules folder folder scans use. */
+  securityWorkspaceTools(): Promise<SecurityTools>;
+  /** Sets the rules folder of folder scans (each project keeps its own). Only a human may. */
+  securityWorkspaceRulesSet(rulesDir: string): Promise<SecurityTools>;
+  /** Starts a scan of a folder by its full path. Refused for a relative path, a file, a whole drive or Drydock's data folder. */
+  securityFolderScanStart(folder: string): Promise<ScanReport>;
+  securityFolderScanCancel(folder: string): Promise<ScanReport>;
+  /** The folder's running scan, else its last finished one, else null. */
+  securityFolderScanGet(folder: string): Promise<ScanReport | null>;
+  /** The recent folder scans of every folder, running ones first, then newest first. */
+  securityScanFolders(limit?: number): Promise<ScanSummary[]>;
 }
 
 export function createSecurityClient(t: Transport): SecurityClient {
@@ -47,5 +59,14 @@ export function createSecurityClient(t: Transport): SecurityClient {
     },
     securityScanList: async (projectId, limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.list', { projectId, limit })).map(summary),
     securityScanReport: async (id) => report(await t.call<ScanReport>('security.scan.report', { id })),
+    securityWorkspaceTools: () => t.call('security.tools', {}),
+    securityWorkspaceRulesSet: (rulesDir) => t.call('security.settings.set', { workspace: true, rulesDir }),
+    securityFolderScanStart: async (folder) => report(await t.call<ScanReport>('security.scan.start', { folder })),
+    securityFolderScanCancel: async (folder) => report(await t.call<ScanReport>('security.scan.cancel', { folder })),
+    securityFolderScanGet: async (folder) => {
+      const r = await t.call<ScanReport | null>('security.scan.get', { folder });
+      return r ? report(r) : null;
+    },
+    securityScanFolders: async (limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.folders', { limit })).map(summary),
   };
 }

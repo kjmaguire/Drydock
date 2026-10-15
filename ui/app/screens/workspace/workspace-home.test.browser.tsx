@@ -66,10 +66,15 @@ describe('the workspace Home', () => {
     const hrefs = Array.from(r.$$('[data-testid^="home-"]'))
       .map((e) => e.getAttribute('href'))
       .filter(Boolean);
-    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/providers', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
+    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/security-scan', '/providers', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
       expect([h, hrefs.includes(h)]).toEqual([h, true]);
     }
     expect(r.$('[data-testid="home-skills"]')!.textContent).toContain('Skills');
+    // a security scan of any folder, before it becomes a project (decision P61)
+    const scan = r.$('[data-testid="home-security-scan"]')!;
+    expect(scan.getAttribute('href')).toBe('/security-scan');
+    expect(scan.textContent).toContain('Security scan');
+    expect(scan.textContent).toContain('without running it');
   });
 
   it("holds a project only as a navigation tile: no project's page, agent or server is linked or shown", async () => {

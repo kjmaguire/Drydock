@@ -18,6 +18,27 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// The scan only reads files (decision P61): osv-scanner's call analysis, the part that runs the go toolchain (or cargo) over
+// the repository, is off for every language, and the tool's leading arguments (the stand-ins') still come first.
+func TestOSVScannerRunsWithoutCallAnalysis(t *testing.T) {
+	got := strings.Join(osvArgs(Tool{Path: "osv-scanner", Args: []string{"lead"}}), " ")
+	if got != "lead scan source --format json --no-call-analysis=all -r ." {
+		t.Fatal(got)
+	}
+}
+
+// A folder scan's Opengrep walks the folder itself (--no-git-ignore), so git never runs in a folder that came from elsewhere;
+// a project's scan keeps git's view of its files.
+func TestOpengrepRunsNoGitInAFolderScan(t *testing.T) {
+	lead := Tool{Path: "opengrep", Args: []string{"lead"}}
+	if got := strings.Join(opengrepArgs(lead, "/rules", "/tmp/o.sarif", true), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q --no-git-ignore ." {
+		t.Fatal(got)
+	}
+	if got := strings.Join(opengrepArgs(lead, "/rules", "/tmp/o.sarif", false), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q ." {
+		t.Fatal(got)
+	}
+}
+
 func TestRelativeURIHandlesFileURIsAndPlainPaths(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "repo")
 	cases := map[string]string{
