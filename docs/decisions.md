@@ -328,8 +328,18 @@ Open, owner action:
   Nothing was removed: every route, screen, label and test id survives, and `ui/e2e/helpers.ts` knows which hub holds
   which link. The project's home is the new **Overview** (a greeting with the day's numbers, what needs you, the crew as
   dots with what each is doing, the tasks in motion, the rooms) instead of a redirect to #general; the **Knowledge** tab
-  gathers requirements, expert packs, skills, memory and the repo map. Approvals still happen only where the item is
-  decided (the task page, the project's Integrations), never from a card. Tests: `ui/app/shell/topbar.test.browser.tsx`
+  gathers requirements, expert packs, skills, memory and the repo map behind an ask box that starts a chat, with coverage
+  and what was learned lately; the Overview's **Insights** card sums the spend, the week's merges, the first failing
+  check and the open security findings. **Tasks** is a board (Up next, Crew working, Needs you, Merged / Done; a task with
+  an item in Needs you lands there whatever its status) with the old grouped list one toggle away (remembered in
+  localStorage); the **task page** reads like a story: the title with its state, the description as prose, a step bar
+  (Spec, Code, Checks, Review, You, each done, current, to do or failed with a short note), then the evidence and reviews,
+  with the decision card, the properties (writer and reviewer as dots, branch, cost, time, model, attempt) and the
+  Terminal and Logs in a column on the right. The **Crew** tab shows each agent as a big dot with its presence in words
+  and what it is doing; an agent's own page (`/team/:id`) has a hero with chips (presence, CLI and model, permission
+  mode), Right now (the task, its progress, the run), its numbers (merged, reviewed, spent), Skills, Tools, Remembers and
+  History. Approvals still happen only where the item is decided (the task page, the project's Integrations), never from
+  a card. Tests: `ui/app/shell/topbar.test.browser.tsx`
   (the bar, the hubs, the rails), `styles/contrast.test.ts` (every text pair of the new tokens at 4.5:1 in both themes),
   the screens' browser tests, and the whole e2e suite under the new navigation. **Not verified:** on Windows by a person
   (CI builds and tests it), and whether the dots read well to someone who did not ask for them.

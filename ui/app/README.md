@@ -34,6 +34,9 @@ app/
                       virtual-list (windowed feeds; its arithmetic in virtual.ts)
   shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
+  screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
+  screens/tasks/      the Tasks board and list (tasks.ts: columns, elapsed), the task page with its step bar (steps.ts), the review panel
+  screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
   screens/team/       the Crew tab: the agents as dots (team-screen.tsx) and an agent's own page (/team/:id, agent-screen.tsx: a hero
                       with chips, then Overview, Skills & tools, Memory and History); the inspector stays in the details panel
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
