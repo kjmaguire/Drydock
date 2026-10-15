@@ -309,3 +309,73 @@ func TestSignInInsideADistroRunsInATerminalAndLeavesNothingBehind(t *testing.T) 
 		return err == nil && len(pids) == 0
 	})
 }
+
+// A sign-in that ends re-checks its Connection past the probe cache: a distro's probe (with the sign-in state) is kept for
+// minutes, and what read it without probing (the agent forms' distro list, a chat's first check) went on saying "not signed
+// in" after the person had signed in, although Test connection worked. The end of the sign-in now checks again before
+// connection.sign_in_finished, and the event carries the new state; connection.check re-checks one card on demand.
+func TestTheEndOfASignInChecksTheConnectionAgainPastTheProbeCache(t *testing.T) {
+	a, f := openWSL(t)
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-signed-out"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sub, stop := a.c.Bus.Subscribe(events.Filter{Types: []string{"connection.sign_in_finished"}})
+	defer stop()
+	signedIn := func() *bool {
+		var st core.WSLStatus
+		a.call("wsl.distros", struct{}{}, &st)
+		if len(st.Distros) != 1 {
+			t.Fatalf("%+v", st)
+		}
+		return st.Distros[0].SignedIn
+	}
+
+	var in terminal.Info
+	a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": "Ubuntu"}, &in)
+	// starting the sign-in checked the card: the cache holds "signed out"
+	if s := signedIn(); s == nil || *s {
+		t.Fatalf("before the sign-in the cached state is not signed out: %v", s)
+	}
+	a.readTerm(in.ID, "Press Enter")
+	a.call("terminal.write", map[string]any{"id": in.ID, "data": "\r"}, nil)
+	a.readTerm(in.ID, "Signed in to the stand-in.")
+	select {
+	case e := <-sub:
+		var d struct {
+			Key      string `json:"key"`
+			SignedIn *bool  `json:"signedIn"`
+		}
+		_ = json.Unmarshal(e.Data, &d)
+		if d.Key != "claude@wsl:Ubuntu" || d.SignedIn == nil || !*d.SignedIn {
+			t.Fatalf("the event does not say the sign-in took: %s", e.Data)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("no connection.sign_in_finished")
+	}
+	if s := signedIn(); s == nil || !*s {
+		t.Fatalf("after the sign-in the cached state still says signed out: %v", s)
+	}
+
+	// the card's "Check again": one Connection, checked now, with the account the CLI names
+	var c struct {
+		Key           string `json:"key"`
+		Authenticated *bool  `json:"authenticated"`
+		Account       string `json:"account"`
+		Status        string `json:"status"`
+	}
+	a.call("connection.check", map[string]string{"adapter": "claude", "distro": "Ubuntu"}, &c)
+	if c.Key != "claude@wsl:Ubuntu" || c.Authenticated == nil || !*c.Authenticated || c.Account != "standin@example.invalid" || c.Status == string(agents.StatusUnauthenticated) {
+		t.Fatalf("%+v", c)
+	}
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-signed-out"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c.Account = ""
+	a.call("connection.check", map[string]string{"adapter": "claude", "distro": "Ubuntu"}, &c)
+	if c.Authenticated == nil || *c.Authenticated || c.Account != "" || c.Status != string(agents.StatusUnauthenticated) {
+		t.Fatalf("a check after signing out is not fresh: %+v", c)
+	}
+	if err := a.callErr("connection.check", map[string]string{"adapter": "nope"}); err == nil {
+		t.Fatal("an unknown Connection is an error")
+	}
+}

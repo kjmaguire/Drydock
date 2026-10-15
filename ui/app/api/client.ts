@@ -105,6 +105,8 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   connectionTest(adapter: string, prompt?: boolean, distro?: string): Promise<ConnectionReport>;
   /** Starts the CLI's own sign-in in a terminal of the dock (inside the WSL distro for that install) and returns the terminal. */
   connectionSignIn(adapter: string, distro?: string): Promise<TerminalInfo>;
+  /** Checks one Connection again now, its sign-in included (the card's "Check again", and when its sign-in ends). */
+  connectionCheck(adapter: string, distro?: string): Promise<Connection>;
   providerList(): Promise<Provider[]>;
   providerCreate(p: NewProvider): Promise<Provider>;
   providerDelete(id: string): Promise<void>;
@@ -195,6 +197,7 @@ export function createClient(t: Transport): Client {
       return { ...r, steps: arr(r.steps), matrix: r.matrix ?? {} };
     },
     connectionSignIn: (adapter, distro = '') => t.call<TerminalInfo>('connection.signIn', { adapter, distro }),
+    connectionCheck: (adapter, distro = '') => t.call<Connection>('connection.check', { adapter, distro }),
     providerList: async () => arr(await t.call<Provider[] | null>('provider.list')),
     providerCreate: (p) => t.call('provider.create', p),
     providerDelete: async (id) => {

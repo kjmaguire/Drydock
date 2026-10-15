@@ -697,6 +697,8 @@ export interface Connection extends Detection {
   /** The CLI's own sign-in command as a person types it ("claude auth login"; the manifest's auth.login), which the card's
    * Sign in runs in a terminal (decision P50); absent when the CLI names none Drydock can start. */
   signIn?: string;
+  /** The account the CLI's own status command says it is signed in as (its "email"); absent when it names none. */
+  account?: string;
 }
 
 /** connections.WSLFacts: the distro behind a WSL Connection. */

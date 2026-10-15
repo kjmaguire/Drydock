@@ -25,7 +25,7 @@ export function Badge(handle: Handle<{ tone?: Tone; title?: string; children?: R
     const { tone: tn = 'muted', title, children, testId } = handle.props;
     const c = tone[tn];
     return (
-      <span mix={badgeCss} title={title} data-testid={testId} style={{ color: c.fg, background: c.bg }}>
+      <span mix={badgeCss} title={title} data-testid={testId} data-tone={tn} style={{ color: c.fg, background: c.bg }}>
         {children}
       </span>
     );

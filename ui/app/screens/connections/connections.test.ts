@@ -7,7 +7,6 @@ import {
   connectionKey,
   connectionName,
   connectionState,
-  connectionTitle,
   defaultConnection,
   distroBrand,
   matrixRows,
@@ -17,6 +16,7 @@ import {
   provTone,
   reportMeta,
   runsText,
+  signedInLine,
   signedInText,
   statusTone,
   stepTone,
@@ -48,6 +48,8 @@ describe('connections helpers', () => {
     expect(stepTone('fail')).toBe('err');
     expect(signedInText({ authenticated: null })).toBe('not reported');
     expect(signedInText({ authenticated: false })).toBe('no');
+    expect(signedInLine({ account: 'kyle@example.invalid', authDetail: 'claude.ai' })).toBe('Signed in as kyle@example.invalid (claude.ai)');
+    expect(signedInLine({})).toBe('Signed in');
     expect(prereqText({ tool: 'node', min: '22', found: false, ok: false })).toBe('node (needs 22 or newer): not found');
     expect(prereqText({ tool: 'git', found: true, version: '2.45', ok: true })).toBe('git: found 2.45');
   });
@@ -56,10 +58,13 @@ describe('connections helpers', () => {
     const base = { adapter: 'claude', installed: true, status: 'ready', usable: true, platform: 'windows', version: '2.1.0', gates: [] } as Connection;
     const inWSL = { ...base, key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu' } as Connection;
     expect(connectionName(base)).toBe('Claude Code');
-    expect(connectionName(inWSL)).toBe('Claude Code (Ubuntu)');
+    // a WSL install is "<product> WSL"; the distro is on the line below the name
+    expect(connectionName(inWSL)).toBe('Claude Code WSL');
+    expect(connectionName({ adapter: 'codex', runMode: 'wsl' })).toBe('Codex WSL');
     expect(connectionName({ adapter: 'custom' })).toBe('custom');
     expect(connectionBlurb(base)).toBe('2.1.0 on Windows');
-    expect(connectionBlurb(inWSL)).toBe('2.1.0 in WSL, Ubuntu');
+    expect(connectionBlurb(inWSL)).toBe('2.1.0 in the WSL distro Ubuntu');
+    expect(connectionBlurb({ runMode: 'wsl', distro: 'Ubuntu-26.04' })).toBe('Agent CLI in the WSL distro Ubuntu-26.04');
     expect(connectionBlurb({ runMode: 'native' })).toBe('Agent CLI on Windows');
 
     expect(connectionState(base)).toEqual({ text: 'Ready', tone: 'ok' });
@@ -93,8 +98,6 @@ describe('connections helpers', () => {
     expect(connectionKey(native)).toBe('claude');
     expect(connectionKey({ adapter: 'codex' })).toBe('codex');
     expect(connectionKey(inWSL)).toBe('claude@wsl:Ubuntu');
-    expect(connectionTitle(native)).toBe('claude');
-    expect(connectionTitle(inWSL)).toBe('claude in WSL (Ubuntu)');
     expect(runsText(native)).toBe('on Windows');
     expect(runsText(inWSL)).toBe('inside the WSL 2 distro Ubuntu (the default distro)');
     expect(runsText({ runMode: 'wsl', distro: 'Old', wsl: { distro: 'Old', wsl2: false, wslVersion: 1, interop: true, setsid: true } })).toBe('inside the WSL 1 distro Old');

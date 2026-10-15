@@ -12,16 +12,17 @@ test('Connections: Claude Code inside a WSL distro is its own card with its own 
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-conn');
   await workspaceNav(page, 'nav-connections');
-  // a tile of its own on the overview, named by its distro; the tile opens its card below the grid
+  // a tile of its own on the overview, "Claude Code WSL" with its distro on the line below; the tile opens its card below the grid
   const tile = page.locator(`[data-testid=connection-tile][data-key="claude@wsl:${distro()}"]`);
   await expect(tile).toBeVisible({ timeout: 60_000 });
   await expect(tile).toHaveAttribute('data-run-mode', 'wsl');
-  await expect(tile).toContainText(`Claude Code (${distro()})`);
+  await expect(tile).toContainText('Claude Code WSL');
+  await expect(tile).toContainText(`in the WSL distro ${distro()}`);
   await tile.click();
   const card = page.locator(`[data-testid=connection][data-key="claude@wsl:${distro()}"]`);
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute('data-run-mode', 'wsl');
-  await expect(card.getByRole('heading', { level: 2 })).toHaveText(`claude in WSL (${distro()})`);
+  await expect(card.getByRole('heading', { level: 2 })).toHaveText('Claude Code WSL');
   await expect(card).toContainText(`inside the WSL 2 distro ${distro()}`);
   // its own sign-in (decision P50): the card starts claude's login inside the distro from a button (driven in the next test)
   await expect(card.getByRole('button', { name: `Sign in inside ${distro()}` })).toBeVisible();
@@ -71,11 +72,19 @@ test("Connections: Sign in runs the CLI's own login inside the distro in a termi
     await box.getByTestId('xterm').click();
     await page.keyboard.press('Enter');
     await expect(box.locator('.xterm-rows')).toContainText('Signed in to the stand-in.', { timeout: 30_000 });
-    await expect(box.getByTestId('sign-in-state')).toHaveText('The sign-in finished. This card has re-checked itself.', { timeout: 30_000 });
-    // the core's connection.sign_in_finished made the page re-check: signed in now, without a reload
+    // the end of the sign-in checks the card afresh (connection.check, past the probe cache): signed in now, without a reload,
+    // with the account the stand-in names
+    await expect(box.getByTestId('sign-in-state')).toHaveText('The sign-in finished. Signed in as standin@example.invalid (claude.ai).', { timeout: 60_000 });
+    await expect(card.getByTestId('signed-in')).toHaveText('Signed in as standin@example.invalid (claude.ai)');
     await expect(card.locator('dt:has-text("Signed in") + dd')).toHaveText('yes', { timeout: 60_000 });
+    await expect(tile).not.toContainText('Not signed in', { timeout: 60_000 });
     await box.getByTestId('sign-in-close').click();
     await expect(box).toHaveCount(0);
+    // signed out again inside the distro: "Check again" asks the CLI afresh
+    writeFileSync(signedOut, '');
+    await card.getByTestId('sign-in-check').click();
+    await expect(card.locator('dt:has-text("Signed in") + dd')).toHaveText('no', { timeout: 60_000 });
+    await expect(card.getByTestId('signed-in')).toHaveCount(0);
   } finally {
     rmSync(signedOut, { force: true });
   }

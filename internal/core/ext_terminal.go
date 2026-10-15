@@ -63,8 +63,9 @@ func init() {
 			// connection.signIn starts a Connection's own sign-in (its manifest's auth.login: claude auth login, inside the distro
 			// for a WSL install) in a terminal the person answers (decision P50). Drydock runs the unmodified CLI and never reads
 			// what the sign-in stores (D1). One sign-in per Connection at a time: asking again while it runs returns the same
-			// terminal. When it ends, whatever of it is left inside a distro is killed, and connection.sign_in_finished makes the
-			// Connections page re-check.
+			// terminal. When it ends, whatever of it is left inside a distro is killed, the core checks the Connection again (so no
+			// cached "signed out" outlives the sign-in), and connection.sign_in_finished, with the new state, makes the Connections
+			// page re-check.
 			"connection.signIn": bind(func(ctx context.Context, p struct {
 				Adapter string `json:"adapter"`
 				Distro  string `json:"distro"` // the install inside this WSL distro instead of the native one
@@ -109,7 +110,18 @@ func init() {
 						cancel()
 					}
 					if extCtx.Err() == nil { // not while the core shuts down
-						c.publish(extCtx, "connection.sign_in_finished", "", map[string]any{"key": conn.Key, "exitCode": code})
+						// the sign-in changed what the CLI answers: check this Connection again now, past the probe cache (a distro's
+						// probe is kept for minutes), so whatever reads the sign-in state next (the card, the agent forms, a chat)
+						// sees the new one, and the event says it
+						data := map[string]any{"key": conn.Key, "exitCode": code}
+						cctx, cancel := context.WithTimeout(extCtx, 60*time.Second)
+						if now, err := c.Connections.CheckKey(cctx, conn.Key); err != nil {
+							c.logf("sign-in of %s: checking it again: %v", conn.Key, err)
+						} else if now.Authenticated != nil {
+							data["signedIn"] = *now.Authenticated
+						}
+						cancel()
+						c.publish(extCtx, "connection.sign_in_finished", "", data)
 					}
 				}})
 				if err != nil {

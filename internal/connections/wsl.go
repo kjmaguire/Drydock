@@ -169,7 +169,7 @@ func wslAuth(m *manifests.Manifest, in wsl.Info, c *Connection) authState {
 			v := ok
 			c.Authenticated = &v
 			if ok {
-				c.AuthDetail = jsonField(res.Stdout, "authMethod")
+				c.AuthDetail, c.Account = jsonField(res.Stdout, "authMethod"), jsonField(res.Stdout, "email")
 				return authYes
 			}
 			c.AuthDetail = "`" + authCmd(in, pr.Argv) + "` answered " + firstNonBlank(wsl.Excerpt(res.Stdout), "that it is not signed in") + checkedAs(in)

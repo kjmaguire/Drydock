@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -316,6 +317,11 @@ func TestClaudeHeadlessConnectionAgainstTheScriptedAgent(t *testing.T) {
 	// headless claude: the manifest's declarations stand, cells without a declaration are unknown
 	if c := rep.Matrix["image_input"]; c.Value != false || c.Provenance != "unknown" {
 		t.Errorf("image_input %+v", c)
+	}
+	// ... and the report says so in plain words: what is left off, why, and what would verify it
+	want := "Not yet seen working with this CLI, so Drydock does not rely on it: image input. A contract test that runs the real CLI (docs/contract-tests.md) verifies it, and the CLI's manifest then declares it; until then Drydock leaves it off."
+	if !slices.Contains(rep.Degraded, want) {
+		t.Errorf("degraded %q", rep.Degraded)
 	}
 }
 

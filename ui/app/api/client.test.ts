@@ -263,6 +263,7 @@ describe('round 2 client methods', () => {
     await c.roomCreateDM('p', 'a1');
     await c.usageList({ taskId: 't' });
     await c.connectionAcknowledge('g');
+    await c.connectionCheck('claude', 'Ubuntu');
     await c.providerSetEnabled('p', false);
     await c.providerDelete('p');
     await c.providerCreate({ Name: 'n', Kind: 'direct', BaseURL: 'https://x', DataClass: 'private', Tier: 'cheap' });
@@ -273,6 +274,7 @@ describe('round 2 client methods', () => {
     expect(by('room.createDM')).toEqual({ projectId: 'p', agentId: 'a1' });
     expect(by('usage.list')).toEqual({ taskId: 't', agentId: '', limit: 0 });
     expect(by('connection.acknowledge')).toEqual({ gateId: 'g' });
+    expect(by('connection.check')).toEqual({ adapter: 'claude', distro: 'Ubuntu' });
     expect(by('provider.setEnabled')).toEqual({ id: 'p', enabled: false });
     expect(by('provider.create')).toEqual({ Name: 'n', Kind: 'direct', BaseURL: 'https://x', DataClass: 'private', Tier: 'cheap' });
     expect(by('room.thread')).toEqual({ rootId: 'm' });

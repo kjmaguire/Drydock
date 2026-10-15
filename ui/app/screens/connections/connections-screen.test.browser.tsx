@@ -51,6 +51,12 @@ const conn = (over: Partial<Connection> = {}): Connection => ({
   ...over,
 });
 
+/** The card's "Signed in" value. */
+const signedInRow = (card: Element): string | undefined =>
+  Array.from(card.querySelectorAll('dt'))
+    .find((d) => d.textContent === 'Signed in')
+    ?.nextElementSibling?.textContent ?? undefined;
+
 const report = (over: Partial<ConnectionReport> = {}): ConnectionReport => ({
   adapter: 'claude',
   platform: 'windows',
@@ -170,6 +176,7 @@ describe('Connections page', () => {
     const text = r.container.textContent ?? '';
     expect(text).toContain('T2 prompt: fail (timeout)');
     expect(text).toContain('no output in 30s');
+    expect(r.container.querySelector('h3:nth-of-type(2)')!.textContent).toBe('What is limited');
     expect(text).toContain('Interrupt could not be tested.');
     expect(text).toContain('31.5 s');
     expect(text).toContain('Tokens used by the test: not reported');
@@ -219,7 +226,8 @@ describe('Connections page', () => {
     }, r);
     expect(r.$$('[data-testid="connection-tile"]').length).toBe(2);
     expect(tile.getAttribute('data-run-mode')).toBe('wsl');
-    expect(tile.textContent).toBe('Claude Code (Ubuntu)2.1.0 in WSL, UbuntuNot signed in');
+    // "<product> WSL", with the distro on the line below the name
+    expect(tile.textContent).toBe('Claude Code WSL2.1.0 in the WSL distro UbuntuNot signed in');
     await r.act(() => tile.click());
     const c = await waitFor(() => {
       const x = r.$('[data-testid="connection"][data-key="claude@wsl:Ubuntu"]');
@@ -228,7 +236,7 @@ describe('Connections page', () => {
     }, r);
     expect(r.$$('[data-testid="connection"]').length).toBe(1);
     expect(c.getAttribute('data-run-mode')).toBe('wsl');
-    expect(c.querySelector('h2')!.textContent).toBe('claude in WSL (Ubuntu)');
+    expect(c.querySelector('h2')!.textContent).toBe('Claude Code WSL');
     // the CLI's logo and the distro's
     expect(c.querySelector('[data-brand="claude"]')).not.toBeNull();
     expect(c.querySelector('[data-brand="ubuntu"]')!.getAttribute('aria-label')).toBe('Ubuntu');
@@ -269,9 +277,8 @@ describe('Connections page', () => {
       return x;
     }, r);
     expect(r.$('ul[aria-label="Agent CLIs"]')).not.toBeNull();
-    // codex has no Simple Icons mark (OpenAI is not in it): an icon on a neutral square, never a drawn guess
-    expect(tiles[0]!.querySelector('[data-brand]')).toBeNull();
-    expect(tiles[0]!.querySelector('svg')).not.toBeNull();
+    // codex has no Simple Icons mark (OpenAI is not in it): a neutral monogram, never a drawn guess at its logo
+    expect(tiles[0]!.querySelector('[data-brand="codex"]')!.getAttribute('data-monogram')).toBe('true');
     expect(tiles[0]!.textContent).toBe('CodexAgent CLI on WindowsNot installed');
     expect(tiles[1]!.querySelector('[data-brand="gemini"]')).not.toBeNull();
     expect(tiles[1]!.textContent).toBe('Gemini CLI0.9.0 on WindowsReady');
@@ -325,12 +332,34 @@ describe('Connections page', () => {
     const enc = new TextEncoder();
     let release: (() => void) | undefined;
     const term = { id: 'term_9', title: 'Sign in: claude in Ubuntu-26.04', cwd: 'C:\\Users\\k', shell: 'wsl.exe', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 };
+    const wslConn = (signedIn: boolean) =>
+      conn({
+        key: 'claude@wsl:Ubuntu-26.04',
+        runMode: 'wsl',
+        distro: 'Ubuntu-26.04',
+        platform: 'linux',
+        gates: [],
+        signIn: 'claude auth login',
+        ...(signedIn
+          ? { status: 'ready', usable: true, authenticated: true, authDetail: 'claude.ai', account: 'kyle@example.invalid' }
+          : { status: 'unauthenticated', authenticated: false, authDetail: '`claude auth status --json` answered {"loggedIn": false}' }),
+      });
+    const list = (signedIn: boolean) => [
+      wslConn(signedIn),
+      conn({ key: 'gemini', adapter: 'gemini', gates: [] }),
+      conn({ key: 'agy@wsl:Ubuntu-26.04', adapter: 'agy', runMode: 'wsl', distro: 'Ubuntu-26.04', gates: [] }),
+    ];
+    // the page's list as the core read it before the sign-in (signed out); the reads after it wait until the test lets them
+    // answer, so what the card shows when the sign-in ends comes from its own check (connection.check) alone
+    let releaseList: (() => void) | undefined;
+    const checks: [string, string | undefined][] = [];
     const r = show({
-      connectionList: async () => [
-        conn({ key: 'claude@wsl:Ubuntu-26.04', runMode: 'wsl', distro: 'Ubuntu-26.04', status: 'unauthenticated', platform: 'linux', gates: [], signIn: 'claude auth login' }),
-        conn({ key: 'gemini', adapter: 'gemini', gates: [] }),
-        conn({ key: 'agy@wsl:Ubuntu-26.04', adapter: 'agy', runMode: 'wsl', distro: 'Ubuntu-26.04', gates: [] }),
-      ],
+      connectionList: async () => {
+        if (checks.length === 0) return list(false);
+        await new Promise<void>((res) => (releaseList = res));
+        return list(true);
+      },
+      connectionCheck: async (adapter: string, distro?: string) => (checks.push([adapter, distro]), wslConn(true)),
       connectionSignIn: async (adapter: string, distro?: string) => (calls.push([adapter, distro]), term),
       terminalRead: async (_id, from) => {
         if (from === 0) return { data: enc.encode('Press Enter to finish signing in\r\n'), next: 33, dropped: 0, exited: false, exitCode: 0 };
@@ -369,12 +398,24 @@ describe('Connections page', () => {
     await waitFor(() => expect(terminals[0]?.output ?? '').toContain('Press Enter to finish signing in'), r);
     expect(box.querySelector('[data-testid="sign-in-state"]')!.textContent).toBe('claude auth login is running: answer it here.');
     expect(btn.disabled).toBe(true); // one sign-in at a time
+    expect(signedInRow(wsl)).toBe('no');
+    expect(wsl.querySelector('[data-testid="signed-in"]')).toBeNull();
     terminals[0]!.type('\r');
     await waitFor(() => expect(writes).toEqual([['term_9', '\r']]), r);
     release!();
     await waitFor(() => expect(terminals[0]!.output).toContain('[the sign-in exited with code 0]'), r);
-    await waitFor(() => expect(box.querySelector('[data-testid="sign-in-state"]')!.textContent).toBe('The sign-in finished. This card has re-checked itself.'), r);
+    // the end of the sign-in checks this card afresh, and the card shows that answer (the cached "signed out" is gone)
+    await waitFor(() => expect(box.querySelector('[data-testid="sign-in-state"]')!.textContent).toBe('The sign-in finished. Signed in as kyle@example.invalid (claude.ai).'), r);
+    expect(checks).toEqual([['claude', 'Ubuntu-26.04']]);
+    const card = r.$('[data-testid="connection"][data-run-mode="wsl"]') as HTMLElement;
+    expect(card.querySelector('[data-testid="signed-in"]')!.textContent).toBe('Signed in as kyle@example.invalid (claude.ai)');
+    expect(signedInRow(card)).toBe('yes');
+    expect(r.$('[data-testid="connection-tile"][data-key="claude@wsl:Ubuntu-26.04"] small[data-tone]')!.textContent).toBe('Not signed in'); // the tiles wait for the list
     expect(btn.disabled).toBe(false);
+    // the page's list, read again after the check, agrees and replaces it
+    releaseList!();
+    await waitFor(() => expect(r.$('[data-testid="connection-tile"][data-key="claude@wsl:Ubuntu-26.04"] small[data-tone]')!.textContent).toBe('Ready'), r);
+    expect(signedInRow(card)).toBe('yes');
     await r.act(() => (box.querySelector('[data-testid="sign-in-close"]') as HTMLButtonElement).click());
     await waitFor(() => expect(wsl.querySelector('[data-testid="sign-in-terminal"]')).toBeNull(), r);
     expect(closes).toEqual(['term_9']);
@@ -396,6 +437,50 @@ describe('Connections page', () => {
     }, r);
     expect(agy.querySelector('[data-testid="sign-in"]')).toBeNull();
     expect(agy.textContent).toContain('open a terminal in the distro (wsl -d Ubuntu-26.04) and sign in the way the CLI documents');
+  });
+
+  it('Check again asks the CLI afresh for this card alone, and a signed-in card says so in green with the account', async () => {
+    let signedIn = false;
+    const checks: [string, string | undefined][] = [];
+    const native = (yes: boolean) =>
+      conn({ key: 'claude', gates: [], prereqs: [], warnings: [], signIn: 'claude auth login', ...(yes ? { authenticated: true, account: 'kyle@example.invalid', authDetail: 'claude.ai' } : { status: 'unauthenticated', authenticated: false }) });
+    let answer: (() => void) | undefined;
+    const r = show({
+      connectionList: async () => [native(signedIn)],
+      connectionCheck: async (adapter: string, distro?: string) => {
+        checks.push([adapter, distro]);
+        await new Promise<void>((res) => (answer = res));
+        return native(signedIn);
+      },
+    });
+    const c = await card(r);
+    expect(signedInRow(c)).toBe('no');
+    expect(c.querySelector('[data-testid="signed-in"]')).toBeNull();
+    const again = c.querySelector('[data-testid="sign-in-check"]') as HTMLButtonElement;
+    expect(again.textContent).toBe('Check again');
+    await r.act(() => again.click());
+    await waitFor(() => expect(again.textContent).toBe('Checking...'), r);
+    expect(again.disabled).toBe(true);
+    answer!();
+    await waitFor(() => expect(again.textContent).toBe('Check again'), r);
+    expect(checks).toEqual([['claude', undefined]]);
+    expect(signedInRow(c)).toBe('no'); // still signed out: nothing claims otherwise
+    expect(c.querySelector('[data-testid="signed-in"]')).toBeNull();
+
+    signedIn = true;
+    await r.act(() => again.click());
+    answer!();
+    const line = await waitFor(() => {
+      const x = c.querySelector('[data-testid="signed-in"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(line.textContent).toBe('Signed in as kyle@example.invalid (claude.ai)');
+    // green: the ok tone (the design tokens are not loaded in browser tests: the attribute says it)
+    expect(line.getAttribute('data-tone')).toBe('ok');
+    expect(line.querySelector('svg')).not.toBeNull();
+    expect(signedInRow(c)).toBe('yes');
+    expect(checks.length).toBe(2);
   });
 
   it('shows the agent CLIs and the MCP gateway below the tiles: Claude verified, an unproven CLI off until allowed, one with no mechanism not allowed', async () => {

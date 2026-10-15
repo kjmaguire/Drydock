@@ -77,6 +77,7 @@ func TestClaudeStatusTransitions(t *testing.T) {
 		usable     bool
 	}{
 		{"ready", claudeTable("2.1.294", `{"loggedIn": true, "authMethod": "oauth_token"}`, 0), agents.StatusReady, "", ptr(true), true},
+		{"ready, with the account the CLI names", claudeTable("2.1.294", `{"loggedIn": true, "authMethod": "claude.ai", "email": "kyle@example.invalid"}`, 0), agents.StatusReady, "", ptr(true), true},
 		{"unsupported", claudeTable("2.1.204", `{"loggedIn": true}`, 0), agents.StatusUnsupportedVersion, connections.ReasonVersionBelowMin, nil, false},
 		{"older than recommended but above min is fine", claudeTable("2.1.250", `{"loggedIn": true}`, 0), agents.StatusReady, "", ptr(true), true},
 		{"unauthenticated", claudeTable("2.1.294", `{"loggedIn": false}`, 0), agents.StatusUnauthenticated, connections.ReasonAuthProbeFalse, ptr(false), false},
@@ -97,6 +98,10 @@ func TestClaudeStatusTransitions(t *testing.T) {
 			}
 			if c.Installed != true || c.Path == "" {
 				t.Fatalf("%+v", c)
+			}
+			// the account is the one the CLI's own status names, and only when it says it is signed in
+			if want := map[bool]string{true: "kyle@example.invalid"}[strings.Contains(tc.name, "account")]; c.Account != want {
+				t.Fatalf("account %q want %q", c.Account, want)
 			}
 		})
 	}

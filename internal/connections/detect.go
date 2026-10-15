@@ -76,6 +76,9 @@ type Connection struct {
 	// SignIn is the CLI's own sign-in command as a person types it ("claude auth login", from the manifest's auth.login), which
 	// the card's Sign in button runs in a terminal (decision P50); "" when the CLI names none Drydock can start.
 	SignIn string `json:"signIn,omitempty"`
+	// Account is the account the CLI's own status command says it is signed in as (its "email"), "" when it names none. It
+	// comes from the CLI's answer, never from a credential file (D1).
+	Account string `json:"account,omitempty"`
 
 	fallback string // the transport fallback checkPrereqs reported, for rate
 }

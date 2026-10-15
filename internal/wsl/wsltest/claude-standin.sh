@@ -30,7 +30,7 @@ case "$1" in
     # ... or makes the check itself fail (an error on stderr, no JSON), as a broken install or an unwritable HOME would
     if [ -e "$HOME/.drydock-standin-auth-broken" ]; then echo "Error: EACCES: permission denied, open '$HOME/.claude.json'" >&2; exit 2; fi
     if [ -e "$HOME/.drydock-standin-signed-out" ]; then printf '%s\n' '{"loggedIn": false}'; exit 1; fi
-    printf '%s\n' '{"loggedIn": true, "authMethod": "claude.ai", "apiProvider": "firstParty"}'; exit 0 ;;
+    printf '%s\n' '{"loggedIn": true, "authMethod": "claude.ai", "apiProvider": "firstParty", "email": "standin@example.invalid"}'; exit 0 ;;
 esac
 mcp=""; prompt=""; n=0
 while [ $# -gt 0 ]; do

@@ -26,9 +26,6 @@ export const connectionKey = (c: Pick<Connection, 'adapter' | 'key'>): string =>
 
 export const isWSL = (c: Pick<Connection, 'runMode'>): boolean => c.runMode === 'wsl';
 
-/** "claude" for the Windows install, "claude in WSL (Ubuntu)" for one inside a distro. */
-export const connectionTitle = (c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>): string => (isWSL(c) ? `${c.adapter} in WSL (${c.distro ?? ''})` : c.adapter);
-
 /** Where the CLI runs, in plain words. */
 export function runsText(c: Pick<Connection, 'runMode' | 'distro' | 'wsl'>): string {
   if (!isWSL(c)) return 'on Windows';
@@ -43,13 +40,19 @@ export function netModeText(mode: string | undefined): string {
   return `${mode}: the distro cannot reach Windows localhost directly`;
 }
 
-/** The tile's name: the CLI's product name ("Claude Code"), with the distro for one inside WSL ("Claude Code (Ubuntu)"). */
-export const connectionName = (c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>): string => (isWSL(c) ? `${adapterLabel(c.adapter)} (${c.distro ?? ''})` : adapterLabel(c.adapter));
+/** The tile's and the card's name: the CLI's product name ("Claude Code"), "Claude Code WSL" for one inside a WSL distro (the
+ * distro is named on the line below it, connectionBlurb, and on the card, runsText). */
+export const connectionName = (c: Pick<Connection, 'adapter' | 'runMode'>): string => (isWSL(c) ? `${adapterLabel(c.adapter)} WSL` : adapterLabel(c.adapter));
 
-/** The tile's "what it is" line: the version found and where it runs. */
+/** The tile's "what it is" line: the version found and where it runs ("2.1.0 in the WSL distro Ubuntu-26.04"). */
 export function connectionBlurb(c: Pick<Connection, 'version' | 'runMode' | 'distro'>): string {
-  const where = isWSL(c) ? `in WSL, ${c.distro ?? ''}` : 'on Windows';
+  const where = isWSL(c) ? `in the WSL distro ${c.distro ?? ''}` : 'on Windows';
   return c.version ? `${c.version} ${where}` : `Agent CLI ${where}`;
+}
+
+/** The success line of a signed-in card: "Signed in as kyle@example.com (claude.ai)", the account and how when the CLI says. */
+export function signedInLine(c: Pick<Connection, 'account' | 'authDetail'>): string {
+  return `Signed in${c.account ? ` as ${c.account}` : ''}${c.authDetail ? ` (${c.authDetail})` : ''}`;
 }
 
 /** The tile's state line and its tone: what, if anything, stands between this CLI and being usable. */
