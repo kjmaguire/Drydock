@@ -7,6 +7,12 @@
 import { expect, test } from '@playwright/test';
 import { appUrl, sidebar } from './helpers';
 
+// the suite shares one harness: the probe server leaves the MCP library again, so a later spec finds the library as it was
+test.afterEach(async ({ request }) => {
+  const url = new URL(appUrl());
+  await request.post(`${url.origin}/rpc/mcplib.delete`, { headers: { 'X-Drydock-Token': url.searchParams.get('token') ?? '' }, data: { id: 'chatmcp' } });
+});
+
 test('Home starts a chat without a project; its skill and MCP server reach the session; Properties take the server away', async ({ page }) => {
   const url = appUrl();
   const origin = new URL(url).origin;
@@ -17,7 +23,7 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   };
   // the workspace libraries: the registry fixture's skills, and the stdio test server with echo declared read-only
   await rpc('skill.registryCheck', { registryId: 'cloudflare-skills' });
-  await rpc('mcplib.save', { id: 'chatmcp', display: 'Chat test server', transport: 'stdio', argv: [process.env.DRYDOCK_E2E_EXE], env: { DRYDOCK_E2E_MCP_SERVER: '1' }, readOnlyTools: ['echo'] });
+  await rpc('mcplib.save', { id: 'chatmcp', display: 'Home chat probe', transport: 'stdio', argv: [process.env.DRYDOCK_E2E_EXE], env: { DRYDOCK_E2E_MCP_SERVER: '1' }, readOnlyTools: ['echo'] });
 
   await page.goto(url);
   await sidebar(page).getByTestId('nav-workspace').click();
