@@ -1,9 +1,10 @@
 // A provider in full (docs/ui.md 9): settings to edit, served models with editable prices, quota windows, OpenRouter key
-// limits. The API key is write-only here: it can be replaced, never read back or shown.
+// limits and, for OpenRouter, the endpoints its calls skip for poor recent uptime (decision P53 c). The API key is
+// write-only here: it can be replaced, never read back or shown.
 
 import { css, on, ref, type Handle } from 'remix/component';
 import { KeyRound } from 'lucide';
-import type { ProviderEdit } from '../../api/providerClient.ts';
+import type { EndpointUptimeView, ProviderEdit } from '../../api/providerClient.ts';
 import type { Provider, ProviderModel } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
@@ -15,14 +16,15 @@ import { tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
 import { numOrUndef } from '../shared/budget-pause.tsx';
-import { keyInfoText, QUOTA_KINDS, quotaFraction, quotaKindLabel, rawPrice } from './providers.ts';
+import { avoidedEndpointText, keyInfoText, QUOTA_KINDS, quotaFraction, quotaKindLabel, rawPrice, uptimeThreshold } from './providers.ts';
 
 const sectionCss = css({ display: 'grid', gap: t.s3, '& > h3': { fontSize: t.textMd, fontWeight: '600' } });
 const panelCss = css({ display: 'grid', gap: t.s6 });
 
 /** Setup reads the provider once (like a form's initial values); after a save the fields keep what was saved. */
-function SettingsForm(handle: Handle<{ d: Provider; busy: string; onSave: (e: ProviderEdit) => void }>) {
+function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView; busy: string; onSave: (e: ProviderEdit) => void }>) {
   const d0 = handle.props.d;
+  let minUp = handle.props.uptime ? String(handle.props.uptime.minUptime) : '';
   let name = d0.name;
   let baseUrl = d0.baseUrl;
   let tier = d0.tier;
@@ -43,7 +45,7 @@ function SettingsForm(handle: Handle<{ d: Provider; busy: string; onSave: (e: Pr
     });
 
   return () => {
-    const { d, busy, onSave } = handle.props;
+    const { d, uptime, busy, onSave } = handle.props;
     return (
       <form
         aria-label="Provider settings"
@@ -54,7 +56,16 @@ function SettingsForm(handle: Handle<{ d: Provider; busy: string; onSave: (e: Pr
             e.preventDefault();
             const apiKey = keyInput?.value ?? '';
             if (keyInput) keyInput.value = '';
-            onSave({ id: d.id, name, baseUrl, tier, dataClass, maxConcurrent: numOrUndef(maxc) ?? 0, apiKey: apiKey || undefined });
+            onSave({
+              id: d.id,
+              name,
+              baseUrl,
+              tier,
+              dataClass,
+              maxConcurrent: numOrUndef(maxc) ?? 0,
+              apiKey: apiKey || undefined,
+              minEndpointUptime: uptime ? uptimeThreshold(minUp) : undefined,
+            });
           }),
         ]}
       >
@@ -84,6 +95,11 @@ function SettingsForm(handle: Handle<{ d: Provider; busy: string; onSave: (e: Pr
           )}
         </Field>
         <Field label="Max concurrent agents (empty: unlimited)">{(id) => <input id={id} inputMode="numeric" value={maxc} mix={text((v) => (maxc = v))} />}</Field>
+        {uptime ? (
+          <Field label={`Skip endpoints below this recent uptime, % (default ${uptime.defaultMinUptime}; 0 turns it off)`}>
+            {(id) => <input id={id} type="number" min="0" max="100" step="any" inputMode="decimal" value={minUp} mix={text((v) => (minUp = v))} />}
+          </Field>
+        ) : null}
         <Field label="Replace the API key (kept in the credential store; never shown)">
           {(id) => (
             <input
@@ -245,6 +261,49 @@ const quotaList = css({
 });
 const keyRow = css({ display: 'flex', alignItems: 'center', gap: t.s3, flexWrap: 'wrap' });
 
+/** What Drydock's own calls to this OpenRouter provider skip: endpoints whose recent uptime is below the threshold. */
+function EndpointUptimeSection(handle: Handle<{ v: EndpointUptimeView }>) {
+  return () => {
+    const { v } = handle.props;
+    return (
+      <div mix={sectionCss} data-testid="endpoint-uptime">
+        <h3>Endpoint uptime</h3>
+        <p mix={muted}>
+          {v.minUptime > 0
+            ? `Before a call, Drydock reads the model's endpoints from OpenRouter (kept 5 minutes) and asks OpenRouter to skip those below ${v.minUptime}% recent uptime. When every endpoint is below it, the best are kept; when the lookup fails, the call goes out unchanged. Agent CLIs that call OpenRouter themselves are not affected.`
+            : 'Off: calls go to OpenRouter without skipping any endpoint.'}
+        </p>
+        {v.avoiding.length === 0 ? (
+          v.minUptime > 0 ? (
+            <p mix={muted}>No endpoint is being skipped.</p>
+          ) : null
+        ) : (
+          <ul mix={quotaList}>
+            {v.avoiding.map((a) => (
+              <li key={a.model} data-testid="endpoint-avoidance" data-model={a.model}>
+                <span class="line">
+                  <code>{a.model}</code>
+                  {a.keptBest ? (
+                    <Badge tone="warn" title="Every endpoint was below the threshold, so the best ones were kept">
+                      all below {a.threshold}%: best kept
+                    </Badge>
+                  ) : null}
+                  <span mix={faint}>{formatDateTime(a.at)}</span>
+                </span>
+                {a.avoided.map((e) => (
+                  <span key={e.tag} class="line" data-testid="avoided-endpoint">
+                    <Badge tone="err">skipped</Badge> {avoidedEndpointText(e)}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
+}
+
 export function ProviderDetailPanel(handle: Handle<{ id: string; onChanged: () => void }>) {
   const s = services(handle);
   const q = query(handle, {
@@ -266,6 +325,7 @@ export function ProviderDetailPanel(handle: Handle<{ id: string; onChanged: () =
           <h3>Settings</h3>
           <SettingsForm
             d={d.provider}
+            uptime={d.endpointUptime}
             busy={act.busy}
             onSave={async (e) => {
               let ok = false;
@@ -343,6 +403,7 @@ export function ProviderDetailPanel(handle: Handle<{ id: string; onChanged: () =
             }}
           />
         </div>
+        {d.endpointUptime ? <EndpointUptimeSection v={d.endpointUptime} /> : null}
         <div mix={keyRow}>
           <Button
             icon={KeyRound}

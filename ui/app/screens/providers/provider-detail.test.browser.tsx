@@ -84,6 +84,69 @@ describe('ProviderDetailPanel', () => {
     expect(quotas).toEqual([['prov_1', '', 'rpd', 5]]); // the form's default window
   });
 
+  it('an OpenRouter provider shows the endpoints its calls skip and saves the uptime threshold', async () => {
+    const updates: ProviderEdit[] = [];
+    const orDetail = (): ProviderDetail => ({
+      ...detail(),
+      provider: { ...detail().provider, name: 'OpenRouter', flavor: 'openrouter', kind: 'aggregator', baseUrl: 'https://openrouter.ai/api/v1' } as never,
+      endpointUptime: {
+        minUptime: 98,
+        defaultMinUptime: 98,
+        avoiding: [
+          {
+            providerId: 'prov_1',
+            model: 'acme/coder-7b',
+            threshold: 98,
+            keptBest: false,
+            at: '2026-10-15T09:00:00Z',
+            avoided: [{ tag: 'flaky', name: 'Upstream Flaky', uptimePct: 91.2, window: '30m' }],
+          },
+          {
+            providerId: 'prov_1',
+            model: 'acme/other',
+            threshold: 98,
+            keptBest: true,
+            at: '2026-10-15T08:59:00Z',
+            avoided: [{ tag: 'worst', uptimePct: 40, window: '5m' }],
+          },
+        ],
+      },
+    });
+    const r = mount(
+      <ProviderDetailPanel id="prov_1" onChanged={() => undefined} />,
+      testServices({ providerDetail: async () => orDetail(), providerUpdate: async (e) => (updates.push(e), {}) as never }),
+    );
+    await waitFor(() => need(r, '[data-testid="endpoint-uptime"]'), r);
+    const rows = Array.from(r.container.querySelectorAll('[data-testid="endpoint-avoidance"]'));
+    expect(rows.length).toBe(2);
+    const [first, second] = rows;
+    expect(first?.getAttribute('data-model')).toBe('acme/coder-7b');
+    expect(first?.textContent).toContain('flaky (Upstream Flaky): 91.2% over the last 30 minutes');
+    expect(first?.textContent).not.toContain('best kept');
+    expect(second?.textContent).toContain('all below 98%: best kept');
+    expect(second?.textContent).toContain('worst: 40% over the last 5 minutes');
+
+    const field = byLabel(r.container, /Skip endpoints below this recent uptime/);
+    expect(field.value).toBe('98');
+    type(field, '90');
+    await r.act(() => byText(r.container, 'button', 'Save settings').click());
+    await waitFor(() => expect(updates[0]).toMatchObject({ id: 'prov_1', minEndpointUptime: 90 }), r);
+  });
+
+  it('other providers have no endpoint uptime section or threshold, and send none', async () => {
+    const updates: ProviderEdit[] = [];
+    const r = mount(
+      <ProviderDetailPanel id="prov_1" onChanged={() => undefined} />,
+      testServices({ providerDetail: async () => detail(), providerUpdate: async (e) => (updates.push(e), {}) as never }),
+    );
+    await waitFor(() => need(r, '[data-testid="price-row"]'), r);
+    expect(r.$('[data-testid="endpoint-uptime"]')).toBeNull();
+    expect(r.container.textContent).not.toContain('Skip endpoints below');
+    await r.act(() => byText(r.container, 'button', 'Save settings').click());
+    await waitFor(() => expect(updates.length).toBe(1), r);
+    expect(updates[0]?.minEndpointUptime).toBe(undefined);
+  });
+
   it('reads the key limits from the provider on a button, and shows a refusal verbatim', async () => {
     const asked: [string, boolean | undefined][] = [];
     const r = mount(

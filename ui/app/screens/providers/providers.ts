@@ -1,7 +1,7 @@
 // Pure helpers for the Providers screens: price text (an unknown price is never shown as 0), probe summaries, the create
 // request (exported Go field names), the key-limit summary and the overview tiles (logo, what it is, state, which opens first).
 
-import type { ProviderDetail } from '../../api/providerClient.ts';
+import type { AvoidedEndpoint, ProviderDetail } from '../../api/providerClient.ts';
 import type { DataClass, NewProvider, PriceTier, ProbeResult, Provider, ProviderKind, ProviderModel } from '../../api/types.ts';
 import { formatUsd } from '../../lib/format.ts';
 import type { TileTone } from '../../ui/tiles.tsx';
@@ -176,3 +176,18 @@ export function keyInfoText(d: Pick<ProviderDetail, 'openRouterKey' | 'keyError'
 
 /** Used fraction of a quota window (undefined without a positive limit). */
 export const quotaFraction = (used: number, limit: number): number | undefined => (limit > 0 ? used / limit : undefined);
+
+/** "flaky (Upstream Flaky): 91.2% over the last 30 minutes": one skipped OpenRouter endpoint in words. */
+export function avoidedEndpointText(e: AvoidedEndpoint): string {
+  const span = e.window === '5m' ? '5 minutes' : e.window === '30m' ? '30 minutes' : e.window;
+  const name = e.name && e.name !== e.tag ? ` (${e.name})` : '';
+  return `${e.tag}${name}: ${Math.round(e.uptimePct * 10) / 10}% over the last ${span}`;
+}
+
+/** The threshold field's value as a number between 0 and 100, or undefined when it is not one (nothing is sent). */
+export function uptimeThreshold(s: string): number | undefined {
+  const v = s.trim();
+  if (v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;
+}

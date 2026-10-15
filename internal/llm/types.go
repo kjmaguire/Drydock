@@ -134,6 +134,9 @@ type Request struct {
 	Temperature *float64
 	TopP        *float64
 	SessionID   string // stable per conversation: OpenRouter sticky routing wants it (docs/phase0 G)
+	// AvoidEndpoints names OpenRouter endpoints (their tags) the request asks OpenRouter to skip, as provider.ignore.
+	// The Wrapper sets it from recent endpoint uptime (decision P53 c); other flavors ignore it.
+	AvoidEndpoints []string
 
 	// Purpose names why the call is made (classify, summarize, consult, probe, ...). It decides cacheability.
 	Purpose string

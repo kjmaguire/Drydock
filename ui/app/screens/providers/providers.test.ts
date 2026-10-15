@@ -3,6 +3,7 @@ import { describe, it } from 'remix/test';
 import type { ProbeResult, ProviderModel } from '../../api/types.ts';
 import {
   ADD_PROVIDER,
+  avoidedEndpointText,
   defaultProvider,
   emptyProviderForm,
   healthTone,
@@ -18,6 +19,7 @@ import {
   providerState,
   quotaFraction,
   rawPrice,
+  uptimeThreshold,
 } from './providers.ts';
 
 const model = (over: Partial<ProviderModel> = {}): ProviderModel => ({
@@ -121,5 +123,24 @@ describe('provider tiles', () => {
     expect(defaultProvider([p('a', 'up'), p('b', 'down', false), p('c', 'down')])).toBe('c');
     expect(defaultProvider([p('a', 'unknown'), p('b', 'up')])).toBe('a');
     expect(defaultProvider([])).toBe(ADD_PROVIDER);
+  });
+});
+
+describe('OpenRouter endpoint uptime', () => {
+  it('words a skipped endpoint with its window, and names the upstream only when it differs from the tag', () => {
+    expect(avoidedEndpointText({ tag: 'flaky', name: 'Upstream Flaky', uptimePct: 91.234, window: '30m' })).toBe(
+      'flaky (Upstream Flaky): 91.2% over the last 30 minutes',
+    );
+    expect(avoidedEndpointText({ tag: 'dip', name: 'dip', uptimePct: 80, window: '5m' })).toBe('dip: 80% over the last 5 minutes');
+  });
+
+  it('accepts a threshold from 0 to 100 only', () => {
+    expect(uptimeThreshold('98')).toBe(98);
+    expect(uptimeThreshold(' 0 ')).toBe(0);
+    expect(uptimeThreshold('99.5')).toBe(99.5);
+    expect(uptimeThreshold('')).toBe(undefined);
+    expect(uptimeThreshold('101')).toBe(undefined);
+    expect(uptimeThreshold('-1')).toBe(undefined);
+    expect(uptimeThreshold('abc')).toBe(undefined);
   });
 });

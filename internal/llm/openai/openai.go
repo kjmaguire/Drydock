@@ -300,6 +300,11 @@ func (c *Client) body(r llm.Request, stream bool) ([]byte, error) {
 			prov["data_collection"] = "deny"
 			prov["zdr"] = true
 		}
+		// P53 c: endpoints with poor recent uptime are skipped, added to any the stored overrides already ignore. ignore,
+		// unlike order, leaves OpenRouter's sticky routing (and so the provider's prompt cache) in place.
+		if len(r.AvoidEndpoints) > 0 {
+			prov["ignore"] = mergeIgnore(prov["ignore"], r.AvoidEndpoints)
+		}
 		if len(prov) > 0 {
 			m["provider"] = prov
 		}
@@ -308,6 +313,29 @@ func (c *Client) body(r llm.Request, stream bool) ([]byte, error) {
 		}
 	}
 	return json.Marshal(m)
+}
+
+// mergeIgnore is the union of an existing provider.ignore value (a JSON array of strings, or absent) and more tags.
+func mergeIgnore(existing any, more []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(v string) {
+		if v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	if arr, ok := existing.([]any); ok {
+		for _, v := range arr {
+			if s, ok := v.(string); ok {
+				add(s)
+			}
+		}
+	}
+	for _, v := range more {
+		add(v)
+	}
+	return out
 }
 
 func (c *Client) messages(r llm.Request) []map[string]any {

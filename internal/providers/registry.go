@@ -300,6 +300,10 @@ func (r *Registry) Delete(ctx context.Context, id string) error {
 	if p.KeyRef != "" && r.secrets != nil {
 		_ = r.secrets.Delete(ctx, p.KeyRef)
 	}
+	_ = r.db.WriteTx(ctx, func(tx *sql.Tx) error { // the endpoint uptime threshold (uptime.go) goes with the provider
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingMinEndpointUptime+id)
+		return err
+	})
 	r.dropClient(id)
 	r.emit(ctx, "provider.removed", map[string]any{"providerId": id})
 	return nil
