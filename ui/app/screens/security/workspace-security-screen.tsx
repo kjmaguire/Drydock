@@ -14,6 +14,7 @@ import { Page, card } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ScanPanel, introCss } from './scan-panel.tsx';
 import { folderScope, projectScope } from './scan-scope.ts';
+import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 
 type Mode = 'folder' | 'project';
 
@@ -112,20 +113,30 @@ export function WorkspaceSecurityScreen(handle: Handle) {
             {mode === 'folder' ? (
               <div class="field">
                 <label for={`scan-folder-${handle.id}`}>Folder</label>
-                <input
-                  id={`scan-folder-${handle.id}`}
-                  data-testid="scan-folder"
-                  spellcheck={false}
-                  autocomplete="off"
-                  placeholder="The full path, for example C:\Users\you\Downloads\some-repo"
-                  value={typed}
-                  mix={on('input', (e) => {
-                    typed = e.currentTarget.value;
-                    void handle.update();
-                  })}
-                />
+                <div mix={folderRow}>
+                  <input
+                    id={`scan-folder-${handle.id}`}
+                    data-testid="scan-folder"
+                    spellcheck={false}
+                    autocomplete="off"
+                    placeholder="The full path, for example C:\Users\you\Downloads\some-repo"
+                    value={typed}
+                    mix={on('input', (e) => {
+                      typed = e.currentTarget.value;
+                      void handle.update();
+                    })}
+                  />
+                  <ChooseFolder
+                    title="Choose the folder to scan"
+                    testId="scan-choose-folder"
+                    onPick={(path) => {
+                      typed = path;
+                      void handle.update();
+                    }}
+                  />
+                </div>
                 <p class="hint">
-                  Type or paste the folder's full path (Explorer's "Copy as path" works), then press Scan. The folder does not need to be a project, and nothing is added to one.
+                  Choose the folder, or type or paste its full path (Explorer's "Copy as path" works), then press Scan. The folder does not need to be a project, and nothing is added to one.
                 </p>
               </div>
             ) : (

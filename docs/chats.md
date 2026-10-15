@@ -212,3 +212,5 @@ message on. The session otherwise starts exactly as every Drydock Claude Code se
   a project chat's calls also appear in that project's Needs you). A server disconnected from the library is left out.
 - The session's gateway entry lists `chats` (with `readHistory`), `skills` (with skills), `fetch_range` and the granted
   servers' tools, and nothing else; with none of them the session has no MCP entry at all.
+
+The folder field of the new chat dialog and of Properties has "Choose folder..." (the window's own dialog, `fs.pickFolder`, decision P58) in the desktop app; the path can still be typed.

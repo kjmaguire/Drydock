@@ -15,6 +15,7 @@ import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
 import type { ChatMcpGrant, ChatSkillRef } from '../../api/chatClient.ts';
 import { ServerPicker, SkillPicker, useMcpLibrary, useSkillLibrary } from './chat-properties.tsx';
 import { chatChoices, pickChatChoice, skipsApprovals } from './chats.ts';
+import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 
 const NO_PROJECT = '';
 
@@ -143,7 +144,12 @@ export function NewChatDialog(
                     : 'An absolute path to an existing folder, checked when the chat starts. Empty: a private folder Drydock creates for this chat.'
                 }
               >
-                {(id) => <input id={id} value={cwd} placeholder={distro ? '/home/you/notes' : 'C:\\work\\notes'} spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />}
+                {(id) => (
+                  <div mix={folderRow}>
+                    <input id={id} value={cwd} placeholder={distro ? '/home/you/notes' : 'C:\\work\\notes'} spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />
+                    <ChooseFolder title="Choose the chat's folder" testId="chat-choose-folder" onPick={(path) => set(() => (cwd = path))} />
+                  </div>
+                )}
               </Field>
             ) : (
               <div />

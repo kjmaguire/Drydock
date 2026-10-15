@@ -16,6 +16,7 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
 import { chatChoices, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
+import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 
 const groupCss = css({
   display: 'grid',
@@ -249,7 +250,12 @@ export function ChatPropertiesDialog(handle: Handle<{ open: boolean; chat: Chat;
             </Field>
           ) : (
             <Field label="Folder" hint="An absolute path to an existing folder, checked when you save. Empty: a private folder Drydock makes for this chat.">
-              {(id) => <input id={id} value={cwd} spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />}
+              {(id) => (
+                <div mix={folderRow}>
+                  <input id={id} value={cwd} spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />
+                  <ChooseFolder title="Choose the chat's folder" testId="chat-choose-folder" onPick={(path) => set(() => (cwd = path))} />
+                </div>
+              )}
             </Field>
           )}
           <SkillPicker library={library.data} loading={library.loading} error={library.error} chosen={skills} onChange={(v) => set(() => (skills = v))} />

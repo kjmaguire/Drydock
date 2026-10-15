@@ -126,7 +126,7 @@ Drydock installs nothing and downloads no rules. The page says what is missing a
 - Real osv-scanner and Opengrep runs were not captured in this repository: the parsers are written from the documented
   shapes and the SARIF 2.1.0 specification, and proven against the stand-ins. The same holds for `--no-call-analysis=all`
   and `--no-git-ignore` (P61): written from the tools' documented flags, not run against the real binaries here.
-- A folder is typed or pasted; the folder dialog (`fs.pickFolder`) is a separate change and is not used yet.
+- A folder is chosen with "Choose folder..." (the window's own dialog through `fs.pickFolder`, decision P58; shown only in the desktop app) or typed or pasted.
 - The `deps` check on a task's diff (`internal/checks`) keeps its own osv-scanner invocation; P61 changed only the scan's.
 
 ## 8. Scanning a folder that is not a project (decision P61)
