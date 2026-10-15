@@ -251,20 +251,26 @@ Open, owner action:
   --cached --others --exclude-standard` through Drydock's hardened git (so .gitignore is honoured and the configuration
   guard applies; a repository in a WSL distro is listed by the distro's git); vendored folders (node_modules, vendor,
   third_party, dist, ...), generated files (a "Code generated ... DO NOT EDIT" or "@generated" header, names such as .min.js
-  or .pb.go), binary files, files over 512 KB and files past the 5,000th are skipped and counted. Each file is parsed with
+  or .pb.go), binary files, files over 512 KB, files past the 5,000th and links (a file that is a link, or one reached
+  through a folder replaced by a link or junction: git lists it from its index; the map shows only code in the checkout,
+  as `read_range` does) are skipped and counted. Each file is parsed with
   `github.com/tree-sitter/go-tree-sitter` v0.25.0 and its grammar (Go, TypeScript, TSX, JavaScript with JSX, Python, C#,
   Java, Rust; all MIT), and the grammar's own `queries/tags.scm` (copied unchanged, with its license) plus a query authored
   here for what it leaves out (`queries/*-extra.scm`: JSX element references for TSX and JavaScript, which no upstream
   query has; TypeScript type aliases, enums and heritage; Python bases and imports; C# structs, records, enums and
   static access; Java enums, records and declared types; Rust path calls, uses and type references) give definitions
   and references. The file graph, Aider's identifier weights (x10 for long camel/snake names, x0.1 for private names and
-  names defined in more than five files, x50 from a focus file), personalized PageRank (networkx's: alpha 0.85,
+  names defined in more than five files, x50 from a focus file; snake_case counts in any case, so MAX_RETRY_ATTEMPTS weighs
+  x10 as in Aider), personalized PageRank (networkx's: alpha 0.85,
   personalised toward the focus paths) and the rank shared out to definitions follow Aider; the rendering prints each
   file's top definition lines with their enclosing definitions ("│" lines, "⋮" gaps), files in PageRank order (Aider sorts
   them by name), and a binary search keeps it within the token budget (256 to 8,192, default 2,048, chars/4; a hard
-  limit, where Aider allows 15% over). Tags are cached by content hash in memory and in one file per mapped folder under
-  the project's data folder (`projects/<id>/repomap`, removed with the project), so a repeated map parses only changed
-  files. (2) **Build tags**: only `parser_cgo.go` (`//go:build cgo`) imports tree-sitter; `parser_nocgo.go` makes a build
+  limit, where Aider allows 15% over). Tags are cached by content hash in memory (at most 50,000 entries, with the file
+  stats bounded the same way, so a long session that maps a new worktree per task does not grow) and in one file per
+  project under its data folder (`projects/<id>/repomap`, removed with the project; the repository and all its task
+  worktrees share it, since a worktree is gone after its task), so a repeated map parses only changed files. The cache's
+  version names the parser, the grammar module releases and the queries, so a new grammar release parses again; a cache
+  write that failed is tried again by the next map, and concurrent writes each use their own temporary file. (2) **Build tags**: only `parser_cgo.go` (`//go:build cgo`) imports tree-sitter; `parser_nocgo.go` makes a build
   without CGO answer `repomap.ErrNoParser`, and `mcp.RepoMapGatedMessage` now says that this build has no repo map because
   it was built without the C parser. (3) **Wiring**: the Workspace tool `repo_map` gets the core's mapper (the run's
   worktree, the project's git) and is one of the read tools every role gets in a CGO build; AGENTS.md gains a section
@@ -303,6 +309,7 @@ Open, owner action:
   alone. (4) **Shown where decisions are shown**: the run's node panel, the task's decisions (labelled by kind), the room's
   turn list (Model and "Why this model?"), the reply's payload (`model`, `decision_id`); the Routing page's preview and rule
   editor offer the new kinds. A reply's decisions carry its room turn id as run id, so project export and deletion include
-  them; the evaluation's stratum still comes from the task's own work and review turns. `docs/model-routing.md`, "As built:
+  them; the evaluation's stratum still comes from the task's own work and review turns, and a reply's decision gets no
+  task outcome and is left out of the routing report (a review finding, fixed the same day). `docs/model-routing.md`, "As built:
   every turn of an agent is routed". **Not routed:** the team lead's and the recommendation turns (P52), the planner. **Not
   verified:** with a real CLI (the scripted fake agent stands in).

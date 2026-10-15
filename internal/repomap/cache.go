@@ -9,9 +9,9 @@ import (
 	"sort"
 )
 
-// The disk cache keeps, per mapped folder, the tags of the files it had at the last map, keyed by content hash. It is one
-// file per folder, rewritten only when a map parsed something new, and it holds only the folder's current files, so it
-// does not grow with the folder's history. A cache written by another parser or query version is ignored.
+// The disk cache keeps, per cache key (a mapped folder, or one key for all checkouts of a repository), the tags of the
+// files the last map had, keyed by content hash. It is one file per key, rewritten only when a map's set of files changed,
+// and it holds only the last map's files, so it does not grow with the history. A cache written by another parser or query version is ignored.
 
 type diskCache struct {
 	Version string           `json:"version"`
@@ -19,19 +19,19 @@ type diskCache struct {
 }
 
 // memoryCap bounds the in-memory tag cache: past it, a map keeps only the entries of the files it just read.
-const memoryCap = 50000
+var memoryCap = 50000 // a variable so a test can lower it
 
-func cacheFile(dir, root string) string {
+func cacheFile(dir, key string) string {
 	if dir == "" {
 		return ""
 	}
-	h := sha256.Sum256([]byte(root))
+	h := sha256.Sum256([]byte(key))
 	return filepath.Join(dir, hex.EncodeToString(h[:8])+".json")
 }
 
-// loadDisk reads a folder's cache file once per Mapper.
-func (m *Mapper) loadDisk(dir, root string) {
-	f := cacheFile(dir, root)
+// loadDisk reads a cache file into memory once, and again after the memory cache was trimmed (saveDisk).
+func (m *Mapper) loadDisk(dir, key string) {
+	f := cacheFile(dir, key)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if f == "" || m.loaded[f] {
@@ -54,9 +54,10 @@ func (m *Mapper) loadDisk(dir, root string) {
 	m.saved[f] = keysPrint(dc.Tags)
 }
 
-// saveDisk writes the tags of a folder's current files (live: their content hashes) when they differ from the file's, and
-// trims the memory cache when it is over memoryCap.
-func (m *Mapper) saveDisk(dir, root string, live map[string]bool) {
+// saveDisk writes the tags of a map's current files (live: their content hashes) when they differ from the cache file's,
+// and bounds memory: past memoryCap the tag cache keeps only this map's entries (and every cache file is read again when
+// next needed), and the file stats keep only this map's files (paths).
+func (m *Mapper) saveDisk(dir, key string, live, paths map[string]bool) {
 	m.mu.Lock()
 	snap := make(map[string][]Tag, len(live))
 	for h := range live {
@@ -69,16 +70,24 @@ func (m *Mapper) saveDisk(dir, root string, live map[string]bool) {
 		for h, t := range snap {
 			m.tags[h] = t
 		}
+		m.loaded = map[string]bool{}
 	}
-	m.mu.Unlock()
-	f := cacheFile(dir, root)
+	if len(m.stats) > memoryCap {
+		kept := make(map[string]statInfo, len(paths))
+		for p := range paths {
+			if st, ok := m.stats[p]; ok {
+				kept[p] = st
+			}
+		}
+		m.stats = kept
+	}
+	f := cacheFile(dir, key)
 	if f == "" {
+		m.mu.Unlock()
 		return
 	}
 	fp := keysPrint(snap)
-	m.mu.Lock()
 	same := m.saved[f] == fp
-	m.saved[f] = fp
 	m.mu.Unlock()
 	if same {
 		return
@@ -90,10 +99,25 @@ func (m *Mapper) saveDisk(dir, root string, live map[string]bool) {
 	if err := os.MkdirAll(filepath.Dir(f), 0o700); err != nil {
 		return
 	}
-	tmp := f + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		_ = os.Rename(tmp, f)
+	// a temporary file of its own, so two maps writing at once never mix their bytes; recorded as saved only once written
+	tmp, err := os.CreateTemp(filepath.Dir(f), filepath.Base(f)+".*.tmp")
+	if err != nil {
+		return
 	}
+	_, werr := tmp.Write(b)
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Rename(tmp.Name(), f)
+	}
+	if werr != nil {
+		_ = os.Remove(tmp.Name())
+		return
+	}
+	m.mu.Lock()
+	m.saved[f] = fp
+	m.mu.Unlock()
 }
 
 // keysPrint is a fingerprint of a cache's set of content hashes.

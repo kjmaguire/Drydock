@@ -48,13 +48,15 @@ type edge struct {
 // (leading underscore) and names defined in many files are not (x0.1 each).
 func identWeight(ident string, definers int) float64 {
 	mul := 1.0
-	hasUpper, hasLower := false, false
+	hasUpper, hasLower, hasLetter := false, false, false
 	for _, r := range ident {
 		hasUpper = hasUpper || unicode.IsUpper(r)
 		hasLower = hasLower || unicode.IsLower(r)
+		hasLetter = hasLetter || unicode.IsLetter(r)
 	}
-	snake := strings.Contains(ident, "_") && hasLower
-	kebab := strings.Contains(ident, "-")
+	// as Aider: snake and kebab need a letter of either case, so MAX_RETRY_ATTEMPTS counts as snake_case
+	snake := strings.Contains(ident, "_") && hasLetter
+	kebab := strings.Contains(ident, "-") && hasLetter
 	camel := hasUpper && hasLower
 	if (snake || kebab || camel) && len(ident) >= 8 {
 		mul *= 10

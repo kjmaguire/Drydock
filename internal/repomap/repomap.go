@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -93,6 +94,9 @@ type Request struct {
 	TokenBudget int      // MinBudget..MaxBudget; 0 means DefaultBudget
 	List        Lister   // overrides Options.List for this request
 	CacheDir    string   // overrides Options.CacheDir for this request (a project keeps its cache in its own data folder)
+	// CacheKey names the disk cache file within the cache folder; default Root. Checkouts of one repository (a project's
+	// task worktrees) share a key, so each new worktree does not leave a cache file of its own behind.
+	CacheKey string
 }
 
 // RankedFile is one file's place in the ranking.
@@ -114,6 +118,7 @@ type Skipped struct {
 	TooLarge    int `json:"tooLarge"`
 	Binary      int `json:"binary"`
 	Unreadable  int `json:"unreadable"`
+	Linked      int `json:"linked"`    // a symbolic link, or a path through one that leads out of the checkout: never read
 	OverLimit   int `json:"overLimit"` // beyond MaxFiles
 }
 
@@ -243,7 +248,13 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 		return res, fmt.Errorf("listing the repository's files: %w", err)
 	}
 	res.Listed = len(listed)
-	m.loadDisk(cacheDir, root)
+	// files are read only where they really are inside the checkout: no link on the way (confiner)
+	cf := &confiner{root: root, dirs: map[string]string{}}
+	cacheKey := root
+	if req.CacheKey != "" {
+		cacheKey = req.CacheKey
+	}
+	m.loadDisk(cacheDir, cacheKey)
 
 	type cand struct{ rel, lang string }
 	var cands []cand
@@ -276,7 +287,7 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 			defer wg.Done()
 			for i := range jobs {
 				c := cands[i]
-				tags, skip, hit, err := m.fileTags(ctx, filepath.Join(root, filepath.FromSlash(c.rel)), c.lang)
+				tags, skip, hit, err := m.fileTags(ctx, cf, c.rel, c.lang)
 				files[i] = fileTags{Path: c.rel, Lang: c.lang, Tags: tags}
 				skips[i], cachedHits[i], errs[i] = skip, hit, err
 			}
@@ -295,6 +306,10 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 	}
 	var parsed []fileTags
 	live := map[string]bool{}
+	paths := make(map[string]bool, len(cands))
+	for _, c := range cands {
+		paths[filepath.Join(root, filepath.FromSlash(c.rel))] = true
+	}
 	for i, f := range files {
 		switch skips[i] {
 		case "":
@@ -306,6 +321,9 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 			continue
 		case "generated":
 			res.Skipped.Generated++
+			continue
+		case "linked":
+			res.Skipped.Linked++
 			continue
 		default:
 			res.Skipped.Unreadable++
@@ -330,7 +348,7 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 		live[m.hashOf(filepath.Join(root, filepath.FromSlash(f.Path)))] = true
 	}
 	res.Files = len(parsed)
-	m.saveDisk(cacheDir, root, live)
+	m.saveDisk(cacheDir, cacheKey, live, paths)
 
 	focusSet := map[string]bool{}
 	for _, f := range parsed {
@@ -367,17 +385,26 @@ func isFocused(rel string, focus []string) bool {
 }
 
 // fileTags returns the tags of one file, from the cache when its size, time and (on a change) content say it is the same.
-func (m *Mapper) fileTags(ctx context.Context, abs, lang string) (tags []Tag, skip string, cached bool, err error) {
-	st, err := os.Stat(abs)
-	if err != nil || !st.Mode().IsRegular() {
-		return nil, "unreadable", false, nil
+// The file is read only when it is a regular file inside the checkout (confiner): a link is skipped as "linked".
+func (m *Mapper) fileTags(ctx context.Context, cf *confiner, rel, lang string) (tags []Tag, skip string, cached bool, err error) {
+	abs := filepath.Join(cf.root, filepath.FromSlash(rel))
+	if why := cf.dirCheck(path.Dir(rel)); why != "" {
+		return nil, why, false, nil
 	}
-	if st.Size() > m.opts.MaxFileBytes {
+	st, err := os.Lstat(abs)
+	switch {
+	case err != nil:
+		return nil, "unreadable", false, nil
+	case st.Mode()&os.ModeSymlink != 0:
+		return nil, "linked", false, nil
+	case !st.Mode().IsRegular():
+		return nil, "unreadable", false, nil
+	case st.Size() > m.opts.MaxFileBytes:
 		return nil, "tooLarge", false, nil
 	}
 	m.mu.Lock()
 	prev, ok := m.stats[abs]
-	if ok && prev.size == st.Size() && prev.mod == st.ModTime().UnixNano() {
+	if ok && prev.size == st.Size() && prev.mod == st.ModTime().UnixNano() && prev.skip != "linked" {
 		if prev.skip != "" {
 			m.mu.Unlock()
 			return nil, prev.skip, true, nil
@@ -388,9 +415,9 @@ func (m *Mapper) fileTags(ctx context.Context, abs, lang string) (tags []Tag, sk
 		}
 	}
 	m.mu.Unlock()
-	src, err := os.ReadFile(abs)
-	if err != nil {
-		return nil, "unreadable", false, nil
+	src, skip := readSame(abs, st, m.opts.MaxFileBytes)
+	if skip != "" {
+		return nil, skip, false, nil
 	}
 	info := statInfo{size: st.Size(), mod: st.ModTime().UnixNano()}
 	switch {
@@ -422,6 +449,70 @@ func (m *Mapper) fileTags(ctx context.Context, abs, lang string) (tags []Tag, sk
 	m.tags[info.hash] = t
 	m.mu.Unlock()
 	return t, "", false, nil
+}
+
+// confiner keeps a map's reads inside its checkout. git lists a tracked file by its path even when a folder on that path
+// was replaced by a link (or, on Windows, a junction) to somewhere else, so every folder between the root and a file must
+// be a real folder; the root itself may be reached through a link. Folder answers are kept for the map.
+type confiner struct {
+	root string
+	mu   sync.Mutex
+	dirs map[string]string // repo-relative folder -> "" (it and every folder above it are real folders), "linked" or "unreadable"
+}
+
+// dirCheck says whether files in dir may be read: "" yes, "linked" when a folder on the way is a link or junction,
+// "unreadable" when one is missing (deleted since git listed it) or cannot be read.
+func (c *confiner) dirCheck(dir string) string {
+	if dir == "." || dir == "" {
+		return ""
+	}
+	c.mu.Lock()
+	why, seen := c.dirs[dir]
+	c.mu.Unlock()
+	if seen {
+		return why
+	}
+	why = c.dirCheck(path.Dir(dir))
+	if why == "" {
+		st, err := os.Lstat(filepath.Join(c.root, filepath.FromSlash(dir)))
+		switch {
+		case err != nil:
+			why = "unreadable"
+		case st.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0:
+			why = "linked"
+		case !st.IsDir():
+			why = "unreadable"
+		}
+	}
+	c.mu.Lock()
+	c.dirs[dir] = why
+	c.mu.Unlock()
+	return why
+}
+
+// readSame reads abs only when what it opens is the regular file lst described: a file swapped for a link after lst was
+// taken is "linked".
+func readSame(abs string, lst os.FileInfo, maxBytes int64) ([]byte, string) {
+	f, err := os.Open(abs)
+	if err != nil {
+		return nil, "unreadable"
+	}
+	defer f.Close()
+	fst, err := f.Stat()
+	if err != nil {
+		return nil, "unreadable"
+	}
+	if !os.SameFile(lst, fst) {
+		return nil, "linked"
+	}
+	src, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	switch {
+	case err != nil:
+		return nil, "unreadable"
+	case int64(len(src)) > maxBytes:
+		return nil, "tooLarge"
+	}
+	return src, ""
 }
 
 func (m *Mapper) hashOf(abs string) string {

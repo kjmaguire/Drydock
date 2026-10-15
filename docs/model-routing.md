@@ -499,7 +499,9 @@ review, room reply, spec (pm), tests first, design (architect), security review)
 (the model it ran on) and `decision_id`; the room's "Recent agent turns" table has a Model column with "Why this model?"
 (`room.turns` returns the turn's last decision, after any hop). A routed reply's decisions carry the room turn's id as their
 run id (node `reply`), so a project's export and deletion include them. The evaluation's task stratum still comes from the
-task's own work and review turns only (a design turn's `architecture` class does not make a task premium-only).
+task's own work and review turns only (a design turn's `architecture` class does not make a task premium-only). The
+template roles' turns share the task's outcome rows; a room reply gets none and the routing report leaves replies out (a
+task's outcome does not judge a chat answer, and a reply in a project channel has no task, so it would stay pending).
 
 **Tests.** Core (`turnrouting_roles_test.go`): a routed reply runs on the cheap choice with a `room_reply` decision the reply,
 the room's turns and the explanation point to, and an agent without a list replies static; a reply whose model is overloaded

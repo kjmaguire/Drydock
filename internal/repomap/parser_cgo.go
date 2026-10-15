@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -97,10 +98,12 @@ func (g *grammar) load() (*ts.Language, *ts.Query, error) {
 	return g.language, g.query, g.err
 }
 
-// parserVersion names the parser and the queries, for the disk cache.
+// parserVersion names the parser, the grammars and the queries, for the disk cache.
 func parserVersion() string {
 	h := sha256.New()
 	fmt.Fprintf(h, "tree-sitter %d\n", ts.LANGUAGE_VERSION)
+	// the grammar modules' versions: a new grammar can parse the same file into different nodes
+	fmt.Fprintf(h, "%s\n", grammarModules())
 	for _, l := range Languages() {
 		src, _ := querySource(grammars[l].queries)
 		fmt.Fprintf(h, "%s\x00%s\x00", l, src)
@@ -209,4 +212,24 @@ func extractTags(ctx context.Context, lang string, src []byte) ([]Tag, error) {
 		out = append(out, t)
 	}
 	return out, nil
+}
+
+// grammarModules lists the tree-sitter modules built in, with their versions ("" when the build has no module information).
+func grammarModules() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	var mods []string
+	for _, d := range bi.Deps {
+		if strings.HasPrefix(d.Path, "github.com/tree-sitter/") {
+			v := d.Version
+			if d.Replace != nil {
+				v = d.Replace.Path + "@" + d.Replace.Version
+			}
+			mods = append(mods, d.Path+"@"+v)
+		}
+	}
+	sort.Strings(mods)
+	return strings.Join(mods, " ")
 }

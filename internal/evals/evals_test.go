@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -443,10 +444,10 @@ func TestOutcomesAreRecordedFromTaskEventsExactlyOnceAcrossRestarts(t *testing.T
 	wait(`SELECT COUNT(*) FROM routing_outcomes`, 3)
 }
 
-// A task's stratum is the class of its own work and review turns. The other routed turns of the task (decision P63: room
-// replies in its channel, the template roles' spec, tests, design and security review) carry their own turn's class, so an
-// architect's design (class architecture) or a security review does not make a general task premium-only; their decisions
-// still get outcome rows.
+// A task's stratum is the class of its own work and review turns. The other routed turns of the task (decision P63: the
+// template roles' spec, tests, design and security review) carry their own turn's class, so an architect's design (class
+// architecture) or a security review does not make a general task premium-only; their decisions still get the task's
+// outcome rows. A room reply in the task's channel gets none: the task's outcome does not judge a chat answer.
 func TestTheStratumComesFromTheTasksWorkTurnsOnly(t *testing.T) {
 	w := newWorld(t)
 	w.exec(`INSERT INTO projects(id,name,repo_path,created_at) VALUES('p1','proj','/x',1)`)
@@ -459,7 +460,32 @@ func TestTheStratumComesFromTheTasksWorkTurnsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Stratum != "general" || len(f.Decisions) != 5 {
+	if f.Stratum != "general" || len(f.Decisions) != 4 || slices.Contains(f.Decisions, "dxroom_reply") {
 		t.Fatalf("stratum %q decisions %v", f.Stratum, f.Decisions)
+	}
+}
+
+// Room replies are routed (P63) but are not task work: the routing report neither counts them nor leaves them pending
+// forever (a reply in a project channel has no task, so it would never get an outcome).
+func TestRoomRepliesStayOutOfTheRoutingReport(t *testing.T) {
+	w := newWorld(t)
+	w.seed()
+	now := time.Now().UnixMilli()
+	w.exec(`INSERT INTO routing_decisions(id,ts,task_id,run_kind,decided_by,provider_id,model,request,decision) VALUES
+		('reply-in-task',?,'T1','room_reply','rules','p','m','{"TaskType":"room_reply"}','{}'),
+		('reply-in-channel',?,'','room_reply','rules','p','m','{"TaskType":"room_reply"}','{}')`, now-2500, now-2500)
+	if err := evals.Record(w.ctx, w.db, "T1"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := w.db.Reader().QueryRow(`SELECT COUNT(*) FROM routing_outcomes WHERE decision_id LIKE 'reply-%'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("a reply got the task's outcome: %d %v", n, err)
+	}
+	rep, err := evals.Build(w.ctx, w.db, evals.Options{MinN: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt := rep.Routing; rt.Decisions != 5 || rt.WithOutcome != 4 || rt.Pending != 1 {
+		t.Fatalf("routing with replies: %+v", rt)
 	}
 }

@@ -23,6 +23,8 @@ export interface RepoMapSkipped {
   tooLarge: number;
   binary: number;
   unreadable: number;
+  /** a symbolic link, or a path through one that leads out of the checkout: never read */
+  linked: number;
   overLimit: number;
 }
 
@@ -59,7 +61,7 @@ export const REPO_MAP_MAX_BUDGET = 8192;
 export const REPO_MAP_DEFAULT_BUDGET = 2048;
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
-const ZERO: RepoMapSkipped = { unsupported: 0, vendored: 0, generated: 0, tooLarge: 0, binary: 0, unreadable: 0, overLimit: 0 };
+const ZERO: RepoMapSkipped = { unsupported: 0, vendored: 0, generated: 0, tooLarge: 0, binary: 0, unreadable: 0, linked: 0, overLimit: 0 };
 
 function result(r: RepoMapResult): RepoMapResult {
   return { ...r, focus: arr(r.focus), ranked: arr(r.ranked), languages: r.languages ?? {}, skipped: { ...ZERO, ...(r.skipped ?? {}) } };

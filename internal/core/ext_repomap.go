@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -55,6 +54,9 @@ func (c *Core) mapRepo(ctx context.Context, projectID, root string, focus []stri
 		Root: root, Focus: focus, TokenBudget: budget,
 		List:     func(ctx context.Context, dir string) ([]string, error) { return r.ListFiles(ctx, dir) },
 		CacheDir: filepath.Join(c.cfg.DataDir, "projects", projectID, "repomap"),
+		// one cache file for the repository and all its task worktrees: they share most files, and a worktree is gone
+		// after its task, so a file per worktree would be left behind for every task
+		CacheKey: "repository",
 	})
 }
 
@@ -70,10 +72,18 @@ func (m mcpRepoMap) Map(ctx context.Context, run mcp.RunInfo, focus []string, bu
 		return "", err
 	}
 	if res.Map == "" {
-		return "The repo map is empty: this repository has no source files in the languages it reads (" + strings.Join(repomap.Languages(), ", ") + ").", nil
+		return emptyMapText(res), nil
 	}
 	return fmt.Sprintf("Repo map: %d of %d source files, most important first (about %d of %d tokens). Read code with read_range.\n\n%s",
 		res.Shown, res.Files, res.Tokens, res.Budget, res.Map), nil
+}
+
+// emptyMapText says why a map came back empty: no source files it reads, or none of what it found fit the budget.
+func emptyMapText(res repomap.Result) string {
+	if res.Files == 0 {
+		return "The repo map is empty: this repository has no source files in the languages it reads (" + strings.Join(repomap.Languages(), ", ") + ")."
+	}
+	return fmt.Sprintf("The repo map is empty: %d source files were read, but not even the most important definition fits in %d tokens. Ask again with a larger token_budget, or read code with read_range.", res.Files, res.Budget)
 }
 
 // repoMapSection is the AGENTS.md section of a worktree (context engine hook, ext_packs.go). A section with no body is
@@ -126,9 +136,7 @@ func startRepoMap(_ context.Context, c *Core) (map[string]Method, func(), error)
 			if _, err := c.GetProject(ctx, p.ProjectID); err != nil {
 				return nil, err
 			}
-			langs := repomap.Languages()
-			sort.Strings(langs)
-			v := RepoMapView{Available: repomap.Available(), Languages: langs}
+			v := RepoMapView{Available: repomap.Available(), Languages: repomap.Languages()}
 			if !v.Available {
 				v.Message = repomap.NoParserMessage
 				return v, nil

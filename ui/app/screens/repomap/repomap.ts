@@ -26,6 +26,7 @@ const SKIP_LABELS: [keyof RepoMapSkipped, string][] = [
   ['tooLarge', 'too large'],
   ['binary', 'binary'],
   ['unreadable', 'unreadable'],
+  ['linked', 'links (not read)'],
   ['overLimit', 'over the file limit'],
 ];
 

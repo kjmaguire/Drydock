@@ -159,7 +159,9 @@ export function RepoMapScreen(handle: Handle) {
                 </pre>
               ) : (
                 <Notice tone="info" testId="repomap-empty">
-                  The repository has no source files in the languages the map reads ({v!.languages.join(', ')}).
+                  {r.files === 0
+                    ? `The repository has no source files in the languages the map reads (${v!.languages.join(', ')}).`
+                    : `${r.files} source files were read, but not even the most important definition fits in ${r.budget} tokens. Try a larger token budget.`}
                 </Notice>
               )}
             </Section>

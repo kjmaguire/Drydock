@@ -213,3 +213,14 @@ func TestMapOfARealRepository(t *testing.T) {
 		t.Fatal("the focus file is marked")
 	}
 }
+
+// The disk cache's version names the grammar modules, so a new grammar release (which can parse the same file into
+// different nodes) does not keep serving tags made by the old one.
+func TestTheCacheVersionNamesTheGrammarReleases(t *testing.T) {
+	mods := grammarModules()
+	for _, m := range []string{"github.com/tree-sitter/go-tree-sitter@v", "github.com/tree-sitter/tree-sitter-typescript@v", "github.com/tree-sitter/tree-sitter-go@v"} {
+		if !strings.Contains(mods, m) {
+			t.Fatalf("%q not in the cache version's module list %q", m, mods)
+		}
+	}
+}

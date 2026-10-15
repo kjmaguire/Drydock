@@ -18,9 +18,10 @@ describe('repo map page data', () => {
   });
 
   it('names only the reasons that left files out', () => {
-    const none = { unsupported: 0, vendored: 0, generated: 0, tooLarge: 0, binary: 0, unreadable: 0, overLimit: 0 };
+    const none = { unsupported: 0, vendored: 0, generated: 0, tooLarge: 0, binary: 0, unreadable: 0, linked: 0, overLimit: 0 };
     expect(skippedText(none)).toBe('');
     expect(skippedText({ ...none, unsupported: 12, vendored: 3 })).toBe('12 in other languages or not code, 3 vendored');
+    expect(skippedText({ ...none, linked: 2 })).toBe('2 links (not read)');
   });
 
   it('summarises a map', () => {

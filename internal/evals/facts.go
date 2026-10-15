@@ -328,10 +328,12 @@ func Facts(ctx context.Context, db *storage.DB, taskID string) (TaskFacts, error
 	f.Escalated = esc > 0 || f.TripsStage2 > 0
 
 	// routing decisions and the task's stratum (docs/model-routing.md s7 premium-only classes). The stratum is the class of
-	// the task's own work and review turns: the other turns of the task (room replies, the template roles' spec, tests,
-	// design and security review, P63) carry the class of that turn, not of the task, and do not classify it.
+	// the task's own work and review turns: the other turns of the task (the template roles' spec, tests, design and
+	// security review, P63) carry the class of that turn, not of the task, and do not classify it. They share the task's
+	// outcome, as turns of its work. A room reply is not: what the task came to says nothing about a chat answer, so its
+	// decision gets no outcome (and the routing report leaves replies out, report.go).
 	dr, err := r.QueryContext(ctx, `SELECT id, COALESCE(json_extract(request,'$.TaskType'),''), COALESCE(json_extract(request,'$.Risk'),0), run_kind IN ('agent_task','review','')
-		FROM routing_decisions WHERE task_id=? ORDER BY ts, id`, taskID)
+		FROM routing_decisions WHERE task_id=? AND run_kind<>'room_reply' ORDER BY ts, id`, taskID)
 	if err != nil {
 		return f, err
 	}

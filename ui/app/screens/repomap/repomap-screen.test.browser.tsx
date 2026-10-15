@@ -21,7 +21,7 @@ const result = (over: Partial<RepoMapResult> = {}): RepoMapResult => ({
   defs: 60,
   refs: 90,
   languages: { go: 5, typescript: 2 },
-  skipped: { unsupported: 12, vendored: 1, generated: 0, tooLarge: 0, binary: 0, unreadable: 0, overLimit: 0 },
+  skipped: { unsupported: 12, vendored: 1, generated: 0, tooLarge: 0, binary: 0, unreadable: 0, linked: 0, overLimit: 0 },
   ranked: [
     { path: 'go/store/store.go', lang: 'go', rank: 0.2579, defs: 4, refs: 9, shown: true },
     { path: 'go/api/api.go', lang: 'go', rank: 0.0111, defs: 2, refs: 6, shown: true },
@@ -109,5 +109,12 @@ describe('Repo map page', () => {
     const r = show(async () => ({ available: true, languages: ['go', 'rust'], result: result({ map: '', ranked: [], files: 0, shown: 0 }) }));
     await waitFor(() => expect(r.$('[data-testid="repomap-empty"]')!.textContent).toContain('(go, rust)'), r);
     expect(r.$('[data-testid="repomap-ranking"]')).toBeNull();
+  });
+
+  it('says the budget was too small, not that there is no code, when files were read but nothing fit', async () => {
+    const r = show(async () => ({ available: true, languages: ['go'], result: result({ map: '', files: 12, shown: 0, budget: 256 }) }));
+    await waitFor(() => expect(r.$('[data-testid="repomap-empty"]')!.textContent).toContain('12 source files were read'), r);
+    expect(r.$('[data-testid="repomap-empty"]')!.textContent).toContain('256 tokens');
+    expect(r.$('[data-testid="repomap-empty"]')!.textContent).not.toContain('no source files');
   });
 });

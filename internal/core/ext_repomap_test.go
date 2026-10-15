@@ -105,6 +105,10 @@ func TestRepoMapPageAndAgentsSection(t *testing.T) {
 	if item == nil || !item.Included || item.Bytes == 0 || item.Bytes > core.RepoMapAgentsBudget*4+1200 {
 		t.Fatalf("manifest item %+v", item)
 	}
+	// the worktree shares the repository's cache file: a task's worktree leaves no cache file of its own behind
+	if ents, err := os.ReadDir(filepath.Join(a.dataDir(), "projects", p.ID, "repomap")); err != nil || len(ents) != 1 {
+		t.Fatalf("tag cache after mapping a worktree: %v %v", ents, err)
+	}
 
 	// a small repository gets no section, and the manifest says why
 	small := newRepo(t)
