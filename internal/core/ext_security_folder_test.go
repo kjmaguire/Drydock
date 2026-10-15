@@ -17,7 +17,7 @@ import (
 // folder. Nothing of it is attached to a project.
 func TestAFolderScanRunsTheEnginesWithoutAProjectAndKeepsItsHistory(t *testing.T) {
 	a, rules := securityCore(t, "--sleep-ms=300")
-	folder := t.TempDir()
+	folder := realDir(t, t.TempDir())
 	os.WriteFile(filepath.Join(folder, "notes.txt"), []byte("key = "+plantedKey+"\n"), 0o644)
 	os.WriteFile(filepath.Join(folder, "go.mod"), []byte("module example.com/downloaded\n"), 0o644)
 
@@ -204,11 +204,17 @@ func TestAFolderScanRefusesFoldersItMustNotRead(t *testing.T) {
 // A folder scan can be cancelled like a project's; the cancelled report is kept in the folder's history.
 func TestAFolderScanCanBeCancelled(t *testing.T) {
 	a, _ := securityCore(t, "--sleep-ms=20000")
-	folder := t.TempDir()
+	folder := realDir(t, t.TempDir())
 	var rep scan.Report
 	a.call("security.scan.start", map[string]any{"folder": folder}, &rep)
 	time.Sleep(200 * time.Millisecond)
-	a.call("security.scan.cancel", map[string]any{"folder": folder}, &rep)
+	// a linked path to the same folder (on Windows also a short 8.3 path) finds the running scan
+	link := filepath.Join(t.TempDir(), "link")
+	byLink := folder
+	if err := os.Symlink(folder, link); err == nil {
+		byLink = link
+	}
+	a.call("security.scan.cancel", map[string]any{"folder": byLink}, &rep)
 	var cur *scan.Report
 	a.waitFor("the cancelled folder scan to end", func() bool {
 		a.call("security.scan.get", map[string]any{"folder": folder}, &cur)
@@ -222,4 +228,14 @@ func TestAFolderScanCanBeCancelled(t *testing.T) {
 	if len(list) != 1 || list[0].Status != scan.StatusCancelled {
 		t.Fatalf("%+v", list)
 	}
+}
+
+// realDir is the folder a scan names: t.TempDir() can be a short (8.3) or linked path, and Drydock names the folder it resolves to.
+func realDir(t *testing.T, dir string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Clean(real)
 }

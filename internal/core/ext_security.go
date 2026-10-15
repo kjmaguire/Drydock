@@ -189,6 +189,10 @@ func (s *securityExt) target(ctx context.Context, p scanTarget, forStart bool) (
 		}
 		folder := filepath.Clean(p.Folder)
 		if !forStart {
+			// the same folder as the scan was started with: a short (8.3) or linked path names the folder it resolves to
+			if real, err := filepath.EvalSymlinks(folder); err == nil {
+				folder = filepath.Clean(real)
+			}
 			return target{Key: folderKey(folder), Folder: folder}, nil
 		}
 		dir, err := s.checkFolder(folder)
