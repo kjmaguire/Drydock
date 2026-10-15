@@ -130,8 +130,9 @@ func TestAPersonAddsACIRunnerForAPrivateRepository(t *testing.T) {
 	if s := slotOf(v, key); s == nil || s.Enabled || s.State != runners.StatePaused {
 		t.Fatalf("after a restart: %+v", v.Slots)
 	}
-	b.call("runners.enable", map[string]any{"repo": "kjmaguire/shop", "kind": "linux", "enabled": true}, &v)
+	// counted before switching it on: the runner can register before the call returns, and then waits for a job
 	n := len(rig.gh.Registrations())
+	b.call("runners.enable", map[string]any{"repo": "kjmaguire/shop", "kind": "linux", "enabled": true}, &v)
 	b.waitFor("the runner to register again", func() bool { return len(rig.gh.Registrations()) > n })
 	b.call("runners.remove", map[string]any{"repo": "kjmaguire/shop", "kind": "linux"}, &v)
 	if len(v.Slots) != 0 {
