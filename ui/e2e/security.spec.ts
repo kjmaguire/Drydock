@@ -78,7 +78,9 @@ test("a tool's program is chosen with the file dialog and forgotten again", asyn
   await expect(osv).toHaveAttribute('data-found', 'true', { timeout: 60_000 });
   const pick = page.locator('[data-testid=tool-pick][data-tool=osv-scanner]');
   await pick.getByTestId('tool-choose').click();
-  await expect(osv).toContainText('Chosen file');
+  // the core stores the choice, then probes each tool's program (--version, up to 10 s per tool) before the row re-reads;
+  // the first run of a freshly linked exe on a Windows runner can take a while, so this waits as long as the probe above
+  await expect(osv).toContainText('Chosen file', { timeout: 60_000 });
   await expect(osv).toContainText('picked');
   await page.getByTestId('scan-button').click();
   await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
