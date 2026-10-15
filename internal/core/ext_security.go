@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -55,6 +56,19 @@ func init() {
 				RulesDir  string `json:"rulesDir"`
 			}) (any, error) {
 				return s.setRulesDir(ctx, p.ProjectID, p.RulesDir, c.Human())
+			}),
+			"security.tool.set": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+				Tool      string `json:"tool"`
+				Path      string `json:"path"`
+			}) (any, error) {
+				return s.setToolPath(ctx, p.ProjectID, p.Tool, p.Path, c.Human())
+			}),
+			"security.tool.choose": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+				Tool      string `json:"tool"`
+			}) (any, error) {
+				return s.chooseTool(ctx, p.ProjectID, p.Tool, c.Human())
 			}),
 			"security.scan.start": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -108,7 +122,94 @@ func (s *securityExt) rulesDir(ctx context.Context, projectID string) string {
 
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	// the external tools read the whole project: they get what every project command gets (checks.CommandEnv), no more
-	return scan.Detect(ctx, s.c.Deps.PM, checks.CommandEnv(), s.c.cfg.ScanTools, s.rulesDir(ctx, projectID))
+	t := scan.Detect(ctx, s.c.Deps.PM, checks.CommandEnv(), s.paths(ctx), s.rulesDir(ctx, projectID))
+	t.CanChoose = s.c.cfg.PickFile != nil
+	return t
+}
+
+// The programs a person chose for the external tools, workspace-wide (a program is on the computer, not in a project):
+// settingToolPath + tool name.
+const settingToolPath = "security:toolpath:"
+
+// scanTools are the external tools a person may choose a program for.
+var scanTools = map[string]string{"osv-scanner": "osv-scanner", "opengrep": "Opengrep"}
+
+func (s *securityExt) chosenTool(ctx context.Context, tool string) string {
+	var v string
+	_ = s.c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingToolPath+tool).Scan(&v)
+	return v
+}
+
+// paths are the configured tools with each program a person chose in place of the default. A choice replaces the program
+// only: the leading arguments stay what the configuration says (none in the product; the e2e harness's stand-ins need them).
+func (s *securityExt) paths(ctx context.Context) scan.Paths {
+	p := s.c.cfg.ScanTools
+	if v := s.chosenTool(ctx, "osv-scanner"); v != "" {
+		p.OSV = scan.Tool{Path: v, Args: p.OSV.Args, Chosen: true}
+	}
+	if v := s.chosenTool(ctx, "opengrep"); v != "" {
+		p.Opengrep = scan.Tool{Path: v, Args: p.Opengrep.Args, Chosen: true}
+	}
+	return p
+}
+
+// setToolPath stores the program a person chose for a tool; "" goes back to finding it on PATH. Only a person may: the
+// program reads the whole project.
+func (s *securityExt) setToolPath(ctx context.Context, projectID, tool, path, by string) (scan.Tools, error) {
+	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
+		return scan.Tools{}, errors.New("only a person may choose a scan tool's program")
+	}
+	label, ok := scanTools[tool]
+	if !ok {
+		return scan.Tools{}, fmt.Errorf("%q is not a scan tool Drydock runs (osv-scanner or opengrep)", tool)
+	}
+	path = strings.TrimSpace(strings.Trim(strings.TrimSpace(path), `"`))
+	if path != "" {
+		if !filepath.IsAbs(path) {
+			return scan.Tools{}, fmt.Errorf("give the full path of %s's program, for example C:\\tools\\%s.exe", label, tool)
+		}
+		st, err := os.Stat(path)
+		if err != nil || !st.Mode().IsRegular() {
+			return scan.Tools{}, fmt.Errorf("there is no file at %s", path)
+		}
+		if runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(path), ".exe") {
+			return scan.Tools{}, fmt.Errorf("%s is not a program (.exe)", filepath.Base(path))
+		}
+	}
+	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		if path == "" {
+			_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingToolPath+tool)
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingToolPath+tool, path)
+		return err
+	}); err != nil {
+		return scan.Tools{}, err
+	}
+	s.c.publish(ctx, "security.settings", projectID, map[string]any{"tool": tool, "path": path, "by": by})
+	return s.tools(ctx, projectID), nil
+}
+
+// chooseTool opens the window's file dialog for a tool's program and stores what the person chose; cancelling changes nothing.
+func (s *securityExt) chooseTool(ctx context.Context, projectID, tool, by string) (scan.Tools, error) {
+	label, ok := scanTools[tool]
+	if !ok {
+		return scan.Tools{}, fmt.Errorf("%q is not a scan tool Drydock runs (osv-scanner or opengrep)", tool)
+	}
+	if s.c.cfg.PickFile == nil {
+		return scan.Tools{}, fmt.Errorf("this window cannot open a file dialog: type the full path of %s's program instead", label)
+	}
+	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
+		return scan.Tools{}, errors.New("only a person may choose a scan tool's program")
+	}
+	path, err := s.c.cfg.PickFile(ctx, FilePick{Title: "Choose " + label + "'s program (" + tool + ".exe)", FilterName: "Programs", FilterPattern: "*.exe"})
+	if err != nil {
+		return scan.Tools{}, fmt.Errorf("the file dialog: %w", err)
+	}
+	if strings.TrimSpace(path) == "" {
+		return s.tools(ctx, projectID), nil
+	}
+	return s.setToolPath(ctx, projectID, tool, path, by)
 }
 
 // setRulesDir stores the project's rules folder. Only a person may: the folder decides which rules read the whole project.
@@ -154,7 +255,7 @@ func (s *securityExt) start(ctx context.Context, projectID, by string) (scan.Rep
 	delete(s.unstored, projectID)
 	// the scan outlives the request; close() cancels what is still running when the core closes
 	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: projectID, By: by, Dir: p.RepoPath, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
-		Env: checks.CommandEnv, Paths: s.c.cfg.ScanTools, RulesDir: s.rulesDir(ctx, projectID), OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(projectID, rep, e) }})
+		Env: checks.CommandEnv, Paths: s.paths(ctx), RulesDir: s.rulesDir(ctx, projectID), OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(projectID, rep, e) }})
 	s.running[projectID] = run
 	// published under the lock: changed() takes it before it can publish an engine or finished event, so started comes first
 	s.c.publish(ctx, "security.scan.started", projectID, map[string]any{"id": id, "by": by})

@@ -85,6 +85,10 @@ export interface ToolInfo {
   path?: string;
   version?: string;
   install?: string;
+  /** How it was found: the file a person chose, the PATH Drydock started with, or an install folder / a PATH changed since. */
+  source?: 'chosen' | 'path' | 'folder';
+  /** The file a person chose, also when it is no longer there (found is then false). */
+  chosen?: string;
 }
 
 export interface SecurityTools {
@@ -95,4 +99,6 @@ export interface SecurityTools {
   rulesOk: boolean;
   rulesNote?: string;
   ready: boolean;
+  /** This window can open a file dialog (the desktop app); elsewhere the person types the full path. */
+  canChoose?: boolean;
 }

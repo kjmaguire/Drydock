@@ -4,6 +4,9 @@
 import type { Transport } from './transport.ts';
 import type { ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools } from './securityTypes.ts';
 
+/** The external tools a person may choose a program for. */
+export type ScanToolName = 'osv-scanner' | 'opengrep';
+
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const ZERO: ScanCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 };
 const counts = (c: ScanCounts | null | undefined): ScanCounts => ({ ...ZERO, ...(c ?? {}) });
@@ -16,6 +19,10 @@ export interface SecurityClient {
   securityTools(projectId: string): Promise<SecurityTools>;
   /** Sets the Opengrep rules folder. Only a human may; the server refuses otherwise. */
   securitySettingsSet(projectId: string, rulesDir: string): Promise<SecurityTools>;
+  /** Sets the program of an external tool for the whole workspace; '' goes back to finding it on PATH. Only a human may. */
+  securityToolSet(projectId: string, tool: ScanToolName, path: string): Promise<SecurityTools>;
+  /** Opens the window's file dialog to choose a tool's program; cancelling changes nothing. Refused where there is no dialog. */
+  securityToolChoose(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
   /** Starts a scan (status "running"). Refused while one runs or when the project has no repository. */
   securityScanStart(projectId: string): Promise<ScanReport>;
   securityScanCancel(projectId: string): Promise<ScanReport>;
@@ -30,6 +37,8 @@ export function createSecurityClient(t: Transport): SecurityClient {
   return {
     securityTools: (projectId) => t.call('security.tools', { projectId }),
     securitySettingsSet: (projectId, rulesDir) => t.call('security.settings.set', { projectId, rulesDir }),
+    securityToolSet: (projectId, tool, path) => t.call('security.tool.set', { projectId, tool, path }),
+    securityToolChoose: (projectId, tool) => t.call('security.tool.choose', { projectId, tool }),
     securityScanStart: async (projectId) => report(await t.call<ScanReport>('security.scan.start', { projectId })),
     securityScanCancel: async (projectId) => report(await t.call<ScanReport>('security.scan.cancel', { projectId })),
     securityScanGet: async (projectId) => {

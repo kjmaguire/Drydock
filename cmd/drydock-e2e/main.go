@@ -282,7 +282,35 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	if err := os.WriteFile(filepath.Join(scanRules, "placeholder.yaml"), []byte("# a placeholder rules file for the stand-in opengrep (a test double)\nrules: []\n"), 0o644); err != nil {
 		return err
 	}
+	// TEST DOUBLE of the window's file dialog (the Security page's "Choose file..."): it "chooses" a copy of this binary named
+	// like the tool, which the scan starts with the stand-in's arguments; the desktop app opens Windows' own dialog instead
+	picked := filepath.Join(root, "picked")
+	if err := os.MkdirAll(picked, 0o755); err != nil {
+		return err
+	}
+	pickFile := func(_ context.Context, p core.FilePick) (string, error) {
+		name := "osv-scanner"
+		if strings.Contains(p.Title, "Opengrep") {
+			name = "opengrep"
+		}
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		dst := filepath.Join(picked, name)
+		if _, err := os.Stat(dst); err == nil {
+			return dst, nil
+		}
+		if err := os.Link(self, dst); err == nil {
+			return dst, nil
+		}
+		b, err := os.ReadFile(self)
+		if err != nil {
+			return "", err
+		}
+		return dst, os.WriteFile(dst, b, 0o755)
+	}
 	c, err := core.Open(context.Background(), core.Config{
+		PickFile: pickFile,
 		DataDir:  filepath.Join(root, "data"),
 		User:     "e2e",
 		LeaseTTL: 3 * time.Second,

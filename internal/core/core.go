@@ -75,6 +75,17 @@ type Config struct {
 	// ScanRulesDir is the Opengrep rules folder a project uses until a person chooses one. The product leaves it empty
 	// (Drydock downloads no rules); the e2e harness gives its stand-in a folder.
 	ScanRulesDir string
+	// PickFile opens the window's own file dialog and returns the file the person chose ("" when they cancelled). The desktop
+	// app sets it (app/app_windows.go); without it a person types a full path instead. The e2e harness sets a labelled
+	// stand-in.
+	PickFile func(ctx context.Context, p FilePick) (string, error)
+}
+
+// FilePick is what a file dialog asks for.
+type FilePick struct {
+	Title         string
+	FilterName    string // for example "Programs"
+	FilterPattern string // semicolon-separated globs, for example "*.exe"
 }
 
 // Core is the running application.

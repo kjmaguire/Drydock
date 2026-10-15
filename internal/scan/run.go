@@ -214,7 +214,7 @@ func (r *Run) run(ctx context.Context) {
 	}()
 	go func() {
 		defer wg.Done()
-		path, err := r.o.Paths.OSV.resolve("osv-scanner", r.o.Paths.LookPath)
+		path, _, err := r.o.Paths.OSV.resolve("osv-scanner", r.o.Paths.LookPath)
 		if err != nil {
 			r.finish(Deps, nil, Skipped, "osv-scanner is not installed, so no dependency was checked. "+osvInstall, "")
 			return
@@ -226,7 +226,7 @@ func (r *Run) run(ctx context.Context) {
 	}()
 	go func() {
 		defer wg.Done()
-		path, err := r.o.Paths.Opengrep.resolve("opengrep", r.o.Paths.LookPath)
+		path, _, err := r.o.Paths.Opengrep.resolve("opengrep", r.o.Paths.LookPath)
 		if err != nil {
 			r.finish(SAST, nil, Skipped, "Opengrep is not installed, so no code was checked. "+opengrepInstall, "")
 			return

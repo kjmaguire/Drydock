@@ -43,15 +43,29 @@ func Run(assets fs.FS) error {
 		return err
 	}
 	core.AppVersion = Version // the build's version for support bundles and project exports
-	c, err := core.Open(context.Background(), core.Config{DataDir: dir})
+	var wa *application.App
+	var window *application.WebviewWindow
+	c, err := core.Open(context.Background(), core.Config{DataDir: dir, PickFile: func(_ context.Context, p core.FilePick) (string, error) {
+		// the window's own Open dialog (the Security page's "Choose file..."); "" when the person cancels
+		if wa == nil {
+			return "", fmt.Errorf("the window is not open yet")
+		}
+		d := wa.Dialog.OpenFile().SetTitle(p.Title).CanChooseFiles(true).CanChooseDirectories(false)
+		if p.FilterPattern != "" {
+			d = d.AddFilter(p.FilterName, p.FilterPattern)
+		}
+		if window != nil {
+			d = d.AttachToWindow(window)
+		}
+		return d.PromptForSingleSelection()
+	}})
 	if err != nil {
 		return fmt.Errorf("open Drydock: %w", err)
 	}
 	defer c.Close()
 
 	bridge := &Bridge{Core: c}
-	var window *application.WebviewWindow
-	wa := application.New(application.Options{
+	wa = application.New(application.Options{
 		Name:        "Drydock",
 		Description: "A team of AI coding agents you can watch and approve.",
 		Services:    []application.Service{application.NewService(bridge)},

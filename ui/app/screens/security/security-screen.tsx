@@ -5,6 +5,7 @@
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { KeyRound, Package, ScanSearch, ShieldCheck, type IconNode } from 'lucide';
+import type { ScanToolName } from '../../api/securityClient.ts';
 import type { EngineID, EngineResult, ScanFinding, ScanReport, SecurityTools, Severity, ToolInfo } from '../../api/securityTypes.ts';
 import { projectHasRepo, type DrydockEvent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
@@ -119,6 +120,15 @@ const toolRow = css({
   '& strong': { fontWeight: '600', minWidth: '96px' },
   '& .state': { color: t.textMuted, fontSize: t.textSm, minWidth: '0', overflowWrap: 'anywhere' },
   '& .install': { display: 'block', marginTop: '2px' },
+});
+const pickCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  margin: '0',
+  padding: `0 ${t.s4} ${t.s3}`,
+  '& input': { flex: '1', minWidth: '220px', fontFamily: t.mono, fontSize: t.textSm },
 });
 const rulesCss = css({
   display: 'grid',
@@ -311,17 +321,25 @@ function toolState(name: string, info: ToolInfo | undefined): RemixNode {
     );
   }
   if (info.found) {
+    const how = info.source === 'chosen' ? 'Chosen file' : info.source === 'folder' ? 'Found (not on the PATH Drydock started with) at' : 'Found at';
     return (
       <span class="state">
-        Found at <span mix={mono}>{info.path || '?'}</span>
+        {how} <span mix={mono}>{info.path || '?'}</span>
         {info.version ? ` (${info.version})` : ''}
+      </span>
+    );
+  }
+  if (info.chosen) {
+    return (
+      <span class="state">
+        The chosen file <span mix={mono}>{info.chosen}</span> is not there: choose it again, or use PATH.
       </span>
     );
   }
   return (
     <span class="state">
       Not installed
-      {info.install ? <span class="install">{info.install}</span> : null}
+      {info.install ? <span class="install">{info.install} Or choose its program below.</span> : null}
     </span>
   );
 }
@@ -335,7 +353,8 @@ export function SecurityScreen(handle: Handle) {
   const enabled = () => !!pid();
   const tools = query(handle, {
     load: () => s.client.securityTools(pid()!),
-    when: (e) => e.type === 'security.settings' && mine(e),
+    // a tool's program is the workspace's: a choice made on another project's page counts here too
+    when: (e) => e.type === 'security.settings' && (mine(e) || (e.data as { tool?: string } | undefined)?.tool !== undefined),
     key: pid,
     enabled,
   });
@@ -370,6 +389,8 @@ export function SecurityScreen(handle: Handle) {
   let eng: EngineID | 'all' = 'all';
   let rulesEdit: string | undefined;
   let rulesSaved = false;
+  /** A path typed for a tool's program, by tool name, until it is used. */
+  const pathEdit: Partial<Record<ScanToolName, string>> = {};
 
   const scan = async () => {
     const projectId = pid();
@@ -403,6 +424,22 @@ export function SecurityScreen(handle: Handle) {
     if (r) {
       rulesEdit = undefined;
       rulesSaved = true;
+      tools.reload();
+      void handle.update();
+    }
+  };
+  const chooseTool = async (tool: ScanToolName) => {
+    const projectId = pid();
+    if (!projectId) return;
+    const r = await act.run(`choose:${tool}`, () => s.client.securityToolChoose(projectId, tool));
+    if (r) tools.reload();
+  };
+  const setTool = async (tool: ScanToolName, path: string) => {
+    const projectId = pid();
+    if (!projectId) return;
+    const r = await act.run(`path:${tool}`, () => s.client.securityToolSet(projectId, tool, path));
+    if (r) {
+      delete pathEdit[tool];
       tools.reload();
       void handle.update();
     }
@@ -566,10 +603,61 @@ export function SecurityScreen(handle: Handle) {
             <div mix={listCard}>
               {TOOL_ROWS.map(({ key, name }) => {
                 const info = tl[key];
-                return (
+                const row = (
                   <div key={key} class="row" mix={toolRow} data-testid="tool" data-tool={name} data-found={info?.found ? 'true' : 'false'}>
                     <strong>{name}</strong>
                     {toolState(name, info)}
+                  </div>
+                );
+                if (key === 'gitleaks' || !info) return row;
+                const tool = name as ScanToolName;
+                const typed = pathEdit[tool] ?? '';
+                return (
+                  <div key={key}>
+                    {row}
+                    <form
+                      data-testid="tool-pick"
+                      data-tool={name}
+                      mix={[
+                        pickCss,
+                        on('submit', (e) => {
+                          e.preventDefault();
+                          if (!busy && typed.trim()) void setTool(tool, typed);
+                        }),
+                      ]}
+                    >
+                      {tl.canChoose ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          data-testid="tool-choose"
+                          disabled={busy}
+                          mix={on('click', () => void chooseTool(tool))}
+                        >
+                          {act.busy === `choose:${tool}` ? 'Choosing…' : 'Choose file…'}
+                        </Button>
+                      ) : null}
+                      <input
+                        aria-label={`Full path of ${name}'s program`}
+                        data-testid="tool-path"
+                        spellcheck={false}
+                        placeholder={`${tl.canChoose ? 'or type the full path, ' : ''}for example C:\\tools\\${name}.exe`}
+                        value={typed}
+                        mix={on('input', (e) => {
+                          pathEdit[tool] = e.currentTarget.value;
+                          void handle.update();
+                        })}
+                      />
+                      <Button type="submit" variant="secondary" size="sm" data-testid="tool-path-save" disabled={busy || !typed.trim()}>
+                        {act.busy === `path:${tool}` ? 'Saving…' : 'Use this file'}
+                      </Button>
+                      {info.chosen ? (
+                        <Button type="button" variant="ghost" size="sm" data-testid="tool-clear" disabled={busy} mix={on('click', () => void setTool(tool, ''))}>
+                          Use PATH instead
+                        </Button>
+                      ) : null}
+                    </form>
                   </div>
                 );
               })}

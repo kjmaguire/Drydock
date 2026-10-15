@@ -65,11 +65,14 @@ func Detect(ctx context.Context, pm proc.Manager, env []string, p Paths, rulesDi
 
 func detectTool(ctx context.Context, pm proc.Manager, env []string, tool Tool, name string, versionArgs []string, install string, look func(string) (string, error)) ToolInfo {
 	info := ToolInfo{Tool: name, Install: install}
-	path, err := tool.resolve(name, look)
+	if tool.Chosen {
+		info.Chosen = tool.Path
+	}
+	path, source, err := tool.resolve(name, look)
 	if err != nil {
 		return info
 	}
-	info.Found, info.Path = true, path
+	info.Found, info.Path, info.Source = true, path, source
 	info.Version = toolVersion(ctx, pm, env, path, append(append([]string(nil), tool.Args...), versionArgs...), name)
 	return info
 }

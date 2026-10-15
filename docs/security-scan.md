@@ -59,8 +59,10 @@ it (a cancelled scan is stored as cancelled).
 
 | Method | Does |
 |---|---|
-| `security.tools {projectId}` | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (found on PATH, path and `--version`, or an install hint), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
+| `security.tools {projectId}` | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (path, `--version` and how each was found: `chosen`, `path` or `folder`, or an install hint; a chosen file that is gone is named), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
 | `security.settings.set {projectId, rulesDir}` | stores the rules folder (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. |
+| `security.tool.set {projectId, tool, path}` | stores the program a person chose for `osv-scanner` or `opengrep`, for the whole workspace (a program is on the computer, not in a project); `""` goes back to finding it. The path must be a full path to an existing file (an `.exe` on Windows); quotes from Explorer's "Copy as path" are removed. Only a person may: the program reads the whole project. |
+| `security.tool.choose {projectId, tool}` | opens the window's own Open dialog (the desktop app, through Wails; filter `*.exe`) and stores the file chosen; cancelling changes nothing. Where the window has no dialog (the browser in development) it is refused and the page offers only the path field (`security.tools` says `canChoose`). |
 | `security.scan.start {projectId}` | starts a scan; refused while one runs or when the project has no repository. |
 | `security.scan.cancel {projectId}` | cancels the running scan. |
 | `security.scan.get {projectId}` | the running scan's snapshot, else the last stored report, else null. |
@@ -77,6 +79,12 @@ Drydock installs nothing and downloads no rules. The page says what is missing a
   PATH, or the repository's `install.ps1`. Opengrep is LGPL-2.1 and ships a native Windows binary; that is why it was
   chosen over Semgrep (a Python distribution with partial Windows support, and registry rules under a licence that does not
   allow use inside a commercial product).
+- **Finding them** (decision P55): a program a person chose on the Security page ("Choose file..." or its full path) comes
+  first. Otherwise the PATH Drydock started with, then the folders where installers put programs: on Windows the user's and
+  the machine's PATH as they are now in the registry (so a tool installed while Drydock runs is found without restarting it),
+  WinGet's `%LOCALAPPDATA%\Microsoft\WinGet\Links`, Scoop's `%USERPROFILE%\scoop\shims`, `%USERPROFILE%\go\bin` (and
+  `%GOBIN%`) and Chocolatey's `%ProgramData%\chocolatey\bin`. The panel says which: "Chosen file", "Found at", or "Found
+  (not on the PATH Drydock started with) at".
 - **Rules**: a folder of Semgrep-syntax rule files. The `opengrep-rules` repository carries LGPL-2.1 with the Commons Clause
   and says its rules are for research, testing and benchmarking, so Drydock does not fetch it for you: point the scan at
   rules you are licensed to use (your own, or a set whose licence you accepted).

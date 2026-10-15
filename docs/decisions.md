@@ -142,3 +142,13 @@ Open, owner action:
   Go, NuGet, Python), curated SDKs and frameworks only, at most 40, validated so a manifest cannot inject text; the lead's
   recommendation turn sees the same list. Files only, nothing is run or contacted. `docs/token-control.md`, "As built:
   library versions in the instructions".
+- **P55. A scan tool's program can be chosen, and tools installed while Drydock runs are found (2026-10-15, on the owner's
+  request).** The owner saw osv-scanner and Opengrep "not installed" on the Security page. Drydock still installs neither
+  (P44), but finding them was PATH-only, and a Windows program only sees the PATH it started with, so a tool installed while
+  Drydock ran needed a restart and one installed elsewhere needed a PATH edit. Now: a person can choose each tool's program
+  with the window's own Open dialog ("Choose file...", through Wails' dialog; the core gets it as `Config.PickFile`, so the
+  method, its checks and its tests are the core's) or type its full path; the choice is the workspace's and "Use PATH
+  instead" forgets it. Without a choice, Drydock also looks in the PATH as it is now in the registry and in the folders
+  WinGet, Scoop, Chocolatey and `go install` use. `docs/security-scan.md` sections 4 and 5. **Not verified:** the Wails
+  dialog and the registry read on a PC (built and vetted for Windows; tested here with the e2e harness's labelled stand-in
+  dialog and a replaced folder list).

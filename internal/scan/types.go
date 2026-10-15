@@ -158,6 +158,11 @@ type ToolInfo struct {
 	Version string `json:"version,omitempty"`
 	// Install says how to get the tool when it is missing.
 	Install string `json:"install,omitempty"`
+	// Source says how the tool was found: "chosen" (the file a person chose), "path" (on the PATH Drydock started with),
+	// "folder" (in a folder where installers put programs, or on a PATH changed since Drydock started).
+	Source string `json:"source,omitempty"`
+	// Chosen is the file a person chose for the tool, also when it is no longer there (then Found is false).
+	Chosen string `json:"chosen,omitempty"`
 }
 
 // Tools is what the Security page shows about this machine and the project's choices.
@@ -171,6 +176,9 @@ type Tools struct {
 	RulesNote string `json:"rulesNote,omitempty"`
 	// Ready says every engine can run as things stand; otherwise the page says which cannot (the scan still runs the rest).
 	Ready bool `json:"ready"`
+	// CanChoose says this window can open a file dialog to choose a tool's program (the desktop app); elsewhere the person
+	// types the full path.
+	CanChoose bool `json:"canChoose"`
 }
 
 // Timeout is how long one engine may take.

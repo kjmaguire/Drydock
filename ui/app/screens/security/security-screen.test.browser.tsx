@@ -306,4 +306,77 @@ describe('Security scan page', () => {
     await waitStatus(r, 'running');
     expect(r.$$('[data-testid="finding"]').length).toBe(0);
   });
+
+  it("a missing tool's program is chosen with the file dialog, typed, or forgotten again (Use PATH instead)", async () => {
+    const chosen: string[] = [];
+    const set: [string, string][] = [];
+    let state = tools({
+      osv: { tool: 'osv-scanner', found: false, install: 'Install osv-scanner.' },
+      opengrep: { tool: 'opengrep', found: false, install: 'Install Opengrep.' },
+      canChoose: true,
+    });
+    const { r } = show({
+      securityTools: async () => state,
+      securityToolChoose: async (projectId: string, tool: string) => {
+        chosen.push(`${projectId}:${tool}`);
+        state = { ...state, osv: { tool: 'osv-scanner', found: true, source: 'chosen', chosen: 'C:\\Tools\\osv.exe', path: 'C:\\Tools\\osv.exe', version: '2.0.2' } };
+        return state;
+      },
+      securityToolSet: async (_projectId: string, tool: string, path: string) => {
+        set.push([tool, path]);
+        if (tool === 'osv-scanner' && path === '') state = { ...state, osv: { tool: 'osv-scanner', found: false, install: 'Install osv-scanner.' } };
+        if (tool === 'opengrep') state = { ...state, opengrep: { tool: 'opengrep', found: true, source: 'chosen', chosen: path, path, version: '1.1.0' } };
+        return state;
+      },
+    });
+    const picker = async (tool: string) =>
+      waitFor(() => {
+        const f = r.$(`[data-testid="tool-pick"][data-tool="${tool}"]`);
+        if (!f) throw new Error('not yet');
+        return f as HTMLElement;
+      }, r);
+    // gitleaks is built in: nothing to choose
+    await picker('osv-scanner');
+    expect(r.$('[data-testid="tool-pick"][data-tool="gitleaks"]')).toBeNull();
+    expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.textContent).toContain('Or choose its program below.');
+
+    // Choose file... asks the core (which opens the window's dialog)
+    const osvPick = await picker('osv-scanner');
+    await r.act(() => (osvPick.querySelector('[data-testid="tool-choose"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(chosen).toEqual(['p1:osv-scanner']), r);
+    await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.textContent).toContain('Chosen file C:\\Tools\\osv.exe (2.0.2)'), r);
+
+    // a typed path is used as is
+    const og = await picker('opengrep');
+    type(og.querySelector('[data-testid="tool-path"]') as HTMLInputElement, 'D:\\bin\\opengrep.exe');
+    await r.act(() => (og.querySelector('[data-testid="tool-path-save"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(set.some(([t, p]) => t === 'opengrep' && p === 'D:\\bin\\opengrep.exe')).toBe(true), r);
+    await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="opengrep"]')!.getAttribute('data-found')).toBe('true'), r);
+
+    // Use PATH instead forgets the choice
+    const clear = await waitFor(() => {
+      const b = r.$('[data-testid="tool-pick"][data-tool="osv-scanner"] [data-testid="tool-clear"]');
+      if (!b) throw new Error('not yet');
+      return b as HTMLButtonElement;
+    }, r);
+    await r.act(() => clear.click());
+    await waitFor(() => expect(set.some(([t, p]) => t === 'osv-scanner' && p === '')).toBe(true), r);
+    await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.getAttribute('data-found')).toBe('false'), r);
+  });
+
+  it('without a file dialog (the browser in development) only the path field is offered, and a chosen file that is gone says so', async () => {
+    const { r } = show({
+      securityTools: async () =>
+        tools({ osv: { tool: 'osv-scanner', found: false, chosen: 'C:\\Old\\osv-scanner.exe', install: 'Install osv-scanner.' }, canChoose: false }),
+    });
+    const f = await waitFor(() => {
+      const x = r.$('[data-testid="tool-pick"][data-tool="osv-scanner"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(f.querySelector('[data-testid="tool-choose"]')).toBeNull();
+    expect(f.querySelector('[data-testid="tool-path"]')).not.toBeNull();
+    expect(f.querySelector('[data-testid="tool-clear"]')).not.toBeNull();
+    expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.textContent).toContain('The chosen file C:\\Old\\osv-scanner.exe is not there');
+  });
 });

@@ -5,7 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -13,23 +16,67 @@ import (
 	"github.com/kjmaguire/drydock/internal/proc"
 )
 
-// Tool is how an external tool is started: its executable (looked up on PATH when it is a bare name) and the arguments
-// that always come first. The product leaves Args empty; the test harnesses start their labelled stand-ins through it.
+// Tool is how an external tool is started: its executable (looked up when it is a bare name) and the arguments that always
+// come first. The product leaves Args empty; the test harnesses start their labelled stand-ins through it.
 type Tool struct {
 	Path string
 	Args []string
+	// Chosen is true when Path is the file a person chose on the Security page.
+	Chosen bool
 }
 
-// resolve finds the executable. A Tool with no Path is the named default.
-func (t Tool) resolve(name string, look func(string) (string, error)) (string, error) {
-	if look == nil {
-		look = exec.LookPath
-	}
+// resolve finds the executable and says how: "chosen", "path" or "folder" (FindTool). A Tool with no Path is the named
+// default. look, when set, replaces the lookup (tests).
+func (t Tool) resolve(name string, look func(string) (string, error)) (string, string, error) {
 	p := t.Path
 	if p == "" {
 		p = name
 	}
-	return look(p)
+	if look != nil {
+		path, err := look(p)
+		return path, sourceOf(t), err
+	}
+	if t.Chosen {
+		path, err := exec.LookPath(p) // an absolute path: is it there and runnable
+		return path, "chosen", err
+	}
+	return FindTool(p)
+}
+
+func sourceOf(t Tool) string {
+	if t.Chosen {
+		return "chosen"
+	}
+	return "path"
+}
+
+// ExtraToolDirs lists the folders searched after PATH (tooldirs_*.go): on Windows the user's and the machine's PATH as they
+// are now in the registry (so a tool installed while Drydock runs is found without a restart) and the folders WinGet, Scoop,
+// Chocolatey and `go install` put programs in. A variable so tests can replace it.
+var ExtraToolDirs = extraToolDirs
+
+// FindTool finds a program by its bare name: on the PATH Drydock started with ("path"), then in ExtraToolDirs ("folder").
+// A name with a folder in it is only checked where it points.
+func FindTool(name string) (string, string, error) {
+	path, err := exec.LookPath(name)
+	if err == nil {
+		return path, "path", nil
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return "", "", err
+	}
+	for _, dir := range ExtraToolDirs() {
+		if dir == "" || !filepath.IsAbs(dir) {
+			continue
+		}
+		for _, cand := range programNames(name) {
+			p := filepath.Join(dir, cand)
+			if isProgram(p) {
+				return p, "folder", nil
+			}
+		}
+	}
+	return "", "", err
 }
 
 // toolResult is what an external tool did.
@@ -85,4 +132,21 @@ func firstStderrLine(b []byte) string {
 		}
 	}
 	return ""
+}
+
+// programNames are the file names a program called name may have here.
+func programNames(name string) []string {
+	if runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(name), ".exe") {
+		return []string{name + ".exe"}
+	}
+	return []string{name}
+}
+
+// isProgram reports whether p is a regular file that can be run (on Windows any regular file: programNames gave it .exe).
+func isProgram(p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	return runtime.GOOS == "windows" || fi.Mode().Perm()&0o111 != 0
 }

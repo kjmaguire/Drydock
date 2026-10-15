@@ -66,3 +66,23 @@ test('one button scans the working tree with three engines, names the findings w
   await expect(page.getByTestId('scan-history-item')).toHaveCount(2);
   await expect(page.locator('body')).not.toContainText(PLANTED);
 });
+
+// "Choose file..." on the tools panel: the harness's stand-in file dialog (cmd/drydock-e2e) answers with a copy of its own
+// binary named like the tool; the panel shows the chosen file, a scan runs it, and "Use PATH instead" forgets it.
+test("a tool's program is chosen with the file dialog and forgotten again", async ({ page }) => {
+  const repo = freshRepo();
+  await createProject(page, 'gocalc-security-pick', repo);
+  await projectNav(page, 'nav-security');
+  const osv = page.locator('[data-testid=tool][data-tool=osv-scanner]');
+  await expect(osv).toHaveAttribute('data-found', 'true', { timeout: 60_000 });
+  const pick = page.locator('[data-testid=tool-pick][data-tool=osv-scanner]');
+  await pick.getByTestId('tool-choose').click();
+  await expect(osv).toContainText('Chosen file');
+  await expect(osv).toContainText('picked');
+  await page.getByTestId('scan-button').click();
+  await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
+  await expect(page.locator('[data-testid=scan-engine][data-engine=deps]')).toHaveAttribute('data-status', 'done');
+  await pick.getByTestId('tool-clear').click();
+  await expect(osv).not.toContainText('Chosen file');
+  await expect(pick.getByTestId('tool-clear')).toHaveCount(0);
+});
