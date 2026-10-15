@@ -63,8 +63,21 @@ func explain(d RoutingDecision) string {
 	default:
 		fmt.Fprintf(&b, "- Budget: %s at %.0f%%, no downshift.\n", scope, f.BudgetPctUsed*100)
 	}
-	if f.FallbackFrom != nil {
+	chain := strings.Join(d.FallbackChain, ", then ")
+	switch {
+	case f.FallbackFrom != nil && d.FallbackHop > 0:
+		fmt.Fprintf(&b, "- Fallback: %s/%s was unavailable (%s), so the turn moved to this model before any work was done: hop %d of at most %d in the chain %s (rule %s); a fallback stays in the same tier or a cheaper one.\n",
+			f.FallbackFrom.Provider, f.FallbackFrom.Model, f.FallbackFrom.Rejected, d.FallbackHop, MaxFallbackHops, chain, d.FallbackRule)
+	case f.FallbackFrom != nil:
 		fmt.Fprintf(&b, "- Fallback: %s/%s was unavailable (%s).\n", f.FallbackFrom.Provider, f.FallbackFrom.Model, f.FallbackFrom.Rejected)
+	case len(d.FallbackChain) > 0:
+		fmt.Fprintf(&b, "- Fallback chain (rule %s): if this model is unavailable before the turn does any work, the turn moves to %s; at most %d hops, never to a higher tier.\n",
+			d.FallbackRule, chain, MaxFallbackHops)
+	}
+	for _, a := range d.Alternatives {
+		if a.Rejected == "fallback_skipped" {
+			fmt.Fprintf(&b, "- Fallback skipped %s: %s.\n", a.Model, a.Detail)
+		}
 	}
 	if d.EscalatedFrom != nil {
 		fmt.Fprintf(&b, "- Escalated from %s/%s (%s) with a handoff artifact.\n", d.EscalatedFrom.Provider, d.EscalatedFrom.Model, d.EscalatedFrom.Tier)

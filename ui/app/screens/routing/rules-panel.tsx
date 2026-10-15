@@ -12,7 +12,7 @@ import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { card, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { numOrUndef } from '../shared/budget-pause.tsx';
-import { actionChips, newRule, parseThen, sortRules } from './routing.ts';
+import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, sortRules, splitChain, withChain } from './routing.ts';
 
 const editorCss = css({
   display: 'grid',
@@ -28,7 +28,9 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
   const r0 = handle.props.rule;
   let priority = String(r0.priority);
   let when = r0.when;
-  let then = JSON.stringify(r0.then, null, 2);
+  const split = splitChain(r0.then);
+  let then = JSON.stringify(split.rest, null, 2);
+  let chain = split.chain;
   let scope = r0.scope;
   let enabled = r0.enabled;
 
@@ -41,7 +43,8 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
       });
       return;
     }
-    const r = await act.run('save', () => s.client.routeRulesSet({ ...rule, scope, priority: numOrUndef(priority) ?? 0, when, then: parsed.value, enabled }));
+    const action = withChain(parsed.value, parseChain(chain));
+    const r = await act.run('save', () => s.client.routeRulesSet({ ...rule, scope, priority: numOrUndef(priority) ?? 0, when, then: action, enabled }));
     if (r) onSaved();
   };
 
@@ -66,6 +69,15 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
           <Field label="Then (action as JSON: prefer_tier, require_tier, require_capability, deny, escalate_to, handoff, set_effort, set_team_size, penalty)">
             {(id) => <textarea id={id} rows={5} spellcheck={false} value={then} mix={set((v) => (then = v))} />}
           </Field>
+        </div>
+        <div class="wide">
+          <Field label={`Fallback chain (models, in order, at most ${MAX_CHAIN})`}>
+            {(id) => <input id={id} value={chain} spellcheck={false} placeholder="none" mix={set((v) => (chain = v))} />}
+          </Field>
+          <p mix={faint}>
+            When the chosen model or its provider is unavailable (rate-limited, overloaded, down, model not found) before the turn does any work, the
+            turn moves to the next model here: at most 2 hops, the same tier or cheaper, within the budget. The work's own errors never fall back.
+          </p>
         </div>
         <div class="wide">
           <Checkbox

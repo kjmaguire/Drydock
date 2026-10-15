@@ -60,6 +60,10 @@ type mode struct {
 	fallbackFrom    *Alternative
 	handoff         bool
 	prefer          providers.Tier // a budget downshift prefers the cheap tier
+	// only and onlyProvider limit the candidates to one model (and, when set, one provider): a fallback hop (fallback.go).
+	only         string
+	onlyProvider ProviderID
+	quiet        bool // no routing.blocked event: the caller tries the next model and reports the outcome itself
 }
 
 // Decide chooses a model for the request.
@@ -190,9 +194,27 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		req.Level = level
 	}
 	now := r.now()
+	block := func(reason string, rej []Alternative) error {
+		if m.quiet {
+			return &BlockedError{Reason: reason, Alternatives: rej}
+		}
+		return r.blocked(ctx, req, reason, rej)
+	}
 	all, err := r.src.Candidates(ctx, req)
 	if err != nil {
 		return RoutingDecision{}, err
+	}
+	if m.only != "" {
+		keep := all[:0:0]
+		for _, c := range all {
+			if c.Model == m.only && (m.onlyProvider == "" || c.Provider == m.onlyProvider) {
+				keep = append(keep, c)
+			}
+		}
+		if len(keep) == 0 {
+			return RoutingDecision{}, block("not among the models the router may choose for this turn", nil)
+		}
+		all = keep
 	}
 	if m.exclude != nil {
 		keep := all[:0:0]
@@ -204,7 +226,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		all = keep
 	}
 	if len(all) == 0 {
-		return RoutingDecision{}, r.blocked(ctx, req, "no candidate providers or models are registered", nil)
+		return RoutingDecision{}, block("no candidate providers or models are registered", nil)
 	}
 	kept, rejected := HardFilter(req, all)
 	excludedTrainable := 0
@@ -214,7 +236,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		}
 	}
 	if len(kept) == 0 {
-		return RoutingDecision{}, r.blocked(ctx, req, "no candidate passes the invariants (data class, health, quota, capability)", rejected)
+		return RoutingDecision{}, block("no candidate passes the invariants (data class, health, quota, capability)", rejected)
 	}
 
 	// Explicit pin: narrows the set; it never overrides an invariant.
@@ -235,7 +257,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 					break
 				}
 			}
-			return RoutingDecision{}, r.blocked(ctx, req, reason, rejected)
+			return RoutingDecision{}, block(reason, rejected)
 		}
 		kept, by = narrowed, "explicit"
 	} else {
@@ -243,7 +265,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	}
 
 	if req.Budget.HardLimit && req.Budget.PctUsed >= 1 {
-		return RoutingDecision{}, r.blocked(ctx, req, fmt.Sprintf("the %s budget is at its hard limit; only a human response resumes work", req.Budget.Scope), nil)
+		return RoutingDecision{}, block(fmt.Sprintf("the %s budget is at its hard limit; only a human response resumes work", req.Budget.Scope), nil)
 	}
 
 	// Stored CEL policies, in priority order.
@@ -318,14 +340,14 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		ranked, ruleRejected = Rank(order, global, per, kept)
 	}
 	if len(ranked) == 0 {
-		return RoutingDecision{}, r.blocked(ctx, req, "the policies leave no candidate", append(append([]Alternative(nil), rejected...), ruleRejected...))
+		return RoutingDecision{}, block("the policies leave no candidate", append(append([]Alternative(nil), rejected...), ruleRejected...))
 	}
 	top := ranked[0]
 	c := top.Candidate
 
 	// Fallback may not violate a tier the policy pins.
 	if m.fallbackFrom != nil && req.Explicit != nil && req.Explicit.Provider != "" && req.Explicit.Model != "" {
-		return RoutingDecision{}, r.blocked(ctx, req, "the model is pinned by an explicit instruction; no fallback is substituted", nil)
+		return RoutingDecision{}, block("the model is pinned by an explicit instruction; no fallback is substituted", nil)
 	}
 
 	eff := top.Effects
@@ -419,6 +441,9 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		why = "explicit pin"
 	}
 	d.Reason = fmt.Sprintf("%s/%s (%s) for %s: %s", c.Provider, c.Model, c.Tier, orStr(req.TaskType, string(req.RunKind)), why)
+	if len(eff.Fallback) > 0 {
+		d.FallbackChain, d.FallbackRule = eff.Fallback, eff.FallbackRule
+	}
 	if handoff {
 		d.Handoff = true
 		d.Reason += "; handoff artifact required"

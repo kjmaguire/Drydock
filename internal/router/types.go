@@ -70,6 +70,7 @@ type Cause string
 
 const (
 	CauseQuotaExhausted   Cause = "quota_exhausted"
+	CauseRateLimited      Cause = "rate_limited"
 	CauseProviderDown     Cause = "provider_down"
 	CauseOverloaded       Cause = "overloaded"
 	CauseModelUnavailable Cause = "model_unavailable"
@@ -231,8 +232,14 @@ type RoutingDecision struct {
 	// Handoff is true when the decision requires a handoff artifact: an escalation (a level threshold, an escalation rule, or
 	// Next with an escalate cause). The turn that runs on a different model than the previous one then starts a fresh session
 	// seeded with the artifact (internal/pipeline, docs/model-routing.md s8), never the transcript.
-	Handoff      bool
-	Alternatives []Alternative
+	Handoff bool
+	// FallbackChain is the models this turn moves to, in order, if the chosen one is unavailable (a rule's fallback action,
+	// FallbackRule); empty when no rule sets one. A fallback decision carries the chain of the turn's first decision and
+	// FallbackHop, its hop number (1 for the first fallback). See fallback.go.
+	FallbackChain []string
+	FallbackRule  string
+	FallbackHop   int
+	Alternatives  []Alternative
 	// Reservation is empty: the llm.Wrapper reserves quota at call time against the ledger. The router only checks
 	// (QuotaLedger.Check) so a decision never holds a slot that a crash could leak.
 	Reservation      ReservationID

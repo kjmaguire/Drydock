@@ -59,7 +59,7 @@ Brief §6 lists the decision record fields (agent, provider, model, effort, team
 
 1. **Hard filters (invariants, code, not overridable):** data class (`ContextCeiling=private` removes `trainable` providers; tier `free` is allowed only for `RunKind=consult`); adapter capability fit (s9); provider health and enabled; TLS rule (brief §16); `max_concurrent_agents` for hosts (brief §6 item 5).
 2. **Explicit pin** (user instruction) narrows the set; a pin that violates an invariant returns `BLOCKED` with the reason, never a silent substitute.
-3. **Stored CEL policies** (s7) run in priority order; effects are `require_*`, `deny`, `prefer_*`, `escalate_to`, `set_effort`, `set_team_size`.
+3. **Stored CEL policies** (s7) run in priority order; effects are `require_*`, `deny`, `prefer_*`, `escalate_to`, `set_effort`, `set_team_size`, `fallback` (the chain of an agent turn, s15).
 4. **Budget hard limits**: budget at 100% pauses via the budget middleware; the router additionally downshifts at 80% (s7).
 5. **Heuristic ladder** (s7) ranks the remaining candidates.
 6. **Quota reservation** on the top candidate; on `ErrQuotaExhausted` try the next (fallback s8).
@@ -217,7 +217,7 @@ LLM tiebreak (s2 step 3, brief §6 "LLM only for genuine ambiguity"): only when 
 
 Cache economics decide where switches happen (MP G): each model has its own prompt cache, so a mid-session model switch costs one full uncached prompt; Anthropic caches are per model and workspace (5 minute default TTL, optional 1 hour), Gemini explicit caches are model-bound, OpenRouter sticky routing is per account, per model, per conversation (10 minute expiry; stable `session_id` should be sent), local KV caches cannot cross models. The decision therefore carries `SwitchCostTokens` and `Next` only switches at natural breaks: escalation and de-escalation start a fresh session seeded with the handoff artifact (brief §5; **as built**, decision P39: a decision that requires a handoff sets `RoutingDecision.Handoff`, the routed turn carries it (`pipeline.RoutedModel.Handoff`), and a work turn whose model differs from the previous work turn's starts a fresh session seeded with a handoff artifact that Drydock writes to `handoffs` with the reason `escalation` (`model_change` for any other change of model, a de-escalation included); a turn on the same model continues its session while its context occupancy is below 70 %, `token-control.md` "As built: session policy and handoffs"; tested by `TestEscalationSeedsTheNewModelsSessionWithAHandoff` and `TestTheRouterChoosesTheModelOfAgentTurnsAndEscalates`), and an automatic downgrade inside a live session is refused unless the estimated saving exceeds the switch cost. Effort changes also invalidate Anthropic caches on most models (AC s1).
 
-Fallback specifics: Anthropic Covered Models return `400 invalid_request_error` when retention is not enabled; the error maps to "enable retention or pick another model" and removes the model from the candidate set for this org (MP D). Per-day Gemini quota 429s mark the provider unavailable until reset instead of retrying. OpenRouter 402 `openrouter_in_flight_budget` carries `Retry-After`; other 402s mean exhausted credits and are not retried (MP A.3, A.5: negative balance gives 402 even for free models). Retry policy is middleware (brief §4); the router only supplies the next candidate.
+Fallback specifics: Anthropic Covered Models return `400 invalid_request_error` when retention is not enabled; the error maps to "enable retention or pick another model" and removes the model from the candidate set for this org (MP D). Per-day Gemini quota 429s mark the provider unavailable until reset instead of retrying. OpenRouter 402 `openrouter_in_flight_budget` carries `Retry-After`; other 402s mean exhausted credits and are not retried (MP A.3, A.5: negative balance gives 402 even for free models). Retry policy is middleware (brief §4); the router only supplies the next candidate. An agent turn's fallback is an explicit, bounded chain a routing rule names; it differs from the table above in that it never moves up a tier (s15).
 
 ## 9. Capability filtering and agent fit
 
@@ -336,3 +336,73 @@ configured model and records a static decision whose reason says which. Every de
 
 Not built: a per-project level; routing the room replies and template role turns (pm, tests, architect, security), which keep
 their configured model.
+
+
+## 15. Fallback chain of an agent turn (as built 2026-10-15, decision P53 (b))
+
+Before this, `Next(..., fallback)` existed and was tested but nothing called it, and the `llm.Wrapper` falls back only for
+Drydock's own LLM calls (a request's `Fallbacks`). An agent turn whose model or provider was unavailable failed, and only a
+Claude `rejected` rate limit kept the *next* turn off that model (s6). The idea of a per-rule chain comes from
+claude-code-router (`RouterFallbackConfig`: off, retry, or a model chain); Drydock keeps the chain and leaves retries to the
+CLIs and SDKs, which already honour `Retry-After`.
+
+**Where it is configured.** A routing rule's `then` takes `fallback`: up to 4 models, in order (`router.Action.Fallback`,
+checked when the rule is saved: no duplicates, no flag-like names). The rule's `when` scopes it: `candidate.tier == 'cheap'`
+for a per-tier chain, `candidate.model == 'x'` for one model, `task.role == 'Backend'` for a role. A rule that reads
+`candidate.*` wins over one that does not; otherwise the first rule in priority order that names a chain wins. No rule, no
+fallback. The Routing page's rule editor has a "Fallback chain" field, and each rule shows its chain. For an agent turn the
+chain can only name models in the agent's own list (Team, Edit, "Model routing"); others are skipped and the explanation
+says so.
+
+**What counts as unavailable** (`router.ClassifyUnavailable`, applied to the error the turn ended with: the CLI's error
+result or the error the turn failed with, never the agent's own text): rate-limited (429, usage limit, `RESOURCE_EXHAUSTED`,
+or a Claude `rate_limit_event` with status `rejected` on a turn that ended in an error), overloaded (529), a 5xx or a
+provider that cannot be reached, and a model that does not exist. Never: a refusal, a prompt or context that is too long, an
+invalid request, authentication, permission or billing errors, failing tests, or anything else; those are the work's or the
+account's, and the turn goes on as it does today.
+
+**Bounds.** At most `MaxFallbackHops` = 2 re-run turns per turn; each model at most once per turn (the failed one
+included), so a chain cannot loop. An entry that cannot take the turn (an invariant, health or quota filter, a rule's `deny`
+or `require_tier`, not one of the agent's models) is skipped without a hop, and the explanation names why.
+
+**Never up a tier.** A hop goes to the same tier or a cheaper one; a more expensive model in the chain is skipped ("that is
+escalation"). Escalation stays separate, with its thresholds and handoff (s8); a rule or level that requires premium (an
+escalated turn) also keeps a fallback from going down. This differs from s7 item 4 and the s8 table for `Next` ("then the
+next tier up"), which stays as it was for callers that ask for it.
+
+**Budgets.** Before each hop the core reads the budget state again (the failed turn may have spent). A budget in scope at
+or over 100 % ends the chain, even when a human approved this one turn over a hard limit; a hop whose estimated cost is more
+than the budget left is skipped.
+
+**Cache and session rules (P36, P39).** A hop happens only at a turn boundary: the failed turn made no tool call, so nothing
+in the worktree changed and the session holds nothing worth keeping. A turn that started work and then lost its provider is
+never re-run mid-turn on another model (switching mid-session costs a full uncached prompt and the work so far); it ends as
+any failed turn does, and the next turn is routed again. A hop is a new turn on another model, so the session policy (P39)
+starts it as a fresh session seeded with a handoff artifact (`model_change`) when a work turn came before, never with the
+transcript.
+
+**Credentials (D1, D2).** The router only chooses among the agent's own models on the agent's own CLI and provider
+(`agentSource`); a hop from an agent-native route (`agent:<adapter>`) is also limited to that provider in the router itself.
+A Claude subscription session is never moved to another provider or login, and nothing reads or touches credentials.
+
+**Where the person sees it.** Each hop is a decision of its own in `routing_decisions` (`FallbackHop`, `FallbackChain`,
+`FallbackRule`, `Facts.FallbackFrom` with the cause), published as `routing.decided` and `routing.fallback` (`from`,
+`cause`, `hop`, `maxHops`, `rule`, `skipped`); the event name is the existing `routing.fallback` of s13. "Why this model?"
+shows the chain on the first decision and, on a hop, which model was unavailable, why, the hop number and the skipped
+entries. When the chain ends, `routing.blocked` says why ("fallback chain ended: ... after 2 fallback hops", "... budget is
+used up", "no model left in the chain"). A hop re-runs the same turn, so it counts once toward the escalation counters (the
+cheap-iteration count used to count every decision).
+
+**Code and tests.** `internal/router/fallback.go` (`FallbackTurn`, `ClassifyUnavailable`, `BudgetStopsFallback`),
+`internal/core/turnrouting.go` (`runWithFallback`, `turnWatch`), `internal/agents/fakeagent` (`ModelErrors`: a labelled
+test double whose sessions on a named model end every turn with the given API error). Router tests
+(`fallback_test.go`): the classifier, chain validation, hops and the hop limit, no loop, no chain without a rule, a used-up
+budget, never up a tier and never undoing an escalation, never leaving the agent's CLI. Core tests (`turnfallback_test.go`):
+an overloaded model falls back to the next one in the chain and the work goes on to review; a work error does not fall back;
+the hop limit holds and the turn counts once toward escalation; a used-up budget stops the chain.
+
+**Not built or not verified.** Fallback for room replies and template role turns (they are not routed, s "As built: the
+router in the path of agent turns"); marking a model unavailable for a while after a mid-turn failure (only a Claude
+`rejected` limit does that); the exact error wording of every CLI version (the patterns follow the Anthropic, OpenAI,
+OpenRouter and Gemini error shapes in s6 and s8; a real CLI's overloaded or not-found output was not produced here, and the
+fake agent's message is the test's).

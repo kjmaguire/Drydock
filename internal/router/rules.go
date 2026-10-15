@@ -28,6 +28,10 @@ type Action struct {
 	SetEffort         Effort         `json:"set_effort,omitempty"`
 	SetTeamSize       int            `json:"set_team_size,omitempty"`
 	Penalty           float64        `json:"penalty,omitempty"`
+	// Fallback is the chain of models a turn moves to, in order, when the chosen model or its provider is unavailable
+	// (rate-limited, overloaded, down, model not found): equivalent or cheaper only, at most MaxFallbackHops per turn
+	// (fallback.go, docs/model-routing.md s8).
+	Fallback []string `json:"fallback,omitempty"`
 }
 
 // Validate checks the enumerated fields.
@@ -54,7 +58,7 @@ func (a Action) Validate() error {
 			return fmt.Errorf("unknown capability %q", c)
 		}
 	}
-	return nil
+	return validateChain(a.Fallback)
 }
 
 // Rule is a stored routing policy. When is CEL source that must type-check to bool against the environment of

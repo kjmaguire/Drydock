@@ -143,6 +143,8 @@ export interface RouteAction {
   set_effort?: string;
   set_team_size?: number;
   penalty?: number;
+  /** Models an agent turn moves to, in order, when the chosen one is unavailable (at most 4; same tier or cheaper, at most 2 hops). */
+  fallback?: string[];
 }
 export interface RouteRule {
   id: string;

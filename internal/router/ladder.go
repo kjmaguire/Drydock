@@ -113,6 +113,9 @@ type Effects struct {
 	SetTeamSize  int
 	Penalty      float64
 	Applied      []string // rule ids, in application order
+	// Fallback is the chain the first matching rule with a fallback set (FallbackRule); see fallback.go.
+	Fallback     []string
+	FallbackRule string
 }
 
 func tierRank(t providers.Tier) int {
@@ -153,6 +156,9 @@ func (e *Effects) Merge(ruleID string, a Action) {
 	}
 	if a.SetTeamSize > 0 && e.SetTeamSize == 0 {
 		e.SetTeamSize = a.SetTeamSize
+	}
+	if len(a.Fallback) > 0 && len(e.Fallback) == 0 {
+		e.Fallback, e.FallbackRule = append([]string(nil), a.Fallback...), ruleID
 	}
 	e.Penalty += a.Penalty
 }
@@ -277,6 +283,9 @@ func mergeEffects(g, c Effects) Effects {
 	}
 	if out.SetTeamSize == 0 {
 		out.SetTeamSize = c.SetTeamSize
+	}
+	if len(c.Fallback) > 0 { // a chain set for this candidate (per tier or per model) is more specific than a request-wide one
+		out.Fallback, out.FallbackRule = c.Fallback, c.FallbackRule
 	}
 	out.Penalty += c.Penalty
 	return out
@@ -408,7 +417,7 @@ func FallbackFor(prev Candidate, cands []Candidate, pinnedTier providers.Tier) [
 // a de-escalation.
 func causeKind(c Cause) string {
 	switch c {
-	case CauseQuotaExhausted, CauseProviderDown, CauseOverloaded, CauseModelUnavailable:
+	case CauseQuotaExhausted, CauseRateLimited, CauseProviderDown, CauseOverloaded, CauseModelUnavailable:
 		return "fallback"
 	case CauseCheapStuck, CausePremiumRevise, CauseWatchdogStage2:
 		return "escalate"
