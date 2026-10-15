@@ -84,6 +84,21 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 		t.Fatalf("%d items, evil %+v", len(items), evil)
 	}
 
+	// Check against your account (P59) through the UI method: read-only, counts only, kept on the connection
+	var vr integrations.VerifyReport
+	a.call("integration.verify", map[string]any{"id": id}, &vr)
+	if !vr.OK || vr.Read.Items != 25 || !vr.Read.MorePages || len(vr.Calls) != 3 || lin.Calls("commentCreate") != 0 {
+		t.Fatalf("%+v", vr)
+	}
+	if b := mustJSON(vr); strings.Contains(string(b), itLinearToken) || strings.Contains(string(b), "Login broken") {
+		t.Fatalf("the report carries the credential or item text: %s", b)
+	}
+	var got integrations.ConnectionView
+	a.call("integration.get", map[string]any{"id": id}, &got)
+	if got.Verified == nil || !got.Verified.OK || got.Verified.Items != 25 {
+		t.Fatalf("%+v", got.Verified)
+	}
+
 	// the core refuses to make a task of the hostile issue, whoever asks (the screen disables its button too)
 	if err := a.callErr("integration.import", map[string]any{"itemId": evil.ID}); err == nil || !strings.Contains(err.Error(), "high injection risk") {
 		t.Fatalf("the hostile issue was imported: %v", err)
@@ -234,7 +249,7 @@ func TestIntegrationsWithoutACredentialStoreSayWhyAndAgentsCannotConnect(t *test
 	for _, m := range []string{"integration.list", "integration.connect", "integration.disconnect", "integration.test", "integration.sync", "integration.items", "integration.item",
 		"integration.rules.list", "integration.rules.set", "integration.import", "integration.notion.page", "integration.outbound.propose", "integration.outbound.decide",
 		"integration.outbound.execute", "integration.outbound.list", "integration.linkback", "integration.kinds", "integration.get", "integration.assign",
-		"integration.unassign", "integration.assignments", "integration.choices", "integration.oauthStart", "integration.oauthStatus"} {
+		"integration.unassign", "integration.assignments", "integration.choices", "integration.oauthStart", "integration.oauthStatus", "integration.verify"} {
 		if _, ok := a.c.Methods()[m]; !ok {
 			t.Errorf("method %s is not registered", m)
 		}

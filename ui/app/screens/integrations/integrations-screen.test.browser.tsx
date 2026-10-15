@@ -1,6 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
+import type { IntegrationVerifyRecord, IntegrationVerifyReport } from '../../api/extTypes.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { galleryCard, pay, rev } from '../mcp/fixtures.ts';
@@ -246,6 +247,131 @@ describe('Integrations', () => {
     expect(r.$('[data-testid="mcp-approvals"]')).toBeNull();
     for (const name of ['Assign to project', 'Add to project', 'Grant to agents']) expect(() => byText(r.container, 'button', name)).toThrow();
     expect(r.$('select[aria-label="Project"]')).toBeNull();
+  });
+
+  it('is laid out like Home: a Services group and an Agent tools group of tiles with state badges, the open tile’s panel under its own group', async () => {
+    const r = show({
+      integrationList: async () => [conn({ verified: { at: Date.UTC(2026, 9, 14, 9), ok: true, summary: 'Linear answered every check.', calls: 3, failedCalls: 0, items: 3, mismatches: 0 } })],
+      mcpGallery: async () => [galleryCard({ id: 'cfdocs', display: 'Cloudflare Documentation', publisher: 'Cloudflare', brand: 'cloudflare', group: 'Cloudflare' })],
+    });
+    const services = await find(r, '[data-testid="integrations-services"]');
+    const tools = await find(r, '[data-testid="integrations-tools"]');
+    expect(services.querySelector('h2')!.textContent).toBe('Services');
+    expect(tools.querySelector('h2')!.textContent).toBe('Agent tools');
+    expect(services.querySelectorAll('[data-testid="integration-tile"]').length).toBe(5);
+    expect(tools.querySelectorAll('[data-testid="integration-tile"][data-mcp="true"]').length).toBe(1);
+    const badges = Array.from(services.querySelectorAll('[data-testid="tile-badge"]')).map((b) => b.textContent);
+    expect(badges).toEqual(['verified', 'not connected', 'not connected', 'not connected', 'not connected']);
+    // Linear's panel opens under the services, Cloudflare's under the agent tools, one at a time
+    await open(r, 'linear');
+    expect(services.querySelector('[data-testid="integration-panel"][data-kind="linear"]')).not.toBeNull();
+    const cf = tools.querySelector('[data-testid="integration-tile"][data-kind="cloudflare"]') as HTMLElement;
+    await r.act(() => cf.click());
+    await waitFor(() => expect(tools.querySelector('[data-testid="integration-panel"][data-kind="cloudflare"] h3')!.textContent).toBe('Cloudflare'), r);
+    expect(r.$$('[data-testid="integration-panel"]').length).toBe(1);
+  });
+
+  it('Check against your account: reads the account with the stored credential, shows counts and calls, and the card says when it was verified', async () => {
+    const calls: Calls = [];
+    let verified: IntegrationVerifyRecord | undefined;
+    const report: IntegrationVerifyReport = {
+      integrationId: 'int_1',
+      kind: 'linear',
+      ok: true,
+      at: Date.UTC(2026, 9, 15, 10),
+      summary: 'Linear answered every check (3 calls, 3 items read) and nothing differed from what Drydock expects.',
+      steps: [
+        { id: 'credential', name: 'Credential stored', ok: true, detail: 'Personal API key, in the credential store (never shown).' },
+        { id: 'identity', name: 'Who the credential is', ok: true, detail: 'Linear accepted the credential; the account is named, the workspace is named.' },
+        { id: 'choices', name: 'List team choices', ok: true, detail: 'Linear listed 2 team choice(s).' },
+        { id: 'read', name: 'Read issues', ok: true, detail: 'Linear returned 3 issues.' },
+      ],
+      calls: [
+        { endpoint: 'POST /graphql (DrydockIdentity)', status: 200, ok: true },
+        { endpoint: 'POST /graphql (DrydockTeams)', status: 200, ok: true },
+        { endpoint: 'POST /graphql (DrydockIssues)', status: 200, ok: true },
+      ],
+      read: { accountNamed: true, workspaceNamed: true, scopes: 0, choices: 2, assignments: 1, items: 3, morePages: false, detailRead: false },
+      mismatches: [],
+      notes: [],
+    };
+    const r = show({
+      integrationList: async () => [conn({ verified })],
+      integrationVerify: rec(calls, () => {
+        verified = { at: report.at, ok: true, summary: report.summary, calls: 3, failedCalls: 0, items: 3, mismatches: 0 };
+        return report;
+      }) as never,
+    });
+    const card = await open(r, 'linear');
+    await waitFor(() => expect(card.querySelector('[data-testid="integration-verified"]')!.textContent).toContain('Not checked against your account yet'), r);
+    await r.act(() => byText(card, 'button', 'Check against your account').click());
+    await waitFor(() => expect(calls).toEqual([['int_1']]), r);
+    const rep = await find(r, '[data-testid="verify-report"]');
+    expect(rep.getAttribute('data-ok')).toBe('true');
+    expect(rep.textContent).toContain('nothing differed from what Drydock expects');
+    const read = rep.querySelector('[data-testid="verify-read"]')!.textContent!;
+    expect(read).toContain('Items read3');
+    expect(read).toContain('Choices listed2');
+    expect(read).toContain('3 of 3 answered');
+    expect(Array.from(rep.querySelectorAll('[data-testid="verify-call"]')).map((c) => c.getAttribute('data-status'))).toEqual(['200', '200', '200']);
+    expect(rep.querySelectorAll('[data-testid="verify-step"][data-ok="true"]').length).toBe(4);
+    // the list is read again: the card and its tile say it was verified
+    await waitFor(() => expect(card.querySelector('[data-testid="integration-verified"]')!.textContent).toMatch(/^Verified against your account on .*2026/), r);
+    const tile = r.$('[data-testid="integration-tile"][data-kind="linear"]') as HTMLElement;
+    await waitFor(() => expect(tile.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('verified'), r);
+    // no credential anywhere on the page
+    expect(r.$('input[type="password"]')).toBeNull();
+  });
+
+  it('a check that did not pass names the refused call and its status, and what did not match', async () => {
+    const refused: IntegrationVerifyReport = {
+      integrationId: 'int_1',
+      kind: 'linear',
+      ok: false,
+      at: 1,
+      summary: 'Linear did not pass the check: Linear rejected the credential (HTTP 401, unauthorized).',
+      steps: [
+        { id: 'credential', name: 'Credential stored', ok: true, detail: 'Personal API key.' },
+        { id: 'identity', name: 'Who the credential is', ok: false, detail: 'Linear rejected the credential (HTTP 401, unauthorized).' },
+      ],
+      calls: [{ endpoint: 'POST /graphql (DrydockIdentity)', status: 401, ok: false }],
+      read: { accountNamed: false, workspaceNamed: false, scopes: 0, choices: 0, assignments: 0, items: 0, morePages: false, detailRead: false },
+      mismatches: [],
+      notes: [],
+    };
+    const drift: IntegrationVerifyReport = {
+      ...refused,
+      summary: 'Linear answered, but 1 thing did not match what Drydock expects.',
+      steps: [
+        { id: 'identity', name: 'Who the credential is', ok: true, detail: 'ok' },
+        { id: 'read', name: 'Read issues', ok: false, detail: 'Linear answered in a shape Drydock does not recognize.' },
+      ],
+      calls: [
+        { endpoint: 'POST /graphql (DrydockIdentity)', status: 200, ok: true },
+        { endpoint: 'POST /graphql (DrydockIssues)', status: 200, ok: true },
+      ],
+      read: { ...refused.read, accountNamed: true, workspaceNamed: true },
+      mismatches: ['Read issues: the field "issues.nodes" is a JSON string where Drydock expects a list'],
+    };
+    let next = refused;
+    const r = show({
+      integrationList: async () => [conn({ verified: { at: Date.UTC(2026, 9, 15), ok: false, summary: refused.summary, calls: 1, failedCalls: 1, items: 0, mismatches: 0 } })],
+      integrationVerify: async () => next,
+    });
+    const tile = await find(r, '[data-testid="integration-tile"][data-kind="linear"]');
+    await waitFor(() => expect(tile.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('check failed'), r);
+    const card = await open(r, 'linear');
+    expect(card.querySelector('[data-testid="integration-verified"]')!.textContent).toContain('did not pass: Linear did not pass the check');
+    await r.act(() => byText(card, 'button', 'Check against your account').click());
+    const rep = await find(r, '[data-testid="verify-report"]');
+    expect(rep.getAttribute('data-ok')).toBe('false');
+    expect(rep.querySelector('[data-testid="verify-read"]')).toBeNull(); // nothing was read
+    expect(rep.querySelector('[data-testid="verify-step"][data-ok="false"]')!.textContent).toContain('HTTP 401');
+    expect(rep.querySelector('[data-testid="verify-call"]')!.getAttribute('data-status')).toBe('401');
+    next = drift;
+    await r.act(() => byText(card, 'button', 'Check against your account').click());
+    await waitFor(() => expect(rep.querySelector('[data-testid="verify-mismatch"]')!.textContent).toContain('"issues.nodes" is a JSON string where Drydock expects a list'), r);
+    expect(rep.querySelector('[data-testid="verify-read"]')).not.toBeNull();
   });
 
   it('points to the MCP gateway on the Connections page for the agent CLIs', async () => {

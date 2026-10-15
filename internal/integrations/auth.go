@@ -427,9 +427,11 @@ func (s *Service) clientCredentialsToken(ctx context.Context, c Connection, sc s
 	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(sc.ClientID+":"+sc.ClientSecret)))
 	resp, err := s.hc.Do(req)
 	if err != nil {
+		traceCall(ctx, "POST", "/api/oauth/token", 0)
 		return "", Classify(c.Kind, err, "")
 	}
 	defer resp.Body.Close()
+	traceCall(ctx, "POST", "/api/oauth/token", resp.StatusCode)
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusForbidden {
 		return "", &Failure{Code: CodeUnauthorized, Message: fmt.Sprintf("Aikido did not accept the client ID and secret (HTTP %d%s). Check them, or create new ones under Integrations > Public REST API, and reconnect.", resp.StatusCode, codeSuffix(vendorCode(b)))}

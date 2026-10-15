@@ -5,8 +5,9 @@
 import { css, on, type Handle } from 'remix/component';
 import type { IconNode } from 'lucide';
 import { BrandLogo, brandKey } from './brand-logo.tsx';
+import { Badge } from './data.tsx';
 import { Icon } from './icon.tsx';
-import { t } from './tokens.ts';
+import { t, type Tone } from './tokens.ts';
 
 export const tileGrid = css({
   display: 'grid',
@@ -44,6 +45,10 @@ export const tileCss = css({
   '& > :first-child': { flex: 'none' },
   '& > span:last-child': { flex: '1 1 auto', minWidth: '0' },
   '& strong': { display: 'block', fontWeight: '600', overflowWrap: 'anywhere' },
+  // the name, with the state badge (when there is one) at the end of its line
+  '& [data-tile-title]': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s2, minWidth: '0' },
+  '& [data-tile-title] > strong': { flex: '1 1 auto', minWidth: '0' },
+  '& [data-tile-title] > span': { flex: 'none' },
   '& small': { display: 'block', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },
   '& small[data-tone="ok"]': { color: t.success },
   '& small[data-tone="warn"]': { color: t.warning },
@@ -68,10 +73,17 @@ const glyph = css({
 
 export type TileTone = 'ok' | 'warn' | 'bad' | '';
 
+/** A short state word shown as a badge on the tile's name line ("connected", "verified", "needs attention"). */
+export interface TileBadge {
+  text: string;
+  tone: Tone;
+}
+
 /**
  * One tile. `logo` is a brand id (BrandLogo); a thing without a brand shows `icon` on a neutral square instead. `blurb` says what it
- * is, `state` what state it is in (with an optional tone). Extra data attributes go through `data` for tests and styling.
- * `onDragStart` makes the tile draggable (HTML5 drag and drop); `dragging` dims it while it is being dragged.
+ * is, `state` what state it is in (with an optional tone), `badge` the state in one word beside the name. Extra data attributes go
+ * through `data` for tests and styling. `onDragStart` makes the tile draggable (HTML5 drag and drop); `dragging` dims it while it
+ * is being dragged.
  */
 export function Tile(
   handle: Handle<{
@@ -81,6 +93,7 @@ export function Tile(
     blurb?: string;
     state?: string;
     tone?: TileTone;
+    badge?: TileBadge;
     selected?: boolean;
     onSelect?: () => void;
     testId?: string;
@@ -91,7 +104,7 @@ export function Tile(
   }>,
 ) {
   return () => {
-    const { title, logo, icon, blurb, state, tone = '', selected = false, onSelect, testId, data = {}, onDragStart, onDragEnd, dragging } = handle.props;
+    const { title, logo, icon, blurb, state, tone = '', badge, selected = false, onSelect, testId, data = {}, onDragStart, onDragEnd, dragging } = handle.props;
     const attrs: Record<string, string> = {};
     for (const [k, v] of Object.entries(data)) attrs[`data-${k}`] = v;
     return (
@@ -118,7 +131,14 @@ export function Tile(
             </span>
           )}
           <span>
-            <strong>{title}</strong>
+            <span data-tile-title="">
+              <strong>{title}</strong>
+              {badge ? (
+                <Badge tone={badge.tone} testId="tile-badge">
+                  {badge.text}
+                </Badge>
+              ) : null}
+            </span>
             {blurb ? <small>{blurb}</small> : null}
             {state ? <small data-tone={tone || undefined}>{state}</small> : null}
           </span>

@@ -123,7 +123,7 @@ Context use: the Context Engine may include an external item only through a mani
 
 ## 9. Events
 
-`integration.sync.started`, `.completed`, `.failed`; `integration.item.upserted`; `integration.task_created` (with `rule_id` or `human`); `integration.outbound.requested`, `.approved`, `.rejected`, `.sent`, `.failed`; `integration.rate_limited`; `integration.auth_expired`; `integration.schema_drift`. Payloads carry ids and hashes, not content; telemetry export never includes item text unless explicitly enabled (brief section 10).
+`integration.sync.started`, `.completed`, `.failed`; `integration.item.upserted`; `integration.task_created` (with `rule_id` or `human`); `integration.outbound.requested`, `.approved`, `.rejected`, `.sent`, `.failed`; `integration.rate_limited`; `integration.auth_expired`; `integration.schema_drift`; `integration.verified` (a check against the person's account, decision P59: ok, calls, failed calls, items and mismatches as counts). Payloads carry ids and hashes, not content; telemetry export never includes item text unless explicitly enabled (brief section 10).
 
 ## 10. Open questions / unverified
 
@@ -378,8 +378,9 @@ logo, assigns it, syncs and unassigns it.
 ### Not verified
 
 No vendor was called with a real credential. Until the owner runs the live checks, every shape above is only as right as the
-documentation and SDK sources it was written from; Aikido's least of all. The live checks are read-only and print nothing
-secret:
+documentation and SDK sources it was written from; Aikido's least of all. Since decision P59 the same check runs from the app:
+**Check against your account** on a connected service's panel (see "As built: check against your account" below). The Go live
+checks remain for a run without the app; they are read-only and print nothing secret:
 
 ```sh
 DRYDOCK_LIVE_LINEAR_TOKEN=lin_api_... DRYDOCK_LIVE_LINEAR_TEAM=ENG go test ./internal/integrations -run TestLiveLinear -v
@@ -392,3 +393,50 @@ DRYDOCK_LIVE_GITHUB_REPO=owner/name go test ./internal/integrations -run TestLiv
 Also unverified: the OAuth sign-ins against Linear's and Sentry's real servers (no client id is registered), whether Linear
 accepts a loopback redirect with any port, whether a pre-P42 MCP sign-in's token works against the vendor's API (Test says if
 not), Notion's 2026-03-11 behaviour beyond the SDK's types, and every Aikido path and field.
+
+## As built: check against your account (2026-10-15, decision P59)
+
+The feature list said every vendor shape was "tested against protocol fixtures only"; the live checks above were Go tests the
+owner would have to run with tokens in the environment. Each connected service's panel on the Integrations page now has **Check
+against your account**, which runs the same read-only check against the person's real account with the credential Drydock already
+holds for the connection. Nothing is typed and the credential is never shown; the live tests call the same code
+(`Service.Verify`, `internal/integrations/verify.go`), so the button and `go test -run TestLive` cannot disagree.
+
+- **What it calls** (about six requests, through the connection's own rate limiter, so it shares the vendor budget with sync):
+  the credential is stored (no call); the adapter's identity call (whether the API names the account and the workspace, how many
+  scopes it reports); the choices of the first listable setting (Linear teams, Notion data sources, Sentry organizations, Aikido
+  repositories, GitHub repositories); one page of at most 25 items of each of the first two enabled assignments (not assigned:
+  everything the credential sees; Sentry and GitHub, which need a scope, the first organization or repository listed); the full
+  text of the first item where the vendor keeps it apart (Notion's page markdown, Sentry's latest event). Aikido's token exchange
+  counts as a call. GitHub goes through `gh`, so its report lists steps but no HTTP calls.
+- **What it checks**: every call's HTTP status; an answer in a shape the adapter does not recognize (named by the field and its
+  JSON type, "the field "issues.nodes" is a JSON string where Drydock expects a list", or the adapter's own description, never a
+  value from the answer); every item has an id, a title, a reference Drydock can use and an update time (a full-sweep vendor such
+  as Aikido needs none, so a missing one is a note); a missing link is a note. A connection that is not assigned, or a scope with
+  no items, says the shape of real items is unchecked.
+- **Read-only**: only the adapters' Identity, Choices, Page and Detail calls, all reads (Linear's are GraphQL queries; Notion's
+  query and search are POSTs that read). Nothing is written to the vendor. Nothing read is stored: no item, no cursor, no identity,
+  and the connection's status is left to Test and sync.
+- **The report** (`integration.verify` returns it; the panel shows it): a verdict and summary, what was read as counts and yes/no
+  (account and workspace named, choices listed, items read and whether there were more, whether the full text was read), what did
+  not match, each step, and the calls made with their status codes (the endpoint path without its query, with the GraphQL
+  operation name). It never carries item text, names, identities or the credential; a test checks the report, the record and the
+  events for each.
+- **The record**: time, ok, summary, calls, failed calls, items and mismatches, in the settings table under
+  `integration.verified.<connection id>`, written only while the connection still has the version it had when the check started,
+  deleted by a reconnect (a new credential may reach another account) and by a disconnect. The connection view carries it as
+  `verified`; the card says "Verified against your account on <date>" (or that the last check did not pass, with its summary) and
+  the tile's badge says verified or check failed. `integration.verified` is published with the counts. Only a human can run it;
+  a second check of the same connection while one runs is refused.
+
+The page's layout changed in the same decision: both Integrations pages are laid out like Home (groups of tiles under headings,
+the vendor's logo, name, purpose, state and a state badge on each tile, the selected tile's panel as one card under its group).
+
+Tests: `internal/integrations/verify_test.go` against the protocol fixtures (Linear assigned and not, Sentry without an
+assignment and its latest event, Notion's markdown, Aikido's token exchange; a revoked credential answering 401, a field of
+another JSON type, an answer without the issues connection, items without a title or an update time; nothing written, nothing
+stored, no text in the report, the event or on disk; the record replaced, and forgotten on reconnect and disconnect; agents
+refused), `TestTheLiveCheckWorksAgainstTheFixture` (the live check through `Verify`), `internal/core` (`integration.verify`
+through the UI method), the UI's browser tests (the report, a refused call, a mismatch, the badges) and
+`ui/e2e/integrations.spec.ts` (the check against the Linear fixture the harness starts, then "Verified against your account").
+**Not verified:** against a real vendor account; that is what the button is for.

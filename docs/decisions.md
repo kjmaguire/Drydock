@@ -186,3 +186,17 @@ Open, owner action:
   `docs/security-scan.md` section 8. **Not verified:** the two flags against the real tools (written from their documented
   options; the stand-ins accept any), Windows paths on a PC (case-insensitive keys and the drive and data-folder checks are
   built for it and vetted with `GOOS=windows`); the folder is typed until the folder dialog of another change lands.
+- **P59. Integrations look like Home, and a connection can be checked against the person's own account (2026-10-15, on the
+  owner's request).** (1) "We are not keeping with the UI standard with the cards like we are in the Home Page": both
+  Integrations pages now have Home's shape, groups of tiles under h2 headings (workspace: Services, Agent tools, your own
+  servers; a project: its connected services as tiles with the scope it imports), each tile with logo, name, purpose, state
+  and a state badge (the kit's `Tile` gained `badge`), and the selected tile's panel as one card under its group. Functions,
+  labels and test ids are kept. (2) The live checks were Go tests run by hand with tokens in the environment. Each connected
+  service now has **Check against your account** (`integration.verify`): the same read-only checks, now product code the live
+  tests call (`Service.Verify`), with the credential Drydock already holds and about six calls: who it is, one list of
+  choices, one page of up to two assignments with every item checked for an id, title, reference and update time, one item's
+  full text. The report gives each call's HTTP status, counts, and what did not match (a field and its JSON type, never a
+  value); nothing is written to the vendor or stored from it. The outcome (time, ok, summary, counts; no content, no secret)
+  is kept per connection until a reconnect, shown as "Verified against your account on <date>", and published as
+  `integration.verified`. `docs/integrations.md`, "As built: check against your account". **Not verified:** against a real
+  vendor account; that is what the button is for.

@@ -52,20 +52,41 @@ const find = (r: R, sel: string) =>
     return el as HTMLElement;
   }, r);
 const button = (r: R, root: ParentNode, name: string) => waitFor(() => byText<HTMLButtonElement>(root, 'button', name), r);
-/** The card of one connected service, as the current project has it. */
-const open = (r: R, kind: string) => find(r, `[data-testid="project-integration"][data-kind="${kind}"]`);
+/** The panel of one connected service, as the current project has it: its tile is chosen first unless it is already open. */
+const open = async (r: R, kind: string) => {
+  const tile = await find(r, `[data-testid="project-integration-tile"][data-kind="${kind}"]`);
+  if (tile.getAttribute('aria-pressed') !== 'true') await r.act(() => tile.click());
+  return find(r, `[data-testid="project-integration"][data-kind="${kind}"]`);
+};
 
 describe("a project's Integrations page: app sync", () => {
   it('lists every connected service by its logo and name, assigned to this project or not; nothing is connected here', async () => {
     const r = show({
       integrationList: async () => [conn(), conn({ id: 'int_2', kind: 'sentry', name: 'Sentry', assignments: [asg({ id: 'asg_9', integrationId: 'int_2', projectId: 'prj_2' })] })],
     });
+    // the services as tiles, like Home: logo, name, what this project imports and a badge; the assigned one is open
+    const tiles = await waitFor(() => {
+      const ts = Array.from(r.$$('[data-testid="project-integration-tile"]')) as HTMLElement[];
+      if (ts.length !== 2) throw new Error('not yet');
+      return ts;
+    }, r);
+    expect(tiles.map((x) => [x.getAttribute('data-kind'), x.getAttribute('data-assigned'), x.getAttribute('aria-pressed')])).toEqual([
+      ['linear', 'true', 'true'],
+      ['sentry', 'false', 'false'],
+    ]);
+    expect(tiles[0]!.querySelector('[data-brand="linear"]')).not.toBeNull();
+    expect(tiles[0]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('assigned');
+    expect(tiles[0]!.textContent).toContain('Team: ENG');
+    expect(tiles[1]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('not assigned');
+    expect(tiles[1]!.textContent).toContain('Not assigned to this project');
+    expect(r.$$('[data-testid="project-integration"]').length).toBe(1);
     const lin = await open(r, 'linear');
     expect(lin.getAttribute('data-assigned')).toBe('true');
     expect(lin.querySelector('[role="img"][aria-label="Linear"]')).not.toBeNull();
     expect(lin.textContent).toContain('connected as Kyle Maguire');
     // Sentry is assigned to another project only: here it offers Assign, and the other project is not named
     const sentry = await open(r, 'sentry');
+    expect(r.$$('[data-testid="project-integration"]').length).toBe(1); // one panel at a time
     expect(sentry.getAttribute('data-assigned')).toBe('false');
     expect(sentry.querySelector('[data-testid="assignment"]')).toBeNull();
     expect(byText(sentry, 'button', 'Assign to gocalc')).not.toBeNull();

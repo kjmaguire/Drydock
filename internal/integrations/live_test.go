@@ -20,8 +20,10 @@ import (
 //
 //  1. Test connection: the API accepts the credential and reports the account, the workspace and, where the API has them,
 //     the scopes; when a scope is set, one item is read.
-//  2. The first setting with choices is listed (Linear teams, Notion data sources, Sentry organizations, Aikido repositories,
-//     GitHub repositories): the shape of that call is checked too.
+//  2. The in-app check against the account (Service.Verify, decision P59, the same code the "Check against your account"
+//     button runs): the first setting with choices is listed (Linear teams, Notion data sources, Sentry organizations, Aikido
+//     repositories, GitHub repositories), one page of the scope is read and every item checked for an id, a title, a reference
+//     and an update time, and one item's full text is read where the vendor keeps it apart.
 //  3. One sync (at most 20 pages of 50): every item parses into an item with an id, a title and a reference, and no schema
 //     drift is reported.
 //  4. The credential is nowhere in the database, the body files or the events.
@@ -63,6 +65,8 @@ type LiveReport struct {
 	Workspace  bool     `json:"workspaceRead"`
 	Scopes     []string `json:"scopes"`
 	Choices    int      `json:"choices"`
+	Calls      int      `json:"calls"`      // HTTP calls the check against the account made
+	Mismatches []string `json:"mismatches"` // what it found unexpected (field names and JSON types, never values)
 	Pages      int      `json:"pages"`
 	Items      int      `json:"items"`
 	Drift      int      `json:"drift"`
@@ -154,11 +158,26 @@ func liveCheck(t *testing.T, v liveVendor) {
 	if !rep.Account && !rep.Workspace {
 		t.Errorf("the API named neither the account nor the workspace")
 	}
-	if ch, err := h.svc.Choices(ctx, c.ID, v.choice, cfg); err != nil {
-		t.Errorf("listing %s: %v", v.choice, err)
-	} else {
-		rep.Choices = len(ch)
-		t.Logf("%d %s choice(s)", len(ch), v.choice)
+	// the in-app "Check against your account" (P59) is the same check: identity, the first setting's choices, one page of the
+	// scope with every item checked for what Drydock needs, one item's full text
+	vr, err := h.svc.Verify(ctx, human, c.ID)
+	if err != nil {
+		t.Fatalf("check against the account: %v", err)
+	}
+	for _, s := range vr.Steps {
+		t.Logf("check %s: ok=%v skipped=%v %s", s.Name, s.OK, s.Skipped, s.Detail)
+	}
+	for _, cl := range vr.Calls {
+		t.Logf("call %s: HTTP %d", cl.Endpoint, cl.Status)
+	}
+	for _, n := range vr.Notes {
+		t.Logf("note: %s", n)
+	}
+	rep.Choices, rep.Calls = vr.Read.Choices, len(vr.Calls)
+	rep.Mismatches = append(rep.Mismatches, vr.Mismatches...)
+	t.Logf("%d %s choice(s); check: %s", vr.Read.Choices, v.choice, vr.Summary)
+	if !vr.OK {
+		t.Errorf("the check against the account did not pass: %s %v", vr.Summary, vr.Mismatches)
 	}
 	if !assigned {
 		t.Logf("no scope set (%v): the sync is skipped", v.config)
@@ -231,7 +250,7 @@ func TestTheLiveCheckWorksAgainstTheFixture(t *testing.T) {
 		t.Fatalf("%v %s", err, b)
 	}
 	r := reps[0]
-	if !r.OK || r.Kind != "linear" || r.Items != 3 || r.Drift != 0 || !r.Account || !r.Workspace || r.Choices != 2 || r.APIVersion == "" {
+	if !r.OK || r.Kind != "linear" || r.Items != 3 || r.Drift != 0 || !r.Account || !r.Workspace || r.Choices != 2 || r.Calls != 3 || len(r.Mismatches) != 0 || r.APIVersion == "" {
 		t.Fatalf("%+v", r)
 	}
 	if strings.Contains(string(b), linearToken) || strings.Contains(string(b), "Description of issue") || strings.Contains(string(b), "Kyle Fixture") {

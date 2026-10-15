@@ -164,8 +164,10 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		}),
 		"integration.disconnect": bind(func(ctx context.Context, p idParam) (any, error) { return nil, svc.Disconnect(ctx, human(), p.ID) }),
 		"integration.test":       bind(func(ctx context.Context, p idParam) (any, error) { return svc.Test(ctx, p.ID) }),
-		"integration.assign":     bind(func(ctx context.Context, p integrations.AssignReq) (any, error) { return svc.Assign(ctx, human(), p) }),
-		"integration.unassign":   bind(func(ctx context.Context, p idParam) (any, error) { return nil, svc.Unassign(ctx, human(), p.ID) }),
+		// Check against your account (P59): the same read-only checks as the live tests, with the credential Drydock holds
+		"integration.verify":   bind(func(ctx context.Context, p idParam) (any, error) { return svc.Verify(ctx, human(), p.ID) }),
+		"integration.assign":   bind(func(ctx context.Context, p integrations.AssignReq) (any, error) { return svc.Assign(ctx, human(), p) }),
+		"integration.unassign": bind(func(ctx context.Context, p idParam) (any, error) { return nil, svc.Unassign(ctx, human(), p.ID) }),
 		"integration.assignments": bind(func(ctx context.Context, p struct {
 			IntegrationID string `json:"integrationId"`
 		}) (any, error) {

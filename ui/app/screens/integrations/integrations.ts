@@ -4,7 +4,8 @@
 
 import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import type { TileTone } from '../../ui/tiles.tsx';
+import { formatDate } from '../../lib/format.ts';
+import type { TileBadge, TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
 export interface ServiceKind {
@@ -161,6 +162,41 @@ export function vendorStateText(v: Pick<Vendor, 'kind' | 'cards'>, conn: Integra
   if (v.kind) parts.push(`Sync: ${syncStateText(conn)}`);
   if (v.cards.length > 0) parts.push(`Agents: ${agentsStateText(v.cards)}`);
   return parts.join(' · ');
+}
+
+/**
+ * The tile's state badge, one word or two (P59): whether app sync was verified against the person's account, works, or needs
+ * them; for a vendor with only agent tools, whether its servers are connected.
+ */
+export function vendorBadge(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): TileBadge {
+  const needsHuman = v.cards.some((c) => c.status === 'error' || c.status === 'needs_token' || c.status === 'needs_sign_in');
+  if (conn) {
+    if (conn.status !== 'ok' && conn.status !== 'untested') return { text: 'needs attention', tone: 'warn' };
+    if (conn.verified && !conn.verified.ok) return { text: 'check failed', tone: 'err' };
+    if (conn.verified?.ok) return { text: 'verified', tone: 'ok' };
+    return conn.status === 'ok' ? { text: 'connected', tone: 'ok' } : { text: 'not checked', tone: 'muted' };
+  }
+  if (needsHuman) return { text: 'needs attention', tone: 'warn' };
+  if (v.cards.some((c) => c.status === 'connected')) return { text: 'connected', tone: 'ok' };
+  return { text: 'not connected', tone: 'muted' };
+}
+
+/** The line under a connection that says when it was last checked against the person's account (P59). */
+export function verifiedText(conn: Pick<IntegrationView, 'verified'>): string {
+  const v = conn.verified;
+  if (!v) return 'Not checked against your account yet: Check against your account reads it with the credential Drydock holds, and writes nothing.';
+  return v.ok ? `Verified against your account on ${formatDate(v.at)}.` : `The check against your account on ${formatDate(v.at)} did not pass: ${v.summary}`;
+}
+
+/** A connection as one project has it, for its tile on the project's Integrations page: the scope it imports, or that it is not assigned. */
+export function projectConnState(info: IntegrationKindInfo | undefined, conn: IntegrationView, projectId: string): { text: string; tone: TileTone; badge: TileBadge } {
+  const a = (conn.assignments ?? []).find((x) => x.projectId === projectId);
+  if (!a) return { text: 'Not assigned to this project', tone: '', badge: { text: 'not assigned', tone: 'muted' } };
+  const st = a.sync?.state ?? 'never_synced';
+  const scope = scopeSummary(info, a);
+  if (st === 'error' || st === 'forbidden' || st === 'unauthenticated') return { text: `${scope} · sync: ${st}`, tone: 'bad', badge: { text: 'sync failing', tone: 'err' } };
+  if (conn.status !== 'ok' && conn.status !== 'untested') return { text: `${scope} · ${conn.status}`, tone: 'warn', badge: { text: 'needs attention', tone: 'warn' } };
+  return { text: scope, tone: st === 'ok' ? 'ok' : '', badge: { text: 'assigned', tone: 'ok' } };
 }
 
 /** The tone of the state line: warn when something needs the human, ok when something is connected and nothing is wrong. */

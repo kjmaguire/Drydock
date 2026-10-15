@@ -3,7 +3,28 @@ import { describe, it } from 'remix/test';
 import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard } from '../mcp/fixtures.ts';
-import { agentsStateText, identityLine, KINDS, kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, statusTone, syncStateText, syncText, syncTone, tileState, vendors, vendorStateText, vendorTone } from './integrations.ts';
+import {
+  agentsStateText,
+  identityLine,
+  KINDS,
+  kindLabel,
+  outboxTone,
+  parseParams,
+  projectConnState,
+  riskText,
+  riskTone,
+  scopeSummary,
+  statusTone,
+  syncStateText,
+  syncText,
+  syncTone,
+  tileState,
+  vendorBadge,
+  verifiedText,
+  vendors,
+  vendorStateText,
+  vendorTone,
+} from './integrations.ts';
 
 const view = (over: Partial<IntegrationView> = {}): IntegrationView =>
   ({
@@ -116,5 +137,33 @@ describe('integrations helpers', () => {
     expect(vendorTone({ kind: KINDS[0], cards: [galleryCard({ status: 'needs_token' })] }, conn)).toBe('warn');
     expect(vendorTone({ kind: KINDS[0], cards: [] }, undefined)).toBe('');
     expect(vendorTone({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toBe('ok');
+  });
+
+  it('the tile badge says verified, connected or what needs the person; the card line says when it was verified (P59)', () => {
+    const rec = { at: Date.UTC(2026, 9, 15, 12), ok: true, summary: 'ok', calls: 3, failedCalls: 0, items: 3, mismatches: 0 };
+    const lin = { kind: KINDS[0], cards: [] };
+    expect(vendorBadge(lin, undefined)).toEqual({ text: 'not connected', tone: 'muted' });
+    expect(vendorBadge(lin, view())).toEqual({ text: 'connected', tone: 'ok' });
+    expect(vendorBadge(lin, view({ status: 'untested' }))).toEqual({ text: 'not checked', tone: 'muted' });
+    expect(vendorBadge(lin, view({ verified: rec }))).toEqual({ text: 'verified', tone: 'ok' });
+    expect(vendorBadge(lin, view({ verified: { ...rec, ok: false } }))).toEqual({ text: 'check failed', tone: 'err' });
+    // a connection that is not working needs the person, whatever an older check said
+    expect(vendorBadge(lin, view({ status: 'unauthenticated', verified: rec }))).toEqual({ text: 'needs attention', tone: 'warn' });
+    expect(vendorBadge({ cards: [galleryCard({ status: 'needs_sign_in' })] }, undefined)).toEqual({ text: 'needs attention', tone: 'warn' });
+    expect(vendorBadge({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toEqual({ text: 'connected', tone: 'ok' });
+    expect(verifiedText(view())).toContain('Not checked against your account yet');
+    expect(verifiedText(view({ verified: rec }))).toMatch(/^Verified against your account on .*2026\.$/);
+    expect(verifiedText(view({ verified: { ...rec, ok: false, summary: 'Linear rejected the credential (HTTP 401).' } }))).toMatch(/did not pass: Linear rejected the credential \(HTTP 401\)\.$/);
+  });
+
+  it('a service as one project has it: its scope and a badge, or not assigned', () => {
+    const kinds = [{ kind: 'linear', settings: [{ key: 'team', label: 'Team' }] }] as unknown as IntegrationKindInfo[];
+    const a = { id: 'asg_1', integrationId: 'int_1', projectId: 'prj_1', config: { team: 'ENG' }, enabled: true, createdBy: '', created: 0, updated: 0, version: 1,
+      sync: { state: 'ok', lastSuccessAt: 0, lastAttemptAt: 0, itemsSeen: 0, itemsLastSync: 0, consecutiveFailures: 0, resuming: false } };
+    expect(projectConnState(kinds[0], view({ assignments: [a] }), 'prj_2')).toEqual({ text: 'Not assigned to this project', tone: '', badge: { text: 'not assigned', tone: 'muted' } });
+    expect(projectConnState(kinds[0], view({ assignments: [a] }), 'prj_1')).toEqual({ text: 'Team: ENG', tone: 'ok', badge: { text: 'assigned', tone: 'ok' } });
+    const failing = { ...a, sync: { ...a.sync, state: 'forbidden' } };
+    expect(projectConnState(kinds[0], view({ assignments: [failing] }), 'prj_1')).toEqual({ text: 'Team: ENG · sync: forbidden', tone: 'bad', badge: { text: 'sync failing', tone: 'err' } });
+    expect(projectConnState(kinds[0], view({ status: 'unreachable', assignments: [a] }), 'prj_1').badge).toEqual({ text: 'needs attention', tone: 'warn' });
   });
 });

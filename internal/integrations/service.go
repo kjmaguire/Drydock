@@ -496,6 +496,10 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 			}
 		}
 	}
+	if existing != nil {
+		// a new credential may reach another account: the last check against the account no longer says anything about it
+		_ = s.st.ClearVerification(ctx, saved.ID)
+	}
 	s.emit(ctx, EventConnected, "", "", map[string]any{"integrationId": saved.ID, "kind": saved.Kind, "by": by, "authKind": saved.AuthKind, "reconnect": existing != nil})
 	if r.ProjectID != "" {
 		if _, err := s.Assign(ctx, by, AssignReq{IntegrationID: saved.ID, ProjectID: r.ProjectID, Config: cfg}); err != nil && !errors.Is(err, ErrConflict) {
@@ -647,6 +651,9 @@ func (s *Service) view(ctx context.Context, c Connection) (ConnectionView, error
 	}
 	total, err := s.st.CountItems(ctx, c.ID)
 	if err != nil {
+		return v, err
+	}
+	if v.Verified, err = s.st.Verification(ctx, c.ID); err != nil {
 		return v, err
 	}
 	v.Sync = SyncStatus{State: "never_synced", ItemsSeen: total}

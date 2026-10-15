@@ -13,6 +13,13 @@ export function formatDateTime(iso: string | number | undefined): string {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
 }
 
+/** A day, in the reader's locale ("15 Oct 2026"): for "verified on". */
+export function formatDate(iso: string | number | undefined): string {
+  if (iso === undefined || iso === '' || iso === 0) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 const STATUS_LABEL: Record<string, string> = {
   BACKLOG: 'Backlog',
   READY: 'Ready',

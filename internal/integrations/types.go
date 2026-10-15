@@ -193,6 +193,8 @@ type ConnectionView struct {
 	Assignments   []AssignmentView `json:"assignments"`
 	// LegacyItems counts items stored before P42 that wait for the first assignment to adopt them.
 	LegacyItems int `json:"legacyItems,omitempty"`
+	// Verified is the last check against the person's account (Verify, decision P59); nil: never, or not since a reconnect.
+	Verified *VerifyRecord `json:"verified,omitempty"`
 }
 
 // AssignmentView is an assignment with its sync state.
