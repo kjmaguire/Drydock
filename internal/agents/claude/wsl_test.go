@@ -340,3 +340,31 @@ func TestANativeStartWithoutWindowsClaudeNamesTheDistroWhereItIsInstalled(t *tes
 		t.Fatalf("%v", err)
 	}
 }
+
+// NativeInstalled says, without starting anything, whether Claude Code is on this machine itself (decision P58): the
+// configured program, claude on PATH, or the native installer's folders.
+func TestNativeInstalledLooksWithoutStartingAnything(t *testing.T) {
+	if !agents.NativeInstalled(&Adapter{Exe: "/configured/claude"}) {
+		t.Fatal("a configured program counts as installed")
+	}
+	t.Setenv("PATH", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if (&Adapter{}).NativeInstalled() {
+		t.Fatal("no claude anywhere, yet installed")
+	}
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name = "claude.exe"
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".local", "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".local", "bin", name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !(&Adapter{}).NativeInstalled() {
+		t.Fatal("the native installer's folder was not looked at")
+	}
+}

@@ -39,8 +39,9 @@ type Runtime struct {
 	// carries the agent's purpose without each one having to remember it.
 	Instructions func(ctx context.Context, agentID, role string) (text string, practicesVersion int)
 	// RunMode, if set, says where an agent's CLI runs (native, or wsl with the distro; decision P41) for a session whose spec
-	// does not say: every path that starts an agent gets the agent's own setting without each one reading it.
-	RunMode func(ctx context.Context, agentID string) (mode, distro string)
+	// does not say: every path that starts an agent gets the agent's own setting without each one reading it. why is set when
+	// Drydock chose the place itself (decision P58: the CLI is not installed on Windows and the agent follows its project).
+	RunMode func(ctx context.Context, agentID string) (mode, distro, why string)
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -108,13 +109,17 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
 	}
 	if cfg.Spec.RunMode == "" && r.RunMode != nil && cfg.AgentID != "" {
-		cfg.Spec.RunMode, cfg.Spec.WSLDistro = r.RunMode(ctx, cfg.AgentID)
+		cfg.Spec.RunMode, cfg.Spec.WSLDistro, cfg.Spec.RunModeWhy = r.RunMode(ctx, cfg.AgentID)
 	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
 		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
 		return nil, err
 	}
 	runID := ids.New("arun")
+	if cfg.Spec.RunModeWhy != "" {
+		// Drydock chose where the CLI runs (decision P58): the run's events say so before anything starts
+		r.publish(ctx, "agent.run_mode_auto", cfg, runID, map[string]any{"runMode": cfg.Spec.RunMode, "wslDistro": cfg.Spec.WSLDistro, "why": cfg.Spec.RunModeWhy})
+	}
 	if r.Instructions != nil && cfg.AgentID != "" {
 		if s, pv := r.Instructions(ctx, cfg.AgentID, cfg.Spec.Role); strings.TrimSpace(s) != "" {
 			cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + strings.TrimSpace(s))
@@ -150,7 +155,14 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 			return err
 		})
 	}
-	r.publish(ctx, "agent.started", cfg, m.RunID, map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort, "instructions": cfg.Spec.SystemAppend != "", "practices": cfg.Spec.PracticesVersion})
+	started := map[string]any{"pid": sess.PID(), "cwd": cfg.Spec.Cwd, "adapter": cfg.Adapter, "model": cfg.Spec.Model, "effort": cfg.Spec.Effort, "instructions": cfg.Spec.SystemAppend != "", "practices": cfg.Spec.PracticesVersion}
+	if cfg.Spec.IsWSL() {
+		started["runMode"], started["wslDistro"] = cfg.Spec.RunMode, cfg.Spec.WSLDistro
+		if cfg.Spec.RunModeWhy != "" {
+			started["runModeWhy"] = cfg.Spec.RunModeWhy
+		}
+	}
+	r.publish(ctx, "agent.started", cfg, m.RunID, started)
 	r.wmu.Lock()
 	if r.running == nil {
 		r.running = map[*Managed]struct{}{}

@@ -1,5 +1,6 @@
 // Where the project's agents run unless an agent chooses (internal/core/ext_wsl.go, decision P41): on Windows, or inside a WSL
-// distro. Shown only where WSL is installed. The core refuses WSL while the project's sandbox is on, and says why.
+// distro. Shown only where WSL is installed. The core refuses WSL while the project's sandbox is on, and says why. A new
+// project's default comes from the Connections (decision P58): when Drydock chose it, the panel says so and why.
 
 import { on, type Handle } from 'remix/component';
 import type { ProjectRunMode, WSLStatus } from '../../api/wslClient.ts';
@@ -61,6 +62,11 @@ export function RunModePanel(handle: Handle<{ projectId: string }>) {
             ))}
           </select>
         </SettingRow>
+        {pr?.by === 'drydock' ? (
+          <p mix={noteRow} data-testid="run-mode-auto">
+            Drydock chose this when the project was made{pr.why ? `: ${pr.why}` : ''}. Choose another place above to change it.
+          </p>
+        ) : null}
         <p mix={noteRow}>{WSL_HELP}</p>
       </SettingsGroup>
     );

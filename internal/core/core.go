@@ -80,6 +80,13 @@ type Config struct {
 	// app sets it (app/app_windows.go); without it a person types a full path instead. The e2e harness sets a labelled
 	// stand-in.
 	PickFile func(ctx context.Context, p FilePick) (string, error)
+	// PickFolder opens the window's own folder dialog and returns the folder the person chose ("" when they cancelled): the
+	// new project's "Choose folder..." (decision P58). The desktop app sets it (app/app_windows.go); without it a person types
+	// the path. The e2e harness sets a labelled stand-in.
+	PickFolder func(ctx context.Context, p FolderPick) (string, error)
+	// DevDrives lists this computer's Dev Drives for the project folder's hint (decision P58). Default: runners.DevDrives on
+	// Windows (asked once), none elsewhere; the e2e harness sets a labelled stand-in.
+	DevDrives func(ctx context.Context) []runners.Drive
 	// Runners, when set, adjusts the CI runners' pool before it starts (decision P56): tests and the e2e harness replace
 	// GitHub, the release and the launchers with labelled test doubles.
 	Runners func(p *runners.Pool)
@@ -90,6 +97,11 @@ type FilePick struct {
 	Title         string
 	FilterName    string // for example "Programs"
 	FilterPattern string // semicolon-separated globs, for example "*.exe"
+}
+
+// FolderPick is what a folder dialog asks for.
+type FolderPick struct {
+	Title string
 }
 
 // Core is the running application.
@@ -437,6 +449,7 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 		c.trustGitConfigNow(ctx, p.ID)
 	}
 	c.publish(ctx, "project.created", p.ID, map[string]any{"name": p.Name, "hasRepo": p.HasRepo})
+	c.placeNewProject(ctx, p.ID) // where its agents run: on Windows, or where the agent CLI is ready (decision P58)
 	return p, nil
 }
 
@@ -794,7 +807,7 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 // starts from it, so a turn's checks (the sandbox+WSL refusal) see the run mode the runtime will start the CLI in.
 func (c *Core) agentRunSpec(ctx context.Context, a Agent) agents.RunSpec {
 	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
-	spec.RunMode, spec.WSLDistro = c.effectiveRunMode(ctx, a)
+	spec.RunMode, spec.WSLDistro, spec.RunModeWhy = c.runPlacement(ctx, a)
 	return spec
 }
 

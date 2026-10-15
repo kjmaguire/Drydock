@@ -206,3 +206,35 @@ func TestTheSignInInsideADistroIsTheCLIsOwnLoginWithTheLoginShellsPath(t *testin
 		}
 	}
 }
+
+// ReadyWSL names the distros where an agent can start Claude Code (decision P58): signed in there, the WSL default distro
+// first, never a container engine's own distro; a signed-out install does not count, nor a CLI without the WSL run mode.
+func TestReadyWSLListsTheDistrosWhereAnAgentCanStartTheDefaultFirst(t *testing.T) {
+	needStandInDistro(t)
+	f := wsltest.NewFake(t, true, "Ubuntu-26.04", "Debian", "docker-desktop")
+	svc := wslService(t, f)
+	ctx := context.Background()
+	ready := svc.ReadyWSL(ctx, "claude", true)
+	if len(ready) != 2 || ready[0].Distro != "Ubuntu-26.04" || ready[0].WSL == nil || !ready[0].WSL.Default || ready[1].Distro != "Debian" {
+		t.Fatalf("%+v", ready)
+	}
+	if got := svc.ReadyWSL(ctx, "codex", true); len(got) != 0 {
+		t.Fatalf("codex cannot start in WSL: %+v", got)
+	}
+	// the cached probes answer without probing again
+	n := len(f.Calls())
+	if again := svc.ReadyWSL(ctx, "claude", false); len(again) != 2 {
+		t.Fatalf("%+v", again)
+	}
+	for _, c := range f.Calls()[n:] { // the distro list only (wsl.exe -l)
+		if len(c) == 0 || c[0] != "-l" {
+			t.Fatalf("a cached ReadyWSL probed again: %q", f.Calls()[n:])
+		}
+	}
+	if err := os.WriteFile(filepath.Join(f.Home, ".drydock-standin-signed-out"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.ReadyWSL(ctx, "claude", true); len(got) != 0 {
+		t.Fatalf("a signed-out install counted: %+v", got)
+	}
+}

@@ -27,8 +27,35 @@ func openWSL(t *testing.T) (*app, *wsltest.Fake) {
 	return openWSLTTL(t, 0)
 }
 
-// openWSLTTL is openWSL with the probe cache kept for ttl (0: the default five minutes).
+// openWSLTTL is openWSL with the probe cache kept for ttl (0: the default five minutes). Claude Code is "installed on Windows"
+// too (the stand-in claude first on PATH), so a new project's agents run on Windows by default whatever the host has
+// (decision P58); openWSLOnly leaves it out.
 func openWSLTTL(t *testing.T, ttl time.Duration) (*app, *wsltest.Fake) {
+	t.Helper()
+	return openWSLHost(t, ttl, true)
+}
+
+// openWSLOnly is openWSL on a "Windows" without Claude Code: no claude on PATH or in the native installer's folders, so it
+// is installed only inside the stand-in distro (decision P58).
+func openWSLOnly(t *testing.T, distros ...string) (*app, *wsltest.Fake) {
+	t.Helper()
+	return openWSLHost(t, 0, false, distros...)
+}
+
+// withoutClaudeOnPath is PATH without the folders that hold a claude program (the development host's own install).
+func withoutClaudeOnPath() string {
+	var keep []string
+	for _, d := range filepath.SplitList(os.Getenv("PATH")) {
+		if st, err := os.Stat(filepath.Join(d, "claude")); err == nil && !st.IsDir() {
+			continue
+		}
+		keep = append(keep, d)
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
+}
+
+// openWSLHost opens the core with the stand-in WSL whose distros are distros (default Ubuntu and a container engine's own).
+func openWSLHost(t *testing.T, ttl time.Duration, nativeClaude bool, distros ...string) (*app, *wsltest.Fake) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in wsl.exe runs on a Linux development host; Windows CI drives a real distro (internal/agents/claude TestRealWSLSession)")
@@ -38,7 +65,21 @@ func openWSLTTL(t *testing.T, ttl time.Duration) (*app, *wsltest.Fake) {
 			t.Skipf("%s is missing on this host", tool)
 		}
 	}
-	f := wsltest.NewFake(t, true, "Ubuntu", "docker-desktop")
+	if len(distros) == 0 {
+		distros = []string{"Ubuntu", "docker-desktop"}
+	}
+	f := wsltest.NewFake(t, true, distros...)
+	if nativeClaude {
+		// LABELLED TEST DOUBLE: the stand-in claude (internal/wsl/wsltest) as the Windows install
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "claude"), wsltest.Script(), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	} else {
+		t.Setenv("PATH", withoutClaudeOnPath())
+		t.Setenv("HOME", t.TempDir()) // nor in ~/.local/bin or ~/.claude/local
+	}
 	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
 		WSL: &wsl.Host{Exe: f.Exe, TTL: ttl}})
 	if err != nil {

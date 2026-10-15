@@ -35,6 +35,16 @@ describe('the prebuilt agents gallery', () => {
     expect(picked).toEqual(['ui-engineer']);
   });
 
+  it('shows Claude Code installed only in a WSL distro as installed there (P58)', () => {
+    const e = prebuilt('team-lead', { claude: false });
+    e.availability.adapters[0] = { adapter: 'claude', preferred: true, installed: true, usable: true, status: 'degraded', wslDistro: 'Ubuntu-26.04' };
+    e.availability.preferredUsable = true;
+    const r = renderPlain(<AgentGallery entries={[e]} />);
+    const card = r.container.querySelector('[data-id="team-lead"]')!;
+    expect(card.textContent).toContain('(installed in WSL Ubuntu-26.04)');
+    expect(card.querySelector('.cli')!.getAttribute('title')).toBe('claude is installed in WSL Ubuntu-26.04');
+  });
+
   it('is read-only without onPick (the Library page)', () => {
     const r = renderPlain(<AgentGallery entries={CATALOG} />);
     expect(r.container.querySelectorAll('[data-testid="prebuilt"]').length).toBe(CATALOG.length);

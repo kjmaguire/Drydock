@@ -104,6 +104,8 @@ export interface SetupRepo {
   kind: SetupRepoKind;
   /** local */
   path?: string;
+  /** local: make a Git repository at path first when there is none (decision P58); an existing repository is used as it is. */
+  init?: boolean;
   /** github: owner/name */
   github?: string;
   /** github: the parent folder (default github.cloneDir) */
@@ -189,6 +191,8 @@ export interface AdapterAvailability {
   usable: boolean;
   status: string;
   reason?: string;
+  /** The WSL distro where the CLI is ready when it is not usable on Windows (decision P58): available there. */
+  wslDistro?: string;
 }
 
 export interface PrebuiltAgent {
@@ -346,6 +350,8 @@ export interface AdapterInfo {
   detection: Detection;
   capabilities: Capabilities;
   error?: string;
+  /** Not installed on Windows but ready in this WSL distro (decision P58): available there. */
+  wslDistro?: string;
 }
 
 export type TaskStatus =

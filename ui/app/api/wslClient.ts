@@ -28,8 +28,11 @@ export interface WSLStatus {
 export interface ProjectRunMode {
   runMode: 'native' | 'wsl' | string;
   wslDistro?: string;
+  /** The person who set it, or "drydock" for a new project's default taken from the Connections (decision P58). */
   by?: string;
   at?: number;
+  /** Why Drydock chose it (by "drydock"). */
+  why?: string;
 }
 
 export interface WSLClient {

@@ -240,6 +240,9 @@ func (d *detectOverride) Detect(ctx context.Context) (agents.Detection, error) {
 	return d.detect(ctx)
 }
 
+// NativeInstalled forwards to the wrapped adapter (agents.NativeLocator): an embedded interface does not carry it.
+func (d *detectOverride) NativeInstalled() bool { return agents.NativeInstalled(d.Adapter) }
+
 // unimplemented is an adapter that can be detected and described but not started.
 type unimplemented struct {
 	id     string

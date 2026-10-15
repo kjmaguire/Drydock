@@ -45,6 +45,9 @@ type AdapterAvailability struct {
 	Usable    bool   `json:"usable"`
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
+	// WSLDistro names the WSL distro where the CLI is ready when it is not usable on Windows (decision P58): it counts as
+	// available, and an agent made with it runs there (the project's default, or Drydock's choice at run time).
+	WSLDistro string `json:"wslDistro,omitempty"`
 }
 
 // PrebuiltMCPState is one MCP catalog server of the entry: what it is (full name, publisher, logo, what it gives agents, how
@@ -197,6 +200,11 @@ func (c *Core) prebuiltList(ctx context.Context, projectID string) ([]PrebuiltAg
 			a.Installed, a.Usable, a.Status, a.Reason = conn.Installed, conn.Usable, string(conn.Status), conn.Reason
 		} else {
 			a.Reason = err.Error()
+		}
+		if !a.Usable {
+			if ready := c.wslReady(ctx, id, false); len(ready) > 0 {
+				a.Installed, a.Usable, a.Status, a.Reason, a.WSLDistro = true, true, string(ready[0].Status), "", ready[0].Distro
+			}
 		}
 		conns[id] = a
 		return a

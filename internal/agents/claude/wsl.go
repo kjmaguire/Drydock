@@ -61,6 +61,13 @@ func (a *Adapter) WSLAvailable() bool {
 	return err == nil
 }
 
+// NativeInstalled reports whether Claude Code is installed on this machine itself (agents.NativeLocator): the configured
+// program, claude on PATH, or the native installer's folders. It starts nothing.
+func (a *Adapter) NativeInstalled() bool {
+	_, err := a.executable()
+	return err == nil
+}
+
 // wslInstall names a WSL distro where an earlier probe (the Connections page's) found Claude Code, "" when none did. It only
 // reads the probe cache and the distro list, so a native start that failed does not wait for a probe of every distro.
 func (a *Adapter) wslInstall(ctx context.Context) string {

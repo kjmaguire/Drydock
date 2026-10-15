@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardToReview, projectNav } from './helpers';
+import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -100,13 +100,22 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
   });
 
-  test('the core refuses a bad repository path and the UI shows its message', async ({ page }) => {
+  test('the core says what is at a bad repository path and the wizard does not go on without a repository', async ({ page }) => {
     await page.goto(appUrl());
     await showNewProjectForm(page);
+    await wizardNext(page);
+    await page.getByRole('radiogroup', { name: 'Repository source' }).getByRole('radio', { name: 'Local folder' }).check();
     // a full path on this system (Windows refuses /x as not a full path before it looks for a repository)
-    await wizardToReview(page, { repo: process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo' });
-    await page.getByRole('button', { name: 'Create project' }).click();
-    await expect(page.getByRole('alert')).toContainText('not a usable Git repository');
+    await page.getByLabel('Repository path').fill(process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo');
+    await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
+    await expect(page.getByTestId('folder-check')).toContainText('does not exist yet');
+    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+    await expect(page.getByText('tick "Create a Git repository here"')).toBeVisible();
+    // a relative path is refused with the core's reason
+    await page.getByLabel('Repository path').fill('not/a/full/path');
+    await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'invalid');
+    await expect(page.getByTestId('folder-check')).toContainText('must be a full path');
+    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
   });
 });
 

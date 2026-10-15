@@ -1,7 +1,8 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AdapterInfo } from '../../api/types.ts';
-import { adapterChoices, authNote, buildSetup, canOpen, cloneTarget, effectiveMode, emptyWizard, firstIncomplete, memberFromPrebuilt, pushedAgo, stepProblem, suggestTeam, uniqueName } from './wizard.ts';
+import type { RepoFolder } from '../../api/folderClient.ts';
+import { adapterChoices, authNote, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, memberFromPrebuilt, pushedAgo, stepProblem, suggestTeam, uniqueName } from './wizard.ts';
 import { prebuilt } from './wizard-fixtures.ts';
 
 const adapter = (id: string, installed: boolean): AdapterInfo => ({ id, detection: { adapter: id, installed, status: installed ? 'ready' : 'not_installed' }, capabilities: {} as never });
@@ -119,6 +120,54 @@ describe('new-project wizard rules', () => {
     expect(c[1]!.label).toContain('not installed');
     // without an entry: the adapters as detected
     expect(adapterChoices([adapter('gemini', false)], undefined, '').map((x) => x.disabled)).toEqual([true]);
+  });
+
+  it('counts a CLI installed only in a WSL distro as available and names the distro (P58)', () => {
+    const e = prebuilt('team-lead', { claude: false, gemini: false, codex: false });
+    e.availability.adapters[0] = { adapter: 'claude', preferred: true, installed: true, usable: true, status: 'degraded', wslDistro: 'Ubuntu-26.04' };
+    e.availability.preferredUsable = true;
+    const c = adapterChoices([adapter('claude', false)], e, 'claude');
+    expect(c[0]).toEqual({ id: 'claude', label: 'claude (recommended) - in WSL Ubuntu-26.04', disabled: false, reason: undefined, wslDistro: 'Ubuntu-26.04' });
+    expect(memberFromPrebuilt(e, []).adapter).toBe('claude');
+    // a custom member: adapter.list says where it is
+    const inWSL: AdapterInfo = { ...adapter('claude', false), wslDistro: 'Ubuntu-26.04' };
+    const custom = adapterChoices([inWSL, adapter('codex', false)], undefined, '');
+    expect(custom.map((x) => [x.label, x.disabled])).toEqual([
+      ['claude - in WSL Ubuntu-26.04', false],
+      ['codex - not installed on this machine', true],
+    ]);
+  });
+
+  it('asks for "Create a Git repository here" when the folder is not a repository, and sends it (P58)', () => {
+    const s = emptyWizard();
+    s.localPath = ' "D:\\Projects\\DryDock - Test Project" ';
+    const check = (state: RepoFolder['state'], message = ''): RepoFolder => ({ path: 'D:\\Projects\\DryDock - Test Project', state, entries: 0, canInit: state === 'folder' || state === 'missing', message });
+    // no answer yet: the core checks again when the project is made
+    expect(stepProblem(s, 'Repository')).toBeUndefined();
+    s.localCheck = check('missing');
+    expect(currentCheck(s)?.state).toBe('missing');
+    expect(stepProblem(s, 'Repository')).toContain('Create a Git repository here');
+    s.initRepo = true;
+    expect(stepProblem(s, 'Repository')).toBeUndefined();
+    expect(buildSetup(s).repo).toEqual({ kind: 'local', path: '"D:\\Projects\\DryDock - Test Project"', init: true });
+    s.localCheck = check('inside', 'D:\\Projects\\DryDock - Test Project is inside the Git repository at D:\\Projects.');
+    expect(stepProblem(s, 'Repository')).toContain('inside the Git repository');
+    s.localCheck = check('repository');
+    expect(stepProblem(s, 'Repository')).toBeUndefined();
+    // a check of an earlier text does not count
+    s.localPath = 'D:\\Other';
+    expect(currentCheck(s)).toBeUndefined();
+    expect(folderProblem(check('folder'), false)).toContain('is not a Git repository');
+    expect(folderProblem(check('no_branch', 'commit once'), true)).toBe('commit once');
+  });
+
+  it('recommends a Dev Drive on Windows and names the ones found', () => {
+    expect(folderHint(undefined)).not.toContain('Dev Drive');
+    expect(folderHint({ canPick: false, windows: false, devDrives: [] })).not.toContain('Dev Drive');
+    expect(folderHint({ canPick: true, windows: true, devDrives: [] })).toContain('No Dev Drive was found');
+    const h = folderHint({ canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] });
+    expect(h).toContain('Windows Dev Drive is recommended');
+    expect(h).toContain('Dev Drive D: found.');
   });
 
   it('formats the clone target, the pushed date and the connector sign-in note', () => {

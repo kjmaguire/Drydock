@@ -258,6 +258,12 @@ func (c *Core) DescribeAdapters(ctx context.Context) []map[string]any {
 		if err != nil {
 			m["error"] = err.Error()
 		}
+		if !det.Installed {
+			// installed only inside a WSL distro: available there (decision P58)
+			if ready := c.wslReady(ctx, id, false); len(ready) > 0 {
+				m["wslDistro"] = ready[0].Distro
+			}
+		}
 		out = append(out, m)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })

@@ -1,17 +1,20 @@
 // Project settings for a project made without a repository, and for every project's brief: attach a repository once (a
-// local folder, or a GitHub repository cloned with the user's own gh), and edit the brief every agent reads.
+// local folder, which Drydock can make a Git repository first, or a GitHub repository cloned with the user's own gh), and
+// edit the brief every agent reads.
 
 import { css, on, type Handle } from 'remix/component';
 import { FolderGit2, GitBranch } from 'lucide';
+import type { RepoFolder } from '../../api/folderClient.ts';
 import { PROJECT_BRIEF_MAX, type GitHubRepo, type Project } from '../../api/types.ts';
 import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
+import { FolderField } from './folder-field.tsx';
 import { RepoPicker } from './repo-picker.tsx';
 import { SettingsGroup } from './settings-kit.tsx';
-import { cloneTarget } from './wizard.ts';
+import { cloneTarget, currentCheck, folderProblem } from './wizard.ts';
 
 const padCss = css({ display: 'grid', gap: t.s4, padding: t.s4, '& input, & textarea': { width: '100%' } });
 const segCss = css({
@@ -43,12 +46,15 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
   const act = action(handle);
   let kind: 'local' | 'github' = 'local';
   let path = '';
+  let check: RepoFolder | undefined;
+  let initRepo = false;
   let repo: GitHubRepo | undefined;
   let cloneDir = '';
 
   const attach = async () => {
     const p = handle.props.project;
     const ok = await act.run('attach', async () => {
+      if (kind === 'local' && initRepo && currentCheck({ localPath: path, localCheck: check })?.canInit) await s.client.repoInit(path.trim());
       const dir = kind === 'github' && repo ? (await s.client.githubClone(repo.fullName, cloneDir.trim())).path : path.trim();
       await s.client.projectAttachRepo(p.id, dir);
       return true;
@@ -57,7 +63,8 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
   };
 
   return () => {
-    const ready = kind === 'local' ? !!path.trim() : !!repo && !!cloneDir.trim();
+    const problem = kind === 'local' ? folderProblem(currentCheck({ localPath: path, localCheck: check }), initRepo) : undefined;
+    const ready = kind === 'local' ? !!path.trim() && !problem : !!repo && !!cloneDir.trim();
     return (
       <SettingsGroup
         title="Attach a repository"
@@ -78,9 +85,14 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
             </label>
           </div>
           {kind === 'local' ? (
-            <Field label="Repository path" hint="A folder with a Git repository that already has a commit on a branch.">
-              {(id) => <input id={id} value={path} placeholder="C:\src\my-repo" spellcheck={false} autocomplete="off" mix={on('input', (e) => ((path = e.currentTarget.value), void handle.update()))} />}
-            </Field>
+            <FolderField
+              value={path}
+              onChange={(v) => ((path = v), void handle.update())}
+              check={check}
+              onCheck={(c) => ((check = c), void handle.update())}
+              initRepo={initRepo}
+              onInitRepo={(v) => ((initRepo = v), void handle.update())}
+            />
           ) : (
             <RepoPicker
               selected={repo}
@@ -91,7 +103,11 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
             />
           )}
           <div mix={endCss}>
-            <span class="hint">{kind === 'github' && repo ? `Clones into ${cloneTarget(cloneDir, repo)}, then attaches it.` : 'Drydock checks the folder before attaching it.'}</span>
+            <span class="hint">
+              {kind === 'github' && repo
+                ? `Clones into ${cloneTarget(cloneDir, repo)}, then attaches it.`
+                : (problem ?? (initRepo && currentCheck({ localPath: path, localCheck: check })?.canInit ? 'Makes the Git repository, then attaches it.' : 'Drydock checks the folder before attaching it.'))}
+            </span>
             <Button type="submit" variant="primary" size="sm" icon={kind === 'github' ? GitBranch : FolderGit2} disabled={!!act.busy || !ready}>
               {act.busy ? (kind === 'github' ? 'Cloning...' : 'Attaching...') : kind === 'github' ? 'Clone and attach' : 'Attach repository'}
             </Button>

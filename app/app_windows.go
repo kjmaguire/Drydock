@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -30,6 +31,14 @@ func DataDir() (string, error) {
 		base = d
 	}
 	return filepath.Join(base, "Drydock"), nil
+}
+
+// dialogResult is a dialog's answer with the person's Cancel as "" (Wails reports it as the error "cancelled by user").
+func dialogResult(path string, err error) (string, error) {
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "cancelled") {
+		return "", nil
+	}
+	return path, err
 }
 
 // Run opens the core and the window and blocks until the app exits. assets is the built UI (ui/dist).
@@ -57,7 +66,17 @@ func Run(assets fs.FS) error {
 		if window != nil {
 			d = d.AttachToWindow(window)
 		}
-		return d.PromptForSingleSelection()
+		return dialogResult(d.PromptForSingleSelection())
+	}, PickFolder: func(_ context.Context, p core.FolderPick) (string, error) {
+		// the window's own folder dialog (a new project's "Choose folder...", decision P58); "" when the person cancels
+		if wa == nil {
+			return "", fmt.Errorf("the window is not open yet")
+		}
+		d := wa.Dialog.OpenFile().SetTitle(p.Title).CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true)
+		if window != nil {
+			d = d.AttachToWindow(window)
+		}
+		return dialogResult(d.PromptForSingleSelection())
 	}})
 	if err != nil {
 		return fmt.Errorf("open Drydock: %w", err)

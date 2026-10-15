@@ -99,6 +99,26 @@ type RunSpec struct {
 	// Only an adapter whose Capabilities list the mode accepts it; the others refuse to start.
 	RunMode   string
 	WSLDistro string
+	// RunModeWhy says why Drydock chose the run mode itself ("" when the agent's or the project's setting decided): the agent
+	// follows its project's default, its CLI is not installed on Windows, and it is ready in WSLDistro (decision P58). The
+	// runtime records it in the run's events so the choice is visible.
+	RunModeWhy string
+}
+
+// NativeLocator is implemented by an adapter that can say, without starting anything, whether its CLI is installed on this
+// machine itself (on Windows, not inside a WSL distro). Drydock uses it to run an agent that follows its project's default in
+// the WSL distro its CLI is installed in when it is not installed natively (decision P58). An adapter that does not implement
+// it counts as installed.
+type NativeLocator interface {
+	NativeInstalled() bool
+}
+
+// NativeInstalled reports whether a's CLI is installed on this machine (true for an adapter that cannot tell).
+func NativeInstalled(a Adapter) bool {
+	if n, ok := a.(NativeLocator); ok {
+		return n.NativeInstalled()
+	}
+	return true
 }
 
 // Run modes (Capabilities.RunModes, RunSpec.RunMode).

@@ -171,6 +171,33 @@ Open, owner action:
   CI on every push against the real newest release on Windows and Linux (download, SHA-256, unpack or image build, start,
   configuration read from the environment), nothing registered. **Not verified:** a real job on a real private repository on
   a PC, Docker Desktop on Windows, and `fsutil`'s wording for a Dev Drive.
+- **P58. A project from scratch, and agents run where Claude Code is (2026-10-15, on the owner's request).** Creating a
+  project failed on a folder that was not yet a repository ("... is not a usable Git repository"), the Agent CLI picker said
+  Claude Code was "not installed" while it was connected in WSL, and the stand-up failed with "Claude Code is not installed
+  on Windows, but it is installed in the WSL distro Ubuntu-26.04". (1) **Choose folder.** The project folder (the wizard and
+  Project settings' attach form) has "Choose folder..." for the window's own folder dialog (`Config.PickFolder`, Wails'
+  dialog with directories only; `fs.pickFolder`, a person only, "" on Cancel, refused with "type the folder's full path"
+  where there is none); typing still works. The hint recommends a Dev Drive on Windows and names the ones found
+  (`fs.folderHints`, `runners.DevDrives` asked once). (2) **Create the repository.** `repo.check` says what is at the folder
+  (a repository, a repository without a commit, a plain folder, a missing one, one inside another work tree). For a plain
+  or missing folder the person may tick "Create a Git repository here": `repo.init` (or `project.setup` with `repo.init`)
+  makes the folder, runs `git init -b main` and a first commit (empty, or what is in the folder less what its `.gitignore`
+  leaves out) through Drydock's git chokepoint, the distro's git for a folder inside a distro. A folder that is already a
+  repository is never touched, and one inside another repository's work tree is refused naming that repository; only a
+  person may. (3) **The pickers.** A CLI not usable on Windows but ready in a distro (`connections.ReadyWSL`: found, signed
+  in, an accepted version; a distro degraded only by its setup, interop off or an unknown mount root, counts, since the
+  start names the fix) is available, "claude (recommended) - in WSL Ubuntu-26.04" (`agentcatalog.list`'s `wslDistro`,
+  `adapter.list`'s `wslDistro`). (4) **Where agents run.** A new project's default is set from the Connections: Windows when
+  Claude Code is installed there and usable (or Drydock cannot tell), else the first distro where it is ready, recorded as
+  set by `drydock` with the reason, which Project settings shows. At run time an agent that follows a default nobody chose
+  (its project's Windows default, not set by a person) and whose CLI is not installed on Windows runs in the one distro where
+  it is ready, or the WSL default distro among several; the turn's `agent.run_mode_auto` event and its `agent.started` say
+  where and why. An agent or a project a person set to Windows, and a sandboxed project, are never moved: the clear error
+  stays. `docs/connections.md` section 4b. **Verified** with the labelled stand-in WSL (internal/core
+  `TestANewProjectRunsItsAgentsInTheDistroWhereClaudeCodeIs` and
+  `TestAnAgentFollowingTheDefaultRunsWhereClaudeCodeIsAndAPersonsChoiceIsKept`, which fail on the old behaviour;
+  `TestRepoInitMakesARepositoryAndNeverTouchesOne`), the UI tests and `ui/e2e/workspace.spec.ts` with the harness's stand-in
+  dialog. **Not verified:** the real Wails folder dialog and `fsutil` on a PC, and a real Claude Code in a real distro.
 - **P61. A security scan of any folder, from Home (2026-10-15, on the owner's request).** The owner wanted to run the
   security scan (P44) on any repository at will from Home, for a project imported from elsewhere or a repository to check
   before trusting it. Built: the workspace page **Security scan** (`/security-scan`, Home's tile, the workspace sidebar),

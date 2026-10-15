@@ -71,6 +71,26 @@ describe('Project settings', () => {
     expect(r.container.querySelector('[data-testid="no-repo"]')).toBeNull();
   });
 
+  it('makes a Git repository in a folder that is not one, then attaches it (P58)', async () => {
+    const calls: string[] = [];
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => [bare],
+      repoCheck: async (path) => ({ path, state: 'folder', entries: 2, canInit: true, message: 'This folder is not a Git repository. Drydock can make one here (branch main).' }),
+      repoInit: async (path) => (calls.push(`init:${path}`), { path, branch: 'main', createdFolder: false, files: 2 }),
+      projectAttachRepo: async (id, path) => (calls.push(`attach:${id}:${path}`), { ...project, hasRepo: true }),
+    });
+    await waitFor(() => byLabel(r.container, 'Repository path'), r);
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
+    const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
+    expect(attach.disabled).toBe(true);
+    await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+    expect(attach.disabled).toBe(false);
+    await r.act(() => attach.click());
+    await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']), r);
+  });
+
   it('attaches a GitHub repository by cloning it with gh first', async () => {
     const calls: unknown[][] = [];
     const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
