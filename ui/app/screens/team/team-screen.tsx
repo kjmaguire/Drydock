@@ -1,5 +1,6 @@
-// Team: the project's agents as cards (who they are, what they run, what they are doing), adding one from a template or
-// from scratch, editing and removing them, and the adapters this machine has.
+// Crew (Crew HQ, decision P64): the project's agents as large dots (who they are, what each is doing right now, what it
+// runs), each a link to its own page; adding one from a template, a prebuilt agent or from scratch; editing and removing
+// them; the team lead's stand-up and interventions; and the adapters this machine has.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { Cpu, MessageSquare, Pencil, ScanSearch, Sparkles, Trash2, UserPlus, Users } from 'lucide';
@@ -8,7 +9,7 @@ import { presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
-import { Avatar, Badge, PresenceDot, kv, muted, presenceColor } from '../../ui/data.tsx';
+import { Avatar, Badge, kv, muted, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -18,29 +19,50 @@ import { AddPrebuilt } from './add-prebuilt.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
-import { purposeExcerpt, sortAdapters } from './team.ts';
+import { doing, presenceWords, purposeExcerpt, runsWhere, sortAdapters } from './team.ts';
 
-const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
+const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(272px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
 
+// a crew card: the dot, the name (a link to the agent's page), the role, what it is doing now, what it runs, its purpose, and
+// the actions along the bottom
 const agentCard = css({
   display: 'flex',
   flexDirection: 'column',
-  gap: t.s3,
-  padding: t.s4,
+  alignItems: 'center',
+  gap: '4px',
+  padding: `${t.s5} 14px ${t.s3}`,
   border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
+  borderRadius: t.rXl,
   background: t.bgSurface,
   minWidth: '0',
+  textAlign: 'center',
   transition: `border-color ${t.fast} ${t.ease}, box-shadow ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, boxShadow: t.shadowSm },
-  '& .head': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0' },
-  '& .who': { display: 'grid', gap: '3px', minWidth: '0', flex: '1' },
-  '& h3': { fontSize: t.textMd, fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: '0' },
-  '& .sub': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
-  '& .spec': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 10px', fontSize: t.textSm, color: t.textMuted },
-  '& .spec b': { fontWeight: '500', color: t.text },
+  '& h3': { marginTop: t.s2, fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& h3 a': { color: t.text, textDecoration: 'none' },
+  '& h3 a:hover': { textDecoration: 'underline' },
+  '& .role': { color: t.textFaint, fontSize: t.textSm },
+  '& .now': {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '7px',
+    width: '100%',
+    marginTop: t.s2,
+    padding: `${t.s2} 10px`,
+    borderRadius: t.rMd,
+    background: t.bgSidebar,
+    color: t.textMuted,
+    fontSize: t.textSm,
+    lineHeight: '1.4',
+    textAlign: 'left',
+    overflowWrap: 'anywhere',
+  },
+  '& .now > i': { flex: 'none', width: '7px', height: '7px', marginTop: '6px', borderRadius: '50%', display: 'block' },
+  '& .spec': { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '2px 8px', marginTop: t.s2, fontSize: t.textSm, color: t.textMuted },
+  '& .spec b': { fontWeight: '550', color: t.text },
+  '& .spec code': { fontSize: t.textSm },
   '& .purpose': {
-    margin: '0',
+    margin: `${t.s2} 0 0`,
     fontSize: t.textSm,
     color: t.textMuted,
     lineHeight: '1.5',
@@ -48,19 +70,22 @@ const agentCard = css({
     WebkitLineClamp: '3',
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
+    textAlign: 'left',
+    width: '100%',
   },
-  '& .nopurpose': { margin: '0', fontSize: t.textSm, color: t.textFaint, fontStyle: 'italic' },
-  '& .actions': { display: 'flex', alignItems: 'center', gap: t.s1, marginTop: 'auto', paddingTop: t.s3, borderTop: `1px solid ${t.border}` },
+  '& .nopurpose': { margin: `${t.s2} 0 0`, fontSize: t.textSm, color: t.textFaint, fontStyle: 'italic' },
+  '& .actions': { display: 'flex', alignItems: 'center', gap: '2px', width: '100%', marginTop: 'auto', paddingTop: t.s3 },
   '& .actions .end': { marginLeft: 'auto', display: 'flex', gap: '2px' },
 });
 
-const addCard = css({ display: 'grid', gap: t.s4, scrollMarginTop: t.s4 });
+const addCard = css({ display: 'grid', gap: t.s4, scrollMarginTop: t.s4, borderRadius: t.rXl });
 const divider = css({ height: '1px', background: t.border, margin: '0' });
 
 const adapterCss = css({
   display: 'grid',
   gap: t.s3,
   alignContent: 'start',
+  borderRadius: t.rXl,
   '& header': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
   '& h3': { fontSize: t.textMd, fontWeight: '600', margin: '0', display: 'inline-flex', alignItems: 'center', gap: '6px' },
   '& .note': { margin: '0', fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere' },
@@ -123,7 +148,6 @@ function AdapterCard(handle: Handle<{ a: AdapterInfo }>) {
   };
 }
 
-
 /** `onNavigate` replaces the router's navigate (tests). */
 export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
@@ -163,21 +187,21 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
 
     return (
       <Page
-        title="Team"
-        icon={Users}
+        title="Crew"
         subtitle={count}
+        testId="crew"
         actions={
           <>
-            <Button variant="secondary" size="sm" icon={Sparkles} disabled={!projectId} mix={on('click', () => ((prebuiltOpen = true), void handle.update()))}>
+            <Button variant="secondary" icon={Sparkles} disabled={!projectId} mix={on('click', () => ((prebuiltOpen = true), void handle.update()))}>
               Add prebuilt agent
             </Button>
-            <Button variant="primary" size="sm" icon={UserPlus} mix={on('click', focusAdd)}>
+            <Button variant="primary" icon={UserPlus} mix={on('click', focusAdd)}>
               Add agent
             </Button>
           </>
         }
       >
-        <Section title="Agents" description="Each agent is a real coding CLI with a role. A task needs a worker and a different agent as reviewer.">
+        <Section title="Your crew" description="Each agent is a real coding CLI with a role. A task needs a worker and a different agent as reviewer.">
           <ErrorNote error={agentsQ.error} what="Could not list agents" />
           <ErrorNote error={act.error} what="Could not open a direct message" />
           {agentsQ.loading && !agentsQ.data ? <Loading /> : null}
@@ -192,18 +216,24 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
             <ul mix={gridCss} aria-label="Agents">
               {agents.map((a) => {
                 const p = presenceFor(a.id, presence);
+                const where = runsWhere(a);
                 return (
                   <li key={a.id} mix={agentCard} data-testid="agent" data-name={a.name}>
-                    <div class="head">
-                      <Avatar id={a.id} name={a.name} size={38} status={presenceColor(p)} kind="agent" />
-                      <div class="who">
-                        <h3 title={a.name}>{a.name}</h3>
-                        <div class="sub">
-                          <Badge tone="accent">{a.role}</Badge>
-                          <PresenceDot presence={p} />
-                        </div>
-                      </div>
-                    </div>
+                    <Avatar id={a.id} name={a.name} size={64} status={presenceColor(p)} kind="agent" />
+                    <h3 title={a.name}>
+                      <a href={routes.agent.href({ id: a.id })} data-testid="agent-link">
+                        {a.name}
+                      </a>
+                    </h3>
+                    <span class="role">{a.role}</span>
+                    <span class="now">
+                      <i style={{ background: presenceColor(p) }} aria-hidden="true" />
+                      <span>{doing(p)}</span>
+                      {/* the presence in words for assistive tech (the dot is colour, the text is the activity) */}
+                      <span class="sr-only" data-testid="presence">
+                        {presenceWords(p)}
+                      </span>
+                    </span>
                     <div class="spec">
                       <code>{a.adapter}</code>
                       {a.model ? (
@@ -218,13 +248,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                           effort <b>{a.effort}</b>
                         </span>
                       ) : null}
-                      {a.runMode === 'wsl' ? (
-                        <span data-testid="agent-runs">
-                          in WSL <b>{a.wslDistro}</b>
-                        </span>
-                      ) : a.runMode === 'native' ? (
-                        <span data-testid="agent-runs">on Windows</span>
-                      ) : null}
+                      {where ? <span data-testid="agent-runs">{where}</span> : null}
                     </div>
                     {a.purpose ? (
                       <p class="purpose" data-testid="agent-purpose" title={a.purpose}>

@@ -84,6 +84,7 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
     if (t.runId) out.push({ id: `run:${t.id}`, group: 'Tasks', label: `Workflow of #${t.seq} ${t.title}`, keywords: ['graph', 'explain', 'run'], href: routes.run.href({ id: t.id }) });
   }
   for (const a of agents) {
+    out.push({ id: `agent:${a.id}`, group: 'Agents', label: `Open ${a.name}'s page`, hint: a.role, keywords: [a.name, 'agent', 'crew'], href: routes.agent.href({ id: a.id }) });
     out.push({ id: `inspect:${a.id}`, group: 'Agents', label: `Inspect ${a.name}`, hint: a.role, action: `inspect:${a.id}` });
     out.push({ id: `dm:${a.id}`, group: 'Agents', label: `Message ${a.name}`, hint: a.role, action: `dm:${a.id}` });
   }

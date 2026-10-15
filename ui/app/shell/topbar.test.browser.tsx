@@ -57,6 +57,7 @@ describe('the top bar', () => {
       [{ name: 'repo-map' }, 'nav-knowledge'],
       [{ name: 'room', id: 'r1' }, 'nav-rooms'],
       [{ name: 'team' }, 'nav-team'],
+      [{ name: 'agent', id: 'agt1' }, 'nav-team'],
       [{ name: 'activity' }, 'nav-overview'],
       [{ name: 'project-integrations' }, 'nav-settings'],
       [{ name: 'connections' }, 'nav-settings'],

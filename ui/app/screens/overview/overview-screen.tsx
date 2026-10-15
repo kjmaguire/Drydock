@@ -225,7 +225,7 @@ export function OverviewScreen(handle: Handle) {
                     const busy = WORKING.test(pr?.presence ?? '');
                     return (
                       <li key={a.id}>
-                        <a href={routes.team.href()} mix={crewCard} data-testid="overview-agent" data-name={a.name}>
+                        <a href={routes.agent.href({ id: a.id })} mix={crewCard} data-testid="overview-agent" data-name={a.name}>
                           <Avatar id={a.id} name={a.name} size={64} kind="agent" status={presenceColor(pr)} />
                           <span class="name">{a.name}</span>
                           <span class="role">{a.role}</span>

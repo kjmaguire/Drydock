@@ -47,6 +47,26 @@ const tabCss = css({
   '&:focus-visible': { boxShadow: `inset ${t.focus}` },
 });
 
+// the pill variant (Crew HQ): a row of rounded pills, the active one a white card
+const pillListCss = css({ display: 'flex', alignItems: 'center', gap: t.s1, borderBottom: '0', overflowX: 'auto', scrollbarWidth: 'none' });
+const pillCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  height: '36px',
+  padding: `0 ${t.s4}`,
+  border: '1px solid transparent',
+  borderRadius: t.rFull,
+  background: 'transparent',
+  color: t.textMuted,
+  fontSize: t.textMd,
+  fontWeight: '550',
+  whiteSpace: 'nowrap',
+  '&:hover': { background: t.bgHover, color: t.text },
+  '&[data-state="active"]': { background: t.bgSurface, color: t.text, borderColor: t.border, boxShadow: t.shadowSm },
+  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+});
+
 const countCss = css({
   minWidth: '18px',
   height: '16px',
@@ -65,14 +85,23 @@ const countCss = css({
  * hidden and empty), so each tab's aria-controls names an element that exists. Without children the tabs name no panel.
  */
 export function Tabs(
-  handle: Handle<{ label: string; items: TabItem[]; active: string; onChange: (name: string) => void; children?: (name: string) => RemixNode; panelMix?: ReturnType<typeof css> }>,
+  handle: Handle<{
+    label: string;
+    items: TabItem[];
+    active: string;
+    onChange: (name: string) => void;
+    children?: (name: string) => RemixNode;
+    panelMix?: ReturnType<typeof css>;
+    /** Pills (a page's sections, Crew HQ) instead of the underlined tabs of a panel. */
+    pills?: boolean;
+  }>,
 ) {
   return () => {
-    const { label, items, active, onChange, children, panelMix } = handle.props;
+    const { label, items, active, onChange, children, panelMix, pills } = handle.props;
     return (
       <tabs.Context activeTab={active} onActiveTabChange={onChange}>
         <div mix={tabs.root()}>
-          <div aria-label={label} mix={[listCss, tabs.list()]}>
+          <div aria-label={label} mix={[pills ? pillListCss : listCss, tabs.list()]}>
             {items.map((it) => (
               <button
                 key={it.name}
@@ -81,7 +110,7 @@ export function Tabs(
                 // without children the caller renders the content itself: there is no panel for aria-controls to name (an
                 // explicit null overrides the primitive's default, which would point at an element that does not exist)
                 aria-controls={children ? undefined : (null as unknown as string)}
-                mix={[tabCss, tabs.tab({ name: it.name })]}
+                mix={[pills ? pillCss : tabCss, tabs.tab({ name: it.name })]}
               >
                 {it.label}
                 {it.count ? <span mix={countCss}>{it.count}</span> : null}

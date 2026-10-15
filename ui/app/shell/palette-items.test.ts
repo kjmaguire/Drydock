@@ -21,6 +21,9 @@ describe('command palette items', () => {
     expect(labels).toContain('#7 Add Multiply');
     expect(labels).toContain('Workflow of #7 Add Multiply');
     expect(labels).toContain('Inspect Ada');
+    // an agent's own page, by its name
+    expect(items.find((i) => i.label === "Open Ada's page")).toMatchObject({ group: 'Agents', hint: 'backend', href: '/team/a1' });
+    expect(filterItems(items, 'ada').map((i) => i.label)).toContain("Open Ada's page");
     // nothing that approves, merges, deletes or stops
     expect(labels.some((l) => /approve|merge|delete|stop|cancel/i.test(l))).toBe(false);
   });

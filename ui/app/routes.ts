@@ -15,6 +15,8 @@ export const routes = route({
   run: get('/task/:id/run(/:runId)'),
   pulls: get('/pulls'),
   team: get('/team'),
+  // one agent's page (Crew HQ, decision P64): who it is, what it is doing, its skills, tools, memory and history
+  agent: get('/team/:id'),
   activity: get('/activity'),
   project: get('/project'),
   projectNew: get('/project/new'),

@@ -14,6 +14,7 @@ export type Route =
   | { name: 'project' }
   | { name: 'project-new' }
   | { name: 'project-integrations' }
+  | { name: 'agent'; id: string }
   | { name: 'chats' }
   | { name: 'chat'; id: string }
   | {
@@ -70,7 +71,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
 
 // screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
 const SIMPLE = new Set<string>([
-  'pulls', 'team', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map', 'rooms', 'knowledge',
+  'pulls', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map', 'rooms', 'knowledge',
   ...WORKSPACE_ROUTES.filter((n) => n !== 'workspace' && n !== 'library-skills'),
 ]);
 
@@ -117,6 +118,9 @@ export function parseRoute(pathname: string): Route {
     case 'library':
       if (parts.length === 1) return { name: 'library' };
       return b === 'skills' && parts.length === 2 ? { name: 'library-skills' } : { name: 'not-found' };
+    case 'team':
+      if (parts.length === 1) return { name: 'team' };
+      return b && parts.length === 2 ? { name: 'agent', id: b } : { name: 'not-found' };
     case 'project':
       if (parts.length === 1) return { name: 'project' };
       if (b === 'integrations' && parts.length === 2) return { name: 'project-integrations' };
@@ -155,6 +159,7 @@ const HUB_OF: Record<Route['name'], Hub> = {
   room: 'rooms',
   rooms: 'rooms',
   team: 'crew',
+  agent: 'crew',
   knowledge: 'knowledge',
   requirements: 'knowledge',
   packs: 'knowledge',

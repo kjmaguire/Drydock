@@ -64,7 +64,8 @@ const runCss = css({
 const isoCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' });
 const wide = css({ width: '100%' });
 
-function Run(handle: Handle<{ r: AgentRun }>) {
+/** One run of an agent: its status, when, PID, working directory, and the task it was for. */
+export function Run(handle: Handle<{ r: AgentRun }>) {
   return () => {
     const r = handle.props.r;
     return (
