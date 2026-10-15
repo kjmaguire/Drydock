@@ -33,9 +33,11 @@ type Options struct {
 	DB       *storage.DB         // required (llm_cache, model_usage)
 	Factory  BackendFactory      // required
 	// Scanner scans every outbound request; required. Use NopScanner{} to opt out explicitly.
-	Scanner   Scanner
-	Ledger    *providers.QuotaLedger
-	Monitor   *providers.Monitor // takes host concurrency slots for host providers
+	Scanner Scanner
+	Ledger  *providers.QuotaLedger
+	Monitor *providers.Monitor // takes host concurrency slots for host providers
+	// Uptime, when set, steers OpenRouter calls away from endpoints with poor recent uptime (decision P53 c).
+	Uptime    *providers.EndpointUptime
 	Bus       events.Bus
 	Retry     RetryPolicy
 	CacheTTLs map[string]time.Duration // purpose -> TTL; default DefaultCacheTTLs
@@ -52,6 +54,7 @@ type Wrapper struct {
 	scanner Scanner
 	ledger  *providers.QuotaLedger
 	mon     *providers.Monitor
+	uptime  *providers.EndpointUptime
 	bus     events.Bus
 	retry   RetryPolicy
 	ttls    map[string]time.Duration
@@ -100,7 +103,7 @@ func NewWrapper(o Options) (*Wrapper, error) {
 		}
 	}
 	return &Wrapper{reg: o.Registry, db: o.DB, factory: o.Factory, scanner: o.Scanner, ledger: o.Ledger, mon: o.Monitor,
-		bus: o.Bus, retry: o.Retry, ttls: o.CacheTTLs, now: o.Now, sleep: o.Sleep}, nil
+		uptime: o.Uptime, bus: o.Bus, retry: o.Retry, ttls: o.CacheTTLs, now: o.Now, sleep: o.Sleep}, nil
 }
 
 // Complete runs one call through the policy pipeline.
@@ -258,6 +261,8 @@ func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(De
 		return Response{}, err
 	}
 
+	avoid := w.avoidEndpoints(ctx, req, p, t.Model)
+
 	start := w.now()
 	var resp Response
 	for n := 1; ; n++ {
@@ -270,7 +275,7 @@ func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(De
 			wfn = func(d Delta) error { emitted = true; return fn(d) }
 		}
 		r2 := req
-		r2.Provider, r2.Model = p.ID, t.Model
+		r2.Provider, r2.Model, r2.AvoidEndpoints = p.ID, t.Model, avoid
 		if fn == nil {
 			resp, err = backend.Complete(ctx, r2)
 		} else {
@@ -285,6 +290,13 @@ func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(De
 		ae := asAPIError(p.ID, err)
 		if emitted {
 			return Response{}, &StreamInterruptedError{Cause: err}
+		}
+		if len(avoid) > 0 && ae.Kind == KindNoEndpoint {
+			// Skipping the low-uptime endpoints left none that fits the request (a private route's data policy
+			// narrows the set further than the uptime list shows): the avoidance never blocks a call, so send it as
+			// it would have gone without.
+			avoid = nil
+			continue
 		}
 		if w.ledger != nil && ae.Header != nil {
 			_ = w.ledger.Record(ctx, p.ID, t.Model, Usage{}, ae.Header) // error responses carry the fresh limits too
@@ -311,6 +323,23 @@ func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(De
 		w.cachePut(ctx, key, p, class, req, resp, ttl)
 	}
 	return resp, nil
+}
+
+// avoidEndpoints asks the uptime tracker which OpenRouter endpoints of model to skip, and announces a change in that set
+// as provider.endpoints_avoided (the provider's detail panel lists the current ones).
+func (w *Wrapper) avoidEndpoints(ctx context.Context, req Request, p providers.Provider, model string) []string {
+	if w.uptime == nil || p.Flavor != providers.FlavorOpenRouter {
+		return nil
+	}
+	a, changed := w.uptime.Avoid(ctx, p, model)
+	if changed {
+		w.emit(ctx, "provider.endpoints_avoided", req, map[string]any{"providerId": p.ID, "model": model, "threshold": a.Threshold,
+			"avoided": a.Avoided, "keptBest": a.KeptBest})
+	}
+	if len(a.Avoided) == 0 {
+		return nil
+	}
+	return a.Tags()
 }
 
 // cacheable scans the response before it is stored: a completion that echoes a secret is not kept.

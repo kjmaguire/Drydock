@@ -45,6 +45,7 @@ type economics struct {
 	budgets  *budget.Store
 	enforcer *budget.Enforcer
 	ledger   *providers.QuotaLedger
+	uptime   *providers.EndpointUptime // OpenRouter endpoint uptime: which endpoints the Wrapper's calls skip (P53 c)
 	wrapper  *llm.Wrapper
 	rules    *router.RuleStore
 	rec      *router.Recorder
@@ -166,8 +167,9 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	// --- LLM wrapper, quota ledger, router ---
 	e.ledger = providers.NewQuotaLedger(c.Providers, c.Prober, c.Bus, providers.QuotaOptions{})
 	e.ledger.StartPolling(ctx)
+	e.uptime = providers.NewEndpointUptime(c.Providers, providers.UptimeOptions{})
 	e.wrapper, err = llm.NewWrapper(llm.Options{Registry: c.Providers, DB: c.DB, Factory: backends.Factory, Scanner: secretadapt.LLM(c.Scanner),
-		Ledger: e.ledger, Monitor: c.Health, Bus: c.Bus})
+		Ledger: e.ledger, Monitor: c.Health, Uptime: e.uptime, Bus: c.Bus})
 	if err != nil {
 		return nil, nil, fmt.Errorf("llm wrapper: %w", err)
 	}

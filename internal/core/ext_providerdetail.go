@@ -40,6 +40,15 @@ type ProviderDetailView struct {
 	OpenRouterKey *providers.OpenRouterKey `json:"openRouterKey,omitempty"`
 	// KeyError says why the OpenRouter key could not be read, when a refresh was asked for.
 	KeyError string `json:"keyError,omitempty"`
+	// EndpointUptime is set for an OpenRouter provider: the uptime threshold and the endpoints its calls now skip.
+	EndpointUptime *EndpointUptimeView `json:"endpointUptime,omitempty"`
+}
+
+// EndpointUptimeView is what Drydock does with OpenRouter's per-endpoint uptime for this provider (decision P53 c).
+type EndpointUptimeView struct {
+	MinUptime        float64                       `json:"minUptime"` // percent; 0 is off
+	DefaultMinUptime float64                       `json:"defaultMinUptime"`
+	Avoiding         []providers.EndpointAvoidance `json:"avoiding"` // per model, newest first; empty when nothing is skipped
 }
 
 // QuotaWindowView is a quota window as the UI shows it. Limits are never invented: a window exists only when it was
@@ -63,6 +72,14 @@ func (c *Core) ProviderDetail(ctx context.Context, id string, refreshKey bool) (
 	out := ProviderDetailView{Provider: p, Models: []providers.Model{}, Quota: []QuotaWindowView{}}
 	if ms, err := c.Providers.Models(ctx, id); err == nil {
 		out.Models = append(out.Models, ms...)
+	}
+	if p.Flavor == providers.FlavorOpenRouter {
+		v := &EndpointUptimeView{MinUptime: c.Providers.MinEndpointUptime(ctx, id), DefaultMinUptime: providers.DefaultMinEndpointUptime,
+			Avoiding: []providers.EndpointAvoidance{}}
+		if u := economicsUptime(c); u != nil {
+			v.Avoiding = u.Avoiding(id)
+		}
+		out.EndpointUptime = v
 	}
 	ledger := economicsLedger(c)
 	if refreshKey && ledger != nil {
@@ -91,6 +108,15 @@ func (c *Core) ProviderDetail(ctx context.Context, id string, refreshKey bool) (
 	return out, nil
 }
 
+func economicsUptime(c *Core) *providers.EndpointUptime {
+	econMu.Lock()
+	defer econMu.Unlock()
+	if e := econByCore[c]; e != nil {
+		return e.uptime
+	}
+	return nil
+}
+
 func economicsLedger(c *Core) *providers.QuotaLedger {
 	econMu.Lock()
 	defer econMu.Unlock()
@@ -110,6 +136,8 @@ type ProviderEdit struct {
 	MaxConcurrent *int     `json:"maxConcurrent"`
 	HourlyCost    *float64 `json:"hourlyCost"`
 	APIKey        string   `json:"apiKey"`
+	// MinEndpointUptime is the OpenRouter endpoint uptime threshold in percent (0 turns the avoidance off).
+	MinEndpointUptime *float64 `json:"minEndpointUptime"`
 }
 
 // UpdateProvider applies a human's edit. The registry validates the result (URL and TLS rules, tier and class values).
@@ -145,7 +173,19 @@ func (c *Core) UpdateProvider(ctx context.Context, e ProviderEdit) (providers.Pr
 		}
 		p.HourlyCost = *e.HourlyCost
 	}
-	return c.Providers.Update(ctx, p, strings.TrimSpace(e.APIKey))
+	if m := e.MinEndpointUptime; m != nil {
+		if p.Flavor != providers.FlavorOpenRouter {
+			return providers.Provider{}, errors.New("only an OpenRouter provider has an endpoint uptime threshold")
+		}
+		if !(*m >= 0 && *m <= 100) {
+			return providers.Provider{}, errors.New("the endpoint uptime threshold must be between 0 and 100 percent (0 turns it off)")
+		}
+	}
+	out, err := c.Providers.Update(ctx, p, strings.TrimSpace(e.APIKey))
+	if err != nil || e.MinEndpointUptime == nil {
+		return out, err
+	}
+	return out, c.Providers.SetMinEndpointUptime(ctx, p.ID, *e.MinEndpointUptime)
 }
 
 // PriceEdit sets a model's price in USD per million tokens. Catalog refreshes never overwrite it afterwards.

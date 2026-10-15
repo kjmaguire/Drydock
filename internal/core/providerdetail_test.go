@@ -12,6 +12,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/llm"
 	"github.com/kjmaguire/drydock/internal/llm/llmtest"
 	"github.com/kjmaguire/drydock/internal/providers"
 )
@@ -100,5 +101,78 @@ func TestProviderDetailAndEdits(t *testing.T) {
 		if _, err := a.c.Call(t.Context(), "provider.setQuota", mustJSON(bad)); err == nil {
 			t.Errorf("%v was accepted", bad)
 		}
+	}
+}
+
+// An OpenRouter provider's detail carries the endpoint uptime threshold, which the person can change, and the endpoints
+// the app's own calls now skip (decision P53 c). The server is a TEST DOUBLE of OpenRouter: the llmtest PROTOCOL FIXTURE
+// for chat completions plus a stand-in for GET /api/v1/models/{author}/{slug}/endpoints.
+func TestOpenRouterProviderDetailShowsAvoidedEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	creds := providers.NewMemoryCredentialStoreForTests()
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second, Credentials: creds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	a := &app{t: t, c: c}
+	srv := llmtest.New(t, func(call llmtest.Call, w http.ResponseWriter, r *http.Request) {
+		llmtest.Respond(w, call, llmtest.Completion{Model: "acme/coder-7b", Content: "ok"})
+	})
+	srv.Routes["/api/v1/models/acme/coder-7b/endpoints"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"acme/coder-7b","endpoints":[
+			{"provider_name":"Steady","tag":"steady","uptime_last_30m":99.7},
+			{"provider_name":"Flaky","tag":"flaky","uptime_last_30m":92.4}]}}`))
+	}
+	var p providers.Provider
+	a.call("provider.create", map[string]any{"Name": "OpenRouter", "Kind": "aggregator", "BaseURL": srv.URL + "/api/v1", "APIKey": "sk-or-fixture-0123456789",
+		"DataClass": "private", "Tier": "cheap", "Flavor": "openrouter"}, &p)
+
+	var d core.ProviderDetailView
+	a.call("provider.detail", map[string]any{"id": p.ID}, &d)
+	if d.EndpointUptime == nil || d.EndpointUptime.MinUptime != 98 || d.EndpointUptime.DefaultMinUptime != 98 || len(d.EndpointUptime.Avoiding) != 0 {
+		t.Fatalf("before any call: %+v", d.EndpointUptime)
+	}
+
+	// One of the app's own calls (synthetic content) learns the uptime and skips the flaky endpoint.
+	_, err = core.EconomicsLLM(c).Complete(context.Background(), llm.Request{Provider: p.ID, Model: "acme/coder-7b", Purpose: "probe", NoCache: true,
+		Manifest: &llm.Manifest{Entries: []llm.ManifestEntry{{SourceType: "probe", Sensitivity: llm.SensitivitySynthetic}}},
+		Messages: []llm.Message{{Role: "user", Content: "say ok"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov, _ := srv.Calls()[0].Body["provider"].(map[string]any)
+	if ign, _ := prov["ignore"].([]any); len(ign) != 1 || ign[0] != "flaky" {
+		t.Fatalf("outgoing provider object %v", prov)
+	}
+	a.call("provider.detail", map[string]any{"id": p.ID}, &d)
+	if av := d.EndpointUptime.Avoiding; len(av) != 1 || av[0].Model != "acme/coder-7b" || len(av[0].Avoided) != 1 || av[0].Avoided[0].Tag != "flaky" ||
+		av[0].Avoided[0].UptimePct != 92.4 {
+		t.Fatalf("avoiding %+v", av)
+	}
+
+	// The threshold is a provider setting.
+	a.call("provider.update", map[string]any{"id": p.ID, "minEndpointUptime": 90}, nil)
+	a.call("provider.detail", map[string]any{"id": p.ID}, &d)
+	if d.EndpointUptime.MinUptime != 90 {
+		t.Fatalf("threshold %v", d.EndpointUptime.MinUptime)
+	}
+	for _, bad := range []map[string]any{{"id": p.ID, "minEndpointUptime": -1}, {"id": p.ID, "minEndpointUptime": 101}} {
+		if _, err := a.c.Call(t.Context(), "provider.update", mustJSON(bad)); err == nil {
+			t.Errorf("%v was accepted", bad)
+		}
+	}
+	// Other providers have no such setting and no such section.
+	var other providers.Provider
+	a.call("provider.create", map[string]any{"Name": "Compat", "Kind": "direct", "BaseURL": srv.URL + "/v1", "APIKey": "sk-compat-0123456789",
+		"DataClass": "private", "Tier": "cheap"}, &other)
+	if _, err := a.c.Call(t.Context(), "provider.update", mustJSON(map[string]any{"id": other.ID, "minEndpointUptime": 50})); err == nil {
+		t.Error("a non-OpenRouter provider accepted an endpoint uptime threshold")
+	}
+	var od core.ProviderDetailView
+	a.call("provider.detail", map[string]any{"id": other.ID}, &od)
+	if od.Provider.ID != other.ID || od.EndpointUptime != nil {
+		t.Fatalf("non-OpenRouter detail has an endpoint uptime section: %+v", od.EndpointUptime)
 	}
 }

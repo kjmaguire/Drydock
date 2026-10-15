@@ -272,7 +272,7 @@ Recorded from day one (brief §6) in `routing_outcomes(decision_id, task_id, acc
 
 ## 13. Events
 
-`routing.decided`, `routing.escalated`, `routing.deescalated`, `routing.fallback`, `routing.blocked`, `provider.registered`, `provider.health_changed`, `provider.catalog_refreshed`, `provider.probe_completed`, `provider.quota_updated`, `budget.warn` (80%), `budget.paused` (100%). Payloads carry ids and counts, not prompts.
+`routing.decided`, `routing.escalated`, `routing.deescalated`, `routing.fallback`, `routing.blocked`, `provider.registered`, `provider.health_changed`, `provider.catalog_refreshed`, `provider.probe_completed`, `provider.quota_updated`, `provider.endpoints_avoided` (OpenRouter endpoints skipped for poor uptime, see the last section), `budget.warn` (80%), `budget.paused` (100%). Payloads carry ids and counts, not prompts.
 
 ## 14. Tests
 
@@ -336,3 +336,47 @@ configured model and records a static decision whose reason says which. Every de
 
 Not built: a per-project level; routing the room replies and template role turns (pm, tests, architect, security), which keep
 their configured model.
+
+
+## As built: OpenRouter endpoint uptime (2026-10-15, decision P53 c)
+
+Borrowed from claude-code-router's OpenRouter endpoint chooser, which drops endpoints below 98% recent uptime. OpenRouter serves a
+model from several upstream endpoints and publishes each one's recent uptime; Drydock now asks OpenRouter to skip the poor ones
+on its own calls.
+
+- **Source.** `GET {base}/models/{author}/{slug}/endpoints` (base `https://openrouter.ai/api/v1`), sent with the provider's key
+  like the probes' `GET /key` (`Authorization: Bearer`; the key is never logged or put in an event). Each entry of
+  `data.endpoints` is read for `tag` (the endpoint's routing slug), `provider_name`, `uptime_last_5m` and `uptime_last_30m`
+  (percent; null when OpenRouter has too few requests to tell). The 5-minute figure is used when present, else the 30-minute
+  one. Field names: MP A.12 (from OpenRouter's docs source and OpenAPI) for `uptime_last_30m`; claude-code-router's chooser reads
+  the same endpoint and also `uptime_last_5m` and `tag`. `providers.EndpointUptime` (`internal/providers/uptime.go`).
+- **Cache.** Per provider and model, 5 minutes; a failed lookup (error status, unreadable body, network error, 5 s timeout) is
+  remembered for 1 minute and avoids nothing. Concurrent calls share one lookup. Models with no endpoint list (no `author/slug`,
+  and OpenRouter's own routers `openrouter/*`) are never looked up.
+- **Decision.** Threshold 98% by default, per provider (Providers > the provider > Settings, "Skip endpoints below this recent
+  uptime"; stored in `settings` as `provider.endpoint_uptime_min.<provider id>`, removed with the provider; 0 turns it off).
+  Every tagged endpoint below the threshold is skipped while at least one endpoint is at or above it or has no figure yet; when
+  every endpoint is below it, all but the best (ties kept) are skipped, so a model is never left with none. An endpoint without a
+  tag cannot be named and is never skipped.
+- **Request.** The `llm.Wrapper` asks the tracker before each OpenRouter attempt and passes the tags as
+  `Request.AvoidEndpoints`; `llm/openai` adds them to `provider.ignore`, after any `ignore` in the stored request overrides.
+  `ignore` is used rather than `order` because `provider.order` turns off OpenRouter's sticky routing and so the provider's prompt
+  cache (MP G). The privacy filter (`data_collection:"deny"`, `zdr:true`) is untouched. If OpenRouter answers "no endpoints
+  found" while endpoints were being skipped (a private route's data policy can narrow the set further than the uptime list
+  shows), the call is sent once more without them. The response cache key does not include the skipped set.
+- **Visible.** A change in the skipped set for a provider and model publishes `provider.endpoints_avoided` (provider, model,
+  threshold, each skipped endpoint's tag, name, uptime and window, and whether the best were kept). The provider's detail panel
+  has an "Endpoint uptime" section listing what is being skipped now, per model.
+- **Scope.** Only Drydock's own calls through `internal/llm` (consults, summaries, probes and routed calls). Agent CLIs that call
+  OpenRouter themselves (for example OpenCode set up with an OpenRouter key) do their own routing; Drydock does not rewrite their
+  requests, and their OpenRouter traffic gets whatever endpoint OpenRouter picks. Drydock's router is unaffected: endpoint uptime
+  is inside one OpenRouter model, so OpenRouter stays a healthy provider in `providers.Monitor`.
+- **Tests.** `internal/providers/uptime_test.go` (decision, windows, cache and shared lookup, failures and timeout, all-below,
+  threshold setting) and `internal/llm/uptime_test.go` (the outgoing request against a labelled test double of OpenRouter's
+  endpoints and chat APIs: skipped endpoint in `provider.ignore`, cache, failed or hung lookup leaves the body as it is
+  without the feature, all-below keeps the best, threshold, the no-endpoint resend, OpenRouter only), `internal/core`
+  `TestOpenRouterProviderDetailShowsAvoidedEndpoints`, and the panel's browser test.
+- **Not verified.** No OpenRouter key and no route to openrouter.ai from the sandbox: the live response of the endpoints API
+  (whether `uptime_last_5m` and `tag` are present for every model), whether `provider.ignore` accepts an endpoint tag such as
+  `deepinfra/turbo` as well as a provider slug, and whether a `:free` or other variant id has its own endpoint list (if not, the
+  lookup fails and the call goes out unchanged).
