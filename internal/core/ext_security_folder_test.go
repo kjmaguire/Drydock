@@ -129,7 +129,7 @@ func TestAFolderScanRunsTheEnginesWithoutAProjectAndKeepsItsHistory(t *testing.T
 	}
 
 	// another folder has its own history; the recent folder scans list both, newest first
-	other := t.TempDir()
+	other := realDir(t, t.TempDir())
 	os.WriteFile(filepath.Join(other, "readme.txt"), []byte("hello\n"), 0o644)
 	a.call("security.scan.start", map[string]any{"folder": other}, &started)
 	a.waitFor("the second folder's scan", func() bool {
