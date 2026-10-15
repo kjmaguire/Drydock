@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/ids"
@@ -132,6 +133,36 @@ type securityExt struct {
 	running map[string]*scan.Run
 	// unstored holds a key's last finished report when the database refused it (StoreError set), until the next scan
 	unstored map[string]scan.Report
+	// memo keeps the last tools answer for a moment (toolsMemoTTL): a change to a tool's program is answered to its caller
+	// and announced to every open Security page, and each of those reads must not probe the programs again. It serves only
+	// while the programs' files are as they were (stamp): one deleted or replaced meanwhile is probed again at once.
+	memoMu sync.Mutex
+	memo   struct {
+		key, stamp string
+		at         time.Time
+		v          scan.Tools
+	}
+}
+
+// toolsMemoTTL is how long a tools answer serves the reads that follow one change.
+const toolsMemoTTL = 3 * time.Second
+
+// toolsStamp names the files a tools answer rests on (each program's path, size and modification time, or that it is
+// missing), so the memo can tell whether the answer still holds without running anything.
+func toolsStamp(t scan.Tools) string {
+	var b strings.Builder
+	for _, info := range []scan.ToolInfo{t.OSV, t.Opengrep} {
+		path := info.Chosen
+		if path == "" {
+			path = info.Path
+		}
+		if st, err := os.Stat(path); err == nil {
+			fmt.Fprintf(&b, "%s:%d:%d|", path, st.Size(), st.ModTime().UnixNano())
+		} else {
+			fmt.Fprintf(&b, "%s:missing|", path)
+		}
+	}
+	return b.String()
 }
 
 // scanTarget is what a scan method is asked about: a project, or a folder by its full path (decision P61).
@@ -271,9 +302,21 @@ func (s *securityExt) rulesDir(ctx context.Context, projectID string) string {
 }
 
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
+	paths, rules := s.paths(ctx), s.rulesDir(ctx, projectID)
+	key := fmt.Sprintf("%s|%v|%s|%v|%s", paths.OSV.Path, paths.OSV.Chosen, paths.Opengrep.Path, paths.Opengrep.Chosen, rules)
+	s.memoMu.Lock()
+	if s.memo.key == key && time.Since(s.memo.at) < toolsMemoTTL && toolsStamp(s.memo.v) == s.memo.stamp {
+		t := s.memo.v
+		s.memoMu.Unlock()
+		return t
+	}
+	s.memoMu.Unlock()
 	// the external tools read the whole project: they get what every project command gets (checks.CommandEnv), no more
-	t := scan.Detect(ctx, s.c.Deps.PM, checks.CommandEnv(), s.paths(ctx), s.rulesDir(ctx, projectID))
+	t := scan.Detect(ctx, s.c.Deps.PM, checks.CommandEnv(), paths, rules)
 	t.CanChoose = s.c.cfg.PickFile != nil
+	s.memoMu.Lock()
+	s.memo.key, s.memo.stamp, s.memo.at, s.memo.v = key, toolsStamp(t), time.Now(), t
+	s.memoMu.Unlock()
 	return t
 }
 
@@ -336,8 +379,10 @@ func (s *securityExt) setToolPath(ctx context.Context, projectID, tool, path, by
 	}); err != nil {
 		return scan.Tools{}, err
 	}
+	// the programs are probed once, here; the pages that re-read on the event get this answer from the memo
+	t := s.tools(ctx, projectID)
 	s.c.publish(ctx, "security.settings", projectID, map[string]any{"tool": tool, "path": path, "by": by})
-	return s.tools(ctx, projectID), nil
+	return t, nil
 }
 
 // chooseTool opens the window's file dialog for a tool's program and stores what the person chose; cancelling changes nothing.

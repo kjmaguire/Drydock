@@ -7,6 +7,33 @@ import { FakeTransport, ManualScheduler } from '../test/fakes.ts';
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('Live', () => {
+  it('set() shows an answer the caller already has and drops the read in flight', async () => {
+    const t = new FakeTransport();
+    const store = new EventStore(t, { scheduler: new ManualScheduler(), backoff: () => 100 });
+    let reads = 0;
+    let release: (v: string) => void = () => undefined;
+    const live = new Live(store, {
+      load: () => {
+        reads++;
+        return new Promise<string>((r) => (release = r));
+      },
+    }).start();
+    store.start();
+    live.reload();
+    await tick();
+    expect(reads).toBe(1);
+    expect(live.loading).toBe(true);
+    // the action's own result arrives first and is shown at once
+    live.set('from the action');
+    expect(live.data).toBe('from the action');
+    expect(live.loading).toBe(false);
+    // the older read lands later: it is stale and must not overwrite the newer value
+    release('from the read');
+    await tick();
+    expect(live.data).toBe('from the action');
+    expect(reads).toBe(1);
+  });
+
   it('a read with no event matcher re-reads when the stream reopens, not when it breaks (F6)', async () => {
     const t = new FakeTransport();
     const sched = new ManualScheduler();

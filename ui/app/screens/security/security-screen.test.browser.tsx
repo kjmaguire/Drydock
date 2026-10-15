@@ -315,8 +315,12 @@ describe('Security scan page', () => {
       opengrep: { tool: 'opengrep', found: false, install: 'Install Opengrep.' },
       canChoose: true,
     });
+    let reads = 0;
     const { r } = show({
-      securityTools: async () => state,
+      securityTools: async () => {
+        reads++;
+        return state;
+      },
       securityToolChoose: async (projectId: string, tool: string) => {
         chosen.push(`${projectId}:${tool}`);
         state = { ...state, osv: { tool: 'osv-scanner', found: true, source: 'chosen', chosen: 'C:\\Tools\\osv.exe', path: 'C:\\Tools\\osv.exe', version: '2.0.2' } };
@@ -345,6 +349,8 @@ describe('Security scan page', () => {
     await r.act(() => (osvPick.querySelector('[data-testid="tool-choose"]') as HTMLButtonElement).click());
     await waitFor(() => expect(chosen).toEqual(['p1:osv-scanner']), r);
     await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.textContent).toContain('Chosen file C:\\Tools\\osv.exe (2.0.2)'), r);
+    // the row shows the core's answer to the choice; it is not read (and the programs not probed) a second time
+    expect(reads).toBe(1);
 
     // a typed path is used as is
     const og = await picker('opengrep');

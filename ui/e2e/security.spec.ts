@@ -71,6 +71,8 @@ test('one button scans the working tree with three engines, names the findings w
 // "Choose file..." on the tools panel: the harness's stand-in file dialog (cmd/drydock-e2e) answers with a copy of its own
 // binary named like the tool; the panel shows the chosen file, a scan runs it, and "Use PATH instead" forgets it.
 test("a tool's program is chosen with the file dialog and forgotten again", async ({ page }) => {
+  // three waits of up to 60 s below (found, chosen, forgotten) plus a scan: more than the 120 s a test gets by default
+  test.setTimeout(300_000);
   const repo = freshRepo();
   await createProject(page, 'gocalc-security-pick', repo);
   await projectNav(page, 'nav-security');
@@ -78,15 +80,18 @@ test("a tool's program is chosen with the file dialog and forgotten again", asyn
   await expect(osv).toHaveAttribute('data-found', 'true', { timeout: 60_000 });
   const pick = page.locator('[data-testid=tool-pick][data-tool=osv-scanner]');
   await pick.getByTestId('tool-choose').click();
-  // the core stores the choice, then probes each tool's program (--version, up to 10 s per tool) before the row re-reads;
-  // the first run of a freshly linked exe on a Windows runner can take a while, so this waits as long as the probe above
+  // the core stores the choice and probes the programs once (both --version runs in parallel, 10 s cap and a 5 s output
+  // drain each) before it answers; the row shows that answer. The same budget as the "found" wait above, for a loaded
+  // Windows runner; the version proves the chosen program ran, not only that its path was stored
   await expect(osv).toContainText('Chosen file', { timeout: 60_000 });
   await expect(osv).toContainText('picked');
+  await expect(osv).toContainText('0.0.0-standin');
   await page.getByTestId('scan-button').click();
   await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
   await expect(page.locator('[data-testid=scan-engine][data-engine=deps]')).toHaveAttribute('data-status', 'done');
   await pick.getByTestId('tool-clear').click();
-  await expect(osv).not.toContainText('Chosen file');
+  await expect(osv).not.toContainText('Chosen file', { timeout: 60_000 }); // the same probe as above
+  await expect(osv).toContainText('Found at');
   await expect(pick.getByTestId('tool-clear')).toHaveCount(0);
 });
 

@@ -45,6 +45,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -301,11 +302,7 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	if err := os.MkdirAll(picked, 0o755); err != nil {
 		return err
 	}
-	pickFile := func(_ context.Context, p core.FilePick) (string, error) {
-		name := "osv-scanner"
-		if strings.Contains(p.Title, "Opengrep") {
-			name = "opengrep"
-		}
+	pickedCopy := func(name string) (string, error) {
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
@@ -321,6 +318,25 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			return "", err
 		}
 		return dst, os.WriteFile(dst, b, 0o755)
+	}
+	// both copies are made now and run once (--version), so the first execution of a "new" program on the machine (a
+	// Windows runner's first-run scan of it) is paid here, not inside a test's wait after Choose file...
+	for _, name := range []string{"osv-scanner", "opengrep"} {
+		dst, err := pickedCopy(name)
+		if err != nil {
+			return fmt.Errorf("picked stand-in %s: %w", name, err)
+		}
+		warm := exec.Command(dst, append(scantest.Args(name), "--version")...)
+		if out, err := warm.CombinedOutput(); err != nil || !strings.Contains(string(out), "standin") {
+			return fmt.Errorf("picked stand-in %s did not answer --version: %v %q", name, err, out)
+		}
+	}
+	pickFile := func(_ context.Context, p core.FilePick) (string, error) {
+		name := "osv-scanner"
+		if strings.Contains(p.Title, "Opengrep") {
+			name = "opengrep"
+		}
+		return pickedCopy(name)
 	}
 	// TEST DOUBLE of the window's folder dialog (a new project's "Choose folder...", decision P58): it "chooses" a folder that
 	// does not exist yet (a new one on every call), so the wizard offers to make a Git repository there; the desktop app opens

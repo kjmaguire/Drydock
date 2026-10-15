@@ -432,19 +432,20 @@ export function ScanPanel(
     if (r) {
       rulesEdit = undefined;
       rulesSaved = true;
-      tools.reload();
+      tools.set(r);
       void handle.update();
     }
   };
+  // the core answers each change with the tools as they are now (one probe of the programs): shown as is, not read again
   const chooseTool = async (tool: ScanToolName) => {
     const r = await act.run(`choose:${tool}`, () => scope().chooseTool(tool));
-    if (r) tools.reload();
+    if (r) tools.set(r);
   };
   const setTool = async (tool: ScanToolName, path: string) => {
     const r = await act.run(`path:${tool}`, () => scope().setTool(tool, path));
     if (r) {
       delete pathEdit[tool];
-      tools.reload();
+      tools.set(r);
       void handle.update();
     }
   };

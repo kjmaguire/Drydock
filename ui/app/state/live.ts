@@ -96,6 +96,18 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
       );
   };
 
+  /**
+   * Show an answer the caller already has (the result of the action that changed it) instead of reading again; a read in
+   * flight is dropped, so it cannot overwrite the newer value when it lands.
+   */
+  set(data: T): void {
+    this.#gen++;
+    this.data = data;
+    this.error = undefined;
+    this.loading = false;
+    this.#emit();
+  }
+
   /** Forget the data (the key changed) and, when enabled, read again. Does not emit synchronously, so it is safe in render. */
   reset(enabled = true): void {
     this.#enabled = enabled;

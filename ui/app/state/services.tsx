@@ -56,6 +56,8 @@ export interface Query<T> {
   readonly error: Error | undefined;
   readonly loading: boolean;
   reload(): void;
+  /** Show an answer the caller already has (an action's result) instead of reading again. */
+  set(data: T): void;
 }
 
 /**
@@ -91,6 +93,7 @@ export function query<T>(handle: AnyHandle, opts: QueryOptions<T>): Query<T> {
       return live.loading;
     },
     reload: () => live.reload(),
+    set: (data) => live.set(data),
   };
 }
 

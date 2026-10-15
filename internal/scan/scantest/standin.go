@@ -25,6 +25,7 @@ func IsStandIn(args []string) bool { return len(args) > 2 && args[1] == Marker }
 //	--sleep-ms=N  wait N ms before answering (so a test can see the engine running)
 //	--fail        exit 2 with a message on stderr (a tool that broke)
 //	--empty       report nothing found
+//	--count=FILE  append a line to FILE on every run (a test counts how often the tool was started)
 func Args(name string, opts ...string) []string { return append([]string{Marker, name}, opts...) }
 
 // Main runs the stand-in named by os.Args and returns its exit code. Call it from TestMain or the harness's main when
@@ -44,6 +45,11 @@ func Main(args []string) int {
 			fail = true
 		case opt == "--empty":
 			empty = true
+		case strings.HasPrefix(opt, "--count="):
+			if f, err := os.OpenFile(strings.TrimPrefix(opt, "--count="), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+				fmt.Fprintf(f, "%s %s\n", name, strings.Join(rest[1:], " "))
+				f.Close()
+			}
 		default:
 			opt = ""
 		}

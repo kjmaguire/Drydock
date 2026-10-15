@@ -57,7 +57,7 @@ export function Thing(handle: Handle<{ id: string }>) {
     load: () => s.client.taskGet(handle.props.id),
     when: (e) => e.taskId === handle.props.id,
     key: () => handle.props.id,          // re-read from scratch when this changes
-  });
+  });                                    // q.set(v) shows an action's own answer instead of reading again (a read in flight is dropped)
   const act = action(handle);            // busy flag + error for async actions
   let open = false;                      // local UI state: plain variables + handle.update()
 
