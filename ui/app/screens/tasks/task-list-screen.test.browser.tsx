@@ -12,6 +12,7 @@ afterEach(() => {
   cleanup();
   try {
     localStorage.removeItem('drydock.tasks.filter');
+    localStorage.removeItem('drydock.tasks.view');
   } catch {
     /* ignore */
   }
@@ -26,6 +27,8 @@ const tasks: Task[] = [
 ];
 
 const rows = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="task-row"]'));
+const columns = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="board-column"]'));
+const pressed = (r: ReturnType<typeof mount>, id: string) => r.$(`[data-testid="${id}"]`)!.getAttribute('aria-pressed');
 
 async function listed(r: ReturnType<typeof mount>, n: number) {
   await waitFor(() => {
@@ -33,9 +36,101 @@ async function listed(r: ReturnType<typeof mount>, n: number) {
   }, r);
 }
 
-describe('TaskListScreen', () => {
+async function showList(r: ReturnType<typeof mount>) {
+  await r.act(() => (r.$('[data-testid="task-view-list"]') as HTMLButtonElement).click());
+  await waitFor(() => expect(pressed(r, 'task-view-list')).toBe('true'), r);
+}
+
+describe('TaskListScreen: the board', () => {
+  it('is the default view: four columns, each card a link with the number, status, crew dots, cost and age', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
+    await listed(r, 3);
+    expect(pressed(r, 'task-view-board')).toBe('true');
+    expect(pressed(r, 'task-view-list')).toBe('false');
+    expect(columns(r).map((c) => c.getAttribute('data-column'))).toEqual(['next', 'working', 'needs', 'done']);
+    expect(columns(r).map((c) => c.getAttribute('aria-label'))).toEqual(['Up next', 'Crew working', 'Needs you', 'Merged / Done']);
+    // Up next holds the backlog, Crew working the task awaiting approval, Merged / Done the completed one
+    const [next, working, needs, done] = columns(r);
+    expect(next!.querySelector('[data-testid="task-row"]')!.textContent).toContain('Add Divide');
+    expect(working!.querySelector('[data-testid="task-row"]')!.textContent).toContain('Add Multiply');
+    expect(needs!.querySelectorAll('[data-testid="task-row"]').length).toBe(0);
+    expect(needs!.textContent).toContain('Nothing needs you');
+    expect(done!.querySelector('[data-testid="task-row"]')!.textContent).toContain('Fix rounding');
+    expect(byText(r.container, 'a', /Describe a task/).getAttribute('href')).toBe('/tasks/new');
+
+    const card = working!.querySelector('[data-testid="task-row"]')!;
+    expect(card.getAttribute('data-status')).toBe('VERIFICATION');
+    expect(card.querySelector('a')!.getAttribute('href')).toBe('/task/t1');
+    expect(card.querySelector('a')!.textContent).toBe('Add Multiply');
+    expect(card.querySelector('[data-testid="task-status"]')!.textContent).toContain('Awaiting your approval');
+    expect(card.textContent).toContain('#1');
+    expect(card.textContent).toContain('$0.25');
+    expect(card.textContent).toContain('2m');
+    await waitFor(() => expect(card.textContent).toContain('Worker: Dana. Reviewer: Rex.'), r);
+    expect(card.textContent).toContain('Dana writes · Rex reviews');
+    expect(card.querySelectorAll('[data-dot="true"]').length).toBe(2);
+    const backlog = next!.querySelector('[data-testid="task-row"]')!;
+    expect(backlog.textContent).toContain('Worker: unassigned. Reviewer: unassigned.');
+    expect(backlog.textContent).toContain('cost not reported');
+    expect(done!.querySelector('[data-testid="task-row"]')!.textContent).toContain('drydock/t3');
+    // nothing is approved from the board
+    expect(Array.from(r.$$('button')).map((b) => b.textContent?.trim())).not.toContain('Approve');
+    expect(byText(r.container, 'a', 'New task').getAttribute('href')).toBe('/tasks/new');
+    expect(r.$('h1')!.textContent).toContain('Tasks');
+    expect(r.container.textContent).toContain('3 tasks · 1 needs you');
+  });
+
+  it('a task waiting for you is highlighted in Needs you with an Open link to its page; so is a task whose run asks for you', async () => {
+    const list = [...tasks, task({ id: 't4', seq: 4, title: 'Ship the invoice export', status: 'WAITING_HUMAN' })];
+    const needsYouList = async () => [{ key: 'k1', kind: 'question', severity: 2, title: 'Which API?', taskId: 't2', createdAt: '' }] as never;
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, needsYouList }, { tasks: list }));
+    await listed(r, 4);
+    const needs = columns(r)[2]!;
+    await waitFor(() => expect(needs.querySelectorAll('[data-testid="task-row"]').length).toBe(2), r);
+    const cards = Array.from(needs.querySelectorAll('[data-testid="task-row"]'));
+    expect(cards.map((c) => c.getAttribute('data-needs'))).toEqual(['true', 'true']);
+    expect(cards.map((c) => c.textContent?.includes('Ship the invoice export') || c.textContent?.includes('Add Divide'))).toEqual([true, true]);
+    const open = cards.find((c) => c.textContent?.includes('Ship the invoice export'))!.querySelector('a[aria-label^="Open"]')!;
+    expect(open.textContent?.trim()).toBe('Open');
+    expect(open.getAttribute('href')).toBe('/task/t4');
+    expect(columns(r)[0]!.querySelectorAll('[data-testid="task-row"]').length).toBe(0);
+    expect(r.container.textContent).toContain('4 tasks · 3 need you');
+  });
+
+  it('switches to the list and back, and remembers the choice', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
+    await listed(r, 3);
+    await showList(r);
+    expect(r.$('[data-testid="task-board"]')).toBeNull();
+    expect(r.$('[data-testid="task-filter-waiting"]')).toBeTruthy();
+    expect(localStorage.getItem('drydock.tasks.view')).toBe('list');
+    await r.act(() => (r.$('[data-testid="task-view-board"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$('[data-testid="task-board"]')).toBeTruthy(), r);
+    expect(localStorage.getItem('drydock.tasks.view')).toBe('board');
+    localStorage.setItem('drydock.tasks.view', 'list');
+    const r2 = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
+    await listed(r2, 3);
+    expect(pressed(r2, 'task-view-list')).toBe('true');
+    expect(r2.$('[data-testid="task-board"]')).toBeNull();
+  });
+
+  it('the text filter applies to the board', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
+    await listed(r, 3);
+    await r.act(() => type(byLabel(r.container, 'Filter tasks'), '#3'));
+    await listed(r, 1);
+    expect(rows(r)[0]!.textContent).toContain('Fix rounding');
+    await r.act(() => type(byLabel(r.container, 'Filter tasks'), 'nothing like this'));
+    await listed(r, 0);
+    expect(r.container.textContent).toContain('No tasks match');
+  });
+});
+
+describe('TaskListScreen: the list', () => {
   it('lists tasks grouped by status, each row a link with the status, people and cost', async () => {
     const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
+    await listed(r, 3);
+    await showList(r);
     await listed(r, 3);
     const [first, second, third] = rows(r);
     // waiting on you first, then the backlog, then done
@@ -59,6 +154,7 @@ describe('TaskListScreen', () => {
   it('filters by status and by text', async () => {
     const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
     await listed(r, 3);
+    await showList(r);
     await r.act(() => (r.$('[data-testid="task-filter-waiting"]') as HTMLButtonElement).click());
     await listed(r, 1);
     expect(rows(r)[0]!.textContent).toContain('Add Multiply');

@@ -51,6 +51,40 @@ export interface TaskGroup<T> {
   tasks: T[];
 }
 
+// --- the board (Crew HQ, decision P64): four columns ---
+
+export type BoardColumn = 'next' | 'working' | 'needs' | 'done';
+
+export const BOARD_COLUMNS: { name: BoardColumn; label: string; statuses: readonly string[]; tone: 'muted' | 'info' | 'warn' | 'ok' }[] = [
+  { name: 'next', label: 'Up next', statuses: ['BACKLOG', 'READY', 'CLAIMED'], tone: 'muted' },
+  { name: 'working', label: 'Crew working', statuses: ['IN_PROGRESS', 'REVIEW', 'VERIFICATION', 'BLOCKED'], tone: 'info' },
+  { name: 'needs', label: 'Needs you', statuses: ['WAITING_HUMAN'], tone: 'warn' },
+  { name: 'done', label: 'Merged / Done', statuses: ['COMPLETED', 'FAILED', 'CANCELLED'], tone: 'ok' },
+];
+
+/**
+ * The column a task sits in. A task whose run waits for the person (an item in Needs you, `waiting`) is in Needs you
+ * whatever its status says; a status the UI does not know is shown with the crew's work, its status visible on the card.
+ */
+export function columnOf(t: Pick<Task, 'status'> & { id?: string }, waiting?: ReadonlySet<string>): BoardColumn {
+  if (!!t.id && !!waiting?.has(t.id)) return 'needs';
+  return BOARD_COLUMNS.find((c) => c.statuses.includes(t.status))?.name ?? 'working';
+}
+
+/**
+ * The four columns, always all four, each with its tasks: Up next in the order the crew takes them (lowest number first),
+ * the others newest update first.
+ */
+export function boardColumns<T extends Pick<Task, 'status' | 'updated' | 'seq'> & { id?: string }>(tasks: readonly T[], waiting?: ReadonlySet<string>): { column: BoardColumn; tasks: T[] }[] {
+  const by = new Map<BoardColumn, T[]>(BOARD_COLUMNS.map((c) => [c.name, []]));
+  for (const t of tasks) by.get(columnOf(t, waiting))!.push(t);
+  return BOARD_COLUMNS.map((c) => {
+    const list = by.get(c.name)!;
+    list.sort(c.name === 'next' ? (a, b) => a.seq - b.seq : (a, b) => b.updated - a.updated || b.seq - a.seq);
+    return { column: c.name, tasks: list };
+  });
+}
+
 /** Group tasks by status in STATUS_ORDER (unknown statuses last), newest update first within a group. */
 export function groupByStatus<T extends Pick<Task, 'status' | 'updated' | 'seq'>>(tasks: readonly T[]): TaskGroup<T>[] {
   const by = new Map<string, T[]>();
@@ -77,6 +111,23 @@ export function ago(ms: number, now = Date.now()): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   if (s < 86400 * 30) return `${Math.floor(s / 86400)}d`;
   return new Date(ms).toLocaleDateString();
+}
+
+/** A core timestamp in milliseconds: the core writes seconds in some fields and milliseconds in others. */
+export function toMs(n: number | undefined): number {
+  if (!n) return 0;
+  return n < 1e11 ? n * 1000 : n;
+}
+
+/** How long a task has run: from its start to its completion, or to now while it runs. "5 m 12 s", "1 h 03 m"; empty before it starts. */
+export function elapsed(t: Pick<Task, 'started' | 'completed'>, now = Date.now()): string {
+  const start = toMs(t.started);
+  if (!start) return '';
+  const end = toMs(t.completed) || now;
+  const s = Math.max(0, Math.round((end - start) / 1000));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} m ${String(s % 60).padStart(2, '0')} s`;
+  return `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')} m`;
 }
 
 // --- create ---

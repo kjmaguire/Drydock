@@ -1,18 +1,19 @@
-// One task, in the spirit of Linear's issue view: a header (number, title, status, channel), then a main column (what needs
-// your decision, assignment and control, description, acceptance criteria, evidence, reviews, the diff, preview, usage and
-// routing decisions) beside a properties column (worker, reviewer, template, branch, attempt, cost, links, run).
+// One task (Crew HQ, decision P64): the title with its status pill and the description, then the step bar (Spec → Code →
+// Checks → Review → You) and, in the main column, assignment and control, the acceptance criteria, evidence, the reviewer
+// verdicts, the diff, preview, usage and routing decisions. Beside it the decide card (what needs your decision, with its
+// buttons), the properties (writer, reviewer, branch, cost, time, model, attempt, links, run) and the More links.
 
 import { css, on, type Handle } from 'remix/component';
-import { ClipboardList, Columns2, FileDiff, ListChecks, MessagesSquare, ScrollText, SquareTerminal, Workflow } from 'lucide';
-import type { Agent, Task, TaskDetail, UsageRow } from '../../api/types.ts';
-import { agentName, formatCost, formatDateTime } from '../../lib/format.ts';
+import { Check, ClipboardList, Columns2, FileDiff, Flag, ListChecks, MessagesSquare, ScrollText, SquareTerminal, Workflow } from 'lucide';
+import type { Agent, PresenceState, Task, TaskDetail, UsageRow } from '../../api/types.ts';
+import { agentName, formatCost, formatDateTime, presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
-import { Avatar, Badge, SourceBadge, StatusChip, faint, muted } from '../../ui/data.tsx';
+import { Avatar, Badge, SourceBadge, StatusChip, faint, muted, presenceColor } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page, Section } from '../../ui/layout.tsx';
+import { Page, Section, card } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { DiffViewer } from '../dock/diff-viewer.tsx';
@@ -23,21 +24,50 @@ import { PreviewControls } from './preview-controls.tsx';
 import { DiffView } from './raw-diff.tsx';
 import { ReviewPanel } from './review-panel.tsx';
 import { Interventions, leadOf } from '../team/lead.tsx';
+import { stepsFor, type Step } from './steps.ts';
 import { TaskControls } from './task-controls.tsx';
-import { isWaitingForTask } from './tasks.ts';
+import { elapsed, isWaitingForTask } from './tasks.ts';
 
 const layoutCss = css({
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'flex-start',
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) 340px',
   gap: t.s6,
-  '& > .main': { flex: '1 1 520px', minWidth: '0', display: 'grid', gap: t.s6 },
-  '& > .side': { flex: '0 1 280px', minWidth: '240px', position: 'sticky', top: '0' },
+  alignItems: 'start',
+  '& > .main': { minWidth: '0', display: 'grid', gap: t.s6 },
+  '& > .side': { minWidth: '0', display: 'grid', gap: t.s4, position: 'sticky', top: '0' },
+  // on a narrow window the decision comes first, then the work
+  '@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)', '& > .side': { order: '-1', position: 'static' } },
 });
 
 const seqCss = css({ color: t.textFaint, fontWeight: '500', fontVariantNumeric: 'tabular-nums' });
+const chipCss = css({ display: 'inline-flex', alignItems: 'center', marginLeft: '2px', '& > span': { height: '24px', padding: '0 10px', fontSize: t.textSm } });
 
-const proseCss = css({ padding: `${t.s3} ${t.s4}`, border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface });
+const descCss = css({ color: t.textMuted, fontSize: t.textLg, lineHeight: '1.5', maxWidth: '80ch', '& p': { margin: '0' } });
+
+// The step bar: five circles joined by lines. Done is a soft green tick, the current step a black disc with a soft yellow halo,
+// the rest grey; the line before a current step is yellow.
+const stepsCss = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  margin: '0',
+  padding: `${t.s4} ${t.s5}`,
+  listStyle: 'none',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rXl,
+  background: t.bgSurface,
+  overflowX: 'auto',
+  '& > li': { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 'none', width: '92px', textAlign: 'center' },
+  '& > li > .c': { display: 'grid', placeItems: 'center', width: '34px', height: '34px', borderRadius: '50%', background: t.bgActive, color: t.textFaint, fontSize: t.textSm, fontWeight: '600' },
+  '& > li[data-state="done"] > .c': { background: t.successSoft, color: t.success },
+  '& > li[data-state="current"] > .c': { background: t.accent, color: t.onAccent, boxShadow: `0 0 0 5px ${t.warningSoft}` },
+  '& > li[data-state="failed"] > .c': { background: t.dangerSoft, color: t.danger },
+  '& > li > b': { fontSize: t.textSm, fontWeight: '600' },
+  '& > li[data-state="todo"] > b': { color: t.textMuted, fontWeight: '500' },
+  '& > li > small': { fontSize: t.textXs, color: t.textFaint, overflowWrap: 'anywhere' },
+  '& > .ln': { flex: '1', minWidth: '12px', height: '3px', marginTop: '16px', borderRadius: '2px', background: t.bgActive },
+  '& > .ln[data-state="done"]': { background: t.successSoft },
+  '& > .ln[data-state="current"]': { background: t.warning },
+});
 
 const criteriaCss = css({
   display: 'grid',
@@ -53,20 +83,41 @@ const criteriaCss = css({
   '& > li svg': { color: t.textFaint, marginTop: '2px' },
 });
 
-const sideCss = css({
+const propsCss = css({
   display: 'grid',
   gap: t.s4,
-  padding: t.s4,
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  background: t.bgSurface,
   fontSize: t.textMd,
-  '& h2': { fontSize: t.textXs, fontWeight: '600', color: t.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' },
-  '& dl': { display: 'grid', gridTemplateColumns: '84px 1fr', gap: `10px ${t.s3}`, margin: '0', alignItems: 'center' },
-  '& dt': { color: t.textMuted, fontSize: t.textSm },
+  '& h2': { fontSize: t.textXs, fontWeight: '650', color: t.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: t.mono },
+  '& dl': { display: 'grid', gridTemplateColumns: '78px 1fr', gap: `10px ${t.s3}`, margin: '0', alignItems: 'center' },
+  '& dt': { color: t.textFaint, fontSize: t.textSm },
   '& dd': { margin: '0', minWidth: '0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', overflowWrap: 'anywhere' },
   '& hr': { border: '0', borderTop: `1px solid ${t.border}`, margin: '0' },
   '& dd code': { minWidth: '0', padding: '0', background: 'transparent', fontSize: t.textSm, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+});
+
+const moreCss = css({
+  display: 'grid',
+  gap: t.s2,
+  '& h2': { fontSize: t.textXs, fontWeight: '650', color: t.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: t.mono },
+  '& > a, & > button': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: '10px',
+    width: '100%',
+    minHeight: '40px',
+    padding: `0 ${t.s3}`,
+    border: '0',
+    borderRadius: t.rLg,
+    background: t.bgSidebar,
+    color: t.text,
+    fontSize: t.textMd,
+    fontWeight: '500',
+    textDecoration: 'none',
+    textAlign: 'left',
+  },
+  '& > a:hover, & > button:hover': { background: t.bgActive, textDecoration: 'none' },
+  '& svg': { color: t.textMuted },
 });
 
 const blockedCss = css({
@@ -79,8 +130,6 @@ const blockedCss = css({
   '& > p:first-child': { fontWeight: '600' },
   '& button': { justifySelf: 'start' },
 });
-
-const dockLinks = css({ display: 'flex', alignItems: 'center', gap: t.s1, flexWrap: 'wrap' });
 
 export function TaskDetailScreen(handle: Handle<{ id: string }>) {
   const s = services(handle);
@@ -109,46 +158,39 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
     }
     const task = d.task;
     const agents = s.project.agentList;
+    const presence = s.project.presence.data;
     const reload = () => detail.reload();
     return (
       <Page
         title={
           <>
             <span mix={seqCss}>#{task.seq}</span> {task.title}
+            <span mix={chipCss}>
+              <StatusChip status={task.status} />
+            </span>
           </>
         }
-        icon={ClipboardList}
+        wide
         actions={
-          <>
-            <StatusChip status={task.status} />
-            {d.roomId ? (
-              <a href={routes.room.href({ id: d.roomId })} mix={buttonStyle('secondary', 'sm')}>
-                <Icon icon={MessagesSquare} size={14} />
-                Open task channel
-              </a>
-            ) : null}
-          </>
+          d.roomId ? (
+            <a href={routes.room.href({ id: d.roomId })} mix={buttonStyle('secondary')}>
+              <Icon icon={MessagesSquare} size={15} />
+              Open task channel
+            </a>
+          ) : null
         }
       >
         <ErrorNote error={detail.error} what="Refresh failed" />
         <div mix={layoutCss}>
           <div class="main">
+            <section aria-label="Description" mix={descCss}>
+              {task.description ? <Markdown source={task.description} /> : <p mix={muted}>No description.</p>}
+            </section>
+            <StepBar steps={stepsFor(task, d.evidence, d.reviews, d.pending)} />
             {task.blockedReason ? <BlockedNote task={task} onChanged={reload} /> : null}
-            <ReviewPanel detail={d} onChanged={reload} />
             <TaskControls key={task.id} detail={d} onChanged={reload} />
-
-            <Section title="Description">
-              {task.description ? (
-                <div mix={proseCss}>
-                  <Markdown source={task.description} />
-                </div>
-              ) : (
-                <p mix={muted}>No description.</p>
-              )}
-            </Section>
             {task.acceptance && task.acceptance.length > 0 ? (
-              <section style={{ display: 'grid', gap: '12px' }} aria-label="Acceptance criteria">
-                <h3 style={{ fontSize: 'var(--text-md)', fontWeight: '600' }}>Acceptance criteria</h3>
+              <Section title="Acceptance criteria" label="Acceptance criteria">
                 <ul mix={criteriaCss}>
                   {task.acceptance.map((a, i) => (
                     <li key={i}>
@@ -157,9 +199,8 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </Section>
             ) : null}
-
             <Section title="Evidence">
               <EvidenceList evidence={d.evidence} />
             </Section>
@@ -174,17 +215,9 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
             <Section
               title="Diff"
               actions={
-                <div mix={dockLinks}>
-                  <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
-                    Open in the dock
-                  </Button>
-                  <Button size="sm" variant="ghost" icon={ScrollText} mix={on('click', () => s.ui.openDock('logs'))}>
-                    Logs
-                  </Button>
-                  <Button size="sm" variant="ghost" icon={SquareTerminal} mix={on('click', () => s.ui.openDock('terminal'))}>
-                    Terminal
-                  </Button>
-                </div>
+                <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
+                  Open in the dock
+                </Button>
               }
             >
               <DiffViewer taskId={task.id} />
@@ -199,8 +232,26 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
               <TaskDecisions taskId={task.id} />
             </Section>
           </div>
-          <aside class="side" aria-label="Task properties">
-            <Properties detail={d} agents={agents} usage={usage.data ?? []} tasks={s.project.taskList} />
+          <aside class="side" aria-label="Decision and properties">
+            <ReviewPanel detail={d} onChanged={reload} />
+            <Properties detail={d} agents={agents} presence={presence} usage={usage.data ?? []} tasks={s.project.taskList} />
+            <div mix={[card, moreCss]} role="group" aria-label="More">
+              <h2>More</h2>
+              <button type="button" mix={on('click', () => s.ui.openDock('terminal'))}>
+                <Icon icon={SquareTerminal} size={16} />
+                Terminal
+              </button>
+              <button type="button" mix={on('click', () => s.ui.openDock('logs'))}>
+                <Icon icon={ScrollText} size={16} />
+                Logs
+              </button>
+              {d.run ? (
+                <a href={routes.run.href({ id: task.id })}>
+                  <Icon icon={Workflow} size={16} />
+                  Workflow and explanation
+                </a>
+              ) : null}
+            </div>
           </aside>
         </div>
       </Page>
@@ -208,40 +259,65 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
   };
 }
 
-function Person(handle: Handle<{ id: string | undefined; agents: readonly Agent[] }>) {
+/** The step bar: where the task is on its way from the spec to your decision. The words carry the state; colour repeats it. */
+function StepBar(handle: Handle<{ steps: Step[] }>) {
   return () => {
-    const { id, agents } = handle.props;
+    const steps = handle.props.steps;
+    const current = steps.findIndex((x) => x.state === 'current');
+    return (
+      <ol mix={stepsCss} aria-label="Progress" data-testid="task-steps">
+        {steps.flatMap((st, i) => [
+          i > 0 ? <li key={`ln-${st.name}`} class="ln" aria-hidden="true" data-state={i === current ? 'current' : steps[i - 1]!.state === 'done' ? 'done' : 'todo'} /> : null,
+          <li key={st.name} data-step={st.name} data-state={st.state} aria-current={st.state === 'current' ? 'step' : undefined}>
+            <span class="c" aria-hidden="true">
+              {st.state === 'done' ? <Icon icon={Check} size={16} strokeWidth={2.6} /> : st.name === 'you' ? <Icon icon={Flag} size={15} strokeWidth={2.2} /> : i + 1}
+            </span>
+            <b>{st.label}</b>
+            <small>
+              {st.note || (st.state === 'done' ? 'done' : st.state === 'current' ? 'now' : st.state === 'failed' ? 'failed' : 'to do')}
+              <span class="sr-only">{st.note ? `, ${st.state === 'todo' ? 'to do' : st.state}` : ''}</span>
+            </small>
+          </li>,
+        ])}
+      </ol>
+    );
+  };
+}
+
+function Person(handle: Handle<{ id: string | undefined; agents: readonly Agent[]; presence: readonly PresenceState[] | undefined }>) {
+  return () => {
+    const { id, agents, presence } = handle.props;
     if (!id) return <span mix={faint}>unassigned</span>;
     const name = agentName(id, agents);
     return (
       <>
-        <Avatar id={id} name={name} size={20} kind="agent" />
+        <Avatar id={id} name={name} size={22} kind="agent" status={presenceColor(presenceFor(id, presence))} />
         <strong style={{ fontWeight: '500' }}>{name}</strong>
       </>
     );
   };
 }
 
-/** The properties column. Its class task-meta is what the end-to-end suite compares before and after a reload. */
-function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[]; usage: readonly UsageRow[]; tasks: readonly Task[] }>) {
+/** The properties card. Its class task-meta is what the end-to-end suite compares before and after a reload. */
+function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[]; presence: readonly PresenceState[] | undefined; usage: readonly UsageRow[]; tasks: readonly Task[] }>) {
   return () => {
-    const { detail: d, agents, usage, tasks } = handle.props;
+    const { detail: d, agents, presence, usage, tasks } = handle.props;
     const task = d.task;
     const deps = (task.dependsOn ?? []).map((id) => tasks.find((x) => x.id === id) ?? { id, seq: 0, title: id });
+    const writer = agents.find((a) => a.id === task.assignee);
+    const model = task.model || writer?.model || '';
+    const time = elapsed(task);
     return (
-      <div mix={sideCss} class="task-meta">
-        <h2>Properties</h2>
+      <div mix={[card, propsCss]} class="task-meta" role="group" aria-label="Task properties">
         <dl>
-          <dt>Worker</dt>
+          <dt>Writer</dt>
           <dd>
-            <Person id={task.assignee} agents={agents} />
+            <Person id={task.assignee} agents={agents} presence={presence} />
           </dd>
           <dt>Reviewer</dt>
           <dd>
-            <Person id={task.reviewer} agents={agents} />
+            <Person id={task.reviewer} agents={agents} presence={presence} />
           </dd>
-          <dt>Template</dt>
-          <dd>{task.template ? <code title={task.template}>{task.template}</code> : <span mix={faint}>default</span>}</dd>
           {task.branch ? (
             <>
               <dt>Branch</dt>
@@ -250,15 +326,21 @@ function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[
               </dd>
             </>
           ) : null}
-          <dt>Attempt</dt>
-          <dd>
-            Attempt {task.iteration} of {task.maxIterations}
-          </dd>
           <dt>Cost</dt>
           <dd>
             <strong data-testid="task-cost">{formatCost(task.costUsd)}</strong>
             <CostSources rows={usage} costUsd={task.costUsd} />
           </dd>
+          <dt>Time</dt>
+          <dd>{time || <span mix={faint}>not started</span>}</dd>
+          <dt>Model</dt>
+          <dd>{model ? <span>{task.effort ? `${model} · ${task.effort}` : model}</span> : <span mix={faint}>default</span>}</dd>
+          <dt>Attempt</dt>
+          <dd>
+            {task.iteration} of {task.maxIterations}
+          </dd>
+          <dt>Template</dt>
+          <dd>{task.template ? <code title={task.template}>{task.template}</code> : <span mix={faint}>default</span>}</dd>
           {task.acceptedBy ? (
             <>
               <dt>Accepted</dt>
@@ -316,10 +398,6 @@ function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[
                 <code>{d.run.workflow}</code>
               </dd>
             </dl>
-            <a href={routes.run.href({ id: task.id })} mix={buttonStyle('secondary', 'sm')}>
-              <Icon icon={Workflow} size={14} />
-              Workflow and explanation
-            </a>
           </>
         ) : null}
         <hr />
