@@ -2,7 +2,7 @@
 // opengrep tools and a rules folder; gitleaks is built in. The planted key below matches gitleaks' aws-access-token rule and
 // is not a real credential; the page must name the rule and the place and never show the value.
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appUrl, createProject, freshRepo, projectNav } from './helpers';
@@ -91,7 +91,8 @@ test("a tool's program is chosen with the file dialog and forgotten again", asyn
 // Decision P61: from Home, the workspace's Security scan reads a folder that is not a project (a repository just downloaded):
 // the same three engines, the finding named without the key's value, and the scan kept in the recent folder scans.
 test('Home opens the Security scan, which scans a folder that is not a project and keeps it in the history', async ({ page }) => {
-  const dir = mkdtempSync(join(tmpdir(), 'drydock-e2e-download-'));
+  // the folder's full path: Windows' temp folder can be a short 8.3 path, and Drydock names the folder it resolves to
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'drydock-e2e-download-')));
   try {
     writeFileSync(join(dir, 'notes.txt'), `aws_access_key_id = ${PLANTED}\n`);
     const home = new URL(appUrl());
