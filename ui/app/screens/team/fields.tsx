@@ -206,7 +206,7 @@ const routesCss = css({
 const routeRow = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120px auto', gap: t.s2, alignItems: 'center' });
 
 /**
- * The models the router may choose between for this agent's turns (internal/core/turnrouting.go). Off (empty) by default:
+ * The models the router may choose between for every turn of this agent (internal/core/turnrouting.go, decision P63). Off (empty) by default:
  * the agent then always runs its model. With a list the router starts on a cheap model and escalates to a premium one when
  * the work gets stuck, always on this agent's own CLI.
  */
@@ -230,7 +230,8 @@ export function RouteModelsField(handle: Handle<{ routes: RouteModel[]; onRoutes
           <>
             <p mix={muted}>
               It starts on a cheap model and moves to a premium one after three cheap tries that fail their checks, or when the reviewer keeps sending premium work
-              back. It only chooses from this list, on this agent's own CLI. Every choice and its reason is in the task's run explanation.
+              back. It routes every turn of this agent (task work, reviews, template steps and room replies), only from this list, on this agent's own CLI.
+              Every choice and its reason is recorded: Why this model? in the run, the task and the room.
             </p>
             {routes.map((r, i) => (
               <div key={i} mix={routeRow}>

@@ -105,6 +105,9 @@ describe('Agent inspector', () => {
     const routing = (await inspector(r)).querySelector<HTMLElement>('[data-testid="inspector-routing"]')!;
     expect(routing.textContent).toContain('claude-haiku-4-5 (cheap), claude-opus-4-5 (premium)');
     expect(routing.textContent).not.toMatch(/Not routed|Slice/);
+    // every turn is routed (P63): the room replies and the template steps too, not only task work
+    expect(routing.textContent).toContain('room replies');
+    expect(routing.textContent).not.toContain('use the configured model');
   });
 
   it('states the isolation in plain words, and warns when the permission mode lets the agent act freely', async () => {

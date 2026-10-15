@@ -778,6 +778,9 @@ export interface RoomTurn {
   error?: string;
   startedAt: number;
   endedAt: number;
+  /** The model the reply ran on and its routing decision (after any fallback hop); absent for a turn from before replies were routed. */
+  model?: string;
+  decisionId?: string;
 }
 export interface PreviewInfo {
   taskId: string;

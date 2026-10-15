@@ -79,9 +79,9 @@ func HardFilter(req RouteRequest, cands []Candidate) (kept []Candidate, rejected
 			rejected = append(rejected, c.rejected(FilterQuota, "quota window exhausted"))
 		case c.MaxConcurrent > 0 && c.Concurrent >= c.MaxConcurrent:
 			rejected = append(rejected, c.rejected(FilterConcurrency, "max_concurrent reached"))
-		case req.RunKind == RunAgentTask && !c.SupportsTools:
+		case req.RunKind.WritesFiles() && !c.SupportsTools:
 			rejected = append(rejected, c.rejected(FilterTools, "agent work needs tool calling"))
-		case req.RunKind == RunAgentTask && c.ProbeFailure != "":
+		case req.RunKind.WritesFiles() && c.ProbeFailure != "":
 			rejected = append(rejected, c.rejected(FilterTools, "failed the tool-call probe ("+c.ProbeFailure+"): it does not call tools reliably"))
 		case c.Context > 0 && req.ContextTokens > 0 && need > c.Context:
 			rejected = append(rejected, c.rejected(FilterContext, "context does not fit the model window"))

@@ -76,6 +76,9 @@ describe('RoutingScreen', () => {
     await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
     await r.act(() => byText(r.container, 'button', 'Add a rule').click());
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    // the editor names the turn kinds a rule can match, the routed room replies and template steps among them (P63)
+    const hint = ed.querySelector('[data-testid="run-kinds-hint"]')!.textContent!;
+    for (const k of ['room_reply', 'spec', 'tests', 'design', 'security_review']) expect(hint).toContain(`'${k}'`);
     type(byLabel<HTMLTextAreaElement>(ed, /^When/), 'task.kind == "docs"');
     type(byLabel<HTMLTextAreaElement>(ed, /^Then/), '{"require_tier":"free"}');
     expect(byLabel<HTMLInputElement>(ed, 'Enabled').checked).toBe(true); // a rule you add is meant to apply

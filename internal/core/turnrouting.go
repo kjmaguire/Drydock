@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/agents/responder"
 	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/providers"
@@ -17,12 +18,15 @@ import (
 )
 
 // The model router in the path of agent turns (docs/model-routing.md). An agent whose human listed the models the router may
-// choose between (Agent.RouteModels, each cheap or premium) is routed on every work and review turn: the rule router chooses
-// among exactly those models, never another adapter or provider, so a turn always runs on the agent's own CLI. The level
-// ladder and the stored rules decide, with the failure counters of the run (cheap work turns that came back, premium work
-// that the reviewer sent back) driving escalation to premium. The chosen model, its tier and the decision reach the node
-// through the context (pipeline.RoutedModel). An agent with no list keeps its configured model, recorded as a static
-// decision; if the router cannot choose, the configured model runs and the decision says why.
+// choose between (Agent.RouteModels, each cheap or premium) is routed on every turn it takes (decision P63): task work and
+// review, the template role turns (the pm's spec, the tests written first, the architect's design, the security review) and
+// its replies in the room. The rule router chooses among exactly those models, never another adapter or provider, so a turn
+// always runs on the agent's own CLI. Each kind of turn is a run kind of its own (router.TurnSignals gives the task class
+// and weight the rules see); the level ladder and the stored rules decide, with the failure counters of the run (cheap
+// turns of the same kind that came back, premium work that the reviewer sent back) driving escalation to premium. The
+// chosen model, its tier and the decision reach the turn through the context (pipeline.RoutedModel) or, for a room reply,
+// through the responder's Route hook. An agent with no list keeps its configured model, recorded as a static decision; if
+// the router cannot choose, the configured model runs and the decision says why.
 
 // routeTurn replaces the static decision recorder in the agent_task middleware chain. A routed turn whose model or provider
 // turns out to be unavailable before the turn did any work moves along the fallback chain a routing rule names (fallback.go).
@@ -37,6 +41,39 @@ func (e *economics) routeTurn(next workflow.NodeHandler) workflow.NodeHandler {
 		}
 		return e.runWithFallback(ctx, rctx, in, next, rt)
 	}
+}
+
+// routeReply routes one room reply turn (the responder's Route hook): the same decision, records and fallback chain as a
+// workflow turn, with the reply's attempt in place of the node.
+func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attempt responder.Attempt) error {
+	a, err := e.c.agent(ctx, t.Agent.ID)
+	if err != nil {
+		return attempt(ctx, responder.Routed{}, nil)
+	}
+	s := turnSubject{kind: router.RunRoomReply, agent: a, projectID: t.ProjectID, taskID: t.TaskID, runID: t.TurnID, nodeID: "reply", attempt: 1,
+		contextTokens: t.ContextTokens}
+	rctx, rt, staticID := e.decide(ctx, s)
+	if rt == nil {
+		return attempt(ctx, responder.Routed{DecisionID: staticID}, nil)
+	}
+	next := func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
+		r, _ := pipeline.RoutedFrom(ctx)
+		return workflow.NodeOutput{}, attempt(ctx, responder.Routed{Model: r.Model, Tier: r.Tier, DecisionID: r.DecisionID}, in.Emit)
+	}
+	_, err = e.runWithFallback(ctx, rctx, workflow.NodeInput{}, next, rt)
+	return err
+}
+
+// EconomicsRouteReply routes a room reply turn through the model router (decision P63). Without the economics extension
+// the turn runs once on the agent's configured model.
+func EconomicsRouteReply(ctx context.Context, c *Core, t responder.ReplyTurn, attempt responder.Attempt) error {
+	econMu.Lock()
+	e := econByCore[c]
+	econMu.Unlock()
+	if e == nil {
+		return attempt(ctx, responder.Routed{}, nil)
+	}
+	return e.routeReply(ctx, t, attempt)
 }
 
 // routedTurn is what a fallback hop needs of the turn's routing: the request, the decision the turn runs on, the agent.
@@ -147,28 +184,72 @@ func (w *turnWatch) unavailable(err error) router.Cause {
 	return ""
 }
 
-func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (context.Context, *routedTurn) {
+// turnSubject is one agent turn as the router is asked about it: which agent, which kind of turn, where it belongs.
+type turnSubject struct {
+	kind                    router.RunKind
+	agent                   Agent
+	projectID, taskID       string
+	runID, nodeID, workflow string
+	attempt, contextTokens  int
+}
+
+// subjectOf names the agent and the kind of a workflow agent turn from its node: the task's worker or reviewer, or the agent
+// the run pinned for a template role. false: the node is not an agent's task turn the router knows (the planner).
+func (e *economics) subjectOf(ctx context.Context, in workflow.NodeInput) (turnSubject, bool) {
 	t, err := e.c.Tasks.Get(ctx, in.TaskID)
 	if err != nil {
-		return ctx, nil
+		return turnSubject{}, false
 	}
-	id, kind := t.Assignee, router.RunAgentTask
-	if in.Meta["agent"] == "review" {
+	var id string
+	var kind router.RunKind
+	switch role := in.Meta["agent"]; role {
+	case "review":
 		id, kind = t.Reviewer, router.RunReview
+	case pipeline.RolePM, pipeline.RoleTests, pipeline.RoleArchitect, pipeline.RoleSecurity:
+		var ti pipeline.TemplateInput
+		if json.Unmarshal(in.Input, &ti) != nil || ti.Roles[role] == "" {
+			return turnSubject{}, false // no agent for the role: the node passes through without a turn (the optional architect)
+		}
+		id = ti.Roles[role]
+		kind = map[string]router.RunKind{pipeline.RolePM: router.RunSpec, pipeline.RoleTests: router.RunTests,
+			pipeline.RoleArchitect: router.RunDesign, pipeline.RoleSecurity: router.RunSecurityReview}[role]
+	case "work", "":
+		id, kind = t.Assignee, router.RunAgentTask
+	default:
+		return turnSubject{}, false
 	}
 	a, err := e.c.agent(ctx, id)
 	if err != nil {
+		return turnSubject{}, false
+	}
+	return turnSubject{kind: kind, agent: a, projectID: t.ProjectID, taskID: t.ID, runID: string(in.RunID), nodeID: string(in.NodeID), workflow: in.Workflow,
+		attempt: in.Attempt}, true
+}
+
+func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (context.Context, *routedTurn) {
+	s, ok := e.subjectOf(ctx, in)
+	if !ok {
 		return ctx, nil
 	}
+	rctx, rt, _ := e.decide(ctx, s)
+	return rctx, rt
+}
+
+// decide asks the router for the turn's model among the agent's own models. Without a list (or when the router cannot
+// choose) the configured model runs, recorded as a static decision whose id is returned.
+func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context, *routedTurn, string) {
+	a := s.agent
 	if len(a.RouteModels) == 0 || e.agentRouter == nil {
-		e.saveStatic(ctx, in, "the agent's configured model: routing is off for this agent (Team, Edit: models the router may choose)")
-		return ctx, nil
+		return ctx, nil, e.saveStatic(ctx, s, "the agent's configured model: routing is off for this agent (Team, Edit: models the router may choose)")
 	}
-	req := router.RouteRequest{RunKind: kind, TaskID: t.ID, RunID: string(in.RunID), NodeID: string(in.NodeID), Attempt: in.Attempt, Role: router.Role(a.Role),
-		Level: router.LevelBalanced, ProjectID: t.ProjectID, AgentID: a.ID, Workflow: in.Workflow, ContextCeiling: router.ContextPrivate,
-		Failures: e.turnFailures(ctx, t.ID, string(in.RunID))}
-	if kind == router.RunReview {
-		if w := e.lastWorkModel(ctx, string(in.RunID)); w != "" {
+	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role),
+		Level: router.LevelBalanced, ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate,
+		ContextTokens: s.contextTokens, Failures: e.turnFailures(ctx, s)}
+	if sig, ok := router.TurnSignals(s.kind); ok {
+		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
+	}
+	if s.kind == router.RunReview || s.kind == router.RunSecurityReview {
+		if w := e.lastWorkModel(ctx, s.runID); w != "" {
 			req.Worker = &router.WorkerRef{Model: w}
 		}
 	}
@@ -186,8 +267,7 @@ func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (cont
 		if errors.As(err, &be) {
 			reason = be.Reason
 		}
-		e.saveStatic(ctx, in, "the router could not choose ("+reason+"), so the agent's configured model runs")
-		return ctx, nil
+		return ctx, nil, e.saveStatic(ctx, s, "the router could not choose ("+reason+"), so the agent's configured model runs")
 	}
 	tierOf := map[string]string{}
 	for _, r := range a.RouteModels {
@@ -195,15 +275,25 @@ func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (cont
 	}
 	req.Budget = router.BudgetState{} // the stored request keeps it; a hop reads the budget again
 	return pipeline.WithRoutedModel(ctx, pipeline.RoutedModel{Model: d.Model, Tier: tierOf[d.Model], DecisionID: d.ID, Handoff: d.Handoff}),
-		&routedTurn{req: req, d: d, agent: a, tierOf: tierOf, approve: approve}
+		&routedTurn{req: req, d: d, agent: a, tierOf: tierOf, approve: approve}, d.ID
 }
 
-// turnFailures are the escalation counters for a run: work turns routed to a cheap model before this one (each came back:
-// a check failed or the reviewer revised), and REVISE verdicts given since the run first routed work to premium.
-func (e *economics) turnFailures(ctx context.Context, taskID, runID string) router.FailureCounts {
+// turnFailures are the escalation counters of a turn. Work, review and security review turns see the run's work: work turns
+// routed to a cheap model before this one (each came back: a check failed or the reviewer revised), and REVISE verdicts
+// given since the run first routed work to premium. A tests, spec or design turn counts the earlier cheap turns of its own
+// kind in the run (each came back: tests that did not fail first, a spec that could not be used or was sent back). A room
+// reply stands alone: no counters.
+func (e *economics) turnFailures(ctx context.Context, s turnSubject) router.FailureCounts {
 	var f router.FailureCounts
+	kind := s.kind
+	switch kind {
+	case router.RunRoomReply:
+		return f
+	case router.RunReview, router.RunSecurityReview:
+		kind = router.RunAgentTask
+	}
 	rows, err := e.c.DB.Reader().QueryContext(ctx, `SELECT ts, decision FROM routing_decisions WHERE run_id=? AND run_kind=? AND decided_by IN ('rules','explicit') ORDER BY ts`,
-		runID, string(router.RunAgentTask))
+		s.runID, string(kind))
 	if err != nil {
 		return f
 	}
@@ -244,8 +334,8 @@ func (e *economics) turnFailures(ctx context.Context, taskID, runID string) rout
 			}
 		}
 	}
-	if firstPremium > 0 {
-		if revs, err := e.c.Tasks.Reviews(ctx, taskID); err == nil {
+	if firstPremium > 0 && kind == router.RunAgentTask {
+		if revs, err := e.c.Tasks.Reviews(ctx, s.taskID); err == nil {
 			for _, r := range revs {
 				if strings.EqualFold(r.Verdict, "REVISE") && r.Created >= firstPremium {
 					f.PremiumRevise++

@@ -7,6 +7,7 @@ import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { formatCost } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { numOrUndef } from '../shared/budget-pause.tsx';
+import { ExplainText } from '../shared/explain.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -91,6 +92,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
   let moderator = init.modeParams?.moderator ?? '';
   let rounds = String(init.modeParams?.max_rounds ?? 3);
   let invite = '';
+  let explainOf: string | undefined; // the decision whose "Why this model?" is open
   const update = () => void handle.update();
 
   const name = (key: string) => (key.startsWith('human:') ? key.slice(6) : (handle.props.agents.find((a) => a.id === key)?.name ?? key));
@@ -343,6 +345,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                       <th>Round</th>
                       <th>Reason</th>
                       <th>Status</th>
+                      <th>Model</th>
                       <th>Tokens</th>
                       <th>Cost</th>
                     </tr>
@@ -357,6 +360,24 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                           {tr.status}
                           {tr.error ? `: ${tr.error}` : ''}
                         </td>
+                        <td data-testid="room-turn-model">
+                          {tr.model ? <code>{tr.model}</code> : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}
+                          {tr.decisionId ? (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              aria-expanded={explainOf === tr.decisionId}
+                              mix={[
+                                on('click', () => {
+                                  explainOf = explainOf === tr.decisionId ? undefined : tr.decisionId;
+                                  update();
+                                }),
+                              ]}
+                            >
+                              Why this model?
+                            </Button>
+                          ) : null}
+                        </td>
                         <td>
                           {tr.inputTokens}/{tr.outputTokens} tokens
                         </td>
@@ -367,6 +388,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                 </table>
               </div>
             ) : null}
+            {explainOf && list.some((tr) => tr.decisionId === explainOf) ? <ExplainText key={explainOf} decisionId={explainOf} /> : null}
           </section>
         </div>
       </details>

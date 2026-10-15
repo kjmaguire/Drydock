@@ -8,6 +8,7 @@ import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { card, tableCard } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { runKindLabel } from '../routing/routing.ts';
 
 export const money = (v: number | null | undefined) => (v === null || v === undefined ? 'price unknown' : formatUsd(v));
 
@@ -78,9 +79,9 @@ export function TaskDecisions(handle: Handle<{ taskId: string }>) {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} data-testid="decision-row" data-decided-by={r.decidedBy}>
+                  <tr key={r.id} data-testid="decision-row" data-decided-by={r.decidedBy} data-run-kind={r.runKind}>
                     <td>
-                      {r.runKind} <span mix={muted}>attempt {r.attempt}</span>
+                      {runKindLabel(r.runKind)} <span mix={muted}>attempt {r.attempt}</span>
                     </td>
                     <td>
                       <code>

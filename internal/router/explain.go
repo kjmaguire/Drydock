@@ -22,6 +22,9 @@ func explain(d RoutingDecision) string {
 		fmt.Fprintf(&b, ", attempt %d", f.Attempt)
 	}
 	b.WriteString(".\n")
+	if sig, ok := TurnSignals(f.RunKind); ok && sig.Why != "" {
+		fmt.Fprintf(&b, "- Turn: %s; %s.\n", sig.Label, sig.Why)
+	}
 	if f.TaskType != "" {
 		risk := "not risky"
 		if f.Risk {

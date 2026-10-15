@@ -65,8 +65,34 @@ type Deps struct {
 	Brief func(ctx context.Context, projectID string) string
 	// Spec lets the application adjust the run spec (MCP configuration, test environment). Optional.
 	Spec func(a Agent, base agents.RunSpec) agents.RunSpec
-	Logf func(format string, args ...any)
+	// Route chooses the model of a reply turn and runs it (decision P63): the application asks the model router, which
+	// chooses among the agent's own models only (never another CLI or login), records the decision, and calls attempt once,
+	// or again on the next model of a fallback chain when the model was unavailable before the turn did any work. It returns
+	// the error of the last attempt. Nil: one attempt on the agent's configured model.
+	Route func(ctx context.Context, t ReplyTurn, attempt Attempt) error
+	Logf  func(format string, args ...any)
 }
+
+// ReplyTurn is a reply turn as the model router sees it.
+type ReplyTurn struct {
+	TurnID        string // the room_turns row; the routing decisions of the turn carry it as their run id
+	RoomID        string
+	RoomKind      string
+	ProjectID     string
+	TaskID        string // the task of a task channel
+	Agent         Agent
+	ContextTokens int // the selected room context, estimated
+}
+
+// Routed is the model one attempt of a reply turn runs on. An empty Model is the agent's configured model.
+type Routed struct {
+	Model      string
+	Tier       string
+	DecisionID string
+}
+
+// Attempt runs the reply turn once on r; emit sees the turn's chunks (tool calls, errors, rate limits) as they arrive.
+type Attempt func(ctx context.Context, r Routed, emit func(workflow.Chunk)) error
 
 // Options tunes the responder. The zero value is valid.
 type Options struct {
@@ -508,27 +534,65 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		spec = r.d.Spec(agent, spec)
 		spec.PermissionMode, spec.ReadOnly = "plan", true // the application may add environment and MCP, never widen what a reply may do
 	}
-	cfg := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium"}
+	base := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium"}
 	tctx, cancel := context.WithTimeoutCause(ctx, r.o.TurnTimeout, errors.New("the turn timed out"))
 	defer cancel()
-	m, err := r.d.Runtime.Spawn(tctx, cfg)
-	if err != nil {
+	// one attempt runs the turn on one model; a fallback hop (Route) is another attempt on a fresh session, and the last
+	// attempt's result is the reply
+	var (
+		res     rt.TurnResult
+		runID   string
+		ran     Routed
+		spawned bool
+	)
+	attempt := func(actx context.Context, rr Routed, emit func(workflow.Chunk)) error {
+		cfg := base
+		if rr.Model != "" {
+			cfg.Spec.Model = rr.Model
+		}
+		if rr.Tier != "" {
+			cfg.Tier = rr.Tier
+		}
+		ran, res, runID = rr, rt.TurnResult{}, ""
+		m, err := r.d.Runtime.Spawn(actx, cfg)
+		if err != nil {
+			spawned = false
+			return err
+		}
+		spawned = true
+		defer func() { _ = m.Stop(context.Background()) }()
+		runID = m.RunID
+		var calls int
+		actx2, cancelCalls := context.WithCancelCause(actx)
+		defer cancelCalls(nil)
+		res, err = m.RunTurn(actx2, prompt, nil, func(c workflow.Chunk) {
+			if c.Kind == workflow.ChunkToolCall {
+				calls++
+				if calls > r.o.MaxToolCalls {
+					cancelCalls(fmt.Errorf("the turn used more than %d tool calls", r.o.MaxToolCalls))
+				}
+			}
+			if emit != nil {
+				emit(c)
+			}
+		})
+		return err
+	}
+	if r.d.Route != nil {
+		err = r.d.Route(tctx, ReplyTurn{TurnID: info.TurnID, RoomID: rm.ID, RoomKind: string(rm.Kind), ProjectID: rm.ProjectID, TaskID: rm.TaskID, Agent: agent,
+			ContextTokens: sel.Tokens}, attempt)
+	} else {
+		err = attempt(tctx, Routed{}, nil)
+	}
+	if err != nil && !spawned {
 		return fail("could not start the agent", err)
 	}
-	defer func() { _ = m.Stop(context.Background()) }()
-	var calls int
-	tctx2, cancelCalls := context.WithCancelCause(tctx)
-	defer cancelCalls(nil)
-	res, err := m.RunTurn(tctx2, prompt, nil, func(c workflow.Chunk) {
-		if c.Kind == workflow.ChunkToolCall {
-			calls++
-			if calls > r.o.MaxToolCalls {
-				cancelCalls(fmt.Errorf("the turn used more than %d tool calls", r.o.MaxToolCalls))
-			}
-		}
-	})
 	if err != nil {
 		return fail("the turn failed", err)
+	}
+	model := agent.Model
+	if ran.Model != "" {
+		model = ran.Model
 	}
 	var in, outTok int
 	var cost float64
@@ -537,14 +601,17 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		outTok += int(u.OutputTokens)
 		cost += u.CostUSD
 	}
-	end := turnEnd{runID: m.RunID, ctxMsgs: len(sel.Messages) + len(extra), ctxTokens: sel.Tokens, inTokens: in, outToks: outTok, cost: cost}
+	end := turnEnd{runID: runID, ctxMsgs: len(sel.Messages) + len(extra), ctxTokens: sel.Tokens, inTokens: in, outToks: outTok, cost: cost}
 	if cost > 0 && rm.TaskID != "" && r.d.OnCost != nil {
 		r.d.OnCost(ctx, rm.TaskID, cost)
 	}
 	text := strings.TrimSpace(strings.ToValidUTF8(res.Text, "�"))
-	payload := map[string]any{"turn_id": info.TurnID, "in_reply_to": trig.ID, "model": agent.Model, "read_only": true, "round": dec.Round,
+	payload := map[string]any{"turn_id": info.TurnID, "in_reply_to": trig.ID, "model": model, "read_only": true, "round": dec.Round,
 		"reason": string(sp.Reason), "context_messages": end.ctxMsgs, "context_tokens": end.ctxTokens,
 		"input_tokens": in, "output_tokens": outTok, "cost_usd": cost, "tool_calls": res.ToolCalls}
+	if ran.DecisionID != "" {
+		payload["decision_id"] = ran.DecisionID // "Why this model?" for this reply
+	}
 	switch {
 	case text == "":
 		info.Status = StatusEmpty
@@ -569,7 +636,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		info.Status, end.status = StatusDone, StatusDone
 	}
 	posted, err := r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeChat, Author: room.Agent(agent.ID), Body: text,
-		ReplyToID: trig.ID, Payload: payload, RunID: m.RunID, IdempotencyKey: "turn:" + info.TurnID})
+		ReplyToID: trig.ID, Payload: payload, RunID: runID, IdempotencyKey: "turn:" + info.TurnID})
 	if err != nil {
 		return fail("could not post the reply", err)
 	}
@@ -678,6 +745,10 @@ type Turn struct {
 	Error         string  `json:"error,omitempty"`
 	Started       int64   `json:"startedAt"`
 	Ended         int64   `json:"endedAt"`
+	// Model and DecisionID are the turn's last routing decision (the model it ran on, after any fallback hop), empty for a
+	// turn from before replies were routed (P63).
+	Model      string `json:"model,omitempty"`
+	DecisionID string `json:"decisionId,omitempty"`
 }
 
 // Turns lists a room's agent turns, newest first.
@@ -686,7 +757,10 @@ func (r *Responder) Turns(ctx context.Context, roomID string, limit int) ([]Turn
 		limit = 100
 	}
 	rows, err := r.d.DB.Reader().QueryContext(ctx, `SELECT id,room_id,trigger_id,agent_id,round,reason,mode,status,message_id,agent_run_id,context_msgs,context_tokens,
-		input_tokens,output_tokens,cost_usd,error,started_at,ended_at FROM room_turns WHERE room_id=? ORDER BY started_at DESC, rowid DESC LIMIT ?`, roomID, limit)
+		input_tokens,output_tokens,cost_usd,error,started_at,ended_at,
+		COALESCE((SELECT d.model FROM routing_decisions d WHERE d.run_id=room_turns.id ORDER BY d.ts DESC, d.rowid DESC LIMIT 1),''),
+		COALESCE((SELECT d.id FROM routing_decisions d WHERE d.run_id=room_turns.id ORDER BY d.ts DESC, d.rowid DESC LIMIT 1),'')
+		FROM room_turns WHERE room_id=? ORDER BY started_at DESC, rowid DESC LIMIT ?`, roomID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +769,7 @@ func (r *Responder) Turns(ctx context.Context, roomID string, limit int) ([]Turn
 	for rows.Next() {
 		var t Turn
 		if err := rows.Scan(&t.TurnID, &t.RoomID, &t.TriggerID, &t.AgentID, &t.Round, &t.Reason, &t.Mode, &t.Status, &t.MessageID, &t.AgentRunID, &t.ContextMsgs, &t.ContextTokens,
-			&t.InputTokens, &t.OutputTokens, &t.CostUSD, &t.Error, &t.Started, &t.Ended); err != nil {
+			&t.InputTokens, &t.OutputTokens, &t.CostUSD, &t.Error, &t.Started, &t.Ended, &t.Model, &t.DecisionID); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

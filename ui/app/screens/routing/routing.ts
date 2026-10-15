@@ -59,7 +59,25 @@ export function withChain(then: RouteAction, chain: string[]): RouteAction {
 }
 
 export const LEVELS = ['cheapest', 'fast', 'balanced', 'quality', 'maximum_quality'];
-export const RUN_KINDS = ['agent_task', 'review', 'consult', 'summarize', 'classify'];
+/** The run kinds a decision is for, as a rule matches them with run.kind. The agent turn kinds come first (decision P63:
+ * every turn of an agent is routed), then the app's own model calls. */
+export const RUN_KINDS = ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review', 'consult', 'summarize', 'classify'];
+
+const RUN_KIND_LABEL: Record<string, string> = {
+  agent_task: 'work',
+  review: 'review',
+  room_reply: 'room reply',
+  spec: 'spec (pm)',
+  tests: 'tests first',
+  design: 'design (architect)',
+  security_review: 'security review',
+};
+
+/** The words for a run kind: the turn it was for ("room reply"), or the kind itself when it is not an agent turn. */
+export const runKindLabel = (kind: string): string => RUN_KIND_LABEL[kind] ?? kind;
+
+/** The run kinds as select options: the kind (what a rule matches) and its words. */
+export const runKindOptions = (): [string, string][] => RUN_KINDS.map((k) => [k, RUN_KIND_LABEL[k] ? `${RUN_KIND_LABEL[k]} (${k})` : k]);
 
 /** Providers the cheap model selection works on: cheap tier and private data class. */
 export const cheapProviders = (list: readonly Provider[]): Provider[] => list.filter((p) => p.tier === 'cheap' && p.dataClass === 'private');

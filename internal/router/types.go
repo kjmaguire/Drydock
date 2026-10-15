@@ -27,7 +27,50 @@ const (
 	RunSummarize RunKind = "summarize"
 	RunClassify  RunKind = "classify"
 	RunProbe     RunKind = "probe"
+
+	// The turn kinds of an agent beyond its task work and review (decision P63): every one is routed on the agent's own
+	// list of models like a work turn, and a rule can match each with run.kind.
+	RunRoomReply      RunKind = "room_reply"      // an agent's reply in a channel, a task channel or a DM
+	RunSpec           RunKind = "spec"            // the pm writes (or revises) the spec of a template run
+	RunTests          RunKind = "tests"           // the test writer writes the tests first (or the reproducing test of a bug)
+	RunDesign         RunKind = "design"          // the architect writes the design notes
+	RunSecurityReview RunKind = "security_review" // the security reviewer reviews the change
 )
+
+// WritesFiles reports whether a turn of this kind changes the worktree, so its model must call tools.
+func (k RunKind) WritesFiles() bool { return k == RunAgentTask || k == RunTests }
+
+// TurnSignal is what the router is told about an agent turn of one kind (P63): the task class the rules match
+// (task.type), how heavy the turn usually is (task.complexity, task.ambiguity), and the words people read. Work and review
+// turns carry no class (they keep the signals they had); the other kinds get one so the shipped rules treat each sensibly.
+type TurnSignal struct {
+	TaskType   string
+	Complexity float64
+	Ambiguity  float64
+	Label      string // the turn kind for people ("room reply")
+	Why        string // why the router is told this
+}
+
+var turnSignals = map[RunKind]TurnSignal{
+	RunAgentTask: {Label: "work turn"},
+	RunReview:    {Label: "review"},
+	RunRoomReply: {TaskType: "room_reply", Complexity: 0.2, Label: "room reply",
+		Why: "a reply in a channel or a DM is usually light: the ladder tries the cheap tier first, and no escalation counters apply (each reply stands alone)"},
+	RunSpec: {TaskType: "spec", Complexity: 0.6, Ambiguity: 0.7, Label: "spec (pm)",
+		Why: "the spec settles an ambiguous request for every turn after it: ambiguity 0.7, which the shipped premium-only rule sends to the premium tier"},
+	RunTests: {TaskType: "tests", Complexity: 0.4, Label: "tests first",
+		Why: "writing the tests is work: cheap first, and escalation to premium after cheap test turns came back, as for work turns"},
+	RunDesign: {TaskType: "architecture", Complexity: 0.7, Ambiguity: 0.5, Label: "design (architect)",
+		Why: "architecture is premium-only in the shipped rules"},
+	RunSecurityReview: {TaskType: "security_review", Complexity: 0.6, Label: "security review",
+		Why: "a security review is premium-only in the shipped rules and, like a review, prefers a model other than the worker's"},
+}
+
+// TurnSignals returns the signals of a turn kind; false for a kind that is not an agent turn (consult, summarize, ...).
+func TurnSignals(k RunKind) (TurnSignal, bool) {
+	s, ok := turnSignals[k]
+	return s, ok
+}
 
 // Role is the agent role (brief section 1).
 type Role string

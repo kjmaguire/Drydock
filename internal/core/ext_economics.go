@@ -181,6 +181,11 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	if err := e.seedDefaultRules(ctx); err != nil {
 		c.logf("routing rules: %v", err)
 	}
+	if up, err := e.rules.UpgradeShipped(ctx); err != nil {
+		c.logf("routing rules: upgrade: %v", err)
+	} else if len(up) > 0 {
+		c.logf("routing rules: brought the shipped rules %v up to date (their conditions were not edited)", up)
+	}
 	src := &router.RegistrySource{Catalog: c.Providers, Avail: c.Health, Quota: e.ledger}
 	e.src = src
 	e.rec = &router.Recorder{DB: c.DB, Bus: c.Bus}
@@ -331,20 +336,9 @@ func (e *economics) relay(ctx context.Context, ev events.Event) {
 
 // saveStatic writes a routing_decisions row, decided_by "static", for an agent turn that runs the agent's own configured
 // adapter, model and effort (routing is off for the agent, or the router could not choose; reason says which), so outcomes
-// join to what actually ran.
-func (e *economics) saveStatic(ctx context.Context, in workflow.NodeInput, reason string) {
-	t, err := e.c.Tasks.Get(ctx, in.TaskID)
-	if err != nil {
-		return
-	}
-	id, kind := t.Assignee, router.RunAgentTask
-	if in.Meta["agent"] == "review" {
-		id, kind = t.Reviewer, router.RunReview
-	}
-	a, err := e.c.agent(ctx, id)
-	if err != nil {
-		return
-	}
+// join to what actually ran. It returns the decision's id ("" when it could not be stored).
+func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string) string {
+	a := s.agent
 	tier := providers.TierPremium // a subscription CLI is premium (docs/evals.md s2)
 	provider := a.Adapter
 	if a.ProviderID != "" {
@@ -354,18 +348,24 @@ func (e *economics) saveStatic(ctx context.Context, in workflow.NodeInput, reaso
 		}
 	}
 	level := router.LevelBalanced
-	req := router.RouteRequest{RunKind: kind, TaskID: t.ID, RunID: string(in.RunID), NodeID: string(in.NodeID), Attempt: in.Attempt, Role: router.Role(a.Role), Level: level,
-		ProjectID: t.ProjectID, AgentID: a.ID, Workflow: in.Workflow, ContextCeiling: router.ContextPrivate}
+	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level,
+		ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate, ContextTokens: s.contextTokens}
+	if sig, ok := router.TurnSignals(s.kind); ok {
+		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
+	}
 	d := router.RoutingDecision{ID: ids.New("dec"), Agent: router.AgentRef{Adapter: a.Adapter, Instance: a.ID}, Provider: router.ProviderID(provider), Model: a.Model,
 		Effort: router.Effort(a.Effort), TeamSize: 1, Confidence: 1, DecidedBy: "static", Created: time.Now().UTC(),
 		Reason: reason,
-		Facts:  router.DecisionFacts{TaskID: t.ID, Level: level, RunKind: kind, Attempt: in.Attempt, ContextCeiling: router.ContextPrivate, Tier: tier, DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
+		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
+			DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
 	if err := e.rec.Save(ctx, req, d); err != nil {
 		e.c.logf("record decision: %v", err)
-		return
+		return ""
 	}
-	b, _ := json.Marshal(map[string]any{"decisionId": d.ID, "provider": d.Provider, "model": d.Model, "effort": d.Effort, "decidedBy": d.DecidedBy, "alternatives": 0})
-	_, _ = e.c.Bus.Publish(ctx, events.Event{Type: "routing.decided", ProjectID: t.ProjectID, RunID: string(in.RunID), TaskID: t.ID, AgentID: a.ID, Data: b})
+	b, _ := json.Marshal(map[string]any{"decisionId": d.ID, "provider": d.Provider, "model": d.Model, "effort": d.Effort, "decidedBy": d.DecidedBy, "alternatives": 0,
+		"runKind": s.kind})
+	_, _ = e.c.Bus.Publish(ctx, events.Event{Type: "routing.decided", ProjectID: s.projectID, RunID: s.runID, TaskID: s.taskID, AgentID: a.ID, Data: b})
+	return d.ID
 }
 
 // startupProbe selects the cheap model of every enabled cheap-tier private provider (decision D4), in the background.
@@ -779,6 +779,10 @@ func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisi
 // routePreview dry-runs the router: the same rules, candidates, quotas and budget state as a real decision, but nothing is
 // recorded, no event is published and no quota slot is taken. A budget at its hard limit is read from the budget store.
 func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (any, error) {
+	if sig, ok := router.TurnSignals(req.RunKind); ok && req.TaskType == "" {
+		// an agent turn kind is previewed with the signals a real turn of that kind gives the router (P63)
+		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
+	}
 	if err := e.fillBudget(ctx, &req); err != nil {
 		return nil, err
 	}

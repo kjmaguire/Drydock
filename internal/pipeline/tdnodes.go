@@ -32,10 +32,12 @@ type turnOpts struct {
 type turnOut struct {
 	Text    string
 	AgentID string
+	Model   string // the model the turn ran on: the router's choice (P63), else the agent's configured model
 }
 
 // roleTurn runs one agent turn for a template role in the task worktree, records the context manifest and the cost on the
-// task, and lets the room post the agent's text. The agent is the one the run input pinned for the role.
+// task, and lets the room post the agent's text. The agent is the one the run input pinned for the role; the model is the
+// one the router chose among the agent's own models for this turn (routing middleware, P63), else the configured one.
 func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t tasks.Task, o turnOpts) (turnOut, error) {
 	if td.RoleConfig == nil {
 		return turnOut{}, errors.New("pipeline: the template has no way to resolve agents by role")
@@ -46,6 +48,7 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 	}
 	cfg.TaskID, cfg.ProjectID = t.ID, t.ProjectID
 	cfg.Spec.Cwd = t.Worktree
+	applyRoute(ctx, &cfg)
 	if o.ReadOnly {
 		cfg.Spec.PermissionMode, cfg.Spec.ReadOnly = "plan", true
 	} else if td.sandboxed(ctx, t) {
@@ -74,7 +77,7 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 	if td.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
 		td.OnTurn(ctx, t, cfg.AgentID, post, res.Text)
 	}
-	return turnOut{Text: res.Text, AgentID: cfg.AgentID}, nil
+	return turnOut{Text: res.Text, AgentID: cfg.AgentID, Model: cfg.Spec.Model}, nil
 }
 
 // feedbackFromInbox collects {"feedback": ..., "previous": ...} messages (from a failed check, the human, a watchdog).
@@ -767,11 +770,7 @@ func (td TemplateDeps) securityReview() workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		v := ParseVerdict(out.Text)
-		model := ""
-		if cfg, err := td.RoleConfig(ctx, t, RoleSecurity, agentID); err == nil {
-			model = cfg.Spec.Model
-		}
-		if _, err := td.Tasks.AddReview(ctx, t.ID, tasks.ReviewRecord{Attempt: t.Iteration, Reviewer: out.AgentID, Verdict: v.Verdict, Feedback: v.Feedback, Model: model}); err != nil {
+		if _, err := td.Tasks.AddReview(ctx, t.ID, tasks.ReviewRecord{Attempt: t.Iteration, Reviewer: out.AgentID, Verdict: v.Verdict, Feedback: v.Feedback, Model: out.Model}); err != nil {
 			return workflow.NodeOutput{}, err
 		}
 		b, _ := json.Marshal(v)
