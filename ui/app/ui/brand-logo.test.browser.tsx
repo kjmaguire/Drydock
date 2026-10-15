@@ -29,31 +29,28 @@ describe('BrandLogo', () => {
     for (const id of ['openai', 'groq', 'custom']) expect(brandKey(id)).toBe('');
   });
 
-  it('gives Codex, Goose and Antigravity a neutral monogram (Simple Icons has no mark for them), never a copied logo', () => {
-    for (const [id, title, letter] of [
-      ['codex', 'Codex', 'C'],
-      ['goose', 'Goose', 'G'],
-      ['antigravity', 'Antigravity', 'A'],
+  it('draws Codex, Goose and Antigravity with their own marks (from LobeHub icons, MIT), Codex with the even-odd rule', () => {
+    for (const [id, title, color] of [
+      ['codex', 'Codex', '#000000'],
+      ['goose', 'Goose', '#000000'],
+      ['antigravity', 'Antigravity', '#3186FF'],
     ] as const) {
       expect(brandKey(id)).toBe(id);
       expect(brandTitle(id)).toBe(title);
       const { container } = renderPlain(<BrandLogo id={id} size={32} label />);
       const tile = container.querySelector(`[data-brand="${id}"]`) as HTMLElement;
-      expect(tile.getAttribute('data-monogram')).toBe('true');
       expect(tile.getAttribute('aria-label')).toBe(title);
-      // the initial in plain strokes of one neutral grey, not a brand colour; a path, so the tile's text is only its name
-      const g = tile.querySelector('svg g') as SVGGElement;
-      expect(g.getAttribute('data-letter')).toBe(letter);
-      expect(g.getAttribute('stroke')).toBe('#52525B');
-      expect(g.getAttribute('fill')).toBe('none');
-      expect(g.querySelectorAll('path').length).toBe(1);
+      const paths = tile.querySelectorAll('svg path');
+      expect(paths.length).toBe(1);
+      const path = paths[0] as SVGPathElement;
+      expect(path.getAttribute('fill')).toBe(color);
+      expect(path.getAttribute('fill-rule')).toBe(id === 'codex' ? 'evenodd' : null);
       expect(tile.textContent).toBe('');
-      expect(g.getBBox().width).toBeGreaterThan(8); // it is drawn, inside the 24-unit box
-      expect(g.getBBox().width).toBeLessThan(24);
+      // drawn and filling most of the 24-unit box
+      expect(path.getBBox().width).toBeGreaterThan(16);
+      expect(path.getBBox().width).toBeLessThanOrEqual(24.5);
       expect(tile.getBoundingClientRect().width).toBe(32);
     }
-    // a real mark is not a monogram
-    expect(renderPlain(<BrandLogo id="claude" />).container.querySelector('[data-brand="claude"]')!.hasAttribute('data-monogram')).toBe(false);
   });
 
   it('draws every mark, labelled only when asked, and nothing for an unknown id', () => {

@@ -32,6 +32,17 @@ Installed and licensed by the user: Claude Code (proprietary, Anthropic), Codex 
 
 go-task (MIT), go-licenses/v2 (Apache-2.0).
 
+## Icons copied into the UI
+
+- **Simple Icons** 16.35.0 (CC0-1.0, https://simpleicons.org): most brand marks in `ui/app/ui/brand-logo.tsx`.
+- **LobeHub Icons**, `@lobehub/icons-static-svg` 1.95.1 (MIT, Copyright (c) LobeHub, https://github.com/lobehub/lobe-icons):
+  the Codex, Goose and Antigravity marks in `ui/app/ui/brand-logo.tsx`, copied as paths. Permission is hereby granted, free
+  of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software
+  without restriction, subject to including the copyright notice and this permission notice; THE SOFTWARE IS PROVIDED "AS
+  IS", WITHOUT WARRANTY OF ANY KIND (the MIT License, in full at https://opensource.org/license/mit).
+
+The marks are trademarks of their owners, shown only to say which service or CLI a card connects to.
+
 ## Reused architecture and algorithms (reimplemented, not copied)
 
 - **Aider** (Apache-2.0): the repo-map technique (tree-sitter tags, personalized PageRank over a file/symbol graph, token-budget binary search). Reimplemented in Go; no Aider source is included. Attribution retained here as required practice.

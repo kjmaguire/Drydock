@@ -277,8 +277,8 @@ describe('Connections page', () => {
       return x;
     }, r);
     expect(r.$('ul[aria-label="Agent CLIs"]')).not.toBeNull();
-    // codex has no Simple Icons mark (OpenAI is not in it): a neutral monogram, never a drawn guess at its logo
-    expect(tiles[0]!.querySelector('[data-brand="codex"]')!.getAttribute('data-monogram')).toBe('true');
+    // codex shows its own mark (LobeHub icons; Simple Icons has none)
+    expect(tiles[0]!.querySelector('[data-brand="codex"] svg path')).not.toBeNull();
     expect(tiles[0]!.textContent).toBe('CodexAgent CLI on WindowsNot installed');
     expect(tiles[1]!.querySelector('[data-brand="gemini"]')).not.toBeNull();
     expect(tiles[1]!.textContent).toBe('Gemini CLI0.9.0 on WindowsReady');
