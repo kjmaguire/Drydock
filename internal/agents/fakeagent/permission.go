@@ -47,46 +47,11 @@ func (a *agent) askPermission(tool string, input json.RawMessage, toolUseID stri
 }
 
 func callPermissionTool(name, configPath, tool string, input json.RawMessage, toolUseID string) (permissionAnswer, error) {
-	server, bare, ok := strings.Cut(strings.TrimPrefix(name, "mcp__"), "__")
-	if !strings.HasPrefix(name, "mcp__") || !ok {
-		return permissionAnswer{}, fmt.Errorf("tool %s (passed via --permission-prompt-tool) must be an MCP tool", name)
-	}
-	raw, err := os.ReadFile(configPath)
-	if err != nil {
-		return permissionAnswer{}, err
-	}
-	var cfg struct {
-		MCPServers map[string]struct {
-			Command string            `json:"command"`
-			Args    []string          `json:"args"`
-			Env     map[string]string `json:"env"`
-		} `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return permissionAnswer{}, err
-	}
-	entry, ok := cfg.MCPServers[server]
-	if !ok || entry.Command == "" {
-		return permissionAnswer{}, fmt.Errorf("MCP tool %s (passed via --permission-prompt-tool) not found", name)
-	}
-	cmd := exec.Command(entry.Command, entry.Args...)
-	cmd.Env = os.Environ()
-	for k, v := range entry.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	c := sdk.NewClient(&sdk.Implementation{Name: "fakeagent", Version: "1"}, nil)
-	sess, err := c.Connect(ctx, &sdk.CommandTransport{Command: cmd}, nil)
-	if err != nil {
-		return permissionAnswer{}, err
-	}
-	defer func() { _ = sess.Close() }()
 	var in any
 	if err := json.Unmarshal(input, &in); err != nil {
 		return permissionAnswer{}, err
 	}
-	res, err := sess.CallTool(ctx, &sdk.CallToolParams{Name: bare, Arguments: map[string]any{"tool_name": tool, "input": in, "tool_use_id": toolUseID}})
+	res, err := callMCP(name, configPath, map[string]any{"tool_name": tool, "input": in, "tool_use_id": toolUseID}, "--permission-prompt-tool")
 	if err != nil {
 		return permissionAnswer{}, err
 	}
@@ -102,4 +67,70 @@ func callPermissionTool(name, configPath, tool string, input json.RawMessage, to
 		return permissionAnswer{}, fmt.Errorf("the permission prompt tool returned an invalid permission result: %q", tc.Text)
 	}
 	return ans, nil
+}
+
+// callMCPTool is the scripted agent's call of an MCP tool its session was given (Step.MCP): the text of the answer and
+// whether the server marked it an error.
+func callMCPTool(name, configPath string, input json.RawMessage) (string, bool, error) {
+	args := map[string]any{}
+	if len(input) > 0 {
+		if err := json.Unmarshal(input, &args); err != nil {
+			return "", false, err
+		}
+	}
+	res, err := callMCP(name, configPath, args, "a scripted MCP step")
+	if err != nil {
+		return "", false, err
+	}
+	var text strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*sdk.TextContent); ok {
+			text.WriteString(tc.Text)
+		}
+	}
+	return text.String(), res.IsError, nil
+}
+
+// callMCP calls the MCP tool name (Claude's naming, mcp__<server>__<tool>) through the server of that name in the
+// --mcp-config file, as Claude Code does.
+func callMCP(name, configPath string, args map[string]any, what string) (*sdk.CallToolResult, error) {
+	server, bare, ok := strings.Cut(strings.TrimPrefix(name, "mcp__"), "__")
+	if !strings.HasPrefix(name, "mcp__") || !ok {
+		return nil, fmt.Errorf("tool %s (%s) must be an MCP tool", name, what)
+	}
+	if configPath == "" {
+		return nil, fmt.Errorf("MCP tool %s (%s) not found: the session has no --mcp-config", name, what)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	var cfg struct {
+		MCPServers map[string]struct {
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return nil, err
+	}
+	entry, ok := cfg.MCPServers[server]
+	if !ok || entry.Command == "" {
+		return nil, fmt.Errorf("MCP tool %s (%s) not found", name, what)
+	}
+	cmd := exec.Command(entry.Command, entry.Args...)
+	cmd.Env = os.Environ()
+	for k, v := range entry.Env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	c := sdk.NewClient(&sdk.Implementation{Name: "fakeagent", Version: "1"}, nil)
+	sess, err := c.Connect(ctx, &sdk.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = sess.Close() }()
+	return sess.CallTool(ctx, &sdk.CallToolParams{Name: bare, Arguments: args})
 }

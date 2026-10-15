@@ -22,7 +22,7 @@ export interface AppServices {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyHandle = Handle<any, any>;
+export type AnyHandle = Handle<any, any>;
 
 export function Services(handle: Handle<{ value: AppServices; children?: RemixNode }, AppServices>) {
   handle.context.set(handle.props.value);

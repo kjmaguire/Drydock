@@ -171,6 +171,23 @@ Open, owner action:
   CI on every push against the real newest release on Windows and Linux (download, SHA-256, unpack or image build, start,
   configuration read from the environment), nothing registered. **Not verified:** a real job on a real private repository on
   a PC, Docker Desktop on Windows, and `fsutil`'s wording for a Dev Drive.
+- **P60. Chat from Home, and a chat's properties: skills and MCP servers (2026-10-15, on the owner's request).** The owner
+  wanted a chat on Home to use like the Claude CLI in a terminal, on the person's own signed-in Claude Code (subscription, not
+  per-token billing), without a project, with skills and MCP servers chosen per chat. Chats already drove the CLI (P29); now
+  Home starts with a composer (Start chat: no project, a private folder, Claude Code; Options: the new chat dialog without a
+  project) and the latest chats without a project. A chat has properties, set when it is made and in the open chat's
+  Properties dialog: the agent CLI and where it runs, the folder, **skills from the workspace skill library** and **MCP servers
+  from the workspace MCP library** (stored with the chat, migration 00122). Choosing a skill for a chat is the person's
+  acceptance for that chat (as adding one to a project is, P48); nothing is copied into a project. Both reach the session only
+  through Drydock's MCP gateway: skills on demand as in P37 (an index in the instructions, the text through the `skills` tool,
+  which for a chat session serves only its chosen skills), never as files written into a folder the person owns; servers as
+  an agent's grant (tools named when chosen, flagged ones left out, every tool not marked read-only behind an approval, shown
+  in the chat). A CLI that cannot be given the gateway is refused both. Skills and servers apply from the next message in the
+  same session; a new CLI, distro or folder drops the session and the next turn gets the conversation as a transcript. The quiet
+  environment of P36 is unchanged. D1 holds: Drydock runs the person's own CLI and never reads its sign-in. `docs/chats.md`
+  section 6. **Verified** with the scripted Claude stand-in calling the gateway (`internal/core/chat_properties_test.go`),
+  browser tests and `ui/e2e/home-chat.spec.ts`. **Not verified:** a real Claude Code reading a chat's skill through the tool,
+  and the folder picker (typed paths only here).
 - **P61. A security scan of any folder, from Home (2026-10-15, on the owner's request).** The owner wanted to run the
   security scan (P44) on any repository at will from Home, for a project imported from elsewhere or a repository to check
   before trusting it. Built: the workspace page **Security scan** (`/security-scan`, Home's tile, the workspace sidebar),

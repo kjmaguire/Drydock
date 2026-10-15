@@ -24,6 +24,10 @@ export interface Chat {
   sessionId: string;
   allowedTools: string[];
   readHistory: boolean;
+  /** Workspace library skills chosen for this chat (decision P60); its CLI reads them through Drydock's MCP gateway. */
+  skills?: ChatSkillRef[];
+  /** Workspace library MCP servers granted to this chat's sessions, with the tools each may call (decision P60). */
+  mcpServers?: ChatMcpGrant[];
   status: ChatStatus | string;
   lastError: string;
   pinned: boolean;
@@ -40,6 +44,18 @@ export interface Chat {
   costUnknownTurns: number;
   /** Raised by the core with every write to the chat: of two snapshots of a chat, the higher version is the newer one. */
   version: number;
+}
+
+/** A workspace library skill chosen for a chat. */
+export interface ChatSkillRef {
+  registryId: string;
+  name: string;
+}
+
+/** A workspace library MCP server granted to a chat; empty tools on a create or update: the server's tools as known now. */
+export interface ChatMcpGrant {
+  serverId: string;
+  tools: string[];
 }
 
 export interface ChatListItem extends Chat {
@@ -96,6 +112,8 @@ export interface ChatCreate {
   effort?: string;
   permissionMode?: string;
   readHistory?: boolean;
+  skills?: ChatSkillRef[];
+  mcpServers?: ChatMcpGrant[];
 }
 
 export interface ChatUpdate {
@@ -107,6 +125,14 @@ export interface ChatUpdate {
   effort?: string;
   permissionMode?: string;
   readHistory?: boolean;
+  /** Where the chat runs (decision P60): a change starts a new session given the conversation so far. */
+  adapter?: string;
+  /** '' runs it on Windows. */
+  wslDistro?: string;
+  /** '' is the chat's private folder; only for a chat without a project. */
+  cwd?: string;
+  skills?: ChatSkillRef[];
+  mcpServers?: ChatMcpGrant[];
 }
 
 /** chat.turn data. */
@@ -143,7 +169,7 @@ const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
 /** Go's nil slices arrive as null. */
 export function normalizeChat<T extends Chat>(c: T): T {
-  return { ...c, allowedTools: arr(c.allowedTools) };
+  return { ...c, allowedTools: arr(c.allowedTools), skills: arr(c.skills), mcpServers: arr(c.mcpServers).map((g) => ({ ...g, tools: arr(g.tools) })) };
 }
 
 const page = (p: ChatPage | null | undefined): ChatPage => ({ messages: arr(p?.messages), hasMore: !!p?.hasMore });

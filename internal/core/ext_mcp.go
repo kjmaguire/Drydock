@@ -51,7 +51,10 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ws = k.Workspace()
 	}
 	ws.Tasks, ws.Room, ws.Handoffs = mcpTasks{c}, mcpRoom{c}, mcpHandoffs{c}
-	ws.Chats = mcpChats{c}     // ext_chats.go; allowed only to chat sessions that read history (planChatMCP)
+	ws.Chats = mcpChats{c} // ext_chats.go; allowed only to chat sessions that read history (planChatMCP)
+	// a chat session's skills tool serves the library skills chosen for the chat (ext_chats.go, decision P60); every other run
+	// keeps the project's accepted skills
+	ws.Skills = chatSkillsTool{c: c, inner: ws.Skills}
 	ws.Sandbox = mcpSandbox{c} // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
 	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions()})
 	if err != nil {

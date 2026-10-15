@@ -149,6 +149,13 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			{Match: "drydock-e2e chat", Steps: []fakeagent.Step{{Say: "Hello from the scripted chat stand-in (a test double). I read: drydock-e2e chat."}}},
 			{Match: "drydock-e2e touch", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "I was not allowed to run that."}}},
 			{Match: "the tool is now allowed", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "Done: chat_probe.txt is there now."}}},
+			// A chat started from Home with a library skill and an MCP server (ui/e2e/home-chat.spec.ts, decision P60): the
+			// stand-in reads the skill through the gateway's skills tool and calls the granted server's echo tool, and says
+			// what each answered, so the page shows that both reached the session
+			{Match: "drydock-e2e props", Steps: []fakeagent.Step{
+				{MCP: "mcp__drydock__skills", Input: json.RawMessage(`{"action":"get","name":"wrangler"}`)},
+				{MCP: "mcp__drydock__chatmcp__echo", Input: json.RawMessage(`{"text":"hello from home"}`)},
+			}},
 			// the independent reviewer (prompt text from internal/pipeline/review.go) always ships
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
 			// after a human "request changes" the worker's prompt carries "Changes requested by the human:"

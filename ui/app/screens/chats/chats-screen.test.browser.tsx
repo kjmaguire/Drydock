@@ -74,6 +74,9 @@ function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean;
     appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
     adapterList: async () => [claude, gemini, cline],
     chatList: async () => [],
+    skillLibraryList: async () => [],
+    mcpLibList: async () => [],
+    mcpApprovalList: async () => [],
     ...client,
   });
   s.workspace.start();

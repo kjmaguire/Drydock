@@ -1,8 +1,73 @@
 // Pure helpers for the Chats section (no DOM, no services): times, cost, snippets, adapter choices, path checks.
 
 import type { AdapterInfo, Connection } from '../../api/types.ts';
-import type { Chat, ChatMessage } from '../../api/chatClient.ts';
+import type { Chat, ChatMcpGrant, ChatMessage, ChatSkillRef } from '../../api/chatClient.ts';
+import type { LibrarySkill } from '../../api/extTypes.ts';
+import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatUsd } from '../../lib/format.ts';
+
+// --- a chat's properties (decision P60): library skills and MCP servers ---
+
+/** The key of a library skill: registry and name. */
+export const skillKey = (k: Pick<ChatSkillRef, 'registryId' | 'name'>): string => `${k.registryId}/${k.name}`;
+
+/** A library skill a chat can be given: available, and still in its registry. */
+export const skillUsable = (k: Pick<LibrarySkill, 'status' | 'gone'>): boolean => k.status === 'available' && !k.gone;
+
+/** The first sentence of a description (at most max characters). */
+export function firstSentence(text: string, max = 140): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  const m = /^(.+?[.!?])(\s|$)/.exec(t);
+  const s = m ? m[1]! : t;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/**
+ * The library skills the picker shows: the chosen ones first (also when they cannot be used any more, so they can be taken
+ * away), then the usable ones matching the filter (name, description or registry), at most `max` in all.
+ */
+export function pickableSkills(library: readonly LibrarySkill[], chosen: readonly ChatSkillRef[], query: string, max = 60): LibrarySkill[] {
+  const picked = new Set(chosen.map(skillKey));
+  const q = query.trim().toLowerCase();
+  const matches = (k: LibrarySkill) => !q || k.name.toLowerCase().includes(q) || k.description.toLowerCase().includes(q) || k.registryId.toLowerCase().includes(q);
+  const first = library.filter((k) => picked.has(skillKey(k)));
+  const rest = library.filter((k) => !picked.has(skillKey(k)) && skillUsable(k) && matches(k));
+  return [...first, ...rest].slice(0, Math.max(max, first.length));
+}
+
+/** Add or take away one skill, keeping the order chosen. */
+export function toggleSkill(chosen: readonly ChatSkillRef[], k: ChatSkillRef, on: boolean): ChatSkillRef[] {
+  const rest = chosen.filter((c) => skillKey(c) !== skillKey(k));
+  return on ? [...rest, { registryId: k.registryId, name: k.name }] : rest;
+}
+
+/** Add or take away one server. A server the chat already had keeps its tools; a new one asks the core for its tools now (empty). */
+export function toggleServer(chosen: readonly ChatMcpGrant[], serverId: string, on: boolean, had: readonly ChatMcpGrant[] = []): ChatMcpGrant[] {
+  const rest = chosen.filter((g) => g.serverId !== serverId);
+  if (!on) return rest;
+  const before = had.find((g) => g.serverId === serverId);
+  return [...rest, { serverId, tools: before ? [...before.tools] : [] }];
+}
+
+/** The tools a server offers a chat: listed and not flagged as reading like instructions. */
+export const grantableTools = (s: Pick<McpLibraryServer, 'tools'>): string[] => s.tools.filter((t) => !(t.flags ?? []).length).map((t) => t.name);
+
+/** Two lists of skills are the same choice. */
+export const sameSkills = (a: readonly ChatSkillRef[], b: readonly ChatSkillRef[]): boolean => a.length === b.length && a.every((k, i) => skillKey(k) === skillKey(b[i]!));
+
+/** Two lists of grants are the same choice. */
+export const sameServers = (a: readonly ChatMcpGrant[], b: readonly ChatMcpGrant[]): boolean =>
+  a.length === b.length && a.every((g, i) => g.serverId === b[i]!.serverId && g.tools.join(',') === b[i]!.tools.join(','));
+
+/** "2 skills", "1 MCP server": what a chat was given, for its header chips (empty parts left out). */
+export function propsChips(c: Pick<Chat, 'skills' | 'mcpServers'>): string[] {
+  const out: string[] = [];
+  const k = c.skills?.length ?? 0;
+  const m = c.mcpServers?.length ?? 0;
+  if (k) out.push(`${k} ${k === 1 ? 'skill' : 'skills'}`);
+  if (m) out.push(`${m} MCP ${m === 1 ? 'server' : 'servers'}`);
+  return out;
+}
 
 /** Permission modes that skip approvals (docs/chats.md: skipsApprovals). */
 export const SKIP_MODES = new Set(['bypassPermissions', 'auto', 'dontAsk']);

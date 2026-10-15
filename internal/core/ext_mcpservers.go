@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/security"
@@ -1005,13 +1006,9 @@ WHERE p.project_id=? AND a.agent_id=? AND p.enabled=1 ORDER BY p.server_id`, pro
 	if err != nil {
 		return nil, nil, nil
 	}
-	type g struct {
-		id    string
-		tools []string
-	}
-	var grants []g
+	var grants []serverGrant
 	for rows.Next() {
-		var x g
+		var x serverGrant
 		var tj string
 		if rows.Scan(&x.id, &tj) == nil {
 			_ = json.Unmarshal([]byte(tj), &x.tools)
@@ -1019,6 +1016,33 @@ WHERE p.project_id=? AND a.agent_id=? AND p.enabled=1 ORDER BY p.server_id`, pro
 		}
 	}
 	rows.Close()
+	return s.specsFor(ctx, grants)
+}
+
+// serverGrant is one library server a session may use, with the tool globs it may call there.
+type serverGrant struct {
+	id    string
+	tools []string
+}
+
+// mcpServersForChat returns the library servers granted to a chat (decision P60), as mcpServersForRun does for an agent. A
+// server disconnected from the library since is left out.
+func (c *Core) mcpServersForChat(ctx context.Context, grants []chats.MCPGrant) ([]mcp.ServerSpec, map[string][]string, []string) {
+	s := c.mcpServerSvc()
+	if s == nil || len(grants) == 0 {
+		return nil, nil, nil
+	}
+	var gs []serverGrant
+	for _, g := range grants {
+		if len(g.Tools) > 0 {
+			gs = append(gs, serverGrant{id: g.ServerID, tools: g.Tools})
+		}
+	}
+	return s.specsFor(ctx, gs)
+}
+
+// specsFor builds the gateway's servers, the tools each may call and the tool names the CLI is told about.
+func (s *mcpServers) specsFor(ctx context.Context, grants []serverGrant) ([]mcp.ServerSpec, map[string][]string, []string) {
 	var specs []mcp.ServerSpec
 	allow := map[string][]string{}
 	var exposed []string

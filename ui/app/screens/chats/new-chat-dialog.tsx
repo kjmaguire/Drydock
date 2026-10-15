@@ -2,6 +2,8 @@
 // CLI (Claude Code by default; one that is not installed is listed but disabled with the reason; a CLI installed inside a WSL
 // distro is its own choice, as on the Connections page, and the chat then runs there: decision P41), model, effort, permission
 // mode (a mode that skips approvals shows a warning) and whether the chat may read the human's other chats.
+// It also takes the chat's properties (decision P60): skills from the workspace skill library and MCP servers from the
+// workspace MCP library, which reach the chat's CLI through Drydock's MCP gateway.
 
 import { on, type Handle } from 'remix/component';
 import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
@@ -10,6 +12,8 @@ import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
+import type { ChatMcpGrant, ChatSkillRef } from '../../api/chatClient.ts';
+import { ServerPicker, SkillPicker, useMcpLibrary, useSkillLibrary } from './chat-properties.tsx';
 import { chatChoices, pickChatChoice, skipsApprovals } from './chats.ts';
 
 const NO_PROJECT = '';
@@ -39,6 +43,11 @@ export function NewChatDialog(
   let effort = '';
   let mode = '';
   let readHistory = true;
+  // the chat's properties (decision P60): library skills and MCP servers, read while the dialog is open
+  let skills: ChatSkillRef[] = [];
+  let servers: ChatMcpGrant[] = [];
+  const library = useSkillLibrary(handle, () => handle.props.open);
+  const mcpLib = useMcpLibrary(handle, () => handle.props.open);
   let wasOpen = false;
   const listId = `new-chat-models-${handle.id}`;
 
@@ -50,6 +59,8 @@ export function NewChatDialog(
     effort = '';
     mode = '';
     readHistory = true;
+    skills = [];
+    servers = [];
     if (act.error) handle.queueTask(() => act.clear()); // not during render
   };
   const set = (fn: () => void) => {
@@ -85,6 +96,8 @@ export function NewChatDialog(
           effort: effort || undefined,
           permissionMode: mode || undefined,
           readHistory,
+          ...(skills.length ? { skills } : {}),
+          ...(servers.length ? { mcpServers: servers } : {}),
         }),
       );
       // the screen closes the dialog and navigates once (closing first would race a second navigation)
@@ -92,7 +105,7 @@ export function NewChatDialog(
     };
 
     return (
-      <Dialog open={open} onClose={onClose} title="New chat" label="New chat">
+      <Dialog open={open} onClose={onClose} title="New chat" label="New chat" wide>
         {!adapters && !adaptersError ? (
           <Loading label="Looking for agent CLIs..." />
         ) : (
@@ -226,6 +239,8 @@ export function NewChatDialog(
                 onChange={(v) => set(() => (readHistory = v))}
               />
             </div>
+            <SkillPicker library={library.data} loading={library.loading} error={library.error} chosen={skills} onChange={(v) => set(() => (skills = v))} />
+            <ServerPicker servers={mcpLib.data} loading={mcpLib.loading} error={mcpLib.error} chosen={servers} onChange={(v) => set(() => (servers = v))} />
             <div style={{ gridColumn: '1 / -1' }}>
               <ErrorNote error={adaptersError} what="Could not list the agent CLIs" />
               <ErrorNote error={act.error} what="Could not start the chat" />
