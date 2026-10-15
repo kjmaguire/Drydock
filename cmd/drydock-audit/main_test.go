@@ -136,3 +136,15 @@ func TestNewestStableTagSkipsPreReleasesAndAlphaTags(t *testing.T) {
 		t.Fatalf("a major-only tag is not a release: %q", got)
 	}
 }
+
+// llama.cpp tags its weekly builds bNNNN (the vX.Y.Z tags carry no binaries): the newest build is the highest number, not the
+// last in the listing's order.
+func TestNewestBuildTagPicksTheHighestBuild(t *testing.T) {
+	out := "a\trefs/tags/b11669\nb\trefs/tags/b9999\nc\trefs/tags/v0.7.0\nd\trefs/tags/b11600\ne\trefs/tags/gguf-v0.4.0\n"
+	if got := newestBuildTag(out); got != "b11669" {
+		t.Fatalf("got %q", got)
+	}
+	if got := newestBuildTag("x\trefs/tags/v1.2.3\n"); got != "" {
+		t.Fatalf("a version tag is not a build: %q", got)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/agents/pins"
@@ -79,6 +80,33 @@ func newestStableTag(lsRemote string) string {
 		t := line[i+len("refs/tags/"):]
 		if _, _, _, pre, ok := parseSemver(t); ok && !pre && strings.Count(t, ".") == 2 && (best == "" || less(best, t)) {
 			best = t
+		}
+	}
+	return best
+}
+
+// gitLatestBuildTag is the newest build tag (bNNNN, llama.cpp's weekly builds) of a GitHub repository.
+func gitLatestBuildTag(ctx context.Context, repo string) (string, error) {
+	out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+repo)
+	if err != nil {
+		return "", err
+	}
+	return newestBuildTag(out), nil
+}
+
+var buildTagR = regexp.MustCompile(`refs/tags/(b(\d+))$`)
+
+// newestBuildTag picks the highest bNNNN tag of git ls-remote output.
+func newestBuildTag(lsRemote string) string {
+	best, bestN := "", -1
+	for _, line := range strings.Split(lsRemote, "\n") {
+		m := buildTagR.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
+			continue
+		}
+		n, _ := strconv.Atoi(m[2])
+		if n > bestN {
+			best, bestN = m[1], n
 		}
 	}
 	return best
@@ -178,18 +206,22 @@ func agentSoftware(ctx context.Context) []Item {
 // says the project is built and tested with (docs/software-notes.json "used"), because none of these is a dependency in a lock file.
 func tools(ctx context.Context) []Item {
 	// a tool is measured against the Go module proxy, npm, or (a project that publishes only GitHub releases) its git tags
-	type tool struct{ id, name, kind, goMod, npmPkg, ghRepo string }
+	type tool struct {
+		id, name, kind, goMod, npmPkg, ghRepo string
+		buildTags                             bool // the repository tags builds bNNNN instead of versions (llama.cpp)
+	}
 	list := []tool{
-		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", ""},
-		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", ""},
-		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", ""},
-		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep"},
-		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", ""},
-		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", ""},
-		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", ""},
-		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", ""},
-		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", ""},
-		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner"},
+		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", false},
+		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", false},
+		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", false},
+		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", false},
+		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", false},
+		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", false},
+		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", false},
+		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", false},
+		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", false},
+		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", false},
+		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", true},
 	}
 	used := toolUsed()
 	var items []Item
@@ -198,6 +230,12 @@ func tools(ctx context.Context) []Item {
 		switch {
 		case t.goMod != "":
 			it.Latest, it.LatestDate = goLatest(ctx, t.goMod)
+		case t.ghRepo != "" && t.buildTags:
+			tag, err := gitLatestBuildTag(ctx, t.ghRepo)
+			if err != nil {
+				fail("tags of " + t.ghRepo + ": " + err.Error())
+			}
+			it.Latest = tag
 		case t.ghRepo != "":
 			tag, err := gitLatestTag(ctx, t.ghRepo)
 			if err != nil {

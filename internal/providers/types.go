@@ -47,6 +47,7 @@ const (
 	FlavorVLLM       Flavor = "vllm"
 	FlavorSGLang     Flavor = "sglang"
 	FlavorOllama     Flavor = "ollama"
+	FlavorLlamaCpp   Flavor = "llamacpp" // llama.cpp's llama-server (the local models of decision P65 run on one)
 )
 
 // TLSMode records how the transport is secured (docs/model-routing.md s4, brief section 16).

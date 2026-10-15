@@ -274,6 +274,38 @@ func (pr *Prober) probeHost(ctx context.Context, p Provider, key string, res *Pr
 			}
 		}
 	}
+	if res.Flavor == "" || res.Flavor == FlavorOpenAI || res.Flavor == FlavorLlamaCpp {
+		// llama-server answers /props (its build and the context it runs the model with); its listing carries no
+		// supported_parameters, but every model it serves takes tool calls through its Jinja chat template
+		if st, b, _, err := pr.httpGet(ctx, p, key, o+"/props"); err == nil && st == 200 {
+			var props struct {
+				BuildInfo string `json:"build_info"`
+				Defaults  *struct {
+					NCtx int `json:"n_ctx"`
+				} `json:"default_generation_settings"`
+				Slots int `json:"total_slots"`
+			}
+			if json.Unmarshal(b, &props) == nil && (props.BuildInfo != "" || props.Defaults != nil) {
+				res.Flavor = FlavorLlamaCpp
+				info["build_info"] = props.BuildInfo
+				info["total_slots"] = props.Slots
+				nctx := 0
+				if props.Defaults != nil {
+					nctx = props.Defaults.NCtx
+					info["n_ctx"] = nctx
+				}
+				for i := range res.Models {
+					res.Models[i].SupportsTools = true
+					if nctx > 0 {
+						res.Models[i].ContextLength = nctx // the context the server runs with, not the model's training context
+					}
+				}
+				if nctx > 0 && nctx < 64000 {
+					res.Warnings = append(res.Warnings, fmt.Sprintf("llama-server runs with a %d-token context; coding agents need at least 64000 (set the context size on the Providers page)", nctx))
+				}
+			}
+		}
+	}
 	if res.Flavor != FlavorOllama { // Ollama has no /health; its liveness is /api/version, answered above
 		if st, _, _, err := pr.httpGet(ctx, p, "", o+"/health"); err != nil {
 			res.Warnings = append(res.Warnings, "GET /health failed: "+err.Error())

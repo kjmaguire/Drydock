@@ -106,7 +106,7 @@ export const ATTESTATIONS: [string, string][] = [
   ['lan_attested', 'I accept plain http to this host on my private network'],
 ];
 
-export const FLAVORS = ['openai', 'openrouter', 'gemini', 'anthropic', 'vllm', 'sglang', 'ollama'];
+export const FLAVORS = ['openai', 'openrouter', 'gemini', 'anthropic', 'vllm', 'sglang', 'ollama', 'llamacpp'];
 
 export const QUOTA_KINDS: [string, string][] = [
   ['rpm', 'requests per minute'],

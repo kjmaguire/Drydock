@@ -26,6 +26,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/localllm"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -91,6 +92,9 @@ type Config struct {
 	// Runners, when set, adjusts the CI runners' pool before it starts (decision P56): tests and the e2e harness replace
 	// GitHub, the release and the launchers with labelled test doubles.
 	Runners func(p *runners.Pool)
+	// LocalModels, when set, adjusts the local models' manager before it starts (decision P65): tests and the e2e harness
+	// replace GitHub, the Hugging Face Hub, the download client and the server program with labelled test doubles.
+	LocalModels func(m *localllm.Manager)
 }
 
 // FilePick is what a file dialog asks for.

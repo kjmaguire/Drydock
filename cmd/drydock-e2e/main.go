@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -64,6 +65,8 @@ import (
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/integrations/itfixture"
 	"github.com/kjmaguire/drydock/internal/license"
+	"github.com/kjmaguire/drydock/internal/localllm"
+	"github.com/kjmaguire/drydock/internal/localllm/llamatest"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
@@ -96,6 +99,11 @@ func main() {
 	// stand-in osv-scanner and opengrep, which print canned, documented output shapes
 	if scantest.IsStandIn(os.Args) {
 		os.Exit(scantest.Main(os.Args))
+	}
+	// TEST DOUBLE of llama-server (internal/localllm/llamatest): the local models feature starts this binary again as the
+	// stand-in server, which answers the server's own endpoints with canned shapes and never presents itself as llama.cpp
+	if llamatest.IsStandIn(os.Args) {
+		os.Exit(llamatest.Main(os.Args))
 	}
 	// TEST DOUBLES of the WSL run mode (internal/wsl/wsltest): the stand-in wsl.exe re-executes this binary, and the stand-in
 	// claude inside its distro may start this binary as its MCP server command to check what reached it
@@ -354,6 +362,28 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	runnerWin := &runnerstest.Launcher{K: runners.Windows, FreeB: 120 << 30, JobTime: 1500 * time.Millisecond}
 	runnerLinux := &runnerstest.Launcher{K: runners.Linux, JobTime: 1500 * time.Millisecond}
 	runnerLinux.Queue("build", "Succeeded")
+	// PROTOCOL FIXTURES for the local models (decision P65): GitHub's releases API and downloads for llama.cpp's repository
+	// (two builds, the newer with a Vulkan and a CPU archive, each holding a placeholder llama-server), and the Hugging Face
+	// Hub with two small GGUF repositories. The installed placeholder is never run: the core starts the stand-in above instead.
+	// Nothing reaches GitHub or Hugging Face; no llama.cpp runs.
+	officialSrc, _ := localllm.SourceByID(localllm.SourceOfficial)
+	llamaReleases := llamatest.StartReleases(officialSrc.Repo)
+	defer llamaReleases.Close()
+	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11600", Prerelease: true, Body: "an older build", Assets: map[string][]byte{"llama-b11600-bin-win-vulkan-x64.zip": llamatest.ServerZip()}})
+	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11669", Prerelease: true, Body: "## What's new\nLiliCorr speculative decoding and MTP for GLM5-Next", Assets: map[string][]byte{
+		"llama-b11669-bin-win-vulkan-x64.zip": llamatest.ServerZip(), "llama-b11669-bin-win-cpu-x64.zip": llamatest.ServerZip(),
+	}})
+	hub := llamatest.StartHub()
+	defer hub.Close()
+	gguf := make([]byte, 24<<20) // 24 MB: a download long enough to be seen in progress
+	for i := range gguf {
+		gguf[i] = byte(i*31 + i>>8)
+	}
+	hub.AddModel("ggml-org/gpt-oss-20b-GGUF", 900000, []string{"reasoning"}, map[string][]byte{"gpt-oss-20b-mxfp4.gguf": gguf})
+	hub.AddModel("ggml-org/Qwen3-Coder-30B-A3B-Instruct-GGUF", 700000, []string{"code"}, map[string][]byte{
+		"Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf": gguf[:8<<20], "Qwen3-Coder-30B-A3B-Instruct-Q8_0.gguf": gguf[:16<<20],
+	})
+	hub.AddModel("acme/tiny-GGUF", 10, nil, map[string][]byte{"tiny-Q4_0.gguf": gguf[:2<<20]})
 	c, err := core.Open(context.Background(), core.Config{
 		PickFile:   pickFile,
 		PickFolder: pickFolder,
@@ -379,6 +409,15 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			p.API = func(context.Context) (host.API, error) { return runnerGitHub, nil }
 			p.Launchers = map[runners.Kind]runners.Launcher{runners.Windows: runnerWin, runners.Linux: runnerLinux}
 			p.Machine = "e2e-pc"
+		},
+		// TEST DOUBLES for the local models (decision P65): the fixtures above, and the stand-in server (this binary) in place
+		// of the installed placeholder, loading its "model" for a second
+		LocalModels: func(m *localllm.Manager) {
+			m.GitHub = host.HTTPAPI{BaseURL: llamaReleases.Server.URL}
+			m.HTTP = &http.Client{Transport: llamaReleases.Transport}
+			m.Hub = &localllm.Hub{BaseURL: hub.URL}
+			m.Program = func(localllm.Installed) (string, []string) { return self, llamatest.Args("--load-ms=1000") }
+			m.Memory = func() localllm.Memory { return localllm.Memory{Total: 32 << 30, Available: 20 << 30, Known: true} }
 		},
 	})
 	if err != nil {

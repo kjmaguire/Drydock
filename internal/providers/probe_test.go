@@ -229,3 +229,44 @@ func TestProbeKeepsUserPriceAcrossRefresh(t *testing.T) {
 		t.Fatalf("user price overwritten: %+v", m)
 	}
 }
+
+// A llama-server host (the local models of decision P65) is told apart by /props: its models are listed as taking tool calls
+// (the listing says nothing about it, the server's chat template handles them) with the context the server runs with, and a
+// small context is warned about. A server not reachable at /props stays a plain OpenAI-compatible host.
+func TestProbeLlamaCppHostListsToolCapableModels(t *testing.T) {
+	e := newEnv(t)
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/health": status(200),
+		"/props": jsonBody(map[string]any{"build_info": "b11669-abc", "total_slots": 1,
+			"default_generation_settings": map[string]any{"n_ctx": 32768, "params": map[string]any{"n_predict": -1}}}),
+		"/v1/models": jsonBody(map[string]any{"object": "list", "data": []map[string]any{
+			{"id": "ggml-org/gpt-oss-20b-GGUF:MXFP4", "object": "model", "owned_by": "llamacpp", "meta": map[string]any{"n_ctx_train": 131072}},
+		}}),
+	})
+	p := e.create(t, NewProvider{Name: "local", Kind: KindHost, BaseURL: f.URL + "/v1", Tier: TierCheap})
+	res, err := e.pr.Probe(e.ctx, p.ID)
+	if err != nil || !res.OK {
+		t.Fatalf("probe: %v %+v", err, res)
+	}
+	if res.Flavor != FlavorLlamaCpp || res.ServerInfo["build_info"] != "b11669-abc" || res.ServerInfo["n_ctx"] != 32768 {
+		t.Fatalf("flavor/info %v %v", res.Flavor, res.ServerInfo)
+	}
+	if len(res.Models) != 1 || !res.Models[0].SupportsTools || res.Models[0].ContextLength != 32768 || !res.Models[0].IsFree {
+		t.Fatalf("models %+v", res.Models)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "32768-token context") {
+		t.Fatalf("warnings %v", res.Warnings)
+	}
+	m, err := e.reg.Model(e.ctx, p.ID, "ggml-org/gpt-oss-20b-GGUF:MXFP4")
+	if err != nil || !m.SupportsTools || m.Tier != TierCheap {
+		t.Fatalf("catalog %+v %v", m, err)
+	}
+	if got, _ := e.reg.Get(e.ctx, p.ID); got.Flavor != FlavorLlamaCpp {
+		t.Fatalf("provider after probe %+v", got)
+	}
+	// probed again with its flavor already known, the models still take tools
+	res, _ = e.pr.Probe(e.ctx, p.ID)
+	if res.Flavor != FlavorLlamaCpp || !res.Models[0].SupportsTools {
+		t.Fatalf("second probe %+v", res)
+	}
+}

@@ -36,6 +36,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
 | Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.9 | Run on Windows to confirm; cannot take a job list (see D7). |
 | Verification tools | osv-scanner v2.6.0, Opengrep 1.30.2, Playwright 1.64.0, Wrangler 4.148.0 as external tools | osv-scanner sends package metadata to osv.dev unless offline: disclosed. Opengrep (LGPL-2.1, native Windows binary) is the security scan's Code engine (P44); Drydock ships no rules for it. |
+| Local models | llama.cpp's `llama-server`, the newest weekly Windows build (b11669 at the time of writing; not pinned), MIT, from `ggml-org/llama.cpp`'s GitHub release, checked against GitHub's SHA-256 digest; GGUF models from public Hugging Face repositories, checked against the Hub's SHA-256 | P65, `docs/local-models.md`. The TurboQuant fork (`AtomicBot-ai/atomic-llama-cpp-turboquant`) is an opt-in second source behind a warning, not the default. Not yet run against the real llama.cpp |
 | Repo map | `github.com/tree-sitter/go-tree-sitter` v0.25.0 (CGO) + MIT grammars: Go v0.25.0, TypeScript/TSX v0.23.2, JavaScript v0.25.0, Python v0.25.0, C# v0.23.5, Java v0.23.5, Rust v0.24.2; Aider algorithm | D5, P62: built in `internal/repomap` (Linux; the Windows CI jobs build it with MinGW gcc). The grammars' own `queries/tags.scm` plus our extra queries (TSX and JSX element references, which no upstream query covers, and TS, JS, Python, C#, Java, Rust additions). PHP and SQL, probed in Phase 0, are not built. The product exe is built with `CGO_ENABLED=1`. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
@@ -345,3 +346,35 @@ Open, owner action:
   (the bar, the hubs, the rails), `styles/contrast.test.ts` (every text pair of the new tokens at 4.5:1 in both themes),
   the screens' browser tests, and the whole e2e suite under the new navigation. **Not verified:** on Windows by a person
   (CI builds and tests it), and whether the dots read well to someone who did not ask for them.
+- **P65. Models on this PC with llama.cpp (2026-10-15, on the owner's request).** The owner asked for "a source for those who
+  want to locally host a model on their computer", chose llama.cpp ("the right way to go"), asked for Google's TurboQuant, and
+  placed it under Providers ("I think that is what we intended": the brief's `host` kind). Built in `internal/localllm` and
+  the core's `local.*` methods, `docs/local-models.md`. (1) **Official builds, checked.** Drydock downloads the newest weekly
+  Windows build of `ggml-org/llama.cpp` for the chosen backend (Vulkan, CUDA, CUDA 12.4, ROCm, CPU; CUDA with its runtime
+  archive), accepts it only when its SHA-256 matches the digest GitHub recorded at upload, unpacks it with the runners'
+  guarded unzip into its own folder, and asks it for its devices. It does not run llama.app's install script (a remote
+  script piped into PowerShell, as Llama-Windows does). (2) **TurboQuant.** Research on the day showed the TurboQuant KV
+  cache types are not in llama.cpp: the maintainers closed PR #21089 on 2026-06-02 ("no one has presented evidence that would
+  justify the opportunity cost"), while the Hadamard rotation of the attention inputs (PR #21038, merged 2026-04-01) gives
+  the existing `q8_0`/`q4_0` caches most of TurboQuant's quality gain. The owner decided: "skip the forks, use the official
+  builds and the q8_0/q4_0 cache"; then pointed at Atomic Chat, which runs upstream llama.cpp by default and the AtomicBot
+  TurboQuant fork as a second, selectable engine. Drydock does the same: the official build is the default and the fork
+  (`AtomicBot-ai/atomic-llama-cpp-turboquant`, tagged releases only, the same digest check) is a second **source** a person
+  opts into behind a plain warning (a community build Drydock has not reviewed, weeks to months behind upstream); `turbo4`
+  and `turbo3` are offered only while that source is chosen. The Python library the owner also sent (OnlyTerp/turboquant) is
+  for Transformers and vLLM, not llama.cpp, and changed nothing. (3) **Models** come from public Hugging Face repositories
+  (ggml-org's own GGUF uploads as suggestions, search for the rest), grouped into variants by quantization with shards
+  joined, each file checked against the SHA-256 the Hub records, downloaded in the background with resume, with a fit hint
+  (weights against one GPU's free memory, else three quarters of the free RAM). Gated repositories are not offered: Drydock
+  holds no Hugging Face token. (4) **One server, one model, on loopback**, `llama-server --alias <owner/repo:VARIANT> --jinja
+  -ngl auto -ctk/-ctv q8_0` on port 9933 (one above llama.cpp's own), waited for at `/health`, then registered as the provider
+  "Models on this PC (llama.cpp)" (`kind=host`, new `flavor=llamacpp`, `private`, `cheap`, `max_concurrent=1`); the probe tells
+  a llama-server apart by `/props` and lists its models as taking tool calls with the context the server runs with, so the
+  router may give agent work to them (a host listing never said so before: `supported_parameters` is OpenRouter's). The
+  router mode of llama-server (several models, `--models-dir`) is not used: its naming is undocumented; a restart switches
+  the model. (5) **Reuse.** `runners.Download` grew `DownloadWith` (the archive's source prefix, size limit and progress);
+  the device list, the fit and the server supervisor are new. **Tests** with a labelled stand-in llama-server (the test
+  binary) and protocol fixtures of GitHub's releases API and the Hub, in `internal/localllm`, the core and the e2e harness.
+  **Not verified:** anything against the real llama.cpp, GitHub release or Hub (asset names and layouts as read on
+  2026-10-15; `local-models.md` section 9); the owner must run it on the PC once. Software: `tool:llama.cpp` (b11669 at the
+  time of writing; not pinned, the newest checked build is installed).

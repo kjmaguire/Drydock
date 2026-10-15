@@ -16,6 +16,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/localllm/llamatest"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
@@ -27,6 +28,9 @@ import (
 func TestMain(m *testing.M) {
 	if scantest.IsStandIn(os.Args) { // the LABELLED stand-in osv-scanner and opengrep of the security scan tests (ext_security_test.go)
 		os.Exit(scantest.Main(os.Args))
+	}
+	if llamatest.IsStandIn(os.Args) { // the LABELLED stand-in llama-server of the local models tests (ext_localllm_test.go)
+		os.Exit(llamatest.Main(os.Args))
 	}
 	if wsltest.IsStandIn() { // the LABELLED stand-in wsl.exe of the WSL run mode tests (wsl_test.go)
 		os.Exit(wsltest.StandIn(os.Args[1:]))

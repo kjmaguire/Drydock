@@ -18,12 +18,33 @@ import (
 // MaxArchive is the largest runner archive Drydock downloads (the 2.3xx archives are about 100 to 230 MB).
 const MaxArchive = 512 << 20
 
+// DownloadOptions widen Download for archives that are not the runner's (the local models' llama.cpp builds, decision P65).
+type DownloadOptions struct {
+	// Prefix is the only place the archive may be fetched from (default DownloadPrefix).
+	Prefix string
+	// MaxBytes is the largest archive accepted (default MaxArchive).
+	MaxBytes int64
+	// Progress, when set, is told how many bytes have arrived so far and the asset's size (0 when the release gave none).
+	Progress func(done, total int64)
+}
+
 // Download puts the asset's archive in dir (as dir/<asset name>) and checks its SHA-256 against the release notes. An
 // archive already there with the right SHA-256 is reused; one with the wrong SHA-256 is replaced. A download that does not
 // match is deleted and refused: nothing unchecked is ever run.
 func Download(ctx context.Context, client *http.Client, a Asset, dir string) (string, error) {
-	if !strings.HasPrefix(a.URL, DownloadPrefix) {
-		return "", fmt.Errorf("refusing to download a runner from %s", a.URL)
+	return DownloadWith(ctx, client, a, dir, DownloadOptions{})
+}
+
+// DownloadWith is Download with the archive's source prefix, size limit and progress chosen by the caller.
+func DownloadWith(ctx context.Context, client *http.Client, a Asset, dir string, o DownloadOptions) (string, error) {
+	if o.Prefix == "" {
+		o.Prefix = DownloadPrefix
+	}
+	if o.MaxBytes <= 0 {
+		o.MaxBytes = MaxArchive
+	}
+	if !strings.HasPrefix(a.URL, o.Prefix) {
+		return "", fmt.Errorf("refusing to download %s from %s", a.Name, a.URL)
 	}
 	if strings.ContainsAny(a.Name, `/\`) || a.Name == "" || a.Name == "." || a.Name == ".." {
 		return "", fmt.Errorf("bad archive name %q", a.Name)
@@ -36,6 +57,9 @@ func Download(ctx context.Context, client *http.Client, a Asset, dir string) (st
 	}
 	dst := filepath.Join(dir, a.Name)
 	if sum, err := fileSHA256(dst); err == nil && sum == a.SHA256 {
+		if o.Progress != nil {
+			o.Progress(a.Size, a.Size)
+		}
 		return dst, nil
 	}
 	if client == nil {
@@ -59,15 +83,19 @@ func Download(ctx context.Context, client *http.Client, a Asset, dir string) (st
 	}
 	defer os.Remove(tmp.Name())
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(resp.Body, MaxArchive+1))
+	var w io.Writer = io.MultiWriter(tmp, h)
+	if o.Progress != nil {
+		w = &progressWriter{w: w, total: a.Size, report: o.Progress}
+	}
+	n, err := io.Copy(w, io.LimitReader(resp.Body, o.MaxBytes+1))
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return "", fmt.Errorf("could not download %s: %w", a.Name, err)
 	}
-	if n > MaxArchive {
-		return "", fmt.Errorf("the archive %s is larger than %d MB", a.Name, MaxArchive>>20)
+	if n > o.MaxBytes {
+		return "", fmt.Errorf("the archive %s is larger than %d MB", a.Name, o.MaxBytes>>20)
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != a.SHA256 {
 		return "", fmt.Errorf("the archive %s does not match the SHA-256 its release publishes (got %s, want %s); it was deleted", a.Name, got, a.SHA256)
@@ -76,6 +104,25 @@ func Download(ctx context.Context, client *http.Client, a Asset, dir string) (st
 		return "", err
 	}
 	return dst, nil
+}
+
+// progressWriter reports the bytes written so far, at most about every 256 KB and at the end.
+type progressWriter struct {
+	w      io.Writer
+	total  int64
+	done   int64
+	last   int64
+	report func(done, total int64)
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n, err := p.w.Write(b)
+	p.done += int64(n)
+	if p.done-p.last >= 256<<10 || err != nil || (p.total > 0 && p.done >= p.total) {
+		p.last = p.done
+		p.report(p.done, p.total)
+	}
+	return n, err
 }
 
 func fileSHA256(path string) (string, error) {
