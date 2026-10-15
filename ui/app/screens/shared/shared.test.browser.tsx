@@ -84,6 +84,28 @@ describe('routing decisions', () => {
     expect(r.container.textContent).toContain('alternative(s) not chosen');
   });
 
+  it('names the kind of turn of each decision: work, review, room reply and the template steps', async () => {
+    const row = (id: string, runKind: string) => ({ id, ts: 1, attempt: 1, runKind, level: 'balanced', agent: 'a', provider: 'agent:claude', model: 'haiku', effort: '', decidedBy: 'rules', estCostUsd: null });
+    const kinds = ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review'];
+    const s = testServices({ routeDecisions: async () => kinds.map((k, i) => row('dec_' + i, k)) as never });
+    const r = mount(<TaskDecisions taskId="t1" />, s);
+    const rows = await waitFor(() => {
+      const x = r.$$('[data-testid="decision-row"]');
+      if (x.length !== kinds.length) throw new Error('not yet');
+      return x;
+    }, r);
+    expect([...rows].map((x) => x.querySelector('td')!.textContent!.replace(/attempt \d+/, '').trim())).toEqual([
+      'work',
+      'review',
+      'room reply',
+      'spec (pm)',
+      'tests first',
+      'design (architect)',
+      'security review',
+    ]);
+    expect([...rows].map((x) => x.getAttribute('data-run-kind'))).toEqual(kinds);
+  });
+
   it('a static explanation says the router did not choose', async () => {
     const s = testServices({ routeExplain: async () => ({ text: '- Decided by: static assignment.', decision: { ID: 'd', Provider: 'claude', Model: '', Effort: '', Reason: '', Confidence: 1, EstCostUSD: null, DecidedBy: 'static' } }) as never });
     const r = mount(<ExplainText decisionId="d" />, s);

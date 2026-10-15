@@ -1,11 +1,20 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Provider } from '../../api/types.ts';
-import { actionChips, cheapProviders, newRule, parseChain, parseThen, sortRules, splitChain, withChain } from './routing.ts';
+import { actionChips, cheapProviders, newRule, parseChain, parseThen, RUN_KINDS, runKindLabel, runKindOptions, sortRules, splitChain, withChain } from './routing.ts';
 
 const rule = (id: string, priority: number) => ({ ...newRule(), id, priority });
 
 describe('routing helpers', () => {
+  it('offers every agent turn kind a rule can match (P63) with its words, and leaves other kinds as they are', () => {
+    for (const k of ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review']) expect(RUN_KINDS).toContain(k);
+    expect(runKindLabel('room_reply')).toBe('room reply');
+    expect(runKindLabel('security_review')).toBe('security review');
+    expect(runKindLabel('consult')).toBe('consult');
+    expect(runKindOptions().find(([k]) => k === 'spec')).toEqual(['spec', 'spec (pm) (spec)']);
+    expect(runKindOptions().find(([k]) => k === 'classify')).toEqual(['classify', 'classify']);
+  });
+
   it('orders rules by priority, highest first, then by id', () => {
     expect(sortRules([rule('b', 1), rule('a', 5), rule('c', 5)]).map((r) => r.id)).toEqual(['a', 'c', 'b']);
   });

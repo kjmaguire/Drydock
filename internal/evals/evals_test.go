@@ -442,3 +442,24 @@ func TestOutcomesAreRecordedFromTaskEventsExactlyOnceAcrossRestarts(t *testing.T
 	}
 	wait(`SELECT COUNT(*) FROM routing_outcomes`, 3)
 }
+
+// A task's stratum is the class of its own work and review turns. The other routed turns of the task (decision P63: room
+// replies in its channel, the template roles' spec, tests, design and security review) carry their own turn's class, so an
+// architect's design (class architecture) or a security review does not make a general task premium-only; their decisions
+// still get outcome rows.
+func TestTheStratumComesFromTheTasksWorkTurnsOnly(t *testing.T) {
+	w := newWorld(t)
+	w.exec(`INSERT INTO projects(id,name,repo_path,created_at) VALUES('p1','proj','/x',1)`)
+	w.exec(`INSERT INTO tasks(id,project_id,seq,title,status,created_at,updated_at) VALUES('T9','p1',9,'t','IN_PROGRESS',1,1)`)
+	for i, row := range [][2]string{{"design", "architecture"}, {"security_review", "security_review"}, {"room_reply", "room_reply"}, {"agent_task", "implement"}, {"review", ""}} {
+		w.exec(`INSERT INTO routing_decisions(id,ts,task_id,run_kind,decided_by,provider_id,model,request,decision) VALUES(?,?,'T9',?,'rules','p','m',?,'{}')`,
+			"dx"+row[0], 10+i, row[0], `{"TaskType":"`+row[1]+`","Risk":false}`)
+	}
+	f, err := evals.Facts(w.ctx, w.db, "T9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Stratum != "general" || len(f.Decisions) != 5 {
+		t.Fatalf("stratum %q decisions %v", f.Stratum, f.Decisions)
+	}
+}

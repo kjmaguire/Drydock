@@ -244,3 +244,22 @@ Open, owner action:
   is kept per connection until a reconnect, shown as "Verified against your account on <date>", and published as
   `integration.verified`. `docs/integrations.md`, "As built: check against your account". **Not verified:** against a real
   vendor account; that is what the button is for.
+- **P63. Every turn of an agent is routed (2026-10-15, on the owner's request).** The owner asked to route every turn. Before
+  this, only work and review turns were routed; room replies never reached the router, and a template role turn (pm, tests,
+  architect, security) was decided on the worker's list, recorded as the worker's work turn, and then run on the role agent's
+  configured model regardless. Now (1) **every agent turn goes through the same router with the same rules**: the agent's own
+  list of models (none: `static`, as before), the same tiers and Balanced level, budget checks, escalation, the P53 fallback
+  chain and the same decision records and "Why this model?". The router chooses only among that agent's models on its own CLI
+  and login (D1); a person's chat keeps the model the person picked. (2) **Each kind of turn is a run kind of its own** that a
+  rule can match (`run.kind`): `room_reply`, `spec`, `tests`, `design`, `security_review`, with a task class and weight
+  (`router.TurnSignals`): a reply is light (cheap first, no escalation counters), the spec (ambiguity 0.7) and the design
+  (`architecture`) are premium under the shipped rules, the tests are work (cheap first, tool calling required, escalating on
+  their own counter), the security review is premium and, like a review, prefers a model other than the worker's. Counters are
+  per kind, so tests turns no longer count as cheap work iterations. (3) **The shipped `reviewer-differs` rule covers the
+  security review**; a stored copy whose condition was never edited is brought up to date at start, an edited one is left
+  alone. (4) **Shown where decisions are shown**: the run's node panel, the task's decisions (labelled by kind), the room's
+  turn list (Model and "Why this model?"), the reply's payload (`model`, `decision_id`); the Routing page's preview and rule
+  editor offer the new kinds. A reply's decisions carry its room turn id as run id, so project export and deletion include
+  them; the evaluation's stratum still comes from the task's own work and review turns. `docs/model-routing.md`, "As built:
+  every turn of an agent is routed". **Not routed:** the team lead's and the recommendation turns (P52), the planner. **Not
+  verified:** with a real CLI (the scripted fake agent stands in).

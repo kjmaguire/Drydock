@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/license"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/scan"
+	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
 // Test hooks for the packaging extension. They live in a _test file so the product has no clock or key setters.
@@ -78,4 +80,19 @@ func (c *Core) TestRecommendPrompt(ctx context.Context, projectID string) (strin
 		return "", err
 	}
 	return c.recommendPrompt(ctx, projectID, w, nil), nil
+}
+
+// TestRouteNode runs the routing middleware of agent_task nodes (routeTurn) on in, in place of a real node: the node it wraps
+// only reports the routed model the middleware put in its context (none: the turn runs the agent's configured model).
+func (c *Core) TestRouteNode(ctx context.Context, in workflow.NodeInput) (pipeline.RoutedModel, bool, error) {
+	econMu.Lock()
+	e := econByCore[c]
+	econMu.Unlock()
+	var got pipeline.RoutedModel
+	var ok bool
+	_, err := e.routeTurn(func(ctx context.Context, _ workflow.NodeInput) (workflow.NodeOutput, error) {
+		got, ok = pipeline.RoutedFrom(ctx)
+		return workflow.NodeOutput{}, nil
+	})(ctx, in)
+	return got, ok, err
 }

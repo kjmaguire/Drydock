@@ -12,7 +12,7 @@ import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { card, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { numOrUndef } from '../shared/budget-pause.tsx';
-import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, sortRules, splitChain, withChain } from './routing.ts';
+import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, RUN_KINDS, sortRules, splitChain, withChain } from './routing.ts';
 
 const editorCss = css({
   display: 'grid',
@@ -64,6 +64,10 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
         <Field label="Priority">{(id) => <input id={id} inputMode="numeric" value={priority} mix={set((v) => (priority = v))} />}</Field>
         <div class="wide">
           <Field label="When (CEL expression)">{(id) => <textarea id={id} rows={2} spellcheck={false} value={when} mix={set((v) => (when = v))} />}</Field>
+          <p mix={faint} data-testid="run-kinds-hint">
+            run.kind is one of {RUN_KINDS.map((k) => `'${k}'`).join(', ')}; for example <code>run.kind == 'room_reply'</code> for an agent&apos;s replies in the
+            room.
+          </p>
         </div>
         <div class="wide">
           <Field label="Then (action as JSON: prefer_tier, require_tier, require_capability, deny, escalate_to, handoff, set_effort, set_team_size, penalty)">

@@ -327,8 +327,11 @@ func Facts(ctx context.Context, db *storage.DB, taskID string) (TaskFacts, error
 	}
 	f.Escalated = esc > 0 || f.TripsStage2 > 0
 
-	// routing decisions and the task's stratum (docs/model-routing.md s7 premium-only classes)
-	dr, err := r.QueryContext(ctx, `SELECT id, COALESCE(json_extract(request,'$.TaskType'),''), COALESCE(json_extract(request,'$.Risk'),0) FROM routing_decisions WHERE task_id=? ORDER BY ts, id`, taskID)
+	// routing decisions and the task's stratum (docs/model-routing.md s7 premium-only classes). The stratum is the class of
+	// the task's own work and review turns: the other turns of the task (room replies, the template roles' spec, tests,
+	// design and security review, P63) carry the class of that turn, not of the task, and do not classify it.
+	dr, err := r.QueryContext(ctx, `SELECT id, COALESCE(json_extract(request,'$.TaskType'),''), COALESCE(json_extract(request,'$.Risk'),0), run_kind IN ('agent_task','review','')
+		FROM routing_decisions WHERE task_id=? ORDER BY ts, id`, taskID)
 	if err != nil {
 		return f, err
 	}
@@ -336,11 +339,15 @@ func Facts(ctx context.Context, db *storage.DB, taskID string) (TaskFacts, error
 	for dr.Next() {
 		var id, tt string
 		var risk int
-		if err := dr.Scan(&id, &tt, &risk); err != nil {
+		var taskTurn bool
+		if err := dr.Scan(&id, &tt, &risk, &taskTurn); err != nil {
 			dr.Close()
 			return f, err
 		}
 		f.Decisions = append(f.Decisions, id)
+		if !taskTurn {
+			continue
+		}
 		if tt == "architecture" || tt == "security_review" || risk != 0 {
 			f.Stratum = "premium_only"
 		} else if tt != "" && f.Stratum != "premium_only" {

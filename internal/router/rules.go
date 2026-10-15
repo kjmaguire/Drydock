@@ -303,7 +303,7 @@ func DefaultRules() []Rule {
 		{ID: "escalate-watchdog", Scope: "workspace", Priority: 60, Enabled: true,
 			When: `task.watchdog_stage2 >= 1`, Then: Action{EscalateTo: providers.TierPremium, Handoff: true}},
 		{ID: "reviewer-differs", Scope: "workspace", Priority: 70, Enabled: true,
-			When: `run.kind == 'review' && candidate.model == task.worker_model`, Then: Action{Penalty: 1.0}},
+			When: `run.kind in ['review','security_review'] && candidate.model == task.worker_model`, Then: Action{Penalty: 1.0}},
 		{ID: "budget-downshift", Scope: "workspace", Priority: 80, Enabled: true,
 			When: `budget.pct_used >= 0.8 && level != 'maximum_quality' && !task.risk`, Then: Action{PreferTier: providers.TierCheap}},
 		{ID: "quota-avoid-low", Scope: "workspace", Priority: 90, Enabled: true,
@@ -311,6 +311,43 @@ func DefaultRules() []Rule {
 		{ID: "security-high-effort", Scope: "workspace", Priority: 90, Enabled: true,
 			When: `task.role == 'Security' && candidate.tier == 'premium'`, Then: Action{SetEffort: EffortHigh}},
 	}
+}
+
+// shippedWhenUpgrades are shipped rules whose condition changed after it was first shipped: the old text, by rule id. A
+// stored copy whose condition is still exactly the old text (the person never edited it) is brought up to date by
+// UpgradeShipped; an edited condition is the person's and is left alone.
+var shippedWhenUpgrades = map[string]string{
+	// P63: the security reviewer's turn is routed too and, like a review, prefers a model other than the worker's
+	"reviewer-differs": `run.kind == 'review' && candidate.model == task.worker_model`,
+}
+
+// UpgradeShipped brings the stored copies of shipped rules up to date where the person did not edit the changed condition
+// (shippedWhenUpgrades). It returns the ids it updated. A rule the person deleted stays deleted.
+func (s *RuleStore) UpgradeShipped(ctx context.Context) ([]string, error) {
+	have, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cur := map[string]Rule{}
+	for _, r := range DefaultRules() {
+		cur[r.ID] = r
+	}
+	var done []string
+	for _, r := range have {
+		old, ok := shippedWhenUpgrades[r.ID]
+		if !ok || r.When != old || cur[r.ID].When == old {
+			continue
+		}
+		r.When = cur[r.ID].When
+		if _, err := s.Put(ctx, r); err != nil {
+			if errors.Is(err, ErrVersionConflict) {
+				continue // the person is editing it right now: theirs wins
+			}
+			return done, err
+		}
+		done = append(done, r.ID)
+	}
+	return done, nil
 }
 
 // ErrVersionConflict is returned by RuleStore.Put when the stored version moved (compare-and-swap).

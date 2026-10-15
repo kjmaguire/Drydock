@@ -148,6 +148,8 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			// Bash call in the default permission mode, and runs it after the human allowed the suggested rule and pressed Retry
 			// (the retry text comes from the UI). It is a TEST DOUBLE, never presented as Claude.
 			{Match: "drydock-e2e chat", Steps: []fakeagent.Step{{Say: "Hello from the scripted chat stand-in (a test double). I read: drydock-e2e chat."}}},
+			// A routed room reply (ui/e2e/round3.spec.ts, decision P63): the reply that carries the marker text.
+			{Match: "drydock-e2e routed reply", Steps: []fakeagent.Step{{Say: "Answered by the scripted room stand-in (a test double)."}}},
 			{Match: "drydock-e2e touch", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "I was not allowed to run that."}}},
 			{Match: "the tool is now allowed", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "Done: chat_probe.txt is there now."}}},
 			// A chat started from Home with a library skill and an MCP server (ui/e2e/home-chat.spec.ts, decision P60): the

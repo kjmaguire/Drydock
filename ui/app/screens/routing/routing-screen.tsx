@@ -15,7 +15,7 @@ import { card, Page, Section } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { money } from '../shared/explain.tsx';
-import { cheapProviders, LEVELS, RUN_KINDS } from './routing.ts';
+import { cheapProviders, LEVELS, runKindOptions } from './routing.ts';
 import { RulesPanel } from './rules-panel.tsx';
 
 const previewForm = css({
@@ -76,7 +76,7 @@ export function PreviewPanel(handle: Handle) {
     >
       <div mix={[card, resultCss]}>
         <div mix={previewForm}>
-          {select('Run kind', () => runKind, (v) => (runKind = v), RUN_KINDS.map((k) => [k, k]), redraw)}
+          {select('Run kind', () => runKind, (v) => (runKind = v), runKindOptions(), redraw)}
           {select('Level', () => level, (v) => (level = v), LEVELS.map((k) => [k, k]), redraw)}
           <Field label="Role">
             {(id) => (
@@ -306,9 +306,11 @@ export function RoutingScreen(_handle: Handle) {
   return () => (
     <Page title="Routing" icon={RouteIcon} subtitle="Model routing">
       <p mix={introCss}>
-        The router chooses the model for an agent&apos;s task work and reviews when its human listed the models it may choose between (Team, Edit); it never picks
-        another agent&apos;s CLI. Other agents, and every room reply, use the configured model. The router also decides for the app&apos;s own model calls. Every turn
-        records a decision so outcomes can be compared; where a decision was static, the explanation says so.
+        The router chooses the model for every turn of an agent whose human listed the models it may choose between (Team, Edit): its task work and
+        reviews, its replies in the room, and the template steps it takes (the spec, the tests written first, the design, the security review). It
+        chooses only among that agent&apos;s own models and never picks another agent&apos;s CLI. Other agents use their configured model. The router also
+        decides for the app&apos;s own model calls. Every turn records a decision so outcomes can be compared; where a decision was static, the explanation
+        says so.
       </p>
       <RulesPanel />
       <PreviewPanel />

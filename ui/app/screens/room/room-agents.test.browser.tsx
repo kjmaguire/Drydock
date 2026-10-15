@@ -88,6 +88,33 @@ describe('RoomAgentsPanel', () => {
     expect(row.textContent).toContain('100/20 tokens');
   });
 
+  it('shows the model a routed reply ran on and opens its "Why this model?"; an older turn says the model was not recorded', async () => {
+    const asked: string[] = [];
+    const base: RoomTurn = { turnId: 'tr1', roomId: 'room_1', triggerId: 'msg_1', agentId: 'a1', round: 1, reason: 'mention', mode: 'auto', status: 'done', contextMessages: 3, contextTokens: 100, inputTokens: 100, outputTokens: 20, costUsd: 0, startedAt: 2, endedAt: 3 };
+    const s = testServices({
+      roomTurns: async () => [
+        { ...base, model: 'sonnet', decisionId: 'dec_r1' },
+        { ...base, turnId: 'tr0', startedAt: 1 },
+      ],
+      routeExplain: async (id: string) => (
+        asked.push(id),
+        { text: '- Turn: room reply; a reply is usually light.', decision: { ID: id, Provider: 'agent:claude', Model: 'sonnet', Effort: '', Reason: '', Confidence: 1, EstCostUSD: null, DecidedBy: 'rules' } } as never
+      ),
+    });
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    const cells = await waitFor(() => {
+      const x = r.$$('[data-testid="room-turn-model"]');
+      if (x.length !== 2) throw new Error('not yet');
+      return x;
+    }, r);
+    expect(cells[0]!.textContent).toContain('sonnet');
+    expect(cells[1]!.textContent).toContain('not recorded');
+    expect(cells[1]!.querySelector('button')).toBeNull();
+    await r.act(() => byText(cells[0]!, 'button', 'Why this model?').click());
+    await waitFor(() => expect(r.container.querySelector('[data-testid="explain"]')!.textContent).toContain('Turn: room reply'), r);
+    expect(asked).toEqual(['dec_r1']);
+  });
+
   it('says when no agent is in the room and none has answered', async () => {
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members.slice(0, 1)} />, testServices({ roomTurns: async () => [] }));
     await waitFor(() => expect(r.container.textContent).toContain('No agent has answered in this room.'), r);

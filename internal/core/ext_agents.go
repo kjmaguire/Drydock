@@ -157,6 +157,10 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 		OnCost: func(ctx context.Context, taskID string, usd float64) {
 			_, _ = c.Tasks.Patch(ctx, taskID, tasks.Update{AddCost: usd})
 		},
+		// a reply is routed like any other turn of the agent (P63): among its own models, with the decision recorded
+		Route: func(ctx context.Context, t responder.ReplyTurn, attempt responder.Attempt) error {
+			return EconomicsRouteReply(ctx, c, t, attempt)
+		},
 		Logf: c.logf,
 	}, responder.Options{})
 	stopResp, err := a.resp.Start(ctx)

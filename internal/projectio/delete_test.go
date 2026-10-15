@@ -75,6 +75,8 @@ func populateMore(t testing.TB, db *sql.DB) {
 	x(`INSERT INTO room_inbox_acks(item_key,acked_by,acked_at) VALUES('watchdog:task_aaaaaaaaaaaa','human:x',?)`, now)
 	x(`INSERT INTO run_leases(run_id,owner,expires_at) VALUES('run_aaaaaaaaaaaa','me',?)`, now)
 	x(`INSERT INTO sessions(id,agent_id,created_at) VALUES('ses_aaaaaaaaaaaa','agt_aaaaaaaaaaaa',?)`, now)
+	// a routed reply in a channel (P63): its decision belongs to no task or workflow run, only to the room turn
+	x(`INSERT INTO routing_decisions(id,ts,run_id,task_id,node_id,run_kind,decided_by,request,decision) VALUES('dec_replyxxxxxxx',?,'turn_aaaaaaaaaaaa','','reply','room_reply','rules',x'7b7d',x'7b7d')`, now)
 }
 
 // Deleting project A leaves nothing of it outside the tables that are kept on purpose, keeps project B whole, keeps the

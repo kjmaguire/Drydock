@@ -46,6 +46,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(page.getByTestId('route-rule').first()).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
+  // every agent turn kind can be previewed, with the signals a real turn of that kind gives the router (P63)
+  await page.getByLabel('Run kind').selectOption('room_reply');
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
 
   // telemetry: off by default, local only, a preview of what an export holds
   await workspaceNav(page, 'nav-settings');
@@ -299,6 +303,37 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await expect(page.getByTestId('budget-pause')).toHaveCount(0);
   await projectNav(page, 'nav-budgets');
   await expect(page.getByTestId('budget').first()).toContainText('10 turns');
+});
+
+test('every turn is routed: a routed agent answers in the room on the router\'s choice, and the room says why', async ({ page }) => {
+  await createProject(page, 'gocalc-routed-reply');
+  await createAgent(page, 'Rita', 'backend');
+  // the human lists the models the router may choose between for Rita
+  await page.getByTestId('agent').filter({ hasText: 'Rita' }).getByRole('button', { name: 'Edit Rita' }).click();
+  const editor = page.getByTestId('agent-editor');
+  await editor.getByLabel("Let the router choose this agent's model for each turn").check();
+  await editor.getByLabel('Routed model 1', { exact: true }).fill('haiku');
+  await editor.getByLabel('Tier of routed model 1', { exact: true }).selectOption('cheap');
+  await editor.getByLabel('Routed model 2', { exact: true }).fill('opus');
+  await editor.getByLabel('Tier of routed model 2', { exact: true }).selectOption('premium');
+  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByTestId('agent-editor')).toHaveCount(0);
+  await projectNav(page, 'nav-project');
+  await page.getByLabel('Agents answer in channels and direct messages').check();
+  await page.getByRole('button', { name: 'Save development settings' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Saved.' }).first()).toBeVisible();
+
+  await roomLink(page, 'general').click();
+  const box = page.getByLabel('Message to #general');
+  await box.fill('@rita drydock-e2e routed reply: what does Subtract do?');
+  await box.press('Control+Enter');
+  await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'Answered by the scripted room stand-in' })).toBeVisible({ timeout: 90_000 });
+  const panel = page.getByTestId('room-agents');
+  await panel.locator('summary').click();
+  const model = panel.getByTestId('room-turn-model').first();
+  await expect(model).toContainText('haiku'); // a reply is light: the router's cheap choice among Rita's own models
+  await model.getByRole('button', { name: 'Why this model?' }).click();
+  await expect(panel.getByTestId('explain')).toContainText('Turn: room reply');
 });
 
 test('room modes, the scheduler and previews report what the core says', async ({ page }) => {

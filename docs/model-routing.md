@@ -190,7 +190,7 @@ Default rules (shipped as editable copies; invariants such as `ctx.ceiling == 'p
   when: task.watchdog_stage2 >= 1
   then: { escalate_to: premium, handoff: true }
 - id: reviewer-differs
-  when: run.kind == 'review' && candidate.model == task.worker_model
+  when: run.kind in ['review','security_review'] && candidate.model == task.worker_model
   then: { penalty: 1.0 }          # prefer a different model; penalty not deny (brief §12: "when possible")
 - id: budget-downshift
   when: budget.pct_used >= 0.8 && level != 'maximum_quality' && !task.risk
@@ -334,8 +334,8 @@ escalates to premium on the fourth (tested end to end). The chosen model and its
 (agent-native routes record EffortApplied=false). An agent with no list, or a turn the router cannot decide, runs the
 configured model and records a static decision whose reason says which. Every decision is in the run explanation.
 
-Not built: a per-project level; routing the room replies and template role turns (pm, tests, architect, security), which keep
-their configured model.
+Not built: a per-project level. (Room replies and the template role turns were routed later, decision P63: see "As built:
+every turn of an agent is routed" below.)
 
 
 ## As built: OpenRouter endpoint uptime (2026-10-15, decision P53 c)
@@ -444,8 +444,72 @@ budget, never up a tier and never undoing an escalation, never leaving the agent
 an overloaded model falls back to the next one in the chain and the work goes on to review; a work error does not fall back;
 the hop limit holds and the turn counts once toward escalation; a used-up budget stops the chain.
 
-**Not built or not verified.** Fallback for room replies and template role turns (they are not routed, s "As built: the
-router in the path of agent turns"); marking a model unavailable for a while after a mid-turn failure (only a Claude
+**Not built or not verified.** (Fallback for room replies and template role turns was built with P63: see the next
+section.) Marking a model unavailable for a while after a mid-turn failure (only a Claude
 `rejected` limit does that); the exact error wording of every CLI version (the patterns follow the Anthropic, OpenAI,
 OpenRouter and Gemini error shapes in s6 and s8; a real CLI's overloaded or not-found output was not produced here, and the
 fake agent's message is the test's).
+
+## As built: every turn of an agent is routed (2026-10-15, decision P63)
+
+On the owner's request ("route every turn"). Before this, only work and review turns went through the router; worse, a
+template role turn (an `agent_task` node with `agent` = `pm`, `tests`, `architect` or `security`) was decided on the
+*worker's* list and recorded as the worker's `agent_task` turn, and then the node ignored the choice and ran the role agent's
+configured model. Room replies never reached the router.
+
+**Which turns, which agent.** The routing middleware (`routeTurn`, `internal/core/turnrouting.go`) now names the agent and
+the kind of every agent turn from its node: the task's worker (`agent_task`), its reviewer (`review`), or the agent the run
+pinned for the role in its input (`TemplateInput.Roles`): `spec` (pm), `tests` (the test writer, or the worker when the team
+has no QA agent), `design` (architect) and `security_review` (security). A role nobody fills (the optional architect) is not
+a turn: nothing is routed or recorded. The planner is not routed (it is not a task turn). A room reply is routed through the
+responder's `Route` hook (`internal/agents/responder`, `EconomicsRouteReply`): one attempt per model, the reply that is posted
+is the last attempt's. Each kind is a `router.RunKind` a rule matches with `run.kind`; the Routing page's preview offers them
+and the rule editor names them.
+
+**The same rules as work turns.** The agent's own list (none: `static`, as before), the same tiers, level (Balanced), budget
+reads, escalation, the fallback chain of section 15 (`runWithFallback`, now shared by nodes and replies) and the same records:
+`routing_decisions` (with the turn's run kind and class), `routing.decided`/`routing.fallback`/`routing.blocked`, "Why this
+model?" (a `- Turn:` line says what kind of turn it was and why the router was told what it was told). A turn never moves to
+another CLI or login (D1); a person's chat keeps the model the person chose (chats are not agent turns and are not routed).
+
+**Signals per kind** (`router.TurnSignals`, one table used by real turns and by the preview):
+
+| Kind | task.type | complexity / ambiguity | With the shipped rules |
+|---|---|---|---|
+| `agent_task` (work) | (none, as before) | | cheap first, escalates per s8 |
+| `review` | (none, as before) | | cheap first, a model other than the worker's preferred |
+| `room_reply` | `room_reply` | 0.2 / 0 | light: cheap first; no escalation counters (each reply stands alone) |
+| `spec` (pm) | `spec` | 0.6 / 0.7 | heavy: ambiguity 0.7 meets `premium-only` |
+| `tests` | `tests` | 0.4 / 0 | work: cheap first, needs tool calling, escalates after cheap tests turns came back |
+| `design` (architect) | `architecture` | 0.7 / 0.5 | `premium-only` |
+| `security_review` | `security_review` | 0.6 / 0 | `premium-only`; like a review, prefers a model other than the worker's |
+
+**Counters per kind.** Escalation counters are counted per kind in the run: a tests, spec or design turn counts the earlier
+cheap turns of its own kind (each came back: tests that did not fail first, a spec that could not be used or was sent back);
+work, review and security review keep the run's work counters; a room reply has none. A tests turn no longer counts as a
+cheap work iteration (it used to, under the worker's kind).
+
+**Shipped rule change.** `reviewer-differs` now reads `run.kind in ['review','security_review'] && candidate.model ==
+task.worker_model`. Rules are seeded once, so a stored copy whose condition is still exactly the old text (the person never
+edited it) is brought up to date at start (`RuleStore.UpgradeShipped`); an edited condition is the person's and stays, and a
+deleted rule is not brought back.
+
+**Where it shows.** The run's node panel ("Why this model?") and the task's decisions list (now labelled by kind: work,
+review, room reply, spec (pm), tests first, design (architect), security review); a reply's message payload carries `model`
+(the model it ran on) and `decision_id`; the room's "Recent agent turns" table has a Model column with "Why this model?"
+(`room.turns` returns the turn's last decision, after any hop). A routed reply's decisions carry the room turn's id as their
+run id (node `reply`), so a project's export and deletion include them. The evaluation's task stratum still comes from the
+task's own work and review turns only (a design turn's `architecture` class does not make a task premium-only).
+
+**Tests.** Core (`turnrouting_roles_test.go`): a routed reply runs on the cheap choice with a `room_reply` decision the reply,
+the room's turns and the explanation point to, and an agent without a list replies static; a reply whose model is overloaded
+falls back to the chain's next model and the fallback's reply is posted; a used-up budget refuses a routed reply before
+anything is routed; each template role is routed on the role agent's list with its kind and class (spec, design and security
+review premium, tests cheap), stays static without a list, and escalates per kind; the Feature template end to end routes the
+pm (premium) and the test writer (cheap) and the run explanation shows it; a used-up budget pauses a routed role turn before
+it runs. Pipeline (`route_roles_test.go`): the pm, architect, test writer and security reviewer run on the routed model, and
+the security review record names it. Router (`turnkinds_test.go`), evals, projectio, UI unit and browser tests, and
+`ui/e2e/round3.spec.ts` (a routed agent answers in the room on haiku and the room's "Why this model?" says it was a room reply).
+
+**Not built or not verified.** The team lead's turns and the recommendation turns (P52) are not routed; real CLIs were not
+run (the fake agent stands in, D1 holds by construction: `agentSource` offers only the agent's own models on its own CLI).
