@@ -493,6 +493,10 @@ describe('Conversation', () => {
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(4, 'tool', 'Read: calc.go', { toolName: 'Read', toolInput: { file_path: 'calc.go' }, turnId: 'turn_2' }) } });
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(5, 'assistant', 'Multiply goes in calc.go next to Add.', { turnId: 'turn_2' }) } });
     await waitFor(() => expect(messages(r).map((m) => m.getAttribute('data-role'))).toEqual(['user', 'assistant', 'user', 'tool', 'assistant']), r);
+    // the person's own messages are a bubble on the right without an avatar; the agent's keep its dot (Crew HQ, P64)
+    expect(messages(r).map((m) => m.getAttribute('data-mine'))).toEqual(['true', null, 'true', null, null]);
+    expect(messages(r)[0]!.querySelector('[data-kind]')).toBeNull();
+    expect(messages(r)[1]!.querySelector('[data-kind="agent"]')).not.toBeNull();
     await waitFor(() => expect($(r, '[data-testid="chat-streaming"]')?.textContent ?? '').not.toContain('in calc.go'), r);
     const tool = $(r, '[data-testid="chat-tool"]') as HTMLDetailsElement;
     expect(tool.querySelector('summary')!.textContent).toContain('Read');

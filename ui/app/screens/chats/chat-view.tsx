@@ -99,8 +99,8 @@ const olderCss = css({ display: 'flex', justifyContent: 'center', padding: `${t.
 const introCss = css({ padding: `${t.s5} ${t.s6} ${t.s2} ${t.s5}`, color: t.textMuted, fontSize: t.textMd, '& strong': { color: t.text } });
 const streamCss = css({
   display: 'grid',
-  gridTemplateColumns: '28px minmax(0, 1fr)',
-  columnGap: '10px',
+  gridTemplateColumns: '32px minmax(0, 1fr)',
+  columnGap: '12px',
   padding: `1px ${t.s6} 1px ${t.s5}`,
   marginTop: '6px',
   '& .md': { color: t.text },
@@ -481,7 +481,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             ) : null}
             {streaming ? (
               <div mix={streamCss} aria-live="off" data-testid="chat-streaming" aria-label={`${adapterLabel(chat.adapter)} is answering`}>
-                <div>{startsGroup(msgs[msgs.length - 1], { role: 'assistant' } as never) ? <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={28} kind="agent" /> : null}</div>
+                <div>{startsGroup(msgs[msgs.length - 1], { role: 'assistant' } as never) ? <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={32} kind="agent" /> : null}</div>
                 <div style={{ minWidth: '0' }}>
                   {streaming.text ? (
                     <Markdown source={streaming.text} />

@@ -3,7 +3,7 @@
 // runs. A send while a turn runs is not possible (the core refuses it too: one turn at a time).
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { MessagesSquare, Paperclip, SendHorizontal, Square, X } from 'lucide';
+import { ArrowUp, MessagesSquare, Paperclip, Square, X } from 'lucide';
 import type { Chat, ChatListItem } from '../../api/chatClient.ts';
 import { query, services } from '../../state/services.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -288,9 +288,9 @@ export function ChatComposer(
                 {stopping ? 'Stopping...' : 'Stop'}
               </button>
             ) : null}
-            <button type="submit" mix={sendCss} disabled={disabled || running || sending || !text.trim()} title={running ? 'Wait for the answer, or stop it' : undefined}>
-              <Icon icon={SendHorizontal} size={15} />
-              {sending ? 'Sending...' : 'Send'}
+            <button type="submit" mix={sendCss} disabled={disabled || running || sending || !text.trim()} title={running ? 'Wait for the answer, or stop it' : sending ? 'Sending...' : 'Send (Ctrl+Enter)'}>
+              <Icon icon={ArrowUp} size={18} />
+              <span class="sr-only">{sending ? 'Sending...' : 'Send'}</span>
             </button>
           </div>
         </div>

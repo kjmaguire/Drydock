@@ -16,14 +16,15 @@ import { adapterLabel, agentWord, toolInputText } from './chats.ts';
 const rowCss = css({
   position: 'relative',
   display: 'grid',
-  gridTemplateColumns: '28px minmax(0, 1fr)',
-  columnGap: '10px',
+  gridTemplateColumns: '32px minmax(0, 1fr)',
+  columnGap: '12px',
   padding: `1px ${t.s6} 1px ${t.s5}`,
   transition: `background-color ${t.fast} ${t.ease}`,
   '&:hover': { background: `color-mix(in srgb, ${t.bgHover} 60%, transparent)` },
 });
 const headCss = css({ marginTop: '12px', paddingTop: '3px' });
 const metaCss = css({ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '0', lineHeight: '20px' });
+const contentCss = css({ minWidth: '0' });
 const nameCss = css({ fontWeight: '600', fontSize: t.textMd, color: t.text });
 const timeCss = css({ fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' });
 const bodyCss = css({
@@ -34,9 +35,25 @@ const bodyCss = css({
   '& p': { margin: '0' },
   '& p + p, & ul, & ol, & pre, & blockquote, & table': { marginTop: '6px' },
 });
-const quietIcon = css({ display: 'grid', placeItems: 'center', width: '28px', height: '20px', color: t.textFaint });
+const quietIcon = css({ display: 'grid', placeItems: 'center', width: '32px', height: '20px', color: t.textFaint });
 const quietBody = css({ color: t.textMuted, fontSize: t.textSm, lineHeight: '20px', overflowWrap: 'anywhere' });
 const errorBody = css({ color: t.danger, fontSize: t.textSm, lineHeight: '20px', overflowWrap: 'anywhere' });
+// the person's own message (Crew HQ, decision P64, as in a room): a dark bubble on the right, the author line above it,
+// no avatar. The bubble's colours sit on the body element, mixed in after bodyCss, so their later layer wins.
+const mineCss = css({ '& .chat-head': { justifyContent: 'flex-end' }, '& .chat-tools': { right: 'auto', left: t.s5 } });
+const mineContent = css({ display: 'grid', justifyItems: 'end' });
+const bubbleCss = css({
+  justifySelf: 'end',
+  maxWidth: 'min(72%, 720px)',
+  marginTop: '3px',
+  padding: '9px 14px',
+  borderRadius: '18px 4px 18px 18px',
+  background: t.accent,
+  color: t.onAccent,
+  '& a': { color: 'inherit', textDecoration: 'underline' },
+  '& code': { background: 'color-mix(in srgb, currentColor 14%, transparent)', color: 'inherit' },
+  '& pre': { background: 'color-mix(in srgb, currentColor 10%, transparent)', color: 'inherit' },
+});
 
 const toolCss = css({
   maxWidth: '760px',
@@ -142,27 +159,29 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
     const showHead = head && (role === 'user' || role === 'assistant' || role === 'tool' || role === 'denied');
     const who = role === 'user' ? 'You' : adapterLabel(adapter);
     const forkable = !!onFork && (role === 'user' || role === 'assistant');
+    const mine = role === 'user';
     return (
       <article
         class={`chat-msg chat-msg-${role}`}
         data-testid="chat-message"
         data-role={role}
         data-seq={String(m.seq)}
+        data-mine={mine ? 'true' : undefined}
         aria-label={quiet ? `${role === 'error' ? 'Error' : 'Note'}: ${m.body.slice(0, 80)}` : `${who}${role === 'tool' ? ' used a tool' : role === 'denied' ? ' was refused a tool' : ''}`}
-        mix={[rowCss, showHead ? headCss : undefined]}
+        mix={[rowCss, showHead ? headCss : undefined, mine ? mineCss : undefined]}
       >
         <div>
           {quiet ? (
             <span mix={quietIcon} aria-hidden="true">
               <Icon icon={role === 'error' ? CircleAlert : Info} size={14} />
             </span>
-          ) : showHead ? (
-            <Avatar id={role === 'user' ? 'you' : adapter} name={who} size={28} kind={role === 'user' ? 'human' : 'agent'} />
+          ) : showHead && !mine ? (
+            <Avatar id={adapter} name={who} size={32} kind="agent" />
           ) : null}
         </div>
-        <div style={{ minWidth: '0' }}>
+        <div mix={[contentCss, mine ? mineContent : undefined]}>
           {showHead ? (
-            <header mix={metaCss}>
+            <header class="chat-head" mix={metaCss}>
               <strong mix={nameCss}>{who}</strong>
               <time mix={timeCss} dateTime={new Date(m.createdAt).toISOString()} title={formatDateTime(m.createdAt)}>
                 {time(m.createdAt)}
@@ -186,13 +205,13 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
           ) : quiet ? (
             <div mix={role === 'error' ? errorBody : quietBody}>{m.body}</div>
           ) : (
-            <div mix={bodyCss}>
+            <div mix={[bodyCss, mine ? bubbleCss : undefined]}>
               <Markdown source={m.body} />
             </div>
           )}
         </div>
         {forkable ? (
-          <div mix={toolsCss}>
+          <div class="chat-tools" mix={toolsCss}>
             <button type="button" mix={[toolBtn, on('click', () => onFork!(m.seq))]} aria-label="Fork from here" title="Fork a new chat from this message">
               <Icon icon={GitFork} size={14} />
             </button>
