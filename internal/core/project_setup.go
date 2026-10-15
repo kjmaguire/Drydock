@@ -27,8 +27,11 @@ type SetupRequest struct {
 
 // SetupRepo picks the project's repository.
 type SetupRepo struct {
-	Kind     string `json:"kind"`     // none | local | github
-	Path     string `json:"path"`     // local
+	Kind string `json:"kind"` // none | local | github
+	Path string `json:"path"` // local
+	// Init makes a Git repository at Path first when there is none (repo.init: the folder when missing, branch main, a first
+	// commit); a folder that is already a repository is used as it is (decision P58).
+	Init     bool   `json:"init"`
 	GitHub   string `json:"github"`   // github: owner/name
 	CloneDir string `json:"cloneDir"` // github: parent folder (default DefaultCloneDir)
 }
@@ -95,6 +98,11 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			return res, errors.New("choose the local repository folder")
 		}
 		repoPath = r.Repo.Path
+		if r.Repo.Init && c.CheckRepoFolder(ctx, repoPath).State != FolderRepository {
+			if _, err := c.InitRepository(ctx, repoPath, c.Human()); err != nil {
+				return res, err
+			}
+		}
 	case "github":
 		cl, err := c.GitHubClone(ctx, r.Repo.GitHub, r.Repo.CloneDir)
 		if err != nil {

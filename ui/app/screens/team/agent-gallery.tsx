@@ -108,7 +108,11 @@ export function PrebuiltDetails(handle: Handle<{ entry: PrebuiltAgent }>) {
             <dt>Agent CLI</dt>
             <dd data-testid="prebuilt-cli">
               {e.preferred.adapter}
-              {pref ? <span mix={faint}>{pref.installed && pref.usable ? ' (installed here)' : ` (${pref.reason || 'not installed here'})`}</span> : null}
+              {pref ? (
+                <span mix={faint}>
+                  {pref.installed && pref.usable ? (pref.wslDistro ? ` (in WSL ${pref.wslDistro})` : ' (installed here)') : ` (${pref.reason || 'not installed here'})`}
+                </span>
+              ) : null}
             </dd>
             <dt>Model</dt>
             <dd data-testid="prebuilt-model">{e.preferred.model || "the CLI's default"}</dd>
@@ -206,10 +210,13 @@ export function AgentGallery(handle: Handle<{ entries: PrebuiltAgent[]; onPick?:
                       {e.summary}
                     </p>
                     <div class="foot">
-                      <span class="cli" title={ok ? `${e.preferred.adapter} is installed` : pref?.reason || `${e.preferred.adapter} is not installed`}>
+                      <span
+                        class="cli"
+                        title={ok ? (pref?.wslDistro ? `${e.preferred.adapter} is installed in WSL ${pref.wslDistro}` : `${e.preferred.adapter} is installed`) : pref?.reason || `${e.preferred.adapter} is not installed`}
+                      >
                         <span class="dot" aria-hidden="true" style={{ background: ok ? t.success : t.warning }} />
                         {cli}
-                        <span class="sr-only">{ok ? ' (installed)' : ' (not installed)'}</span>
+                        <span class="sr-only">{ok ? (pref?.wslDistro ? ` (installed in WSL ${pref.wslDistro})` : ' (installed)') : ' (not installed)'}</span>
                       </span>
                       {e.skills.length > 0 ? (
                         <button

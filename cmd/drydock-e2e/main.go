@@ -50,6 +50,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -319,6 +320,15 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		}
 		return dst, os.WriteFile(dst, b, 0o755)
 	}
+	// TEST DOUBLE of the window's folder dialog (a new project's "Choose folder...", decision P58): it "chooses" a folder that
+	// does not exist yet (a new one on every call), so the wizard offers to make a Git repository there; the desktop app opens
+	// Windows' own dialog
+	var picks atomic.Int64
+	pickFolder := func(_ context.Context, p core.FolderPick) (string, error) {
+		return filepath.Join(root, "picked-folders", fmt.Sprintf("Fresh Project %d", picks.Add(1))), nil
+	}
+	// TEST DOUBLE: one Dev Drive, D:, for the project folder's hint; the desktop app asks Windows (fsutil devdrv query)
+	devDrives := func(context.Context) []runners.Drive { return []runners.Drive{{Letter: "D:", Trusted: true}} }
 	runnerGitHub := runnerstest.NewGitHub(map[string]runnerstest.Repo{
 		"e2e/private-app": {Private: true, Admin: true},
 		"e2e/public-site": {Private: false, Admin: true},
@@ -327,12 +337,14 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	runnerLinux := &runnerstest.Launcher{K: runners.Linux, JobTime: 1500 * time.Millisecond}
 	runnerLinux.Queue("build", "Succeeded")
 	c, err := core.Open(context.Background(), core.Config{
-		PickFile: pickFile,
-		DataDir:  filepath.Join(root, "data"),
-		User:     "e2e",
-		LeaseTTL: 3 * time.Second,
-		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
-		WSL:      wslHost,
+		PickFile:   pickFile,
+		PickFolder: pickFolder,
+		DevDrives:  devDrives,
+		DataDir:    filepath.Join(root, "data"),
+		User:       "e2e",
+		LeaseTTL:   3 * time.Second,
+		Adapters:   map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
+		WSL:        wslHost,
 		ScanTools: scan.Paths{OSV: scan.Tool{Path: self, Args: scantest.Args("osv-scanner", "--sleep-ms=1500")},
 			Opengrep: scan.Tool{Path: self, Args: scantest.Args("opengrep", "--sleep-ms=2500")}},
 		ScanRulesDir: scanRules,

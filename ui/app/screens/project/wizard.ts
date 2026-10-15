@@ -12,6 +12,7 @@ import {
   type SetupAgent,
   type SetupRequest,
 } from '../../api/types.ts';
+import type { FolderHints, RepoFolder } from '../../api/folderClient.ts';
 
 export const STEPS = ['Basics', 'Repository', 'Connectors', 'Team', 'Review'] as const;
 export type Step = (typeof STEPS)[number];
@@ -42,6 +43,10 @@ export interface WizardState {
   brief: string;
   repo: RepoChoice;
   localPath: string;
+  /** What repo.check found at localPath (undefined until it answered; its path says for which text). */
+  localCheck: RepoFolder | undefined;
+  /** Make a Git repository at localPath when the project is created (the folder is not one yet; decision P58). */
+  initRepo: boolean;
   github: GitHubRepo | undefined;
   cloneDir: string;
   mode: ProjectMode;
@@ -59,6 +64,8 @@ export function emptyWizard(): WizardState {
     brief: '',
     repo: 'local',
     localPath: '',
+    localCheck: undefined,
+    initRepo: false,
     github: undefined,
     cloneDir: '',
     mode: 'local_merge',
@@ -97,6 +104,37 @@ export function effectiveMode(s: Pick<WizardState, 'repo' | 'mode'>): ProjectMod
   return s.repo === 'github' && s.mode === 'pr_flow' ? 'pr_flow' : 'local_merge';
 }
 
+/** The check of the folder as it is typed now (a check of an earlier text does not count). */
+export function currentCheck(s: Pick<WizardState, 'localPath' | 'localCheck'>): RepoFolder | undefined {
+  const c = s.localCheck;
+  return c && c.path === s.localPath.trim().replace(/^"+|"+$/g, '').trim() ? c : undefined;
+}
+
+/**
+ * What the folder check says keeps a local folder from being used, in words; undefined when the folder is a repository, the
+ * person asked Drydock to make one there, or the check has not answered (the core checks again when the project is made).
+ */
+export function folderProblem(check: RepoFolder | undefined, initRepo: boolean): string | undefined {
+  if (!check) return undefined;
+  switch (check.state) {
+    case 'repository':
+      return undefined;
+    case 'folder':
+    case 'missing':
+      return initRepo ? undefined : `${check.state === 'missing' ? 'This folder does not exist yet' : 'This folder is not a Git repository'}: tick "Create a Git repository here", or choose another folder.`;
+    default:
+      return check.message;
+  }
+}
+
+/** The hint under the path: the Dev Drive advice on Windows (with the Dev Drives found), else what the field takes. */
+export function folderHint(h: FolderHints | undefined): string {
+  const base = 'A folder with a Git repository, or a new folder: Drydock can make the repository.';
+  if (!h || (!h.windows && h.devDrives.length === 0)) return base;
+  const found = h.devDrives.length ? ` Dev Drive ${h.devDrives.map((d) => d.letter).join(', ')} found.` : ' No Dev Drive was found on this PC.';
+  return `${base} Keeping projects on a Windows Dev Drive is recommended: faster builds, and Microsoft Defender's performance mode.${found}`;
+}
+
 /** What keeps a step from being complete, in words; undefined when it is complete. */
 export function stepProblem(s: WizardState, step: Step): string | undefined {
   switch (step) {
@@ -105,6 +143,10 @@ export function stepProblem(s: WizardState, step: Step): string | undefined {
       return undefined;
     case 'Repository':
       if (s.repo === 'local' && !s.localPath.trim()) return 'Enter the folder of the local repository.';
+      if (s.repo === 'local') {
+        const p = folderProblem(currentCheck(s), s.initRepo);
+        if (p) return p;
+      }
       if (s.repo === 'github' && !s.github) return 'Choose a GitHub repository.';
       if (s.repo === 'github' && !s.cloneDir.trim()) return 'Choose the folder to clone into.';
       if (s.repo === 'none' && !s.name.trim()) return 'A project without a repository needs a name (go back to Basics).';
@@ -145,7 +187,7 @@ export function canOpen(s: WizardState, step: Step): boolean {
 export function buildSetup(s: WizardState): SetupRequest {
   const repo: SetupRequest['repo'] =
     s.repo === 'local'
-      ? { kind: 'local', path: s.localPath.trim() }
+      ? { kind: 'local', path: s.localPath.trim(), ...(s.initRepo ? { init: true } : {}) }
       : s.repo === 'github' && s.github
         ? { kind: 'github', github: s.github.fullName, cloneDir: s.cloneDir.trim() }
         : { kind: 'none' };
@@ -222,11 +264,14 @@ export interface AdapterChoice {
   label: string;
   disabled: boolean;
   reason?: string;
+  /** Not usable on Windows but ready in this WSL distro: the agent runs there (decision P58). */
+  wslDistro?: string;
 }
 
 /**
  * The agent CLIs to offer for a member: a prebuilt agent's preferred CLI and alternatives first, then the others. A CLI
- * that is not installed (or not usable) is offered disabled with the reason, except the one already chosen.
+ * that is not installed (or not usable) is offered disabled with the reason, except the one already chosen. A CLI installed
+ * only inside a WSL distro counts as available and names the distro.
  */
 export function adapterChoices(adapters: readonly AdapterInfo[], entry: PrebuiltAgent | undefined, current: string): AdapterChoice[] {
   const first = entry ? [entry.preferred.adapter, ...entry.alternatives.map((a) => a.adapter)] : [];
@@ -234,11 +279,17 @@ export function adapterChoices(adapters: readonly AdapterInfo[], entry: Prebuilt
   return ids.map((id) => {
     const info = adapters.find((a) => a.id === id);
     const avail = entry?.availability.adapters.find((a) => a.adapter === id);
-    const installed = avail ? avail.installed : !!info?.detection.installed;
-    const usable = avail ? avail.usable : info ? info.detection.installed && info.detection.status !== 'not_installed' && info.detection.status !== 'unsupported_version' : false;
+    const wslDistro = avail ? avail.wslDistro : info && !info.detection.installed ? info.wslDistro : undefined;
+    const installed = avail ? avail.installed : !!info?.detection.installed || !!wslDistro;
+    const usable = avail
+      ? avail.usable
+      : info
+        ? (info.detection.installed && info.detection.status !== 'not_installed' && info.detection.status !== 'unsupported_version') || !!wslDistro
+        : false;
     const reason = !installed ? avail?.reason || 'not installed on this machine' : !usable ? avail?.reason || info?.detection.status : undefined;
     const tag = entry && id === entry.preferred.adapter ? ' (recommended)' : entry && first.includes(id) ? ' (alternative)' : '';
-    return { id, label: `${id}${tag}${reason ? ` - ${reason}` : ''}`, disabled: !usable && id !== current, reason };
+    const note = wslDistro && usable ? ` - in WSL ${wslDistro}` : reason ? ` - ${reason}` : '';
+    return { id, label: `${id}${tag}${note}`, disabled: !usable && id !== current, reason, ...(wslDistro && usable ? { wslDistro } : {}) };
   });
 }
 

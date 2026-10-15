@@ -84,7 +84,7 @@ func CheckWSL(ctx context.Context, m *manifests.Manifest, d wsl.Distro, o Option
 	if pr := m.Auth.Probe; pr != nil {
 		authArgs = pr.Argv
 	}
-	in, err := o.WSL.Probe(ctx, d.Name, m.Binaries.WSL[0], m.Detect.Version.Argv, authArgs, true)
+	in, err := o.WSL.Probe(ctx, d.Name, m.Binaries.WSL[0], m.Detect.Version.Argv, authArgs, !o.probeCached)
 	f := &WSLFacts{Distro: d.Name, Default: d.Default, WSLVer: d.Version, WSL2: in.WSL2, Kernel: in.Kernel, Interop: in.Interop, NetMode: in.NetMode,
 		MountRoot: in.Paths.MountRoot, Home: in.Home, Setsid: in.Setsid, Git: in.Git}
 	if f.NetMode == "" && o.Home != "" {
@@ -281,6 +281,44 @@ func (s *Service) DetectWSL(ctx context.Context) []Connection {
 	wg.Wait()
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
+}
+
+// ReadyWSL lists the Connections of adapter id's installs inside WSL distros where an agent can be started (decision P58):
+// the CLI was found there, signed in (or its sign-in unknown), a version Drydock accepts, every gate acknowledged. A
+// Connection degraded only by the distro's setup (ReasonWSL: Windows interop off, an unknown mount root) counts too: the CLI
+// is there and signed in, and the start itself refuses with the fix when it needs what is missing. The WSL default distro
+// comes first, then the others in wsl.exe's order. With fresh false a probe made in the last few minutes is reused (an
+// agent's start asks this on every turn whose CLI is not installed on Windows); fresh true probes every distro again. None
+// without WSL.
+func (s *Service) ReadyWSL(ctx context.Context, id string, fresh bool) []Connection {
+	o := s.options()
+	m, ok := s.Registry.Set.Get(id)
+	if !ok || !hasWSL(m) || o.WSL == nil {
+		return nil
+	}
+	if _, err := o.WSL.Path(); err != nil {
+		return nil
+	}
+	ds, _, err := o.WSL.Distros(ctx)
+	if err != nil {
+		return nil
+	}
+	o.probeCached = !fresh
+	var first, rest []Connection
+	for _, d := range ds {
+		if !wsl.UserDistro(d.Name) {
+			continue
+		}
+		c := CheckWSL(ctx, m, d, o)
+		switch {
+		case !c.Usable && !(c.Status == agents.StatusDegraded && c.Reason == ReasonWSL):
+		case d.Default:
+			first = append(first, c)
+		default:
+			rest = append(rest, c)
+		}
+	}
+	return append(first, rest...)
 }
 
 // CheckKey computes one Connection by its key (native or WSL).

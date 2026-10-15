@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,8 +48,10 @@ const settingRunMode = "runmode:"
 type ProjectRunMode struct {
 	RunMode   string `json:"runMode"` // native | wsl
 	WSLDistro string `json:"wslDistro,omitempty"`
-	By        string `json:"by,omitempty"`
+	By        string `json:"by,omitempty"` // the person who set it, or "drydock" for a new project's default (decision P58)
 	At        int64  `json:"at,omitempty"` // unix milliseconds
+	// Why says why Drydock chose it (By "drydock"): the CLI is not usable on Windows and is ready in the distro.
+	Why string `json:"why,omitempty"`
 }
 
 func (c *Core) projectRunMode(ctx context.Context, projectID string) ProjectRunMode {
@@ -82,11 +83,7 @@ func (c *Core) SetProjectRunMode(ctx context.Context, projectID, mode, distro, b
 		return ProjectRunMode{}, err
 	}
 	p := ProjectRunMode{RunMode: m, WSLDistro: d, By: by, At: time.Now().UnixMilli()}
-	b, _ := json.Marshal(p)
-	if err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingRunMode+projectID, string(b))
-		return err
-	}); err != nil {
+	if err := c.storeRunMode(ctx, projectID, p); err != nil {
 		return ProjectRunMode{}, err
 	}
 	c.publish(ctx, "project.run_mode", projectID, map[string]any{"runMode": p.RunMode, "wslDistro": p.WSLDistro, "by": by})
@@ -167,13 +164,13 @@ func (c *Core) effectiveRunMode(ctx context.Context, a Agent) (string, string) {
 }
 
 // agentRunMode is Runtime.RunMode: an unknown agent runs natively. A chat's turn says its own run mode in its spec (a chat
-// chosen to run in a WSL distro), so this is not asked for it.
-func (c *Core) agentRunMode(ctx context.Context, agentID string) (string, string) {
+// chosen to run in a WSL distro), so this is not asked for it. why is set when Drydock chose the place (runPlacement).
+func (c *Core) agentRunMode(ctx context.Context, agentID string) (string, string, string) {
 	a, err := c.agent(ctx, agentID)
 	if err != nil {
-		return agents.RunModeNative, ""
+		return agents.RunModeNative, "", ""
 	}
-	return c.effectiveRunMode(ctx, a)
+	return c.runPlacement(ctx, a)
 }
 
 // projectHasWSLAgents names the project's agents that run in WSL (their own choice or the project's default).
@@ -212,9 +209,22 @@ func (c *Core) wslInfo(ctx context.Context, distro string) (wsl.Info, error) {
 // call with the distro's own git (wsl.GitRunner), so its worktrees, made next to it inside the distro, link with Linux paths
 // that git inside the distro can follow (decision P41).
 func (c *Core) openRepo(ctx context.Context, path string) (*git.Repo, error) {
+	run, err := c.repoRunner(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if run == nil {
+		return git.Open(ctx, path)
+	}
+	return git.OpenIn(ctx, path, run)
+}
+
+// repoRunner is the git a repository at path is driven by: nil (this machine's git) for a Windows folder, the distro's own
+// git for one inside a WSL distro (decision P41).
+func (c *Core) repoRunner(ctx context.Context, path string) (git.Runner, error) {
 	distro, _, ok := wsl.ParseUNC(path)
 	if !ok {
-		return git.Open(ctx, path)
+		return nil, nil
 	}
 	if c.wsl == nil {
 		return nil, fmt.Errorf("the repository is inside the WSL distro %s, and WSL is not available here", distro)
@@ -233,7 +243,7 @@ func (c *Core) openRepo(ctx context.Context, path string) (*git.Repo, error) {
 	if in.Paths.MountRoot == "" {
 		return nil, fmt.Errorf("the WSL distro %s did not say where it mounts Windows drives", distro)
 	}
-	return git.OpenIn(ctx, path, wsl.GitRunner{Exe: exe, Paths: in.Paths})
+	return wsl.GitRunner{Exe: exe, Paths: in.Paths}, nil
 }
 
 // WSLDistro is one distro as the agent forms list it.

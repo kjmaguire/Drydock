@@ -200,7 +200,14 @@ func Open(ctx context.Context, path string) (*Repo, error) {
 
 // Init creates a repository with an initial commit of whatever is in dir (used by tests and "new project").
 func Init(ctx context.Context, dir, branch string) (*Repo, error) {
-	r := &Repo{Root: dir, AuthorName: "Drydock", AuthorEmail: "drydock@localhost"}
+	return InitIn(ctx, dir, branch, nil)
+}
+
+// InitIn is Init with every git call run through runner (nil: this machine's git): a repository made inside a WSL distro is
+// made by the distro's git (decision P41). The first commit holds what is in dir (what a .gitignore there leaves out stays
+// out); an empty dir gets an empty commit, so the branch exists and worktrees can be made from it.
+func InitIn(ctx context.Context, dir, branch string, runner Runner) (*Repo, error) {
+	r := &Repo{Root: dir, AuthorName: "Drydock", AuthorEmail: "drydock@localhost", runner: runner}
 	if _, err := r.gitUnguarded(ctx, dir, nil, "init", "-q", "-b", branch); err != nil {
 		return nil, err
 	}
@@ -214,6 +221,35 @@ func Init(ctx context.Context, dir, branch string) (*Repo, error) {
 		return nil, err
 	}
 	return r, nil
+}
+
+// WorkTreeOf is the top folder of the Git work tree that holds dir ("" when dir is in none), asked through Drydock's git
+// chokepoint (runner nil: this machine's git). dir must exist. Any other failure (a folder inside a .git folder, a repository
+// git refuses as another user's) is an error.
+func WorkTreeOf(ctx context.Context, dir string, runner Runner) (string, error) {
+	r := &Repo{Root: dir, AuthorName: "Drydock", AuthorEmail: "drydock@localhost", runner: runner}
+	out, err := r.gitUnguarded(ctx, dir, nil, "rev-parse", "--show-toplevel")
+	if err != nil {
+		var ge *gitError
+		if errors.As(err, &ge) && strings.Contains(ge.stderr, "not a git repository") {
+			return "", nil
+		}
+		return "", err
+	}
+	top := strings.TrimSpace(out)
+	if runner == nil && top != "" {
+		top = filepath.Clean(top)
+	}
+	return top, nil
+}
+
+// TrackedFiles counts the files in the index of the main working tree (after Init: the files of the first commit).
+func (r *Repo) TrackedFiles(ctx context.Context) (int, error) {
+	out, err := r.git(ctx, r.Root, nil, "ls-files", "-z")
+	if err != nil {
+		return 0, err
+	}
+	return strings.Count(out, "\x00"), nil
 }
 
 func (r *Repo) env() []string {

@@ -42,6 +42,15 @@ describe('Where agents run (project settings)', () => {
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('sandbox'), r);
   });
 
+  it('says when Drydock chose the default from the Connections, and why (P58)', async () => {
+    const r = show({
+      wslDistros: async () => ({ available: true, distros: [{ name: 'Ubuntu-26.04', default: true, probed: true, interop: true, claude: '/home/k/.local/bin/claude' }] }),
+      projectRunMode: async () => ({ runMode: 'wsl', wslDistro: 'Ubuntu-26.04', by: 'drydock', why: 'Claude Code is not usable on Windows; it is ready in the WSL distro Ubuntu-26.04' }),
+    });
+    await waitFor(() => expect(r.$('[data-testid="run-mode-auto"]')!.textContent).toContain('Drydock chose this when the project was made: Claude Code is not usable on Windows'), r);
+    expect(byLabel<HTMLSelectElement>(r.container, 'Agents run').value).toBe('wsl:Ubuntu-26.04');
+  });
+
   it('is not shown where WSL has no distro', async () => {
     const r = show({ wslDistros: async () => ({ available: true, distros: [] }), projectRunMode: async () => ({ runMode: 'native' }) });
     await new Promise((res) => setTimeout(res, 50));

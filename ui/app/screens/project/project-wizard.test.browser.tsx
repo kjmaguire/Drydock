@@ -99,6 +99,62 @@ describe('New project wizard', () => {
     expect(r.$('[data-testid="github-unavailable"]')!.textContent).toContain('Choose Local folder or Later instead.');
   });
 
+  it('Repository: Choose folder... opens the folder dialog, says what is there, and makes the repository when asked (P58)', async () => {
+    const folder = 'D:\\Projects\\DryDock - Test Project';
+    const sent: SetupRequest[] = [];
+    const checked: string[] = [];
+    const r = mount(
+      <ProjectCreateScreen />,
+      services(lic(), {
+        fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] }),
+        fsPickFolder: async () => folder,
+        repoCheck: async (path) => (
+          checked.push(path), { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet. Drydock can make it with a new Git repository (branch main).' }
+        ),
+        projectSetup: async (req) => (sent.push(req), { project, agents: [], warnings: [] }),
+      }),
+    );
+    type(byLabel(r.container, 'Project name'), 'Test Project');
+    await next(r);
+    await waitFor(() => expect(r.$('[data-testid="folder-hint"]')!.textContent).toContain('Dev Drive D: found.'), r);
+    expect(r.$('[data-testid="folder-hint"]')!.textContent).toContain('Windows Dev Drive is recommended');
+    await r.act(() => (r.$('[data-testid="folder-choose"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(byLabel(r.container, 'Repository path').value).toBe(folder), r);
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('missing'), r);
+    expect(checked).toEqual([folder]);
+    expect(btn(r, 'Next').disabled).toBe(true);
+    expect(r.$('.problem')!.textContent).toContain('Create a Git repository here');
+    await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+    expect(btn(r, 'Next').disabled).toBe(false);
+    await next(r);
+    await next(r);
+    await waitFor(() => expect(members(r)).toHaveLength(3), r);
+    await r.act(() => btn(r, 'Remove all').click());
+    await next(r);
+    expect(r.$('[data-testid="review-init"]')!.textContent).toContain('new Git repository here');
+    await r.act(() => btn(r, 'Create project').click());
+    await waitFor(() => expect(sent).toHaveLength(1), r);
+    expect(sent[0]!.repo).toEqual({ kind: 'local', path: folder, init: true });
+  });
+
+  it('Repository: a folder inside another repository is refused with the reason; no dialog without one (P58)', async () => {
+    const r = mount(
+      <ProjectCreateScreen />,
+      services(lic(), {
+        fsFolderHints: async () => ({ canPick: false, windows: false, devDrives: [] }),
+        repoCheck: async (path) => ({ path, state: 'inside', root: '/src/mono', entries: 0, canInit: false, message: `${path} is inside the Git repository at /src/mono.` }),
+      }),
+    );
+    await next(r);
+    type(byLabel(r.container, 'Repository path'), '/src/mono/app');
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('inside'), r);
+    expect(r.$('.problem')!.textContent).toContain('inside the Git repository at /src/mono');
+    expect(btn(r, 'Next').disabled).toBe(true);
+    expect(r.$('[data-testid="folder-init"]')).toBeNull();
+    expect(r.$('[data-testid="folder-choose"]')).toBeNull();
+    expect(r.$('[data-testid="folder-hint"]')!.textContent).not.toContain('Dev Drive');
+  });
+
   it('Connectors: library servers and built-in ones not yet in the library, with the sign-in note', async () => {
     const r = mount(
       <ProjectCreateScreen />,

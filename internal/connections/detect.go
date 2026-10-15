@@ -113,6 +113,10 @@ type Options struct {
 	WSL *wsl.Host
 	// Home is the Windows user's home, where .wslconfig says the WSL networking mode (default: the user's home folder).
 	Home string
+
+	// probeCached lets CheckWSL take a recent probe of the distro from the probe cache instead of probing again (ReadyWSL on
+	// an agent's start path); the Connections page always probes.
+	probeCached bool
 }
 
 // compileVersion is the manifest's version regex.

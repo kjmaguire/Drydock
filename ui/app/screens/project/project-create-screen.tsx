@@ -19,7 +19,8 @@ import { t } from '../../ui/tokens.ts';
 import { MODES } from './project.ts';
 import { RepoPicker } from './repo-picker.tsx';
 import { TeamBuilder } from './team-builder.tsx';
-import { authNote, buildSetup, canOpen, cloneTarget, effectiveMode, emptyWizard, STEPS, stepProblem, suggestTeam, type RepoChoice, type Step } from './wizard.ts';
+import { FolderField } from './folder-field.tsx';
+import { authNote, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, STEPS, stepProblem, suggestTeam, type RepoChoice, type Step } from './wizard.ts';
 
 const wrapCss = css({ display: 'grid', gap: t.s5, width: '100%', maxWidth: '880px', margin: `${t.s4} auto ${t.s8}` });
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, lineHeight: '1.6', maxWidth: '640px' });
@@ -241,9 +242,14 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
           unavailableHint="Choose Local folder or Later instead."
         />
       ) : st.repo === 'local' ? (
-        <Field label="Repository path" hint="A folder with a Git repository that already has a commit on a branch.">
-          {(id) => <input id={id} value={st.localPath} placeholder="C:\src\my-repo" spellcheck={false} autocomplete="off" mix={on('input', (e) => ((st.localPath = e.currentTarget.value), update()))} />}
-        </Field>
+        <FolderField
+          value={st.localPath}
+          onChange={(v) => ((st.localPath = v), update())}
+          check={st.localCheck}
+          onCheck={(c) => ((st.localCheck = c), update())}
+          initRepo={st.initRepo}
+          onInitRepo={(v) => ((st.initRepo = v), update())}
+        />
       ) : (
         <Notice tone="info" testId="repo-later">
           You can attach a repository later in Project settings; until then agents can plan and talk but not change code.
@@ -335,7 +341,10 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
           GitHub <strong>{st.github.fullName}</strong>, cloned to <code>{cloneTarget(st.cloneDir, st.github)}</code>
         </span>
       ) : st.repo === 'local' ? (
-        <code>{st.localPath.trim()}</code>
+        <span>
+          <code>{st.localPath.trim()}</code>
+          {st.initRepo && currentCheck(st)?.state !== 'repository' ? <span data-testid="review-init"> (Drydock makes a new Git repository here, branch main)</span> : null}
+        </span>
       ) : (
         <span>None yet (attach one later in Project settings)</span>
       );
