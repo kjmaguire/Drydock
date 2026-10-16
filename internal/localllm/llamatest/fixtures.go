@@ -30,6 +30,7 @@ type ReleaseFixture struct {
 	mu        sync.Mutex
 	releases  []map[string]any
 	files     map[string][]byte // download path -> bytes
+	hold      chan struct{}     // when set, downloads wait for it to close (HoldDownloads)
 	Downloads atomic.Int64
 }
 
@@ -67,10 +68,18 @@ func StartReleases(repo string) *ReleaseFixture {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		b, ok := f.files[r.URL.Path]
+		hold := f.hold
 		f.mu.Unlock()
 		if !ok {
 			http.NotFound(w, r)
 			return
+		}
+		if hold != nil {
+			select {
+			case <-hold:
+			case <-r.Context().Done():
+				return
+			}
 		}
 		f.Downloads.Add(1)
 		w.Header().Set("Content-Type", "application/zip")
@@ -79,6 +88,27 @@ func StartReleases(repo string) *ReleaseFixture {
 	f.Server = httptest.NewServer(mux)
 	f.Transport = rewrite{to: f.Server.URL, hosts: []string{"https://github.com", "https://api.github.com"}}
 	return f
+}
+
+// HoldDownloads makes every archive download wait until the returned function is called (or the request is given up),
+// so a test can look at an install while it is running: a 6 KB archive from an in-process server installs in a few
+// milliseconds otherwise, before the call that started it has answered.
+func (f *ReleaseFixture) HoldDownloads() (release func()) {
+	ch := make(chan struct{})
+	f.mu.Lock()
+	f.hold = ch
+	f.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			f.mu.Lock()
+			if f.hold == ch {
+				f.hold = nil
+			}
+			f.mu.Unlock()
+			close(ch)
+		})
+	}
 }
 
 // Add lists a release (newest first: add the newest last, the fixture sorts by the order added, last first).

@@ -85,7 +85,9 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 		t.Fatalf("sources: %+v", v.Sources)
 	}
 
-	// install: a background job the page follows
+	// install: a background job the page follows (the archive is held back until the job has been seen running: from
+	// the in-process fixture a 6 KB archive otherwise installs before the call answers, as it did on the Windows runner)
+	release := rig.releases.HoldDownloads()
 	v = localCall(a, "local.install", map[string]any{"backend": "vulkan"})
 	if v.Runtime.Job == nil || v.Runtime.Job.State != "running" || v.Settings.Backend != "vulkan" {
 		t.Fatalf("install started: %+v", v.Runtime.Job)
@@ -93,6 +95,7 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 	if err := a.callErr("local.install", map[string]any{}); err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatal(err)
 	}
+	release()
 	a.waitFor("the install to finish", func() bool {
 		v = localCall(a, "local.get", nil)
 		return v.Runtime.Job != nil && v.Runtime.Job.State != "running"
