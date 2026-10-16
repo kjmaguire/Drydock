@@ -76,6 +76,11 @@ func TestInvalidManifestsAreRejectedWithReasons(t *testing.T) {
 		{"bad install shell", baseACP + "install: [{shell: zsh, command: x}]\n", "install[0].shell"},
 		{"install without command", baseACP + "install: [{shell: cmd}]\n", "install[0].command"},
 		{"two documents", baseACP + "---\n" + baseACP, "more than one YAML document"},
+		{"repo_config outside the folder", baseACP + "repo_config: ['../.gemini/settings.json']\n", "repo_config[0]"},
+		{"repo_config absolute", baseACP + "repo_config: ['/etc/gemini/settings.json']\n", "repo_config[0]"},
+		{"repo_config with a backslash", baseACP + "repo_config: ['.gemini\\settings.json']\n", "repo_config[0]"},
+		{"repo_config empty", baseACP + "repo_config: ['']\n", "repo_config[0]"},
+		{"repo_config the folder itself", baseACP + "repo_config: ['./']\n", "repo_config[0]"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

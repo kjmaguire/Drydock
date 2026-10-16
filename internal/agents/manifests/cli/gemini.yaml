@@ -24,6 +24,11 @@ transports:
     parser: gemini_stream_json
     interrupt: unverified
     unverified: true
+# Gemini CLI refuses to start without a person at a terminal in a folder it does not trust (read in its 0.64.0 source, not run
+# here), and in a folder it trusts it loads the folder's own settings, hooks, MCP servers, commands, extensions, skills, policies
+# and .env files. GEMINI_CLI_TRUST_WORKSPACE / --skip-trust therefore stay, and Drydock starts it only in a worktree that has
+# none of these files, or whose files a person read and trusted (agents.ScanRepoConfig, audit 2026-10-16 M3).
+repo_config: [.gemini/settings.json, .gemini/.env, .env, .gemini/commands/, .gemini/extensions/, .gemini/skills/, .gemini/agents/, .gemini/policies/, .agents/skills/]
 usage: {normalizer: gemini_result_stats, acp_normalizer: gemini_meta_quota, quota: static_config}
 capabilities_declared: {streaming: true, model_selection: true, effort_control: false, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: false, headless: true, permission_modes: true, image_input: true, tool_call_visibility: true}
 instructions: {primary: GEMINI.md, template: "@AGENTS.md"}

@@ -274,7 +274,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions,
-		RunMode: c.agentRunMode, Redact: c.Scanner.Redact}
+		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,

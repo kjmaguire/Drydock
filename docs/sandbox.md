@@ -31,7 +31,12 @@ and volumes are removed.
    Drydock talks to it only through the `docker` command (`DRYDOCK_CONTAINER_CLI` names another compatible client; Podman is
    untested).
 2. Commit a definition at `.drydock/sandbox.json` on the project's **default branch** (section 3). Drydock reads it from that
-   branch only, never from a task worktree, so a change an agent makes to it takes effect only after a human merged it.
+   branch only, never from a task worktree, so a change an agent makes to it takes effect only after a human merged it. A
+   merged change still does not run until you confirm it: switching the sandbox on records the definition you saw, and a task
+   whose definition differs is held in Needs you with the list of what changed (network, allowed hosts, image, setup commands,
+   services). Confirm it in the project's sandbox settings (`sandbox.trust`, which takes the digest of the definition you were
+   shown and is recorded in the audit log) or switch the sandbox off and on again, then answer to try again. A sandbox that was
+   switched on before this existed is asked once.
    Project settings > Sandbox suggests a starting point from the project's files.
 3. Project settings > Sandbox: check that the engine and the definition are found, press **Test the sandbox** (it starts the
    sandbox once without the setup commands, runs a command and removes it), then switch on **Run the agents' commands in a

@@ -263,6 +263,181 @@ func (c Config) Hash() string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// Fingerprint is the whole SHA-256 of a definition, for deciding whether the definition a person confirmed is the one that is
+// about to run; Hash is short, enough to tell sandboxes apart.
+func (c Config) Fingerprint() string {
+	b, _ := json.Marshal(c)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// Diff lists, in plain words, what is different in next from prev: what a person needs to read before they confirm a changed
+// definition. A nil prev is a definition that was never confirmed, and next is described instead. Environment values and service
+// environments are named, not shown. Every line is cut short; an empty result means the two are the same.
+func Diff(prev *Config, next Config) []string {
+	var out []string
+	add := func(format string, args ...any) {
+		l := fmt.Sprintf(format, args...)
+		if len(l) > 200 {
+			l = l[:200] + "..."
+		}
+		out = append(out, l)
+	}
+	if prev == nil {
+		add("no definition has been confirmed yet; this one has image %q, network %q", next.Image, next.Network)
+		if len(next.AllowHosts) > 0 {
+			add("allowHosts: %s", strings.Join(next.AllowHosts, ", "))
+		}
+		for _, c := range next.Setup {
+			add("setup command: %s", c)
+		}
+		if names := serviceNames(next.Services); len(names) > 0 {
+			add("services: %s", strings.Join(names, ", "))
+		}
+		if len(next.Volumes) > 0 {
+			add("volumes: %s", strings.Join(next.Volumes, ", "))
+		}
+		return out
+	}
+	p := *prev
+	if p.Image != next.Image {
+		add("image %q -> %q", p.Image, next.Image)
+	}
+	if p.Network != next.Network {
+		add("network %q -> %q", p.Network, next.Network)
+	}
+	if p.NoDefaultHosts != next.NoDefaultHosts {
+		add("noDefaultHosts %t -> %t", p.NoDefaultHosts, next.NoDefaultHosts)
+	}
+	if added, removed := setDiff(p.AllowHosts, next.AllowHosts); len(added)+len(removed) > 0 {
+		if len(added) > 0 {
+			add("allowHosts added: %s", strings.Join(added, ", "))
+		}
+		if len(removed) > 0 {
+			add("allowHosts removed: %s", strings.Join(removed, ", "))
+		}
+	}
+	if added, removed := setDiff(p.Setup, next.Setup); len(added)+len(removed) > 0 {
+		for _, c := range added {
+			add("setup command added: %s", c)
+		}
+		for _, c := range removed {
+			add("setup command removed: %s", c)
+		}
+	}
+	if added, removed := setDiff(mapKeys(p.Env), mapKeys(next.Env)); len(added)+len(removed) > 0 {
+		if len(added) > 0 {
+			add("env added: %s", strings.Join(added, ", "))
+		}
+		if len(removed) > 0 {
+			add("env removed: %s", strings.Join(removed, ", "))
+		}
+	}
+	for _, k := range mapKeys(next.Env) {
+		if old, ok := p.Env[k]; ok && old != next.Env[k] {
+			add("env %s changed", k)
+		}
+	}
+	if added, removed := setDiff(serviceNames(p.Services), serviceNames(next.Services)); len(added)+len(removed) > 0 {
+		if len(added) > 0 {
+			add("services added: %s", strings.Join(added, ", "))
+		}
+		if len(removed) > 0 {
+			add("services removed: %s", strings.Join(removed, ", "))
+		}
+	}
+	for _, name := range serviceNames(next.Services) {
+		o, ok := p.Services[name]
+		if !ok {
+			continue
+		}
+		n := next.Services[name]
+		if o.Image != n.Image {
+			add("service %s image %q -> %q", name, o.Image, n.Image)
+		}
+		if strings.Join(o.Command, "\x00") != strings.Join(n.Command, "\x00") {
+			add("service %s command %q -> %q", name, strings.Join(o.Command, " "), strings.Join(n.Command, " "))
+		}
+		if !sameMap(o.Env, n.Env) {
+			add("service %s env changed", name)
+		}
+	}
+	if added, removed := setDiff(p.Volumes, next.Volumes); len(added)+len(removed) > 0 {
+		if len(added) > 0 {
+			add("volumes added: %s", strings.Join(added, ", "))
+		}
+		if len(removed) > 0 {
+			add("volumes removed: %s", strings.Join(removed, ", "))
+		}
+	}
+	if p.User != next.User {
+		add("user %q -> %q", p.User, next.User)
+	}
+	if p.CPUs != next.CPUs {
+		add("cpus %g -> %g", p.CPUs, next.CPUs)
+	}
+	if p.Memory != next.Memory {
+		add("memory %q -> %q", p.Memory, next.Memory)
+	}
+	if p.Pids != next.Pids {
+		add("pids %d -> %d", p.Pids, next.Pids)
+	}
+	return out
+}
+
+// setDiff returns what is in next and not in prev, and what is in prev and not in next, each sorted.
+func setDiff(prev, next []string) (added, removed []string) {
+	have := map[string]bool{}
+	for _, x := range prev {
+		have[x] = true
+	}
+	now := map[string]bool{}
+	for _, x := range next {
+		now[x] = true
+		if !have[x] {
+			added = append(added, x)
+		}
+	}
+	for _, x := range prev {
+		if !now[x] {
+			removed = append(removed, x)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+	return added, removed
+}
+
+func mapKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func serviceNames(m map[string]Service) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sameMap(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
+}
+
 // Starter suggests a definition for a project that has none yet, from what the worktree contains. It is a suggestion shown
 // to the human, never used without being committed.
 func Starter(hasFile func(name string) bool) Config {

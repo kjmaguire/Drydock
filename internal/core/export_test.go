@@ -6,6 +6,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/sandbox"
 	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -104,4 +105,11 @@ func (c *Core) TestRouteNode(ctx context.Context, in workflow.NodeInput) (pipeli
 		return workflow.NodeOutput{}, nil
 	})(ctx, in)
 	return got, ok, err
+}
+
+// TestSandboxDefinition is what a task's sandbox would be started from: the definition on the default branch, if the person
+// confirmed it.
+func (c *Core) TestSandboxDefinition(ctx context.Context, projectID string) (sandbox.Config, error) {
+	cfg, _, err := c.trustedSandboxDefinition(ctx, projectID)
+	return cfg, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -66,6 +67,16 @@ func TestRegistryBuildsEveryManifest(t *testing.T) {
 	}
 	if env := all["gemini"].(*acp.Adapter).Config().Env; len(env) != 1 || env[0] != "GEMINI_CLI_TRUST_WORKSPACE=true" {
 		t.Errorf("gemini env %v", env)
+	}
+	// the CLIs that act on configuration in their working folder say which files (audit 2026-10-16, M3)
+	for id, want := range map[string]string{"gemini": ".gemini/settings.json", "opencode": "opencode.json", "codex": ".codex/", "cline": ".clinerules/hooks/"} {
+		rc, ok := all[id].(agents.RepoConfigReader)
+		if !ok || !slices.Contains(rc.RepoConfigPaths(), want) {
+			t.Errorf("%s does not list %s: %v", id, want, ok)
+		}
+	}
+	if paths := all["gemini"].(agents.RepoConfigReader).RepoConfigPaths(); !slices.Contains(paths, ".env") || !slices.Contains(paths, ".gemini/policies/") {
+		t.Errorf("gemini paths %v", paths)
 	}
 	if env := all["goose"].(*acp.Adapter).Config().Env; len(env) != 1 || env[0] != "GOOSE_MODE=approve" {
 		t.Errorf("goose env %v", env)

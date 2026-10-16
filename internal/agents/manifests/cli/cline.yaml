@@ -22,6 +22,8 @@ transports:
   headless: none
 # Cline's ACP agent stores session/new.mcpServers but, at 3.0.70, nothing in apps/cli reads them back: the servers are most
 # likely ignored. The gateway is therefore unverified and off until the human allows it (mcp.try.set, decision P20).
+# Cline runs the hooks it finds in .clinerules/hooks/ (from its documentation; not run here).
+repo_config: [.clinerules/hooks/, .cline/]
 mcp: {inject: acp_session_new, transports: [stdio], unverified: true}
 # loadSession: true and image prompts come from initialize (observed); no usage or cost is reported over ACP (its usage events
 # are dropped by apps/cli/src/acp/session-updates.ts); modes are plan and act; model is a session config option; no effort option.

@@ -40,6 +40,72 @@ type SandboxSwitch struct {
 	Enabled bool   `json:"enabled"`
 	By      string `json:"by,omitempty"`
 	At      int64  `json:"at,omitempty"` // unix milliseconds
+	// Trusted is the definition the person saw when they switched the sandbox on or confirmed a change. The definition on the
+	// default branch is a file in the repository, and a merge can change it (the network, the allowed hosts, the image, the
+	// setup commands): a definition that differs from this one does not run until the person confirms it (audit 2026-10-16, M7).
+	Trusted *sandbox.Config `json:"trusted,omitempty"`
+}
+
+// SandboxUnconfirmedError is the refusal to run a definition the person has not confirmed.
+type SandboxUnconfirmedError struct {
+	Branch  string
+	Changes []string
+}
+
+func (e *SandboxUnconfirmedError) Error() string {
+	return fmt.Sprintf("the sandbox definition on %s (%s) is not the one you confirmed: %s. Confirm it in the project's sandbox settings (or switch the sandbox off and on again), then answer to try again",
+		e.Branch, sandbox.ConfigPath, strings.Join(e.Changes, "; "))
+}
+
+// trustedSandboxDefinition reads the definition on the default branch and returns it only when it is the one the person
+// confirmed.
+func (c *Core) trustedSandboxDefinition(ctx context.Context, projectID string) (sandbox.Config, string, error) {
+	cfg, branch, _, err := c.SandboxConfig(ctx, projectID)
+	if err != nil {
+		return cfg, branch, err
+	}
+	sw := c.sandboxSwitch(ctx, projectID)
+	if sw.Trusted != nil && sw.Trusted.Fingerprint() == cfg.Fingerprint() {
+		return cfg, branch, nil
+	}
+	return cfg, branch, &SandboxUnconfirmedError{Branch: branch, Changes: sandbox.Diff(sw.Trusted, cfg)}
+}
+
+// TrustSandbox records that the person confirmed the definition whose digest is fingerprint, which must be the one on the default
+// branch now: they confirm what they were shown, not whatever is there when the call arrives. Only a human may.
+func (c *Core) TrustSandbox(ctx context.Context, projectID, fingerprint, by string) (SandboxSwitch, error) {
+	if !strings.HasPrefix(by, "human:") || len(by) == len("human:") {
+		return SandboxSwitch{}, errors.New("sandbox: only a human may confirm a project's sandbox definition")
+	}
+	sw := c.sandboxSwitch(ctx, projectID)
+	if !sw.Enabled {
+		return SandboxSwitch{}, errors.New("the sandbox is off for this project: switching it on confirms the definition")
+	}
+	cfg, _, _, err := c.SandboxConfig(ctx, projectID)
+	if err != nil {
+		return SandboxSwitch{}, err
+	}
+	if fingerprint == "" || cfg.Fingerprint() != fingerprint {
+		return SandboxSwitch{}, errors.New("the definition changed since you looked at it: read it again before you confirm")
+	}
+	changes := sandbox.Diff(sw.Trusted, cfg)
+	sw.Trusted = &cfg
+	if err := c.saveSandboxSwitch(ctx, projectID, sw); err != nil {
+		return SandboxSwitch{}, err
+	}
+	if err := auditAppend(ctx, c, "sandbox.trust", projectID, map[string]any{"fingerprint": fingerprint, "changes": changes}); err != nil {
+		c.logf("audit sandbox.trust: %v", err)
+	}
+	c.publish(ctx, "sandbox.trusted", projectID, map[string]any{"by": by})
+	return sw, nil
+}
+
+func (c *Core) saveSandboxSwitch(ctx context.Context, projectID string, s SandboxSwitch) error {
+	b, _ := json.Marshal(s)
+	return c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingSandbox+projectID, string(b))
+		return err
+	})
 }
 
 func (c *Core) sandboxSwitch(ctx context.Context, projectID string) SandboxSwitch {
@@ -67,11 +133,14 @@ func (c *Core) SetSandbox(ctx context.Context, projectID string, on bool, by str
 		return SandboxSwitch{}, fmt.Errorf("the sandbox needs this project's agents to run on Windows, and %s run in WSL: run them natively first (their settings, or the project's run mode)", strings.Join(names, ", "))
 	}
 	s := SandboxSwitch{Enabled: on, By: by, At: time.Now().UnixMilli()}
-	b, _ := json.Marshal(s)
-	if err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingSandbox+projectID, string(b))
-		return err
-	}); err != nil {
+	if on {
+		// switching on is the person looking at the definition and accepting it; a definition that is not there yet, or does
+		// not parse, is confirmed when it is
+		if cfg, _, _, err := c.SandboxConfig(ctx, projectID); err == nil {
+			s.Trusted = &cfg
+		}
+	}
+	if err := c.saveSandboxSwitch(ctx, projectID, s); err != nil {
 		return SandboxSwitch{}, err
 	}
 	c.publish(ctx, "sandbox.switched", projectID, map[string]any{"enabled": on, "by": by})
@@ -123,7 +192,7 @@ func (c *Core) sandboxBox(ctx context.Context, t tasks.Task) (*sandbox.Box, erro
 	if t.Worktree == "" {
 		return nil, errors.New("the task has no worktree yet")
 	}
-	cfg, _, _, err := c.SandboxConfig(ctx, t.ProjectID)
+	cfg, _, err := c.trustedSandboxDefinition(ctx, t.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -271,6 +340,11 @@ type SandboxStatus struct {
 	Starter    string          `json:"starter,omitempty"` // a definition to start from, when the project has none
 	EgressErr  string          `json:"egressError,omitempty"`
 	ConfigPath string          `json:"configPath"`
+	// Fingerprint is the digest of the definition shown; sandbox.trust confirms the definition with that digest. Trusted is true
+	// when the sandbox is on and this is the definition the person confirmed; otherwise Changes says what differs.
+	Fingerprint string   `json:"fingerprint,omitempty"`
+	Trusted     bool     `json:"trusted"`
+	Changes     []string `json:"changes,omitempty"`
 }
 
 func (c *Core) sandboxStatus(ctx context.Context, projectID string) (SandboxStatus, error) {
@@ -295,6 +369,13 @@ func (c *Core) sandboxStatus(ctx context.Context, projectID string) (SandboxStat
 		st.Starter = c.sandboxStarter(ctx, projectID, branch)
 	default:
 		st.Config, st.Hosts = &cfg, cfg.Hosts()
+		st.Fingerprint = cfg.Fingerprint()
+		if st.Switch.Enabled {
+			st.Trusted = st.Switch.Trusted != nil && st.Switch.Trusted.Fingerprint() == st.Fingerprint
+			if !st.Trusted {
+				st.Changes = sandbox.Diff(st.Switch.Trusted, cfg)
+			}
+		}
 		if cfg.Network == sandbox.NetworkAllowlist && st.Engine != nil {
 			if _, err := sandbox.EgressBinary(st.Engine.Arch); err != nil {
 				st.EgressErr = err.Error()
@@ -351,7 +432,11 @@ func (c *Core) testSandbox(ctx context.Context, projectID string) ([]SandboxTest
 	if !step("definition", func() (string, error) {
 		var err error
 		var branch string
-		cfg, branch, _, err = c.SandboxConfig(ctx, projectID)
+		if c.sandboxSwitch(ctx, projectID).Enabled {
+			cfg, branch, err = c.trustedSandboxDefinition(ctx, projectID) // a definition that is in use must be one the person confirmed
+		} else {
+			cfg, branch, _, err = c.SandboxConfig(ctx, projectID) // before switching on, this is how a person tries a definition
+		}
 		return sandbox.ConfigPath + " on " + branch, err
 	}) {
 		return steps, nil
@@ -403,6 +488,12 @@ func startSandbox(ctx context.Context, c *Core) (map[string]Method, func(), erro
 			Enabled   bool   `json:"enabled"`
 		}) (any, error) {
 			return c.SetSandbox(ctx, p.ProjectID, p.Enabled, c.Human())
+		}),
+		"sandbox.trust": bind(func(ctx context.Context, p struct {
+			ProjectID   string `json:"projectId"`
+			Fingerprint string `json:"fingerprint"`
+		}) (any, error) {
+			return c.TrustSandbox(ctx, p.ProjectID, p.Fingerprint, c.Human())
 		}),
 		"sandbox.test": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`

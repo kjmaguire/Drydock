@@ -19,6 +19,9 @@ transports:
   # client_meta: OpenCode 2 sends sub-agent updates on their own notification instead of the session's stream (ext.go).
   acp: {argv: [opencode, acp], env: {OPENCODE_CONFIG_CONTENT: '{"compaction":{"auto":true}}'}, client_meta: {opencode/child-session-updates: true}}
   headless: none
+# OpenCode merges opencode.json(c) and .opencode/ (agents, commands, plugins that run as code, tools, MCP servers) of the working
+# folder over the user's configuration (from its documentation; not run here): not started where they exist until trusted.
+repo_config: [opencode.json, opencode.jsonc, .opencode/]
 provider_config: {writer: opencode_inline_json, env: OPENCODE_CONFIG_CONTENT, template: {provider: {"<id>": {npm: "@ai-sdk/openai-compatible", name: "<name>", options: {baseURL: "<url>"}, models: {}}}}}
 mcp: {inject: acp_session_new, transports: [stdio, http, sse]}
 capabilities_declared: {streaming: true, model_selection: true, effort_control: true, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: true, headless: true, permission_modes: true, image_input: true, tool_call_visibility: true}

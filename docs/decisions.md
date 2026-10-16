@@ -549,3 +549,8 @@ Open, owner action:
   cannot leave a license judged by a date years away; `license.resetClock` puts a record that is ahead of a correct clock right,
   only then, and writes the old and new times to the audit log. **Secrets (M17):** `scrub.Text` masks every copy of a finding's
   value, not only the one the scanner located.
+  **Agent CLIs and the folder they work in (M3, M7):** a manifest lists the files its CLI acts on (`repo_config`), and the runtime
+  does not start the CLI in a worktree that has any until a person trusted their fingerprint (`project.agentConfig`,
+  `project.trustAgentConfig`, docs/security.md s3 item 2b); the sandbox definition on the default branch runs only when it is the one
+  the person confirmed when they switched the sandbox on, and a merged change is listed and confirmed with `sandbox.trust`
+  (docs/sandbox.md).

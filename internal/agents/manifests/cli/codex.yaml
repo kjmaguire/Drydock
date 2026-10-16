@@ -23,6 +23,8 @@ transports:
     parser: codex_threadevent
     interrupt: unverified
     unverified: true
+# Codex reads .codex/ (config.toml, hooks) from the project when the project is trusted (from its documentation; not run here).
+repo_config: [.codex/]
 usage: {normalizer: codex_turn_usage, quota: {source: side_channel, argv: [app-server, --listen, "stdio://"], method: account/rateLimits/read}}
 provider_config: {writer: codex_toml, file: .codex/config.toml, rule: wire_api_responses_only}
 mcp: {inject: acp_session_new, transports: [stdio, http]}

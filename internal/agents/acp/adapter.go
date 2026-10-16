@@ -56,6 +56,9 @@ type Config struct {
 	StartTimeout time.Duration
 	// Logger receives connection diagnostics; nil discards them (they can contain protocol payloads).
 	Logger *slog.Logger
+	// RepoConfig lists the paths in the working folder that the CLI reads and acts on (the manifest's repo_config); the runtime
+	// does not start it in a folder that has any of them until a person trusted exactly those files (agents.RepoConfigReader).
+	RepoConfig []string
 }
 
 // Adapter implements agents.Adapter for one ACP agent.
@@ -68,6 +71,10 @@ type Adapter struct {
 }
 
 var _ agents.Adapter = (*Adapter)(nil)
+var _ agents.RepoConfigReader = (*Adapter)(nil)
+
+// RepoConfigPaths implements agents.RepoConfigReader.
+func (a *Adapter) RepoConfigPaths() []string { return a.cfg.RepoConfig }
 
 // New returns an adapter for cfg.
 func New(cfg Config) *Adapter {

@@ -45,6 +45,11 @@ type Manifest struct {
 	Instructions map[string]any `yaml:"instructions"`
 	Terms        *Terms         `yaml:"terms"`
 	Gate         *Gate          `yaml:"gate"`
+	// RepoConfig lists paths in the folder the CLI works in (relative, "/" separators, a trailing "/" for a folder) that it reads
+	// and acts on: hooks, MCP servers, plugins, custom commands, environment files. Drydock does not start the CLI in a folder that
+	// has any of them until a person has trusted exactly those files (agents.ScanRepoConfig, audit 2026-10-16 M3). Instructions
+	// (GEMINI.md, AGENTS.md) are text the model reads, not configuration, and are not listed.
+	RepoConfig []string `yaml:"repo_config"`
 }
 
 // Meta identifies the CLI.
@@ -366,6 +371,12 @@ func (m *Manifest) Validate() error {
 	}
 	for _, r := range m.Requires {
 		p = append(p, checkReq("requires", r)...)
+	}
+	for i, rc := range m.RepoConfig {
+		clean := path.Clean(strings.TrimSuffix(rc, "/"))
+		if rc == "" || strings.HasPrefix(rc, "/") || strings.Contains(rc, `\`) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+			add("repo_config[%d] %q must be a relative path with / separators inside the working folder", i, rc)
+		}
 	}
 	for i, in := range m.Install {
 		if strings.TrimSpace(in.Command) == "" {

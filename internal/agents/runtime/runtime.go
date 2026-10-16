@@ -49,6 +49,11 @@ type Runtime struct {
 	// is whole in one event, never split across two that are each clean (redact.Stream). Other event data is redacted by the
 	// event bus (events.SQLBus.SetRedactor). Nil: text is published as it arrives.
 	Redact func(string) string
+	// RepoConfigTrusted, if set, says whether a person trusted the repository configuration with this fingerprint
+	// (agents.ScanRepoConfig) for this project and adapter. An adapter that lists the files its CLI acts on
+	// (agents.RepoConfigReader) is not started in a folder that has any of them unless what is there is trusted (audit
+	// 2026-10-16, M3). Nil: nothing is trusted.
+	RepoConfigTrusted func(ctx context.Context, projectID, adapter, fingerprint string) bool
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -101,6 +106,30 @@ type Managed struct {
 	recorded   chan struct{} // closed when watchExit has recorded the end (the run row and agent.stopped)
 }
 
+// checkRepoConfig refuses to start an adapter whose CLI would act on configuration that nobody trusted in the folder it is about
+// to work in. A folder that cannot be looked at is refused too: not knowing is not the same as nothing being there.
+func (r *Runtime) checkRepoConfig(ctx context.Context, ad agents.Adapter, cfg Config) error {
+	rc, ok := ad.(agents.RepoConfigReader)
+	if !ok || cfg.Spec.Cwd == "" {
+		return nil
+	}
+	paths := rc.RepoConfigPaths()
+	if len(paths) == 0 {
+		return nil
+	}
+	files, fp, err := agents.ScanRepoConfig(cfg.Spec.Cwd, paths)
+	if err != nil {
+		return fmt.Errorf("could not look for configuration that comes with the repository in %s: %w", cfg.Spec.Cwd, err)
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	if r.RepoConfigTrusted != nil && fp != "" && r.RepoConfigTrusted(ctx, cfg.ProjectID, cfg.Adapter, fp) {
+		return nil
+	}
+	return &agents.RepoConfigError{Agent: cfg.Adapter, Files: files, Fingerprint: fp}
+}
+
 // releaseMCPRun ends the session's gateway run (idempotent).
 func (m *Managed) releaseMCPRun() {
 	m.mcpOnce.Do(func() {
@@ -121,6 +150,15 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
 		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
+		return nil, err
+	}
+	if err := r.checkRepoConfig(ctx, ad, cfg); err != nil {
+		data := map[string]any{"error": err.Error(), "phase": "start"}
+		var rc *agents.RepoConfigError
+		if errors.As(err, &rc) {
+			data["repoConfig"] = map[string]any{"adapter": rc.Agent, "files": rc.Files, "fingerprint": rc.Fingerprint}
+		}
+		r.publish(ctx, "agent.failed", cfg, "", data)
 		return nil, err
 	}
 	runID := ids.New("arun")
