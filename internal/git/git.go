@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safefs"
 )
 
 // Errors.
@@ -43,6 +45,32 @@ type ConflictError struct {
 
 func (e *ConflictError) Error() string {
 	return fmt.Sprintf("git: merge conflict in %d file(s): %s", len(e.Files), strings.Join(e.Files, ", "))
+}
+
+// StaleBaseError reports a merge that was not made because the target branch moved after the branch was last brought up to date
+// with it: what was checked and approved is not what would land (docs/parallel-work.md). Nothing was changed.
+type StaleBaseError struct {
+	Target string
+	Behind int
+}
+
+func (e *StaleBaseError) Error() string {
+	return fmt.Sprintf("git: %s has %d commit(s) the branch does not have yet", e.Target, e.Behind)
+}
+
+// ChangedSinceReviewError reports a merge that was not made because the branch is no longer at the commit that was reviewed.
+// Nothing was changed.
+type ChangedSinceReviewError struct{ Reviewed, Now string }
+
+func (e *ChangedSinceReviewError) Error() string {
+	return fmt.Sprintf("git: the branch is at %s, not at the reviewed commit %s", shortSHA(e.Now), shortSHA(e.Reviewed))
+}
+
+func shortSHA(s string) string {
+	if len(s) > 12 {
+		return s[:12]
+	}
+	return s
 }
 
 // Repo is a git repository (its main working tree) used as the parent of task worktrees.
@@ -699,7 +727,40 @@ const (
 // Merge brings the task branch into target in the main working tree (which must be clean and is switched to target).
 // On conflict the merge is aborted and a *ConflictError is returned. A human action.
 func (r *Repo) Merge(ctx context.Context, w Worktree, target string, strategy MergeStrategy, msg string) (string, error) {
+	return r.MergeChecked(ctx, w, target, strategy, msg, MergeCheck{})
+}
+
+// MergeCheck is what must still hold once the merge lock is taken: two tasks approved in the same second both passed the checks
+// that were made before the lock, and the second would otherwise land on a base the first had moved (audit 2026-10-16, M14).
+type MergeCheck struct {
+	// Head, when set, is the commit the branch must be at: the one that was reviewed and approved.
+	Head string
+	// UpToDate requires the branch to contain every commit of the target.
+	UpToDate bool
+}
+
+// MergeChecked is Merge that first checks, under the merge lock, that the branch is still what was reviewed and that the target
+// has not moved past it. A failed check returns *ChangedSinceReviewError or *StaleBaseError and changes nothing.
+func (r *Repo) MergeChecked(ctx context.Context, w Worktree, target string, strategy MergeStrategy, msg string, chk MergeCheck) (string, error) {
 	defer r.lockMain()()
+	if chk.Head != "" {
+		now, err := r.Head(ctx, w)
+		if err != nil {
+			return "", err
+		}
+		if now != chk.Head {
+			return "", &ChangedSinceReviewError{Reviewed: chk.Head, Now: now}
+		}
+	}
+	if chk.UpToDate {
+		behind, err := r.Behind(ctx, w, target)
+		if err != nil {
+			return "", fmt.Errorf("compare with %s: %w", target, err)
+		}
+		if behind > 0 {
+			return "", &StaleBaseError{Target: target, Behind: behind}
+		}
+	}
 	st, err := r.Status(ctx, Worktree{Path: r.Root})
 	if err != nil {
 		return "", err
@@ -732,10 +793,15 @@ func (r *Repo) Merge(ctx context.Context, w Worktree, target string, strategy Me
 		_, mergeErr = r.git(ctx, r.Root, nil, "merge", "--no-ff", "-m", msg, w.Branch)
 	}
 	if mergeErr != nil {
-		files := r.conflictFiles(ctx, r.Root)
+		// The main working tree was clean when the merge started, so whatever the merge left is put back, whether it stopped on
+		// a conflict or for another reason: a half-finished merge there would refuse every merge after it (audit 2026-10-16, L10).
+		files, ferr := r.conflictFiles(ctx, r.Root)
+		_, _ = r.git(ctx, r.Root, nil, "merge", "--abort")
+		_, _ = r.git(ctx, r.Root, nil, "reset", "-q", "--merge")
+		if ferr != nil {
+			return "", fmt.Errorf("%w (and the files in conflict could not be listed: %v)", mergeErr, ferr)
+		}
 		if len(files) > 0 {
-			_, _ = r.git(ctx, r.Root, nil, "merge", "--abort")
-			_, _ = r.git(ctx, r.Root, nil, "reset", "-q", "--merge")
 			return "", &ConflictError{Files: files, Output: mergeErr.Error()}
 		}
 		return "", mergeErr
@@ -744,23 +810,30 @@ func (r *Repo) Merge(ctx context.Context, w Worktree, target string, strategy Me
 	return strings.TrimSpace(out), err
 }
 
-func (r *Repo) conflictFiles(ctx context.Context, dir string) []string {
-	out, _ := r.git(ctx, dir, nil, "diff", "--name-only", "--diff-filter=U")
+// conflictFiles lists the files in conflict in dir; an error means the list is unknown, not that it is empty.
+func (r *Repo) conflictFiles(ctx context.Context, dir string) ([]string, error) {
+	out, err := r.git(ctx, dir, nil, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil, err
+	}
 	var f []string
 	for _, l := range strings.Split(out, "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			f = append(f, l)
 		}
 	}
-	return f
+	return f, nil
 }
 
 // Rebase rebases the worktree's branch onto onto. On conflict it aborts and returns *ConflictError.
 func (r *Repo) Rebase(ctx context.Context, w Worktree, onto string) error {
 	_, err := r.git(ctx, w.Path, nil, "rebase", onto)
 	if err != nil {
-		files := r.conflictFiles(ctx, w.Path)
+		files, ferr := r.conflictFiles(ctx, w.Path)
 		_, _ = r.git(ctx, w.Path, nil, "rebase", "--abort")
+		if ferr != nil {
+			return fmt.Errorf("%w (and the files in conflict could not be listed: %v)", err, ferr)
+		}
 		if len(files) > 0 {
 			return &ConflictError{Files: files, Output: err.Error()}
 		}
@@ -877,10 +950,20 @@ func (r *Repo) RestoreSafePoint(ctx context.Context, w Worktree, ref string, und
 		}
 	}
 	// remove tracked/untracked files that are not part of the safe point
-	curOut, _ := r.git(ctx, w.Path, nil, "ls-files", "-c", "-o", "--exclude-standard")
+	curOut, err := r.git(ctx, w.Path, nil, "ls-files", "-c", "-o", "--exclude-standard")
+	if err != nil {
+		return undo, fmt.Errorf("list the files of the worktree: %w", err)
+	}
 	for _, f := range strings.Split(curOut, "\n") {
 		if f = strings.TrimSpace(f); f != "" && !want[f] {
-			_ = os.Remove(filepath.Join(w.Path, filepath.FromSlash(f)))
+			if strings.HasSuffix(f, "/") {
+				continue // an untracked repository inside the worktree: git lists the folder, and its history is not Drydock's to delete
+			}
+			// The worktree is the agent's: a folder in it may have been swapped for a link to somewhere else since git listed the
+			// file, and a plain remove would then delete that other file. Removal is confined to the worktree (audit 2026-10-16, L10).
+			if err := safefs.Remove(w.Path, f); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return undo, fmt.Errorf("remove %s: %w", f, err)
+			}
 		}
 	}
 	if _, err := r.git(ctx, w.Path, nil, "restore", "--source="+ref, "--staged", "--worktree", ":/"); err != nil {
@@ -1019,7 +1102,11 @@ func (r *Repo) MergeIn(ctx context.Context, w Worktree, ref string) (changed boo
 	}
 	_, mergeErr := r.git(ctx, w.Path, nil, "merge", "--no-edit", "-m", "Bring "+ref+" into "+w.Branch, ref)
 	if mergeErr != nil {
-		if files := r.conflictFiles(ctx, w.Path); len(files) > 0 {
+		files, ferr := r.conflictFiles(ctx, w.Path)
+		if ferr != nil {
+			return false, nil, fmt.Errorf("%w (and the files in conflict could not be listed: %v)", mergeErr, ferr)
+		}
+		if len(files) > 0 {
 			return true, files, nil
 		}
 		return false, nil, mergeErr
@@ -1039,13 +1126,23 @@ func (r *Repo) AbortMerge(ctx context.Context, w Worktree) error {
 	return err
 }
 
-// UnresolvedConflicts lists the files of an in-progress merge that still contain conflict markers.
-func (r *Repo) UnresolvedConflicts(ctx context.Context, w Worktree) []string {
+// UnresolvedConflicts lists the files of an in-progress merge that still contain conflict markers. An error means the list of
+// files in conflict could not be had: that is not the same as none being left.
+func (r *Repo) UnresolvedConflicts(ctx context.Context, w Worktree) ([]string, error) {
+	files, err := r.conflictFiles(ctx, w.Path)
+	if err != nil {
+		return nil, err
+	}
 	var left []string
-	for _, f := range r.conflictFiles(ctx, w.Path) {
-		b, err := os.ReadFile(filepath.Join(w.Path, filepath.FromSlash(f)))
-		if err != nil {
+	for _, f := range files {
+		// the worktree is the agent's: a link in it must not make this read a file outside it
+		b, err := safefs.ReadFile(w.Path, f, maxConflictFileBytes)
+		if errors.Is(err, fs.ErrNotExist) {
 			continue // a file the agent deleted counts as resolved
+		}
+		if err != nil {
+			left = append(left, f) // a file that cannot be read cannot be shown to be resolved
+			continue
 		}
 		for _, l := range strings.Split(string(b), "\n") {
 			if strings.HasPrefix(l, "<<<<<<< ") || strings.HasPrefix(l, ">>>>>>> ") || l == "=======" {
@@ -1054,8 +1151,11 @@ func (r *Repo) UnresolvedConflicts(ctx context.Context, w Worktree) []string {
 			}
 		}
 	}
-	return left
+	return left, nil
 }
+
+// maxConflictFileBytes bounds how much of a file in conflict is read to look for markers.
+const maxConflictFileBytes = 32 << 20
 
 var mergeLocks sync.Map // repository root -> *sync.Mutex
 
@@ -1068,9 +1168,11 @@ func (r *Repo) lockMain() func() {
 	return mu.Unlock
 }
 
-// PatchID identifies the worktree's own committed change independent of where it sits in history (git patch-id --stable of the
+// PatchID identifies the worktree's own committed change independent of where it sits in history (git patch-id --verbatim of the
 // diff against the merge base with ref). Bringing the base branch into the branch cleanly moves the merge base but not this value;
-// resolving a conflict, or any edit, changes it. It is how "the same change that was approved" is recognized.
+// resolving a conflict, or any edit, changes it, and so does a change of whitespace alone: --stable would ignore it, and in Python,
+// YAML or a Makefile moving a line by an indent is a different program (audit 2026-10-16, L15). It is how "the same change that
+// was approved" is recognized.
 func (r *Repo) PatchID(ctx context.Context, w Worktree, ref string) (string, error) {
 	mb, err := r.MergeBase(ctx, w, ref)
 	if err != nil {
@@ -1083,9 +1185,24 @@ func (r *Repo) PatchID(ctx context.Context, w Worktree, ref string) (string, err
 	if strings.TrimSpace(diff) == "" {
 		return "empty", nil
 	}
+	id, err := r.patchID(ctx, w.Path, diff, true)
+	if err != nil {
+		// a git older than 2.38 has no --verbatim: its stable id plus a digest of the changed lines as written
+		return r.patchID(ctx, w.Path, diff, false)
+	}
+	return id, nil
+}
+
+// patchID runs git patch-id over diff. Without verbatim it uses --stable, which strips whitespace, and adds a digest of the
+// changed lines so that a whitespace-only difference still changes the id.
+func (r *Repo) patchID(ctx context.Context, dir, diff string, verbatim bool) (string, error) {
 	ctx2, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	cmd, err := r.command(ctx2, w.Path, nil, []string{"patch-id", "--stable"})
+	mode := "--stable"
+	if verbatim {
+		mode = "--verbatim"
+	}
+	cmd, err := r.command(ctx2, dir, nil, []string{"patch-id", mode})
 	if err != nil {
 		return "", fmt.Errorf("git patch-id: %w", err)
 	}
@@ -1099,5 +1216,15 @@ func (r *Repo) PatchID(ctx context.Context, w Worktree, ref string) (string, err
 	if len(f) == 0 {
 		return "", errors.New("git patch-id printed nothing")
 	}
-	return f[0], nil
+	if verbatim {
+		return f[0], nil
+	}
+	h := sha256.New()
+	for _, l := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(l, "+") || strings.HasPrefix(l, "-") {
+			h.Write([]byte(l))
+			h.Write([]byte{'\n'})
+		}
+	}
+	return f[0] + "+" + hex.EncodeToString(h.Sum(nil))[:16], nil
 }

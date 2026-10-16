@@ -71,7 +71,11 @@ func Sync(d Deps, project func(ctx context.Context, projectID string) (ProjectIn
 
 		// a merge left in progress by an earlier pass that the agent did not finish
 		if repo.MergeInProgress(ctx, w) {
-			if left := repo.UnresolvedConflicts(ctx, w); len(left) > 0 {
+			left, err := repo.UnresolvedConflicts(ctx, w)
+			if err != nil {
+				return workflow.NodeOutput{}, fmt.Errorf("list the conflicts with %s: %w", target, err)
+			}
+			if len(left) > 0 {
 				if err := reopen("conflicts with " + target + " are not resolved"); err != nil {
 					return workflow.NodeOutput{}, err
 				}

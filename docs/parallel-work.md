@@ -18,9 +18,12 @@ another's work, and what happens when two of them need the same code?
    the task's branch and the checks run again. Two changes that each passed alone can still break each other; this is where that
    is found, on the task's own branch, and not on main.
 4. **Serialized, stale-proof merge.** Merges into one repository run one at a time, and a merge is refused when the branch is
-   behind its target (the task goes back to sync).
-5. **Human approval.** Every task ends at a human approval. The approval is remembered as evidence (by patch id), so a change the
-   human approved that merges unchanged after a clean sync is not asked about again; any change to the change asks again.
+   behind its target (the task goes back to sync). The check is made again once the merge lock is held (`Repo.MergeChecked`):
+   two tasks approved in the same second both pass a check made before the lock, and only one can land on the base as it was.
+5. **Human approval.** Every task ends at a human approval. The approval is for the commit the request showed and the reviewer
+   saw: a branch that has moved since goes back to the checks and the person is asked again. It is remembered as evidence (by patch
+   id, whitespace included), so a change the human approved that merges unchanged after a clean sync is not asked about again;
+   any change to the change asks again.
 
 Layers 1, 3, 4 and 5 are guarantees. Layer 2 is an optimization that saves work and tokens and puts the order in front of the
 human; if it misses a collision (see 3) layers 3 and 4 still catch it.

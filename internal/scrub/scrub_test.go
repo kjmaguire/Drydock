@@ -87,3 +87,23 @@ func TestSensitiveName(t *testing.T) {
 		}
 	}
 }
+
+// A secret that appears twice on one line was masked once: both findings resolved to the first copy (audit 2026-10-16, M17).
+func TestTextMasksEveryCopyOfARepeatedSecret(t *testing.T) {
+	for name, in := range map[string]string{
+		"same line":   "first=" + fakeToken + " second=" + fakeToken + " third=" + fakeToken,
+		"json string": `{"a":"` + fakeToken + `","b":"` + fakeToken + `"}`,
+		"spread":      "x " + fakeToken + "\nthen\n" + fakeToken + " and " + fakeToken + "\n",
+	} {
+		out, fs, err := Text(context.Background(), scanner(t), in)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if strings.Contains(out, fakeToken) || strings.Contains(out, fakeToken[:20]) {
+			t.Errorf("%s: a copy of the secret is left: %q", name, out)
+		}
+		if len(fs) == 0 {
+			t.Errorf("%s: no findings", name)
+		}
+	}
+}

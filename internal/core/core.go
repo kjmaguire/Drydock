@@ -313,7 +313,11 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			return nil, err
 		}
 	}
-	c.Presence = room.NewTracker(c.Bus, room.TrackerOptions{EmitEvery: time.Second})
+	// Presence is rebuilt from the log on every start. No agent process survives a restart (they die with the app), so nobody is
+	// running yet, and what an agent was last doing is not worth reading a month of tool output for: the last two days of
+	// lifecycle events say which agents failed or need a person, and the rest are shown as stopped (audit 2026-10-16, M15).
+	c.Presence = room.NewTracker(c.Bus, room.TrackerOptions{EmitEvery: time.Second, Window: 48 * time.Hour, LifecycleOnly: true,
+		Alive: func(string) bool { return false }})
 	if err := c.Presence.Start(bg); err != nil {
 		c.logf("presence: %v", err)
 	}

@@ -227,6 +227,7 @@ type ApproveSummary struct {
 	Title    string               `json:"title"`
 	Branch   string               `json:"branch"`
 	Base     string               `json:"base"`
+	Head     string               `json:"head,omitempty"` // the commit the human is asked to approve
 	Files    []string             `json:"files"`
 	Evidence []tasks.Evidence     `json:"evidence"`
 	Reviews  []tasks.ReviewRecord `json:"reviews"`
@@ -243,13 +244,81 @@ func Approve(d Deps) workflow.NodeHandler {
 		}
 		ev, _ := d.Tasks.Evidence(ctx, t.ID)
 		rv, _ := d.Tasks.Reviews(ctx, t.ID)
-		payload, _ := json.Marshal(ApproveSummary{TaskID: t.ID, Title: t.Title, Branch: t.Branch, Base: t.BaseBranch, Files: t.Files, Evidence: ev, Reviews: rv, Cost: t.CostUSD})
+		// the approval is for the commit the human is shown now (audit 2026-10-16, L15)
+		var head string
+		if repo, rerr := d.Repo(ctx, t.ProjectID); rerr == nil {
+			head, _ = repo.Head(ctx, worktreeOf(t))
+		}
+		if head != "" {
+			rememberReviewed(ctx, d, t, head)
+		}
+		payload, _ := json.Marshal(ApproveSummary{TaskID: t.ID, Title: t.Title, Branch: t.Branch, Base: t.BaseBranch, Head: head, Files: t.Files, Evidence: ev, Reviews: rv, Cost: t.CostUSD})
 		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Title: "Review and merge: " + t.Title, Payload: payload}}, nil
 	}
 }
 
 // approvalKind is the evidence kind that remembers a human approval and the change it was for.
 const approvalKind = "approval"
+
+// reviewedKind is the evidence kind that remembers the commit a human was asked to approve.
+const reviewedKind = "review_requested"
+
+func rememberReviewed(ctx context.Context, d Deps, t tasks.Task, head string) {
+	data, _ := json.Marshal(map[string]string{"head": head})
+	_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: reviewedKind, Summary: "asked a human to review " + shortCommit(head), Data: data})
+}
+
+// reviewedHead is the commit of the latest review request, "" when none was recorded (a task that was already waiting for a
+// person before this was recorded is not refused for it).
+func reviewedHead(ctx context.Context, d Deps, taskID string) string {
+	ev, err := d.Tasks.Evidence(ctx, taskID)
+	if err != nil {
+		return ""
+	}
+	for i := len(ev) - 1; i >= 0; i-- {
+		if ev[i].Kind != reviewedKind {
+			continue
+		}
+		var raw map[string]string
+		if json.Unmarshal(ev[i].Data, &raw) == nil {
+			return raw["head"]
+		}
+		return ""
+	}
+	return ""
+}
+
+// reviewerCommit is the commit the latest review record says its reviewer was shown, "" when none was recorded.
+func reviewerCommit(ctx context.Context, d Deps, taskID string) string {
+	rs, err := d.Tasks.Reviews(ctx, taskID)
+	if err != nil || len(rs) == 0 {
+		return ""
+	}
+	return rs[len(rs)-1].Commit
+}
+
+// approvalMismatch says whether a human's answer can be taken for the branch as it is now. requested is the commit the person
+// was asked about and reviewed the commit the reviewing agent was shown; "" means not recorded, which is not a mismatch. The
+// commit that is not head is returned with the name of what recorded it.
+func approvalMismatch(requested, reviewed, head string) (why, commit string) {
+	if head == "" {
+		return "", ""
+	}
+	if requested != "" && requested != head {
+		return "request", requested
+	}
+	if reviewed != "" && reviewed != head {
+		return "review", reviewed
+	}
+	return "", ""
+}
+
+func shortCommit(s string) string {
+	if len(s) > 12 {
+		return s[:12]
+	}
+	return s
+}
 
 func rememberApproval(ctx context.Context, d Deps, t tasks.Task, by, patch string) {
 	data, _ := json.Marshal(map[string]string{"by": by, "patchId": patch})
@@ -358,9 +427,34 @@ func Merge(d Deps, project func(ctx context.Context, projectID string) (ProjectI
 		}
 		target := baseTarget(t, pi)
 		w := worktreeOf(t)
+		head, _ := repo.Head(ctx, w)
 		patch, _ := repo.PatchID(ctx, w, target)
+		stale := func(behind int) (workflow.NodeOutput, error) {
+			m := map[string]any{"target": target, "behind": behind}
+			d.emit(ctx, "task.stale_at_merge", t, m)
+			b, _ := json.Marshal(m)
+			return workflow.NodeOutput{Value: b, Route: RouteStale}, nil
+		}
+		// The branch is not at the commit the person was shown: what was checked and reviewed is not what would land. Back to the
+		// checks, then the review and the question again (RouteChanged, as when the base was brought in).
+		changedSinceReview := func(reviewed, now string) (workflow.NodeOutput, error) {
+			if t.Status != tasks.InProgress {
+				if _, err := d.Tasks.Transition(ctx, t.ID, tasks.InProgress, tasks.TransitionOpts{By: "system", Reason: "the branch changed after the review was asked for; the checks run again", Resync: true}); err != nil {
+					return workflow.NodeOutput{}, err
+				}
+			}
+			m := map[string]any{"target": target, "reviewed": reviewed, "now": now}
+			d.emit(ctx, "task.changed_since_review", t, m)
+			b, _ := json.Marshal(m)
+			return workflow.NodeOutput{Value: b, Route: RouteChanged}, nil
+		}
 		switch {
 		case strings.HasPrefix(h.by, "human:"):
+			// the human answered a request that showed one commit, after a reviewer was shown one; if the branch is somewhere else
+			// now, the answer is not about this change: go back, check and review again
+			if why, got := approvalMismatch(reviewedHead(ctx, d, t.ID), reviewerCommit(ctx, d, t.ID), head); why != "" {
+				return changedSinceReview(got, head)
+			}
 			// remember exactly which change the human approved, so that bringing the base branch in later does not need a second
 			// approval when the change itself is the same
 			if h.decision == "approved" && patch != "" {
@@ -377,12 +471,20 @@ func Merge(d Deps, project func(ctx context.Context, projectID string) (ProjectI
 		// Another task may have merged since the checks ran: what was checked and approved is then not what would land. Go back
 		// and bring the base in, run the checks again and ask again, instead of merging an unchecked combination.
 		if behind, berr := repo.Behind(ctx, w, target); berr == nil && behind > 0 {
-			d.emit(ctx, "task.stale_at_merge", t, map[string]any{"target": target, "behind": behind})
-			b, _ := json.Marshal(map[string]any{"target": target, "behind": behind})
-			return workflow.NodeOutput{Value: b, Route: RouteStale}, nil
+			return stale(behind)
 		}
-		commit, err := repo.Merge(ctx, w, target, pi.MergeStrategy, "Merge "+t.Title+" (Drydock "+t.ID+")")
+		// The same two checks again under the repository's merge lock: another task approved in the same second passed the check
+		// above too, and only one of them can land on this base (audit 2026-10-16, M14).
+		commit, err := repo.MergeChecked(ctx, w, target, pi.MergeStrategy, "Merge "+t.Title+" (Drydock "+t.ID+")", git.MergeCheck{Head: head, UpToDate: true})
 		if err != nil {
+			var se *git.StaleBaseError
+			if errors.As(err, &se) {
+				return stale(se.Behind)
+			}
+			var he *git.ChangedSinceReviewError
+			if errors.As(err, &he) {
+				return changedSinceReview(he.Reviewed, he.Now)
+			}
 			var ce *git.ConflictError
 			if errors.As(err, &ce) {
 				p, _ := json.Marshal(map[string]any{"conflicts": ce.Files, "branch": t.Branch, "target": target})
@@ -439,6 +541,7 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 		Loop("sync", "verify", RouteChanged, maxLoops, esc).
 		Loop("sync", "work", RouteConflict, maxLoops, esc).
 		Loop("merge", "sync", RouteStale, maxLoops, esc).
+		Loop("merge", "verify", RouteChanged, maxLoops, esc).
 		EdgeWhen("review", "approve", "ship").
 		Loop("review", "work", "revise", maxLoops, esc).
 		EdgeWhen("review", esc, "limit").

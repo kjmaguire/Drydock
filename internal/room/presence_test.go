@@ -3,6 +3,9 @@ package room
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -269,5 +272,127 @@ loop:
 	json.Unmarshal(last.Data, &d)
 	if d.Member != "a1" || d.Presence != string(PresenceWorking) && d.Presence != string(PresenceThinking) {
 		t.Fatalf("%s", last.Data)
+	}
+}
+
+// countingBus records what the tracker asks the log for.
+type countingBus struct {
+	events.Bus
+	replays []events.Filter
+}
+
+func (b *countingBus) SeqBefore(ctx context.Context, t time.Time) (uint64, error) {
+	return b.Bus.(interface {
+		SeqBefore(context.Context, time.Time) (uint64, error)
+	}).SeqBefore(ctx, t)
+}
+
+func (b *countingBus) Replay(ctx context.Context, after uint64, f events.Filter, limit int) ([]events.Event, error) {
+	b.replays = append(b.replays, f)
+	return b.Bus.Replay(ctx, after, f, limit)
+}
+
+// Presence is rebuilt on every start. Reading every tool call of a month of work made the start slower with each day of use
+// (audit 2026-10-16, M15): the rebuild takes the lifecycle events of the window only, and shows who is not running as stopped.
+func TestTrackerRebuildIsBoundedByAWindowAndSkipsToolOutput(t *testing.T) {
+	e := newEnv(t)
+	now := time.Now().UTC()
+	at := func(ago time.Duration, typ, agent string, data any) {
+		t.Helper()
+		b, _ := json.Marshal(data)
+		if _, err := e.bus.Publish(e.ctx, events.Event{Type: typ, AgentID: agent, ProjectID: e.project, Data: b, Time: now.Add(-ago)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at(200*time.Hour, "agent.started", "ancient", nil)
+	at(199*time.Hour, "agent.failed", "ancient", map[string]any{"error": "a month old"})
+	at(5*time.Hour, "agent.started", "recent", nil)
+	at(5*time.Hour, "agent.failed", "recent", map[string]any{"error": "this morning"})
+	at(4*time.Hour, "agent.started", "working", nil)
+	for i := 0; i < 50; i++ {
+		at(3*time.Hour, "agent.output", "working", map[string]any{"kind": "tool_call", "data": map[string]any{"name": "Edit"}})
+	}
+
+	ctx, cancel := context.WithCancel(e.ctx)
+	defer cancel()
+	bus := &countingBus{Bus: e.bus}
+	tr := NewTracker(bus, TrackerOptions{Window: 48 * time.Hour, LifecycleOnly: true, Alive: func(string) bool { return false }})
+	if err := tr.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tr.Get("ancient"); ok {
+		t.Error("an event from before the window was read")
+	}
+	if s, _ := tr.Get("recent"); s.Presence != PresenceFailed {
+		t.Errorf("a failure from inside the window is lost: %+v", s)
+	}
+	if s, _ := tr.Get("working"); s.Presence != PresencePaused || s.Label != "stopped" {
+		t.Errorf("an agent that is not running is not shown stopped: %+v", s)
+	}
+	if len(bus.replays) == 0 {
+		t.Fatal("the log was not read")
+	}
+	for _, f := range bus.replays {
+		for _, ty := range f.Types {
+			if ty == "agent.output" || strings.HasSuffix(ty, "*") {
+				t.Errorf("the rebuild asked for %q: tool output is not read", ty)
+			}
+		}
+	}
+
+	// the live stream still carries output, and it is applied: the filter is narrow for the rebuild only
+	at(0, "agent.started", "live", nil)
+	at(0, "agent.output", "live", map[string]any{"kind": "text", "data": map[string]any{"text": "x"}})
+	eventually(t, 2*time.Second, func() bool { s, _ := tr.Get("live"); return s.Activity == "writing" })
+}
+
+// Without the options the rebuild is what it was: all of the log, tool output included.
+func TestTrackerRebuildDefaultsToTheWholeLog(t *testing.T) {
+	e := newEnv(t)
+	publish(t, e, "agent.started", "a1", nil)
+	publish(t, e, "agent.output", "a1", map[string]any{"kind": "tool_call", "data": map[string]any{"name": "Edit"}})
+	ctx, cancel := context.WithCancel(e.ctx)
+	defer cancel()
+	tr := NewTracker(e.bus, TrackerOptions{})
+	if err := tr.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := tr.Get("a1"); s.Activity != "tool: Edit" {
+		t.Fatalf("%+v", s)
+	}
+}
+
+// The lifecycle filter must name every event type Derive reacts to except tool output, or a rebuild would miss a state.
+func TestLifecycleFilterNamesEveryTypeDeriveHandles(t *testing.T) {
+	src, err := os.ReadFile("presence.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	for _, ty := range LifecycleFilter.Types {
+		have[ty] = true
+	}
+	fn := string(src)[strings.Index(string(src), "func Derive("):]
+	fn = fn[:strings.Index(fn, "\n}\n")]
+	found := 0
+	for _, m := range regexp.MustCompile(`(?m)^\tcase ((?:"[a-z_.]+"(?:, )?)+):`).FindAllStringSubmatch(fn, -1) {
+		for _, q := range regexp.MustCompile(`"([a-z_.]+)"`).FindAllStringSubmatch(m[1], -1) {
+			ty := q[1]
+			found++
+			if ty == "agent.output" {
+				continue
+			}
+			if !have[ty] {
+				t.Errorf("Derive handles %q and LifecycleFilter does not name it", ty)
+			}
+		}
+	}
+	if found < 12 {
+		t.Fatalf("found only %d types in Derive: the pattern no longer matches its source", found)
+	}
+	for _, ty := range LifecycleFilter.Types {
+		if strings.HasSuffix(ty, "*") {
+			t.Errorf("%q is a wildcard", ty)
+		}
 	}
 }

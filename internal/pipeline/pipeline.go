@@ -492,7 +492,11 @@ func Verify(d Deps) workflow.NodeHandler {
 		}
 		// a merge that brought the base branch in and was not resolved cannot pass: markers are not code
 		if repo.MergeInProgress(ctx, worktreeOf(t)) {
-			if left := repo.UnresolvedConflicts(ctx, worktreeOf(t)); len(left) > 0 {
+			left, lerr := repo.UnresolvedConflicts(ctx, worktreeOf(t))
+			if lerr != nil {
+				return workflow.NodeOutput{}, fmt.Errorf("list the files in conflict: %w", lerr)
+			}
+			if len(left) > 0 {
 				cr := workflow.CheckResult{Name: "merge-conflicts", Passed: false, ExitCode: 1,
 					Output: "Conflict markers are still in: " + strings.Join(left, ", ") + ". Edit each file so it keeps what both changes were for and remove every <<<<<<<, ======= and >>>>>>> line."}
 				failedFlag := false

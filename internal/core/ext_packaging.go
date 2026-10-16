@@ -44,7 +44,16 @@ var (
 const (
 	keyLicenseToken     = "license.token"
 	keyLicenseMaxSeen   = "license.maxseen"
+	keyLicenseJumpSince = "license.jumpsince"
 	keyLicenseAnnounced = "license.announced"
+)
+
+// The clock guard remembers the latest time Drydock has seen, so that setting the system clock back does not extend a license.
+// A step forward of more than clockStep is not remembered until the clock has kept reading that far ahead for clockHold: a clock
+// that was wrong for an hour must not leave the license judged by a date years away (audit 2026-10-16, M16).
+const (
+	clockStep = 3 * 24 * time.Hour
+	clockHold = 3 * 24 * time.Hour
 )
 
 // packaging is the per-Core state of the extension.
@@ -60,7 +69,9 @@ type packaging struct {
 	cachedE  error
 	maxSeen  time.Time
 	savedMax time.Time
-	kickCh   chan struct{}
+	// jumpSince is when the clock was first seen more than clockStep ahead of maxSeen, zero when it is not
+	jumpSince time.Time
+	kickCh    chan struct{}
 
 	identity *scrub.Identity
 	// backupClock stamps and schedules backups (the real clock; tests override it independently of the license clock)
@@ -135,6 +146,11 @@ func startPackaging(ctx context.Context, c *Core) (map[string]Method, func(), er
 		if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
 			p.maxSeen = time.Unix(n, 0)
 			p.savedMax = p.maxSeen
+		}
+	}
+	if raw, ok := p.getSetting(ctx, keyLicenseJumpSince); ok {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			p.jumpSince = time.Unix(n, 0)
 		}
 	}
 	// a token never reaches a log, an event or a bundle: teach the scanner its exact text

@@ -319,6 +319,29 @@ func (b *SQLBus) Subscribe(f Filter) (<-chan Event, func()) {
 }
 
 func (b *SQLBus) Replay(ctx context.Context, after uint64, f Filter, limit int) ([]Event, error) {
+	q, args := replayQuery(after, f, limit)
+	rows, err := b.db.Reader().QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var ts int64
+		var data []byte
+		if err := rows.Scan(&e.Seq, &ts, &e.Type, &e.ProjectID, &e.RunID, &e.TaskID, &e.AgentID, &data); err != nil {
+			return nil, err
+		}
+		e.Time = time.UnixMilli(ts).UTC()
+		e.Data = json.RawMessage(data)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// replayQuery is the statement Replay runs and its arguments.
+func replayQuery(after uint64, f Filter, limit int) (string, []any) {
 	if limit <= 0 {
 		limit = 1000
 	}
@@ -358,29 +381,42 @@ func (b *SQLBus) Replay(ctx context.Context, after uint64, f Filter, limit int) 
 	}
 	q += ` ORDER BY seq LIMIT ?`
 	args = append(args, limit)
-	rows, err := b.db.Reader().QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Event
-	for rows.Next() {
-		var e Event
-		var ts int64
-		var data []byte
-		if err := rows.Scan(&e.Seq, &ts, &e.Type, &e.ProjectID, &e.RunID, &e.TaskID, &e.AgentID, &data); err != nil {
-			return nil, err
-		}
-		e.Time = time.UnixMilli(ts).UTC()
-		e.Data = json.RawMessage(data)
-		out = append(out, e)
-	}
-	return out, rows.Err()
+	return q, args
 }
 
 func escapeLike(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return r.Replace(s)
+}
+
+// SeqBefore returns the highest sequence number whose event is older than t, 0 when every event is as new as t or newer. Replaying
+// after it sees only the events from t on. Events are stamped when they are published and stored in order, so the stamps grow with
+// the sequence number and a binary search finds the place with a few primary key lookups instead of reading the log; a clock set
+// back makes the answer approximate, which is all a caller that only wants to skip old history needs.
+func (b *SQLBus) SeqBefore(ctx context.Context, t time.Time) (uint64, error) {
+	hi, err := b.LastSeq(ctx)
+	if err != nil {
+		return 0, err
+	}
+	cutoff := t.UnixMilli()
+	lo := uint64(0) // every event with a sequence number up to lo is older than t
+	for lo < hi {
+		mid := lo + (hi-lo)/2 + 1
+		var seq uint64
+		var ts int64
+		err := b.db.Reader().QueryRowContext(ctx, `SELECT seq, ts FROM events WHERE seq >= ? ORDER BY seq LIMIT 1`, mid).Scan(&seq, &ts)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			hi = mid - 1
+		case err != nil:
+			return 0, err
+		case ts < cutoff:
+			lo = seq
+		default:
+			hi = mid - 1
+		}
+	}
+	return lo, nil
 }
 
 // LastSeq returns the highest persisted sequence number (0 if none).

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -272,5 +273,136 @@ func TestSchedulerHoldsATaskThatPlansToChangeTheSameFiles(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("second task should start once the first is gone: %+v", res)
+	}
+}
+
+// A human approves the commit they were shown. If the branch moved on after the request was raised, the answer is not about the
+// change that would land: the task goes back through the checks and the review and the person is asked again (audit 2026-10-16, L15).
+func TestAnApprovalOfOneCommitDoesNotMergeALaterOne(t *testing.T) {
+	e := newTpl(t, map[string]fakeagent.Script{
+		aWork: {Rules: []fakeagent.Rule{
+			{Match: "Task: Add Multiply", Steps: []fakeagent.Step{writeStep("multiply.go", "package gocalc\n\nfunc Multiply(a, b int) int { return a * b }\n"), say("done")}},
+		}},
+		aReview: shipReviewer(),
+	}, tplOpts{title: "Harness task"})
+	e.dropHarnessTask()
+	if err := e.eng.Register(pipeline.IterateUntilVerified(e.td.Deps, projectInfo, 3)); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	tk := e.assign(e.newTask("Add Multiply", 0))
+	run, err := e.eng.Start(ctx, pipeline.WorkflowIUV, pipeline.Input{TaskID: tk.ID}, workflow.StartOptions{ProjectID: "p1", TaskID: tk.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.await(run, workflow.StatusWaitingHuman)
+	first := e.pending(run)
+
+	cur, _ := e.tasks.Get(ctx, tk.ID)
+	w := git.Worktree{Path: cur.Worktree, Branch: cur.Branch, Base: cur.BaseBranch, TaskID: tk.ID}
+	shown, err := e.repo.Head(ctx, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(first.Spec.Payload), shown) {
+		t.Fatalf("the review request should name the commit the person is asked to approve (%s): %s", shown, first.Spec.Payload)
+	}
+	// the reviewing agent was shown the same commit, which is what the merge compares the branch with as well
+	if rs, _ := e.tasks.Reviews(ctx, tk.ID); len(rs) == 0 || rs[len(rs)-1].Commit != shown {
+		t.Fatalf("the review record should hold the commit %s: %+v", shown, rs)
+	}
+
+	// the branch moves on after the request was raised
+	if err := os.WriteFile(filepath.Join(cur.Worktree, "late.go"), []byte("package gocalc\n\n// added after the review request\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later, err := e.repo.Commit(ctx, w, "added after the review request")
+	if err != nil || later == shown {
+		t.Fatalf("commit after the request: %q %v", later, err)
+	}
+
+	if err := e.respond(run, "approved", "human:kyle", ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "a new review request or the end of the run", func() bool {
+		if info, err := e.eng.Status(ctx, run); err == nil && info.Status.Terminal() {
+			return true
+		}
+		p, _ := e.eng.Pending(ctx, run)
+		return len(p) == 1 && p[0].ID != first.ID
+	})
+	if info, _ := e.eng.Status(ctx, run); info.Status.Terminal() {
+		t.Fatalf("the run ended (%s) on an approval that was for another commit", info.Status)
+	}
+	for _, f := range []string{"multiply.go", "late.go"} {
+		if _, err := os.Stat(filepath.Join(e.repo.Root, f)); err == nil {
+			t.Fatalf("%s reached main on an approval that was for another commit", f)
+		}
+	}
+	if cur, _ := e.tasks.Get(ctx, tk.ID); cur.Status == tasks.Completed {
+		t.Fatal("the task was completed on an approval that was for another commit")
+	}
+	second := e.pending(run)
+	if !strings.Contains(string(second.Spec.Payload), later) {
+		t.Fatalf("the new request should show the new commit %s: %s", later, second.Spec.Payload)
+	}
+
+	// answering the new request merges what it showed
+	if err := e.respond(run, "approved", "human:kyle", ""); err != nil {
+		t.Fatal(err)
+	}
+	e.await(run, workflow.StatusCompleted)
+	for _, f := range []string{"multiply.go", "late.go"} {
+		if _, err := os.Stat(filepath.Join(e.repo.Root, f)); err != nil {
+			t.Fatalf("%s should be on main after the second approval: %v", f, err)
+		}
+	}
+}
+
+// Two people (or one, quickly) approve two finished tasks at the same moment. Both checks before the merge lock pass; under it
+// only one task can land on this base. The other goes back through the sync step, which brings the first in, and, being the same
+// change a human approved, merges without asking again. Neither is lost and no merge is half done (audit 2026-10-16, M14).
+func TestTwoApprovalsAtTheSameMomentBothLandOneAfterTheOther(t *testing.T) {
+	file := func(path, body string) []fakeagent.Step { return []fakeagent.Step{writeStep(path, body), say("done")} }
+	e := newTpl(t, map[string]fakeagent.Script{
+		aWork: {Rules: []fakeagent.Rule{
+			{Match: "Task: Add Multiply", Steps: file("multiply.go", "package gocalc\n\nfunc Multiply(a, b int) int { return a * b }\n")},
+			{Match: "Task: Add Divide", Steps: file("divide.go", "package gocalc\n\nfunc Divide(a, b int) int { return a / b }\n")},
+		}},
+		aReview: shipReviewer(),
+	}, tplOpts{title: "Harness task"})
+	e.dropHarnessTask()
+	if err := e.eng.Register(pipeline.IterateUntilVerified(e.td.Deps, projectInfo, 3)); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	var runs []workflow.RunID
+	for _, title := range []string{"Add Multiply", "Add Divide"} {
+		tk := e.assign(e.newTask(title, 0))
+		id, err := e.eng.Start(ctx, pipeline.WorkflowIUV, pipeline.Input{TaskID: tk.ID}, workflow.StartOptions{ProjectID: "p1", TaskID: tk.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, id)
+	}
+	for _, id := range runs {
+		e.await(id, workflow.StatusWaitingHuman)
+	}
+	pend := make([]workflow.PendingRequest, len(runs))
+	for i, id := range runs {
+		pend[i] = e.pending(id)
+	}
+	for i, id := range runs {
+		if err := e.eng.Resume(ctx, id, workflow.Response{RequestID: pend[i].ID, Decision: "approved", By: "human:kyle"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range runs {
+		e.await(id, workflow.StatusCompleted)
+	}
+	for _, f := range []string{"multiply.go", "divide.go"} {
+		if _, err := os.Stat(filepath.Join(e.repo.Root, f)); err != nil {
+			t.Fatalf("%s should be on main: %v", f, err)
+		}
 	}
 }

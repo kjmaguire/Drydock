@@ -37,7 +37,8 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 		EdgeWhen("sync", "merge", RouteApproved).
 		Loop("sync", "verify", RouteChanged, n, esc).
 		Loop("sync", "work", RouteConflict, n, esc).
-		Loop("merge", "sync", RouteStale, n, esc)
+		Loop("merge", "sync", RouteStale, n, esc).
+		Loop("merge", "verify", RouteChanged, n, esc)
 	next := workflow.NodeID("approve")
 	if len(extraBeforeApprove) > 0 {
 		next = extraBeforeApprove[0]
@@ -255,6 +256,7 @@ func (td TemplateDeps) securityGraph(pr bool) *workflow.Graph {
 			Loop("sync", "verify", RouteChanged, n, esc).
 			Loop("sync", "work", RouteConflict, n, esc).
 			Loop("merge", "sync", RouteStale, n, esc).
+			Loop("merge", "verify", RouteChanged, n, esc).
 			EdgeWhen("sreview", "approve", "ship").
 			Loop("sreview", "work", "revise", n, esc).
 			EdgeWhen("sreview", esc, "limit").

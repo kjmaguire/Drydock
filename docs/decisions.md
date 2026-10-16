@@ -530,3 +530,22 @@ Open, owner action:
   before the core, a failed start shows a message box and writes `<data>\logs\startup.log`, and a job object that cannot be made
   no longer stops the start. **Not verified here:** every Windows-only piece (the job-object test, the updater's audit hook, the
   cmd.exe test, the start-up order, the message box) runs on the Windows runner only.
+  **Spend and lookups (M4, M12, M21):** the budget gate is installed before any start-up step that can fail and fails closed (a
+  budget that cannot be read, a turn whose scope cannot be resolved or a usage record that cannot be written stops the turn
+  instead of letting it run unmetered); the role and planner agents of a turn are found through its input; a budget at its hard
+  limit pauses the task for a person and the turn does not fall back to the agent's configured model
+  (`router.BlockedError.Budget`). The indexes SQLite cannot match against a parameter (`WHERE col <> ''`) are full indexes
+  (migration 00123, plan test `internal/storage/plans_test.go`); `task.list` takes a limit, `task.count` and the agent's
+  `usageTotals` (a SQL sum) say how much there is in all, so a screen never presents the newest rows as the whole.
+  **Merging (M14, L10, L15):** the stale-base check is made again under the repository's merge lock (`Repo.MergeChecked`), together
+  with a check that the branch is still at the commit the merge was prepared for; the person's answer counts only for the commit
+  the request showed (`review_requested` evidence) and the reviewer was shown, and a branch that moved goes back to the checks;
+  the patch id is `git patch-id --verbatim`, so a change of whitespace alone is a different change; a merge that fails for any
+  reason leaves the main working tree clean, a conflict list that cannot be read is an error, and restoring a safe point removes
+  files only inside the worktree. **Presence (M15):** the rebuild at start reads the lifecycle events of the last two days
+  (`room.LifecycleFilter`, `events.SQLBus.SeqBefore`) and shows every agent that is not running as stopped, instead of reading a
+  month of tool output. **License clock (M16):** a forward step of more than three days is remembered only after the clock has read
+  that far ahead for three days (the start of a pending step is kept across restarts), so a clock that was wrong for an hour
+  cannot leave a license judged by a date years away; `license.resetClock` puts a record that is ahead of a correct clock right,
+  only then, and writes the old and new times to the audit log. **Secrets (M17):** `scrub.Text` masks every copy of a finding's
+  value, not only the one the scanner located.

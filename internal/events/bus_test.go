@@ -257,3 +257,75 @@ func TestARedactorRewritesAnEventBeforeItIsStoredOrDelivered(t *testing.T) {
 		t.Fatalf("a removed redactor still ran: %s", e.Data)
 	}
 }
+
+// SeqBefore finds where a window of history starts without reading it (audit 2026-10-16, M15).
+func TestSeqBeforeFindsTheStartOfAWindow(t *testing.T) {
+	ctx := context.Background()
+	b, _, _ := newBus(t)
+	base := time.Now().UTC().Add(-100 * time.Hour)
+	var seqs []uint64
+	for i := 0; i < 100; i++ {
+		s, err := b.Publish(ctx, Event{Type: "x.y", Time: base.Add(time.Duration(i) * time.Hour)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		seqs = append(seqs, s)
+	}
+	for _, c := range []struct {
+		name string
+		at   time.Time
+		want uint64
+	}{
+		{"every event is newer", base.Add(-time.Hour), 0},
+		{"the first event is the first of the window", base, 0},
+		{"in the middle", base.Add(50*time.Hour - time.Minute), seqs[49]},
+		{"just after one", base.Add(50*time.Hour + time.Minute), seqs[50]},
+		{"every event is older", base.Add(1000 * time.Hour), seqs[99]},
+	} {
+		got, err := b.SeqBefore(ctx, c.at)
+		if err != nil || got != c.want {
+			t.Errorf("%s: %d %v, want %d", c.name, got, err, c.want)
+		}
+	}
+	empty, _, _ := newBus(t)
+	if got, err := empty.SeqBefore(ctx, time.Now()); err != nil || got != 0 {
+		t.Errorf("an empty log: %d %v", got, err)
+	}
+}
+
+// A replay from a cursor reads the log from the cursor on and not from its start, and one for exact event types does not scan the
+// log for a pattern: a rebuild of what happened lately must cost what happened lately (audit 2026-10-16, M15).
+func TestReplayStatementsAreBoundedByTheCursor(t *testing.T) {
+	_, db, _ := newBus(t)
+	for name, f := range map[string]Filter{
+		"no types":       {},
+		"exact types":    {Types: []string{"agent.started", "agent.failed", "watchdog.paused"}},
+		"one project":    {ProjectID: "p1", Types: []string{"agent.*"}},
+		"a task's feed":  {TaskID: "t1"},
+		"a run's events": {RunID: "r1"},
+	} {
+		q, args := replayQuery(1000, f, 100)
+		rows, err := db.Reader().Query("EXPLAIN QUERY PLAN "+q, args...)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var plan []string
+		for rows.Next() {
+			var id, parent, notused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			plan = append(plan, detail)
+		}
+		rows.Close()
+		joined := strings.Join(plan, " | ")
+		t.Logf("%s: %s", name, joined)
+		if strings.Contains(joined, "SCAN events") && !strings.Contains(joined, "USING") {
+			t.Errorf("%s reads the whole log: %s", name, joined)
+		}
+		if name == "exact types" && strings.Contains(joined, "LIKE") {
+			t.Errorf("%s: %s", name, joined)
+		}
+	}
+}

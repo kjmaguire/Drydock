@@ -83,7 +83,7 @@ func drydockCalls(t *testing.T, r *Repo, w Worktree) {
 		"PatchID":            func() error { _, err := r.PatchID(ctx, w, "main"); return err },
 		"ListFiles":          func() error { _, err := r.ListFiles(ctx, w.Path); return err },
 		"LocalIgnore":        func() error { return r.LocalIgnore(ctx, w, []string{"AGENTS.md"}) },
-		"UnresolvedConflict": func() error { r.UnresolvedConflicts(ctx, w); return nil },
+		"UnresolvedConflict": func() error { _, err := r.UnresolvedConflicts(ctx, w); return err },
 		"MergeInProgress":    func() error { r.MergeInProgress(ctx, w); return nil },
 	} {
 		if err := call(); err != nil {

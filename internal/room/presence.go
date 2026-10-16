@@ -219,6 +219,14 @@ func firstNonEmpty(ss ...string) string {
 // PresenceFilter selects the events Derive understands.
 var PresenceFilter = events.Filter{Types: []string{"agent.*", "watchdog.*"}}
 
+// LifecycleFilter selects the events Derive understands except agent.output, which is most of them by far (every tool call and
+// result) and says what an agent is doing at this moment, not what became of it. Exact types, so the log's index on the type serves it.
+var LifecycleFilter = events.Filter{Types: []string{
+	"agent.starting", "agent.started", "agent.idle", "agent.resumed", "agent.stopped", "agent.failed", "agent.paused",
+	"agent.needs_attention", "agent.completed", "agent.waiting", "agent.state_changed", "agent.state",
+	"watchdog.paused", "watchdog.tripped", "watchdog.warning",
+}}
+
 // TrackerOptions tunes a Tracker.
 type TrackerOptions struct {
 	// Alive, if set, is asked once after the rebuild: an agent it reports as not running is shown stopped, because a
@@ -226,6 +234,12 @@ type TrackerOptions struct {
 	Alive func(agentID string) bool
 	// EmitEvery enables room.presence_changed events, at most one per agent per interval (design: one second). 0 disables.
 	EmitEvery time.Duration
+	// Window, above zero, limits the rebuild to the events of that long before Start. Presence is rebuilt on every start, and the
+	// log keeps a month of events: reading all of them made the start slower with every day of use (audit 2026-10-16, M15).
+	Window time.Duration
+	// LifecycleOnly rebuilds from LifecycleFilter: what each agent was last doing is the live stream's to say, so use it with an
+	// Alive that tells the truth about the agents that are running now.
+	LifecycleOnly bool
 }
 
 // Tracker keeps current presence for the UI by folding agent.* and watchdog.* events. It is replay-safe: Start rebuilds
@@ -248,7 +262,20 @@ func NewTracker(bus events.Bus, opt TrackerOptions) *Tracker {
 // Start rebuilds presence from the event log and then follows live events until ctx ends. It returns once the rebuild is
 // done, so Get is immediately accurate.
 func (t *Tracker) Start(ctx context.Context) error {
-	ch, cancel, err := t.catchUp(ctx)
+	if t.opt.Window > 0 {
+		if sb, ok := t.bus.(interface {
+			SeqBefore(context.Context, time.Time) (uint64, error)
+		}); ok {
+			if after, err := sb.SeqBefore(ctx, time.Now().Add(-t.opt.Window)); err == nil {
+				t.last = after
+			}
+		}
+	}
+	rebuild := PresenceFilter
+	if t.opt.LifecycleOnly {
+		rebuild = LifecycleFilter
+	}
+	ch, cancel, err := t.catchUp(ctx, rebuild)
 	if err != nil {
 		return err
 	}
@@ -273,14 +300,15 @@ func (t *Tracker) Start(ctx context.Context) error {
 	return nil
 }
 
-// catchUp subscribes first and then replays, so no event falls in the gap; duplicates are dropped by seq.
-func (t *Tracker) catchUp(ctx context.Context) (<-chan events.Event, func(), error) {
+// catchUp subscribes first and then replays what rebuild selects, so no event falls in the gap; duplicates are dropped by seq. The
+// subscription always takes every presence event.
+func (t *Tracker) catchUp(ctx context.Context, rebuild events.Filter) (<-chan events.Event, func(), error) {
 	ch, cancel := t.bus.Subscribe(PresenceFilter)
 	for {
 		t.mu.RLock()
 		after := t.last
 		t.mu.RUnlock()
-		evs, err := t.bus.Replay(ctx, after, PresenceFilter, 1000)
+		evs, err := t.bus.Replay(ctx, after, rebuild, 1000)
 		if err != nil {
 			cancel()
 			return nil, nil, err
@@ -305,7 +333,7 @@ func (t *Tracker) follow(ctx context.Context, ch <-chan events.Event, cancel fun
 				cancel()
 				for ctx.Err() == nil {
 					var err error
-					if ch, cancel, err = t.catchUp(ctx); err == nil {
+					if ch, cancel, err = t.catchUp(ctx, PresenceFilter); err == nil {
 						break
 					}
 					select {

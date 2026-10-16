@@ -144,7 +144,8 @@ func (p *packaging) evaluate(ctx context.Context) licState {
 		v.Banner = "No valid license: Drydock is read-only. Import a license or trial to start work."
 	}
 	if v.ClockSuspect {
-		v.Message += " The system clock appears to have been set back; the license is judged by the latest time Drydock has seen."
+		v.Message += " Drydock last saw " + maxSeen.Local().Format("2 January 2006") + ", which is later than this computer's clock says now, so the license is judged by that date. " +
+			"If the clock is wrong, set it right. If Drydock's record of the date is the mistake, reset the clock check on the License page."
 	}
 	v.LastSeen = maxSeen.Unix()
 	st.view = v
@@ -167,9 +168,28 @@ func (p *packaging) parseCached(tk string) (*license.Payload, error) {
 	return p.cachedP, p.cachedE
 }
 
-// advanceMaxSeen records the highest time ever observed (never moves back) and persists it when it moved a minute or more.
+// advanceMaxSeen records the highest time ever observed (never moves back) and persists it when it moved a minute or more. A step
+// of more than clockStep is only taken once the clock has read that far ahead for clockHold; if it comes back first, nothing was
+// recorded and the license was never judged by it.
 func (p *packaging) advanceMaxSeen(ctx context.Context, now time.Time) {
 	p.mu.Lock()
+	var setSince *string
+	if !p.maxSeen.IsZero() && now.Sub(p.maxSeen) > clockStep {
+		if p.jumpSince.IsZero() {
+			p.jumpSince = now
+			v := strconv.FormatInt(now.Unix(), 10)
+			setSince = &v
+		}
+		if now.Sub(p.jumpSince) < clockHold {
+			p.mu.Unlock()
+			if setSince != nil {
+				_ = p.setSetting(ctx, keyLicenseJumpSince, *setSince)
+			}
+			return
+		}
+	}
+	clearSince := !p.jumpSince.IsZero() && setSince == nil
+	p.jumpSince = time.Time{}
 	if now.After(p.maxSeen) {
 		p.maxSeen = now
 	}
@@ -179,9 +199,41 @@ func (p *packaging) advanceMaxSeen(ctx context.Context, now time.Time) {
 		p.savedMax = v
 	}
 	p.mu.Unlock()
+	if clearSince {
+		_ = p.delSetting(ctx, keyLicenseJumpSince)
+	}
 	if save {
 		_ = p.setSetting(ctx, keyLicenseMaxSeen, strconv.FormatInt(v.Unix(), 10))
 	}
+}
+
+// resetClock makes the latest time Drydock has seen the time on this computer's clock. It is the way out when that record is
+// ahead of a clock that is right (a clock that was wrong when it was recorded), and it is allowed only then: it cannot be used
+// to move a license back in time while the clock has not been set back. It is written to the audit log with both times.
+func (p *packaging) resetClock(ctx context.Context) (LicenseView, error) {
+	if !p.configured() {
+		return LicenseView{}, errors.New("licensing is not configured in this build, so there is no clock check to reset")
+	}
+	now := p.clock()
+	p.mu.Lock()
+	old := p.maxSeen
+	if !old.After(now.Add(24 * time.Hour)) {
+		p.mu.Unlock()
+		return LicenseView{}, errors.New("there is nothing to reset: this computer's clock is not behind the latest date Drydock has seen")
+	}
+	p.maxSeen, p.savedMax, p.jumpSince = now, now, time.Time{}
+	p.mu.Unlock()
+	if err := p.setSetting(ctx, keyLicenseMaxSeen, strconv.FormatInt(now.Unix(), 10)); err != nil {
+		p.mu.Lock()
+		p.maxSeen, p.savedMax = old, old
+		p.mu.Unlock()
+		return LicenseView{}, err
+	}
+	_ = p.delSetting(ctx, keyLicenseJumpSince)
+	p.audit(ctx, "license.clock_reset", "", map[string]any{"was": old.Unix(), "now": now.Unix()})
+	p.c.publish(ctx, "license.clock_reset", "", map[string]any{"was": old.Unix(), "now": now.Unix()})
+	p.reconcile(ctx)
+	return p.evaluate(ctx).view, nil
 }
 
 func friendlyLicenseError(err error) string {
@@ -435,6 +487,7 @@ type licenseImportReq struct {
 func (p *packaging) licenseMethods(m map[string]Method) {
 	m["license.status"] = bind(func(ctx context.Context, _ struct{}) (any, error) { return p.evaluate(ctx).view, nil })
 	m["license.import"] = bind(func(ctx context.Context, r licenseImportReq) (any, error) { return p.importLicense(ctx, r) })
+	m["license.resetClock"] = bind(func(ctx context.Context, _ struct{}) (any, error) { return p.resetClock(ctx) })
 	m["license.clear"] = bind(func(ctx context.Context, _ struct{}) (any, error) {
 		if !p.configured() {
 			return nil, errors.New("licensing is not configured in this build, so there is no license to clear")

@@ -17,8 +17,11 @@ type Scanner interface {
 	Scan(ctx context.Context, text string) ([]security.Finding, error)
 }
 
-// Text returns text with every finding replaced by its "[REDACTED:<rule>]" mask, and the findings. A finding whose
-// location is unknown redacts the whole text. A scan error (for example text over the scanner's size cap) is returned
+// minRepeatLen is the shortest finding value whose other copies are masked too; a shorter one would shred ordinary words.
+const minRepeatLen = 8
+
+// Text returns text with every finding, and every other copy of a finding's value, replaced by its "[REDACTED:<rule>]" mask,
+// and the findings. A finding whose location is unknown redacts the whole text. A scan error (for example text over the scanner's size cap) is returned
 // with no text: the caller must leave the content out.
 func Text(ctx context.Context, sc Scanner, text string) (string, []security.Finding, error) {
 	if text == "" {
@@ -36,11 +39,25 @@ func Text(ctx context.Context, sc Scanner, text string) (string, []security.Find
 		mask string
 	}
 	var rs []rng
+	copies := map[string]bool{}
 	for _, f := range fs {
 		if f.End <= f.Start || f.Start < 0 || f.End > len(text) {
 			return f.Mask, fs, nil
 		}
 		rs = append(rs, rng{f.Start, f.End, f.Mask})
+		// The scanner locates a secret that appears more than once at its first copy for every finding, so a second copy of
+		// the same value would be left in the text: every copy of a finding's value is masked (audit 2026-10-16, M17).
+		if val := text[f.Start:f.End]; len(val) >= minRepeatLen && !copies[val] {
+			copies[val] = true
+			for from := 0; ; {
+				i := strings.Index(text[from:], val)
+				if i < 0 {
+					break
+				}
+				rs = append(rs, rng{from + i, from + i + len(val), f.Mask})
+				from += i + len(val)
+			}
+		}
 	}
 	sort.SliceStable(rs, func(i, j int) bool { return rs[i].s < rs[j].s })
 	var b strings.Builder

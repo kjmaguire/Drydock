@@ -325,13 +325,13 @@ func TestMergeInBringsTheBaseIntoTheBranchAndLeavesConflictsForTheAgent(t *testi
 	if !r.MergeInProgress(ctx, w) {
 		t.Fatal("the merge should be left in progress for the agent")
 	}
-	if left := r.UnresolvedConflicts(ctx, w); len(left) != 1 {
-		t.Fatalf("markers should be reported: %v", left)
+	if left, err := r.UnresolvedConflicts(ctx, w); err != nil || len(left) != 1 {
+		t.Fatalf("markers should be reported: %v %v", left, err)
 	}
 	// the agent resolves it by editing the file; committing completes the merge
 	write(t, w.Path, "README.md", "# from the task and main\n")
-	if left := r.UnresolvedConflicts(ctx, w); len(left) != 0 {
-		t.Fatalf("resolved file still reported: %v", left)
+	if left, err := r.UnresolvedConflicts(ctx, w); err != nil || len(left) != 0 {
+		t.Fatalf("resolved file still reported: %v %v", left, err)
 	}
 	if _, err := r.Commit(ctx, w, "resolve"); err != nil {
 		t.Fatal(err)
