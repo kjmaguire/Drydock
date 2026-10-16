@@ -8,7 +8,7 @@
     "tool:govulncheck": "1.9.0",
     "tool:wrangler": "4.151.0",
     "tool:docker": "29.8.2",
-    "tool:golangci-lint": "2.14.0",
+    "tool:golangci-lint": "2.15.0",
     "tool:actions-runner": "2.338.0",
     "tool:llama.cpp": "b11672"
   },
@@ -232,7 +232,7 @@
       "hold": "29.9.1 is out; 29.8.2 stays documented: it is the engine the sandbox was measured with (decision P30), and nothing has run it on 29.9.1. Measured today with CI's ubuntu-latest image too, which carries Docker 28.0.4 (sandbox job of ci, 2026-10-16); the development sandbox has the 29.8.2 client and no daemon. It moves when a sandbox run on 29.9.1 happens, on the owner's PC with Docker Desktop updated."
     },
     "tool:golangci-lint": {
-      "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
+      "role": "The Go linter the CI lint job runs (go install ...@v2.15.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
     },
     "tool:llama.cpp": {
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
