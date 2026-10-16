@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,5 +87,47 @@ func TestTheBoundedLogAndTheFailureCollectorCountWhatTheyKeep(t *testing.T) {
 	none.add("--- FAIL: TestX")
 	if none.names() != nil {
 		t.Fatal("a check without a parser collects names")
+	}
+}
+
+// A URL the preview command printed is probed only when it names this computer, and a probe of a local server does not follow a
+// redirect to another computer (audit 2026-10-16, L11).
+func TestOnlyALoopbackURLTheCommandPrintedIsProbed(t *testing.T) {
+	for in, want := range map[string]string{
+		"http://localhost:5173/":     "http://localhost:5173/",
+		"http://127.0.0.1:3000":      "http://127.0.0.1:3000",
+		"http://127.1.2.3:8080/x?y":  "http://127.1.2.3:8080/x?y",
+		"http://[::1]:4000/":         "http://[::1]:4000/",
+		"https://app.localhost:8443": "https://app.localhost:8443",
+		"http://0.0.0.0:8000/":       "http://127.0.0.1:8000/",
+		"http://[::]:8000/":          "http://[::1]:8000/",
+	} {
+		got, err := loopbackProbeURL(in)
+		if err != nil || got != want {
+			t.Errorf("loopbackProbeURL(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{
+		"http://192.168.1.5:5173/", "http://10.0.0.7/", "http://169.254.169.254/latest/meta-data/", "http://metadata.google.internal/",
+		"https://example.com/", "http://localhost.evil.example/", "http://127.0.0.1.nip.io/", "http://[fd00::1]/", "ftp://localhost/", "localhost:3000", "",
+	} {
+		if got, err := loopbackProbeURL(in); err == nil {
+			t.Errorf("loopbackProbeURL(%q) = %q, want a refusal", in, got)
+		}
+	}
+}
+
+func TestAProbeOfALocalServerDoesNotFollowARedirectToAnotherComputer(t *testing.T) {
+	get := func(raw string) *http.Request { r, _ := http.NewRequest("GET", raw, nil); return r }
+	local, other := get("http://127.0.0.1:3000/"), get("http://203.0.113.9/")
+	if err := refuseLeavingLoopback(other, []*http.Request{local}); err == nil {
+		t.Error("a redirect from a local server to another computer was followed")
+	}
+	if err := refuseLeavingLoopback(get("http://localhost:3000/login"), []*http.Request{local}); err != nil {
+		t.Errorf("a redirect within this computer was refused: %v", err)
+	}
+	// a URL the person set as preview.url on another computer may redirect where it likes: they chose where to look
+	if err := refuseLeavingLoopback(get("https://other.example/"), []*http.Request{other}); err != nil {
+		t.Errorf("a redirect from a remote preview.url was refused: %v", err)
 	}
 }

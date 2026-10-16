@@ -637,24 +637,11 @@ func (m *previewManager) list() []map[string]any {
 
 // watchTerminal stops the preview of a task that completed, failed or was cancelled.
 func (m *previewManager) watchTerminal(ctx context.Context) {
-	f := events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}}
-	ch, cancel := m.c.Bus.Subscribe(f)
-	defer func() { cancel() }() // the subscription taken last, after a re-subscribe
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case e, ok := <-ch:
-			if !ok {
-				cancel()
-				ch, cancel = m.c.Bus.Subscribe(f)
-				continue
-			}
-			if e.TaskID != "" {
-				m.stop(e.TaskID)
-			}
+	events.Consume(ctx, m.c.Bus, events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}}, func(e events.Event) {
+		if e.TaskID != "" {
+			m.stop(e.TaskID)
 		}
-	}
+	})
 }
 
 // ---- methods ----

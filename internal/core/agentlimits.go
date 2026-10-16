@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
-	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Agent CLI rate limits (docs/model-routing.md s6). Claude Code reports its account's limits mid-turn as rate_limit_event
@@ -81,22 +80,20 @@ func covers(limitType, model string) bool {
 
 func init() {
 	RegisterExtension(Extension{Name: "agentlimits", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
-		ch, cancel := c.Bus.Subscribe(events.Filter{Types: []string{"agent.output"}})
-		safe.Go("core.init", func() {
-			for ev := range ch {
-				var d struct {
-					Kind string          `json:"kind"`
-					Data json.RawMessage `json:"data"`
-				}
-				if json.Unmarshal(ev.Data, &d) != nil || d.Kind != "rate_limit" || ev.AgentID == "" {
-					continue
-				}
-				a, err := c.agent(ctx, ev.AgentID)
-				if err != nil {
-					continue
-				}
-				c.limits.observe(a.Adapter, d.Data)
+		ctx, cancel := context.WithCancel(ctx)
+		events.Watch(ctx, c.Bus, events.Filter{Types: []string{"agent.output"}}, func(ev events.Event) {
+			var d struct {
+				Kind string          `json:"kind"`
+				Data json.RawMessage `json:"data"`
 			}
+			if json.Unmarshal(ev.Data, &d) != nil || d.Kind != "rate_limit" || ev.AgentID == "" {
+				return
+			}
+			a, err := c.agent(ctx, ev.AgentID)
+			if err != nil {
+				return
+			}
+			c.limits.observe(a.Adapter, d.Data)
 		})
 		return nil, cancel, nil
 	}})

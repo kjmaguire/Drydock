@@ -37,6 +37,7 @@ func init() {
 
 var (
 	envNameRe  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
+	errEnvName = errors.New("an environment variable name has letters, digits and _ only (at most 64, not starting with a digit); give the value in its own field")
 	mcpToolRe  = regexp.MustCompile(`^[A-Za-z0-9_.*?\-]{1,100}$`)
 	errNoVault = errors.New("this computer has no credential store to keep a secret in; Drydock will not store it anywhere else")
 )
@@ -515,7 +516,7 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 	for k, v := range in.Env {
 		k = strings.TrimSpace(k)
 		if !envNameRe.MatchString(k) {
-			return MCPLibraryServer{}, fmt.Errorf("%q is not a valid environment variable name", k)
+			return MCPLibraryServer{}, errEnvName // a name field may hold a pasted NAME=value: the message does not repeat it (L38)
 		}
 		// plain variables are kept as text and shown on screen; a value the secret scanner would change is a secret that
 		// belongs in the vault (audit 2026-10-16, L6). The value is not repeated in the message.
@@ -550,7 +551,7 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 	for name, val := range in.SecretEnv {
 		name = strings.TrimSpace(name)
 		if !envNameRe.MatchString(name) {
-			return MCPLibraryServer{}, fmt.Errorf("%q is not a valid environment variable name", name)
+			return MCPLibraryServer{}, errEnvName
 		}
 		if _, dup := r.Env[name]; dup {
 			return MCPLibraryServer{}, fmt.Errorf("%s is both a plain and a secret environment variable", name)

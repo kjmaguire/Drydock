@@ -128,12 +128,12 @@ func TestAReaderThatFallsBehindIsToldWhatWasDropped(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.CloseAll()
-	m.Write(in.ID, []byte("head -c 1500000 /dev/zero | tr '\\0' a; echo; echo end-mark\n"))
+	m.Write(in.ID, []byte("head -c 3000000 /dev/zero | tr '\\0' a; echo; echo end-mark\n"))
 	readUntilNoKeep := func() Chunk {
 		deadline := time.Now().Add(15 * time.Second)
 		for time.Now().Before(deadline) {
 			c, _ := m.Read(context.Background(), in.ID, 1<<40, 200*time.Millisecond)
-			if c.Next > Keep+200000 {
+			if c.Next > keepMax+200000 {
 				time.Sleep(300 * time.Millisecond)
 				c, _ = m.Read(context.Background(), in.ID, 0, 0)
 				return c
@@ -338,5 +338,37 @@ func TestOpenProgramNeedsAProgramItCanFind(t *testing.T) {
 	wd, _ := os.Getwd()
 	if err != nil || got != filepath.Join(wd, "bin", "tool") {
 		t.Fatalf("relative: %q %v", got, err)
+	}
+}
+
+// A terminal whose program ended and that is forgotten to make room is killed and closed, so what it left running and its job
+// do not outlive it (audit 2026-10-16, L9).
+func TestAForgottenEndedTerminalIsKilledAndClosed(t *testing.T) {
+	m := &Manager{Shell: sh, Max: 1}
+	a, err := m.Open(t.TempDir(), "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.CloseAll()
+	m.Write(a.ID, []byte("exit\n"))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := m.Exited(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	var kills atomic.Int32
+	m.mu.Lock()
+	ta := m.terms[a.ID]
+	orig := ta.kill
+	ta.kill = func() error { kills.Add(1); return orig() }
+	m.mu.Unlock()
+	if _, err := m.Open(t.TempDir(), "", 0, 0); err != nil { // there is room for one: the ended terminal is forgotten
+		t.Fatal(err)
+	}
+	if kills.Load() != 1 {
+		t.Fatalf("the forgotten terminal was killed %d times", kills.Load())
+	}
+	if _, err := m.Read(context.Background(), a.ID, 0, 0); err != ErrNotFound {
+		t.Fatalf("a forgotten terminal still reads: %v", err)
 	}
 }

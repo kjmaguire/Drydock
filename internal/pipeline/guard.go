@@ -117,7 +117,13 @@ func (d Deps) footprint(ctx context.Context, t tasks.Task, target string) []stri
 
 // Collisions returns the earlier active tasks of the project whose footprint overlaps t's, with the overlapping paths.
 func (d Deps) Collisions(ctx context.Context, t tasks.Task, target string) ([]Collision, error) {
-	mine := d.footprint(ctx, t, target)
+	return d.collisionsFor(ctx, t, d.footprint(ctx, t, target), target)
+}
+
+// collisionsFor is Collisions with t's own footprint given: a task that waits runs no agent, so its own changes cannot move while
+// it waits and the guard works them out once, where it used to ask git for them (a full add into a temporary index) at every
+// poll, besides the footprint of every earlier task (audit 2026-10-16, L13).
+func (d Deps) collisionsFor(ctx context.Context, t tasks.Task, mine []string, target string) ([]Collision, error) {
 	if len(mine) == 0 {
 		return nil, nil
 	}
@@ -173,8 +179,10 @@ func Guard(d Deps, project func(ctx context.Context, projectID string) (ProjectI
 		baseline := d.lastOverride(ctx, t.ID)
 		waited := false
 		var lastReason string
-		for {
-			cs, err := d.Collisions(ctx, t, target)
+		mine := d.footprint(ctx, t, target)
+		wait := poll
+		for polls := 1; ; polls++ {
+			cs, err := d.collisionsFor(ctx, t, mine, target)
 			if err != nil {
 				return workflow.NodeOutput{}, err
 			}
@@ -207,11 +215,25 @@ func Guard(d Deps, project func(ctx context.Context, projectID string) (ProjectI
 			select {
 			case <-ctx.Done():
 				return workflow.NodeOutput{}, ctx.Err()
-			case <-time.After(poll):
+			case <-time.After(wait):
 			}
+			wait = nextGuardWait(wait, poll, polls)
 		}
 	}
 }
+
+// nextGuardWait is how long a waiting task sleeps before it looks again after polls looks: the poll time for the first few, then
+// longer, up to eight times the poll time. The earlier task's footprint costs git a full add every time it is asked, and a task
+// that waits for a long one has no use for a look every two seconds.
+func nextGuardWait(cur, base time.Duration, polls int) time.Duration {
+	if polls < guardQuickPolls {
+		return cur
+	}
+	return min(cur*2, base*8)
+}
+
+// guardQuickPolls is how many looks a waiting task takes at the poll time before it starts to slow down.
+const guardQuickPolls = 5
 
 // lastOverride is the id of the newest human release of the task's wait (0 when none).
 func (d Deps) lastOverride(ctx context.Context, taskID string) int64 {

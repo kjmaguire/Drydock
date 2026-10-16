@@ -507,28 +507,18 @@ func startSandbox(ctx context.Context, c *Core) (map[string]Method, func(), erro
 
 // watchSandboxTasks removes a task's sandbox when the task completes, fails or is cancelled.
 func (c *Core) watchSandboxTasks(ctx context.Context) {
-	types := []string{"task.completed", "task.failed", "task.cancelled"}
-	ch, cancel := c.Bus.Subscribe(events.Filter{Types: types})
-	defer func() { cancel() }()
-	for {
-		select {
-		case <-ctx.Done():
+	// Consume replays what the bus dropped when this watcher fell behind: a missed event would leave a sandbox running for a task
+	// that has ended (audit 2026-10-16, L2)
+	events.Consume(ctx, c.Bus, events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}}, func(e events.Event) {
+		if e.TaskID == "" || !c.sandboxSwitch(ctx, e.ProjectID).Enabled {
 			return
-		case e, ok := <-ch:
-			if !ok {
-				ch, cancel = c.Bus.Subscribe(events.Filter{Types: types})
-				continue
-			}
-			if e.TaskID == "" || !c.sandboxSwitch(ctx, e.ProjectID).Enabled {
-				continue
-			}
-			rctx, rcancel := context.WithTimeout(ctx, 2*time.Minute)
-			if err := c.sandboxes().Remove(rctx, e.TaskID); err != nil {
-				c.logf("sandbox: removing the sandbox of %s: %v", e.TaskID, err)
-			}
-			rcancel()
 		}
-	}
+		rctx, rcancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer rcancel()
+		if err := c.sandboxes().Remove(rctx, e.TaskID); err != nil {
+			c.logf("sandbox: removing the sandbox of %s: %v", e.TaskID, err)
+		}
+	})
 }
 
 // pruneSandboxes removes, at start, the sandboxes of tasks that ended or no longer exist (left by a crash or a closed

@@ -157,13 +157,49 @@ func (b *SQLBus) Close() {
 	})
 }
 
+// MaxEventData is the largest payload an event keeps. Every event is stored, copied to each subscriber and sent to the window, so
+// one tool result of tens of megabytes cost more than the rest of the stream; a larger payload is stored as a stand-in that says how
+// large it was and keeps its start (audit 2026-10-16, L2).
+const MaxEventData = 256 << 10
+
+// storedHead is how much of a payload that was cut is kept in the stored stand-in.
+const storedHead = 32 << 10
+
+// boundData makes e.Data fit what an event may hold: valid JSON no larger than MaxEventData. Data that is not JSON would make
+// every later marshalling of the event fail, so it is replaced by a stand-in that says so, and the event still happens.
+func boundData(e Event) Event {
+	switch {
+	case len(e.Data) == 0:
+		e.Data = json.RawMessage(`{}`)
+	case len(e.Data) > MaxEventData:
+		e.Data = standIn(e.Data, storedHead, true)
+	case !json.Valid(e.Data):
+		e.Data = standIn(e.Data, transportHead, false)
+	}
+	return e
+}
+
+// standIn is the small JSON object that replaces a payload: its size, why, and its start (cut where a character ends).
+func standIn(data []byte, keep int, tooLarge bool) json.RawMessage {
+	head := data[:min(len(data), keep)]
+	for len(head) > 0 && !utf8.Valid(head) {
+		head = head[:len(head)-1]
+	}
+	m := map[string]any{"bytes": len(data), "head": string(head)}
+	if tooLarge {
+		m["truncated"] = true
+	} else {
+		m["invalid"] = true
+	}
+	b, _ := json.Marshal(m)
+	return b
+}
+
 func (b *SQLBus) Publish(ctx context.Context, e Event) (uint64, error) {
 	if e.Time.IsZero() {
 		e.Time = time.Now().UTC()
 	}
-	if len(e.Data) == 0 {
-		e.Data = json.RawMessage(`{}`)
-	}
+	e = boundData(e)
 	if f := b.redactor.Load(); f != nil {
 		e = (*f)(e)
 	}
@@ -428,12 +464,7 @@ func ForTransport(e Event, max int) Event {
 	if max <= 0 || len(e.Data) <= max {
 		return e
 	}
-	head := e.Data[:min(len(e.Data), transportHead)]
-	for len(head) > 0 && !utf8.Valid(head) {
-		head = head[:len(head)-1] // do not end in the middle of a character
-	}
-	stand, _ := json.Marshal(map[string]any{"truncated": true, "bytes": len(e.Data), "head": string(head)})
-	e.Data = stand
+	e.Data = standIn(e.Data, transportHead, true)
 	return e
 }
 

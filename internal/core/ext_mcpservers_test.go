@@ -619,4 +619,13 @@ func TestAPlainEnvironmentVariableCannotHoldASecret(t *testing.T) {
 	if b, _ := json.Marshal(lib); strings.Contains(string(b), token) {
 		t.Fatal("the library entry shows the token")
 	}
+	// a name field that holds a pasted NAME=value is refused without repeating it, for a plain and for a secret variable (L38)
+	for _, in := range []core.MCPServerInput{
+		{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{self}, Env: map[string]string{"TOKEN=" + token: "x"}},
+		{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{self}, SecretEnv: map[string]string{"TOKEN=" + token: "x"}},
+	} {
+		if err := a.callErr("mcplib.save", in); err == nil || strings.Contains(err.Error(), token) || strings.Contains(err.Error(), "TOKEN") {
+			t.Errorf("a pasted NAME=value as a variable name: %v", err)
+		}
+	}
 }

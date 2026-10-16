@@ -9,7 +9,6 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/events"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -25,22 +24,21 @@ const driftTypesMax = 20
 
 func init() {
 	RegisterExtension(Extension{Name: "adapterdrift", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
-		ch, cancel := c.Bus.Subscribe(events.Filter{Types: []string{"agent.output"}})
-		safe.Go("core.init", func() {
-			for ev := range ch {
-				var d struct {
-					Kind string              `json:"kind"`
-					Data workflow.ErrorChunk `json:"data"`
-				}
-				if json.Unmarshal(ev.Data, &d) != nil || d.Kind != workflow.ChunkError || d.Data.Code != workflow.CodeAdapterDrift || ev.AgentID == "" {
-					continue
-				}
-				a, err := c.agent(ctx, ev.AgentID)
-				if err != nil {
-					continue
-				}
-				c.observeDrift(ctx, a.Adapter, d.Data.Detail)
+		ctx, cancel := context.WithCancel(ctx)
+		// events.Watch goes on after the bus dropped the watcher as slow: it replays what it missed (audit 2026-10-16, L2)
+		events.Watch(ctx, c.Bus, events.Filter{Types: []string{"agent.output"}}, func(ev events.Event) {
+			var d struct {
+				Kind string              `json:"kind"`
+				Data workflow.ErrorChunk `json:"data"`
 			}
+			if json.Unmarshal(ev.Data, &d) != nil || d.Kind != workflow.ChunkError || d.Data.Code != workflow.CodeAdapterDrift || ev.AgentID == "" {
+				return
+			}
+			a, err := c.agent(ctx, ev.AgentID)
+			if err != nil {
+				return
+			}
+			c.observeDrift(ctx, a.Adapter, d.Data.Detail)
 		})
 		return nil, cancel, nil
 	}})

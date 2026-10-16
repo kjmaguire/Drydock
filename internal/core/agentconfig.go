@@ -169,36 +169,24 @@ func (c *Core) TrustAgentConfig(ctx context.Context, projectID, adapter, fingerp
 // watchAgentConfigRefusals tells the project when an agent could not start because of configuration nobody trusted, once per
 // fingerprint, and puts it in the inbox: a person has to read the files.
 func (c *Core) watchAgentConfigRefusals(ctx context.Context) {
-	f := events.Filter{Types: []string{"agent.failed"}}
-	ch, cancel := c.Bus.Subscribe(f)
-	defer func() { cancel() }()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case e, ok := <-ch:
-			if !ok {
-				ch, cancel = c.Bus.Subscribe(f)
-				continue
-			}
-			var d struct {
-				RepoConfig *struct {
-					Adapter     string   `json:"adapter"`
-					Files       []string `json:"files"`
-					Fingerprint string   `json:"fingerprint"`
-				} `json:"repoConfig"`
-			}
-			if json.Unmarshal(e.Data, &d) != nil || d.RepoConfig == nil || e.ProjectID == "" {
-				continue
-			}
-			rc := d.RepoConfig
-			shown := rc.Files
-			if len(shown) > 6 {
-				shown = shown[:6]
-			}
-			c.alertsNotice(ctx, e.ProjectID, "agentconfig:"+e.ProjectID+":"+rc.Adapter+":"+rc.Fingerprint,
-				fmt.Sprintf("%s was not started: the folder it works in has configuration that the repository brought (%s), which the CLI would act on. "+
-					"Read the files, then trust them in the project's settings (agent configuration), or remove them and try again.", rc.Adapter, strings.Join(shown, ", ")), true)
+	events.Consume(ctx, c.Bus, events.Filter{Types: []string{"agent.failed"}}, func(e events.Event) {
+		var d struct {
+			RepoConfig *struct {
+				Adapter     string   `json:"adapter"`
+				Files       []string `json:"files"`
+				Fingerprint string   `json:"fingerprint"`
+			} `json:"repoConfig"`
 		}
-	}
+		if json.Unmarshal(e.Data, &d) != nil || d.RepoConfig == nil || e.ProjectID == "" {
+			return
+		}
+		rc := d.RepoConfig
+		shown := rc.Files
+		if len(shown) > 6 {
+			shown = shown[:6]
+		}
+		c.alertsNotice(ctx, e.ProjectID, "agentconfig:"+e.ProjectID+":"+rc.Adapter+":"+rc.Fingerprint,
+			fmt.Sprintf("%s was not started: the folder it works in has configuration that the repository brought (%s), which the CLI would act on. "+
+				"Read the files, then trust them in the project's settings (agent configuration), or remove them and try again.", rc.Adapter, strings.Join(shown, ", ")), true)
+	})
 }

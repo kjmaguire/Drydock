@@ -62,13 +62,15 @@ type packaging struct {
 	bg  context.Context
 	now func() time.Time // injectable clock (tests)
 
-	mu       sync.Mutex
-	keys     license.Keys
-	cachedTk string
-	cachedP  *license.Payload
-	cachedE  error
-	maxSeen  time.Time
-	savedMax time.Time
+	mu   sync.Mutex
+	keys license.Keys
+	// keysBroken is set when the build's embedded keys were given and could not be read (see startPackaging)
+	keysBroken bool
+	cachedTk   string
+	cachedP    *license.Payload
+	cachedE    error
+	maxSeen    time.Time
+	savedMax   time.Time
 	// jumpSince is when the clock was first seen more than clockStep ahead of maxSeen, zero when it is not
 	jumpSince time.Time
 	kickCh    chan struct{}
@@ -133,8 +135,11 @@ func startPackaging(ctx context.Context, c *Core) (map[string]Method, func(), er
 	}
 	keys, err := parseLicenseKeys(LicensePublicKeys)
 	if err != nil {
-		c.logf("licensing: %v (the build's embedded keys are unusable, so licensing is treated as not configured)", err)
+		// keys that were set and cannot be read are a broken build, not an unlicensed one: licensing stays on with nothing to
+		// verify against, so Drydock is read-only and says why, instead of allowing everything (audit 2026-10-16, L3)
+		c.logf("licensing: %v (the build's embedded keys are unusable: Drydock stays read-only)", err)
 		keys = nil
+		p.keysBroken = true
 	}
 	p.keys = keys
 	home, _ := os.UserHomeDir()

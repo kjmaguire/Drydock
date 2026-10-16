@@ -283,42 +283,7 @@ func (e *economics) budgetNotice(ctx context.Context, n budget.Notice) {
 // relayInconclusiveChecks posts skipped and errored checks (osv-scanner missing, a tool that broke) in the task channel with
 // their honest status. The core's postCheck only knows pass and fail, and a skipped check must never read as either.
 func (e *economics) relayInconclusiveChecks(ctx context.Context) {
-	f := events.Filter{Types: []string{"task.check_inconclusive"}}
-	var last uint64
-	if seq, err := e.c.Bus.LastSeq(ctx); err == nil {
-		last = seq
-	}
-	for ctx.Err() == nil {
-		ch, cancel := e.c.Bus.Subscribe(f)
-		// anything published between LastSeq and the subscription
-		if evs, err := e.c.Bus.Replay(ctx, last, f, 100); err == nil {
-			for _, ev := range evs {
-				e.relay(ctx, ev)
-				last = ev.Seq
-			}
-		}
-	loop:
-		for {
-			select {
-			case <-ctx.Done():
-				cancel()
-				return
-			case ev, ok := <-ch:
-				if !ok {
-					break loop
-				}
-				if ev.Seq > last {
-					e.relay(ctx, ev)
-					last = ev.Seq
-				}
-			}
-		}
-		cancel()
-		select { // the bus closed the subscription (it was slow, or it is shutting down): do not spin
-		case <-ctx.Done():
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
+	events.Consume(ctx, e.c.Bus, events.Filter{Types: []string{"task.check_inconclusive"}}, func(ev events.Event) { e.relay(ctx, ev) })
 }
 
 func (e *economics) relay(ctx context.Context, ev events.Event) {

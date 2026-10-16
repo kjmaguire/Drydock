@@ -12,7 +12,14 @@ type Bus interface {
     Subscribe(f Filter) (<-chan Event, cancel func())               // channel closed (without cancel) = fell behind: Replay and resubscribe
     Replay(ctx context.Context, afterSeq uint64, f Filter, limit int) ([]Event, error)
 }
+// MaxEventData (256 KiB): a larger Data is stored as a stand-in {"truncated":true,"bytes":N,"head":"..."} (the first 32 KiB), and Data
+// that is not JSON as {"invalid":true,...}; every event is stored, copied to each subscriber and sent to the window (audit 2026-10-16 L2).
+func Watch(ctx, b Bus, f Filter, handle func(Event)) <-chan struct{}   // subscribes before it returns; after a slow-drop it replays what it missed (no gap, no duplicate); a panic in handle is contained
+func Consume(ctx, b Bus, f Filter, handle func(Event))                 // Watch, then waits for ctx to end
 ```
+
+A consumer that must see every event of a kind (the responder, presence, economics, the sandbox and agent watchers) reads through
+`Watch`/`Consume`: a bare `Subscribe` loop ends silently when the bus drops a slow subscriber, and the consumer then stops for good.
 
 ## Workflow (`internal/workflow`)
 

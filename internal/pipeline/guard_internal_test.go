@@ -1,9 +1,15 @@
 package pipeline
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
@@ -84,5 +90,74 @@ func TestDeclaredCollisionOnlyLooksAtStartedTasks(t *testing.T) {
 	}
 	if declaredCollision(tasks.Task{ID: "x"}, []tasks.Task{running}) != nil {
 		t.Fatal("a task with no planned files is not held back ahead of time")
+	}
+}
+
+// A task that waits works out its own footprint once; each look afterwards asks git for the footprint of the earlier tasks only,
+// where it used to ask for both, and the waits between looks grow (audit 2026-10-16, L13).
+func TestTheGuardAsksForTheWaitingTasksOwnFootprintOnce(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.OpenTemp(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bus := events.NewSQLBus(db, 64)
+	t.Cleanup(func() { bus.Close(); db.Close() })
+	if _, err := db.Writer().Exec(`INSERT INTO projects(id,name,repo_path,created_at) VALUES('p1','demo','/x',1)`); err != nil {
+		t.Fatal(err)
+	}
+	svc := &tasks.Service{DB: db, Bus: bus}
+	mk := func(title string) tasks.Task {
+		tk, err := svc.Create(ctx, tasks.CreateReq{ProjectID: "p1", Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, r, files, wt := "a1", "a2", []string{"calc.go"}, "/worktrees/"+title
+		tk, err = svc.Patch(ctx, tk.ID, tasks.Update{Assignee: &a, Reviewer: &r, Files: &files, Worktree: &wt})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tk
+	}
+	earlier, mine := mk("earlier"), mk("mine")
+	for _, to := range []tasks.Status{tasks.Ready, tasks.Claimed, tasks.InProgress} {
+		if _, err := svc.Transition(ctx, earlier.ID, to, tasks.TransitionOpts{By: "system"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := 0
+	d := Deps{Tasks: svc, Repo: func(context.Context, string) (*git.Repo, error) {
+		calls++
+		return nil, errors.New("no repository in this test")
+	}}
+	footprint := d.footprint(ctx, mine, "main")
+	if calls != 1 {
+		t.Fatalf("one footprint asked git %d times", calls)
+	}
+	calls = 0
+	for i := 0; i < 6; i++ {
+		cs, err := d.collisionsFor(ctx, mine, footprint, "main")
+		if err != nil || len(cs) != 1 || cs[0].Task.ID != earlier.ID {
+			t.Fatalf("look %d: %+v %v", i, cs, err)
+		}
+	}
+	if calls != 6 {
+		t.Fatalf("six looks asked git %d times: the waiting task's own footprint was worked out again", calls)
+	}
+}
+
+func TestAWaitingTaskLooksLessOftenTheLongerItWaits(t *testing.T) {
+	base := 2 * time.Second
+	wait := base
+	var got []time.Duration
+	for polls := 1; polls <= 12; polls++ {
+		got = append(got, wait)
+		wait = nextGuardWait(wait, base, polls)
+	}
+	want := []time.Duration{2, 2, 2, 2, 2, 4, 8, 16, 16, 16, 16, 16}
+	for i := range want {
+		if got[i] != want[i]*time.Second {
+			t.Fatalf("waits %v, want %v seconds", got, want)
+		}
 	}
 }

@@ -258,6 +258,10 @@ func TestLicenseStateMachineAndReadOnlyEnforcement(t *testing.T) {
 	a.mustBeReadOnlyError("provider.create", a.callErr("provider.create", map[string]any{"name": "x"}))
 	a.mustBeReadOnlyError("integration.connect", a.callErr("integration.connect", map[string]any{"kind": "linear"}))
 	a.mustBeReadOnlyError("Core.StartTask", func() error { _, err := a.c.StartTask(context.Background(), task.ID); return err }())
+	a.mustBeReadOnlyError("Core.Recommend (a paid turn, also the project's own wish to ask again)", func() error {
+		_, err := a.c.Recommend(context.Background(), p.ID, "", "evolution", nil)
+		return err
+	}())
 	a.mustBeReadOnlyError("Core.CreateAgent", func() error {
 		_, err := a.c.CreateAgent(context.Background(), core.AgentSpec{ProjectID: p.ID, Name: "X", Adapter: "claude", Role: "r"})
 		return err
@@ -398,6 +402,85 @@ func TestLicenseTokenNeverLeaks(t *testing.T) {
 		if strings.Contains(body, strings.Split(token, ".")[1]) {
 			t.Fatalf("the token reached the support bundle file %s", name)
 		}
+	}
+}
+
+// Embedded keys that were set and cannot be read are a broken build, not an unlicensed one: Drydock stays read-only and says so,
+// where it used to treat the build as a development build and allow everything (audit 2026-10-16, L3).
+func TestKeysThatCannotBeReadLeaveDrydockReadOnlyNotUnlicensed(t *testing.T) {
+	core.LicensePublicKeys = "k1=this-is-not-base64!"
+	t.Cleanup(func() { core.LicensePublicKeys = "" })
+	a := open(t, "")
+	v := a.status()
+	if !v.Configured || v.DevMode || !v.ReadOnly || v.State != license.StateNone || !strings.Contains(v.Message, "built-in license keys are unreadable") || !strings.Contains(v.Banner, "built-in license keys are unreadable") {
+		t.Fatalf("status %+v", v)
+	}
+	a.mustBeReadOnlyError("start_task with unreadable keys", a.c.RequireLicensed(context.Background(), "start_task"))
+	if err := a.callErr("license.import", map[string]string{"token": "x.y"}); err == nil || !strings.Contains(err.Error(), "cannot check licenses") {
+		t.Fatalf("import with unreadable keys: %v", err)
+	}
+	if a.c.RetentionAllowed() {
+		t.Error("retention must be suspended while nothing can be verified")
+	}
+}
+
+// A license names the Drydock versions it is good for (min_app, max_app): it is refused at import outside them, and an installed
+// one stops covering a build that is updated past its window (audit 2026-10-16, L3). A token's mid field is not read.
+func TestALicenseIsGoodOnlyForTheVersionsItNames(t *testing.T) {
+	kit := newKit(t)
+	a := open(t, "")
+	kit.attach(a.c)
+	core.AppVersion = "1.5.0"
+	t.Cleanup(func() { core.AppVersion = "0.0.0-dev" })
+	now := kit.clk.now()
+	mk := func(jti, min, max string, iat time.Time) string {
+		return license.Sign(kit.priv, license.Payload{KID: "k1", JTI: jti, Kind: "paid", Sub: "cust-1", IAT: iat.Unix(), NBF: iat.Unix(), EXP: now.Add(365 * 24 * time.Hour).Unix(), MinApp: min, MaxApp: max})
+	}
+	if _, err := a.importLicense(mk("too-new", "2.0.0", "", now)); err == nil || !strings.Contains(err.Error(), "2.0.0 or later") {
+		t.Fatalf("a license for newer versions: %v", err)
+	}
+	if _, err := a.importLicense(mk("too-old", "", "1.0.0", now)); err == nil || !strings.Contains(err.Error(), "up to 1.0.0") {
+		t.Fatalf("a license for older versions: %v", err)
+	}
+	v, err := a.importLicense(mk("fits", "1.0.0", "2.0.0", now))
+	if err != nil || v.State != license.StateActive || v.ReadOnly {
+		t.Fatalf("a license that covers this version: %+v %v", v, err)
+	}
+	// the app is updated past the window: the installed license no longer covers it
+	core.AppVersion = "3.0.0"
+	v = a.status()
+	if !v.ReadOnly || v.State != license.StateNone || !strings.Contains(v.Message, "up to 2.0.0") || !strings.Contains(v.Banner, "up to 2.0.0") {
+		t.Fatalf("after the update: %+v", v)
+	}
+	a.mustBeReadOnlyError("start_task past the license's versions", a.c.RequireLicensed(context.Background(), "start_task"))
+	// a version that cannot be read is not held against the license
+	core.AppVersion = "not-a-version"
+	if v = a.status(); v.ReadOnly {
+		t.Fatalf("an unreadable app version blocked a license: %+v", v)
+	}
+}
+
+// A license file is read up to its limit and no further, and a larger one is refused before it is parsed.
+func TestALicenseFileIsReadUpToItsLimitOnly(t *testing.T) {
+	kit := newKit(t)
+	a := open(t, "")
+	kit.attach(a.c)
+	big := filepath.Join(t.TempDir(), "big.drydock-license")
+	if err := os.WriteFile(big, []byte(strings.Repeat("A", 200<<10)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.callErr("license.import", map[string]string{"path": big}); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("a 200 KiB file: %v", err)
+	}
+	now := kit.clk.now()
+	ok := filepath.Join(t.TempDir(), "ok.drydock-license")
+	if err := os.WriteFile(ok, []byte(kit.token("paid", "from-file", now, now.Add(30*24*time.Hour), 7)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var v core.LicenseView
+	a.call("license.import", map[string]string{"path": ok}, &v)
+	if v.State != license.StateActive {
+		t.Fatalf("a license file: %+v", v)
 	}
 }
 

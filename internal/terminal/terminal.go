@@ -25,8 +25,13 @@ import (
 	"github.com/kjmaguire/drydock/internal/safe"
 )
 
-// Keep is how much output a terminal keeps for a reader that falls behind; older output is dropped and counted.
+// Keep is how much output a terminal keeps for a reader that falls behind; older output is dropped and counted. Up to keepMax
+// is held before it is cut back to Keep.
 const Keep = 1 << 20
+
+// keepMax is how much a terminal's buffer holds before it is cut back to Keep. Cutting at every read copied about a megabyte for
+// every 32 KiB the shell printed; cutting once per Keep bytes copies each byte once, in place (audit 2026-10-16, L9).
+const keepMax = 2 * Keep
 
 // maxRead bounds one read so a burst does not become one huge reply.
 const maxRead = 256 << 10
@@ -201,7 +206,7 @@ func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, e
 	}
 	m.mu.Unlock()
 	for _, t := range forget {
-		_ = t.pty.Close()
+		forgetTerm(t)
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return Info{}, fmt.Errorf("terminal: %s is not a folder", dir)
@@ -250,6 +255,20 @@ func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, e
 	return t.info, nil
 }
 
+// keepTail appends p to a terminal's buffer, whose first byte is at offset start, and cuts the buffer back to its last Keep bytes
+// once it holds more than keepMax. The cut moves the bytes down inside the same array, so a flood allocates nothing after the
+// buffer has grown to its size. It returns the buffer and the offset of its first byte.
+func keepTail(buf []byte, start int64, p []byte) ([]byte, int64) {
+	buf = append(buf, p...)
+	if len(buf) > keepMax {
+		over := len(buf) - Keep
+		copy(buf, buf[over:])
+		buf = buf[:Keep]
+		start += int64(over)
+	}
+	return buf, start
+}
+
 func (t *term) pump() {
 	defer close(t.pumped)
 	b := make([]byte, 32<<10)
@@ -257,11 +276,7 @@ func (t *term) pump() {
 		n, err := t.pty.Read(b)
 		if n > 0 {
 			t.mu.Lock()
-			t.buf = append(t.buf, b[:n]...)
-			if over := len(t.buf) - Keep; over > 0 {
-				t.buf = append(t.buf[:0:0], t.buf[over:]...)
-				t.start += int64(over)
-			}
+			t.buf, t.start = keepTail(t.buf, t.start, b[:n])
 			t.notifyLocked()
 			t.mu.Unlock()
 		}
@@ -399,6 +414,13 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 	t.info.Cols, t.info.Rows = cols, rows
 	m.mu.Unlock()
 	return nil
+}
+
+// forgetTerm lets go of a terminal whose program ended: whatever it left running is killed, and the job that held it (on Windows
+// a handle that stays open until the job is ended) and the pseudo-terminal are closed (audit 2026-10-16, L9).
+func forgetTerm(t *term) {
+	_ = t.kill()
+	_ = t.pty.Close()
 }
 
 // Close kills the shell and everything it started, and forgets the terminal.

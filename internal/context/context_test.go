@@ -302,3 +302,59 @@ func TestAHumanEditProposalHasItsSecretsRedacted(t *testing.T) {
 		t.Fatalf("the proposal kept the secret: %+v", props)
 	}
 }
+
+// The same human edit is offered once, however many task starts see the edited file, and also after it was rejected; a changed
+// edit is a new proposal; a very long one is cut to what a person can read whole (audit 2026-10-16, L17).
+func TestAHumanEditIsOfferedOnceAndNotWithoutLimit(t *testing.T) {
+	ctx := context.Background()
+	e, ms := newEngine(t)
+	dir := t.TempDir()
+	if _, _, err := e.Write(ctx, "p1", dir); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "AGENTS.md")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, append(b, []byte("\nAlways write tests first.\n")...), 0o644)
+	for i := 0; i < 4; i++ { // four task starts see the same edited file
+		if _, _, err := e.Write(ctx, "p1", dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, _ := ms.List(ctx, "p1", "", "")
+	if len(all) != 1 {
+		t.Fatalf("%d proposals for one edit", len(all))
+	}
+	if err := ms.SetStatus(ctx, all[0].ID, memory.Rejected); err != nil {
+		t.Fatal(err)
+	}
+	e.Write(ctx, "p1", dir)
+	if all, _ = ms.List(ctx, "p1", "", ""); len(all) != 1 {
+		t.Fatalf("a rejected edit came back: %d proposals", len(all))
+	}
+	// a further edit is a new proposal, and a huge one is cut
+	os.WriteFile(p, append(b, []byte("\n"+strings.Repeat("A very long rule. ", 2000))...), 0o644)
+	e.Write(ctx, "p1", dir)
+	all, _ = ms.List(ctx, "p1", "", "")
+	if len(all) != 2 {
+		t.Fatalf("a changed edit should be a second proposal: %d", len(all))
+	}
+	for _, x := range all {
+		if n := len([]rune(x.Body)); n > memory.MaxBodyChars {
+			t.Fatalf("a proposal of %d characters: a person cannot read it whole", n)
+		}
+	}
+}
+
+// What is imported from the repository's own instruction files says where it came from.
+func TestAnImportedSectionSaysItIsTheRepositorysOwn(t *testing.T) {
+	ctx := context.Background()
+	e, _ := newEngine(t)
+	files, _, err := e.Generate(ctx, "p1", map[string]string{"AGENTS.md": "Run make test before you finish."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := files["AGENTS.md"]
+	if !strings.Contains(body, "From the repository's own AGENTS.md") || !strings.Contains(body, "Drydock did not write it and cannot vouch for it") || !strings.Contains(body, "Run make test before you finish.") {
+		t.Fatalf("imported section:\n%.600s", body)
+	}
+}

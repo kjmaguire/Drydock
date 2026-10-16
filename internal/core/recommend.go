@@ -127,12 +127,9 @@ func init() {
 			return nil, nil, err
 		}
 		// the project evolves: completed tasks may call for another look (bounded; see maybeRecommend)
-		ch, unsub := c.Bus.Subscribe(events.Filter{Types: []string{"task.completed"}})
-		safe.Go("core.init", func() {
-			for ev := range ch {
-				if ev.ProjectID != "" {
-					c.maybeRecommend(ctx, ev.ProjectID)
-				}
+		events.Watch(ctx, c.Bus, events.Filter{Types: []string{"task.completed"}}, func(ev events.Event) {
+			if ev.ProjectID != "" {
+				c.maybeRecommend(ctx, ev.ProjectID)
 			}
 		})
 		methods := map[string]Method{
@@ -187,7 +184,6 @@ func init() {
 		// the turns stop with the context and record how they ended before the database closes
 		closeFn := func() {
 			cancel()
-			unsub()
 			done := make(chan struct{})
 			safe.Go("core.init#2", func() { st.runs.Wait(); close(done) })
 			select {
@@ -263,6 +259,11 @@ func (c *Core) maybeRecommend(ctx context.Context, projectID string) {
 
 // Recommend starts one recommendation turn and returns its row (status running); the result arrives as recommend.finished.
 func (c *Core) Recommend(ctx context.Context, projectID, agentID, trigger string, candidates []RecommendCandidate) (Recommendation, error) {
+	// a recommendation is a paid turn: while Drydock is read-only (license expired) neither a person's request nor the project's
+	// own wish to ask again starts one (audit 2026-10-16, L1)
+	if err := c.RequireLicensed(ctx, "start_work"); err != nil {
+		return Recommendation{}, err
+	}
 	if _, err := c.GetProject(ctx, projectID); err != nil {
 		return Recommendation{}, err
 	}

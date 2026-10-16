@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,8 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 )
 
-// The stream to the UI carries a stand-in for an event with a huge payload; the stored event stays whole (audit 2026-10-16, M22).
+// An event with a huge payload is stored as a stand-in that says how large it was (events.MaxEventData, audit 2026-10-16, L2), and the
+// stream to the UI never carries it whole either (M22).
 func TestFollowSendsAStandInForAHugePayload(t *testing.T) {
 	a := open(t, "")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -34,14 +36,26 @@ func TestFollowSendsAStandInForAHugePayload(t *testing.T) {
 		}
 		return true
 	}, nil)
-	if len(got[seq].Data) > 8<<10 || !strings.Contains(string(got[seq].Data), `"truncated":true`) {
+	if len(got[seq].Data) > 40<<10 || !strings.Contains(string(got[seq].Data), `"truncated":true`) || !strings.Contains(string(got[seq].Data), fmt.Sprintf(`"bytes":%d`, len(big))) {
 		t.Fatalf("the huge event travelled whole: %d bytes", len(got[seq].Data))
 	}
 	if string(got[small].Data) != `{"ok":true}` {
 		t.Fatalf("a small event changed: %s", got[small].Data)
 	}
 	stored, err := a.c.Bus.Replay(ctx, seq-1, events.Filter{Types: []string{"test.huge"}}, 1)
-	if err != nil || len(stored) != 1 || len(stored[0].Data) != len(big) {
-		t.Fatalf("the stored event is not whole: %v %d", err, len(stored))
+	if err != nil || len(stored) != 1 || len(stored[0].Data) > events.MaxEventData || !strings.Contains(string(stored[0].Data), fmt.Sprintf(`"bytes":%d`, len(big))) {
+		t.Fatalf("the stored event is not the stand-in: %v %d", err, len(stored))
+	}
+	// an event between the transport limit and nothing is whole, and is sent whole
+	mid := `{"text":"` + strings.Repeat("y", core.MaxFollowData/2) + `"}`
+	midSeq, err := a.c.Bus.Publish(ctx, events.Event{Type: "test.mid", Data: json.RawMessage(mid)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var midGot events.Event
+	mctx, mstop := context.WithCancel(ctx)
+	a.c.Follow(mctx, midSeq-1, events.Filter{Types: []string{"test.mid"}}, func(e events.Event) bool { midGot = e; mstop(); return true }, nil)
+	if string(midGot.Data) != mid {
+		t.Fatalf("an event that fits was changed: %d bytes", len(midGot.Data))
 	}
 }

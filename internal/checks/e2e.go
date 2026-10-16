@@ -191,7 +191,7 @@ func RunE2E(ctx context.Context, pm proc.Manager, dir string, o E2EOptions, onLi
 		if len(sum.Failed) > 0 {
 			out.FailingTests = sum.Failed
 		}
-		out.Screenshots = copyScreenshots(shots, o.LogDir)
+		out.Screenshots = copyScreenshots(shots, dir, o.LogDir)
 		// a green exit with unexpected results would be a contradiction: trust the report over the exit code, loudly
 		if res.Passed && sum.Unexpected > 0 {
 			out.Passed = false
@@ -282,8 +282,38 @@ func readPlaywrightReport(dir string, notBefore time.Time) (*PlaywrightSummary, 
 	return nil, nil
 }
 
-// copyScreenshots keeps up to 20 screenshots (each at most 5 MiB) under logDir so the evidence outlives the worktree.
-func copyScreenshots(paths []string, logDir string) []string {
+// screenshotRoots are the folders of the worktree a screenshot may be copied from: where Playwright writes its output.
+var screenshotRoots = []string{"test-results", "playwright-report"}
+
+// screenshotExts are the file types kept as screenshots.
+var screenshotExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true}
+
+// screenshotPath reports whether p, a path the e2e command's report named, is an image inside the worktree's output folders once
+// links are followed. The report is written by the project's own test run, so a path in it is a claim: without this a report
+// could name any file on the computer and have it copied into the task's evidence (audit 2026-10-16, L11).
+func screenshotPath(worktree, p string) bool {
+	if !screenshotExts[strings.ToLower(filepath.Ext(p))] {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return false
+	}
+	for _, root := range screenshotRoots {
+		rr, err := filepath.EvalSymlinks(filepath.Join(worktree, root))
+		if err != nil {
+			continue
+		}
+		if rel, err := filepath.Rel(rr, real); err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+			return true
+		}
+	}
+	return false
+}
+
+// copyScreenshots keeps up to 20 screenshots (each at most 5 MiB) from the worktree's output folders under logDir so the evidence
+// outlives the worktree.
+func copyScreenshots(paths []string, worktree, logDir string) []string {
 	if len(paths) == 0 || logDir == "" {
 		return nil
 	}
@@ -294,7 +324,7 @@ func copyScreenshots(paths []string, logDir string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, p := range paths {
-		if len(out) >= 20 || seen[p] {
+		if len(out) >= 20 || seen[p] || !screenshotPath(worktree, p) {
 			continue
 		}
 		seen[p] = true

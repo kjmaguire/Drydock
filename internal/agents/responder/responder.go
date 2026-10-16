@@ -204,29 +204,18 @@ func (r *Responder) Start(ctx context.Context) (stop func(), err error) {
 	if err := r.markInterrupted(ctx); err != nil {
 		return nil, err
 	}
-	ch, cancel := r.d.Bus.Subscribe(events.Filter{Types: []string{"room.message_posted"}})
-	done := make(chan struct{})
-	safe.Go("responder.Responder.Start", func() {
-		defer close(done)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case e, ok := <-ch:
-				if !ok {
-					return
-				}
-				var d struct {
-					Room    string `json:"room"`
-					Message string `json:"message"`
-					Author  string `json:"author"`
-				}
-				if json.Unmarshal(e.Data, &d) != nil || !strings.HasPrefix(d.Author, "human:") {
-					continue // agents, tools and the system never start a conversation
-				}
-				r.enqueue(ctx, d.Room, d.Message)
-			}
+	ctx, cancel := context.WithCancel(ctx)
+	// a human's message is never lost because the bus dropped this watcher as slow: Watch replays it (audit 2026-10-16, L2)
+	done := events.Watch(ctx, r.d.Bus, events.Filter{Types: []string{"room.message_posted"}}, func(e events.Event) {
+		var d struct {
+			Room    string `json:"room"`
+			Message string `json:"message"`
+			Author  string `json:"author"`
 		}
+		if json.Unmarshal(e.Data, &d) != nil || !strings.HasPrefix(d.Author, "human:") {
+			return // agents, tools and the system never start a conversation
+		}
+		r.enqueue(ctx, d.Room, d.Message)
 	})
 	return func() {
 		cancel()

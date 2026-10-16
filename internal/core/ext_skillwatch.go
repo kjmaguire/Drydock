@@ -133,13 +133,10 @@ func init() {
 		}
 		ctx, cancel := context.WithCancel(ctx)
 		// P49: an agent opening a skill it had on demand (Claude reading its file under skills.OnDemandDir) is a use
-		ch, unsub := c.Bus.Subscribe(events.Filter{Types: []string{"agent.output"}})
-		safe.Go("core.init", func() {
-			for ev := range ch {
-				if name := skillReadFromOutput(ev.Data); name != "" && ev.ProjectID != "" {
-					if k := c.Knowledge(); k != nil {
-						k.Skills.RecordUse(ctx, skills.Target{ProjectID: ev.ProjectID, TaskID: ev.TaskID, AgentID: ev.AgentID}, ev.RunID, name, skills.UseFileRead)
-					}
+		events.Watch(ctx, c.Bus, events.Filter{Types: []string{"agent.output"}}, func(ev events.Event) {
+			if name := skillReadFromOutput(ev.Data); name != "" && ev.ProjectID != "" {
+				if k := c.Knowledge(); k != nil {
+					k.Skills.RecordUse(ctx, skills.Target{ProjectID: ev.ProjectID, TaskID: ev.TaskID, AgentID: ev.AgentID}, ev.RunID, name, skills.UseFileRead)
 				}
 			}
 		})
@@ -162,7 +159,7 @@ func init() {
 				}
 			}
 		})
-		return m, func() { unsub(); cancel() }, nil
+		return m, cancel, nil
 	}})
 }
 

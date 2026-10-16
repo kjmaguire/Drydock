@@ -66,13 +66,15 @@ func (c *Core) agentEnvView(ctx context.Context) AgentEnvView {
 func (c *Core) setAgentPassEnv(ctx context.Context, names []string) (AgentEnvView, error) {
 	seen := map[string]bool{}
 	var clean []string
-	for _, n := range names {
+	for i, n := range names {
 		n = strings.TrimSpace(n)
 		if n == "" || seen[strings.ToUpper(n)] {
 			continue
 		}
 		if !envNameRe.MatchString(n) {
-			return AgentEnvView{}, fmt.Errorf("%q is not an environment variable name (give names only, never values)", n)
+			// a line that is not a name may be NAME=value with a secret in it: the message names the line, never repeats it
+			// (audit 2026-10-16, L38)
+			return AgentEnvView{}, fmt.Errorf("line %d is not an environment variable name (give names only, never values)", i+1)
 		}
 		seen[strings.ToUpper(n)] = true
 		clean = append(clean, n)

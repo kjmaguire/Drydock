@@ -572,8 +572,9 @@ Open, owner action:
   setting `update.pending`), and the start of the new version releases the pre-update backup from the prune exemption after it has
   run two minutes (`updatepolicy.ConfirmHealthy`); a marker that nothing released stops holding its backup after 30 days
   (`backup.MaxKeepAge`), so no update leaves a database-sized file behind for good. The daily retention pass also purges recorded
-  telemetry past its window. An event sent over the follow stream keeps its type and ids and loses only the middle of an oversized
-  `data` (`events.ForTransport`, 256 KiB: `core.MaxFollowData`), the Claude parser keeps at most 256 KiB of one tool result, and
+  telemetry past its window. An event sent over the follow stream keeps its type and ids, and an oversized `data` (over 256 KiB,
+  `core.MaxFollowData`) goes as a stand-in that says how large it was and keeps its first 4 KiB (`events.ForTransport`); the bus
+  itself stores nothing larger than 256 KiB whole either (see L2 below), the Claude parser keeps at most 256 KiB of one tool result, and
   a memory proposal's title and body are limited (200 and 8,000 characters, `memory.CheckSize`) before they reach a person.
   **Text that reached the lead (M27):** a follow-up the team lead splits off carries its origin (`lead:N`, N steps from a task a
   person made; migration 00124, `Task.Origin`), stays in BACKLOG until a person moves it on even under automatic scheduling
@@ -596,3 +597,21 @@ Open, owner action:
   Drydock checks `/props` with it before it calls the server ready; `llama-server --list-devices` runs in the same trimmed
   environment; a model folder name can no longer be `..`. The gateway's failure bookkeeping is bounded by the shape of a run id and a
   global ceiling. A staged restore is found again by name in the backup folder, as a plain file with the staged hash.
+  **Licence, the event bus and smaller edges (L1, L2, L3, L9, L11, L13, L16, L17, L38 core side):** `recommend.start` is a paid-work method like
+  `task.start` (`gatedMethods`, and `Core.Recommend` asks `RequireLicensed("start_work")` itself); keys that cannot be read leave
+  Drydock read-only and say why, not "unlicensed" (`keysBroken`, fail closed), a licence file is read up to a limit (`maxLicenseFile`),
+  and a licence is good only for the app versions it names (`min_app`, `max_app`; the unused `mid` claim is gone). Every event is
+  stored with at most 256 KiB of `data` (`events.MaxEventData`; a larger one is a stand-in that says how large it was and keeps its
+  first 32 KiB, data that is not JSON likewise), and a consumer that must see every event of a kind reads through `events.Watch`/
+  `events.Consume`, which subscribe before they return and, when the bus drops a slow subscriber, replay what was missed and
+  carry on, where a bare `Subscribe` loop ended for good (the responder, presence, economics, the sandbox, agent and skill watchers,
+  the adapter-drift and limit watchers). A terminal keeps its last 1 MiB for a reader that falls behind but cuts back once it holds
+  2 MiB, in place, instead of copying a megabyte for every 32 KiB read, and a terminal whose program ended also ends what it left
+  running and closes its job. A preview command's printed address is probed only when it is on this computer (and a redirect
+  to another computer is not followed), and the e2e check copies a screenshot only when it is an image inside the worktree's
+  `test-results` or `playwright-report` folders. A task that waits at the collision guard works out its own footprint once and
+  looks again less and less often; the scheduler says why a task waits once, not at every pass. The text of an instruction
+  file the repository brought is introduced as the repository's own, and a person's edit of a generated file is offered back
+  to memory once, redacted and cut to what a person can read whole. The refusal of an environment variable name that is not one (a
+  pasted `NAME=value`) names the line and does not repeat what is on it (`agentenv.set`, `mcplib.save`). **Not verified:** nothing in this
+  batch is Windows-only.

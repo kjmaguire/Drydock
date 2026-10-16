@@ -153,6 +153,53 @@ func TestRunE2EReadsPlaywrightReportAndKeepsScreenshotsOutsideTheWorktree(t *tes
 	}
 }
 
+// The report names the screenshots, and the report is written by the project's own test run: only images inside the worktree's
+// output folders are copied, links followed, and nothing else the report names (audit 2026-10-16, L11).
+const pwEvilReportScript = `
+const fs = require('fs');
+fs.mkdirSync('test-results', {recursive: true});
+fs.mkdirSync('elsewhere', {recursive: true});
+fs.writeFileSync('test-results/ok.png', 'inside');
+fs.writeFileSync('test-results/notes.txt', 'a text file the report calls an image');
+fs.writeFileSync('elsewhere/in-worktree.png', 'inside the worktree, outside the output folders');
+fs.symlinkSync(process.env.OUTSIDE, 'test-results/link.png');
+const shot = p => ({attachments: [{name: 'screenshot', contentType: 'image/png', path: p}]});
+const cwd = process.cwd();
+const report = {suites: [{title: 'app.spec.ts', specs: [{title: 'looks', file: 'app.spec.ts', tests: [{status: 'expected', results: [
+  shot(process.env.OUTSIDE), shot(cwd + '/test-results/link.png'), shot(cwd + '/test-results/notes.txt'), shot(cwd + '/elsewhere/in-worktree.png'),
+  shot(cwd + '/test-results/../elsewhere/in-worktree.png'), shot(cwd + '/test-results/ok.png')]}]}], suites: []}]};
+fs.writeFileSync('test-results/e2e-report.json', JSON.stringify(report));
+`
+
+func TestRunE2EKeepsOnlyScreenshotsFromTheWorktreesOutputFolders(t *testing.T) {
+	needNode(t)
+	dir := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "secret.png")
+	if err := os.WriteFile(outside, []byte("not for the evidence"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "run.js", pwEvilReportScript)
+	logs := t.TempDir()
+	r, err := checks.RunE2E(context.Background(), proc.New(), dir, checks.E2EOptions{Enabled: true, Command: []string{"node", "run.js"}, LogDir: logs, Env: []string{"OUTSIDE=" + outside}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Screenshots) != 1 {
+		t.Fatalf("only the image in test-results is kept, got %v", r.Screenshots)
+	}
+	if b, err := os.ReadFile(r.Screenshots[0]); err != nil || string(b) != "inside" {
+		t.Fatalf("the copy: %v %q", err, b)
+	}
+	filepath.WalkDir(logs, func(p string, d os.DirEntry, _ error) error {
+		if !d.IsDir() {
+			if b, _ := os.ReadFile(p); strings.Contains(string(b), "not for the evidence") {
+				t.Errorf("a file from outside the worktree was copied into the evidence: %s", p)
+			}
+		}
+		return nil
+	})
+}
+
 func TestRunE2EDoesNotTrustAStaleReport(t *testing.T) {
 	needNode(t)
 	dir := t.TempDir()
@@ -333,6 +380,48 @@ func TestPreviewTakesTheURLTheCommandPrints(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+// The command's output is the project's code talking: an address it prints that is not on this computer is not probed (audit
+// 2026-10-16, L11), whatever it names, and the preview ends as one that printed no usable URL.
+func TestPreviewDoesNotProbeAnAddressTheCommandPrintsThatIsNotLocal(t *testing.T) {
+	needNode(t)
+	var asked []string
+	rec := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		asked = append(asked, r.URL.Host)
+		return nil, errors.New("no network in this test")
+	})}
+	h, r, err := checks.StartPreview(context.Background(), proc.New(), t.TempDir(), checks.PreviewOptions{
+		Enabled: true, Timeout: 5 * time.Second, HTTP: rec,
+		Command: []string{"node", "-e", "console.log('Network: http://203.0.113.9:8080/'); console.log('meta: http://169.254.169.254/latest/meta-data/'); setTimeout(()=>{}, 3000)"},
+	}, nil)
+	if err != nil || h != nil || r.Passed {
+		t.Fatalf("h=%v err=%v %+v", h, err, r)
+	}
+	if len(asked) != 0 {
+		t.Fatalf("Drydock sent requests to addresses the command printed: %v", asked)
+	}
+	// a local address among the printed ones is the one that is probed
+	asked = nil
+	h, r, err = checks.StartPreview(context.Background(), proc.New(), t.TempDir(), checks.PreviewOptions{
+		Enabled: true, Timeout: 3 * time.Second, HTTP: rec,
+		Command: []string{"node", "-e", "console.log('Network: http://203.0.113.9:8080/'); console.log('Local: http://localhost:5999/'); setTimeout(()=>{}, 2500)"},
+	}, nil)
+	if err != nil || h != nil || r.Passed {
+		t.Fatalf("h=%v err=%v %+v", h, err, r)
+	}
+	if len(asked) == 0 {
+		t.Fatal("the local address was not probed")
+	}
+	for _, a := range asked {
+		if a != "localhost:5999" {
+			t.Fatalf("probed %q", a)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestPreviewFailuresAreReportedAndNothingIsLeftRunning(t *testing.T) {
 	needNode(t)

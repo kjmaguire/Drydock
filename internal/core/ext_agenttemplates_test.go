@@ -111,9 +111,24 @@ func TestAgentEnvironmentSettingTakesNamesOnlyAndIsolationIsStatedPlainly(t *tes
 		t.Fatalf("default %+v", v)
 	}
 	for _, bad := range [][]string{{"AWS_PROFILE=work"}, {"two words"}, {"TOKEN=abc123"}} {
-		if err := a.callErr("agentenv.set", map[string]any{"names": bad}); err == nil {
+		err := a.callErr("agentenv.set", map[string]any{"names": bad})
+		if err == nil {
 			t.Errorf("%v was accepted: a value must never be stored", bad)
+			continue
 		}
+		// a pasted NAME=value may carry a secret: the refusal says which line, and does not repeat it (audit 2026-10-16, L38)
+		for _, leak := range []string{"work", "abc123", "two words", "TOKEN", "AWS_PROFILE"} {
+			if strings.Contains(err.Error(), leak) {
+				t.Errorf("the refusal of %v repeats %q: %v", bad, leak, err)
+			}
+		}
+		if !strings.Contains(err.Error(), "line 1") {
+			t.Errorf("the refusal of %v does not say which line: %v", bad, err)
+		}
+	}
+	// the second line is the one named
+	if err := a.callErr("agentenv.set", map[string]any{"names": []string{"AWS_PROFILE", "TOKEN=abc123"}}); err == nil || !strings.Contains(err.Error(), "line 2") || strings.Contains(err.Error(), "abc123") {
+		t.Errorf("the second line was not named alone: %v", err)
 	}
 	a.call("agentenv.set", map[string]any{"names": []string{"AWS_PROFILE", " aws_profile ", "CLAUDE_CODE_USE_BEDROCK"}}, &v)
 	if strings.Join(v.Pass, ",") != "AWS_PROFILE,CLAUDE_CODE_USE_BEDROCK" {

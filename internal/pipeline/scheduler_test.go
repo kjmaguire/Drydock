@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -465,4 +467,68 @@ func maxOverlap(e *tpl) int {
 		}
 	}
 	return max
+}
+
+// A task that waits for the same reason pass after pass is said once (scheduler.skipped is published when the reason is new or
+// changed), not every five seconds for as long as it waits (audit 2026-10-16, L16); the tick's own result still lists it.
+func TestSchedulerSaysWhyATaskWaitsOnceNotOnEveryPass(t *testing.T) {
+	e := newTpl(t, map[string]fakeagent.Script{aWork: shipReviewer(), aReview: shipReviewer()}, tplOpts{title: "Harness task"})
+	e.dropHarnessTask()
+	var failStart atomic.Bool
+	failStart.Store(true)
+	s := schedFor(e, 2, func(context.Context, tasks.Task) (workflow.RunID, error) {
+		if failStart.Load() {
+			return "", fmt.Errorf("boom")
+		}
+		return "", nil
+	})
+	waiting := e.newTask("waits", 1)
+	if _, err := e.tasks.Transition(context.Background(), waiting.ID, tasks.Ready, tasks.TransitionOpts{By: "human:test"}); err != nil {
+		t.Fatal(err)
+	}
+	reasons := func() []string {
+		evs, err := e.bus.Replay(context.Background(), 0, events.Filter{Types: []string{"scheduler.skipped"}, TaskID: waiting.ID}, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, ev := range evs {
+			var d struct{ Reason string }
+			_ = json.Unmarshal(ev.Data, &d)
+			out = append(out, d.Reason)
+		}
+		return out
+	}
+	tick := func(want string) {
+		t.Helper()
+		res, err := s.Tick(context.Background(), "p1")
+		if err != nil || len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0].Reason, want) {
+			t.Fatalf("tick: %+v %v, want a skip for %q", res, err, want)
+		}
+	}
+	for i := 0; i < 5; i++ {
+		tick("no worker or reviewer")
+	}
+	if got := reasons(); len(got) != 1 || !strings.Contains(got[0], "no worker or reviewer") {
+		t.Fatalf("five passes with the same reason: %q", got)
+	}
+	// the reason changes: said again, once
+	w, r := aWork, aReview
+	e.tasks.Patch(context.Background(), waiting.ID, tasks.Update{Assignee: &w, Reviewer: &r})
+	for i := 0; i < 4; i++ {
+		tick("could not start: boom")
+	}
+	if got := reasons(); len(got) != 2 || !strings.Contains(got[1], "boom") {
+		t.Fatalf("after the reason changed: %q", got)
+	}
+	// once it is no longer skipped the first reason is forgotten: a later skip for it is said again
+	failStart.Store(false)
+	if res, _ := s.Tick(context.Background(), "p1"); len(res.Skipped) != 0 {
+		t.Fatalf("started: %+v", res)
+	}
+	failStart.Store(true)
+	tick("could not start: boom")
+	if got := reasons(); len(got) != 3 {
+		t.Fatalf("a skip after it had been forgotten: %q", got)
+	}
 }

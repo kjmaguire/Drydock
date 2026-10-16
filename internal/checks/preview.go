@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/netguard"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/safe"
 )
@@ -194,10 +196,15 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 			if onLine != nil {
 				onLine(line)
 			}
-			if m := urlRE.FindString(line); m != "" {
-				select {
-				case found <- strings.TrimRight(m, ".,;"):
-				default:
+			// the first address the command printed that is on this computer is the one to probe: a "Network:" line before the
+			// "Local:" one must not hide it, and one that is not local is never probed (audit 2026-10-16, L11)
+			for _, m := range urlRE.FindAllString(line, -1) {
+				if lu, err := loopbackProbeURL(strings.TrimRight(m, ".,;")); err == nil {
+					select {
+					case found <- lu:
+					default:
+					}
+					break
 				}
 			}
 		}
@@ -235,7 +242,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 
 	client := o.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 3 * time.Second}
+		client = &http.Client{Timeout: 3 * time.Second, CheckRedirect: refuseLeavingLoopback}
 	}
 	target := o.HealthURL
 	deadline := time.NewTimer(timeout)
@@ -247,9 +254,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 		if target == "" {
 			select {
 			case u := <-found:
-				if err := checkProbeURL(u); err == nil {
-					target = u
-				}
+				target = u
 			default:
 			}
 		}
@@ -282,9 +287,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 			if target == "" {
 				select {
 				case u := <-found:
-					if checkProbeURL(u) == nil {
-						target = u
-					}
+					target = u
 				default:
 				}
 			}
@@ -314,6 +317,48 @@ func checkProbeURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("checks: preview URL %q is not an http(s) URL", raw)
+	}
+	return nil
+}
+
+// loopbackProbeURL accepts a URL the preview command printed only when it names this computer (localhost, 127.0.0.0/8, ::1, or
+// the unspecified address a dev server prints for "everywhere", which is probed as loopback). The command is the project's code
+// and the text it prints is not trusted: Drydock does not send a request to an address that text names unless the person set it
+// as preview.url themselves (audit 2026-10-16, L11). It returns the URL to probe.
+func loopbackProbeURL(raw string) (string, error) {
+	if err := checkProbeURL(raw); err != nil {
+		return "", err
+	}
+	u, _ := url.Parse(raw)
+	host := u.Hostname()
+	switch ip := net.ParseIP(host); {
+	case ip != nil && ip.IsUnspecified():
+		repl := "127.0.0.1"
+		if ip.To4() == nil {
+			repl = "::1"
+		}
+		if port := u.Port(); port != "" {
+			u.Host = net.JoinHostPort(repl, port)
+		} else if strings.Contains(repl, ":") {
+			u.Host = "[" + repl + "]"
+		} else {
+			u.Host = repl
+		}
+		return u.String(), nil
+	case netguard.IsLoopbackHost(host):
+		return raw, nil
+	}
+	return "", fmt.Errorf("checks: the preview printed %q, which is not on this computer; set preview.url to probe it", raw)
+}
+
+// refuseLeavingLoopback stops a probe of a local server from following a redirect to another computer: the server is the
+// project's code, and a redirect is the way it would send Drydock to an address of its choosing.
+func refuseLeavingLoopback(req *http.Request, via []*http.Request) error {
+	if len(via) > 0 && netguard.IsLoopbackHost(via[0].URL.Hostname()) && !netguard.IsLoopbackHost(req.URL.Hostname()) {
+		return fmt.Errorf("checks: the preview redirected to %s, which is not on this computer", req.URL.Host)
+	}
+	if len(via) >= 10 {
+		return errors.New("checks: too many redirects")
 	}
 	return nil
 }

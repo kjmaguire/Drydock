@@ -43,12 +43,12 @@ holds its place until it is merged, cancelled or failed.
 Where it acts:
 
 - **Scheduler admission.** A READY task whose planned `Files` overlap a running task's is not started; the skip reason
-  (`scheduler.skipped`) names the task and the paths. It starts when the other is merged, cancelled or failed. This is the only
+  (`scheduler.skipped`) names the task and the paths; a task that waits for the same reason pass after pass is said once, not at every pass (L16). It starts when the other is merged, cancelled or failed. This is the only
   point where waiting avoids doing the work twice, so the planner is told to give parallel tasks different files.
 - **The `guard` node** (after `work`, before the checks, in every graph that merges). It compares the footprint, now including
   what the worker really changed, with earlier tasks. On overlap the task becomes BLOCKED with the reason
   (`waiting for "Variant A" (both change calc.go) to finish`), `task.waiting_on` is published and evidence of kind `guard` is
-  recorded. No agent runs while it waits and it holds no agent slot. When the earlier task is gone it goes back to IN_PROGRESS
+  recorded. No agent runs while it waits and it holds no agent slot. The task's own footprint is worked out once (it cannot move while the task waits), and it looks again every poll time at first and then less often, up to eight times the poll time, because each look asks git for the earlier tasks' changes (audit 2026-10-16 L13). When the earlier task is gone it goes back to IN_PROGRESS
   (`task.guard_released`) and continues; its branch then gets the earlier task's work through the sync step.
 - **Release.** A human can let a waiting task go on (`task.guard.release`, button "Let it go on now" on the task). Only a
   `human:` identity can. The merge is still synced, re-checked and approved.

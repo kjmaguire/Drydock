@@ -11,7 +11,6 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -400,24 +399,13 @@ func (s *Service) WatchTasks(ctx context.Context) error {
 	if s.bus == nil {
 		return errors.New("room: no bus")
 	}
-	ch, cancel := s.bus.Subscribe(events.Filter{Types: []string{"task.completed", "task.cancelled", "task.failed"}})
-	safe.Go("room.Service.WatchTasks", func() {
-		defer cancel()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case e, ok := <-ch:
-				if !ok {
-					return
-				}
-				if e.TaskID == "" {
-					continue
-				}
-				if err := s.ArchiveTaskChannel(ctx, e.TaskID, strings.TrimPrefix(e.Type, "task.")); err != nil && !errors.Is(err, ErrNotFound) {
-					s.report(err)
-				}
-			}
+	// a watcher the bus dropped as slow replays what it missed instead of ending (audit 2026-10-16, L2)
+	events.Watch(ctx, s.bus, events.Filter{Types: []string{"task.completed", "task.cancelled", "task.failed"}}, func(e events.Event) {
+		if e.TaskID == "" {
+			return
+		}
+		if err := s.ArchiveTaskChannel(ctx, e.TaskID, strings.TrimPrefix(e.Type, "task.")); err != nil && !errors.Is(err, ErrNotFound) {
+			s.report(err)
 		}
 	})
 	return nil

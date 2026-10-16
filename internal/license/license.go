@@ -42,9 +42,11 @@ type Payload struct {
 	NBF       int64    `json:"nbf"`
 	EXP       int64    `json:"exp"`
 	GraceDays int      `json:"grace_days,omitempty"`
-	MID       string   `json:"mid,omitempty"`
-	MinApp    string   `json:"min_app,omitempty"`
-	MaxApp    string   `json:"max_app,omitempty"`
+	// MinApp and MaxApp, when set, are the oldest and newest Drydock version the license is good for; the app checks them against
+	// its own version (core appWindow). A token may carry a "mid" (machine fingerprint) field: machine binding is not in v1, so it
+	// is not read (audit 2026-10-16, L3).
+	MinApp string `json:"min_app,omitempty"`
+	MaxApp string `json:"max_app,omitempty"`
 }
 
 // Errors.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/license"
+	"github.com/kjmaguire/drydock/internal/updatepolicy"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -73,7 +75,34 @@ type LicenseView struct {
 	LastSeen     int64         `json:"lastSeen,omitempty"` // highest time the app has observed, unix seconds
 }
 
-func (p *packaging) configured() bool { return len(p.keySet()) > 0 }
+// maxLicenseFile is the largest .drydock-license file that is read.
+const maxLicenseFile = 64 << 10
+
+// keysBrokenMessage is said when the build's embedded keys are set and cannot be read: licensing is on, and nothing can be
+// verified, so Drydock stays read-only instead of allowing everything as an unlicensed development build does.
+const keysBrokenMessage = "This build of Drydock cannot check licenses: its built-in license keys are unreadable, so it is read-only. Reinstall Drydock from the official installer."
+
+// configured reports whether licensing is on in this build: it has license keys, or it was given some it cannot read.
+func (p *packaging) configured() bool { return len(p.keySet()) > 0 || p.keysBroken }
+
+// appWindow says why a license does not cover this build ("" when it does): its optional min_app and max_app name the oldest
+// and newest Drydock version it is good for (audit 2026-10-16, L3). A version that cannot be read is not held against it.
+func appWindow(pl *license.Payload, version string) string {
+	if pl == nil {
+		return ""
+	}
+	if pl.MinApp != "" {
+		if c, err := updatepolicy.CompareVersions(version, pl.MinApp); err == nil && c < 0 {
+			return fmt.Sprintf("This license is for Drydock %s or later, and this is %s. Install a newer Drydock or import a license for this version.", pl.MinApp, version)
+		}
+	}
+	if pl.MaxApp != "" {
+		if c, err := updatepolicy.CompareVersions(version, pl.MaxApp); err == nil && c > 0 {
+			return fmt.Sprintf("This license is for Drydock up to %s, and this is %s. Import a license for this version.", pl.MaxApp, version)
+		}
+	}
+	return ""
+}
 
 func (p *packaging) keySet() license.Keys {
 	p.mu.Lock()
@@ -112,12 +141,17 @@ func (p *packaging) evaluate(ctx context.Context) licState {
 	if tk, ok := p.getSetting(ctx, keyLicenseToken); ok && tk != "" {
 		payload, perr = p.parseCached(tk)
 	}
-	if perr != nil {
+	switch {
+	case p.keysBroken:
+		st.status = license.Status{State: license.StateNone, Message: keysBrokenMessage}
+	case perr != nil:
 		st.status = license.Status{State: license.StateNone, Message: "The installed license could not be verified (" + friendlyLicenseError(perr) + "). Import a valid license."}
-	} else {
+	default:
 		s, err := license.Evaluate(payload, now, maxSeen)
 		if err != nil {
 			st.status = license.Status{State: license.StateNone, Message: "The installed license is not valid yet. " + friendlyLicenseError(err)}
+		} else if why := appWindow(payload, AppVersion); why != "" {
+			st.status = license.Status{State: license.StateNone, Payload: payload, Message: why}
 		} else {
 			st.status = s
 		}
@@ -142,6 +176,9 @@ func (p *packaging) evaluate(ctx context.Context) licState {
 		v.Banner = "License expired: Drydock is read-only. You can read, export and back up everything; nothing has been deleted. Import a renewed license to continue."
 	case license.StateNone:
 		v.Banner = "No valid license: Drydock is read-only. Import a license or trial to start work."
+		if p.keysBroken || st.status.Payload != nil {
+			v.Banner = st.status.Message // the reason is not "no license": the keys are unreadable, or the license is for other versions
+		}
 	}
 	if v.ClockSuspect {
 		v.Message += " Drydock last saw " + maxSeen.Local().Format("2 January 2006") + ", which is later than this computer's clock says now, so the license is judged by that date. " +
@@ -316,6 +353,7 @@ var gatedMethods = map[string]string{
 	"run.respond": "approve", "integration.outbound.decide": "approve", "integration.outbound.execute": "approve",
 	"agent.create": "create_agent", "agent.update": "create_agent", "project.create": "create_project", "project.attachRepo": "create_project", "project.setup": "create_project", "github.clone": "create_project", "provider.create": "add_connection", "integration.connect": "add_connection",
 	"chat.create": "chat", "chat.send": "chat",
+	"recommend.start": "start_work", // a paid turn of the team lead (audit 2026-10-16, L1); Core.Recommend checks it too, for the automatic path
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an
@@ -507,13 +545,21 @@ func (p *packaging) importLicense(ctx context.Context, r licenseImportReq) (Lice
 	if !p.configured() {
 		return LicenseView{}, errors.New("licensing is not configured in this build, so a license cannot be imported. This build allows every feature")
 	}
+	if p.keysBroken {
+		return LicenseView{}, errors.New(keysBrokenMessage)
+	}
 	token := strings.TrimSpace(r.Token)
 	if token == "" && r.Path != "" {
-		b, err := os.ReadFile(r.Path)
+		f, err := os.Open(r.Path)
 		if err != nil {
 			return LicenseView{}, fmt.Errorf("could not read the license file: %w", err)
 		}
-		if len(b) > 64<<10 {
+		defer f.Close()
+		b, err := io.ReadAll(io.LimitReader(f, maxLicenseFile+1)) // never more than the limit is read, whatever the file is
+		if err != nil {
+			return LicenseView{}, fmt.Errorf("could not read the license file: %w", err)
+		}
+		if len(b) > maxLicenseFile {
 			return LicenseView{}, errors.New("that file is too large to be a license")
 		}
 		token = strings.TrimSpace(string(b))
@@ -531,6 +577,9 @@ func (p *packaging) importLicense(ctx context.Context, r licenseImportReq) (Lice
 	st, err := license.Evaluate(&pl, p.clock(), maxSeen)
 	if err != nil {
 		return LicenseView{}, errors.New("this license was not accepted: " + friendlyLicenseError(err))
+	}
+	if why := appWindow(&pl, AppVersion); why != "" {
+		return LicenseView{}, errors.New("this license was not accepted: " + why)
 	}
 	if cur := p.evaluate(ctx); cur.status.Payload != nil {
 		if pl.IAT < cur.status.Payload.IAT {

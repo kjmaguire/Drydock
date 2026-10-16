@@ -57,10 +57,15 @@ type SchedulerDeps struct {
 type Scheduler struct {
 	d  SchedulerDeps
 	mu sync.Mutex // one pass at a time
+	// skipped is, per project and task, the reason last published as scheduler.skipped: a task that waits for the same reason pass
+	// after pass is said once, not every five seconds for as long as it waits (audit 2026-10-16, L16)
+	skipped map[string]map[string]string
 }
 
 // NewScheduler returns a Scheduler.
-func NewScheduler(d SchedulerDeps) *Scheduler { return &Scheduler{d: d} }
+func NewScheduler(d SchedulerDeps) *Scheduler {
+	return &Scheduler{d: d, skipped: map[string]map[string]string{}}
+}
 
 // activeRuns counts the project's runs that are executing: they hold an agent (or are about to). A run parked for a human
 // holds no agent process, so it does not use a slot.
@@ -163,9 +168,27 @@ func (s *Scheduler) Tick(ctx context.Context, projectID string) (TickResult, err
 		res.Started = append(res.Started, t.ID)
 		s.emit(ctx, "scheduler.started", t, map[string]any{"taskId": t.ID, "runId": run, "active": res.Active + len(res.Started), "max": dev.MaxParallel})
 	}
+	// scheduler.skipped is published when a task's reason is new or changed; a task that is no longer skipped is forgotten, so a
+	// later skip for the same reason is said again
+	last := s.skipped[projectID]
+	if last == nil {
+		last = map[string]string{}
+		s.skipped[projectID] = last
+	}
+	still := map[string]bool{}
 	for _, sk := range res.Skipped {
+		still[sk.TaskID] = true
+		if last[sk.TaskID] == sk.Reason {
+			continue
+		}
+		last[sk.TaskID] = sk.Reason
 		if t, err := s.d.Tasks.Get(ctx, sk.TaskID); err == nil {
 			s.emit(ctx, "scheduler.skipped", t, map[string]any{"taskId": sk.TaskID, "reason": sk.Reason})
+		}
+	}
+	for id := range last {
+		if !still[id] {
+			delete(last, id)
 		}
 	}
 	return res, nil
