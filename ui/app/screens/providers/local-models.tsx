@@ -25,6 +25,7 @@ import { Meter } from "../budgets/meter.tsx";
 import {
   compactCount,
   deviceLine,
+  type FitWords,
   fitText,
   gb,
   gpus,
@@ -217,6 +218,27 @@ export function LocalModels(handle: Handle) {
     }
     redraw();
   };
+  // Close suggestions / Close results: the list and the repository open in it go away, the page shrinks back
+  const closeRepos = () => {
+    suggested = undefined;
+    results = undefined;
+    openRepo = "";
+    variants = undefined;
+    redraw();
+  };
+  // the fit badge (short, the full sentence as its tooltip) and, when the model will not run well, the sentence in the row
+  const fitBadge = (fit: FitWords | undefined, testId?: string) =>
+    fit ? (
+      <Badge tone={fit.tone} title={fit.long} testId={testId}>
+        {fit.text}
+      </Badge>
+    ) : null;
+  const fitWhy = (fit: FitWords | undefined) =>
+    fit && fit.tone !== "ok" ? (
+      <span class="what" data-testid="local-fit-why">
+        {fit.long}
+      </span>
+    ) : null;
 
   const jobRow = (job: LocalJob, testId: string, onCancel: () => void) => {
     const f = jobFraction(job);
@@ -275,7 +297,7 @@ export function LocalModels(handle: Handle) {
         <Section
           title="Models on this PC"
           testId="local-models"
-          description="Run open models with llama.cpp on this computer. Nothing leaves the PC; the server joins the providers below."
+          description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
         >
           <ErrorNote error={q.error} what="Models on this PC" />
           {q.loading ? <Loading /> : null}
@@ -288,7 +310,7 @@ export function LocalModels(handle: Handle) {
         <Section
           title="Models on this PC"
           testId="local-models"
-          description="Run open models with llama.cpp on this computer. Nothing leaves the PC; the server joins the providers below."
+          description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
         >
           <ErrorNote error={q.error} what="Models on this PC" />
           <div mix={cardCss} data-testid="local-runtime">
@@ -321,7 +343,7 @@ export function LocalModels(handle: Handle) {
       <Section
         title="Models on this PC"
         testId="local-models"
-        description="Run open models with llama.cpp on this computer. Nothing leaves the PC; the server joins the providers below."
+        description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
       >
         <ErrorNote error={q.error ?? act.error} what="Models on this PC" />
         <>
@@ -400,6 +422,10 @@ export function LocalModels(handle: Handle) {
                     )}
                   </span>
                 </div>
+                <p mix={muted}>
+                  Downloaded and run by Drydock from its own folder; Update
+                  fetches the newest build the same way.
+                </p>
                 {v.runtime.devices.probed ? (
                   gpus(v.runtime.devices.devices).length > 0 ? (
                     <ul aria-label="Devices" data-testid="local-devices">
@@ -428,11 +454,16 @@ export function LocalModels(handle: Handle) {
               <>
                 <div class="line">
                   <h3>Install llama.cpp</h3>
-                  <span mix={muted}>
-                    An official build from its GitHub release, checked against
-                    the digest GitHub recorded.
-                  </span>
+                  <Badge>built in</Badge>
                 </div>
+                <p>
+                  Drydock downloads and runs llama.cpp itself: the newest
+                  Windows build of the source below, for the backend you pick,
+                  checked against the digest GitHub recorded and unpacked into
+                  Drydock&apos;s own folder. Nothing has to be installed by
+                  hand, and nothing is added to the PC&apos;s PATH; the models
+                  come from the Hugging Face Hub the same way.
+                </p>
                 <div mix={pickCss}>
                   <Field
                     label="Backend"
@@ -464,7 +495,10 @@ export function LocalModels(handle: Handle) {
                       </select>
                     )}
                   </Field>
-                  <Field label="Source">
+                  <Field
+                    label="Source"
+                    hint="The official weekly build is the default. The TurboQuant fork is a second build you can pick; it adds the turbo4 and turbo3 cache types."
+                  >
                     {(id) => (
                       <select
                         id={id}
@@ -564,7 +598,7 @@ export function LocalModels(handle: Handle) {
             {v.models.length > 0 ? (
               <ul aria-label="Downloaded models">
                 {v.models.map((m) => {
-                  const fit = fitText(m.fit);
+                  const fit = fitText(m.fit, m.sizeBytes);
                   const served = server.modelId === m.id && serverOn;
                   return (
                     <li
@@ -575,11 +609,7 @@ export function LocalModels(handle: Handle) {
                     >
                       <span class="name">{m.id}</span>
                       <span mix={muted}>{gb(m.sizeBytes)}</span>
-                      {fit ? (
-                        <Badge tone={fit.tone} testId="local-fit">
-                          {fit.text}
-                        </Badge>
-                      ) : null}
+                      {fitBadge(fit, "local-fit")}
                       {served ? <Badge tone="ok">serving</Badge> : null}
                       <span class="acts">
                         <Button
@@ -615,6 +645,7 @@ export function LocalModels(handle: Handle) {
                           Remove
                         </Button>
                       </span>
+                      {fitWhy(fit)}
                     </li>
                   );
                 })}
@@ -667,15 +698,28 @@ export function LocalModels(handle: Handle) {
                   {act.busy === "search" ? "Searching…" : "Search"}
                 </Button>
               </form>
-              <Button
-                size="sm"
-                variant="ghost"
-                data-testid="local-suggested"
-                disabled={busy}
-                mix={on("click", () => void suggest())}
-              >
-                {act.busy === "suggested" ? "Loading…" : "Show suggestions"}
-              </Button>
+              {suggested && !results ? null : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-testid="local-suggested"
+                  disabled={busy}
+                  mix={on("click", () => void suggest())}
+                >
+                  {act.busy === "suggested" ? "Loading…" : "Show suggestions"}
+                </Button>
+              )}
+              {repos ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-testid="local-repos-close"
+                  disabled={busy}
+                  mix={on("click", closeRepos)}
+                >
+                  {results ? "Close results" : "Close suggestions"}
+                </Button>
+              ) : null}
             </div>
             {repos ? (
               <ul
@@ -714,7 +758,8 @@ export function LocalModels(handle: Handle) {
                             </li>
                           ) : null}
                           {variants.map((va) => {
-                            const fit = fitText(va.fit);
+                            const fit = fitText(va.fit, va.sizeBytes);
+                            const tooBig = va.fit?.target === "none";
                             return (
                               <li
                                 key={va.name}
@@ -724,16 +769,17 @@ export function LocalModels(handle: Handle) {
                               >
                                 <span class="name">{va.name}</span>
                                 <span mix={muted}>{gb(va.sizeBytes)}</span>
-                                {fit ? (
-                                  <Badge tone={fit.tone}>{fit.text}</Badge>
-                                ) : null}
+                                {fitBadge(fit, "local-fit")}
                                 <span class="acts">
                                   <Button
                                     size="sm"
                                     variant="primary"
                                     data-testid="local-download"
-                                    disabled={
-                                      busy || va.fit?.target === "none"
+                                    disabled={busy || tooBig}
+                                    title={
+                                      tooBig
+                                        ? "Too big for this PC: Drydock does not download a model llama.cpp could not load."
+                                        : undefined
                                     }
                                     mix={on(
                                       "click",
@@ -749,6 +795,7 @@ export function LocalModels(handle: Handle) {
                                     Download
                                   </Button>
                                 </span>
+                                {fitWhy(fit)}
                                 {(va.notes ?? []).length > 0 ? (
                                   <span class="what">
                                     {(va.notes ?? []).join(" ")}

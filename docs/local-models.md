@@ -29,6 +29,13 @@ The archive is unpacked with the same guarded unzip the CI runners use (`interna
 links, size limits), into Drydock's own folder: `<data>\local-models\<source>-<tag>-<backend>\`. Models go to
 `<data>\local-models\models\<owner>\<repo>\<variant>\`. Nothing is written anywhere else, and nothing is added to PATH.
 
+**Built in, not side-loaded.** The person installs nothing by hand: the runtime card says so before Install ("Drydock
+downloads and runs llama.cpp itself: the newest Windows build of the source below, for the backend you pick, checked against
+the digest GitHub recorded and unpacked into Drydock's own folder. Nothing has to be installed by hand, and nothing is added
+to the PC's PATH"), and the installed card says the build was downloaded and is run by Drydock, with Update fetching the
+newest one the same way. The Source box offers the official build (default) and the TurboQuant fork, the fork behind its
+warning (2026-10-16, on the owner's question whether llama.cpp and TurboQuant could be "built right into the app").
+
 **What leaves the machine.** The release listing (`api.github.com`, unauthenticated, 20 releases), the archives
 (`github.com`), the model listings and files (`huggingface.co` and its download hosts). No code, no prompt and no project
 content: the server runs on `127.0.0.1` and never calls out. Drydock sends no token to either site.
@@ -52,15 +59,22 @@ After an install Drydock runs `llama-server --list-devices` once and shows what 
 
 ## 4. Models
 
-**Finding one.** "Suggested" lists ggml-org's own GGUF repositories, most downloaded first: the models llama.cpp's authors
-convert and keep current. Search finds any public GGUF repository by name. A repository's files are grouped into
+**Finding one.** "Show suggestions" lists ggml-org's own GGUF repositories, most downloaded first: the models llama.cpp's
+authors convert and keep current. Search finds any public GGUF repository by name. While a list is shown, "Close
+suggestions" (or "Close results") takes it and the repository open in it off the page again, so the section shrinks back;
+Show suggestions then returns (the owner asked for this, 2026-10-16). A repository's files are grouped into
 **variants** by quantization (`Q4_K_M`, `Q8_0`, `MXFP4`...; a model split into `-00001-of-00003.gguf` shards is one variant
 of several files); projector files for vision (`mmproj`) are left out, Drydock serves text models.
 
-**Fit.** Each variant is marked by a simple rule (`localllm.FitOf`): a file that fits the free memory of one GPU "fits the
-GPU"; one that fits three quarters of the free RAM "runs on the CPU" (partly offloaded when there is a GPU); the rest is
-"too big for this PC". This counts the weights only, not the KV cache; a model near the limit may still not load with a
-large context. The person decides; the fit is a hint.
+**Fit.** Each variant is marked by a simple rule (`localllm.FitOf`): a file that fits the free memory of one GPU "Fits the
+GPU"; one that fits three quarters of the free RAM "Runs on the CPU (slow)" (partly offloaded when there is a GPU); the rest
+is "Not recommended". The badge stays short; its tooltip and, for the two that will not run well, a sentence in the row say it
+in full with the numbers the core measured (`Fit.availableBytes`, the larger of the free VRAM and the RAM budget): "Not
+recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free)", "Runs on the CPU (slow): no GPU has room for it, so
+llama.cpp keeps it in RAM (needs about 32.0 GB, 24.0 GB free)". A variant that is not recommended cannot be downloaded (the
+button is disabled and says why): a model llama.cpp could not load would only take gigabytes of disk. This counts the weights
+only, not the KV cache; a model near the limit may still not load with a large context. For the rest the person decides;
+the fit is a hint.
 
 **Downloading.** Files download in the background (several at once if asked), resume a part that was cut off, and are
 checked before they count as present. A drive with less than the file plus 2 GB free refuses the download.

@@ -402,3 +402,16 @@ Open, owner action:
   **Not verified:** a real download from GitHub (asset names and the digest field as documented on 2026-10-16); the owner's
   first Install on the PC proves it. Software: `tool:osv-scanner` 2.7.0 and `tool:opengrep` 1.31.0 (installed releases
   follow the newest; the audit measures the documented ones).
+- **P67. Local models page: built in, "Not recommended", Close suggestions (2026-10-16, on the owner's request).** The owner
+  asked whether llama.cpp and TurboQuant could be "built right into the app itself so we don't have to side load it", whether a
+  model too big for the PC could say "not recommended", and for a way to close the suggestions. The first was already so (P65:
+  Drydock fetches the checked build and the models itself; nothing is side-loaded or added to PATH) but the page did not say it;
+  the runtime card now says before Install that Drydock downloads and runs llama.cpp itself (source, backend, digest check, its
+  own folder, nothing by hand), with the official build as the default and the TurboQuant fork as a second source behind its
+  unreviewed warning. The fit badge speaks plainly: "Fits the GPU", "Runs on the CPU (slow)", "Not recommended", short so a row
+  does not wrap, with the full sentence and the numbers the core measured ("needs about 80.0 GB, 15.0 GB free", from the
+  variant's size and `Fit.availableBytes`) as the badge's tooltip and, for the two that will not run well, in the row. "Runs on
+  the CPU" is not "CPU only": with a GPU present llama.cpp offloads what fits, so the sentence says no GPU has room for the whole
+  model. A not-recommended variant still cannot be downloaded (the UI is the only gate; the core refuses by disk only): a model
+  llama-server could not load would only cost disk. "Close suggestions" / "Close results" takes the list and its open
+  repository off the page so the section shrinks back; Show suggestions returns. Browser tests and the e2e spec cover the three.

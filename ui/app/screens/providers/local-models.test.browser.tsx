@@ -114,6 +114,10 @@ describe('Models on this PC', () => {
     });
     await waitFor(() => need(r, '[data-testid="local-install"]'), r);
     expect(need(r, '[data-testid="local-runtime"]').getAttribute('data-installed')).toBe('false');
+    // the card says that llama.cpp is built in: Drydock downloads and runs it, nothing is installed by hand
+    expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Drydock downloads and runs llama.cpp itself');
+    expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Nothing has to be installed by hand');
+    expect(need(r, '[data-testid="local-models"]').textContent).toContain('Drydock downloads and runs llama.cpp itself; nothing leaves the PC');
     expect(sel(r, '[data-testid="local-backend"]').value).toBe('cuda');
     expect(sel(r, '[data-testid="local-backend"]').selectedOptions[0]!.textContent).toContain('suggested for this PC');
     expect(sel(r, '[data-testid="local-source"]').value).toBe('official');
@@ -159,6 +163,7 @@ describe('Models on this PC', () => {
     const rt = await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
     expect(rt.querySelector('h3')!.textContent).toBe('llama.cpp b11669 · Vulkan · llama.cpp (official weekly build)');
     expect(rt.textContent).toContain('installed');
+    expect(rt.textContent).toContain('Downloaded and run by Drydock from its own folder');
     expect(need(r, '[data-testid="local-device"][data-id="CUDA0"]').textContent).toBe('CUDA0: NVIDIA GeForce RTX 4060 Ti, 14.0 GB free of 16.0 GB');
     expect(q(r, '[data-testid="local-install"]')).toBe(null);
     await r.act(() => (need(r, '[data-testid="local-update"]') as HTMLButtonElement).click());
@@ -206,9 +211,19 @@ describe('Models on this PC', () => {
     const row = (id: string) => need(r, `[data-testid="local-model"][data-id="${id}"]`);
     expect(row(models[0]!.id).textContent).toContain('12.0 GB');
     expect(row(models[0]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Fits the GPU');
-    expect(row(models[1]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Runs on the CPU');
-    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Too big for this PC');
+    expect(row(models[0]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('title')).toBe('Fits the GPU (needs about 12.0 GB, 14.0 GB free).');
+    expect(row(models[0]!.id).querySelector('[data-testid="local-fit-why"]')).toBe(null);
+    // a model that will not run well says so in the row, with the numbers; the badge stays short and carries the sentence as its tooltip
+    expect(row(models[1]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Runs on the CPU (slow)');
+    expect(row(models[1]!.id).querySelector('[data-testid="local-fit-why"]')!.textContent).toBe(
+      'Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM (needs about 32.0 GB, 15.0 GB free).',
+    );
+    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Not recommended');
+    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('data-tone')).toBe('err');
+    expect(row(models[2]!.id).querySelector('[data-testid="local-fit-why"]')!.textContent).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
+    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('title')).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
     expect(row(models[3]!.id).querySelector('[data-testid="local-fit"]')).toBe(null);
+    expect(row(models[3]!.id).querySelector('[data-testid="local-fit-why"]')).toBe(null);
     expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped');
     expect(q(r, '[data-testid="local-server-stop"]')).toBe(null);
 
@@ -323,10 +338,14 @@ describe('Models on this PC', () => {
     await r.act(() => tiny.click());
     const q4 = await waitFor(() => need(r, '[data-testid="local-variant"][data-name="Q4_0"]'), r);
     expect(r.$$('[data-testid="local-variant"]').length).toBe(2);
-    // a variant too big for this PC cannot be downloaded (decided by the fit the core sent, not by the badge's words)
+    // a variant too big for this PC is "Not recommended", with the numbers, and cannot be downloaded (decided by the fit the
+    // core sent, not by the badge's words); the disabled button says why
     const f16 = need(r, '[data-testid="local-variant"][data-name="F16"]');
-    expect(f16.textContent).toContain('Too big for this PC');
+    expect(f16.querySelector('[data-testid="local-fit"]')!.textContent).toBe('Not recommended');
+    expect(f16.querySelector('[data-testid="local-fit-why"]')!.textContent).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
     expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).title).toContain('Drydock does not download a model llama.cpp could not load');
+    expect(q4.querySelector('[data-testid="local-fit-why"]')).toBe(null);
     expect((q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(false);
     await r.act(() => (q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).click());
     await waitFor(() => expect(downloads).toEqual([['acme/tiny-GGUF', 'Q4_0']]), r);
@@ -338,6 +357,48 @@ describe('Models on this PC', () => {
     await waitFor(() => expect(r.$$('[data-testid="local-repo"]').length).toBe(2), r);
     expect(need(r, '[data-testid="local-repos"]').getAttribute('aria-label')).toBe('Suggested models');
     expect(q(r, '[data-testid="local-repo"][data-id="acme/tiny-GGUF"]')).toBe(null);
+  });
+
+  it('Close suggestions shrinks the page back: the list and the open repository go, Show suggestions returns; Close results the same', async () => {
+    let suggestions = 0;
+    const { r } = show({
+      localGet: async () => installed(),
+      localModelsSuggested: async () => (suggestions++, [{ id: 'ggml-org/gpt-oss-20b-GGUF', downloads: 900000, likes: 10, updated: '', tags: [] }]),
+      localModelsSearch: async () => [{ id: 'acme/tiny-GGUF', downloads: 10, likes: 0, updated: '', tags: [] }],
+      localModelVariants: async () => [{ name: 'MXFP4', files: [], sizeBytes: 12 * GiB, fit: { target: 'gpu', fits: true, availableBytes: 14 * GiB } }],
+    });
+    await waitFor(() => need(r, '[data-testid="local-suggested"]'), r);
+    expect(q(r, '[data-testid="local-repos-close"]')).toBe(null);
+    await r.act(() => (need(r, '[data-testid="local-suggested"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$$('[data-testid="local-repo"]').length).toBe(1), r);
+    // while the suggestions are shown, Show suggestions gives way to Close suggestions
+    expect(q(r, '[data-testid="local-suggested"]')).toBe(null);
+    expect(need(r, '[data-testid="local-repos-close"]').textContent).toBe('Close suggestions');
+    await r.act(() => need(r, '[data-testid="local-repo"]').click());
+    await waitFor(() => need(r, '[data-testid="local-variant"]'), r);
+
+    await r.act(() => (need(r, '[data-testid="local-repos-close"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(q(r, '[data-testid="local-repos"]')).toBe(null), r);
+    expect(q(r, '[data-testid="local-variant"]')).toBe(null);
+    expect(q(r, '[data-testid="local-repos-close"]')).toBe(null);
+    expect(need(r, '[data-testid="local-suggested"]').textContent).toBe('Show suggestions');
+    // opening them again asks the core again (nothing stale is kept), and the repository opened before is closed
+    await r.act(() => (need(r, '[data-testid="local-suggested"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$$('[data-testid="local-repo"]').length).toBe(1), r);
+    expect(suggestions).toBe(2);
+    expect(need(r, '[data-testid="local-repo"]').getAttribute('aria-pressed')).toBe('false');
+
+    // search results: both Show suggestions and Close results are offered; Close results clears the list, the words typed stay
+    type(need(r, '[data-testid="local-search-input"]') as HTMLInputElement, 'tiny');
+    const go = await enabled<HTMLButtonElement>(r, '[data-testid="local-search"] button[type="submit"]');
+    await r.act(() => go.click());
+    await waitFor(() => need(r, '[data-testid="local-repo"][data-id="acme/tiny-GGUF"]'), r);
+    expect(need(r, '[data-testid="local-suggested"]').textContent).toBe('Show suggestions');
+    expect(need(r, '[data-testid="local-repos-close"]').textContent).toBe('Close results');
+    await r.act(() => (need(r, '[data-testid="local-repos-close"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(q(r, '[data-testid="local-repos"]')).toBe(null), r);
+    expect(q(r, '[data-testid="local-repos-close"]')).toBe(null);
+    expect((need(r, '[data-testid="local-search-input"]') as HTMLInputElement).value).toBe('tiny');
   });
 
   it('each setting change sends just that field; a cache or context change while the server runs asks for a restart', async () => {

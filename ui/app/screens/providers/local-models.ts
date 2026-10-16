@@ -14,15 +14,29 @@ export function gb(bytes: number | undefined | null): string {
   return `${(b / GiB).toFixed(1)} GB`;
 }
 
-/** The fit badge: where a model would run, in words, and its tone; nothing when nothing could be measured. */
-export function fitText(fit: Fit | undefined): { text: string; tone: Tone } | undefined {
+/** The fit badge's words and tone, with the long form for its tooltip and the row. */
+export interface FitWords {
+  /** The badge: short, so it does not wrap a row. */
+  text: string;
+  /** The full sentence: the badge's title, and shown in the row when the model will not run well. */
+  long: string;
+  tone: Tone;
+}
+
+/**
+ * The fit badge: where a model would run, in words, and its tone; nothing when nothing could be measured. With the model's
+ * size and the memory the core measured, the long form says the numbers ("needs about 80.0 GB, 15.0 GB free"); a model that
+ * does not fit is "Not recommended", one that fits the RAM only "Runs on the CPU (slow)".
+ */
+export function fitText(fit: Fit | undefined, sizeBytes?: number): FitWords | undefined {
+  const sizes = fit && (sizeBytes ?? 0) > 0 && fit.availableBytes > 0 ? ` (needs about ${gb(sizeBytes)}, ${gb(fit.availableBytes)} free)` : '';
   switch (fit?.target) {
     case 'gpu':
-      return { text: 'Fits the GPU', tone: 'ok' };
+      return { text: 'Fits the GPU', long: `Fits the GPU${sizes}.`, tone: 'ok' };
     case 'cpu':
-      return { text: 'Runs on the CPU', tone: 'warn' };
+      return { text: 'Runs on the CPU (slow)', long: `Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM${sizes}.`, tone: 'warn' };
     case 'none':
-      return { text: 'Too big for this PC', tone: 'err' };
+      return { text: 'Not recommended', long: `Not recommended: too big for this PC${sizes}.`, tone: 'err' };
     default:
       return undefined;
   }

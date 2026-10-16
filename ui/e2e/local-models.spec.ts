@@ -13,6 +13,7 @@ test('Models on this PC: install llama.cpp, find and download a model, serve it 
   const section = page.getByTestId('local-models');
   await expect(section).toBeVisible();
   await expect(section).toContainText('Run open models with llama.cpp on this computer.');
+  await expect(section.getByTestId('local-runtime')).toContainText('Drydock downloads and runs llama.cpp itself');
 
   // not installed: the backend and the source to choose, then Install
   const runtime = section.getByTestId('local-runtime');
@@ -27,10 +28,15 @@ test('Models on this PC: install llama.cpp, find and download a model, serve it 
   await expect(runtime.getByTestId('local-job')).toHaveAttribute('data-state', 'done');
   await expect(section.getByTestId('local-memory')).toContainText('RAM: 20.0 GB free of 32.0 GB');
 
-  // suggestions come from the Hub fixture
+  // suggestions come from the Hub fixture; Close suggestions shrinks the page back and Show suggestions returns
   await section.getByTestId('local-suggested').click();
   await expect(section.locator('[data-testid=local-repo][data-id="ggml-org/gpt-oss-20b-GGUF"]')).toBeVisible();
   await expect(section.locator('[data-testid=local-repo][data-id="ggml-org/Qwen3-Coder-30B-A3B-Instruct-GGUF"]')).toBeVisible();
+  await expect(section.getByTestId('local-suggested')).toHaveCount(0);
+  await section.getByTestId('local-repos-close').click();
+  await expect(section.getByTestId('local-repo')).toHaveCount(0);
+  await expect(section.getByTestId('local-repos-close')).toHaveCount(0);
+  await expect(section.getByTestId('local-suggested')).toBeVisible();
 
   // a search finds the tiny repository; its one variant downloads and the model row appears once the file is checked
   await section.getByTestId('local-search-input').fill('tiny');

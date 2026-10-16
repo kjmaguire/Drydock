@@ -18,11 +18,28 @@ describe('local models helpers', () => {
   });
 
   it('fit badges say where a model runs; unknown shows nothing', () => {
-    expect(fitText({ target: 'gpu', fits: true, availableBytes: 0 })).toEqual({ text: 'Fits the GPU', tone: 'ok' });
-    expect(fitText({ target: 'cpu', fits: true, availableBytes: 0 })?.text).toBe('Runs on the CPU');
-    expect(fitText({ target: 'none', fits: false, availableBytes: 0 })).toEqual({ text: 'Too big for this PC', tone: 'err' });
+    expect(fitText({ target: 'gpu', fits: true, availableBytes: 0 })).toEqual({ text: 'Fits the GPU', long: 'Fits the GPU.', tone: 'ok' });
+    expect(fitText({ target: 'cpu', fits: true, availableBytes: 0 })).toEqual({
+      text: 'Runs on the CPU (slow)',
+      long: 'Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM.',
+      tone: 'warn',
+    });
+    expect(fitText({ target: 'none', fits: false, availableBytes: 0 })).toEqual({ text: 'Not recommended', long: 'Not recommended: too big for this PC.', tone: 'err' });
     expect(fitText({ target: 'unknown', fits: true, availableBytes: 0 })).toBe(undefined);
     expect(fitText(undefined)).toBe(undefined);
+  });
+
+  it('with the size and the memory measured the long form says the numbers; the badge stays short', () => {
+    const none = fitText({ target: 'none', fits: false, availableBytes: 15 * GiB }, 80 * GiB)!;
+    expect(none.text).toBe('Not recommended');
+    expect(none.long).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
+    const cpu = fitText({ target: 'cpu', fits: true, availableBytes: 15 * GiB }, 12 * GiB)!;
+    expect(cpu.text).toBe('Runs on the CPU (slow)');
+    expect(cpu.long).toBe('Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM (needs about 12.0 GB, 15.0 GB free).');
+    expect(fitText({ target: 'gpu', fits: true, availableBytes: 14 * GiB }, 2 * MiB)!.long).toBe('Fits the GPU (needs about 2 MB, 14.0 GB free).');
+    // half the numbers is no number: the plain sentence
+    expect(fitText({ target: 'none', fits: false, availableBytes: 0 }, 80 * GiB)!.long).toBe('Not recommended: too big for this PC.');
+    expect(fitText({ target: 'none', fits: false, availableBytes: 15 * GiB }, 0)!.long).toBe('Not recommended: too big for this PC.');
   });
 
   it('server tones', () => {
