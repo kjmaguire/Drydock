@@ -113,6 +113,123 @@ describe('Project settings', () => {
     await waitFor(() => expect(calls).toEqual([['clone', 'kyle/pay', '/home/kyle/src'], ['attach', 'p1', '/home/kyle/src/pay']]), r);
   });
 
+  // audit 2026-10-16, L46: init and clone cannot be done twice, so a retry after a failed last step must not repeat them
+  describe('Attach a repository, retried after the last step failed', () => {
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const folderCheck = async (path: string) => ({ path, state: 'folder' as const, entries: 2, canInit: true, message: 'This folder is not a Git repository. Drydock can make one here (branch main).' });
+    /** A core that refuses the first attach (a transient error) and takes the next. */
+    const flaky = (calls: string[], failures = 1) => {
+      let left = failures;
+      return async (id: string, path: string) => {
+        calls.push(`attach:${id}:${path}`);
+        if (left-- > 0) throw new Error('the core could not read the folder just now');
+        return { ...project, hasRepo: true };
+      };
+    };
+    const hint = (r: ReturnType<typeof settings>) => r.container.querySelector('[data-testid="attach-hint"]')!.textContent;
+
+    it('a folder made into a Git repository is not made again: the retry attaches it, and says so', async () => {
+      const calls: string[] = [];
+      const r = settings({
+        projectList: async () => [bare],
+        repoCheck: folderCheck,
+        repoInit: async (path) => (calls.push(`init:${path}`), { path, branch: 'main', createdFolder: false, files: 2 }),
+        projectAttachRepo: flaky(calls),
+      });
+      await waitFor(() => byLabel(r.container, 'Repository path'), r);
+      type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+      await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
+      await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+      expect(hint(r)).toBe('Makes the Git repository, then attaches it.');
+      await r.act(() => byText(r.container, 'button', 'Attach repository').click());
+      await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('the core could not read the folder just now'), r);
+      expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']);
+      expect(hint(r)).toBe('The Git repository was already made in D:\\Projects\\app; attaching it again.');
+      await r.act(() => byText(r.container, 'button', 'Attach repository').click());
+      await waitFor(() => expect(calls.length).toBe(3), r);
+      expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']); // one init
+    });
+
+    it('changing the folder after the failure forgets it: the new folder is made into a repository, then attached', async () => {
+      const calls: string[] = [];
+      const r = settings({
+        projectList: async () => [bare],
+        repoCheck: folderCheck,
+        repoInit: async (path) => (calls.push(`init:${path}`), { path, branch: 'main', createdFolder: false, files: 2 }),
+        projectAttachRepo: flaky(calls),
+      });
+      await waitFor(() => byLabel(r.container, 'Repository path'), r);
+      type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+      await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
+      await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+      await r.act(() => byText(r.container, 'button', 'Attach repository').click());
+      await waitFor(() => expect(r.$('[role="alert"]')).not.toBeNull(), r);
+      expect(hint(r)).toContain('already made in D:\\Projects\\app');
+      // another folder: nothing is remembered about the first one
+      type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\other');
+      await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.textContent).toContain('Drydock can make one here'), r);
+      await waitFor(() => expect(hint(r)).toBe('Makes the Git repository, then attaches it.'), r);
+      await r.act(() => byText(r.container, 'button', 'Attach repository').click());
+      await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app', 'init:D:\\Projects\\other', 'attach:p1:D:\\Projects\\other']), r);
+    });
+
+    const github = (calls: string[], failures = 1) =>
+      settings({
+        projectList: async () => [bare],
+        githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }),
+        githubOwners: async () => ['kyle'],
+        githubRepos: async () => [repo('kyle/pay'), repo('kyle/web')],
+        githubCloneDir: async () => '/home/kyle/src',
+        githubClone: async (rp, dir) => (calls.push(`clone:${rp}:${dir}`), { path: `${dir}/${rp.split('/')[1]}`, defaultBranch: 'main' }),
+        projectAttachRepo: flaky(calls, failures),
+      });
+    const chooseGitHub = async (r: ReturnType<typeof settings>, name: string) => {
+      const gh = Array.from(r.container.querySelectorAll<HTMLLabelElement>('[data-testid="attach-repo"] [role="radiogroup"] label')).find((l) => l.textContent!.trim() === 'GitHub')!;
+      if (!r.container.querySelector('[data-testid="repo-picker"]')) await r.act(() => gh.querySelector('input')!.click());
+      const pick = await waitFor(() => byLabel<HTMLInputElement>(r.container, name), r);
+      await r.act(() => pick.click());
+    };
+
+    it('a repository that was cloned is not cloned again: the retry attaches the clone, and says so', async () => {
+      const calls: string[] = [];
+      const r = github(calls);
+      await waitFor(() => expect(r.container.querySelector('[data-testid="attach-repo"] [role="radiogroup"]')).not.toBeNull(), r);
+      await chooseGitHub(r, 'kyle/pay');
+      await waitFor(() => expect(r.container.querySelector('[data-testid="clone-target"]')!.textContent).toBe('/home/kyle/src/pay'), r);
+      await r.act(() => byText(r.container, 'button', 'Clone and attach').click());
+      await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('the core could not read the folder just now'), r);
+      expect(calls).toEqual(['clone:kyle/pay:/home/kyle/src', 'attach:p1:/home/kyle/src/pay']);
+      // nothing is cloned a second time, and the button no longer promises a clone
+      expect(hint(r)).toBe('The repository was already cloned to /home/kyle/src/pay; attaching it again.');
+      expect(() => byText(r.container, 'button', 'Clone and attach')).toThrow();
+      await r.act(() => byText(r.container, 'button', 'Attach repository').click());
+      await waitFor(() => expect(calls.length).toBe(3), r);
+      expect(calls).toEqual(['clone:kyle/pay:/home/kyle/src', 'attach:p1:/home/kyle/src/pay', 'attach:p1:/home/kyle/src/pay']);
+    });
+
+    it('choosing another repository, or another folder to clone into, after the failure forgets the clone', async () => {
+      const calls: string[] = [];
+      const r = github(calls, 2);
+      await waitFor(() => expect(r.container.querySelector('[data-testid="attach-repo"] [role="radiogroup"]')).not.toBeNull(), r);
+      await chooseGitHub(r, 'kyle/pay');
+      await waitFor(() => expect(r.container.querySelector('[data-testid="clone-target"]')!.textContent).toBe('/home/kyle/src/pay'), r);
+      await r.act(() => byText(r.container, 'button', 'Clone and attach').click());
+      await waitFor(() => expect(r.$('[role="alert"]')).not.toBeNull(), r);
+      expect(hint(r)).toContain('already cloned to /home/kyle/src/pay');
+      // another repository
+      await chooseGitHub(r, 'kyle/web');
+      await waitFor(() => expect(hint(r)).toBe('Clones into /home/kyle/src/web, then attaches it.'), r);
+      await r.act(() => byText(r.container, 'button', 'Clone and attach').click());
+      await waitFor(() => expect(calls).toEqual(['clone:kyle/pay:/home/kyle/src', 'attach:p1:/home/kyle/src/pay', 'clone:kyle/web:/home/kyle/src', 'attach:p1:/home/kyle/src/web']), r);
+      await waitFor(() => expect(hint(r)).toContain('already cloned to /home/kyle/src/web'), r);
+      // the same repository into another folder
+      type(byLabel(r.container, 'Clone into'), '/home/kyle/work');
+      await waitFor(() => expect(hint(r)).toBe('Clones into /home/kyle/work/web, then attaches it.'), r);
+      await r.act(() => byText(r.container, 'button', 'Clone and attach').click());
+      await waitFor(() => expect(calls.slice(4)).toEqual(['clone:kyle/web:/home/kyle/work', 'attach:p1:/home/kyle/work/web']), r);
+    });
+  });
+
   it('edits the brief with a character count and saves it through project.setBrief', async () => {
     const saved: [string, string][] = [];
     const r = settings({ projectList: async () => [{ ...project, brief: 'Old brief.' }], projectSetBrief: async (id, b) => (saved.push([id, b]), { ...project, brief: b }) });

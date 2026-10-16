@@ -29,6 +29,12 @@ describe('Needs you targets and hints', () => {
     expect(needsHint({ ...base, kind: 'question', title: 'Iteration limit reached: a human needs to decide', taskId: 't1' })).toContain('fresh loop budget');
     expect(needsHint({ ...base, kind: 'question', title: 'The reviewer keeps asking for the same change: a human needs to decide' })).toContain('stop it');
     expect(needsHint({ ...base, kind: 'watchdog_pause', title: 'Watchdog paused work: tool_spin' })).toContain('send guidance and continue');
+    // the question a blocking gate asks when none of its checks could judge (M28): the title selects a fixed hint
+    const verdict = { ...base, kind: 'question', title: 'No check gave a result for the checks of this task: tests skipped: no test command is set. Fix what stopped them and check again, go on without a result this time, or stop.', taskId: 't1' };
+    expect(needsHint(verdict)).toBe('No check could judge this work, so nothing says it is fine. Open the task to check again, go on without a result this time, or stop.');
+    expect(needsTarget(verdict)).toBe('/task/t1');
+    expect(needsHint({ ...verdict, kind: 'approval' })).toBe(''); // only the question of that title
+    expect(needsHint({ ...verdict, title: 'Some other question about No check gave a result for it' })).toBe('');
     expect(needsHint({ ...base, kind: 'watchdog_pause', title: 'The team lead asks for a human decision on work' })).toContain('recommendation');
     const repoConfig = { ...base, title: "The repository's git configuration changed during the task (filter.evil.clean). A planted hook...", taskId: 't1' };
     expect(needsTarget(repoConfig)).toBe('/task/t1');

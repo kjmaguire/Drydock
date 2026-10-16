@@ -7,6 +7,7 @@ import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { formatCost } from '../../lib/format.ts';
 import { parseWhole } from '../../lib/limits.ts';
 import { action, query, services } from '../../state/services.tsx';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { ExplainText } from '../shared/explain.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
@@ -271,9 +272,17 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                         {m.role} {m.state}
                       </span>
                     </div>
-                    <Button size="sm" variant="ghost" icon={Trash2} disabled={busy} mix={[on('click', () => void act.run('remove', () => s.client.roomRemoveMember(room.id, m.member.id)))]}>
-                      Remove
-                    </Button>
+                    <ConfirmAction
+                      label="Remove"
+                      icon={Trash2}
+                      yes="Yes, remove"
+                      yesName={`Yes, remove ${name(m.member.id)} from this room`}
+                      keepName={`Keep ${name(m.member.id)} in this room`}
+                      question={`Remove ${name(m.member.id)} from this room? It stops taking part here, and inviting it again starts it fresh.`}
+                      disabled={busy}
+                      testId="room-agent-remove"
+                      onConfirm={() => act.run('remove', () => s.client.roomRemoveMember(room.id, m.member.id))}
+                    />
                   </li>
                 ))}
                 {agentMembers.length === 0 ? (

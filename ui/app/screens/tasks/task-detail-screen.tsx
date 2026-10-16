@@ -7,10 +7,11 @@ import { css, on, type Handle } from 'remix/component';
 import { Check, ClipboardList, Columns2, FileDiff, Flag, ListChecks, MessagesSquare, ScrollText, SquareTerminal, Workflow } from 'lucide';
 import type { Agent, PresenceState, Task, TaskDetail, UsageRow } from '../../api/types.ts';
 import { agentName, formatCost, formatDateTime, presenceFor } from '../../lib/format.ts';
+import { LEAD_ORIGIN_WAITS, leadStep } from '../../lib/task-origin.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
-import { Avatar, Badge, SourceBadge, StatusChip, faint, muted, presenceColor } from '../../ui/data.tsx';
+import { Avatar, Badge, OriginBadge, SourceBadge, StatusChip, faint, muted, presenceColor } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card } from '../../ui/layout.tsx';
@@ -43,6 +44,9 @@ const seqCss = css({ color: t.textFaint, fontWeight: '500', fontVariantNumeric: 
 const chipCss = css({ display: 'inline-flex', alignItems: 'center', marginLeft: '2px', '& > span': { height: '24px', padding: '0 10px', fontSize: t.textSm } });
 
 const descCss = css({ color: t.textMuted, fontSize: t.textLg, lineHeight: '1.5', maxWidth: '80ch', '& p': { margin: '0' } });
+
+// under the title: the badge of a task the team lead split off, and the one sentence under it
+const originCss = css({ display: 'grid', justifyItems: 'start', gap: '4px', color: t.textMuted, fontSize: t.textMd });
 
 // The step bar: five circles joined by lines. Done is a soft green tick, the current step a black disc with a soft yellow halo,
 // the rest grey; the line before a current step is yellow.
@@ -169,6 +173,14 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
               <StatusChip status={task.status} />
             </span>
           </>
+        }
+        subtitle={
+          leadStep(task.origin) === undefined ? undefined : (
+            <span mix={originCss} data-testid="task-origin-note">
+              <OriginBadge origin={task.origin} />
+              {task.status === 'BACKLOG' ? <span>{LEAD_ORIGIN_WAITS}</span> : null}
+            </span>
+          )
         }
         wide
         actions={

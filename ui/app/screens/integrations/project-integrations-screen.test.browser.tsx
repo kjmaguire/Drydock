@@ -292,6 +292,48 @@ describe("a project's Integrations page: app sync", () => {
     await waitFor(() => expect(sets[1]![0]).toMatchObject({ integrationId: 'int_1', projectId: 'prj_1', name: 'Errors', action: 'create_task', maxPerDay: 5 }), r);
   });
 
+  // audit 2026-10-16, L40: deleting a rule cannot be undone, so it asks first (the toggles beside it can be switched back)
+  it('deleting a rule asks first: one click sends nothing, Keep cancels, Yes deletes it once', async () => {
+    const sets: Calls = [];
+    const rule = {
+      id: 'rule_1',
+      integrationId: 'int_1',
+      projectId: 'prj_1',
+      name: 'Bugs',
+      when: 'item.state == "open"',
+      action: 'create_task',
+      params: null,
+      maxPerDay: 5,
+      dryRun: true,
+      enabled: false,
+      createdBy: 'human:kyle',
+      updatedBy: 'human:kyle',
+      created: 0,
+      updated: 0,
+      version: 4,
+      matches: [],
+    };
+    const r = show({ integrationList: async () => [conn()], integrationRulesList: async () => [rule], integrationRulesSet: rec(sets, () => rule) as never });
+    await open(r, 'linear');
+    const arow = await find(r, '[data-testid="assignment"]');
+    await r.act(() => byText(arow, 'button', 'Rules').click());
+    const row = await find(r, '[data-testid="int-rule"]');
+    await r.act(() => byText(row, 'button', 'Delete').click());
+    expect(sets).toEqual([]);
+    expect(row.querySelector('[role="group"]')!.getAttribute('aria-label')).toBe('Delete the rule "Bugs"? It stops creating tasks and cannot be brought back.');
+    await r.act(() => byText(row, 'button', 'Keep the rule "Bugs"').click());
+    await waitFor(() => byText(row, 'button', 'Delete'), r);
+    expect(sets).toEqual([]);
+    await r.act(() => byText(row, 'button', 'Delete').click());
+    await r.act(() => {
+      const yes = byText(row, 'button', 'Yes, delete the rule "Bugs"');
+      yes.click();
+      yes.click();
+    });
+    await waitFor(() => expect(sets.length).toBe(1), r);
+    expect(sets[0]![0]).toMatchObject({ id: 'rule_1', version: 4, delete: true });
+  });
+
   it('Notion pages are read as inert requirements text', async () => {
     const page = { itemId: 'itm_9', projectId: 'prj_1', externalId: 'pg1', sourceRef: 'notion:pg1', title: 'Spec', url: '', text: '# Spec\n<script>window.__xss=1</script>', contentHash: 'h', untrusted: true, risk: 2, riskFlags: ['instruction'], truncated: false };
     const r = show({

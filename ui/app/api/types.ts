@@ -430,6 +430,12 @@ export interface Task {
   completed?: number;
   version: number;
   dependsOn?: string[];
+  /**
+   * "lead:N" for a follow-up the team lead split off (N is how many steps it is from a task a person made); absent for a task a
+   * person made. Such a task waits in the backlog until a person moves it on, even under automatic scheduling. The screens read
+   * it through leadStep (lib/task-origin.ts), which takes any value: this is whatever the core sent.
+   */
+  origin?: string;
 }
 
 export interface TaskCreateReq {

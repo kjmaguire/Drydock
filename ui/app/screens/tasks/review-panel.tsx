@@ -1,7 +1,9 @@
 // The human decision panel: every pending request of the task's run, each answered by buttons bound to the request id (never
 // to message text). Spec reviews get the spec gate, budget pauses the resume form, questions a free-text answer, reviews
 // Approve / Request changes, the limit question and watchdog pauses Continue (with guidance) / Stop, the pull request's CI
-// gate Check CI again / Merge without CI this time / Stop and its merge gate Check again / Stop, a changed repository git
+// gate Check CI again / Merge without CI this time / Stop and its merge gate Check again / Stop, a blocking gate none of whose
+// checks could judge (gate verdict) the checks that did not run with Check again / Go on without a result this time / Stop (the last
+// two asked twice), a changed repository git
 // configuration (gate repo_config_changed) its changed items with Trust and continue / Stop the run, a worker's permission
 // request (gate permission_prompt) the tool and its exact input with Allow once / Refuse, anything else Approve / Reject. Read-only (license) turns off approving and answering; refusing
 // work (reject, request changes, send the spec back) stays available.
@@ -24,7 +26,7 @@ import { BudgetPausePanel } from '../shared/budget-pause.tsx';
 import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../shared/escalation.tsx';
 import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
-import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload } from './merge-gate.tsx';
+import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
 
 // The decide card (Crew HQ, decision P64): a soft yellow card with the requests as white cards inside; the primary answer is
@@ -120,6 +122,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     const pause = limit ? undefined : watchdogPayload(p);
     const ciGate = ciGatePayload(p);
     const mergeGate = mergeGatePayload(p);
+    const verdict = verdictGate(p);
     const repoConfig = repoConfigPayload(p);
     const permission = permissionPayload(p);
     const ro = s.workspace.license;
@@ -182,6 +185,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
           <CIGatePanel payload={ciGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : mergeGate ? (
           <MergeGatePanel payload={mergeGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+        ) : verdict ? (
+          <VerdictGatePanel payload={verdict} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : repoConfig ? (
           <RepoConfigGatePanel payload={repoConfig} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : spec ? (

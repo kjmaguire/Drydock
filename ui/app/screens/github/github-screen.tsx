@@ -44,7 +44,7 @@ function SignIn(handle: Handle) {
         title="Your sign-in"
         label="Your sign-in"
         testId="gh-signin"
-        description="Drydock works on GitHub through the GitHub CLI (gh) that you installed and signed in to. It never reads or stores a GitHub token: there is nothing of GitHub's to keep in its credential store."
+        description="Drydock works on GitHub through the GitHub CLI (gh) that you installed and signed in to. On this route it reads and stores no GitHub token: gh keeps the sign-in. A GitHub MCP server, or a Sign in with GitHub, that you connect below is separate and keeps its own sign-in or token."
         actions={
           <Button size="sm" icon={RefreshCw} disabled={gh.loading} mix={on('click', () => gh.reload())} title="Ask gh again whether it is signed in">
             {gh.loading ? 'Checking...' : 'Check again'}
@@ -74,7 +74,7 @@ function SignIn(handle: Handle) {
           ) : st ? (
             <Notice tone="warn" role="status" title="gh is not signed in.">
               {st.error ? `${st.error} ` : ''}
-              Run <code>gh auth login</code> in a terminal. Drydock has no sign-in button of its own, so your credentials never pass through it.
+              Run <code>gh auth login</code> in a terminal. Drydock has no sign-in button for gh, so gh&apos;s own credentials never pass through it.
             </Notice>
           ) : null}
           <p mix={faint}>
@@ -118,8 +118,10 @@ function WhatItDoes() {
             <strong>Runs your private repositories' CI on this PC</strong> when you add a runner on Connections. Runners only run jobs and report to GitHub.
           </li>
           <li>
-            <strong>Never reads or stores a GitHub token.</strong> Every call is gh with your own sign-in, and everything read from GitHub (issues, comments, logs) is treated as untrusted
-            text.
+            <strong>Keeps no GitHub token on the GitHub CLI route.</strong> Pushing, pull requests, CI, reviews and merging go through gh with your own sign-in, and Drydock never sees
+            its token. Two things you connect yourself do keep a sign-in or token in the Windows credential store, never shown: a Sign in with GitHub on the connection below, and the
+            GitHub MCP server in the Library, under MCP servers. Disconnect either one to delete what it keeps. Everything read from GitHub (issues, comments, logs) is treated as
+            untrusted text.
           </li>
         </ul>
       </div>

@@ -19,6 +19,7 @@ import { createRepoMapClient, type RepoMapClient } from './repomapClient.ts';
 import { createSecurityClient, type SecurityClient } from './securityClient.ts';
 import { createFolderClient, type FolderClient } from './folderClient.ts';
 import { createLocalClient, type LocalClient } from './localClient.ts';
+import { createShellClient, type ShellClient } from './shellClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -67,7 +68,7 @@ const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   estimated: Number(v?.estimated) || 0,
 });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -175,6 +176,7 @@ export function createClient(t: Transport): Client {
     ...createFolderClient(t),
     ...createRepoMapClient(t),
     ...createLocalClient(t),
+    ...createShellClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),

@@ -303,11 +303,29 @@ describe('Integrations', () => {
     });
     const card = await open(r, 'github');
     await waitFor(() => expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
+    // the claim is about connecting this way only: a Sign in with GitHub does keep a token (audit L45)
+    expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('A connection made this way uses that sign-in and stores no GitHub token.');
     expect(card.querySelector('input[type="password"]')).toBeNull();
     // the tile stays here, and points to the GitHub settings page that gathers everything about GitHub
     expect(r.$('[data-testid="integration-panel"][data-kind="github"] [data-testid="github-page-link"]')!.getAttribute('href')).toBe('/github');
     await r.act(() => byText(card, 'button', 'Use the GitHub CLI sign-in').click());
     await waitFor(() => expect(calls[0]![0]).toEqual({ kind: 'github', id: undefined }), r);
+  });
+
+  it('the credential of a GitHub connection is the gh sign-in only when it was connected that way; a Sign in with GitHub keeps its token in the credential store (L45)', async () => {
+    const viaGh = show({ integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', hasCredential: false, assignments: [] })] });
+    await open(viaGh, 'github');
+    const ghCredential = (await find(viaGh, '[data-testid="connection-identity"]')).textContent!;
+    expect(ghCredential).toContain('your gh sign-in (this connection stores no GitHub token)');
+    cleanup();
+    const viaOAuth = show({
+      integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'oauth', hasCredential: true, identity: { account: 'kyle', method: 'Sign in with GitHub (device code)' }, assignments: [] })],
+    });
+    await open(viaOAuth, 'github');
+    const oauthCredential = (await find(viaOAuth, '[data-testid="connection-identity"]')).textContent!;
+    expect(oauthCredential).toContain('stored in the credential store (never shown)');
+    expect(oauthCredential).not.toContain('your gh sign-in');
+    expect(oauthCredential).not.toContain('stores no GitHub token');
   });
 
   it('read-only: Connect is turned off and says why', async () => {

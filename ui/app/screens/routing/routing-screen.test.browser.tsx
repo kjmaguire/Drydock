@@ -111,7 +111,44 @@ describe('RoutingScreen', () => {
     await r.act(() => byText(row, 'button', 'Disable').click());
     await waitFor(() => expect(sets[1]).toEqual({ ...rule, enabled: false }), r);
     await r.act(() => byText(need(r, '[data-testid="route-rule"]'), 'button', 'Delete').click());
+    await r.act(() => byText(need(r, '[data-testid="route-rule"]'), 'button', 'Yes, delete the rule "r1"').click());
     await waitFor(() => expect(deleted).toEqual(['r1']), r);
+  });
+
+  // audit 2026-10-16, L40: deleting a rule cannot be undone, so it asks first
+  it('deleting a rule asks first: one click sends nothing, Keep cancels, Yes deletes it once', async () => {
+    const deleted: string[] = [];
+    let listed = [rule, { ...rule, id: 'r2', priority: 4 }];
+    const r = mountWith({
+      routeRulesList: async () => listed,
+      routeRulesDelete: async (id) => {
+        deleted.push(id);
+        listed = listed.filter((x) => x.id !== id);
+      },
+    });
+    const row = (id: string) => need(r, `[data-testid="route-rule"][data-rule="${id}"]`);
+    await waitFor(() => row('r1'), r);
+    await r.act(() => byText(row('r1'), 'button', 'Delete').click());
+    // the question is asked on that rule only, with names that say which rule and what happens
+    expect(deleted).toEqual([]);
+    expect(row('r1').textContent).not.toContain('Delete');
+    expect(row('r2').textContent).toContain('Delete');
+    expect(row('r1').querySelector('[role="group"]')!.getAttribute('aria-label')).toBe('Delete the rule "r1"? It stops applying at once and cannot be brought back.');
+    expect(byText(row('r1'), 'button', 'Keep the rule "r1"')).toBeTruthy();
+    // Keep: nothing was sent and the rule is as before
+    await r.act(() => byText(row('r1'), 'button', 'Keep the rule "r1"').click());
+    await waitFor(() => byText(row('r1'), 'button', 'Delete'), r);
+    expect(deleted).toEqual([]);
+    // Yes: sent once, even when pressed twice, and only for that rule
+    await r.act(() => byText(row('r1'), 'button', 'Delete').click());
+    const yes = byText<HTMLButtonElement>(row('r1'), 'button', 'Yes, delete the rule "r1"');
+    await r.act(() => {
+      yes.click();
+      yes.click();
+    });
+    await waitFor(() => expect(deleted).toEqual(['r1']), r);
+    await waitFor(() => expect(r.$$('[data-testid="route-rule"]').length).toBe(1), r);
+    expect(row('r2')).toBeTruthy();
   });
 
   it('edits the fallback chain of a rule in its own field and shows it on the rule', async () => {

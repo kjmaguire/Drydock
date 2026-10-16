@@ -15,6 +15,8 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { visible } from '../../lib/visible.ts';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { attachedText, freshnessText, packIds, refreshText, searchHeadline, zeroTime } from './packs.ts';
 
 // --- citations and results (pack text is untrusted) ---
@@ -230,24 +232,35 @@ function QuarantineList(handle: Handle<{ packId: string; onChanged: () => void }
             </div>
             <Markdown source={c.body} maxChars={3000} />
             <div>
-              <Button
-                size="sm"
+              <ConfirmAction
+                label="Release this passage to search"
                 icon={ShieldAlert}
+                variant="secondary"
+                yes="Yes, release it"
+                yesName={`Yes, release the passage ${passageName(c.headingPath)}`}
+                keep="Keep it out"
+                keepName={`Keep the passage ${passageName(c.headingPath)} out of search`}
+                question={`Release the passage ${passageName(c.headingPath)}? Agents can then find and read it as part of this pack.`}
                 disabled={act.busy !== ''}
-                mix={on('click', async () => {
+                testId="pack-release"
+                onConfirm={async () => {
                   await act.run('release', () => s.client.packReleaseChunk(c.chunkId));
                   q.reload();
                   handle.props.onChanged();
-                })}
-              >
-                Release this passage to search
-              </Button>
+                }}
+              />
             </div>
           </div>
         ))}
       </div>
     );
   };
+}
+
+/** Which passage a button speaks of, for its accessible name: the heading it sits under (the pack's own words, so hidden characters are written out and a long chain is cut). */
+function passageName(headingPath: string): string {
+  const where = visible(headingPath).trim();
+  return where ? `under "${where.length > 80 ? `${where.slice(0, 79)}…` : where}"` : 'of this pack';
 }
 
 // --- one pack ---

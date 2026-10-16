@@ -131,6 +131,56 @@ describe('the Knowledge hub', () => {
     expect(byLabel(r.container, 'Ask anything about gocalc').value).toBe('');
   });
 
+  // audit 2026-10-16, L40: a question is a paid chat. While it is being sent, a second Enter or click starts nothing.
+  it('while the question is being sent a second Enter or click starts no second chat, and the box is usable again when the send returns or fails', async () => {
+    const calls: string[] = [];
+    const gone: string[] = [];
+    let finishSend: () => void = () => undefined;
+    let failSend: (e: Error) => void = () => undefined;
+    const r = mount(
+      <KnowledgeScreen onNavigate={(h) => void gone.push(h)} />,
+      svc({
+        chatCreate: async () => (calls.push('create'), { id: 'chat_1' }) as never,
+        chatSend: () =>
+          new Promise((res, rej) => {
+            calls.push('send');
+            finishSend = () => res({ turnId: 'tr1', version: 1 });
+            failSend = rej;
+          }),
+      }),
+    );
+    const box = await waitFor(() => byLabel(r.container, 'Ask anything about gocalc'), r);
+    const form = r.$('[data-testid="knowledge-ask"]') as HTMLFormElement;
+    const ask = () => byText<HTMLButtonElement>(r.container, 'button', 'Ask');
+    const twice = async () => {
+      // Enter in the box (the form's submit), then a click: both while the send is in flight
+      await r.act(() => form.requestSubmit());
+      await r.act(() => ask().click());
+      await r.act(() => form.requestSubmit());
+      await drain();
+    };
+    for (const fail of [false, true]) {
+      calls.length = 0;
+      type(box, 'where do we round currency?');
+      await r.act(() => form.requestSubmit());
+      await waitFor(() => expect(calls).toEqual(['create', 'send']), r); // chatSend is in flight
+      expect(ask().disabled).toBe(true);
+      await twice();
+      expect(calls).toEqual(['create', 'send']); // one chat, one question
+      if (fail) failSend(new Error('the CLI is not signed in'));
+      else finishSend();
+      await waitFor(() => expect(ask().disabled).toBe(false), r); // usable again
+      if (fail) {
+        await waitFor(() => expect(r.$('[data-testid="knowledge-ask-unsent"]')).not.toBeNull(), r);
+        expect(box.value).toBe('where do we round currency?'); // kept for another try
+      } else {
+        await waitFor(() => expect(gone).toEqual([routes.chat.href({ id: 'chat_1' })]), r);
+        expect(box.value).toBe('');
+      }
+      expect(calls).toEqual(['create', 'send']);
+    }
+  });
+
   it('keeps every key typed into the ask box, and asks the whole question (H12)', async () => {
     const calls: unknown[] = [];
     const r = mount(

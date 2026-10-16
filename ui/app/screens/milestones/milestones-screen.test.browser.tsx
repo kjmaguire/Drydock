@@ -134,6 +134,25 @@ describe('MilestonesScreen', () => {
     await waitFor(() => expect(calls[2]).toBe('delete ms_1'), r);
   });
 
+  // audit 2026-10-16, M27: a task the team lead split off says so wherever it is a row
+  it('marks a task the team lead split off in the milestone, and no other', async () => {
+    const r = mount(
+      <MilestonesScreen />,
+      servicesWith({
+        milestoneList: async () => [ms({ taskIds: ['t1', 't2', 't3'] })],
+        taskList: async () => [{ ...task('t1', 1), origin: 'lead:2' }, task('t2', 2), { ...task('t3', 3), origin: 'nonsense' } as Task],
+      }),
+    );
+    const items = await waitFor(() => {
+      const x = Array.from(r.$$('ul[aria-label="Tasks in Beta"] li'));
+      if (x.length !== 3) throw new Error('not yet');
+      return x;
+    }, r);
+    expect(items[0]!.querySelector('[data-testid="task-origin"]')!.textContent).toBe('Split off by the team lead');
+    expect(items[1]!.querySelector('[data-testid="task-origin"]')).toBeNull();
+    expect(items[2]!.querySelector('[data-testid="task-origin"]')).toBeNull();
+  });
+
   it('shows the refusal when a milestone is not created', async () => {
     const r = mount(
       <MilestonesScreen />,

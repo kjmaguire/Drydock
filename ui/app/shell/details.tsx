@@ -11,7 +11,7 @@ import { AgentInspector } from '../screens/team/inspector.tsx';
 import { leadOf, RunStandup } from '../screens/team/lead.tsx';
 import { ThreadPanel } from '../screens/room/thread-panel.tsx';
 import { IconButton } from '../ui/button.tsx';
-import { Avatar, PresenceDot, StatusChip, kv, presenceColor } from '../ui/data.tsx';
+import { Avatar, OriginBadge, PresenceDot, StatusChip, kv, presenceColor } from '../ui/data.tsx';
 import { ErrorNote, Loading } from '../ui/feedback.tsx';
 import { Tabs, type TabItem } from '../ui/tabs.tsx';
 import { t } from '../ui/tokens.ts';
@@ -140,8 +140,9 @@ function TaskSummary(handle: Handle<{ taskId: string }>) {
         <a href={routes.task.href({ id: v.task.id })} style={{ fontWeight: '600', fontSize: t.textLg, color: t.text }}>
           #{v.task.seq} {v.task.title}
         </a>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
           <StatusChip status={v.task.status} />
+          <OriginBadge origin={v.task.origin} />
         </div>
         <dl mix={kv}>
           <dt>Worker</dt>

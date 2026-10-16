@@ -1,4 +1,4 @@
-// Pick a GitHub repository through the user's own `gh` (Drydock stores no GitHub token): the account and its organizations,
+// Pick a GitHub repository through the user's own `gh` (its sign-in stays with gh; Drydock stores nothing of it): the account and its organizations,
 // a search box, the repositories as a list of radio buttons, and the folder to clone into. When gh is missing or not signed
 // in, it says so in the core's words. Used by the new-project wizard and by Project settings (attach a repository).
 
@@ -89,7 +89,7 @@ export function RepoPicker(
       return (
         <Notice tone="warn" title={st?.unreachable ? 'GitHub did not answer.' : st?.installed ? 'GitHub is not signed in.' : 'GitHub is not available.'} testId="github-unavailable">
           {st?.error ? <span>{st.error}. </span> : null}
-          Drydock uses your own GitHub CLI and stores no GitHub token. {unavailableHint ?? null}
+          Cloning uses your own GitHub CLI sign-in, and Drydock stores no token for it. {unavailableHint ?? null}
         </Notice>
       );
     }

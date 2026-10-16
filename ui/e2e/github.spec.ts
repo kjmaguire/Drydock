@@ -18,7 +18,9 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   await expect(sign).toHaveAttribute('data-signed-in', 'false');
   await expect(sign).toContainText('not installed');
   await expect(sign.getByRole('button')).toHaveCount(0);
-  await expect(page.getByTestId('gh-signin')).toContainText('never reads or stores a GitHub token');
+  // the claim is about the gh route only, and the page says where the other sign-ins and tokens are kept (audit L45)
+  await expect(page.getByTestId('gh-signin')).toContainText('On this route it reads and stores no GitHub token');
+  await expect(page.getByTestId('gh-about')).toContainText('GitHub MCP server in the Library, under MCP servers');
 
   // what it does, the connection with the gh MCP server (the same panel as the Integrations tile), and the runners
   await expect(page.getByTestId('gh-about')).toContainText('Branch protection is respected and never bypassed');

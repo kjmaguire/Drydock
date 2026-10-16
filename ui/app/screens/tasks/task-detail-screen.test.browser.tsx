@@ -75,6 +75,39 @@ describe('Task view: header, properties and content', () => {
     expect(meta.textContent).toContain('Time');
   });
 
+  // audit 2026-10-16, M27: the team lead's follow-up waits in the backlog for a person; the page says where it came from and why
+  it('a task the team lead split off shows the badge under the title and the sentence that it waits for you; others show neither', async () => {
+    const SENTENCE = 'It waits in the backlog until you move it on; the lead cannot start it by itself.';
+    const open = async (over: Parameters<typeof task>[0]) => {
+      const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail({ task: task(over) }) }));
+      await waitFor(() => expect(r.$('h1')!.textContent).toContain('#1 Add Multiply'), r);
+      return r;
+    };
+    const split = await open({ status: 'BACKLOG', origin: 'lead:2' });
+    const note = split.$('[data-testid="task-origin-note"]')!;
+    expect(note.querySelector('[data-testid="task-origin"]')!.textContent).toBe('Split off by the team lead');
+    expect(note.querySelector('[data-testid="task-origin"]')!.getAttribute('title')).toBe('Step 2 from a task you made');
+    expect(note.textContent).toBe(`Split off by the team lead${SENTENCE}`);
+    // the sentence is under the badge, in the header beside the title, and not part of the heading's name
+    expect(split.$('h1')!.textContent).not.toContain('Split off');
+    expect(note.firstElementChild!.getAttribute('data-testid')).toBe('task-origin');
+    cleanup();
+    // once a person has moved it on, it no longer waits: the badge stays (where it came from), the sentence goes
+    const moved = await open({ status: 'IN_PROGRESS', origin: 'lead:1' });
+    expect(moved.$('[data-testid="task-origin"]')!.getAttribute('title')).toBe('Step 1 from a task you made');
+    expect(moved.container.textContent).not.toContain(SENTENCE);
+    cleanup();
+    // a task a person made, or an origin that is not "lead:N": nothing, and the page is as before
+    for (const origin of [undefined, '', 7, { n: 2 }, ['lead:2'], 'lead:', 'lead:x', 'lead:0', 'user:1', 'LEAD:1']) {
+      const r = await open({ status: 'BACKLOG', origin: origin as never });
+      expect(r.$('[data-testid="task-origin"]')).toBeNull();
+      expect(r.$('[data-testid="task-origin-note"]')).toBeNull();
+      expect(r.container.textContent).not.toContain(SENTENCE);
+      expect(r.$('.task-meta')).toBeTruthy();
+      cleanup();
+    }
+  });
+
   it('a task waiting for you shows the decide card beside the work, with You lit on the step bar', async () => {
     const d = detail({
       task: task({ status: 'WAITING_HUMAN', iteration: 1, started: 1_700_000_000_000, model: 'model-x' }),

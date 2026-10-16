@@ -50,21 +50,43 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
   let initRepo = false;
   let repo: GitHubRepo | undefined;
   let cloneDir = '';
+  // What a failed attach already did before its last step failed, and the inputs it did it for (audit 2026-10-16, L46). Making
+  // the Git repository and cloning cannot be done twice (init on a repository, a clone into an existing folder, are refused),
+  // so a retry with the same folder or repository skips them and attaches what they made. Other inputs: it is forgotten.
+  let progress: { key: string; made: 'init' | 'clone'; path: string } | undefined;
+  const inputs = () => (kind === 'local' ? `local\n${path.trim()}` : `github\n${repo?.fullName ?? ''}\n${cloneDir.trim()}`);
+  const already = () => (progress && progress.key === inputs() ? progress : undefined);
 
   const attach = async () => {
     const p = handle.props.project;
+    const key = inputs();
+    if (progress && progress.key !== key) progress = undefined; // the folder or the repository changed: start over
     const ok = await act.run('attach', async () => {
-      if (kind === 'local' && initRepo && currentCheck({ localPath: path, localCheck: check })?.canInit) await s.client.repoInit(path.trim());
-      const dir = kind === 'github' && repo ? (await s.client.githubClone(repo.fullName, cloneDir.trim())).path : path.trim();
+      let dir = path.trim();
+      if (kind === 'github' && repo) {
+        if (progress?.made === 'clone') dir = progress.path;
+        else {
+          dir = (await s.client.githubClone(repo.fullName, cloneDir.trim())).path;
+          progress = { key, made: 'clone', path: dir };
+        }
+      } else if (kind === 'local' && initRepo && !progress && currentCheck({ localPath: path, localCheck: check })?.canInit) {
+        await s.client.repoInit(dir);
+        progress = { key, made: 'init', path: dir };
+      }
       await s.client.projectAttachRepo(p.id, dir);
       return true;
     });
-    if (ok) s.workspace.projects.reload();
+    if (ok) {
+      progress = undefined;
+      s.workspace.projects.reload();
+    }
   };
 
   return () => {
     const problem = kind === 'local' ? folderProblem(currentCheck({ localPath: path, localCheck: check }), initRepo) : undefined;
     const ready = kind === 'local' ? !!path.trim() && !problem : !!repo && !!cloneDir.trim();
+    const done = already();
+    const cloning = kind === 'github' && done?.made !== 'clone';
     return (
       <SettingsGroup
         title="Attach a repository"
@@ -103,13 +125,17 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
             />
           )}
           <div mix={endCss}>
-            <span class="hint">
-              {kind === 'github' && repo
-                ? `Clones into ${cloneTarget(cloneDir, repo)}, then attaches it.`
-                : (problem ?? (initRepo && currentCheck({ localPath: path, localCheck: check })?.canInit ? 'Makes the Git repository, then attaches it.' : 'Drydock checks the folder before attaching it.'))}
+            <span class="hint" data-testid="attach-hint">
+              {done?.made === 'clone'
+                ? `The repository was already cloned to ${done.path}; attaching it again.`
+                : done?.made === 'init'
+                  ? `The Git repository was already made in ${done.path}; attaching it again.`
+                  : kind === 'github' && repo
+                    ? `Clones into ${cloneTarget(cloneDir, repo)}, then attaches it.`
+                    : (problem ?? (initRepo && currentCheck({ localPath: path, localCheck: check })?.canInit ? 'Makes the Git repository, then attaches it.' : 'Drydock checks the folder before attaching it.'))}
             </span>
             <Button type="submit" variant="primary" size="sm" icon={kind === 'github' ? GitBranch : FolderGit2} disabled={!!act.busy || !ready}>
-              {act.busy ? (kind === 'github' ? 'Cloning...' : 'Attaching...') : kind === 'github' ? 'Clone and attach' : 'Attach repository'}
+              {act.busy ? (cloning ? 'Cloning...' : 'Attaching...') : cloning ? 'Clone and attach' : 'Attach repository'}
             </Button>
           </div>
         </form>

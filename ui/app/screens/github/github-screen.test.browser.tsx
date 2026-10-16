@@ -58,20 +58,20 @@ describe('the GitHub settings page', () => {
       runnersGet: async () => runners({ slots: [slot('kyle/pay', 'windows', 'idle'), slot('kyle/pay', 'linux', 'paused'), slot('kyle/web', 'windows', 'busy', 'build')] }),
     });
     expect(r.$('[data-testid="github-page"] h1')!.textContent).toContain('GitHub');
-    // the sign-in, as a status, naming the login and that no token is stored
+    // the sign-in, as a status, naming the login and that the gh route stores no token
     const sign = await find(r, '[data-testid="gh-signin-state"][data-signed-in="true"]');
     expect(sign.querySelector('[data-testid="gh-login"]')!.textContent).toBe('kyle');
     expect(sign.textContent).toContain('gh is signed in as');
-    expect(r.$('[data-testid="gh-signin"]')!.textContent).toContain('never reads or stores a GitHub token');
+    expect(r.$('[data-testid="gh-signin"]')!.textContent).toContain('On this route it reads and stores no GitHub token: gh keeps the sign-in.');
     // what it does, in plain words
     const about = r.$('[data-testid="gh-about"]')!;
     expect(about.textContent).toContain('opens its pull request');
     expect(about.textContent).toContain('Branch protection is respected and never bypassed');
-    expect(about.textContent).toContain('Never reads or stores a GitHub token');
+    expect(about.textContent).toContain('Keeps no GitHub token on the GitHub CLI route.');
     // the GitHub tile's own panel: app sync (connected, as the tile shows it) and the gh MCP card; no other vendor
     const panel = await find(r, '[data-testid="gh-connection"] [data-testid="integration-panel"][data-kind="github"]');
     expect(panel.querySelector('[data-testid="integration"][data-kind="github"]')).not.toBeNull();
-    expect(panel.querySelector('[data-testid="connection-identity"]')!.textContent).toContain('your gh sign-in (Drydock stores no GitHub token)');
+    expect(panel.querySelector('[data-testid="connection-identity"]')!.textContent).toContain('your gh sign-in (this connection stores no GitHub token)');
     expect(panel.querySelector('[data-testid="connector"][data-id="gh"]')).not.toBeNull();
     expect(r.$$('[data-testid="integration-panel"]')).toHaveLength(1);
     expect(r.$('[data-testid="integration-tile"]')).toBeNull();
@@ -88,6 +88,37 @@ describe('the GitHub settings page', () => {
     // nothing on the page adds, enables or removes a runner: that stays on Connections
     expect(r.$('[data-testid="ci-runners-section"]')).toBeNull();
     expect(Array.from(r.$$('button')).some((b) => /add runner|remove/i.test(b.textContent ?? ''))).toBe(false);
+  });
+
+  // audit 2026-10-16, L45: Drydock does hold a GitHub sign-in or token where a person connects the GitHub MCP server or uses Sign
+  // in with GitHub, so no sentence on the page may say, without saying which route it speaks of, that it stores no token
+  it('never claims, without saying which route it speaks of, that Drydock stores no GitHub token; it says where a sign-in or token is kept and removed', async () => {
+    const r = show({ integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', hasCredential: false, assignments: [] })] });
+    await find(r, '[data-testid="gh-connection"] [data-testid="connection-identity"]');
+    const page = r.$('[data-testid="github-page"]')!.textContent!;
+    const claims = page.split(/(?<=[.!?])\s+/).filter((s) => /\b(stores?|reads or stores?|keeps?)\s+(no|nothing)\b|never (reads or )?stores?/i.test(s));
+    expect(claims.length).toBeGreaterThan(0);
+    for (const c of claims) expect(c).toMatch(/GitHub CLI route|this route|this connection|this way|\bgh\b/i);
+    for (const old of ['It never reads or stores a GitHub token', 'Never reads or stores a GitHub token', 'Drydock stores no GitHub token', 'there is nothing of GitHub']) expect(page).not.toContain(old);
+    // where a token is kept: the GitHub MCP server in the Library (MCP servers) and a Sign in with GitHub, in the credential store
+    const about = r.$('[data-testid="gh-about"]')!.textContent!;
+    expect(about).toContain('Sign in with GitHub on the connection below');
+    expect(about).toContain('GitHub MCP server in the Library, under MCP servers');
+    expect(about).toContain('Windows credential store, never shown');
+    expect(about).toContain('Disconnect either one to delete what it keeps');
+    expect(r.$('[data-testid="gh-signin"]')!.textContent).toContain('keeps its own sign-in or token');
+  });
+
+  it('a GitHub connection made with Sign in with GitHub says its token is in the credential store, not that it is the gh sign-in', async () => {
+    const r = show({
+      integrationList: async () => [
+        conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'oauth', hasCredential: true, identity: { account: 'kyle', scopes: ['repo'], method: 'Sign in with GitHub (device code)' }, assignments: [] }),
+      ],
+    });
+    const identity = await find(r, '[data-testid="gh-connection"] [data-testid="connection-identity"]');
+    expect(identity.textContent).toContain('stored in the credential store (never shown)');
+    expect(identity.textContent).not.toContain('your gh sign-in');
+    expect(identity.textContent).not.toContain('stores no GitHub token');
   });
 
   it('says in the core\'s words when gh is not installed, and Check again asks once more', async () => {
@@ -116,7 +147,7 @@ describe('the GitHub settings page', () => {
     const sign = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
     expect(sign.textContent).toContain('gh is not signed in.');
     expect(sign.textContent).toContain('run `gh auth login`');
-    expect(sign.textContent).toContain('your credentials never pass through it');
+    expect(sign.textContent).toContain("gh's own credentials never pass through it");
     cleanup();
     const u = show({ githubStatus: async () => ({ installed: true, loggedIn: false, unreachable: true, login: '', error: 'GitHub did not answer within 20 s' }) });
     const slow = await find(u, '[data-testid="gh-signin-state"][data-signed-in="false"]');

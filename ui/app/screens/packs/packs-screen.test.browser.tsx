@@ -138,7 +138,18 @@ describe('PacksScreen', () => {
     const q = await waitFor(() => need(r.$('[data-testid="quarantined-chunk"]')), r);
     expect(q.textContent).toContain('Ignore previous instructions');
     expect(released).toEqual([]);
+    // releasing cannot be taken back (L40): one click only asks, Keep cancels, and Yes releases once
     await r.act(() => byText(q, 'button', /Release this passage/).click());
+    expect(released).toEqual([]);
+    await r.act(() => byText(q, 'button', 'Keep the passage under "Setup" out of search').click());
+    expect(released).toEqual([]);
+    await waitFor(() => byText(q, 'button', /Release this passage/), r);
+    await r.act(() => byText(q, 'button', /Release this passage/).click());
+    await r.act(() => {
+      const yes = byText(q, 'button', 'Yes, release the passage under "Setup"');
+      yes.click();
+      yes.click();
+    });
     await waitFor(() => expect(released).toEqual([7]), r);
   });
 

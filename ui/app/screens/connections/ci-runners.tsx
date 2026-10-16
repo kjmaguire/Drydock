@@ -15,6 +15,7 @@ import { Checkbox } from '../../ui/form.tsx';
 import { listCard, Section } from '../../ui/layout.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
 import { ChooseFolder } from '../shared/choose-folder.tsx';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 
 const kindsCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
 const kindCss = css({
@@ -251,9 +252,16 @@ export function CiRunners(handle: Handle) {
                   <Button type="button" variant="ghost" size="sm" data-testid="runner-log" disabled={act.busy !== ''} mix={on('click', () => void showLog(sl))}>
                     {lines ? 'Hide output' : 'Output'}
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" data-testid="runner-remove" disabled={busy} mix={on('click', () => void remove(sl))}>
-                    Remove
-                  </Button>
+                  <ConfirmAction
+                    label="Remove"
+                    yes="Yes, remove"
+                    yesName={`Yes, remove the ${KIND_NAME[sl.kind]} runner of ${sl.repo}`}
+                    keepName={`Keep the ${KIND_NAME[sl.kind]} runner of ${sl.repo}`}
+                    question={`Remove the ${KIND_NAME[sl.kind]} runner of ${sl.repo}? It stops taking jobs, and adding it again sets it up from the start.`}
+                    disabled={busy}
+                    testId="runner-remove"
+                    onConfirm={() => remove(sl)}
+                  />
                 </span>
                 <span class="what" data-testid="runner-what">
                   {sl.reason ? `${sl.reason} ` : ''}

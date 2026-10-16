@@ -1,6 +1,7 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import type { PresenceState } from '../api/types.ts';
 import { statusLabel, statusTone } from '../lib/format.ts';
+import { LEAD_ORIGIN_LABEL, leadStep, leadStepText } from '../lib/task-origin.ts';
 import { t, tone, type Tone } from './tokens.ts';
 
 const badgeCss = css({
@@ -42,6 +43,22 @@ export function StatusChip(handle: Handle<{ status: string }>) {
         <span mix={dotCss} aria-hidden="true" style={{ background: c.fg }} />
         {statusLabel(s)}
       </span>
+    );
+  };
+}
+
+/**
+ * Where a task came from, when it is not a person's: "Split off by the team lead" for an origin "lead:N" (the tooltip says how
+ * many steps it is from a task the person made). Takes whatever the core sent as `origin`: any other value, or none, draws nothing.
+ */
+export function OriginBadge(handle: Handle<{ origin: unknown }>) {
+  return () => {
+    const step = leadStep(handle.props.origin);
+    if (step === undefined) return null;
+    return (
+      <Badge tone="info" title={leadStepText(step)} testId="task-origin">
+        {LEAD_ORIGIN_LABEL}
+      </Badge>
     );
   };
 }

@@ -462,6 +462,20 @@ describe('team lead client methods', () => {
   });
 });
 
+describe('shell client method (audit M23)', () => {
+  it('asks the shell to open an address with the name the core decodes, and shows the core refusal as it came', async () => {
+    const f = mock.fn(async (url: string) => (url.endsWith('shell.openExternal') ? json({ result: { opened: true } }) : json({ result: null })));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.shellOpenExternal('https://example.com/docs')).toBeUndefined();
+    const [url, init] = f.mock.calls.map((x) => x.arguments)[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/rpc/shell.openExternal');
+    expect(JSON.parse(init.body as string)).toEqual({ url: 'https://example.com/docs' });
+
+    const refused = createClient(transport((async () => json({ error: 'only http, https and mail addresses can be opened from here' }, 400)) as unknown as typeof fetch));
+    expect(await refused.shellOpenExternal('file:///C:/x').catch((e: unknown) => e)).toMatchObject({ kind: 'bad_request', message: 'only http, https and mail addresses can be opened from here' });
+  });
+});
+
 describe('Wails runtime wiring (against a fake runtime module; never run in WebView2)', () => {
   it('addresses the bridge by its fully qualified name and passes arguments in order', async () => {
     const ByName = mock.fn(async (name: string) => (name.endsWith('.Call') ? '{"ok":true}' : null));

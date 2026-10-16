@@ -105,6 +105,7 @@ describe('RoomAgentsPanel', () => {
     await waitFor(() => expect(invites).toEqual([['room_1', 'a2']]), r);
     await waitFor(() => expect(valueOf(invite)).toBe(''), r);
     await r.act(() => button(r, 'Remove').click());
+    await r.act(() => button(r, 'Yes, remove Dana from this room').click());
     await waitFor(() => expect(removes).toEqual([['room_1', 'a1']]), r);
     await r.act(() => button(r, 'Ask agents to reply to my last message').click());
     await waitFor(() => expect(replies).toEqual(['msg_1']), r);
@@ -112,6 +113,26 @@ describe('RoomAgentsPanel', () => {
     expect(row.textContent).toContain('not reported');
     expect(row.textContent).toContain('mention');
     expect(row.textContent).toContain('100/20 tokens');
+  });
+
+  // audit 2026-10-16, L40: a removed member loses its place in the room, so the removal asks first
+  it('removing an agent from the room asks first: one click sends nothing, Keep cancels, Yes removes it once', async () => {
+    const removes: unknown[][] = [];
+    const s = testServices({ roomRemoveMember: async (...a: unknown[]) => (removes.push(a), []), roomTurns: async () => [] });
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    await r.act(() => button(r, 'Remove').click());
+    expect(removes).toEqual([]);
+    expect(r.$('[role="group"]')!.getAttribute('aria-label')).toBe('Remove Dana from this room? It stops taking part here, and inviting it again starts it fresh.');
+    await r.act(() => button(r, 'Keep Dana in this room').click());
+    await waitFor(() => button(r, 'Remove'), r);
+    expect(removes).toEqual([]);
+    await r.act(() => button(r, 'Remove').click());
+    await r.act(() => {
+      const yes = button(r, 'Yes, remove Dana from this room');
+      yes.click();
+      yes.click();
+    });
+    await waitFor(() => expect(removes).toEqual([['room_1', 'a1']]), r);
   });
 
   it('shows the model a routed reply ran on and opens its "Why this model?"; an older turn says the model was not recorded', async () => {

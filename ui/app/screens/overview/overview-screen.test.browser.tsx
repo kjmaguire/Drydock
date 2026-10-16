@@ -78,6 +78,29 @@ describe('the Overview', () => {
     expect(rooms.querySelector('a[href="/rooms"]')).not.toBeNull();
   });
 
+  // audit 2026-10-16, M27: a follow-up the team lead split off, once a person has moved it on, says where it came from
+  it('marks an in-motion task the team lead split off, and no other', async () => {
+    const r = mount(
+      <OverviewScreen />,
+      svc({
+        taskList: async () => [
+          task({ id: 't20', seq: 20, title: 'Lead follow-up', status: 'IN_PROGRESS', origin: 'lead:1' }),
+          task({ id: 't21', seq: 21, title: 'Your task', status: 'IN_PROGRESS' }),
+          task({ id: 't22', seq: 22, title: 'Odd origin', status: 'IN_PROGRESS', origin: 'lead:' }),
+        ],
+      }),
+    );
+    const rows = await waitFor(() => {
+      const x = Array.from(r.$$('[data-testid="overview-task"]'));
+      if (x.length !== 3) throw new Error('not yet');
+      return x;
+    }, r);
+    const badge = (title: string) => rows.find((x) => x.textContent!.includes(title))!.querySelector('[data-testid="task-origin"]');
+    expect(badge('Lead follow-up')!.textContent).toBe('Split off by the team lead');
+    expect(badge('Your task')).toBeNull();
+    expect(badge('Odd origin')).toBeNull();
+  });
+
   it('says its counts come from the newest tasks only while the project has more (M21)', async () => {
     const r = mount(<OverviewScreen />, svc({ taskCount: async () => ({ total: 640 }) }));
     const note = await waitFor(() => r.$('[data-testid="task-total-notice"]') ?? (() => { throw new Error('no notice yet'); })(), r);

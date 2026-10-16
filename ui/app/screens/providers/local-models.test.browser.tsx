@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LocalBackend, LocalModel, LocalSettingsEdit, LocalView, Variant } from '../../api/localClient.ts';
-import { cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { LocalModels } from './local-models.tsx';
 
 afterEach(cleanup);
@@ -244,9 +244,13 @@ describe('Models on this PC', () => {
     await r.act(() => (need(r, '[data-testid="local-log"]') as HTMLButtonElement).click());
     expect(need(r, '[data-testid="local-log-lines"]').textContent).toContain('server is listening');
 
+    // a server that runs is stopped with "Stop" (it says "Cancel start" only while a start waits)
+    expect(need(r, '[data-testid="local-server-stop"]').textContent).toBe('Stop');
+    expect((need(r, '[data-testid="local-server-stop"]') as HTMLButtonElement).disabled).toBe(false);
     await r.act(() => (need(r, '[data-testid="local-server-stop"]') as HTMLButtonElement).click());
     await waitFor(() => expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped'), r);
     expect(stops).toBe(1);
+    expect(q(r, '[data-testid="local-stopped"]')).toBe(null); // nothing was waiting: no note beside the badge that says it
   });
 
   it('a Serve button waits while the server starts; a failed server shows its error; Remove refused by the core shows the error', async () => {
@@ -260,11 +264,199 @@ describe('Models on this PC', () => {
     expect((row.querySelector('[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
     expect(need(r, '[data-testid="local-server-state"]').textContent).toBe('starting');
     await r.act(() => (row.querySelector('[data-testid="local-model-remove"]') as HTMLButtonElement).click());
+    await r.act(() => (row.querySelector('[data-testid="local-model-remove-confirm"]') as HTMLButtonElement).click());
     await waitFor(() => expect(need(r, '[role="alert"]').textContent).toContain('stop the server first'), r);
 
     const failed = show({ localGet: async () => installed({ server: { state: 'failed', error: 'port 9933 is in use' } }) });
     await waitFor(() => expect(need(failed.r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('failed'), failed.r);
     expect(need(failed.r, '[data-testid="local-server"] [role="alert"]').textContent).toContain('port 9933 is in use');
+  });
+
+  // audit 2026-10-16, L44: a start waits for the core until the model is loaded (up to 15 minutes), and the core stops that wait
+  // when the server is stopped (localllm.Server.Stop moves its generation on and kills the process, so Start returns "the server
+  // was stopped before llama-server was ready"). Stop has to work meanwhile.
+  describe('Stop while a start waits for the model', () => {
+    const models = [model()];
+    const id = models[0]!.id;
+    const stopped = () => installed({ models });
+    const runningView = () => installed({ models, server: { state: 'running', modelId: id, port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' }, settings: { ...installed().settings, modelId: id, providerId: 'prov_local' } });
+    const stopBtn = (r: ReturnType<typeof show>['r']) => need(r, '[data-testid="local-server-stop"]') as HTMLButtonElement;
+    const serve = (r: ReturnType<typeof show>['r']) => r.act(() => (sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).click());
+    const START_STOPPED = 'the server was stopped before llama-server was ready';
+
+    it('Stop is enabled and says Cancel start; it calls localServerStop while the start is still pending; the start\'s error then shows no alarm, only a note', async () => {
+      const stops: string[] = [];
+      let failStart: (e: Error) => void = () => undefined;
+      let startedCalls = 0;
+      const { r } = show({
+        localGet: async () => stopped(),
+        localServerStart: () => (
+          startedCalls++,
+          new Promise<LocalView>((_res, rej) => {
+            failStart = rej;
+          })
+        ),
+        localServerStop: async () => (stops.push('stop'), stopped()),
+      });
+      await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(1), r);
+      expect(q(r, '[data-testid="local-server-stop"]')).toBe(null); // nothing runs or starts yet
+      await serve(r);
+      await waitFor(() => expect(startedCalls).toBe(1), r);
+      // the start waits on the core: Stop is there, enabled, and says it ends the start
+      await waitFor(() => expect(stopBtn(r).textContent).toBe('Cancel start'), r);
+      expect(stopBtn(r).disabled).toBe(false);
+      expect(sel(r, '[data-testid="local-serve"]').textContent).toBe('Starting…');
+      // every other control waits for the start
+      for (const t of ['local-serve', 'local-model-remove', 'local-update', 'local-suggested', 'local-context', 'local-port']) {
+        expect((q(r, `[data-testid="${t}"]`) as HTMLButtonElement).disabled).toBe(true);
+      }
+      await r.act(() => stopBtn(r).click());
+      await waitFor(() => expect(stops).toEqual(['stop']), r); // sent while the start has not answered
+      expect(startedCalls).toBe(1);
+      // the Stop answered first: a calm note that is announced, the server stopped, nothing left to stop; Serve still waits
+      // for the start to deliver its answer
+      await waitFor(() => expect(q(r, '[data-testid="local-stopped"]')?.textContent).toContain('The server was stopped.'), r);
+      expect(q(r, '[data-testid="local-stopped"]')!.getAttribute('role')).toBe('status');
+      expect(q(r, '[data-testid="local-server-stop"]')).toBe(null);
+      expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped');
+      expect((sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
+      // the core ends the start with an error because it was stopped: no alarm
+      failStart(new Error(START_STOPPED));
+      await waitFor(() => expect((sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(false), r);
+      expect(r.$('[role="alert"]')).toBe(null);
+      expect(q(r, '[data-testid="local-stopped"]')!.textContent).toContain('The server was stopped.');
+      expect(sel(r, '[data-testid="local-serve"]').textContent).toBe('Serve');
+    });
+
+    it('also when the error of the start comes first, and the note goes when the next action starts', async () => {
+      let failStart: (e: Error) => void = () => undefined;
+      let finishStop: () => void = () => undefined;
+      const { r } = show({
+        localGet: async () => stopped(),
+        localServerStart: () => new Promise<LocalView>((_res, rej) => (failStart = rej)),
+        localServerStop: () => new Promise<LocalView>((res) => (finishStop = () => res(stopped()))),
+      });
+      await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(1), r);
+      await serve(r);
+      await waitFor(() => expect(stopBtn(r).textContent).toBe('Cancel start'), r);
+      await r.act(() => stopBtn(r).click());
+      await waitFor(() => expect(stopBtn(r).textContent).toBe('Stopping…'), r);
+      expect(stopBtn(r).disabled).toBe(true);
+      failStart(new Error(START_STOPPED)); // the start ends first, the Stop is still on its way
+      await drain();
+      expect(r.$('[role="alert"]')).toBe(null);
+      // nothing else can be pressed until the Stop has answered
+      expect((sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
+      finishStop();
+      await waitFor(() => expect(q(r, '[data-testid="local-stopped"]')?.textContent).toContain('The server was stopped.'), r);
+      expect(r.$('[role="alert"]')).toBe(null);
+      // the next thing the person does clears the note
+      await waitFor(() => expect((sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(false), r);
+      await serve(r);
+      await waitFor(() => expect(q(r, '[data-testid="local-stopped"]')).toBe(null), r);
+    });
+
+    it('while the core itself says the server is starting (the autostart, another window) Stop says Cancel start too', async () => {
+      const stops: string[] = [];
+      const { r } = show({
+        localGet: async () => installed({ models, server: { state: 'starting', modelId: id } }),
+        localServerStop: async () => (stops.push('stop'), stopped()),
+      });
+      await waitFor(() => expect(stopBtn(r).textContent).toBe('Cancel start'), r);
+      expect(stopBtn(r).disabled).toBe(false);
+      expect((sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
+      await r.act(() => stopBtn(r).click());
+      await waitFor(() => expect(stops).toEqual(['stop']), r);
+      await waitFor(() => expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped'), r);
+      expect(q(r, '[data-testid="local-stopped"]')).toBe(null); // no start of this window was waiting
+    });
+
+    it('a start that fails by itself still shows its error: only a start the person cancelled is let go', async () => {
+      const { r } = show({
+        localGet: async () => stopped(),
+        localServerStart: async () => {
+          throw new Error('port 9933 is in use (another program listens on it; choose another port in the settings)');
+        },
+      });
+      await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(1), r);
+      await serve(r);
+      await waitFor(() => expect(need(r, '[role="alert"]').textContent).toContain('port 9933 is in use'), r);
+      expect(q(r, '[data-testid="local-stopped"]')).toBe(null);
+    });
+
+    it('a Stop the core refuses shows why, and the start goes on: its answer counts', async () => {
+      let finishStart: (v: LocalView) => void = () => undefined;
+      const { r } = show({
+        localGet: async () => stopped(),
+        localServerStart: () => new Promise<LocalView>((res) => (finishStart = res)),
+        localServerStop: async () => {
+          throw new Error('only a person may stop the local model server');
+        },
+      });
+      await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(1), r);
+      await serve(r);
+      await waitFor(() => expect(stopBtn(r).textContent).toBe('Cancel start'), r);
+      await r.act(() => stopBtn(r).click());
+      await waitFor(() => expect(need(r, '[role="alert"]').textContent).toContain('only a person may stop the local model server'), r);
+      expect(stopBtn(r).disabled).toBe(false); // it can be tried again while the start waits
+      finishStart(runningView());
+      await waitFor(() => expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('running'), r);
+      expect(stopBtn(r).textContent).toBe('Stop');
+      expect(q(r, '[data-testid="local-stopped"]')).toBe(null);
+    });
+
+    it('a start that is ready just as Stop is pressed is let go too: the Stop\'s answer says what the server is', async () => {
+      let finishStart: (v: LocalView) => void = () => undefined;
+      const { r } = show({
+        localGet: async () => stopped(),
+        localServerStart: () => new Promise<LocalView>((res) => (finishStart = res)),
+        localServerStop: async () => stopped(),
+      });
+      await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(1), r);
+      await serve(r);
+      await waitFor(() => expect(stopBtn(r).textContent).toBe('Cancel start'), r);
+      await r.act(() => stopBtn(r).click());
+      await waitFor(() => expect(q(r, '[data-testid="local-stopped"]')).not.toBe(null), r);
+      finishStart(runningView()); // the answer of a start the Stop outran
+      await drain();
+      await drain();
+      expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped');
+      expect(r.$('[role="alert"]')).toBe(null);
+    });
+  });
+
+  // audit 2026-10-16, L40: a model is a large file that takes a long time to get again, so removing it asks first
+  it('Remove of a downloaded model asks first: one click sends nothing, Keep cancels, Yes removes it once', async () => {
+    const removed: string[] = [];
+    const models = [model(), model({ id: 'x/y:Q4', variant: 'Q4', sizeBytes: 500 * MiB })];
+    let state = installed({ models });
+    const { r } = show({
+      localGet: async () => state,
+      localModelRemove: async (id) => {
+        removed.push(id);
+        state = installed({ models: models.filter((m) => m.id !== id) });
+        return state;
+      },
+    });
+    await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(2), r);
+    const row = (id: string) => need(r, `[data-testid="local-model"][data-id="${id}"]`);
+    const first = models[0]!.id;
+    await r.act(() => (row(first).querySelector('[data-testid="local-model-remove"]') as HTMLButtonElement).click());
+    expect(removed).toEqual([]);
+    expect(row(first).querySelector('[role="group"]')!.getAttribute('aria-label')).toBe(`Remove the model ${first}? 12.0 GB are deleted from this PC, and getting it back means downloading it all again.`);
+    expect(row('x/y:Q4').querySelector('[data-testid="local-model-remove"]')).not.toBe(null); // only that model asks
+    await r.act(() => (Array.from(row(first).querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === `Keep the model ${first}`) as HTMLButtonElement).click());
+    await waitFor(() => expect(row(first).querySelector('[data-testid="local-model-remove"]')).not.toBe(null), r);
+    expect(removed).toEqual([]);
+    await r.act(() => (row(first).querySelector('[data-testid="local-model-remove"]') as HTMLButtonElement).click());
+    const yes = () => row(first).querySelector('[data-testid="local-model-remove-confirm"]') as HTMLButtonElement;
+    expect(yes().getAttribute('aria-label')).toBe(`Yes, remove the model ${first}`);
+    await r.act(() => {
+      yes().click();
+      yes().click();
+    });
+    await waitFor(() => expect(removed).toEqual([first]), r);
+    await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(1), r);
   });
 
   it('downloads: a running one has a bar, its file and Cancel; a finished one has Clear (the same call)', async () => {

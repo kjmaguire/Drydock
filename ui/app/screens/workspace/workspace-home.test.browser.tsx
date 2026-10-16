@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ChatCreate, ChatListItem } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, typeKeys, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, typeKeys, valueOf, waitFor } from '../../test/render.tsx';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
 afterEach(cleanup);
@@ -165,6 +165,91 @@ describe('Chat from Home', () => {
     expect(created).toEqual([{}]);
     expect(sent).toEqual([['chat_new', 'What is in this folder?']]);
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code').value).toBe('');
+  });
+
+  // audit 2026-10-16, L40: sending the message is a paid turn. While it is being sent, a second click or Ctrl+Enter starts no
+  // second chat, and the control is usable again when the send returns or fails.
+  it('while the message is being sent a second click or Ctrl+Enter starts no second chat; the control is usable again when the send returns or fails', async () => {
+    const calls: string[] = [];
+    let finishSend: () => void = () => undefined;
+    let failSend: (e: Error) => void = () => undefined;
+    let n = 0;
+    const { r, navigated } = show({
+      chatCreate: async () => (calls.push('create'), homeChat({ id: `chat_${++n}` })),
+      chatSend: () =>
+        new Promise((res, rej) => {
+          calls.push('send');
+          finishSend = () => res({ turnId: 'cturn_1', version: 2 });
+          failSend = rej;
+        }),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), r);
+    const startBtn = () => byText<HTMLButtonElement>(chatForm(r), 'button', /^(Start chat|Starting\.\.\.)$/);
+    const ctrlEnter = () => r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    for (const fail of [false, true]) {
+      calls.length = 0;
+      type(box, 'What is in this folder?');
+      await r.act(() => startBtn().click());
+      await waitFor(() => expect(calls).toEqual(['create', 'send']), r); // chatSend is in flight, the chat exists
+      // the control is off and says so; Options (which would make another chat) is off too
+      expect(startBtn().disabled).toBe(true);
+      expect(startBtn().textContent).toBe('Starting...');
+      expect(byText<HTMLButtonElement>(r.container, 'button', 'Options...').disabled).toBe(true);
+      await ctrlEnter();
+      await r.act(() => startBtn().click());
+      await r.act(() => chatForm(r).requestSubmit());
+      await ctrlEnter();
+      await drain();
+      expect(calls).toEqual(['create', 'send']); // one chat, one message
+      if (fail) failSend(new Error('Claude Code is not signed in'));
+      else finishSend();
+      await waitFor(() => expect(startBtn().disabled).toBe(false), r); // usable again
+      expect(startBtn().textContent).toBe('Start chat');
+      if (fail) {
+        await waitFor(() => expect(r.$('[data-testid="home-chat-unsent"]')).not.toBeNull(), r);
+        expect(box.value).toBe('What is in this folder?');
+      } else {
+        await waitFor(() => expect(navigated).toEqual(['/chats/chat_1']), r);
+        expect(box.value).toBe('');
+      }
+      expect(calls).toEqual(['create', 'send']);
+    }
+  });
+
+  it('a chat made from Options sends its message under the same guard: Start chat is off until the send ends', async () => {
+    const calls: string[] = [];
+    let finishSend: () => void = () => undefined;
+    const { r, navigated } = show({
+      adapterList: async () => [claudeCli],
+      connectionList: async () => [],
+      skillLibraryList: async () => [],
+      mcpLibList: async () => [],
+      chatCreate: async () => (calls.push('create'), homeChat({ id: 'chat_o2' })),
+      chatSend: () =>
+        new Promise((res) => {
+          calls.push('send');
+          finishSend = () => res({ turnId: 't', version: 1 });
+        }),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), r);
+    type(box, 'hello from options');
+    await r.act(() => byText(r.container, 'button', 'Options...').click());
+    const dlg = await waitFor(() => {
+      const d = dialogOpen('new-chat-form');
+      if (!d) throw new Error('no dialog');
+      return d;
+    }, r);
+    await waitFor(() => expect(valueOf(byLabel(dlg, 'Project'))).toBe(''), r);
+    await r.act(() => byText(dlg, 'button', 'Start chat').click());
+    await waitFor(() => expect(calls).toEqual(['create', 'send']), r);
+    const startBtn = () => byText<HTMLButtonElement>(chatForm(r), 'button', /^(Start chat|Starting\.\.\.)$/);
+    await waitFor(() => expect(startBtn().disabled).toBe(true), r);
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    await drain();
+    expect(calls).toEqual(['create', 'send']);
+    finishSend();
+    await waitFor(() => expect(navigated).toEqual(['/chats/chat_o2']), r);
+    await waitFor(() => expect(startBtn().disabled).toBe(false), r);
   });
 
   it('keeps every key typed into the message box and sends the whole text (H12)', async () => {

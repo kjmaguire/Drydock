@@ -126,6 +126,57 @@ describe('TaskListScreen: the board', () => {
   });
 });
 
+// audit 2026-10-16, M27: a task the team lead split off (origin "lead:N") is marked on its card and in its row; every other task,
+// whatever the core sent as its origin, says nothing and draws as before.
+describe('TaskListScreen: tasks the team lead split off', () => {
+  const BADGE = 'Split off by the team lead';
+  const odd: unknown[] = [7, true, {}, ['lead:2'], 'lead:', 'lead:abc', 'lead:-1', 'lead:0', 'lead:1000', 'LEAD:1', ' lead:1', 'lead:1 ', 'user:1', '\u202Elead:1'];
+  const mixed: Task[] = [
+    task({ id: 'a', seq: 11, title: 'Follow-up from the lead', status: 'BACKLOG', origin: 'lead:2' }),
+    task({ id: 'b', seq: 12, title: 'A deeper follow-up', status: 'BACKLOG', origin: 'lead:1' }),
+    task({ id: 'c', seq: 13, title: 'Made by you', status: 'BACKLOG' }),
+    task({ id: 'd', seq: 14, title: 'Empty origin', status: 'BACKLOG', origin: '' }),
+    ...odd.map((origin, i) => task({ id: `o${i}`, seq: 20 + i, title: `Odd origin ${i}`, status: 'BACKLOG', origin: origin as never })),
+  ];
+  const badges = (root: ParentNode) => Array.from(root.querySelectorAll('[data-testid="task-origin"]')) as HTMLElement[];
+  const rowOf = (r: ReturnType<typeof mount>, title: string) => rows(r).find((x) => x.querySelector('a')!.textContent === title)!;
+
+  it('the board marks them on the card, with the step as the tooltip, and nothing else', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks: mixed }));
+    await listed(r, mixed.length);
+    expect(badges(r.container).map((b) => b.textContent)).toEqual([BADGE, BADGE]);
+    const a = badges(rowOf(r, 'Follow-up from the lead'));
+    expect(a).toHaveLength(1);
+    expect(a[0]!.getAttribute('title')).toBe('Step 2 from a task you made');
+    expect(a[0]!.getAttribute('data-tone')).toBe('info');
+    expect(badges(rowOf(r, 'A deeper follow-up'))[0]!.getAttribute('title')).toBe('Step 1 from a task you made');
+    // the badge sits beside the status, and the card is otherwise as before
+    expect(rowOf(r, 'Follow-up from the lead').querySelector('[data-testid="task-status"]')!.textContent).toContain('Backlog');
+    for (const title of ['Made by you', 'Empty origin', ...odd.map((_, i) => `Odd origin ${i}`)]) {
+      const card = rowOf(r, title);
+      expect(card).toBeTruthy();
+      expect(badges(card)).toHaveLength(0);
+      expect(card.textContent).not.toContain(BADGE);
+      expect(card.querySelector('a')!.textContent).toBe(title);
+      expect(card.querySelector('[data-testid="task-status"]')).toBeTruthy();
+    }
+  });
+
+  it('the list marks them in the row, and nothing else', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks: mixed }));
+    await listed(r, mixed.length);
+    await showList(r);
+    await listed(r, mixed.length);
+    expect(badges(r.container).map((b) => b.textContent)).toEqual([BADGE, BADGE]);
+    const a = rowOf(r, 'Follow-up from the lead');
+    expect(badges(a)).toHaveLength(1);
+    expect(badges(a)[0]!.getAttribute('title')).toBe('Step 2 from a task you made');
+    expect(a.querySelector('a')!.textContent).toBe('Follow-up from the lead');
+    expect(badges(rowOf(r, 'Made by you'))).toHaveLength(0);
+    for (const i of odd.keys()) expect(badges(rowOf(r, `Odd origin ${i}`))).toHaveLength(0);
+  });
+});
+
 describe('TaskListScreen: the list', () => {
   it('lists tasks grouped by status, each row a link with the status, people and cost', async () => {
     const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));

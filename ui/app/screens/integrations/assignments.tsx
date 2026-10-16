@@ -21,6 +21,7 @@ import { stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ShownNotes } from '../shared/approval-text.tsx';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, syncText, syncTone } from './integrations.ts';
 
 /** Opens a task (the page passes navigate; tests record the address). */
@@ -380,9 +381,17 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
               <Button size="sm" mix={[on('click', () => void change(r, { dryRun: !r.dryRun }))]}>
                 {r.dryRun ? 'Switch to live' : 'Switch to dry-run'}
               </Button>
-              <Button size="sm" variant="ghost" icon={Trash2} mix={[on('click', () => void change(r, { delete: true }))]}>
-                Delete
-              </Button>
+              <ConfirmAction
+                label="Delete"
+                icon={Trash2}
+                yes="Yes, delete"
+                yesName={`Yes, delete the rule "${r.name || r.id}"`}
+                keepName={`Keep the rule "${r.name || r.id}"`}
+                question={`Delete the rule "${r.name || r.id}"? It stops creating tasks and cannot be brought back.`}
+                disabled={act.busy !== ''}
+                testId="int-rule-delete"
+                onConfirm={() => change(r, { delete: true })}
+              />
             </div>
           </div>
         ))}

@@ -7,6 +7,7 @@ import { Archive, ArchiveRestore, Check, ChevronRight, FileText, Link2, Search, 
 import type { Requirement, RequirementHit, RequirementTrace } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -18,6 +19,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { criteriaLines, evidenceOutcome, fileProblem, linkedTaskIds, titleFromFile } from './requirements.ts';
 
@@ -212,6 +214,13 @@ const twoCol = css({
 });
 const subForm = css({ display: 'grid', gap: t.s3 });
 
+/** Which passage a button speaks of, for its accessible name: the heading it sits under (the document's own words, so hidden characters are written out and a long chain is cut). */
+function passageName(headingPath: string): string {
+  const where = visible(headingPath).trim();
+  return where ? `under "${clip(where)}"` : 'of this requirement';
+}
+const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
 function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onChanged: () => void }>) {
   const s = services(handle);
   const act = action(handle);
@@ -292,17 +301,22 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
               <div key={c.chunkId} class="chunk">
                 <Markdown source={c.body} maxChars={1500} />
                 <div>
-                  <Button
-                    size="sm"
+                  <ConfirmAction
+                    label="Release this passage"
+                    variant="secondary"
+                    yes="Yes, release it"
+                    yesName={`Yes, release the passage ${passageName(c.headingPath)}`}
+                    keep="Keep it out"
+                    keepName={`Keep the passage ${passageName(c.headingPath)} out of search`}
+                    question={`Release the passage ${passageName(c.headingPath)}? Agents can then find and read it as part of the requirement.`}
                     disabled={busy}
-                    mix={on('click', async () => {
+                    testId="req-release"
+                    onConfirm={async () => {
                       await act.run('release', () => s.client.requirementReleaseChunk(c.chunkId));
                       done();
                       quarantined.reload();
-                    })}
-                  >
-                    Release this passage
-                  </Button>
+                    }}
+                  />
                 </div>
               </div>
             ))}
@@ -363,17 +377,19 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                   ))}
                 </ul>
                 <div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
+                  <ConfirmAction
+                    label="Remove all links"
+                    yes="Yes, remove them"
+                    yesName={`Yes, remove all ${linkList.length} link${linkList.length === 1 ? '' : 's'} of "${r.title}"`}
+                    keepName={`Keep the links of "${r.title}"`}
+                    question={`Remove all ${linkList.length} criteria link${linkList.length === 1 ? '' : 's'} between "${r.title}" and its tasks? You would have to link each criterion again.`}
                     disabled={busy}
-                    mix={on('click', async () => {
+                    testId="req-unlink-all"
+                    onConfirm={async () => {
                       for (const tid of linkedTaskIds(linkList)) await act.run('unlink', () => s.client.requirementUnlink(r.id, tid));
                       done();
-                    })}
-                  >
-                    Remove all links
-                  </Button>
+                    }}
+                  />
                 </div>
               </>
             ) : null}

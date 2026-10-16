@@ -205,12 +205,17 @@ function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
       }
     }
     text = '';
+    void handle.update();
     go(routes.chat.href({ id: chatId }));
   };
+  // `busy` is held from the click until the message has been sent (or has failed to send), not only until the chat exists: sending
+  // is a paid turn, and a second click or Ctrl+Enter meanwhile would start a second chat and send it again (audit L40)
   const start = async () => {
     if (act.busy) return;
-    const c = await act.run('start', () => s.client.chatCreate({}));
-    if (c) await openChat(c.id);
+    await act.run('start', async () => {
+      const c = await s.client.chatCreate({});
+      await openChat(c.id);
+    });
   };
 
   return () => {
@@ -256,7 +261,7 @@ function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
           </div>
           <div mix={chatBar}>
             <small>Runs in a private folder Drydock makes for the chat. A folder of your own, another agent CLI, skills and MCP servers: Options.</small>
-            <Button variant="ghost" icon={SlidersHorizontal} data-testid="home-chat-options" mix={[on('click', () => ((dialog = true), void handle.update()))]}>
+            <Button variant="ghost" icon={SlidersHorizontal} data-testid="home-chat-options" disabled={!!act.busy} mix={[on('click', () => ((dialog = true), void handle.update()))]}>
               Options...
             </Button>
             <Button variant="primary" type="submit" icon={MessagesSquare} disabled={!!act.busy}>
@@ -294,7 +299,7 @@ function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
           onCreated={(id) => {
             dialog = false;
             void handle.update();
-            void openChat(id);
+            void act.run('start', () => openChat(id)); // the same guard: the message of this chat is a turn too
           }}
         />
       </Section>

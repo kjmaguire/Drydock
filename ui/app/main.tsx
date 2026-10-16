@@ -10,6 +10,7 @@ import { HttpTransport, resolveToken, type Transport } from './api/transport.ts'
 import { isWailsHost, loadWailsRuntime, WailsTransport } from './api/wails.ts';
 import { applyTheme, loadTheme } from './lib/theme.ts';
 import { isAbort, showRuntimeFailure, startGuarded } from './lib/failure.ts';
+import { installExternalLinks } from './lib/external-links.ts';
 import { redirectLegacyHash } from './lib/route.ts';
 import { createAppRouter } from './router.tsx';
 import { EventStore } from './state/eventStore.ts';
@@ -49,6 +50,9 @@ async function boot() {
 
   const transport = await pickTransport();
   const client = createClient(transport);
+  // in the desktop window an address outside the app is handed to the shell, not left to what WebView2 does with it (audit M23);
+  // anywhere else this installs nothing
+  installExternalLinks(window, (url) => client.shellOpenExternal(url));
   // Exact catch-up without replaying the whole log: read the head first, open the stream after it, and only then let the
   // screens read their projections. Anything that changes after the head arrives as an event and re-reads; anything before
   // it is already in the reads. If the head cannot be read (for example a wrong token) start from 0 and let the screens

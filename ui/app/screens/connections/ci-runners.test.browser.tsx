@@ -143,8 +143,44 @@ describe('CI runners', () => {
     await waitFor(() => expect(one()?.querySelector('[data-testid="runner-state"]')?.textContent).toBe('running lint'), r);
 
     await r.act(() => (one()!.querySelector('[data-testid="runner-remove"]') as HTMLButtonElement).click());
+    await r.act(() => (one()!.querySelector('[data-testid="runner-remove-confirm"]') as HTMLButtonElement).click());
     await waitFor(() => expect(r.$$('[data-testid="runner-slot"]').length).toBe(0), r);
     expect(calls[1]).toBe('remove kjmaguire/shop linux');
+  });
+
+  // audit 2026-10-16, L40: removing a runner takes it away until it is set up again, so it asks first
+  it('removing a runner asks first: one click sends nothing, Keep cancels, Yes removes it once', async () => {
+    const calls: string[] = [];
+    let state = view({ slots: [slot({ state: 'idle' }), slot({ key: 'kjmaguire/shop:windows', kind: 'windows', state: 'idle' })] });
+    const { r } = show({
+      runnersGet: async () => state,
+      runnersRemove: async (repo, kind) => {
+        calls.push(`remove ${repo} ${kind}`);
+        state = view({ slots: state.slots.filter((x) => x.kind !== kind) });
+        return state;
+      },
+    });
+    const row = (kind: string) => q(r, `[data-testid="runner-slot"][data-key="kjmaguire/shop:${kind}"]`)!;
+    await waitFor(() => expect(r.$$('[data-testid="runner-slot"]').length).toBe(2), r);
+    const trigger = (kind: string) => row(kind).querySelector('[data-testid="runner-remove"]') as HTMLButtonElement;
+    await r.act(() => trigger('linux').click());
+    // only that runner asks; the words name the kind and the repository
+    expect(calls).toEqual([]);
+    expect(trigger('windows')).not.toBe(null);
+    expect(row('linux').querySelector('[role="group"]')!.getAttribute('aria-label')).toBe('Remove the Linux runner of kjmaguire/shop? It stops taking jobs, and adding it again sets it up from the start.');
+    const yes = () => row('linux').querySelector('[data-testid="runner-remove-confirm"]') as HTMLButtonElement;
+    expect(yes().getAttribute('aria-label')).toBe('Yes, remove the Linux runner of kjmaguire/shop');
+    await r.act(() => (Array.from(row('linux').querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Keep the Linux runner of kjmaguire/shop') as HTMLButtonElement).click());
+    await waitFor(() => expect(trigger('linux')).not.toBe(null), r);
+    expect(calls).toEqual([]);
+    await r.act(() => trigger('linux').click());
+    await r.act(() => {
+      yes().click();
+      yes().click();
+    });
+    await waitFor(() => expect(calls).toEqual(['remove kjmaguire/shop linux']), r);
+    await waitFor(() => expect(r.$$('[data-testid="runner-slot"]').length).toBe(1), r);
+    expect(row('windows')).not.toBe(null);
   });
 
   it('chooses the folder for Windows jobs and goes back to automatic', async () => {

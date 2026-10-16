@@ -1,9 +1,10 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
-import type { TaskDetail } from '../../api/types.ts';
+import type { PendingRequest, TaskDetail } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/render.tsx';
+import { verdictGate } from './merge-gate.tsx';
 import { ReviewPanel, SpecGate } from './review-panel.tsx';
 import { detail as baseDetail, recorder, svc, task } from './testing.ts';
 
@@ -245,6 +246,205 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Trust and continue').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop the run').disabled).toBe(false);
+  });
+});
+
+// audit 2026-10-16, M28: a blocking gate none of whose checks could judge asks a person instead of passing
+describe('The no-verdict question (gate "verdict")', () => {
+  const TITLE = 'No check gave a result for the checks of this task: tests skipped: no test command is set; lint error: eslint not found. Fix what stopped them and check again, go on without a result this time, or stop.';
+  const payload = {
+    gate: 'verdict',
+    node: 'checks',
+    what: 'the checks of this task',
+    diff: 'abc123',
+    checks: [
+      { name: 'tests', status: 'skipped', reason: 'no test command is set' },
+      { name: 'lint', status: 'error', reason: 'eslint not found' },
+    ],
+    notes: ['agent:a2 asked to go on without a result; only a person can decide that, so the checks were run again'],
+  };
+  // no default for the payload: an omitted one is a question that has none
+  const question = (p: unknown, kind = 'question') =>
+    detail({ pending: [{ id: 'v-1', nodeId: 'checks', step: 4, spec: { kind, title: TITLE, payload: p } }] });
+  const open = (client: Parameters<typeof svc>[0] = {}, opts: Parameters<typeof svc>[1] = {}, d = question(payload)) => mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc(client, opts));
+  const names = (root: ParentNode) => Array.from(root.querySelectorAll('button')).map((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').trim());
+  const pend = (spec: Partial<PendingRequest['spec']>): PendingRequest => ({ id: 'x', nodeId: 'n', step: 1, spec: { kind: 'question', title: 't', ...spec } });
+
+  it('the guard returns the payload only for a question of the gate verdict, with every field checked', () => {
+    expect(verdictGate(pend({ payload }))).toEqual(payload);
+    // another gate, another kind, no payload or one of another shape: not this question
+    expect(verdictGate(pend({ payload: { ...payload, gate: 'ci' } }))).toBeUndefined();
+    expect(verdictGate(pend({ payload: { ...payload, gate: 'merge' } }))).toBeUndefined();
+    expect(verdictGate(pend({ kind: 'approval', payload }))).toBeUndefined();
+    expect(verdictGate(pend({ kind: 'review', payload }))).toBeUndefined();
+    for (const bad of [undefined, null, 'verdict', 7, ['verdict'], {}, { gate: 'Verdict' }, { gate: 'verdict ' }]) expect(verdictGate(pend({ payload: bad }))).toBeUndefined();
+    // checks and notes that are missing or of another type are empty lists; fields of another type are empty text
+    expect(verdictGate(pend({ payload: { gate: 'verdict' } }))).toEqual({ gate: 'verdict', node: '', what: '', diff: '', checks: [], notes: [] });
+    expect(verdictGate(pend({ payload: { gate: 'verdict', node: 3, what: {}, diff: null, checks: 'tests', notes: { 0: 'x' } } }))).toEqual({ gate: 'verdict', node: '', what: '', diff: '', checks: [], notes: [] });
+    expect(verdictGate(pend({ payload: { gate: 'verdict', checks: null, notes: null } }))!.checks).toEqual([]);
+    // a check without a name is dropped; the rest of a check is read as far as it is text
+    const messy = verdictGate(
+      pend({
+        payload: {
+          gate: 'verdict',
+          checks: [null, 5, 'tests', [], {}, { name: '' }, { name: '   ' }, { name: 7 }, { name: 'kept', status: 'weird', reason: 5 }, { name: 'ok', status: 'skipped', reason: 'why' }],
+          notes: ['one', 2, null, 'two'],
+        },
+      }),
+    )!;
+    expect(messy.checks).toEqual([
+      { name: 'kept', status: 'unknown', reason: '' },
+      { name: 'ok', status: 'skipped', reason: 'why' },
+    ]);
+    expect(messy.notes).toEqual(['one', 'two']);
+  });
+
+  it('shows the title, what was not checked line by line, the notes, and the three answers with a sentence each', () => {
+    const r = open();
+    const card = r.$('[data-testid="pending-request"]')!;
+    expect(card.getAttribute('data-kind')).toBe('question');
+    expect(card.querySelector('h3')!.textContent).toBe(TITLE);
+    const gate = r.$('[data-testid="verdict-gate"]')!;
+    expect(gate.textContent).toContain('What was not checked:');
+    const list = r.$('[data-testid="verdict-gate-checks"]')!;
+    expect(Array.from(list.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['tests was skipped: no test command is set', 'lint could not run: eslint not found']);
+    expect(list.getAttribute('aria-labelledby')).toBe(gate.querySelector('.what')!.id);
+    expect(r.$('[data-testid="verdict-gate-notes"]')!.textContent).toContain('only a person can decide that, so the checks were run again');
+    expect(names(r.container)).toEqual(['Check again', 'Go on without a result this time', 'Stop']);
+    // each answer is described by its sentence
+    const described = (name: string) => document.getElementById(byText(r.container, 'button', name).getAttribute('aria-describedby')!)!.textContent;
+    expect(described('Check again')).toBe('Use this after you installed the tool or fixed the setting.');
+    expect(described('Go on without a result this time')).toBe('The work moves on as if it had been checked, for this exact content only. This is recorded.');
+    expect(described('Stop')).toBe('Ends the run.');
+    expect(() => byLabel(r.container, 'Your answer')).toThrow(); // not the free-text question
+  });
+
+  it('writes out characters that are not drawn in a check\'s name and reason, and shows an empty reason without a colon', () => {
+    const r = open(
+      {},
+      {},
+      question({ ...payload, checks: [{ name: 'te\u202Ests', status: 'error', reason: 'ran \u200Bnothing' }, { name: 'lint', status: 'skipped', reason: '' }, { name: 'e2e', status: 'odd', reason: 'x' }], notes: [] }),
+    );
+    expect(Array.from(r.$$('[data-testid="verdict-gate-checks"] li')).map((li) => li.textContent)).toEqual(['te\\u{202e}sts could not run: ran \\u{200b}nothing', 'lint was skipped.', 'e2e gave no result: x']);
+    expect(r.container.textContent).not.toMatch(/[\u202E\u200B]/);
+    expect(r.$('[data-testid="verdict-gate-notes"]')).toBeNull();
+  });
+
+  it('a payload without checks says nothing was there to check and still offers the answers', () => {
+    const r = open({}, {}, question({ gate: 'verdict', checks: 'none', notes: 7 }));
+    expect(r.$('[data-testid="verdict-gate-checks"]')!.textContent).toBe('Nothing was there to check.');
+    expect(r.$('[data-testid="verdict-gate-checks"]')!.tagName).toBe('P');
+    expect(names(r.container)).toEqual(['Check again', 'Go on without a result this time', 'Stop']);
+  });
+
+  it('Check again answers the request with decision answered, once, with one click', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = open({ runRespond });
+    const again = byText<HTMLButtonElement>(r.container, 'button', 'Check again');
+    await r.act(() => {
+      again.click();
+      again.click();
+    });
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'v-1', 'answered', {}]]), r);
+    expect(r.$('[role="status"]')!.textContent).toContain('Answer sent');
+  });
+
+  it('Go on without a result asks first, names what happens, and only the second click sends the waiver, once', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = open({ runRespond });
+    await r.act(() => byText(r.container, 'button', 'Go on without a result this time').click());
+    expect(runRespond.calls).toEqual([]);
+    const ask = r.$('[data-testid="verdict-confirm"]')!;
+    expect(ask.getAttribute('data-asking')).toBe('waive');
+    expect(ask.getAttribute('aria-label')).toBe('Go on without a result for the checks of this task? It applies to this exact content only, and it is recorded with your name.');
+    expect(ask.textContent).toContain('recorded with your name');
+    expect(names(r.container)).toEqual(['Yes, go on without a result', 'Go back']);
+    // the first button of the question has focus, and Go back leaves everything as it was, with focus where it was
+    await waitFor(() => expect(document.activeElement).toBe(byText(r.container, 'button', 'Go back')), r);
+    await r.act(() => byText(r.container, 'button', 'Go back').click());
+    await waitFor(() => expect(names(r.container)).toEqual(['Check again', 'Go on without a result this time', 'Stop']), r);
+    await waitFor(() => expect(document.activeElement).toBe(byText(r.container, 'button', 'Go on without a result this time')), r);
+    expect(runRespond.calls).toEqual([]);
+    // Yes: approved with the waiver, once
+    await r.act(() => byText(r.container, 'button', 'Go on without a result this time').click());
+    await r.act(() => {
+      const yes = byText(r.container, 'button', 'Yes, go on without a result');
+      yes.click();
+      yes.click();
+    });
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'v-1', 'approved', { waive_verdict: true }]]), r);
+  });
+
+  it('Stop asks first too, and only the second click rejects the request, once', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = open({ runRespond });
+    await r.act(() => byText(r.container, 'button', 'Stop').click());
+    expect(runRespond.calls).toEqual([]);
+    expect(r.$('[data-testid="verdict-confirm"]')!.getAttribute('data-asking')).toBe('stop');
+    expect(r.$('[data-testid="verdict-confirm"]')!.getAttribute('aria-label')).toBe('Stop the run? It ends here.');
+    expect(names(r.container)).toEqual(['Yes, stop the run', 'Go back']);
+    await r.act(() => byText(r.container, 'button', 'Go back').click());
+    await waitFor(() => expect(document.activeElement).toBe(byText(r.container, 'button', 'Stop')), r);
+    expect(runRespond.calls).toEqual([]);
+    await r.act(() => byText(r.container, 'button', 'Stop').click());
+    await r.act(() => {
+      const yes = byText(r.container, 'button', 'Yes, stop the run');
+      yes.click();
+      yes.click();
+    });
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'v-1', 'rejected', undefined]]), r);
+  });
+
+  it('an error from the core is shown, and the question stays open and usable: nothing is lost, and Yes can be pressed again', async () => {
+    let fail = true;
+    const calls: unknown[][] = [];
+    const runRespond = async (...a: unknown[]) => {
+      calls.push(a);
+      if (fail) throw new Error('request is no longer pending');
+    };
+    const r = open({ runRespond: runRespond as never });
+    await r.act(() => byText(r.container, 'button', 'Go on without a result this time').click());
+    await r.act(() => byText(r.container, 'button', 'Yes, go on without a result').click());
+    await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('request is no longer pending'), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Yes, go on without a result').disabled).toBe(false);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Go back').disabled).toBe(false);
+    fail = false;
+    await r.act(() => byText(r.container, 'button', 'Yes, go on without a result').click());
+    await waitFor(() => expect(calls).toHaveLength(2), r);
+    expect(calls[1]).toEqual(['run-7', 'v-1', 'approved', { waive_verdict: true }]);
+    // the same for Check again
+    cleanup();
+    const again = open({ runRespond: (async () => { throw new Error('refused'); }) as never });
+    await again.act(() => byText(again.container, 'button', 'Check again').click());
+    await waitFor(() => expect(again.$('[role="alert"]')!.textContent).toContain('refused'), again);
+    expect(byText<HTMLButtonElement>(again.container, 'button', 'Check again').disabled).toBe(false);
+  });
+
+  it('read-only allows stopping, not checking again or going on without a result', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = open({ runRespond }, { license: expiredLicense });
+    await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Check again').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Go on without a result this time').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop').disabled).toBe(false);
+    await r.act(() => byText(r.container, 'button', 'Stop').click());
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Yes, stop the run').disabled).toBe(false);
+    await r.act(() => byText(r.container, 'button', 'Yes, stop the run').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'v-1', 'rejected', undefined]]), r);
+  });
+
+  it('other gates and plain questions do not get this panel', () => {
+    const ci = open({}, {}, question({ gate: 'ci', pr: 7, head: 'abc', reason: 'none' }));
+    expect(ci.$('[data-testid="verdict-gate"]')).toBeNull();
+    expect(ci.$('[data-testid="ci-gate"]')).toBeTruthy();
+    cleanup();
+    const plain = open({}, {}, question(undefined));
+    expect(plain.$('[data-testid="verdict-gate"]')).toBeNull();
+    expect(byLabel(plain.container, 'Your answer')).toBeTruthy();
+    cleanup();
+    const approval = open({}, {}, question(payload, 'approval'));
+    expect(approval.$('[data-testid="verdict-gate"]')).toBeNull();
+    expect(names(approval.container)).toEqual(['Approve', 'Reject']);
   });
 });
 

@@ -12,6 +12,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { card, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, RUN_KINDS, sortRules, splitChain, withChain } from './routing.ts';
 
 const editorCss = css({
@@ -262,17 +263,20 @@ export function RulesPanel(handle: Handle) {
                       >
                         {r.enabled ? 'Disable' : 'Enable'}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                      <ConfirmAction
+                        label="Delete"
                         icon={Trash2}
-                        mix={on('click', async () => {
+                        yes="Yes, delete"
+                        yesName={`Yes, delete the rule "${r.id}"`}
+                        keepName={`Keep the rule "${r.id}"`}
+                        question={`Delete the rule "${r.id}"? It stops applying at once and cannot be brought back.`}
+                        disabled={act.busy !== ''}
+                        testId="route-rule-delete"
+                        onConfirm={async () => {
                           await act.run('delete', () => s.client.routeRulesDelete(r.id));
                           q.reload();
-                        })}
-                      >
-                        Delete
-                      </Button>
+                        }}
+                      />
                     </div>
                   )}
                 </div>

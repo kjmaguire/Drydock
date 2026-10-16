@@ -184,23 +184,25 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
 
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
   // the chat exists: send the question, then open it; a question that could not be sent stays here with the reason
+  // `busy` is held from the click until the question has been sent (or has failed to send), not only until the chat exists:
+  // sending is a paid turn, and a second Enter or click meanwhile would start a second chat and send it again (audit L40)
   const ask = async () => {
     const projectId = pid();
     const text = question.trim();
     if (!projectId || !text || act.busy) return;
     unsent = undefined;
-    const c = await act.run('ask', () => s.client.chatCreate({ projectId }));
-    if (!c) return;
-    try {
-      await s.client.chatSend(c.id, text);
-    } catch (e) {
-      unsent = { id: c.id, error: e instanceof Error ? e : new Error(String(e)) };
+    await act.run('ask', async () => {
+      const c = await s.client.chatCreate({ projectId });
+      try {
+        await s.client.chatSend(c.id, text);
+      } catch (e) {
+        unsent = { id: c.id, error: e instanceof Error ? e : new Error(String(e)) };
+        return;
+      }
+      question = '';
       void handle.update();
-      return;
-    }
-    question = '';
-    void handle.update();
-    go(routes.chat.href({ id: c.id }));
+      go(routes.chat.href({ id: c.id }));
+    });
   };
 
   return () => {

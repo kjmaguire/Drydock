@@ -8,7 +8,7 @@ import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
-import { Badge, StatusChip } from '../../ui/data.tsx';
+import { Badge, OriginBadge, StatusChip } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
@@ -169,6 +169,7 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
                 <li key={id}>
                   <a href={routes.task.href({ id })}>{tk ? `#${tk.seq} ${tk.title}` : id}</a>
                   {tk ? <StatusChip status={tk.status} /> : null}
+                  {tk ? <OriginBadge origin={tk.origin} /> : null}
                   <Button
                     variant="link"
                     size="sm"

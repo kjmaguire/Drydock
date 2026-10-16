@@ -23,6 +23,7 @@ import { Select, selectValues } from "../../ui/select.tsx";
 import { Section } from "../../ui/layout.tsx";
 import { t } from "../../ui/tokens.ts";
 import { Meter } from "../budgets/meter.tsx";
+import { ConfirmAction } from "../shared/confirm-action.tsx";
 import {
   compactCount,
   deviceLine,
@@ -158,12 +159,19 @@ export function LocalModels(handle: Handle) {
     debounceMs: 150,
   });
   const act = action(handle);
+  // Stop has an action of its own: a start waits for the core until the model is loaded (up to 15 minutes) and holds `act` all
+  // that time, and Stop has to work meanwhile (audit 2026-10-16, L44)
+  const stopAct = action(handle);
   // the person's picks before an install ('' until picked: the settings', else the suggested backend)
   let source = "";
   let backend: LocalBackend | "" = "";
   let confirmRemove = false;
   let showLog = false;
   let restartNeeded = false; // a cache, context or port change while the server ran
+  // Stop was pressed while a start was waiting: the core answers that start with an error ("the server was stopped before
+  // llama-server was ready"), which is what the person asked for, so the answer is dropped and a calm note is shown
+  let cancelledStart = false;
+  let stoppedNote = false;
   // the Hub: suggestions and search results, the one repository open and its variants
   let suggested: Repo[] | undefined;
   let results: Repo[] | undefined;
@@ -173,10 +181,40 @@ export function LocalModels(handle: Handle) {
   const redraw = () => void handle.update();
 
   // an action that answers with the view: shown at once, no second read
-  const change = async (label: string, fn: () => Promise<LocalView>) => {
+  const change = async (label: string, fn: () => Promise<LocalView | undefined>) => {
+    stoppedNote = false;
     const v = await act.run(label, fn);
     if (v) q.set(v);
     return v;
+  };
+  // Serve: the core answers when the model is loaded. A Stop pressed meanwhile ends that start, and its answer is dropped.
+  const serve = (modelId: string) => {
+    cancelledStart = false;
+    return change(`serve:${modelId}`, async () => {
+      let view: LocalView;
+      try {
+        view = await s.client.localServerStart(modelId);
+      } catch (e) {
+        if (cancelledStart) return undefined; // stopped on purpose: the start was asked to end, so its error is no failure
+        throw e;
+      }
+      // ready just before the Stop reached the core: the Stop's own answer says what the server is now, not this one
+      return cancelledStart ? undefined : view;
+    });
+  };
+  // Stop / Cancel start. While a start waits, the core stops the server it is loading and answers that start with an error.
+  const stop = async () => {
+    const cancelling = act.busy.startsWith("serve:");
+    if (cancelling) cancelledStart = true;
+    stoppedNote = false;
+    const v = await stopAct.run("stop", () => s.client.localServerStop());
+    if (v) {
+      q.set(v);
+      stoppedNote = cancelling;
+    } else if (cancelling) {
+      cancelledStart = false; // the Stop did not go through: the start goes on, and its answer counts after all
+    }
+    redraw();
   };
   const install = (src: string, be: LocalBackend | "") =>
     change("install", () => s.client.localInstall(src, be));
@@ -292,7 +330,7 @@ export function LocalModels(handle: Handle) {
 
   return () => {
     const v = q.data;
-    const busy = act.busy !== "";
+    const busy = act.busy !== "" || stopAct.busy !== "";
     if (!v) {
       return (
         <Section
@@ -336,8 +374,11 @@ export function LocalModels(handle: Handle) {
     const installedSrc = v.sources.find((x) => x.id === v.runtime.source);
     const cacheTypes =
       (v.runtime.installed ? installedSrc : src)?.cacheTypes ?? [];
-    const starting =
-      server.state === "starting" || act.busy.startsWith("serve");
+    // a start of this window is waiting for the core, or the core says the server is starting (another window, the autostart)
+    const serving = act.busy.startsWith("serve");
+    const starting = server.state === "starting" || serving;
+    // Stop was pressed for that start: it only has to deliver its answer now (Serve waits for it; Stop is not offered twice)
+    const ending = serving && cancelledStart;
     const repos = results ?? suggested;
 
     return (
@@ -346,7 +387,12 @@ export function LocalModels(handle: Handle) {
         testId="local-models"
         description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
       >
-        <ErrorNote error={q.error ?? act.error} what="Models on this PC" />
+        <ErrorNote error={q.error ?? act.error ?? stopAct.error} what="Models on this PC" />
+        {stoppedNote ? (
+          <Notice tone="info" role="status" testId="local-stopped">
+            The server was stopped.
+          </Notice>
+        ) : null}
         <>
           {/* the runtime: the llama.cpp build on this PC */}
           <div
@@ -609,31 +655,24 @@ export function LocalModels(handle: Handle) {
                           disabled={
                             busy || starting || served || !v.runtime.installed
                           }
-                          mix={on(
-                            "click",
-                            () =>
-                              void change(`serve:${m.id}`, () =>
-                                s.client.localServerStart(m.id),
-                              ),
-                          )}
+                          mix={on("click", () => void serve(m.id))}
                         >
                           {act.busy === `serve:${m.id}` ? "Starting…" : "Serve"}
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          data-testid="local-model-remove"
+                        <ConfirmAction
+                          label="Remove"
+                          yes="Yes, remove"
+                          yesName={`Yes, remove the model ${m.id}`}
+                          keepName={`Keep the model ${m.id}`}
+                          question={`Remove the model ${m.id}? ${gb(m.sizeBytes)} are deleted from this PC, and getting it back means downloading it all again.`}
                           disabled={busy}
-                          mix={on(
-                            "click",
-                            () =>
-                              void change(`remove:${m.id}`, () =>
-                                s.client.localModelRemove(m.id),
-                              ),
-                          )}
-                        >
-                          Remove
-                        </Button>
+                          testId="local-model-remove"
+                          onConfirm={() =>
+                            change(`remove:${m.id}`, () =>
+                              s.client.localModelRemove(m.id),
+                            )
+                          }
+                        />
                       </span>
                       {fitWhy(fit)}
                     </li>
@@ -832,19 +871,21 @@ export function LocalModels(handle: Handle) {
                 >
                   {showLog ? "Hide log" : "Log"}
                 </Button>
-                {serverOn ? (
+                {serverOn || (serving && !ending) || stopAct.busy !== "" ? (
                   <Button
                     size="sm"
                     variant="danger"
                     data-testid="local-server-stop"
-                    disabled={busy}
-                    mix={on(
-                      "click",
-                      () =>
-                        void change("stop", () => s.client.localServerStop()),
-                    )}
+                    // while the model loads, the start holds the section for up to 15 minutes: Stop is the one button that
+                    // works meanwhile, and says it ends the start
+                    disabled={stopAct.busy !== "" || (busy && !serving)}
+                    mix={on("click", () => void stop())}
                   >
-                    {act.busy === "stop" ? "Stopping…" : "Stop"}
+                    {stopAct.busy !== ""
+                      ? "Stopping…"
+                      : starting && !ending
+                        ? "Cancel start"
+                        : "Stop"}
                   </Button>
                 ) : null}
               </span>

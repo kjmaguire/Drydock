@@ -41,7 +41,8 @@ describe('the GitHub repository picker', () => {
     const note = await waitFor(() => { const n = r.$('[data-testid="github-unavailable"]'); if (!n) throw new Error('not yet'); return n; }, r);
     expect(note.textContent).toContain('GitHub is not available.');
     expect(note.textContent).toContain('install it from https://cli.github.com');
-    expect(note.textContent).toContain('stores no GitHub token');
+    expect(note.textContent).toContain('Cloning uses your own GitHub CLI sign-in, and Drydock stores no token for it.');
+    expect(note.textContent).not.toContain('stores no GitHub token'); // not an absolute claim: the GitHub MCP server keeps its own (audit L45)
     expect(note.textContent).toContain('Choose Local folder or Later instead.');
   });
 

@@ -50,9 +50,12 @@ test('CI runners: a public repository is refused; a Linux runner runs a job; a W
   await page.reload();
   await expect(page.locator('[data-testid=runner-slot][data-key="e2e/private-app:linux"]')).toHaveAttribute('data-state', 'paused');
 
-  // remove both
+  // remove both: the first click only asks, "Yes, remove" removes (audit L40)
   for (const key of ['e2e/private-app:linux', 'e2e/private-app:windows']) {
-    await page.locator(`[data-testid=runner-slot][data-key="${key}"]`).getByTestId('runner-remove').click();
+    const slot = page.locator(`[data-testid=runner-slot][data-key="${key}"]`);
+    await slot.getByTestId('runner-remove').click();
+    await expect(slot).toBeVisible();
+    await slot.getByTestId('runner-remove-confirm').click();
   }
   await expect(page.getByTestId('runner-slot')).toHaveCount(0);
 });

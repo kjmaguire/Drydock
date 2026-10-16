@@ -442,7 +442,7 @@ function ConnectForm(
           <div mix={full} data-testid="gh-status">
             {gh.loading && !gh.data ? <Loading label="Checking gh" /> : null}
             {gh.data?.loggedIn ? (
-              <Notice tone="ok">gh is signed in as {gh.data.login}. Drydock uses that sign-in and stores no GitHub token.</Notice>
+              <Notice tone="ok">gh is signed in as {gh.data.login}. A connection made this way uses that sign-in and stores no GitHub token.</Notice>
             ) : gh.data ? (
               <Notice tone="warn">{gh.data.error || 'gh is not signed in'}. The Connections screen shows the GitHub CLI.</Notice>
             ) : null}
@@ -597,7 +597,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
               </div>
               <div>
                 <dt>Credential</dt>
-                <dd>{conn.kind === 'github' ? 'your gh sign-in (Drydock stores no GitHub token)' : conn.hasCredential ? 'stored in the credential store (never shown)' : 'none'}</dd>
+                <dd>{conn.kind === 'github' && conn.authKind === 'gh' ? 'your gh sign-in (this connection stores no GitHub token)' : conn.hasCredential ? 'stored in the credential store (never shown)' : 'none'}</dd>
               </div>
             </dl>
             <p mix={muted} data-testid="integration-verified" data-ok={verified ? String(verified.ok) : undefined}>

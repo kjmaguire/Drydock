@@ -200,6 +200,19 @@ export async function createProject(page: Page, name: string, repo?: string): Pr
 }
 
 /**
+ * Open the app and create a project with no repository (the wizard's "Later"). It takes none of the harness's fresh repositories
+ * (REPOS in global-setup.ts is a fixed pool), so a spec that only needs a project to stand in, to reach the shell and its pages
+ * or to hold tasks that the core makes, does not use one up.
+ */
+export async function createProjectWithoutRepo(page: Page, name: string): Promise<void> {
+  await page.goto(appUrl());
+  await showNewProjectForm(page);
+  await wizardToReview(page, { name, later: true });
+  await wizardCreate(page);
+  await expect(roomLink(page, 'general')).toBeVisible();
+}
+
+/**
  * Choose an option in a dropdown: the kit's Select (ui/app/ui/select.tsx, a combobox button over a listbox) or a native
  * <select>. By value, or by `{ label }` as Playwright's selectOption takes it. The chosen value is readable on the button as
  * `data-value` (`toHaveAttribute('data-value', ...)` stands in for `toHaveValue`).

@@ -11,7 +11,7 @@ import { routes } from '../../routes.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { RoomLink } from '../../shell/hubnav.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
-import { Avatar, StatusChip, presenceColor } from '../../ui/data.tsx';
+import { Avatar, OriginBadge, StatusChip, presenceColor } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card } from '../../ui/layout.tsx';
@@ -259,6 +259,7 @@ export function OverviewScreen(handle: Handle) {
                         {x.assignee ? <Avatar id={x.assignee} name={agentName(x.assignee, agents)} size={24} kind="agent" status={presenceColor(presenceFor(x.assignee, presence))} /> : <Icon icon={Sparkles} size={16} />}
                         <span class="seq">#{x.seq}</span>
                         <span class="title">{x.title}</span>
+                        <OriginBadge origin={x.origin} />
                         <StatusChip status={x.status} />
                       </a>
                     </li>

@@ -8,11 +8,12 @@ import { css, on, type Handle } from 'remix/component';
 import { CircleDashed, ClipboardList, Kanban, List, Plus, Search } from 'lucide';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
 import { agentName, formatCost, formatDateTime, presenceFor, statusLabel, statusTone } from '../../lib/format.ts';
+import { leadStep } from '../../lib/task-origin.ts';
 import { taskCountText } from '../../lib/task-total.ts';
 import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
-import { Avatar, StatusChip, presenceColor } from '../../ui/data.tsx';
+import { Avatar, OriginBadge, StatusChip, presenceColor } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
@@ -155,6 +156,8 @@ const cardCss = css({
   '& .who .none': { color: t.textFaint, display: 'inline-flex' },
   '& .who .names': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .foot': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s2, flexWrap: 'wrap' },
+  // above the card's link overlay, so the badge's tooltip can be reached
+  '& .foot .chips': { position: 'relative', zIndex: '1', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: '0' },
   '& .foot a': { position: 'relative', zIndex: '1' },
   '&[data-column="done"] h4': { color: t.textMuted, fontWeight: '550' },
 });
@@ -237,7 +240,10 @@ function Card(handle: Handle<{ task: Task; column: BoardColumn; agents: readonly
         {task.blockedReason ? <span class="sub" title={task.blockedReason}>{task.blockedReason}</span> : task.branch ? <span class="sub" title={task.branch}>{task.branch}</span> : null}
         <Crew task={task} agents={agents} presence={presence} />
         <div class="foot">
-          <StatusChip status={task.status} />
+          <span class="chips">
+            <StatusChip status={task.status} />
+            <OriginBadge origin={task.origin} />
+          </span>
           {needs ? (
             <a href={routes.task.href({ id: task.id })} mix={buttonStyle('primary', 'sm')} aria-label={`Open #${task.seq} ${task.title}`}>
               Open
@@ -297,6 +303,8 @@ const rowCss = css({
   '& .title a::after': { content: '""', position: 'absolute', inset: '0' },
   '& .title a:focus-visible::after': { boxShadow: `inset ${t.focus}`, borderRadius: t.rSm },
   '& .title .sub': { color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0' },
+  // above the row's link overlay, so the badge's tooltip can be reached
+  '& .title .origin': { position: 'relative', zIndex: '1', flex: 'none' },
   '& .who .names': { display: 'none' },
   '& .who .dots > span + span': { marginLeft: '-7px' },
   '& .who .none': { color: t.textFaint, display: 'inline-flex' },
@@ -439,6 +447,11 @@ export function TaskListScreen(handle: Handle) {
                             <span class="seq">#{task.seq}</span>
                             <span class="title">
                               <a href={routes.task.href({ id: task.id })}>{task.title}</a>
+                              {leadStep(task.origin) === undefined ? null : (
+                                <span class="origin">
+                                  <OriginBadge origin={task.origin} />
+                                </span>
+                              )}
                               {task.blockedReason ? <span class="sub">{task.blockedReason}</span> : task.branch ? <span class="sub">{task.branch}</span> : null}
                             </span>
                             <StatusChip status={task.status} />
