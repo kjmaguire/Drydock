@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +129,46 @@ func TestRobotsParsing(t *testing.T) {
 	}
 	if (&Robots{DisallowAll: true}).Allowed(ua, "/") {
 		t.Fatal("unreachable robots disallows all")
+	}
+}
+
+// A robots.txt is the site's to write. One with bytes that are not UTF-8 in a rule panicked regexp.MustCompile in the crawler's
+// goroutine and ended the app (audit 2026-10-16, H9); it now reads as written, and a rule that still cannot be read stops the crawl.
+func TestRobotsWithBytesThatAreNotUTF8DoesNotPanic(t *testing.T) {
+	ua := "DrydockBot/1 (+x)"
+	for name, body := range map[string]string{
+		"a lone continuation byte":  "User-agent: *\nDisallow: /priv\x80ate/\nDisallow: /a/\n",
+		"a truncated sequence":      "User-agent: *\nDisallow: /x\xe2\x82\nAllow: /\n",
+		"binary after the colon":    "User-agent: *\nDisallow:\xff\xfe\xfd\n",
+		"in the agent name":         "User-agent: Bot\xc3\n\xc3Disallow: /z\n",
+		"in a content signal":       "User-agent: *\nContent-Signal: ai-input=\xffyes\n",
+		"a pattern with wildcards":  "User-agent: *\nDisallow: /*\x80*$\n",
+		"nothing but invalid bytes": "\xff\xfe\x00\x80\x81",
+	} {
+		func() {
+			defer func() {
+				if v := recover(); v != nil {
+					t.Errorf("%s: panic %v", name, v)
+				}
+			}()
+			r := ParseRobots(body)
+			r.Allowed(ua, "/a/x")
+			r.Allowed(ua, "/private/x")
+			r.Signal("ai-input")
+		}()
+	}
+	// the rules that can be read are still obeyed
+	r := ParseRobots("User-agent: *\nDisallow: /priv\x80ate/\nDisallow: /a/\n")
+	if r.Allowed(ua, "/a/x") || !r.Allowed(ua, "/b/x") {
+		t.Fatal("a rule next to an unreadable byte was lost")
+	}
+	// a pattern regexp refuses for another reason (a seam: after the UTF-8 repair nothing a site writes reaches it) stops the
+	// crawl rather than being skipped
+	old := compilePattern
+	compilePattern = func(string) (*regexp.Regexp, error) { return nil, errors.New("expression too large") }
+	t.Cleanup(func() { compilePattern = old })
+	if !ParseRobots("User-agent: *\nDisallow: /a/\n").DisallowAll {
+		t.Fatal("a rule that cannot be compiled must not leave the site open")
 	}
 }
 

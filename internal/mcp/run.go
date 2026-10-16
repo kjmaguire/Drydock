@@ -20,6 +20,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -36,6 +37,8 @@ type Run struct {
 	// done is closed by EndRun: a call still waiting (a permission prompt waiting for a person) ends with a refusal.
 	done      chan struct{}
 	closeOnce sync.Once
+	// withheld remembers the tools already reported as kept from the model (toolreview.go).
+	withheld sync.Map
 
 	hmu     sync.Mutex
 	handles map[string]string // handle -> raw file path
@@ -131,8 +134,10 @@ func (r *Run) listTools(ctx context.Context) []*sdk.Tool {
 			continue
 		}
 		tools := u.cachedTools()
+		fromSpec := false
 		if tools == nil && len(spec.Tools) > 0 {
 			tools = declaredTools(spec) // lazy start: do not contact the upstream just to list
+			fromSpec = true             // these are the reviewed tools themselves: nothing to compare them with yet
 		}
 		if tools == nil {
 			tools, err = u.listTools(ctx)
@@ -143,6 +148,10 @@ func (r *Run) listTools(ctx context.Context) []*sdk.Tool {
 		}
 		for _, t := range tools {
 			if !r.upstreamToolAllowed(spec, t.Name) {
+				continue
+			}
+			if why := r.reviewed(spec, t.Name, t.Description, t.InputSchema, !fromSpec); why != "" {
+				r.withhold(ctx, id, t.Name, why)
 				continue
 			}
 			ro, _ := toolHints(t)
@@ -268,6 +277,9 @@ func (r *Run) callTool(ctx context.Context, req *sdk.CallToolRequest) *sdk.CallT
 	canon, cerr := canonicalJSON(args)
 	if cerr == nil {
 		c.argsHash = sha256Hex(canon)
+		// From here on the call is made with the bytes that were hashed (and shown to a person): the agent's own bytes may
+		// carry a duplicate key or another spelling that a server reads differently from the canonical text (audit 2026-10-16, H8).
+		args = canon
 	}
 	var res *sdk.CallToolResult
 	defer func() { r.audit(ctx, c, start, res) }()
@@ -312,12 +324,24 @@ func (r *Run) callTool(ctx context.Context, req *sdk.CallToolRequest) *sdk.CallT
 			return res
 		}
 		ro, destr := false, false
+		var live *sdk.Tool
 		if u, err := r.upstreamFor(ctx, t.spec); err == nil {
 			for _, ut := range u.cachedTools() {
 				if ut.Name == t.tool {
 					ro, destr = toolHints(ut)
+					live = ut
 				}
 			}
+		}
+		// the tool must still be what a person reviewed, whatever the model was told about it
+		desc, schema, known := "", any(nil), false
+		if live != nil {
+			desc, schema, known = live.Description, live.InputSchema, true
+		}
+		if why := r.reviewed(t.spec, t.tool, desc, schema, known); why != "" {
+			r.withhold(ctx, t.server, t.tool, why)
+			res = r.deny(ctx, c, "tool was withheld: "+why)
+			return res
 		}
 		t.sideEffect = t.spec.isSideEffect(t.tool, ro && t.spec.Trust != TrustPrivateData, destr)
 	} else if !r.workspaceToolAllowed(t.tool) {
@@ -361,6 +385,9 @@ func (r *Run) approval(ctx context.Context, c *callRec, t target, canon []byte) 
 			c.reason = "approval failed: " + err.Error()
 		}
 		r.g.publish(ctx, EventDenied, r.cfg.Info, c.id, map[string]any{"server": c.server, "tool": c.tool, "reason": c.reason})
+		if errors.Is(err, security.ErrUnreviewable) {
+			return textResult(fmt.Sprintf("%q was not approved: its arguments are too large for a person to read, so nobody can approve them. Call it again with smaller arguments; the call was not made", c.tool), true)
+		}
 		return textResult(fmt.Sprintf("%q was not approved; the call was not made", c.tool), true)
 	}
 	c.decision = DecisionAllowed

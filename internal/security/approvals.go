@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
@@ -216,9 +217,13 @@ func (a *Approvals) Request(ctx context.Context, action ActionDescriptor, reason
 	return id, nil
 }
 
+// truncate cuts s to at most n bytes, at a character boundary.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n]
 }

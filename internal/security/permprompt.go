@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/wsl"
@@ -42,10 +43,6 @@ const (
 // digest.
 const EventPermissionDecided = "permission.decided"
 
-// maxDisplayInput caps the input text kept in the approval's display copy (a Write carries a whole file). The hash covers
-// the whole input through ActionDescriptor.ArgvDigest.
-const maxDisplayInput = 4000
-
 // ToolRequest is one permission request of an agent CLI.
 type ToolRequest struct {
 	Tool  string          // the CLI's tool name: "Bash", "Edit", "WebFetch", "mcp__github__create_issue"
@@ -63,8 +60,11 @@ type ToolDecision struct {
 	Reasons []string // why; never the input itself
 	// Action is the descriptor an approval is bound to. The caller adds the identity (project, task, run, agent).
 	Action ActionDescriptor
-	// Display is the input as a person reads it: the command of a shell tool, else the canonical JSON input (capped).
+	// Display is the input as a person reads it: the command of a shell tool, else the input as JSON with the short fields (where
+	// it goes) first, shown whole up to MaxReviewBytes (ReviewInput).
 	Display string
+	// Shortened is set when a long value is cut in Display; the approval still covers the whole input.
+	Shortened bool
 }
 
 // shellTools are the command tools of Claude Code, with the flavor their command is parsed as.
@@ -104,12 +104,9 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 	if err != nil {
 		return ToolDecision{}, fmt.Errorf("security: the input of %s is not JSON: %w", req.Tool, err)
 	}
-	canon, _ := CanonicalJSON(req.Input) // valid: InputDigest decoded it
-	if len(req.Input) == 0 {
-		canon = []byte("null")
-	}
-	d := ToolDecision{Display: capText(string(canon))}
-	d.Action = ActionDescriptor{Tool: "claude:" + req.Tool, Cwd: req.Root, Command: d.Display, ArgvDigest: digest}
+	rv, rerr := ReviewInput(req.Input)
+	d := ToolDecision{Display: rv.Text, Shortened: rv.Shortened}
+	d.Action = ActionDescriptor{Tool: "claude:" + req.Tool, Cwd: req.Root, Command: d.Display, ArgvDigest: digest, Targets: rv.Targets, Shortened: rv.Shortened}
 	var fields map[string]any
 	_ = json.Unmarshal(req.Input, &fields)
 	str := func(k string) string { s, _ := fields[k].(string); return s }
@@ -138,6 +135,10 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 		return deny("the permission tool answers the agent's requests; the agent cannot ask about it")
 	case req.Root == "":
 		return deny("the request names no worktree, so nothing can be checked")
+	}
+	if _, isShell := shellTools[req.Tool]; !isShell && rerr != nil {
+		// a person cannot be shown this input, so a person cannot allow it (a shell command is shown whole, as it runs)
+		return deny("its input is too large or too long for a person to read (" + rerr.Error() + ")")
 	}
 
 	if shell, ok := shellTools[req.Tool]; ok {
@@ -246,15 +247,32 @@ func touchesGitDir(root, full string) bool {
 	return strings.EqualFold(first, ".git")
 }
 
-func capText(s string) string {
-	if len(s) <= maxDisplayInput {
+// permissionSummary is the one line the approval lists show for a request: where it goes, else the first line of what it
+// does. The whole input is on the approval card.
+func permissionSummary(td ToolDecision) string {
+	if td.Action.Shell == "" { // a shell command is its own summary; any other tool is summed up by where it goes
+		for _, t := range td.Action.Targets {
+			if t.Path != "" {
+				return cutRunes(t.Path, 160)
+			}
+			if t.Remote != "" {
+				return cutRunes(t.Remote, 160)
+			}
+		}
+	}
+	line, _, _ := strings.Cut(td.Display, "\n")
+	return cutRunes(line, 160)
+}
+
+// cutRunes returns s cut to at most n bytes at a character boundary, with an ellipsis when it was cut.
+func cutRunes(s string, n int) string {
+	if len(s) <= n {
 		return s
 	}
-	cut := maxDisplayInput
-	for cut > 0 && cut < len(s) && (s[cut]&0xC0) == 0x80 { // do not split a UTF-8 sequence
-		cut--
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
-	return s[:cut] + fmt.Sprintf("...[%d more bytes]", len(s)-cut)
+	return s[:n] + "..."
 }
 
 // PermissionScope is who asks: the identity an approval is bound to besides the action.
@@ -341,7 +359,7 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 	if len(td.Reasons) > 0 {
 		reason += " Analyzer: " + strings.Join(td.Reasons, "; ") + "."
 	}
-	id, err := g.Approvals.Request(ctx, action, reason, WithTTL(ttl), WithTitle(PermissionTitlePrefix+req.Tool+": "+td.Display))
+	id, err := g.Approvals.Request(ctx, action, reason, WithTTL(ttl), WithTitle(PermissionTitlePrefix+req.Tool+": "+permissionSummary(td)))
 	if err != nil {
 		out.Outcome, out.Message = PermissionDenied, "Drydock could not ask a person about this call, so it refused it."
 		return out

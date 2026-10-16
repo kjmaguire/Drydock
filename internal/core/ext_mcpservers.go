@@ -402,7 +402,9 @@ func (r mcpRow) spec() mcp.ServerSpec {
 		sp.Egress = &mcp.EgressSpec{MaxArgBytes: 4096, ScanSecrets: true, DenyCodeFences: true}
 	}
 	for _, t := range r.Tools {
-		sp.Tools = append(sp.Tools, mcp.ToolDecl{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema})
+		// what a person reviewed when they listed the tools: a run keeps the model from a tool whose text no longer matches, from one
+		// marked as instructions, and from one that was not listed, unless the grant names it (mcp/toolreview.go)
+		sp.Tools = append(sp.Tools, mcp.ToolDecl{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema, Digest: t.Digest, Flagged: len(t.Flags) > 0})
 	}
 	return sp
 }
@@ -989,7 +991,9 @@ func (s *mcpServers) grant(ctx context.Context, project, server, agentID string,
 		next = append(next, a)
 	}
 	if on && !has {
-		next = append(next, MCPAccess{AgentID: agentID, Tools: []string{"*"}})
+		// no tools named: setAccess names the ones listed now, without the marked ones, never "*" (a tool added later, or one
+		// whose description reads like instructions, would reach the model unreviewed; audit 2026-10-16, M2)
+		next = append(next, MCPAccess{AgentID: agentID})
 	}
 	return s.setAccess(ctx, project, server, next)
 }
@@ -1079,13 +1083,16 @@ const mcpApprovalKind = "mcp_call"
 // and waits for the answer. The agent's tool call stays pending meanwhile; an expired, rejected or cancelled approval refuses it.
 func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool, error) {
 	ap := s.approvals()
-	args := string(req.Args)
-	if len(args) > 2000 {
-		args = args[:2000] + "...[truncated]"
+	// what the person reads: the short fields (where the call goes) first, the whole input up to security.MaxReviewBytes, a long
+	// value cut in the middle with the size of the gap written in; the approval binds the hash of the whole input (audit
+	// 2026-10-16, H8). An input a person cannot be shown is refused.
+	rv, err := security.ReviewInput(req.Args)
+	if err != nil {
+		return false, err
 	}
 	action := security.ActionDescriptor{
 		Kind: mcpApprovalKind, Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID, Cwd: req.Run.Worktree,
-		Tool: "mcp:" + req.Server + "/" + req.Tool, Command: args, ArgvDigest: req.ArgsHash,
+		Tool: "mcp:" + req.Server + "/" + req.Tool, Command: rv.Text, ArgvDigest: req.ArgsHash, Targets: rv.Targets, Shortened: rv.Shortened,
 	}
 	id, err := ap.Request(ctx, action, "An agent wants to call a tool that is not marked read-only. Approve only if you want this exact call made.")
 	if err != nil {
@@ -1122,15 +1129,19 @@ func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool
 
 // MCPApproval is one pending call for the MCP page.
 type MCPApproval struct {
-	ID        string `json:"id"`
-	Server    string `json:"server"`
-	Tool      string `json:"tool"`
-	AgentID   string `json:"agentId"`
-	TaskID    string `json:"taskId,omitempty"`
-	Args      string `json:"args"`
-	Created   int64  `json:"created"`
-	Expires   int64  `json:"expiresAt"`
-	ProjectID string `json:"projectId"`
+	ID      string `json:"id"`
+	Server  string `json:"server"`
+	Tool    string `json:"tool"`
+	AgentID string `json:"agentId"`
+	TaskID  string `json:"taskId,omitempty"`
+	Args    string `json:"args"`
+	// Targets are the paths and addresses the call names, each whole; Shortened is set when a long value is cut in Args (the
+	// approval still covers the whole call).
+	Targets   []string `json:"targets"`
+	Shortened bool     `json:"shortened,omitempty"`
+	Created   int64    `json:"created"`
+	Expires   int64    `json:"expiresAt"`
+	ProjectID string   `json:"projectId"`
 }
 
 func (s *mcpServers) pendingApprovals(ctx context.Context, project string) ([]MCPApproval, error) {
@@ -1154,8 +1165,14 @@ func (s *mcpServers) pendingApprovals(ctx context.Context, project string) ([]MC
 			continue
 		}
 		server, tool, _ := strings.Cut(strings.TrimPrefix(info.Action.Tool, "mcp:"), "/")
+		targets := []string{}
+		for _, t := range info.Action.Targets {
+			if x := firstNonEmpty(t.Path, t.Remote); x != "" {
+				targets = append(targets, x)
+			}
+		}
 		out = append(out, MCPApproval{ID: id, Server: server, Tool: tool, AgentID: info.Action.AgentID, TaskID: info.Action.TaskID, Args: info.Action.Command,
-			Created: info.Created, Expires: info.ExpiresAt, ProjectID: info.Action.Project})
+			Targets: targets, Shortened: info.Action.Shortened, Created: info.Created, Expires: info.ExpiresAt, ProjectID: info.Action.Project})
 	}
 	return out, nil
 }

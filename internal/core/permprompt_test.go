@@ -181,3 +181,68 @@ func TestPermissionToolIsOfferedToTheWorkerTurnOnly(t *testing.T) {
 		t.Fatalf("reviewer: tools %v, prompt tool %q", review.Tools, review.Spec.PermissionPromptTool)
 	}
 }
+
+// Audit 2026-10-16, H8: a large Write outside the worktree used to reach the task page as `{"content":"...[N more bytes]`, with
+// its destination sorted behind the body and cut off with it. The page now gets the destination apart, the short fields first,
+// and says the input is shortened; the person's answer still covers the whole input.
+func TestALargeWriteOutsideTheWorktreeShowsItsDestinationOnTheTaskPage(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "elsewhere", "authorized_keys")
+	big := strings.Repeat("ssh-ed25519 AAAA-not-a-real-key attacker@example\n", 4000) // ~190 KB
+	in, _ := json.Marshal(map[string]string{"content": big, "file_path": outside})
+	a := openScripted(t, nil, fakeagent.Script{
+		Rules: []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
+		Default: []fakeagent.Step{{Tool: "Write", Input: in, Result: "wrote it", Ask: true},
+			{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: impl}}, {Say: "implemented Subtract"}},
+	})
+	p, _ := a.setup("gocalc")
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+
+	var pl map[string]any
+	var id string
+	var detail core.TaskDetail
+	a.waitFor("the permission request for the write", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		for _, pr := range detail.Pending {
+			var m map[string]any
+			_ = json.Unmarshal(pr.Spec.Payload, &m)
+			if m["gate"] == core.PermissionGate && m["tool"] == "Write" {
+				pl, id = m, string(pr.ID)
+				return true
+			}
+		}
+		return false
+	})
+	shown, _ := pl["input"].(string)
+	if !strings.HasPrefix(shown, `{"file_path":`) || len(shown) > 70000 || !strings.Contains(shown, "bytes not shown") {
+		t.Fatalf("the input on the task page starts %.80q, is %d bytes", shown, len(shown))
+	}
+	targets, _ := pl["targets"].([]any)
+	if len(targets) != 1 || !strings.HasSuffix(filepath.ToSlash(targets[0].(string)), "elsewhere/authorized_keys") || pl["shortened"] != true {
+		t.Fatalf("targets %v, shortened %v", pl["targets"], pl["shortened"])
+	}
+	var title string
+	_ = a.c.DB.Reader().QueryRow(`SELECT title FROM approvals WHERE id=?`, id).Scan(&title)
+	if !strings.HasPrefix(title, "Permission request: Write: ") || !strings.HasSuffix(filepath.ToSlash(title), "elsewhere/authorized_keys") || len(title) > 260 {
+		t.Fatalf("the approval's title is %q", title)
+	}
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": id, "decision": "rejected", "data": map[string]string{}}, nil)
+	a.waitFor("the review request", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return len(detail.Pending) == 1 && detail.Pending[0].Spec.Kind == "review"
+	})
+	if _, err := os.Stat(outside); err == nil {
+		t.Fatal("a refused write was made")
+	}
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
+	a.waitFor("completion", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return detail.Task.Status == tasks.Completed
+	})
+}

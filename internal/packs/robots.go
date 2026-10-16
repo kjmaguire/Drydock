@@ -27,6 +27,9 @@ type robotsRule struct {
 
 // ParseRobots parses robots.txt text. Unknown lines are ignored.
 func ParseRobots(body string) *Robots {
+	// a robots.txt is the site's to write: bytes that are not UTF-8 cannot be compiled into a pattern (regexp refuses them), and
+	// a panic there ended the whole app (audit 2026-10-16, H9)
+	body = strings.ToValidUTF8(body, "\uFFFD")
 	r := &Robots{signals: map[string]string{}}
 	var cur *robotsGroup
 	lastWasAgent := false
@@ -50,7 +53,13 @@ func ParseRobots(body string) *Robots {
 			continue
 		case "allow", "disallow":
 			if cur != nil && v != "" {
-				cur.rules = append(cur.rules, robotsRule{allow: k == "allow", re: robotsPattern(v), n: len(v)})
+				re, err := robotsPattern(v)
+				if err != nil {
+					// a rule that cannot be read cannot be obeyed: do not crawl a site whose own rules cannot be understood
+					r.DisallowAll = true
+					continue
+				}
+				cur.rules = append(cur.rules, robotsRule{allow: k == "allow", re: re, n: len(v)})
 			}
 		case "content-signal":
 			for _, kv := range strings.Split(v, ",") {
@@ -70,7 +79,7 @@ func ParseRobots(body string) *Robots {
 	return r
 }
 
-func robotsPattern(p string) *regexp.Regexp {
+func robotsPattern(p string) (*regexp.Regexp, error) {
 	anchored := strings.HasSuffix(p, "$")
 	p = strings.TrimSuffix(p, "$")
 	var b strings.Builder
@@ -83,8 +92,11 @@ func robotsPattern(p string) *regexp.Regexp {
 	if anchored {
 		s += "$"
 	}
-	return regexp.MustCompile(s)
+	return compilePattern(s)
 }
+
+// compilePattern is regexp.Compile; a variable so a test can make it refuse a pattern.
+var compilePattern = regexp.Compile
 
 // Allowed reports whether the agent may fetch path (with query). The group naming the agent wins over "*"; the longest
 // matching rule decides and Allow wins a tie.

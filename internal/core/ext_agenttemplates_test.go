@@ -128,7 +128,7 @@ func TestAgentEnvironmentSettingTakesNamesOnlyAndIsolationIsStatedPlainly(t *tes
 	if d.Isolation.Level != "guarded" || !strings.Contains(d.Isolation.Summary, "not an operating-system sandbox") {
 		t.Fatalf("isolation %+v", d.Isolation)
 	}
-	a.call("agent.update", map[string]any{"id": ag.ID, "permissionMode": "bypassPermissions"}, &ag)
+	a.call("agent.update", map[string]any{"id": ag.ID, "permissionMode": "bypassPermissions", "confirmSkipsApprovals": true}, &ag)
 	a.call("agent.get", map[string]string{"id": ag.ID}, &d)
 	if d.Isolation.Level != "open" || !strings.Contains(d.Isolation.Summary, "bypassPermissions") {
 		t.Fatalf("a mode that skips approvals must say the agent is not held in: %+v", d.Isolation)

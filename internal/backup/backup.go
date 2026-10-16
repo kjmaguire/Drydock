@@ -33,15 +33,29 @@ type Info struct {
 
 // Create writes a verified snapshot of db into dir. label is part of the file name. A pre-update backup is exempt from
 // pruning until Release is called on it (after the update proved healthy).
-func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Time) (Info, error) {
+func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Time) (info Info, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Info{}, err
 	}
+	sweepStale(dir, now)
 	label = sanitize(label)
 	name := fmt.Sprintf("drydock-%s-%s.db", now.UTC().Format("20060102T150405Z"), label)
 	final := filepath.Join(dir, name)
 	tmp := final + ".partial"
 	_ = os.Remove(tmp)
+	// A snapshot that fails leaves nothing behind: the temporary file is as large as the database, and a failure that repeats
+	// every hour used to leave one each time (audit 2026-10-16, M13). After the rename the snapshot itself goes if its hash cannot
+	// be recorded, so a backup is either whole with its hash or absent.
+	renamed := false
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmp)
+			if renamed {
+				_ = os.Remove(final)
+				_ = os.Remove(final + ".sha256")
+			}
+		}
+	}()
 	// The pooled readers are opened read-only and VACUUM INTO refuses those, so the snapshot uses its own connection. Under
 	// WAL it holds only a read transaction on the source, so the single writer is never blocked.
 	src, err := sql.Open("sqlite", "file:"+filepath.ToSlash(db.Path())+"?_pragma=busy_timeout(10000)")
@@ -59,19 +73,72 @@ func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Tim
 	if err := os.Rename(tmp, final); err != nil {
 		return Info{}, err
 	}
+	renamed = true
 	sum, size, err := hashFile(final)
 	if err != nil {
 		return Info{}, err
 	}
-	if err := os.WriteFile(final+".sha256", []byte(sum+"  "+name+"\n"), 0o644); err != nil {
+	// written through a temporary file: a crash must not leave an empty or cut sidecar next to a good backup
+	if err := writeAtomic(final+".sha256", []byte(sum+"  "+name+"\n")); err != nil {
 		return Info{}, err
 	}
-	info := Info{Path: final, Name: name, Size: size, SHA256: sum, Created: now.UTC(), Label: label}
+	info = Info{Path: final, Name: name, Size: size, SHA256: sum, Created: now.UTC(), Label: label}
 	if strings.HasPrefix(label, "pre-update") {
 		info.Keep = true
-		_ = os.WriteFile(final+".keep", nil, 0o644)
+		_ = writeAtomic(final+".keep", nil)
 	}
 	return info, nil
+}
+
+// writeAtomic writes data to path so that a crash leaves the old file or the whole new one, never part of it: the data goes to a
+// temporary file in the same folder, is flushed, and is renamed over path.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return nil
+}
+
+// staleAfter is how old a temporary file of a snapshot must be before it is taken for the leftover of a failed one.
+const staleAfter = 15 * time.Minute
+
+// sweepStale removes the temporary files of snapshots and sidecars that were never finished.
+func sweepStale(dir string, now time.Time) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		n := e.Name()
+		leftover := (strings.HasPrefix(n, "drydock-") && strings.HasSuffix(n, ".db.partial")) ||
+			(strings.HasPrefix(n, ".drydock-") && strings.HasSuffix(n, ".tmp"))
+		if !leftover || e.IsDir() {
+			continue
+		}
+		if st, err := e.Info(); err == nil && now.Sub(st.ModTime()) > staleAfter {
+			_ = os.Remove(filepath.Join(dir, n))
+		}
+	}
 }
 
 // Release removes the prune exemption of a pre-update backup once the new version is confirmed healthy.
@@ -155,7 +222,11 @@ func List(dir string) ([]Info, error) {
 		}
 		in := Info{Path: filepath.Join(dir, n), Name: n, Size: st.Size(), Created: ts, Label: parts[2]}
 		if b, err := os.ReadFile(in.Path + ".sha256"); err == nil {
-			in.SHA256 = strings.Fields(string(b))[0]
+			// a sidecar a power cut left empty or cut has no hash to read: the backup is listed without one (Verify then only
+			// runs the integrity check) instead of the listing panicking at every start
+			if f := strings.Fields(string(b)); len(f) > 0 && len(f[0]) == 64 {
+				in.SHA256 = f[0]
+			}
 		}
 		_, kerr := os.Stat(in.Path + ".keep")
 		in.Keep = kerr == nil

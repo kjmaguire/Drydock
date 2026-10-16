@@ -92,6 +92,8 @@ func openMCPApp(t *testing.T, ad agents.Adapter) *app {
 
 type mcpApproval struct {
 	ID, Server, Tool, Args string
+	Targets                []string
+	Shortened              bool
 }
 
 func (a *app) pendingMCP(project string) []mcpApproval {
@@ -208,6 +210,8 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 		sc.note(worker.ID, "fence|"+call("tst__echo", map[string]any{"text": "```go\nfunc main() {}\n```"}))
 		sc.note(worker.ID, "note1|"+call("tst__post_note", map[string]any{"text": "first"}))
 		sc.note(worker.ID, "note2|"+call("tst__post_note", map[string]any{"text": "second"}))
+		// a write with a body far larger than a person reads and an address (audit 2026-10-16, H8): the address is shown first
+		sc.note(worker.ID, "note3|"+call("tst__post_note", map[string]any{"text": strings.Repeat("N", 200000), "url": "https://example.com/hook"}))
 	}
 	var reviewerTools []string
 	sc.steps[reviewer.ID] = func(ctx context.Context, s *sdk.ClientSession) {
@@ -242,6 +246,21 @@ func TestUserMCPServerEndToEnd(t *testing.T) {
 	}
 	decide("first", true)
 	decide("second", false)
+	var big mcpApproval
+	a.waitFor("the approval of the large write", func() bool {
+		for _, x := range a.pendingMCP(p.ID) {
+			if strings.Contains(x.Args, "example.com/hook") {
+				big = x
+				return true
+			}
+		}
+		return false
+	})
+	if !strings.HasPrefix(big.Args, `{"url":"https://example.com/hook","text":"NNNN`) || !big.Shortened || len(big.Args) > 70000 || !strings.Contains(big.Args, "bytes not shown") ||
+		len(big.Targets) != 1 || big.Targets[0] != "https://example.com/hook" {
+		t.Fatalf("the approval of a large write: %.100q (%d bytes), targets %v, shortened %v", big.Args, len(big.Args), big.Targets, big.Shortened)
+	}
+	a.call("mcpserver.approval.decide", map[string]any{"approvalId": big.ID, "approve": false}, nil)
 
 	var detail core.TaskDetail
 	a.waitFor("the human request", func() bool {
@@ -452,4 +471,89 @@ func TestMCPLibraryIsSharedButProjectsAndGrantsAreSeparate(t *testing.T) {
 	if err := a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM agent_mcp_access`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("grants left behind: %d %v", n, err)
 	}
+}
+
+// Audit 2026-10-16, M2: dropping a server onto an agent (a template, a prebuilt agent, the crew of a new project) used to store the
+// grant "*", which defeated the review of the tools' text: a tool marked as instructions, a tool added later and a description
+// rewritten later all reached the model. Such a grant now names the tools listed at that moment, without the marked ones, and a
+// "*" that older versions stored still leaves the marked tool out of a run.
+func TestADroppedServerIsGrantedByNameAndAStoredWildcardStillLeavesOutMarkedTools(t *testing.T) {
+	self, _ := os.Executable()
+	notes := filepath.Join(t.TempDir(), "notes.txt")
+	sc := &scenarioAdapter{Adapter: &claude.Adapter{Exe: os.Args[0]}, steps: map[string]func(context.Context, *sdk.ClientSession){}, out: map[string][]string{}}
+	a := openMCPApp(t, sc)
+	p, _ := a.setup("gocalc")
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "tst", Display: "Test server", Transport: "stdio", Argv: []string{self},
+		Env: map[string]string{testMCPEnv: "1", "NOTES_FILE": notes}, ReadOnlyTools: []string{"echo", "envlen"}}, &lib)
+	a.call("mcplib.discover", map[string]string{"id": "tst"}, &lib)
+	var flagged []string
+	for _, tl := range lib.Tools {
+		if len(tl.Flags) > 0 {
+			flagged = append(flagged, tl.Name)
+		}
+	}
+	if strings.Join(flagged, ",") != "format" {
+		t.Fatalf("the test server's marked tools: %v", flagged)
+	}
+
+	var tpl core.AgentTemplate
+	a.call("agenttemplate.save", core.AgentTemplate{Name: "Worker", Role: "backend", Adapter: "claude", Model: "fake-1", MCPServers: []string{"tst"}}, &tpl)
+	var applied core.AppliedTemplate
+	a.call("agenttemplate.apply", map[string]any{"templateId": tpl.ID, "projectId": p.ID}, &applied)
+	if len(applied.Granted) != 1 {
+		t.Fatalf("applied %+v", applied)
+	}
+	var stored string
+	if err := a.c.DB.Reader().QueryRow(`SELECT tools FROM agent_mcp_access WHERE agent_id=? AND server_id='tst'`, applied.Agent.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stored, `"*"`) || strings.Contains(stored, "format") || !strings.Contains(stored, `"echo"`) || !strings.Contains(stored, `"post_note"`) {
+		t.Fatalf("a dropped server was granted as %s", stored)
+	}
+
+	// a grant that an older version stored as everything: the run leaves out the marked tool all the same
+	a.sql(`UPDATE agent_mcp_access SET tools='["*"]' WHERE agent_id=? AND server_id='tst'`, applied.Agent.ID)
+	var reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var seen []string
+	sc.steps[applied.Agent.ID] = func(ctx context.Context, s *sdk.ClientSession) {
+		// the first list is the reviewed copy; one call connects to the server, and the list after it is the server's own
+		if _, err := s.CallTool(ctx, &sdk.CallToolParams{Name: "tst__echo", Arguments: map[string]any{"text": "hi"}}); err != nil {
+			sc.note(applied.Agent.ID, "call failed: "+err.Error())
+		}
+		for tl, err := range s.Tools(ctx, nil) {
+			if err == nil {
+				seen = append(seen, tl.Name)
+			}
+		}
+	}
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Make Subtract return a - b."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": applied.Agent.ID, "reviewer": reviewer.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	a.waitFor("the worker's session", func() bool { return len(seen) > 0 })
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if !contains(seen, "tst__echo") || !contains(seen, "tst__post_note") {
+		t.Fatalf("the worker lost tools it was granted: %v (%v)", seen, sc.out[applied.Agent.ID])
+	}
+	if contains(seen, "tst__format") {
+		t.Fatalf("a tool marked as instructions reached the model through a stored wildcard: %v", seen)
+	}
+	var withheld int
+	_ = a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM events WHERE type='mcp.tool_withheld'`).Scan(&withheld)
+	if withheld == 0 {
+		t.Fatal("no mcp.tool_withheld event says the marked tool was kept back")
+	}
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

@@ -90,6 +90,8 @@ type PrebuiltApplyReq struct {
 	PermissionMode string `json:"permissionMode"`
 	InstallSkills  bool   `json:"installSkills"`
 	ConnectMCP     bool   `json:"connectMcp"`
+	// ConfirmSkipsApprovals is the person's explicit confirmation of a permission mode that lets the agent act without asking.
+	ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals,omitempty"`
 }
 
 // PrebuiltApplied is what applying an entry did.
@@ -134,6 +136,8 @@ type PrebuiltApplyManyReq struct {
 	Items         []PrebuiltApplyItem `json:"items"`
 	InstallSkills bool                `json:"installSkills"`
 	ConnectMCP    bool                `json:"connectMcp"`
+	// ConfirmSkipsApprovals confirms an entry whose permission mode lets the agent act without asking.
+	ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals,omitempty"`
 }
 
 // PrebuiltApplyItem is one entry of applyMany.
@@ -318,7 +322,7 @@ func (c *Core) prebuiltApply(ctx context.Context, p PrebuiltApplyReq) (PrebuiltA
 		return PrebuiltApplied{}, err
 	}
 	ag, err := c.CreateAgent(ctx, AgentSpec{ProjectID: p.ProjectID, Name: final, Adapter: adapter, Role: e.Role, Model: model, Effort: effort,
-		PermissionMode: mode, Purpose: e.Purpose, Practices: &practices})
+		PermissionMode: mode, Purpose: e.Purpose, Practices: &practices, ConfirmSkipsApprovals: p.ConfirmSkipsApprovals})
 	if err != nil {
 		return PrebuiltApplied{}, err
 	}
@@ -357,7 +361,7 @@ func (c *Core) prebuiltApplyMany(ctx context.Context, p PrebuiltApplyManyReq) ([
 	for _, it := range p.Items {
 		r := PrebuiltApplyManyResult{ID: it.ID}
 		applied, err := c.prebuiltApply(ctx, PrebuiltApplyReq{ID: it.ID, ProjectID: p.ProjectID, Name: it.Name, Adapter: it.Adapter, Model: it.Model, Effort: it.Effort,
-			InstallSkills: p.InstallSkills, ConnectMCP: p.ConnectMCP})
+			InstallSkills: p.InstallSkills, ConnectMCP: p.ConnectMCP, ConfirmSkipsApprovals: p.ConfirmSkipsApprovals})
 		if err != nil {
 			r.Error = err.Error()
 		} else {

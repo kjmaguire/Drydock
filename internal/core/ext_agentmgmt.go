@@ -154,6 +154,9 @@ type AgentUpdate struct {
 	// RunMode ("" follows the project, native, wsl) and WSLDistro change where the CLI runs (decision P41).
 	RunMode   *string `json:"runMode"`
 	WSLDistro *string `json:"wslDistro"`
+	// ConfirmSkipsApprovals is the person's explicit confirmation of a change to a permission mode that lets the agent act
+	// without asking (bypassPermissions, auto, dontAsk); without it such a change is refused (NeedsConfirmationError).
+	ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals,omitempty"`
 }
 
 // validateAgentFields checks what would otherwise only fail (or misbehave) when the CLI starts: an effort the adapter does not
@@ -255,6 +258,12 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 	if u.PermissionMode != nil {
 		if err := c.checkPermissionMode(a.Adapter, a.PermissionMode); err != nil {
 			return Agent{}, err
+		}
+		// only a change into such a mode asks: an agent that has it already keeps it while its other fields are edited
+		if slices.Contains(changed, "permissionMode") {
+			if err := c.confirmSkip(ctx, a.ProjectID, a.ID, "this agent", a.PermissionMode, u.ConfirmSkipsApprovals); err != nil {
+				return Agent{}, err
+			}
 		}
 	}
 	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {

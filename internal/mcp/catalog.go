@@ -182,6 +182,11 @@ type ToolDecl struct {
 	Name        string         `yaml:"name"`
 	Description string         `yaml:"description,omitempty"`
 	InputSchema map[string]any `yaml:"input_schema,omitempty"`
+	// Digest and Flagged say what a person reviewed when they listed the server's tools (ToolDigest; toolreview.go): the
+	// fingerprint of the tool's name, description and input schema then, and whether Drydock marked the text as instructions.
+	// Both are set by the application from its library, never read from a catalog file.
+	Digest  string `yaml:"-"`
+	Flagged bool   `yaml:"-"`
 }
 
 // CacheSpec is the per-server result cache policy.

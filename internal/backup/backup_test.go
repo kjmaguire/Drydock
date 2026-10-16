@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,4 +170,114 @@ func names(l []backup.Info) []string {
 		s = append(s, b.Name)
 	}
 	return s
+}
+
+// A power cut can leave the hash file next to a backup empty or cut. Listing the backups runs 5 seconds after every start; it
+// used to take the first word of whatever the file held and panicked on an empty one, ending the app at every start (audit
+// 2026-10-16, H9). The backup is listed without a hash instead, and is still checked for integrity.
+func TestListSurvivesAnEmptyOrCutHashFile(t *testing.T) {
+	ctx := context.Background()
+	db, dir := openDB(t)
+	bdir := filepath.Join(dir, "backups")
+	var made []backup.Info
+	for i := 0; i < 4; i++ {
+		in, err := backup.Create(ctx, db, bdir, "scheduled", t0.Add(time.Duration(i)*24*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		made = append(made, in)
+	}
+	for i, content := range []string{"", "\n  \n", "deadbeef", "not a hash at all  drydock.db\n"} {
+		if err := os.WriteFile(made[i].Path+".sha256", []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := backup.List(bdir)
+	if err != nil || len(list) != 4 {
+		t.Fatalf("%v %d", err, len(list))
+	}
+	for _, in := range list {
+		if in.SHA256 != "" {
+			t.Fatalf("%s was listed with the hash %q read from a damaged file", in.Name, in.SHA256)
+		}
+		if err := backup.Verify(ctx, in); err != nil {
+			t.Fatalf("a backup with a damaged hash file is still a good backup: %v", err)
+		}
+	}
+	// and a good hash file is still read
+	if err := os.WriteFile(made[0].Path+".sha256", []byte(made[0].SHA256+"  "+made[0].Name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = backup.List(bdir)
+	var got string
+	for _, in := range list {
+		if in.Name == made[0].Name {
+			got = in.SHA256
+		}
+	}
+	if got != made[0].SHA256 {
+		t.Fatalf("hash %q, want %q", got, made[0].SHA256)
+	}
+}
+
+// A snapshot that fails leaves nothing behind, and the leftovers of earlier failures are swept (audit 2026-10-16, M13): the
+// temporary file is as large as the database and a failure that repeats every hour left one each time.
+func TestAFailedSnapshotLeavesNoTemporaryFileAndStaleOnesAreSwept(t *testing.T) {
+	ctx := context.Background()
+	db, dir := openDB(t)
+	bdir := filepath.Join(dir, "backups")
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// the snapshot cannot be put in place: its name is taken by a folder
+	name := "drydock-20261008T030000Z-scheduled.db"
+	if err := os.MkdirAll(filepath.Join(bdir, name, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backup.Create(ctx, db, bdir, "scheduled", t0); err == nil {
+		t.Fatal("the snapshot was put over a folder")
+	}
+	// older leftovers of failed snapshots and unfinished hash files, and one that is recent (another run may still write it)
+	old := t0.Add(-3 * time.Hour)
+	stale := []string{"drydock-20261001T030000Z-scheduled.db.partial", ".drydock-20261001T030000Z-scheduled.db.sha256.123.tmp"}
+	for _, n := range stale {
+		p := filepath.Join(bdir, n)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fresh := filepath.Join(bdir, "drydock-20261008T025900Z-other.db.partial")
+	if err := os.WriteFile(fresh, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(fresh, t0.Add(time.Hour-time.Minute), t0.Add(time.Hour-time.Minute)); err != nil { // a minute before the run below
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(bdir, name)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backup.Create(ctx, db, bdir, "scheduled", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	ents, _ := os.ReadDir(bdir)
+	var left []string
+	for _, e := range ents {
+		left = append(left, e.Name())
+	}
+	for _, n := range stale {
+		if _, err := os.Stat(filepath.Join(bdir, n)); err == nil {
+			t.Errorf("the stale %s was not swept (%v)", n, left)
+		}
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("a recent temporary file was removed: %v", err)
+	}
+	for _, e := range ents {
+		if strings.HasSuffix(e.Name(), ".partial") && filepath.Join(bdir, e.Name()) != fresh {
+			t.Errorf("a failed snapshot left %s", e.Name())
+		}
+	}
 }

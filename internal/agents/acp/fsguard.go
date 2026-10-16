@@ -146,7 +146,9 @@ func (g *guard) readFile(p string, line, limit *int) (string, error) {
 		start = len(lines)
 	}
 	end := len(lines)
-	if limit != nil && *limit >= 0 && start+*limit < end {
+	// compared as a count of lines left: start+*limit overflows for a limit near the largest int, and the agent chooses it
+	// (audit 2026-10-16, H9)
+	if limit != nil && *limit >= 0 && *limit < end-start {
 		end = start + *limit
 	}
 	return strings.Join(lines[start:end], ""), nil

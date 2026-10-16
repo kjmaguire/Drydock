@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/kjmaguire/drydock/internal/security"
 )
 
 // The permission prompt tool (docs/security.md s4 and s5). Claude Code started with --permission-prompt-tool
@@ -94,5 +96,11 @@ func (r *Run) permissionPrompt(ctx context.Context, c *callRec, args json.RawMes
 		return permissionAnswer(false, nil, msg)
 	}
 	c.decision, c.reason = DecisionAllowed, "permission for "+req.ToolName+": "+ans.Outcome
-	return permissionAnswer(true, json.RawMessage(in), "")
+	// The CLI runs the tool with the input it is sent back. That is the canonical text the approval hashed and a person read, not
+	// the agent's own bytes (a duplicate key or another spelling could be read differently there; audit 2026-10-16, H8).
+	canon, err := security.CanonicalJSON(json.RawMessage(in))
+	if err != nil {
+		return refuse("input not canonical", "Drydock could not read the input of this "+req.ToolName+" call again after it was approved, so it refused it.")
+	}
+	return permissionAnswer(true, json.RawMessage(canon), "")
 }

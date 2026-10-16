@@ -107,6 +107,9 @@ type ToolInfo struct {
 	// Flags are the instruction-like patterns Drydock found in the tool's name, description or input schema when it listed
 	// the tools (tool poisoning). A flagged tool is left out of the grants Drydock makes; a human can still name it.
 	Flags []string `json:"flags,omitempty"`
+	// Digest fingerprints the name, description and input schema as listed (ToolDigest): a run withholds the tool when the
+	// server's text no longer matches it.
+	Digest string `json:"digest,omitempty"`
 }
 
 // ToolList is Tools with the descriptions, input schemas and the servers' read-only claims. It makes a fresh tools/list.
@@ -119,7 +122,7 @@ func (a *AppUpstream) ToolList(ctx context.Context) ([]ToolInfo, error) {
 	a.u.mu.Unlock()
 	out := make([]ToolInfo, 0, len(all))
 	for _, t := range all {
-		ti := ToolInfo{Name: t.Name, Description: t.Description}
+		ti := ToolInfo{Name: t.Name, Description: t.Description, Digest: ToolDigest(t.Name, t.Description, t.InputSchema)}
 		if m, ok := t.InputSchema.(map[string]any); ok && m["type"] == "object" {
 			ti.InputSchema = m
 		}

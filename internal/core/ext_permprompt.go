@@ -127,8 +127,9 @@ func (c *Core) permissions() *permissionService {
 }
 
 // permissionPending lists a task's open permission requests as pending requests of its run, for the task page. The payload
-// holds the tool and its input as stored for display (secrets redacted), the approval kind, why it was asked and when it
-// expires; the hash binds the exact input.
+// holds the tool and its input as stored for display (secrets redacted; the short fields, where the call goes, come first), the
+// paths and addresses the call names, whether a long value is cut in the input, the approval kind, why it was asked and when it
+// expires; the hash binds the exact whole input.
 func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.PendingRequest {
 	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id FROM approvals WHERE status='REQUESTED' AND run_id='' AND task_id=? AND title LIKE ? ORDER BY created_at, rowid`,
 		taskID, security.PermissionTitlePrefix+"%")
@@ -156,8 +157,15 @@ func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.
 		if err != nil || info.Status != "REQUESTED" {
 			continue
 		}
+		targets := []string{}
+		for _, t := range info.Action.Targets {
+			if x := firstNonEmpty(t.Path, t.Remote); x != "" {
+				targets = append(targets, x)
+			}
+		}
 		payload, _ := json.Marshal(map[string]any{
 			"gate": PermissionGate, "tool": strings.TrimPrefix(info.Action.Tool, "claude:"), "input": info.Action.Command,
+			"targets": targets, "shortened": info.Action.Shortened,
 			"kind": info.ActionKind, "reason": info.Reason, "agentId": info.Action.AgentID, "expiresAt": info.ExpiresAt,
 		})
 		out = append(out, workflow.PendingRequest{ID: workflow.RequestID(id), Spec: workflow.RequestSpec{Kind: "approval", Title: info.Title, Payload: payload, ActionHash: info.ActionHash}})

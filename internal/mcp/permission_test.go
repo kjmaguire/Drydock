@@ -9,6 +9,8 @@ import (
 	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/kjmaguire/drydock/internal/security"
 )
 
 // scriptedPermits is a labelled test double for the core's permission service: it answers from a fixed table and can hold a
@@ -181,5 +183,26 @@ func TestPermissionPromptRefusesWithoutAServiceAndWhenTheRunEnds(t *testing.T) {
 	}
 	if !cancelled {
 		t.Fatal("the refused request must be audited as cancelled")
+	}
+}
+
+// The CLI runs the tool with the input it is sent back. That is the canonical text the approval hashed and a person read, not the
+// agent's own bytes: a duplicate key would otherwise let a call differ from the one approved (audit 2026-10-16, H8).
+func TestPermissionPromptSendsBackTheCanonicalInputThatWasDecidedOn(t *testing.T) {
+	p := &scriptedPermits{answer: PermissionAnswer{Allow: true, Outcome: "approved"}}
+	e := newEnv(t, func(o *Options) { o.Permissions = p })
+	cs := e.connect(e.startRun(RunConfig{Info: RunInfo{RunID: "r-canon", TaskID: "task_1", Worktree: "/w"},
+		Policy: allow(map[string][]string{WorkspaceServerID: {ToolPermissionPrompt}})}))
+	raw := json.RawMessage(`{"tool_name":"Write","input":{"file_path":"/safe/place","content":"x","file_path":"/etc/cron.d/evil"}}`)
+	a := parseAnswer(t, callTool(t, cs, ToolPermissionPrompt, raw))
+	want, err := security.CanonicalJSON(json.RawMessage(`{"file_path":"/etc/cron.d/evil","content":"x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Behavior != "allow" || string(a.UpdatedInput) != string(want) {
+		t.Fatalf("updatedInput %s, want %s", a.UpdatedInput, want)
+	}
+	if len(p.seen) != 1 || string(p.seen[0].Input) != string(want) {
+		t.Fatalf("the service was asked about %s, want %s", p.seen[0].Input, want)
 	}
 }

@@ -45,6 +45,9 @@ type AgentTemplate struct {
 	Practices *bool `json:"practices"`
 	CreatedAt int64 `json:"createdAt"`
 	UpdatedAt int64 `json:"updatedAt"`
+	// ConfirmSkipsApprovals is the person's explicit confirmation of a permission mode that lets agents made from the template
+	// act without asking; it is read when the template is saved and is not stored.
+	ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals,omitempty"`
 }
 
 // AppliedTemplate is the result of dropping a template into a project.
@@ -79,8 +82,10 @@ func startAgentTemplates(ctx context.Context, c *Core) (map[string]Method, func(
 			Name       string `json:"name"`
 			// InstallSkills installs the template's skills; omitted means yes.
 			InstallSkills *bool `json:"installSkills"`
+			// ConfirmSkipsApprovals confirms a template whose permission mode lets the agent act without asking.
+			ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals"`
 		}) (any, error) {
-			return t.apply(ctx, p.TemplateID, p.ProjectID, p.Name, p.InstallSkills == nil || *p.InstallSkills)
+			return t.apply(ctx, p.TemplateID, p.ProjectID, p.Name, p.InstallSkills == nil || *p.InstallSkills, p.ConfirmSkipsApprovals)
 		}),
 	}, nil, nil
 }
@@ -176,6 +181,9 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 	practices := b2i(in.Practices == nil || *in.Practices)
 	now := storage.Now()
 	if in.ID == "" {
+		if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
+			return AgentTemplate{}, err
+		}
 		in.ID = ids.New("tpl")
 		err := t.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `INSERT INTO agent_templates(`+templateCols+`,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -189,6 +197,11 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 		old, err := t.get(ctx, in.ID)
 		if err != nil {
 			return AgentTemplate{}, err
+		}
+		if in.PermissionMode != old.PermissionMode { // a template that has such a mode keeps it while its other fields are edited
+			if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
+				return AgentTemplate{}, err
+			}
 		}
 		if in.Skills == nil { // a caller that does not send the skills keeps them (an edit dropped them before)
 			sj, _ = json.Marshal(old.Skills)
@@ -375,7 +388,7 @@ func (t *agentTemplates) fromAgent(ctx context.Context, agentID string) (AgentTe
 
 // apply creates the agent in the project. name overrides the template's name; a name already used by an agent of the project
 // gets a number appended, so two copies of one template can be told apart.
-func (t *agentTemplates) apply(ctx context.Context, templateID, projectID, name string, installSkills bool) (AppliedTemplate, error) {
+func (t *agentTemplates) apply(ctx context.Context, templateID, projectID, name string, installSkills, confirmSkips bool) (AppliedTemplate, error) {
 	tpl, err := t.get(ctx, templateID)
 	if err != nil {
 		return AppliedTemplate{}, err
@@ -389,7 +402,7 @@ func (t *agentTemplates) apply(ctx context.Context, templateID, projectID, name 
 		return AppliedTemplate{}, err
 	}
 	ag, err := t.c.CreateAgent(ctx, AgentSpec{ProjectID: projectID, Name: final, Adapter: tpl.Adapter, Role: tpl.Role, Model: tpl.Model, Effort: tpl.Effort,
-		ProviderID: tpl.ProviderID, PermissionMode: tpl.PermissionMode, Purpose: tpl.Purpose, Practices: tpl.Practices})
+		ProviderID: tpl.ProviderID, PermissionMode: tpl.PermissionMode, Purpose: tpl.Purpose, Practices: tpl.Practices, ConfirmSkipsApprovals: confirmSkips})
 	if err != nil {
 		return AppliedTemplate{}, err
 	}

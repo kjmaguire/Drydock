@@ -51,6 +51,8 @@ type SetupAgent struct {
 	Practices      *bool  `json:"practices"`
 	// Servers are library or catalog server ids granted to a custom agent (they are put into the project too).
 	Servers []string `json:"servers"`
+	// ConfirmSkipsApprovals is the person's explicit confirmation of a permission mode that lets the agent act without asking.
+	ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals,omitempty"`
 }
 
 // SetupResult is the new project and what happened.
@@ -197,7 +199,7 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 				} `json:"skills"`
 			}
 			err = call("agentcatalog.apply", map[string]any{"id": a.Prebuilt, "projectId": p.ID, "name": a.Name, "adapter": a.Adapter, "model": a.Model,
-				"effort": a.Effort, "permissionMode": a.PermissionMode, "installSkills": r.InstallSkills, "connectMcp": true}, &out)
+				"effort": a.Effort, "permissionMode": a.PermissionMode, "installSkills": r.InstallSkills, "connectMcp": true, "confirmSkipsApprovals": a.ConfirmSkipsApprovals}, &out)
 			made = out.Agent
 			for _, s := range out.MCP.Skipped {
 				warn("%s: connector %s not granted: %s", made.Name, s.ID, s.Reason)
@@ -210,14 +212,14 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			}
 		case a.Template != "":
 			var out AppliedTemplate
-			err = call("agenttemplate.apply", map[string]string{"templateId": a.Template, "projectId": p.ID, "name": a.Name}, &out)
+			err = call("agenttemplate.apply", map[string]any{"templateId": a.Template, "projectId": p.ID, "name": a.Name, "confirmSkipsApprovals": a.ConfirmSkipsApprovals}, &out)
 			made = out.Agent
 			for _, s := range out.Skipped {
 				warn("%s: %s", made.Name, s)
 			}
 		default:
 			made, err = c.CreateAgent(ctx, AgentSpec{ProjectID: p.ID, Name: a.Name, Role: a.Role, Adapter: a.Adapter, Model: a.Model, Effort: a.Effort,
-				PermissionMode: a.PermissionMode, Purpose: a.Purpose, Practices: a.Practices})
+				PermissionMode: a.PermissionMode, Purpose: a.Purpose, Practices: a.Practices, ConfirmSkipsApprovals: a.ConfirmSkipsApprovals})
 			if err == nil {
 				for _, sid := range a.Servers {
 					lid, ok := libraryID[sid]

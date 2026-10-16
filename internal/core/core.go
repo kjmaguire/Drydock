@@ -700,6 +700,9 @@ type AgentSpec struct {
 	// RunMode and WSLDistro: where the CLI runs ("" follows the project, "native", or "wsl" with a distro).
 	RunMode   string `json:"runMode"`
 	WSLDistro string `json:"wslDistro"`
+	// ConfirmSkipsApprovals is the person's explicit confirmation of a permission mode that lets the agent act without asking
+	// (bypassPermissions, auto, dontAsk); without it such a mode is refused (NeedsConfirmationError).
+	ConfirmSkipsApprovals bool `json:"confirmSkipsApprovals,omitempty"`
 }
 
 // CreateAgent adds an agent to the team. The adapter must be one Drydock knows.
@@ -741,7 +744,11 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if s.RunMode, s.WSLDistro, err = c.checkRunMode(ctx, s.ProjectID, s.Adapter, s.RunMode, s.WSLDistro); err != nil {
 		return Agent{}, err
 	}
-	a := Agent{ID: ids.New("agt"), ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED",
+	agentID := ids.New("agt")
+	if err := c.confirmSkip(ctx, s.ProjectID, agentID, "this agent", s.PermissionMode, s.ConfirmSkipsApprovals); err != nil {
+		return Agent{}, err
+	}
+	a := Agent{ID: agentID, ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED",
 		RunMode: s.RunMode, WSLDistro: s.WSLDistro}
 	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO agents(id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,run_mode,wsl_distro,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,

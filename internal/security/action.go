@@ -61,11 +61,14 @@ type ActionDescriptor struct {
 	Shell      string   `json:"shell"`
 	Program    string   `json:"program"`
 	Argv       []string `json:"argv"`
-	Command    string   `json:"command"`    // exact text as executed
+	Command    string   `json:"command"`    // exact text as executed (for a non-shell tool: the text a person reads, ReviewInput)
 	ArgvDigest string   `json:"argvDigest"` // CommandReport.Digest
 	Targets    []Target `json:"targets"`
-	EnvKeys    []string `json:"envKeys"` // names only
-	EnvDigest  string   `json:"envDigest"`
+	// Shortened is set when a long value is cut in Command: the approval still covers the whole input (ArgvDigest). It is in the
+	// hash only when set, so every other descriptor hashes as it always did.
+	Shortened bool     `json:"shortened,omitempty"`
+	EnvKeys   []string `json:"envKeys"` // names only
+	EnvDigest string   `json:"envDigest"`
 }
 
 // normalized returns a copy with defaults and ordering fixed so equal actions hash equally.

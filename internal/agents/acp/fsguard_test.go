@@ -214,6 +214,36 @@ func TestGuardLimits(t *testing.T) {
 	}
 }
 
+// An agent chooses the line and the limit of a read, so every int is a possible value: a limit near the largest int used to
+// overflow the end of the range and panic in the SDK's handler goroutine, which ends the whole app (audit 2026-10-16, H9).
+func TestGuardReadRangeSurvivesAnyLineAndLimit(t *testing.T) {
+	work, _ := layout(t)
+	g, _ := acp.NewGuardForTest(work)
+	defer g.Close()
+	ptr := func(n int) *int { return &n }
+	maxInt, minInt := int(^uint(0)>>1), -int(^uint(0)>>1)-1
+	for _, c := range []struct {
+		name        string
+		line, limit *int
+		want        string
+	}{
+		{"largest limit from line 2", ptr(2), ptr(maxInt), "line2\nline3\n"},
+		{"largest limit from line 1", ptr(1), ptr(maxInt), "line1\nline2\nline3\n"},
+		{"largest limit alone", nil, ptr(maxInt), "line1\nline2\nline3\n"},
+		{"largest line", ptr(maxInt), ptr(maxInt), ""},
+		{"largest line, small limit", ptr(maxInt), ptr(1), ""},
+		{"smallest line", ptr(minInt), ptr(2), "line1\nline2\n"},
+		{"negative limit is no limit", ptr(2), ptr(-5), "line2\nline3\n"},
+		{"limit of zero", ptr(1), ptr(0), ""},
+		{"an ordinary range", ptr(2), ptr(1), "line2\n"},
+	} {
+		got, err := g.Read("ok.txt", c.line, c.limit)
+		if err != nil || got != c.want {
+			t.Errorf("%s: %q, %v (want %q)", c.name, got, err, c.want)
+		}
+	}
+}
+
 // The same boundary, reached the way an agent reaches it: fs/read_text_file and fs/write_text_file requests over ACP.
 func TestAgentFSRequestsAreConfined(t *testing.T) {
 	work, secret := layout(t)
