@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
@@ -63,7 +64,7 @@ func (s *securityExt) installTool(ctx context.Context, projectID, tool, by strin
 	s.jobs[tool] = &toolJob{job: scan.ToolJob{State: "running", Phase: "looking up the newest release", Started: time.Now().UTC()}, cancel: cancel}
 	s.mu.Unlock()
 	s.announce(ctx, projectID, tool, "running", by)
-	go s.runInstall(jctx, projectID, src, by)
+	safe.Go("core.securityExt.installTool", func() { s.runInstall(jctx, projectID, src, by) })
 	return s.tools(ctx, projectID), nil
 }
 

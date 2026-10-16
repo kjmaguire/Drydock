@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // DepsOptions configures the dependency check.
@@ -156,8 +157,8 @@ func runDeps(ctx context.Context, pm proc.Manager, s Spec, bin string, o DepsOpt
 	var stdout, stderr bytes.Buffer
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); _, _ = io.Copy(&stdout, io.LimitReader(p.Stdout(), 32<<20)) }()
-	go func() { defer wg.Done(); _, _ = io.Copy(&stderr, io.LimitReader(p.Stderr(), 1<<20)) }()
+	safe.Go("checks.runDeps", func() { defer wg.Done(); _, _ = io.Copy(&stdout, io.LimitReader(p.Stdout(), 32<<20)) })
+	safe.Go("checks.runDeps#2", func() { defer wg.Done(); _, _ = io.Copy(&stderr, io.LimitReader(p.Stderr(), 1<<20)) })
 	_ = p.Stdin().Close()
 	var ei proc.ExitInfo
 	select {
@@ -167,7 +168,7 @@ func runDeps(ctx context.Context, pm proc.Manager, s Spec, bin string, o DepsOpt
 		ei = <-p.Wait()
 	}
 	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
+	safe.Go("checks.runDeps#3", func() { wg.Wait(); close(done) })
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):

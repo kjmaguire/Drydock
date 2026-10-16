@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"io"
 	"os"
 	"os/exec"
@@ -91,7 +92,7 @@ func Build(ctx context.Context, o BuildOptions) (*Manifest, error) {
 		p := &sel[i]
 		p.Binary = path.Join(TestsDir, p.Path, path.Base(p.Path)+".test"+exeSuffix(o.GOOS))
 		wg.Add(1)
-		go func() {
+		safe.Go("winverify.Build", func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -104,7 +105,7 @@ func Build(ctx context.Context, o BuildOptions) (*Manifest, error) {
 				return
 			}
 			fmt.Fprintf(o.Log, "built %s (%s)\n", p.Binary, time.Since(start).Round(time.Second))
-		}()
+		})
 	}
 	wg.Wait()
 	if len(errs) > 0 {

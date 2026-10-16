@@ -26,6 +26,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -188,8 +189,8 @@ func (g *Gateway) Start() error {
 	mux.HandleFunc("/mcp/", g.serveMCP)
 	g.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	g.wg.Add(2)
-	go func() { defer g.wg.Done(); _ = g.srv.Serve(ln) }()
-	go func() { defer g.wg.Done(); g.reaper() }()
+	safe.Go("mcp.Gateway.Start", func() { defer g.wg.Done(); _ = g.srv.Serve(ln) })
+	safe.Go("mcp.Gateway.Start#2", func() { defer g.wg.Done(); g.reaper() })
 	return nil
 }
 
@@ -243,7 +244,7 @@ func (g *Gateway) stopAllUpstreams(reason string) {
 	var wg sync.WaitGroup
 	for _, u := range ups {
 		wg.Add(1)
-		go func() { defer wg.Done(); u.stop(reason) }()
+		safe.Go("mcp.Gateway.stopAllUpstreams", func() { defer wg.Done(); u.stop(reason) })
 	}
 	wg.Wait()
 }

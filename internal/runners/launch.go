@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/sandbox"
 )
 
@@ -86,24 +87,26 @@ func newProcRunning(p proc.Proc, stop func()) *procRunning {
 			continue
 		}
 		wg.Add(1)
-		go func(src io.Reader) {
-			defer wg.Done()
-			sc := bufio.NewScanner(src)
-			sc.Buffer(make([]byte, 64<<10), 1<<20)
-			for sc.Scan() {
-				r.lines <- sc.Text()
-			}
-			_, _ = io.Copy(io.Discard, src)
-		}(src)
+		safe.Go("runners.newProcRunning", func() {
+			func(src io.Reader) {
+				defer wg.Done()
+				sc := bufio.NewScanner(src)
+				sc.Buffer(make([]byte, 64<<10), 1<<20)
+				for sc.Scan() {
+					r.lines <- sc.Text()
+				}
+				_, _ = io.Copy(io.Discard, src)
+			}(src)
+		})
 	}
-	go func() {
+	safe.Go("runners.newProcRunning#2", func() {
 		wg.Wait()
 		close(r.lines)
-	}()
-	go func() {
+	})
+	safe.Go("runners.newProcRunning#3", func() {
 		ei := <-p.Wait()
 		r.exit <- ei.Code
-	}()
+	})
 	return r
 }
 
@@ -382,9 +385,9 @@ func (c *ContainerLauncher) Prepare(ctx context.Context, rel Release) error {
 // unpacked inside Linux and never on the PC.
 func (c *ContainerLauncher) build(ctx context.Context, tag, archive string) error {
 	pr, pw := io.Pipe()
-	go func() {
+	safe.Go("runners.ContainerLauncher.build", func() {
 		pw.CloseWithError(BuildContext(pw, archive))
-	}()
+	})
 	_, err := c.Engine.Run(ctx, pr, "build", "--quiet", "--label", sandbox.LabelOwner+"=drydock", "--label", sandbox.LabelRole+"="+LabelRole, "-t", tag, "-")
 	_ = pr.Close()
 	if err != nil {

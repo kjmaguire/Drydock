@@ -18,6 +18,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -112,7 +113,7 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 	loopCtx, cancelLoop := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go func() {
+	safe.Go("core.startAgentsDev", func() {
 		defer wg.Done()
 		a.sched.Loop(loopCtx, 5*time.Second, func(ctx context.Context) []string {
 			ps, err := c.Projects(ctx)
@@ -125,9 +126,9 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 			}
 			return ids
 		})
-	}()
+	})
 	wg.Add(1)
-	go func() { defer wg.Done(); a.previews.watchTerminal(loopCtx) }()
+	safe.Go("core.startAgentsDev#2", func() { defer wg.Done(); a.previews.watchTerminal(loopCtx) })
 
 	// agents in the room
 	a.resp = responder.New(responder.Deps{

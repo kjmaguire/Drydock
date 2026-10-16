@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -268,7 +269,7 @@ func (o *observer) OnChunk(ctx context.Context, n workflow.NodeInfo, c workflow.
 		_ = o.w.store.Record(context.Background(), t)
 		o.w.notify(context.Background(), "watchdog.warning", t, "Watchdog: "+v.Evidence)
 	case Trip:
-		go o.w.trip(o.st, v)
+		safe.Go("watchdog.observer.OnChunk", func() { o.w.trip(o.st, v) })
 	}
 }
 

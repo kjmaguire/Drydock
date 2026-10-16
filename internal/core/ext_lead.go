@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/watchdog"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -61,7 +62,7 @@ func startLead(ctx context.Context, c *Core) (map[string]Method, func(), error) 
 	loopCtx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go func() {
+	safe.Go("core.startLead", func() {
 		defer wg.Done()
 		l.Loop(loopCtx, LeadMonitorEvery, func(ctx context.Context) []string {
 			ps, err := c.Projects(ctx)
@@ -74,7 +75,7 @@ func startLead(ctx context.Context, c *Core) (map[string]Method, func(), error) 
 			}
 			return out
 		})
-	}()
+	})
 	methods := map[string]Method{
 		"lead.standup": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`

@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"context"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"io"
 	"os"
 	"sync"
@@ -51,10 +52,12 @@ func Probe(ctx context.Context, pm Manager, spec Spec, timeout time.Duration) Pr
 		w *capped
 	}{{p.Stdout(), &out}, {p.Stderr(), &errb}} {
 		wg.Add(1)
-		go func(r io.Reader, w *capped) {
-			defer wg.Done()
-			_, _ = io.Copy(w, r)
-		}(c.r, c.w)
+		safe.Go("proc.Probe", func() {
+			func(r io.Reader, w *capped) {
+				defer wg.Done()
+				_, _ = io.Copy(w, r)
+			}(c.r, c.w)
+		})
 	}
 	var res ProbeResult
 	select {
@@ -68,7 +71,7 @@ func Probe(ctx context.Context, pm Manager, spec Spec, timeout time.Duration) Pr
 	}
 	// A grandchild that inherited the pipes can keep them open after the probe exited; do not wait for it forever.
 	drained := make(chan struct{})
-	go func() { wg.Wait(); close(drained) }()
+	safe.Go("proc.Probe#2", func() { wg.Wait(); close(drained) })
 	select {
 	case <-drained:
 	case <-time.After(2 * time.Second):

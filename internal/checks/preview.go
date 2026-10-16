@@ -18,6 +18,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // This file is the `preview` check kind (brief section 13a, decision D6): start the project's own preview command under the
@@ -201,18 +202,19 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 		}
 	}
 	wg.Add(2)
-	go pump(p.Stdout())
-	go pump(p.Stderr())
+	stdout, stderr := p.Stdout(), p.Stderr()
+	safe.Go("checks.StartPreview.stdout", func() { pump(stdout) })
+	safe.Go("checks.StartPreview.stderr", func() { pump(stderr) })
 	_ = p.Stdin().Close()
 	var exit proc.ExitInfo
 	exitCh := make(chan struct{})
-	go func() {
+	safe.Go("checks.StartPreview#3", func() {
 		exit = <-h.done
 		wg.Wait()
 		logf.Close()
 		close(h.exited)
 		close(exitCh)
-	}()
+	})
 
 	fail := func(why string) (*PreviewHandle, PreviewResult, error) {
 		h.Stop()

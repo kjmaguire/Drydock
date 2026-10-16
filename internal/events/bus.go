@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -134,7 +135,7 @@ func NewSQLBus(db *storage.DB, bufSize int) *SQLBus {
 	}
 	b := &SQLBus{db: db, in: make(chan request, 4096), quit: make(chan struct{}), stopped: make(chan struct{}), subs: map[*subscriber]struct{}{}, bufSz: bufSize}
 	b.wg.Add(1)
-	go b.writer()
+	safe.Go("events.NewSQLBus", func() { b.writer() })
 	return b
 }
 
@@ -208,7 +209,7 @@ func (b *SQLBus) writer() {
 			for {
 				select {
 				case r := <-b.in:
-					b.flush([]request{r})
+					b.flushSafely([]request{r})
 				default:
 					return
 				}
@@ -224,7 +225,20 @@ func (b *SQLBus) writer() {
 				break collect
 			}
 		}
-		b.flush(batch)
+		b.flushSafely(batch)
+	}
+}
+
+// flushSafely writes a batch and, if that panics, answers every caller of the batch with the error instead of leaving them
+// waiting for a writer that has ended (audit 2026-10-16, H9). The writer goes on with the next batch.
+func (b *SQLBus) flushSafely(batch []request) {
+	if err := safe.Do("events.flush", func() { b.flush(batch) }); err != nil {
+		for _, r := range batch {
+			select {
+			case r.reply <- result{err: err}:
+			default: // already answered before the panic
+			}
+		}
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Tool is how an external tool is started: its executable (looked up when it is a bare name) and the arguments that always
@@ -108,8 +109,8 @@ func runTool(ctx context.Context, pm proc.Manager, path string, args []string, d
 	var stdout, stderr bytes.Buffer
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); _, _ = io.Copy(&stdout, io.LimitReader(p.Stdout(), 64<<20)) }()
-	go func() { defer wg.Done(); _, _ = io.Copy(&stderr, io.LimitReader(p.Stderr(), 1<<20)) }()
+	safe.Go("scan.runTool", func() { defer wg.Done(); _, _ = io.Copy(&stdout, io.LimitReader(p.Stdout(), 64<<20)) })
+	safe.Go("scan.runTool#2", func() { defer wg.Done(); _, _ = io.Copy(&stderr, io.LimitReader(p.Stderr(), 1<<20)) })
 	_ = p.Stdin().Close()
 	var ei proc.ExitInfo
 	select {
@@ -119,7 +120,7 @@ func runTool(ctx context.Context, pm proc.Manager, path string, args []string, d
 		ei = <-p.Wait()
 	}
 	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
+	safe.Go("scan.runTool#3", func() { wg.Wait(); close(done) })
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):

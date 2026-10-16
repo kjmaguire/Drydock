@@ -20,6 +20,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
@@ -52,7 +53,10 @@ type Run struct {
 
 // middleware replaces tools/list and tools/call: the run's policy, not a static tool registry, decides what exists.
 func (r *Run) middleware(next sdk.MethodHandler) sdk.MethodHandler {
-	return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
+	return func(ctx context.Context, method string, req sdk.Request) (res sdk.Result, err error) {
+		// the SDK serves each request on a goroutine of its own and does not recover: a panic in a tool call, in the list or in
+		// anything under them (a server's answer, an agent's arguments) ends the application unless it is contained here
+		defer safe.Recover("mcp "+method, &err)
 		switch method {
 		case "tools/list":
 			// The SDK fills in the cache fields only for results its own handlers build. This result replaces them, and a client that

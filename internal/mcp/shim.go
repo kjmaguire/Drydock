@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -75,14 +76,14 @@ func (s *shim) session(ctx context.Context) (*sdk.ClientSession, error) {
 		return nil, err
 	}
 	s.sess = sess
-	go func() {
+	safe.Go("mcp.shim.session", func() {
 		_ = sess.Wait()
 		s.mu.Lock()
 		if s.sess == sess {
 			s.sess = nil
 		}
 		s.mu.Unlock()
-	}()
+	})
 	return sess, nil
 }
 
@@ -92,7 +93,7 @@ func (s *shim) drop(sess *sdk.ClientSession) {
 		s.sess = nil
 	}
 	s.mu.Unlock()
-	go func() { _ = sess.Close() }()
+	safe.Go("mcp.shim.drop", func() { _ = sess.Close() })
 }
 
 func (s *shim) middleware(next sdk.MethodHandler) sdk.MethodHandler {

@@ -22,6 +22,7 @@ import (
 	"github.com/aymanbagabas/go-pty"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Keep is how much output a terminal keeps for a reader that falls behind; older output is dropped and counted.
@@ -237,15 +238,15 @@ func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, e
 	if u, ok := p.(pty.UnixPty); ok {
 		_ = u.Slave().Close()
 	}
-	go t.pump()
+	safe.Go("terminal.Manager.open", func() { t.pump() })
 	m.mu.Lock()
 	m.terms[t.info.ID] = t
 	m.ends.Add(1)
 	m.mu.Unlock()
-	go func() {
+	safe.Go("terminal.Manager.open#2", func() {
 		defer m.ends.Done()
 		t.wait()
-	}()
+	})
 	return t.info, nil
 }
 
@@ -426,10 +427,10 @@ func (m *Manager) CloseAll() {
 		_ = m.Close(id)
 	}
 	done := make(chan struct{})
-	go func() {
+	safe.Go("terminal.Manager.CloseAll", func() {
 		m.ends.Wait()
 		close(done)
-	}()
+	})
 	select {
 	case <-done:
 	case <-time.After(20 * time.Second):

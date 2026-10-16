@@ -10,8 +10,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // A real MCP server whose only tool is write-class and records the arguments exactly as they reached it.
@@ -76,5 +79,49 @@ func TestAWriteIsMadeWithTheBytesThatWereHashedAndShown(t *testing.T) {
 	}
 	if strings.Contains(received()[0], "/safe/place") {
 		t.Fatalf("the shadowed duplicate reached the server: %s", received()[0])
+	}
+}
+
+// The SDK serves each request on a goroutine of its own and does not recover. A panic anywhere under a tool call (here an approver
+// with a bug) used to end the whole application; it is now an error to that one call and the run goes on (audit 2026-10-16, H9).
+func TestAPanicUnderAToolCallIsAnErrorToThatCallOnly(t *testing.T) {
+	ts, received := startRecordingUpstream(t)
+	var reports int
+	safe.SetReporter(func(safe.Panic) { reports++ })
+	t.Cleanup(func() { safe.SetReporter(nil) })
+	armed := true
+	e := newEnv(t, func(o *Options) {
+		o.Approver = approverFunc(func(r ApprovalRequest) (bool, error) {
+			if armed {
+				panic("a bug in the approver")
+			}
+			return true, nil
+		})
+	})
+	spec := httpSpec("rec", ts.URL, func(s *ServerSpec) {
+		s.Trust = TrustPrivateData
+		s.DataClass = ContentPrivate
+		s.Cache.Scope = "project"
+		s.ReadOnlyTools = nil
+		s.SideEffectsTools = []string{"put"}
+	})
+	ep := e.startRun(RunConfig{Info: RunInfo{RunID: "r-panic", ProjectID: "p"}, Servers: []ServerSpec{spec}, Policy: allow(map[string][]string{"rec": {"*"}})})
+	cs := e.connect(ep)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := cs.CallTool(ctx, &sdk.CallToolParams{Name: "rec__put", Arguments: map[string]any{"x": 1}})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Fatalf("a call that panicked looks fine: %+v", res)
+	}
+	if len(received()) != 0 {
+		t.Fatal("the call reached the server although its approval panicked")
+	}
+	if reports != 1 {
+		t.Fatalf("%d panics reported", reports)
+	}
+	// the run still serves calls
+	armed = false
+	if r := callTool(t, cs, "rec__put", map[string]any{"x": 2}); r.IsError || len(received()) != 1 {
+		t.Fatalf("the run did not survive: %s", textOf(r))
 	}
 }

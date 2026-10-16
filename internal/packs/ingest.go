@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"os"
 	"path/filepath"
 	"sort"
@@ -158,11 +159,11 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		i := i
 		wg.Add(1)
 		sem <- struct{}{}
-		go func() {
+		safe.Go("packs.Store.Refresh", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 			results[i] = s.loadPage(ctx, f, pages[i], existing[pages[i].URL], chunkOpt, opt.Force, budget)
-		}()
+		})
 	}
 	wg.Wait()
 	if err := ctx.Err(); err != nil {

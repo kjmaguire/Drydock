@@ -2,6 +2,7 @@ package packs
 
 import (
 	"context"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"time"
 )
 
@@ -85,7 +86,7 @@ func (s *Store) Start(ctx context.Context, every time.Duration) (stop func()) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
-	go func() {
+	safe.Go("packs.Store.Start", func() {
 		defer close(done)
 		t := time.NewTicker(every)
 		defer t.Stop()
@@ -100,6 +101,6 @@ func (s *Store) Start(ctx context.Context, every time.Duration) (stop func()) {
 			case <-t.C:
 			}
 		}
-	}()
+	})
 	return func() { cancel(); <-done }
 }

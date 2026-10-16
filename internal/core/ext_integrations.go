@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/providers"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -117,10 +118,10 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	svc.RegisterStoredSecrets(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go func() {
+	safe.Go("core.startIntegrations", func() {
 		defer wg.Done()
 		svc.Run(ctx, 15*time.Second)
-	}()
+	})
 	closeFn := func() {
 		wg.Wait() // ctx is cancelled by Core.Close before the extension hooks run
 		svc.Close()

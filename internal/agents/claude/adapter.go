@@ -20,6 +20,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 	"github.com/kjmaguire/drydock/internal/wsl"
 )
@@ -355,7 +356,7 @@ func newSession(p proc.Proc, spec agents.RunSpec, sweep func(), cleanup func()) 
 	if spec.ResumeID != "" {
 		s.parser.SetBaseline(spec.UsageBaseline)
 	}
-	go func() {
+	safe.Go("claude.newSession", func() {
 		s.ei = <-p.Wait()
 		if sweep != nil {
 			sweep()
@@ -364,9 +365,9 @@ func newSession(p proc.Proc, spec agents.RunSpec, sweep func(), cleanup func()) 
 			cleanup()
 		}
 		close(s.exited)
-	}()
-	go s.readStdout()
-	go s.readStderr()
+	})
+	safe.Go("claude.newSession#2", func() { s.readStdout() })
+	safe.Go("claude.newSession#3", func() { s.readStderr() })
 	return s
 }
 
@@ -456,7 +457,7 @@ func (s *session) ID() string                    { return s.parser.SessionID() }
 func (s *session) Output() <-chan workflow.Chunk { return s.out }
 func (s *session) Wait() <-chan proc.ExitInfo {
 	ch := make(chan proc.ExitInfo, 1)
-	go func() { <-s.exited; ch <- s.ei }()
+	safe.Go("claude.session.Wait", func() { <-s.exited; ch <- s.ei })
 	return ch
 }
 func (s *session) Stderr() string { return s.errBuf.String() }

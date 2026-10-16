@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"io"
 	"net"
 	"net/http"
@@ -246,8 +247,8 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 		_ = up.Close()
 		return
 	}
-	go pipe(up, buf.Reader, client)
-	go pipe(client, up, up)
+	safe.Go("egress.Proxy.connect", func() { pipe(up, buf.Reader, client) })
+	safe.Go("egress.Proxy.connect#2", func() { pipe(client, up, up) })
 }
 
 // pipe copies src to dst and closes both ends when done.

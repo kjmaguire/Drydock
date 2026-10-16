@@ -16,6 +16,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/applog"
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scrub"
 )
 
@@ -153,8 +154,8 @@ func startPackaging(ctx context.Context, c *Core) (map[string]Method, func(), er
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); p.licenseLoop(ctx) }()
-	go func() { defer wg.Done(); p.backupLoop(ctx) }()
+	safe.Go("core.startPackaging", func() { defer wg.Done(); p.licenseLoop(ctx) })
+	safe.Go("core.startPackaging#2", func() { defer wg.Done(); p.backupLoop(ctx) })
 	p.announceRestoreResult(ctx)
 
 	m := map[string]Method{}

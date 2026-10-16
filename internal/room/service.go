@@ -11,6 +11,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -400,7 +401,7 @@ func (s *Service) WatchTasks(ctx context.Context) error {
 		return errors.New("room: no bus")
 	}
 	ch, cancel := s.bus.Subscribe(events.Filter{Types: []string{"task.completed", "task.cancelled", "task.failed"}})
-	go func() {
+	safe.Go("room.Service.WatchTasks", func() {
 		defer cancel()
 		for {
 			select {
@@ -418,7 +419,7 @@ func (s *Service) WatchTasks(ctx context.Context) error {
 				}
 			}
 		}
-	}()
+	})
 	return nil
 }
 

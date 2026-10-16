@@ -9,6 +9,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -25,7 +26,7 @@ const driftTypesMax = 20
 func init() {
 	RegisterExtension(Extension{Name: "adapterdrift", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ch, cancel := c.Bus.Subscribe(events.Filter{Types: []string{"agent.output"}})
-		go func() {
+		safe.Go("core.init", func() {
 			for ev := range ch {
 				var d struct {
 					Kind string              `json:"kind"`
@@ -40,7 +41,7 @@ func init() {
 				}
 				c.observeDrift(ctx, a.Adapter, d.Data.Detail)
 			}
-		}()
+		})
 		return nil, cancel, nil
 	}})
 }

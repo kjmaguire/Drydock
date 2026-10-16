@@ -18,6 +18,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/redact"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -176,7 +177,7 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	}
 	r.running[m] = struct{}{}
 	r.wmu.Unlock()
-	go m.watchExit()
+	safe.Go("runtime.Runtime.Spawn", func() { m.watchExit() })
 	return m, nil
 }
 

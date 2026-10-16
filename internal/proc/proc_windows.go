@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"golang.org/x/sys/windows"
 )
 
@@ -139,7 +140,7 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 
 	p := &winProc{cmd: cmd, job: job, stdin: inW, stdout: outR, stderr: errR,
 		exit: make(chan ExitInfo, 1), done: make(chan struct{})}
-	go func() {
+	safe.Go("proc.manager.Start", func() {
 		err := cmd.Wait()
 		ei := ExitInfo{Code: cmd.ProcessState.ExitCode()}
 		p.jobMu.Lock()
@@ -153,14 +154,14 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 		}
 		p.exit <- ei
 		close(p.done)
-	}()
-	go func() {
+	})
+	safe.Go("proc.manager.Start#2", func() {
 		select {
 		case <-ctx.Done():
 			_ = p.Kill(true)
 		case <-p.done:
 		}
-	}()
+	})
 	return p, nil
 }
 

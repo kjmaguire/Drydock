@@ -513,5 +513,20 @@ Open, owner action:
   only when its manifest carries a signature that verifies against the key compiled into the build, the download is bounded in
   time and size, the helper that restarts the app may break away from the app's job object. **Secrets in what is stored (H7):**
   agent and tool output, a run's records, check lines, room payloads, task feedback and evidence, and the events that carry
-  them are scanned before they are written (`internal/redact`, docs/security.md s8). **Not verified here:** every Windows-only
-  piece (the job-object test, the updater's audit hook, the cmd.exe test) runs on the Windows runner only.
+  them are scanned before they are written (`internal/redact`, docs/security.md s8). **Approvals (H8, M1, M2):** the text a person
+  approves from puts the short fields (where a call goes) first, shows the whole input up to 64 KiB, cuts the long strings in the
+  middle with the size of the gap written in, lists the paths and addresses apart and refuses what cannot be shown
+  (`security.ReviewInput`); MCP calls and the permission prompt's `updatedInput` are made with the bytes that were hashed; a
+  permission mode that skips approvals needs `confirmSkipsApprovals` on every path and is recorded as an approved
+  `permission_mode_escalation` approval; a run withholds MCP tools whose text changed since a person reviewed them, tools marked as
+  instructions and tools that were not in the reviewed list (`internal/mcp/toolreview.go`); the UI writes out control and format
+  characters in agent text on every decision card (`ui/app/lib/visible.ts`). **Crashes (H9, H10, L4, L12):** a panic in a goroutine
+  ended the whole app and every run in it; every goroutine now starts through `internal/safe`, the RPC dispatcher and the
+  handlers that the ACP and MCP SDKs call on their own goroutines recover, a contained panic is logged with its stack and
+  published once per place as `app.panic` (secrets scanned out), and the three known triggers are fixed (a read range near the
+  largest int, a robots.txt that is not UTF-8, an empty hash file beside a backup). A process owns its data folder through a lock
+  file (`internal/datalock`), so a second process cannot open a core on a live one; on Windows the updater's helper mode runs first
+  in `main`, the Wails application object (whose single-instance check hands a second launch to the first and exits) is created
+  before the core, a failed start shows a message box and writes `<data>\logs\startup.log`, and a job object that cannot be made
+  no longer stops the start. **Not verified here:** every Windows-only piece (the job-object test, the updater's audit hook, the
+  cmd.exe test, the start-up order, the message box) runs on the Windows runner only.

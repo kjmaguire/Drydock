@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/skills"
 )
 
@@ -133,7 +134,7 @@ func init() {
 		ctx, cancel := context.WithCancel(ctx)
 		// P49: an agent opening a skill it had on demand (Claude reading its file under skills.OnDemandDir) is a use
 		ch, unsub := c.Bus.Subscribe(events.Filter{Types: []string{"agent.output"}})
-		go func() {
+		safe.Go("core.init", func() {
 			for ev := range ch {
 				if name := skillReadFromOutput(ev.Data); name != "" && ev.ProjectID != "" {
 					if k := c.Knowledge(); k != nil {
@@ -141,8 +142,8 @@ func init() {
 					}
 				}
 			}
-		}()
-		go func() {
+		})
+		safe.Go("core.init#2", func() {
 			select {
 			case <-ctx.Done():
 				return
@@ -160,7 +161,7 @@ func init() {
 				case <-t.C:
 				}
 			}
-		}()
+		})
 		return m, func() { unsub(); cancel() }, nil
 	}})
 }

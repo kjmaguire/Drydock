@@ -22,6 +22,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/connections"
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
+	"github.com/kjmaguire/drydock/internal/datalock"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/git/host"
@@ -35,6 +36,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/runners"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -135,6 +137,7 @@ type Core struct {
 	Connections *connections.Service
 	Deps        pipeline.Deps
 
+	lock       *datalock.Lock // this process's claim on the data folder
 	extMethods map[string]Method
 	extClose   []func()
 	mcpw       atomic.Pointer[mcpWiring] // the shared MCP gateway (ext_mcp.go)
@@ -183,6 +186,22 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
 	}
+	// One process owns a data folder. Opening the core marks the agent runs the last stop left open as failed and takes over the
+	// runs whose owner is gone: done by a second process (a second launch, the updater's helper) it would do that to the live
+	// runs of the first (audit 2026-10-16, H10).
+	lock, err := datalock.Acquire(cfg.DataDir)
+	if err != nil {
+		if errors.Is(err, datalock.ErrHeld) {
+			return nil, fmt.Errorf("Drydock is already running with this data folder (%s): %w", cfg.DataDir, err)
+		}
+		return nil, err
+	}
+	locked := false
+	defer func() {
+		if !locked {
+			lock.Release()
+		}
+	}()
 	applyPendingRestore(ctx, cfg.DataDir) // a restore staged by backup.restore is applied BEFORE the database is opened
 	db, err := storage.Open(ctx, filepath.Join(cfg.DataDir, "drydock.db"))
 	if err != nil {
@@ -232,6 +251,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	// what agents and tools printed is scanned before an event is stored or delivered (security.md s8; audit 2026-10-16, H7)
 	bus.SetRedactor(eventRedactor(c.Scanner.Redact))
+	c.installPanicReporter()
 	checks.Redact = c.Scanner.Redact
 	// every message body is scanned before it is stored, so a secret pasted into the room never reaches the database, the
 	// event log or another agent's context (security.md s8)
@@ -309,7 +329,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	c.Prober = providers.NewProber(c.Providers, c.Bus)
 	c.Health = providers.NewMonitor(c.Providers, c.Prober, c.Bus, providers.MonitorOptions{})
 	c.Health.Start(bg)
-	go func() { _ = c.Room.WatchTasks(bg) }()
+	safe.Go("core.Open", func() { _ = c.Room.WatchTasks(bg) })
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
 	}
@@ -331,7 +351,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	// a run whose last owner's lease was still valid at start (killed and restarted within the lease TTL) is taken over
 	// as soon as that lease expires
-	go c.Engine.WatchRecover(bg, 0)
+	safe.Go("core.Open#2", func() { c.Engine.WatchRecover(bg, 0) })
+	c.lock, locked = lock, true
 	return c, nil
 }
 
@@ -345,6 +366,7 @@ func (c *Core) Close() {
 	c.Engine.Close()
 	c.Bus.Close()
 	_ = c.DB.Close()
+	c.lock.Release() // last: until the database is closed this folder is still ours
 }
 
 func (c *Core) logf(format string, a ...any) {

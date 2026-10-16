@@ -5,6 +5,7 @@ package proc
 import (
 	"context"
 	"errors"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"io"
 	"os"
 	"os/exec"
@@ -63,7 +64,7 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 	outW.Close()
 	errW.Close()
 	p := &devProc{cmd: cmd, stdin: inW, stdout: outR, stderr: errR, exit: make(chan ExitInfo, 1), done: make(chan struct{})}
-	go func() {
+	safe.Go("proc.manager.Start", func() {
 		err := cmd.Wait()
 		ei := ExitInfo{Code: cmd.ProcessState.ExitCode()}
 		p.mu.Lock()
@@ -75,14 +76,14 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 		}
 		p.exit <- ei
 		close(p.done)
-	}()
-	go func() {
+	})
+	safe.Go("proc.manager.Start#2", func() {
 		select {
 		case <-ctx.Done():
 			_ = p.Kill(true)
 		case <-p.done:
 		}
-	}()
+	})
 	return p, nil
 }
 

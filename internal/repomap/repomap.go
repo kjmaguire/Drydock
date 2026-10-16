@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Token budgets of a map (docs/mcp.md section 8, the repo_map schema).
@@ -283,7 +284,7 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 	var wg sync.WaitGroup
 	for w := 0; w < m.opts.Workers; w++ {
 		wg.Add(1)
-		go func() {
+		safe.Go("repomap.Mapper.Map", func() {
 			defer wg.Done()
 			for i := range jobs {
 				c := cands[i]
@@ -291,7 +292,7 @@ func (m *Mapper) Map(ctx context.Context, req Request) (Result, error) {
 				files[i] = fileTags{Path: c.rel, Lang: c.lang, Tags: tags}
 				skips[i], cachedHits[i], errs[i] = skip, hit, err
 			}
-		}()
+		})
 	}
 	for i := range cands {
 		if ctx.Err() != nil {

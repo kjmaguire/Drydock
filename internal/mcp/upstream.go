@@ -20,6 +20,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // upstream is one shared connection to a catalog or custom server (docs/mcp.md section 11): started lazily on the first
@@ -172,7 +173,7 @@ func (u *upstream) connectLocked(ctx context.Context) error {
 		}
 		se := &tailBuf{max: 8192}
 		u.stderr = se
-		go func() { _, _ = io.Copy(se, p.Stderr()) }()
+		safe.Go("mcp.upstream.connectLocked", func() { _, _ = io.Copy(se, p.Stderr()) })
 		tr = &sdk.IOTransport{Reader: io.NopCloser(p.Stdout()), Writer: p.Stdin()}
 	default:
 		return fmt.Errorf("unknown transport %q", u.spec.Transport)
@@ -198,12 +199,12 @@ func (u *upstream) connectLocked(ctx context.Context) error {
 		pid = p.PID()
 		exited := make(chan struct{})
 		u.exited = exited
-		go u.watchProc(p, exited, sess, restarts)
+		safe.Go("mcp.upstream.connectLocked#2", func() { u.watchProc(p, exited, sess, restarts) })
 	}
-	go func() {
+	safe.Go("mcp.upstream.connectLocked#3", func() {
 		_ = sess.Wait()
 		u.sessionClosed(sess)
-	}()
+	})
 	// Learn the real tool list (and with it the servers' read-only hints) once per connection; the last known list is kept
 	// while the server is down so that tools/list keeps answering.
 	if tools, err := listAll(ictx, sess); err == nil {
@@ -413,7 +414,7 @@ func (u *upstream) failedCall(ctx context.Context, err error) {
 		u.mu.Unlock()
 		if sess != nil {
 			u.sessionClosed(sess)
-			go func() { _ = sess.Close() }()
+			safe.Go("mcp.upstream.failedCall", func() { _ = sess.Close() })
 		}
 	}
 }

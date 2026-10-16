@@ -9,6 +9,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
@@ -281,7 +282,13 @@ func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (j
 	if !ok {
 		return nil, fmt.Errorf("unknown method %q", name)
 	}
-	v, err := m(ctx, params)
+	// every call from the window and from the dev transport passes here: a panic in a method is an error to its caller, not the
+	// end of the application and of every run in it (audit 2026-10-16, H9)
+	var v any
+	var err error
+	if perr := safe.Do("rpc "+name, func() { v, err = m(ctx, params) }); perr != nil {
+		return nil, perr
+	}
 	if err != nil {
 		return nil, err
 	}

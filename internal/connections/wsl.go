@@ -11,6 +11,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
@@ -269,13 +270,15 @@ func (s *Service) DetectWSL(ctx context.Context) []Connection {
 				continue
 			}
 			wg.Add(1)
-			go func(m *manifests.Manifest, d wsl.Distro) {
-				defer wg.Done()
-				c := CheckWSL(ctx, m, d, o)
-				mu.Lock()
-				out = append(out, c)
-				mu.Unlock()
-			}(m, d)
+			safe.Go("connections.Service.DetectWSL", func() {
+				func(m *manifests.Manifest, d wsl.Distro) {
+					defer wg.Done()
+					c := CheckWSL(ctx, m, d, o)
+					mu.Lock()
+					out = append(out, c)
+					mu.Unlock()
+				}(m, d)
+			})
 		}
 	}
 	wg.Wait()

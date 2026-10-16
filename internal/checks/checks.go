@@ -22,6 +22,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/redact"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 	"gopkg.in/yaml.v3"
 )
@@ -151,8 +152,9 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 		}
 	}
 	wg.Add(2)
-	go pump(p.Stdout())
-	go pump(p.Stderr())
+	stdout, stderr := p.Stdout(), p.Stderr()
+	safe.Go("checks.Run.stdout", func() { pump(stdout) })
+	safe.Go("checks.Run.stderr", func() { pump(stderr) })
 	_ = p.Stdin().Close()
 
 	var ei proc.ExitInfo
@@ -165,7 +167,7 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 	}
 	// let the pumps drain; descendants holding the pipes are gone once the job closed
 	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
+	safe.Go("checks.Run#3", func() { wg.Wait(); close(done) })
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):

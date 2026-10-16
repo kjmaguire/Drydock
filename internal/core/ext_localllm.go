@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/localllm"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/runners"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Local models (decision P65, docs/local-models.md): llama.cpp on this PC, kept by internal/localllm. A person installs an
@@ -402,7 +403,7 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 		return LocalView{}, err
 	}
 	l.changed("install", map[string]any{"state": "running"})
-	go l.runInstall(jctx, src, s.Backend)
+	safe.Go("core.localExt.install", func() { l.runInstall(jctx, src, s.Backend) })
 	return l.view(ctx), nil
 }
 
@@ -538,7 +539,7 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 	l.downloads[id] = d
 	l.mu.Unlock()
 	l.changed("download", map[string]any{"id": id, "state": "running"})
-	go l.runDownload(dctx, repo, *v, id)
+	safe.Go("core.localExt.download", func() { l.runDownload(dctx, repo, *v, id) })
 	return l.view(ctx), nil
 }
 
@@ -755,9 +756,9 @@ func (l *localExt) autostart(ctx context.Context) {
 	if _, ok := l.m.Runtime.Installed(); !ok {
 		return
 	}
-	go func() {
+	safe.Go("core.localExt.autostart", func() {
 		if err := l.serve(context.Background(), s.ModelID); err != nil {
 			l.c.logf("local models: autostart: %v", err)
 		}
-	}()
+	})
 }

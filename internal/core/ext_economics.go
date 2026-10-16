@@ -30,6 +30,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/router"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
 	"github.com/kjmaguire/drydock/internal/telemetry"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -207,11 +208,11 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	}
 
 	// --- inconclusive checks (skipped / errored) reach the task channel as the tool member, status skipped or error ---
-	go e.relayInconclusiveChecks(ctx)
+	safe.Go("core.startEconomics", func() { e.relayInconclusiveChecks(ctx) })
 
 	// --- opt-in startup probe (it spends a few synthetic requests, so it is the user's switch) ---
 	if v, _ := e.setting(ctx, "route.probe.startup"); v == "1" {
-		go e.startupProbe(ctx)
+		safe.Go("core.startEconomics#2", func() { e.startupProbe(ctx) })
 	}
 
 	econMu.Lock()

@@ -16,6 +16,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/redact"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -210,17 +211,17 @@ func (e *Engine) Start(ctx context.Context, workflow string, input any, opts Sta
 // launch starts the goroutine of d, the driver claimed for the run; the lease must already be held by this engine. A driver
 // cancelled before it launched (Cancel, Close) stops at once and releases the lease.
 func (e *Engine) launch(d *driver, info RunInfo, g *Graph, from Checkpoint) {
-	go func() {
+	safe.Go("workflow.Engine.launch", func() {
 		defer e.giveUp(info.ID, d)
 		e.drive(d.ctx, info, g, from)
-	}()
+	})
 }
 
 // drive executes supersteps until the run completes, fails, is cancelled, or parks at a request port.
 func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpoint) {
 	hbCtx, stopHB := context.WithCancel(context.Background())
 	defer stopHB()
-	go e.heartbeat(hbCtx, info.ID)
+	safe.Go("workflow.Engine.drive", func() { e.heartbeat(hbCtx, info.ID) })
 	defer e.st.releaseLease(context.Background(), info.ID, e.cfg.Owner)
 
 	st := from.State.clone()
@@ -264,12 +265,14 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		var wg sync.WaitGroup
 		for i, nid := range ready {
 			wg.Add(1)
-			go func(i int, nid NodeID) {
-				defer wg.Done()
-				inbox := st.Inboxes[nid]
-				out, err := e.execNode(ctx, info, g, g.Nodes[nid], step, inbox, st)
-				results[i] = result{nid, out, err}
-			}(i, nid)
+			safe.Go("workflow.Engine.drive#2", func() {
+				func(i int, nid NodeID) {
+					defer wg.Done()
+					inbox := st.Inboxes[nid]
+					out, err := e.execNode(ctx, info, g, g.Nodes[nid], step, inbox, st)
+					results[i] = result{nid, out, err}
+				}(i, nid)
+			})
 		}
 		wg.Wait()
 
@@ -830,7 +833,7 @@ func newChunkWriter(path string, red redact.Func) (*chunkWriter, error) {
 	if red != nil {
 		c.text = redact.NewStream(red)
 	}
-	go c.flusher()
+	safe.Go("workflow.newChunkWriter", func() { c.flusher() })
 	return c, nil
 }
 

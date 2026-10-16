@@ -12,6 +12,7 @@ import (
 	_ "time/tzdata" // Windows has no zoneinfo database; daily windows reset in named zones (Gemini: America/Los_Angeles)
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -641,7 +642,7 @@ func (l *QuotaLedger) StartPolling(ctx context.Context) {
 	ctx, l.cancel = context.WithCancel(ctx)
 	l.done = make(chan struct{})
 	l.mu.Unlock()
-	go func() {
+	safe.Go("providers.QuotaLedger.StartPolling", func() {
 		defer close(l.done)
 		t := time.NewTicker(l.poll)
 		defer t.Stop()
@@ -653,7 +654,7 @@ func (l *QuotaLedger) StartPolling(ctx context.Context) {
 			case <-t.C:
 			}
 		}
-	}()
+	})
 }
 
 func (l *QuotaLedger) pollAll(ctx context.Context) {

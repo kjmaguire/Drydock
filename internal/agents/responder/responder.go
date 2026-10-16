@@ -29,6 +29,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -205,7 +206,7 @@ func (r *Responder) Start(ctx context.Context) (stop func(), err error) {
 	}
 	ch, cancel := r.d.Bus.Subscribe(events.Filter{Types: []string{"room.message_posted"}})
 	done := make(chan struct{})
-	go func() {
+	safe.Go("responder.Responder.Start", func() {
 		defer close(done)
 		for {
 			select {
@@ -226,7 +227,7 @@ func (r *Responder) Start(ctx context.Context) (stop func(), err error) {
 				r.enqueue(ctx, d.Room, d.Message)
 			}
 		}
-	}()
+	})
 	return func() {
 		cancel()
 		<-done
@@ -246,7 +247,7 @@ func (r *Responder) enqueue(ctx context.Context, roomID, messageID string) {
 	r.running[roomID] = true
 	r.mu.Unlock()
 	r.wg.Add(1)
-	go func() {
+	safe.Go("responder.Responder.enqueue", func() {
 		defer r.wg.Done()
 		for {
 			r.mu.Lock()
@@ -266,7 +267,7 @@ func (r *Responder) enqueue(ctx context.Context, roomID, messageID string) {
 				r.logf("room responder: %v", err)
 			}
 		}
-	}()
+	})
 }
 
 func (r *Responder) markInterrupted(ctx context.Context) error {

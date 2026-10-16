@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Presence is what the UI shows for an agent (brief section 11). It is derived from events, never stored as chat.
@@ -265,9 +266,9 @@ func (t *Tracker) Start(ctx context.Context) error {
 	}
 	t.dirt = map[string]bool{} // the rebuild itself is not news
 	t.mu.Unlock()
-	go t.follow(ctx, ch, cancel)
+	safe.Go("room.Tracker.Start", func() { t.follow(ctx, ch, cancel) })
 	if t.opt.EmitEvery > 0 {
-		go t.emitLoop(ctx)
+		safe.Go("room.Tracker.Start#2", func() { t.emitLoop(ctx) })
 	}
 	return nil
 }

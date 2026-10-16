@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // HealthEvent is a health transition, delivered to Subscribe channels and published as provider.up, provider.down
@@ -89,7 +90,7 @@ func (m *Monitor) Start(ctx context.Context) {
 	ctx, m.cancel = context.WithCancel(ctx)
 	m.done = make(chan struct{})
 	m.mu.Unlock()
-	go func() {
+	safe.Go("providers.Monitor.Start", func() {
 		defer close(m.done)
 		t := time.NewTicker(m.o.Interval)
 		defer t.Stop()
@@ -102,7 +103,7 @@ func (m *Monitor) Start(ctx context.Context) {
 				m.CheckAll(ctx)
 			}
 		}
-	}()
+	})
 }
 
 // Stop ends the loop and waits for it.
@@ -129,10 +130,12 @@ func (m *Monitor) CheckAll(ctx context.Context) {
 			continue
 		}
 		wg.Add(1)
-		go func(p Provider) {
-			defer wg.Done()
-			m.check(ctx, p)
-		}(p)
+		safe.Go("providers.Monitor.CheckAll", func() {
+			func(p Provider) {
+				defer wg.Done()
+				m.check(ctx, p)
+			}(p)
+		})
 	}
 	wg.Wait()
 }

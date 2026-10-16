@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/acp-go-sdk"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -112,7 +113,8 @@ func textOf(b acp.ContentBlock) (string, bool) {
 func isTerminal(status string) bool { return status == "completed" || status == "failed" }
 
 // SessionUpdate maps session/update notifications onto normalized chunks.
-func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) (err error) {
+	defer safe.Recover("acp.SessionUpdate", &err)
 	s := c.s
 	u := n.Update
 	s.mu.Lock()
@@ -359,7 +361,8 @@ func (s *Session) flushMessage() {
 
 // RequestPermission surfaces the request as a permission_request chunk, asks the PermissionHandler and answers the agent.
 // The default handler rejects. A cancelled turn or a stopped session answers "cancelled".
-func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (res acp.RequestPermissionResponse, err error) {
+	defer safe.Recover("acp.RequestPermission", &err)
 	s := c.s
 	cancelled := acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{Outcome: "cancelled"}}}
 
@@ -405,7 +408,7 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 
 	type answer struct{ id string }
 	ch := make(chan answer, 1)
-	go func() { ch <- answer{handler(ctx, req)} }()
+	safe.Go("acp.client.RequestPermission", func() { ch <- answer{handler(ctx, req)} })
 	var chosen string
 	select {
 	case a := <-ch:
@@ -426,7 +429,8 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 }
 
 // ReadTextFile serves fs/read_text_file for paths inside the session cwd only.
-func (c *client) ReadTextFile(_ context.Context, p acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
+func (c *client) ReadTextFile(_ context.Context, p acp.ReadTextFileRequest) (res acp.ReadTextFileResponse, err error) {
+	defer safe.Recover("acp.ReadTextFile", &err)
 	if c.s.adapter.cfg.NoFS {
 		return acp.ReadTextFileResponse{}, acp.NewMethodNotFound(acp.ClientMethodFsReadTextFile)
 	}
@@ -438,7 +442,8 @@ func (c *client) ReadTextFile(_ context.Context, p acp.ReadTextFileRequest) (acp
 }
 
 // WriteTextFile serves fs/write_text_file for paths inside the session cwd only.
-func (c *client) WriteTextFile(_ context.Context, p acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
+func (c *client) WriteTextFile(_ context.Context, p acp.WriteTextFileRequest) (res acp.WriteTextFileResponse, err error) {
+	defer safe.Recover("acp.WriteTextFile", &err)
 	if c.s.adapter.cfg.NoFS {
 		return acp.WriteTextFileResponse{}, acp.NewMethodNotFound(acp.ClientMethodFsWriteTextFile)
 	}
@@ -454,18 +459,23 @@ func reqErr(err error) error {
 	return &acp.RequestError{Code: -32602, Message: err.Error()}
 }
 
-func (c *client) CreateTerminal(ctx context.Context, p acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
+func (c *client) CreateTerminal(ctx context.Context, p acp.CreateTerminalRequest) (res acp.CreateTerminalResponse, err error) {
+	defer safe.Recover("acp.CreateTerminal", &err)
 	return c.s.terms.create(ctx, p)
 }
-func (c *client) KillTerminal(_ context.Context, p acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
+func (c *client) KillTerminal(_ context.Context, p acp.KillTerminalRequest) (res acp.KillTerminalResponse, err error) {
+	defer safe.Recover("acp.KillTerminal", &err)
 	return c.s.terms.kill(p)
 }
-func (c *client) TerminalOutput(_ context.Context, p acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error) {
+func (c *client) TerminalOutput(_ context.Context, p acp.TerminalOutputRequest) (res acp.TerminalOutputResponse, err error) {
+	defer safe.Recover("acp.TerminalOutput", &err)
 	return c.s.terms.output(p)
 }
-func (c *client) ReleaseTerminal(_ context.Context, p acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {
+func (c *client) ReleaseTerminal(_ context.Context, p acp.ReleaseTerminalRequest) (res acp.ReleaseTerminalResponse, err error) {
+	defer safe.Recover("acp.ReleaseTerminal", &err)
 	return c.s.terms.release(p)
 }
-func (c *client) WaitForTerminalExit(ctx context.Context, p acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error) {
+func (c *client) WaitForTerminalExit(ctx context.Context, p acp.WaitForTerminalExitRequest) (res acp.WaitForTerminalExitResponse, err error) {
+	defer safe.Recover("acp.WaitForTerminalExit", &err)
 	return c.s.terms.wait(ctx, p)
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Launch is how llama-server is started: the program (the installed build's, or a labelled stand-in with its leading
@@ -177,10 +178,11 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 		_, _ = io.Copy(io.Discard, r)
 	}
 	wg.Add(2)
-	go pump(p.Stdout())
-	go pump(p.Stderr())
+	stdout, stderr := p.Stdout(), p.Stderr()
+	safe.Go("localllm.Server.Start.stdout", func() { pump(stdout) })
+	safe.Go("localllm.Server.Start.stderr", func() { pump(stderr) })
 	exited := make(chan proc.ExitInfo, 1)
-	go func() {
+	safe.Go("localllm.Server.Start#3", func() {
 		ei := <-p.Wait()
 		wg.Wait()
 		if logf != nil {
@@ -199,7 +201,7 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 				}
 			})
 		}
-	}()
+	})
 	s.set(func(st *ServerState) { st.PID = p.PID() })
 	// one client for the whole wait: a new transport per poll would leave an idle connection behind each
 	hc := s.HTTP

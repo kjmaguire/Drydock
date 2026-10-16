@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"golang.org/x/oauth2"
 )
 
@@ -184,7 +185,7 @@ func (s *Service) OAuthStart(ctx context.Context, by, kind, baseURL string) (OAu
 		}
 		sess.URL = firstNonEmpty(resp.VerificationURIComplete, resp.VerificationURI)
 		sess.UserCode = resp.UserCode
-		go func() {
+		safe.Go("integrations.Service.OAuthStart", func() {
 			defer cancel()
 			tok, err := conf.DeviceAccessToken(bg, resp)
 			if err != nil {
@@ -192,7 +193,7 @@ func (s *Service) OAuthStart(ctx context.Context, by, kind, baseURL string) (OAu
 				return
 			}
 			done(tok)
-		}()
+		})
 	default:
 		// the fixed port first (the redirect URI the registered app allows); when it is taken, any free port, and the vendor
 		// may then refuse the redirect: the person closes the program holding the port and signs in again
@@ -235,14 +236,14 @@ func (s *Service) OAuthStart(ctx context.Context, by, kind, baseURL string) (OAu
 					fmt.Fprintf(w, "<p>Signed in to %s. You can close this tab and return to Drydock.</p>", html.EscapeString(vendor(kind)))
 				}
 			}
-			go func() { _ = srv.Close(); cancel() }()
+			safe.Go("integrations.Service.OAuthStart#2", func() { _ = srv.Close(); cancel() })
 		})
-		go func() { _ = srv.Serve(ln) }()
-		go func() {
+		safe.Go("integrations.Service.OAuthStart#3", func() { _ = srv.Serve(ln) })
+		safe.Go("integrations.Service.OAuthStart#4", func() {
 			<-bg.Done()
 			_ = srv.Close()
 			fail(vendor(kind) + " sign-in was not finished within 10 minutes")
-		}()
+		})
 	}
 	s.oauth.mu.Lock()
 	for id, old := range s.oauth.m { // drop finished and stale sessions

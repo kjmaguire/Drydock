@@ -20,6 +20,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/uiassets"
 )
 
@@ -166,6 +167,6 @@ func (s *Server) Listen(port int) (addr string, shutdown func(context.Context) e
 		return "", nil, err
 	}
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	go func() { _ = srv.Serve(ln) }()
+	safe.Go("httpapi.Server.Listen", func() { _ = srv.Serve(ln) })
 	return ln.Addr().String(), srv.Shutdown, nil
 }

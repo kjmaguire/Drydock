@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // SlotConfig is one runner a person asked for: a repository and where its jobs run.
@@ -199,10 +200,12 @@ func (p *Pool) Set(cfgs []SlotConfig) {
 		p.mu.Lock()
 		s.cancel, s.done = cancel, done
 		p.mu.Unlock()
-		go func(s *slot) {
-			defer close(done)
-			p.run(ctx, s)
-		}(s)
+		safe.Go("runners.Pool.Set", func() {
+			func(s *slot) {
+				defer close(done)
+				p.run(ctx, s)
+			}(s)
+		})
 	}
 }
 
@@ -241,10 +244,12 @@ func (p *Pool) Close() {
 	var wg sync.WaitGroup
 	for _, s := range all {
 		wg.Add(1)
-		go func(s *slot) {
-			defer wg.Done()
-			p.stopSlot(s)
-		}(s)
+		safe.Go("runners.Pool.Close", func() {
+			func(s *slot) {
+				defer wg.Done()
+				p.stopSlot(s)
+			}(s)
+		})
 	}
 	wg.Wait()
 }

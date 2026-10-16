@@ -11,6 +11,7 @@ import (
 	"github.com/coder/acp-go-sdk"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // DefaultTerminalOutputLimit bounds captured terminal output when the agent gives no outputByteLimit.
@@ -91,25 +92,27 @@ func (ts *terminals) create(ctx context.Context, p acp.CreateTerminalRequest) (a
 	_ = pr.Stdin().Close()
 	for _, r := range []io.Reader{pr.Stdout(), pr.Stderr()} {
 		t.readers.Add(1)
-		go func(r io.Reader) {
-			defer t.readers.Done()
-			b := make([]byte, 4096)
-			for {
-				n, err := r.Read(b)
-				if n > 0 {
-					t.write(b[:n])
+		safe.Go("acp.terminals.create", func() {
+			func(r io.Reader) {
+				defer t.readers.Done()
+				b := make([]byte, 4096)
+				for {
+					n, err := r.Read(b)
+					if n > 0 {
+						t.write(b[:n])
+					}
+					if err != nil {
+						return
+					}
 				}
-				if err != nil {
-					return
-				}
-			}
-		}(r)
+			}(r)
+		})
 	}
-	go func() {
+	safe.Go("acp.terminals.create#2", func() {
 		t.exit = <-pr.Wait()
 		t.readers.Wait()
 		close(t.done)
-	}()
+	})
 	ts.mu.Lock()
 	ts.next++
 	id := fmt.Sprintf("term_%d", ts.next)

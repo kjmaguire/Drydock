@@ -19,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -205,7 +206,7 @@ func (s *mcpServers) oauthBegin(ctx context.Context, id string) (OAuthStatus, er
 	rt.flows[id] = f
 	rt.mu.Unlock()
 	by := s.c.Human()
-	go s.runOAuth(fctx, f, r, by)
+	safe.Go("core.mcpServers.oauthBegin", func() { s.runOAuth(fctx, f, r, by) })
 	select {
 	case <-f.ready:
 	case <-time.After(30 * time.Second):
@@ -262,7 +263,7 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 		fmt.Fprintf(w, "<!doctype html><meta charset=utf-8><title>Drydock</title><p style=\"font:16px system-ui;margin:3rem auto;max-width:32rem\">%s</p>", msg)
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() { _ = srv.Serve(ln) }()
+	safe.Go("core.mcpServers.runOAuth", func() { _ = srv.Serve(ln) })
 	defer func() {
 		sctx, c := context.WithTimeout(context.Background(), 2*time.Second)
 		defer c()

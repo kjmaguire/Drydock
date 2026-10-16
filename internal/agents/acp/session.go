@@ -17,6 +17,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -113,9 +114,9 @@ func newSession(a *Adapter, pm proc.Manager, p proc.Proc, g *guard, spec agents.
 	} else {
 		s.conn.SetLogger(discardLogger())
 	}
-	go func() { s.ei = <-p.Wait(); close(s.exited) }()
-	go func() { _, _ = bufio.NewReader(p.Stderr()).WriteTo(&s.errBuf) }()
-	go s.finish()
+	safe.Go("acp.newSession", func() { s.ei = <-p.Wait(); close(s.exited) })
+	safe.Go("acp.newSession#2", func() { _, _ = bufio.NewReader(p.Stderr()).WriteTo(&s.errBuf) })
+	safe.Go("acp.newSession#3", func() { s.finish() })
 	return s
 }
 
@@ -155,7 +156,7 @@ func (s *Session) Output() <-chan workflow.Chunk { return s.out }
 // Wait implements agents.Session.
 func (s *Session) Wait() <-chan proc.ExitInfo {
 	ch := make(chan proc.ExitInfo, 1)
-	go func() { <-s.exited; ch <- s.ei }()
+	safe.Go("acp.Session.Wait", func() { <-s.exited; ch <- s.ei })
 	return ch
 }
 
@@ -439,7 +440,7 @@ func (s *Session) Send(ctx context.Context, msg string) error {
 	s.turnActive, s.cancelReq = true, false
 	s.wg.Add(1)
 	s.mu.Unlock()
-	go s.runTurn(msg)
+	safe.Go("acp.Session.Send", func() { s.runTurn(msg) })
 	return nil
 }
 

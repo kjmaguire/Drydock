@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Options configure one scan.
@@ -89,7 +90,7 @@ func Start(ctx context.Context, o Options) *Run {
 	for _, e := range Engines {
 		r.rep.Engines = append(r.rep.Engines, EngineResult{ID: e.ID, Name: e.Name, Tool: e.Tool, Status: Pending})
 	}
-	go r.run(cctx)
+	safe.Go("scan.Start", func() { r.run(cctx) })
 	return r
 }
 
@@ -204,7 +205,7 @@ func (r *Run) run(ctx context.Context) {
 		r.note(id, func(e *EngineResult) { e.Version = v })
 	}
 	wg.Add(3)
-	go func() {
+	safe.Go("scan.Run.run", func() {
 		defer wg.Done()
 		start(Secrets)
 		r.note(Secrets, func(e *EngineResult) { e.Version = gitleaksVersion() })
@@ -220,8 +221,8 @@ func (r *Run) run(ctx context.Context) {
 		default:
 			r.finish(Secrets, fs, Done, "", "")
 		}
-	}()
-	go func() {
+	})
+	safe.Go("scan.Run.run#2", func() {
 		defer wg.Done()
 		path, _, err := r.o.Paths.OSV.resolve("osv-scanner", r.o.Paths.LookPath)
 		if err != nil {
@@ -232,8 +233,8 @@ func (r *Run) run(ctx context.Context) {
 		probe(Deps, path, r.o.Paths.OSV, "osv-scanner")
 		fs, st, reason := scanDeps(ctx, &r.o, path, r.o.Paths.OSV)
 		r.finish(Deps, fs, st, reason, "")
-	}()
-	go func() {
+	})
+	safe.Go("scan.Run.run#3", func() {
 		defer wg.Done()
 		path, _, err := r.o.Paths.Opengrep.resolve("opengrep", r.o.Paths.LookPath)
 		if err != nil {
@@ -248,7 +249,7 @@ func (r *Run) run(ctx context.Context) {
 		probe(SAST, path, r.o.Paths.Opengrep, "opengrep")
 		fs, st, reason, version := scanCode(ctx, &r.o, path, r.o.Paths.Opengrep)
 		r.finish(SAST, fs, st, reason, version)
-	}()
+	})
 	wg.Wait()
 	r.mu.Lock()
 	r.rep.FinishedAt = time.Now().UnixMilli()

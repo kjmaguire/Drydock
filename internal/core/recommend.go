@@ -18,6 +18,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/libver"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -127,13 +128,13 @@ func init() {
 		}
 		// the project evolves: completed tasks may call for another look (bounded; see maybeRecommend)
 		ch, unsub := c.Bus.Subscribe(events.Filter{Types: []string{"task.completed"}})
-		go func() {
+		safe.Go("core.init", func() {
 			for ev := range ch {
 				if ev.ProjectID != "" {
 					c.maybeRecommend(ctx, ev.ProjectID)
 				}
 			}
-		}()
+		})
 		methods := map[string]Method{
 			"recommend.start": bind(func(ctx context.Context, p struct {
 				ProjectID  string               `json:"projectId"`
@@ -188,7 +189,7 @@ func init() {
 			cancel()
 			unsub()
 			done := make(chan struct{})
-			go func() { st.runs.Wait(); close(done) }()
+			safe.Go("core.init#2", func() { st.runs.Wait(); close(done) })
 			select {
 			case <-done:
 			case <-time.After(recommendCloseWait):
@@ -297,10 +298,10 @@ func (c *Core) Recommend(ctx context.Context, projectID, agentID, trigger string
 	c.publish(ctx, "recommend.started", projectID, map[string]any{"id": r.ID, "agent": advisor.ID, "trigger": trigger})
 	st := c.recommendState()
 	st.runs.Add(1)
-	go func() {
+	safe.Go("core.Core.Recommend", func() {
 		defer st.runs.Done()
 		c.runRecommend(r, advisor)
-	}()
+	})
 	return r, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"io"
 	"net/http"
 	"net/url"
@@ -146,7 +147,7 @@ func startCore(ctx context.Context, env *Env, log io.Writer) (*coreSession, erro
 		s.cleanup(false)
 		return nil, fmt.Errorf("start %s: %w", filepath.Base(s.exe), err)
 	}
-	go func() { s.waitErr = s.cmd.Wait(); close(s.exited) }()
+	safe.Go("winverify.startCore", func() { s.waitErr = s.cmd.Wait(); close(s.exited) })
 	timer := time.NewTimer(2 * time.Minute)
 	defer timer.Stop()
 	select {

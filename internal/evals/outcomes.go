@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -41,7 +42,7 @@ func (o *Outcomes) Start(ctx context.Context) error {
 	cctx, cancel := context.WithCancel(ctx)
 	o.cancel, o.done = cancel, make(chan struct{})
 	ch, unsub := o.Bus.Subscribe(events.Filter{Types: terminalTypes})
-	go func() {
+	safe.Go("evals.Outcomes.Start", func() {
 		defer close(o.done)
 		defer func() { unsub() }()
 		last := o.cursor(cctx)
@@ -80,7 +81,7 @@ func (o *Outcomes) Start(ctx context.Context) error {
 				o.saveCursor(cctx, last)
 			}
 		}
-	}()
+	})
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Install hints, shown when a tool is missing. Drydock installs nothing itself.
@@ -48,14 +49,14 @@ func Detect(ctx context.Context, pm proc.Manager, env []string, p Paths, rulesDi
 	t := Tools{Gitleaks: ToolInfo{Tool: "gitleaks", BuiltIn: true, Found: true, Version: gitleaksVersion()}}
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() {
+	safe.Go("scan.Detect", func() {
 		defer wg.Done()
 		t.OSV = detectTool(ctx, pm, env, p.OSV, "osv-scanner", []string{"--version"}, osvInstall, p.LookPath)
-	}()
-	go func() {
+	})
+	safe.Go("scan.Detect#2", func() {
 		defer wg.Done()
 		t.Opengrep = detectTool(ctx, pm, env, p.Opengrep, "opengrep", []string{"--version"}, opengrepInstall, p.LookPath)
-	}()
+	})
 	wg.Wait()
 	t.RulesDir = rulesDir
 	t.RulesOK, t.RulesNote = checkRules(rulesDir)

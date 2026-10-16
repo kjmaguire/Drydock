@@ -12,6 +12,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -157,11 +158,11 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	}
 	s.publish(ctx, "chat.turn_started", c.ProjectID, map[string]any{"chatId": c.ID, "turnId": turnID, "attach": attachedIDs})
 	s.wg.Add(1)
-	go func() {
+	safe.Go("chats.Service.Send", func() {
 		defer s.wg.Done()
 		defer release()
 		s.run(tctx, c, caps, turnID, user, attachmentBlock(attached, s.o.AttachChars))
-	}()
+	})
 	return res, nil
 }
 

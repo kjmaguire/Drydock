@@ -9,6 +9,7 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/security"
 )
 
@@ -78,13 +79,13 @@ func (r *Run) permissionPrompt(ctx context.Context, c *callRec, args json.RawMes
 	// the call waits for a person at most as long as the run lives
 	wctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go func() {
+	safe.Go("mcp.Run.permissionPrompt", func() {
 		select {
 		case <-r.done:
 			cancel()
 		case <-wctx.Done():
 		}
-	}()
+	})
 	ans := p.Permit(wctx, PermissionRequest{Run: r.cfg.Info, CallID: c.id, ToolName: req.ToolName, Input: in, ToolUseID: req.ToolUseID})
 	c.upstreamStatus = "ok"
 	if !ans.Allow {
