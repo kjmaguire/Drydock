@@ -144,7 +144,7 @@ func (u *upstream) connectLocked(ctx context.Context) error {
 			}
 		}
 		hc := &http.Client{
-			Transport: at,
+			Transport: limitedTransport{base: at},
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return errors.New("upstream redirect refused (credentials are never forwarded to another URL)")
 			},
@@ -443,6 +443,54 @@ func upstreamEndpoint(s ServerSpec) (string, error) {
 }
 
 // authTransport adds the upstream credential to every request. The credential is held by Drydock, never by the agent.
+// maxUpstreamBody is the most one response from an upstream HTTP server may hold, a JSON answer or a stream of events: a server
+// that sends without end must not fill memory (audit 2026-10-16, M9).
+var maxUpstreamBody int64 = 64 << 20
+
+var errUpstreamTooLarge = errors.New("the upstream server's response is larger than the limit")
+
+// limitedTransport ends a response that grows past maxUpstreamBody.
+type limitedTransport struct{ base http.RoundTripper }
+
+func (t limitedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Body != nil {
+		resp.Body = &limitedBody{rc: resp.Body, left: maxUpstreamBody}
+	}
+	return resp, nil
+}
+
+type limitedBody struct {
+	rc   io.ReadCloser
+	left int64
+}
+
+func (b *limitedBody) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		return 0, errUpstreamTooLarge
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	n, err := b.rc.Read(p)
+	b.left -= int64(n)
+	return n, err
+}
+
+func (b *limitedBody) Close() error { return b.rc.Close() }
+
+// upstreamTransport is the transport upstream servers are reached with: the default one, and a limit on how long a server may take
+// to start answering (a tool call can legitimately run for minutes, so the limit is long; none at all kept a dead server's
+// request for as long as the call's context lived).
+func upstreamTransport() http.RoundTripper {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = 15 * time.Minute
+	return tr
+}
+
 type authTransport struct {
 	base   http.RoundTripper
 	header string

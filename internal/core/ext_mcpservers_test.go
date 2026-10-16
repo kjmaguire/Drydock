@@ -557,3 +557,45 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// A credential belongs to where it was given for. Pointing a server at another address, or another program, without giving the
+// credential again forgets the old one instead of sending it there (audit 2026-10-16, M9).
+func TestMovingAnMCPServerForgetsItsStoredCredentials(t *testing.T) {
+	self, _ := os.Executable()
+	a := openMCPApp(t, &claude.Adapter{Exe: os.Args[0]})
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "remote", Display: "Remote", Transport: "http", URL: "https://mcp.example.com/mcp", BearerToken: "tok-123456789"}, &lib)
+	if !lib.HasToken {
+		t.Fatalf("saved: %+v", lib)
+	}
+	// the same place: edited, token kept (another path, the default port written out)
+	a.call("mcplib.save", core.MCPServerInput{ID: "remote", Display: "Remote 2", Transport: "http", URL: "https://MCP.example.com:443/v2/mcp"}, &lib)
+	if !lib.HasToken {
+		t.Fatalf("an edit in the same place lost the token: %+v", lib)
+	}
+	// another host: the token is not carried there
+	a.call("mcplib.save", core.MCPServerInput{ID: "remote", Display: "Remote 2", Transport: "http", URL: "https://mcp.evil.example.net/mcp"}, &lib)
+	if lib.HasToken {
+		t.Fatalf("the token followed the server to another host: %+v", lib)
+	}
+	// with a token given for the new address it is kept for it
+	a.call("mcplib.save", core.MCPServerInput{ID: "remote", Display: "Remote 2", Transport: "http", URL: "https://mcp.other.example.org/mcp", BearerToken: "tok-987654321"}, &lib)
+	if !lib.HasToken {
+		t.Fatalf("a token given with the new address was dropped: %+v", lib)
+	}
+
+	// a program with a secret: another program must be given the value again
+	a.call("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{self, "--one"}, SecretEnv: map[string]string{"API_KEY": "value-0123456789"}}, &lib)
+	a.call("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{self, "--two"}, SecretEnv: map[string]string{"API_KEY": ""}}, &lib)
+	if len(lib.SecretEnv) != 1 {
+		t.Fatalf("the same program with other flags lost its secret: %+v", lib)
+	}
+	err := a.callErr("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{"/usr/bin/other"}, SecretEnv: map[string]string{"API_KEY": ""}})
+	if err == nil || !strings.Contains(err.Error(), "another program") {
+		t.Fatalf("another program was handed a stored secret: %v", err)
+	}
+	a.call("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{"/usr/bin/other"}, SecretEnv: map[string]string{"API_KEY": "new-value-0123456789"}}, &lib)
+	if len(lib.SecretEnv) != 1 {
+		t.Fatalf("a secret given with the new program was dropped: %+v", lib)
+	}
+}

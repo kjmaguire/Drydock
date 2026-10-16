@@ -562,3 +562,9 @@ Open, owner action:
   directly (`proc.Harden`) stops waiting for its output pipes five seconds after it was cancelled, so a child that holds them
   cannot keep a timed-out call alive, and opens no console window on Windows. **Not verified:** the no-window flag
   (Windows-only code; vet only here).
+  **Network and credentials (M9):** MCP sign-in goes through `internal/netguard` (non-public addresses refused, the checked
+  address dialled, a local-network server does not open the network, the callback answers only its own state); an upstream
+  response is cut at 64 MiB; a provider's stored key is forgotten when its address changes (another scheme, host or port)
+  unless a key is given for the new one, and its client refuses a redirect to another address (other headers than
+  Authorization travel on a redirect in Go); an MCP server's bearer token or secret is not handed to another address or
+  another program (docs/mcp.md).

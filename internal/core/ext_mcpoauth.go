@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -19,6 +20,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 
+	"github.com/kjmaguire/drydock/internal/netguard"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
@@ -81,62 +83,26 @@ func (s *mcpServers) orun() *oauthRuntime {
 
 // ---- network guard ----
 
-func isLocalHost(h string) bool {
-	if h == "localhost" {
-		return true
+// oauthPolicy is what the sign-in of one MCP server may contact (internal/netguard, audit 2026-10-16, M9). The addresses it
+// names (resource metadata, authorization server, token endpoint) come from that server, so an untrusted one must not be able to
+// point Drydock at an address inside the person's network or at a cloud metadata endpoint. The server the person configured is
+// itself allowed, whatever it resolves to; a server on this computer may also name other loopback addresses and ports. A server
+// on the local network is NOT a reason to open the whole network.
+func oauthPolicy(serverURL string) netguard.Policy {
+	var p netguard.Policy
+	if u, err := url.Parse(serverURL); err == nil {
+		p.AllowHost = u.Hostname()
+		p.AllowLoopback = netguard.IsLoopbackHost(u.Hostname())
 	}
-	ip := net.ParseIP(h)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
-}
-
-func blockedIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
-		return true
-	}
-	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1]&0xc0 == 64 { // 100.64.0.0/10, carrier-grade NAT
-		return true
-	}
-	return false
-}
-
-// guardedTransport refuses requests to addresses on the local network unless the MCP server itself is local. The OAuth
-// addresses (resource metadata, authorization server, token endpoint) come from the server's own answers, so an untrusted
-// server must not be able to point Drydock at an address inside the user's network or at a cloud metadata endpoint.
-type guardedTransport struct {
-	base       http.RoundTripper
-	allowLocal bool
-}
-
-func (g guardedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if !g.allowLocal {
-		if r.URL.Scheme != "https" {
-			return nil, fmt.Errorf("refusing %s: sign-in addresses must be https", r.URL.Redacted())
-		}
-		host := r.URL.Hostname()
-		if ip := net.ParseIP(host); ip != nil {
-			if blockedIP(ip) {
-				return nil, fmt.Errorf("refusing to contact %s: it is an address on this computer or its network", host)
-			}
-		} else {
-			ips, err := net.DefaultResolver.LookupIPAddr(r.Context(), host)
-			if err != nil {
-				return nil, err
-			}
-			for _, a := range ips {
-				if blockedIP(a.IP) {
-					return nil, fmt.Errorf("refusing to contact %s: it resolves to an address on this computer or its network", host)
-				}
-			}
-		}
-	}
-	return g.base.RoundTrip(r)
+	return p
 }
 
 func oauthHTTPClient(serverURL string) *http.Client {
-	u, _ := url.Parse(serverURL)
-	local := u != nil && isLocalHost(u.Hostname())
+	pol := oauthPolicy(serverURL)
 	return &http.Client{
-		Transport: guardedTransport{base: http.DefaultTransport, allowLocal: local},
+		// every request, and every hop of a redirect, resolves the name itself, refuses non-public addresses and dials the
+		// address it checked
+		Transport: netguard.Guard{Base: pol.Transport(), Policy: pol},
 		Timeout:   60 * time.Second,
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
@@ -233,6 +199,10 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	redirect := "http://" + ln.Addr().String() + "/callback"
 	type cb struct{ code, state, iss, err string }
 	got := make(chan cb, 1)
+	// The answer the human's browser brings back must carry the state this flow's authorization address carries. Without it,
+	// anything on this computer that reaches the callback port first (it is on loopback, and a port can be found) would use up
+	// the flow's one answer, with an error, and the real one would be turned away.
+	var expectState atomic.Pointer[string]
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, req *http.Request) {
 		// only the browser the human opened, on this computer, to this address
@@ -241,6 +211,10 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 			return
 		}
 		q := req.URL.Query()
+		if want := expectState.Load(); want == nil || *want == "" || q.Get("state") != *want {
+			http.Error(w, "this is not the answer this sign-in is waiting for", http.StatusBadRequest)
+			return
+		}
 		c := cb{code: q.Get("code"), state: q.Get("state"), iss: q.Get("iss")}
 		if e := q.Get("error"); e != "" {
 			c.err = e
@@ -271,9 +245,9 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	}()
 
 	hc := oauthHTTPClient(r.URL)
-	allowLocal := false
+	allowLocal := false // a sign-in page over plain http: only a server on this computer
 	if u, err := url.Parse(r.URL); err == nil {
-		allowLocal = isLocalHost(u.Hostname())
+		allowLocal = netguard.IsLoopbackHost(u.Hostname())
 	}
 	var cfg *oauth2.Config
 	var tok *oauth2.Token
@@ -295,6 +269,8 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 			if err != nil || (u.Scheme != "https" && !(allowLocal && u.Scheme == "http")) {
 				return nil, errors.New("the server gave a sign-in address that is not https")
 			}
+			st := u.Query().Get("state")
+			expectState.Store(&st)
 			attempts++
 			if attempts > 1 {
 				if reason != "" {

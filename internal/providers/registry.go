@@ -254,6 +254,17 @@ func (r *Registry) Update(ctx context.Context, p Provider, newAPIKey string) (Pr
 	if err := r.validate(ctx, &p); err != nil {
 		return Provider{}, err
 	}
+	// A stored key belongs to the address the person gave it for. Pointing the provider at another address without giving a key
+	// for it would send the old key there, so the old key is forgotten (audit 2026-10-16, M9).
+	keyCleared := false
+	if newAPIKey == "" && cur.KeyRef != "" && !SameOrigin(cur.BaseURL, p.BaseURL) {
+		if r.secrets != nil {
+			if err := r.secrets.Delete(ctx, cur.KeyRef); err != nil {
+				return Provider{}, fmt.Errorf("forget the api key of the old address: %w", err)
+			}
+		}
+		p.KeyRef, keyCleared = "", true
+	}
 	if newAPIKey != "" {
 		if r.secrets == nil {
 			return Provider{}, ErrNoSecretStore
@@ -279,8 +290,29 @@ func (r *Registry) Update(ctx context.Context, p Provider, newAPIKey string) (Pr
 		return Provider{}, err
 	}
 	r.dropClient(p.ID)
-	r.emit(ctx, "provider.updated", map[string]any{"providerId": p.ID})
+	r.emit(ctx, "provider.updated", map[string]any{"providerId": p.ID, "keyCleared": keyCleared})
 	return p, nil
+}
+
+// SameOrigin reports whether two addresses have the same scheme, host and port: the unit a credential belongs to. Addresses
+// that do not parse are different unless they are equal.
+func SameOrigin(a, b string) bool {
+	ua, errA := url.Parse(strings.TrimSpace(a))
+	ub, errB := url.Parse(strings.TrimSpace(b))
+	if errA != nil || errB != nil || ua.Host == "" || ub.Host == "" {
+		return strings.TrimSpace(a) == strings.TrimSpace(b)
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Hostname(), ub.Hostname()) && portOf(ua) == portOf(ub)
+}
+
+func portOf(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return "443"
+	}
+	return "80"
 }
 
 // SetEnabled enables or disables a provider.

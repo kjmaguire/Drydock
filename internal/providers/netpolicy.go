@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -152,7 +153,20 @@ func NewHTTPClient(p Provider, resolve Resolver, timeout time.Duration) (*http.C
 			},
 		}
 	}
-	return &http.Client{Transport: tr, Timeout: timeout}, nil
+	return &http.Client{Transport: tr, Timeout: timeout, CheckRedirect: sameOriginRedirects}, nil
+}
+
+// sameOriginRedirects follows a redirect only within the address the request went to. Go forwards the Authorization header only
+// to the same domain, but the other headers keys travel in (x-api-key, x-goog-api-key, an operator's own), and an answer that
+// redirects to another host must not collect a provider's key there (audit 2026-10-16, M9).
+func sameOriginRedirects(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return errors.New("stopped after 5 redirects")
+	}
+	if !SameOrigin(via[0].URL.String(), req.URL.String()) {
+		return fmt.Errorf("refusing a redirect from %s to %s: a provider's key is never sent to another address", via[0].URL.Redacted(), req.URL.Redacted())
+	}
+	return nil
 }
 
 func guardedDial(resolve Resolver) func(ctx context.Context, network, addr string) (net.Conn, error) {

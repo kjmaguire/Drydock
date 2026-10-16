@@ -16,6 +16,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/integrations"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
@@ -514,6 +515,13 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 		r.URL = ""
 	}
 
+	// A credential belongs to where it was given for: the address of an http server, the program of a stdio one. Moving the server
+	// to another place without giving the credential again would send it there, so a stored one is not carried over (audit
+	// 2026-10-16, M9).
+	destChanged := !isNew && (existing.Transport != r.Transport ||
+		(r.Transport == mcp.TransportHTTP && !providers.SameOrigin(existing.URL, r.URL)) ||
+		(r.Transport != mcp.TransportHTTP && (len(existing.Argv) == 0 || len(r.Argv) == 0 || existing.Argv[0] != r.Argv[0])))
+
 	// secrets: names listed in SecretEnv are kept; their non-empty values replace the stored ones; unlisted names are removed
 	var removeRefs []string
 	newNames := []string{}
@@ -535,6 +543,8 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 			putSecrets[mcpVaultRef(r.ID, "env:"+name)] = val
 		} else if !known {
 			return MCPLibraryServer{}, fmt.Errorf("give a value for the secret variable %s", name)
+		} else if destChanged {
+			return MCPLibraryServer{}, fmt.Errorf("give a value for the secret variable %s again: the server now runs another program, and a stored secret is not handed to it", name)
 		}
 	}
 	sort.Strings(newNames)
@@ -557,6 +567,10 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 	case strings.TrimSpace(in.BearerToken) != "":
 		putSecrets[mcpVaultRef(r.ID, "token")] = strings.TrimSpace(in.BearerToken)
 		r.HasToken = true
+	case destChanged && existing.HasToken:
+		// the server was pointed at another address and no token was given for it: the old one is forgotten, not sent there
+		removeRefs = append(removeRefs, mcpVaultRef(r.ID, "token"))
+		r.HasToken = false
 	}
 	if in.OAuth != nil {
 		switch {

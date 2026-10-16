@@ -162,7 +162,7 @@ func New(opts Options) (*Gateway, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	g := &Gateway{
-		opts: opts, ctx: ctx, cancel: cancel, httpBase: http.DefaultTransport,
+		opts: opts, ctx: ctx, cancel: cancel, httpBase: upstreamTransport(),
 		runs: map[string]*Run{}, pool: map[string]*upstream{}, authSeen: map[string]*bucket{}, flights: map[string]*flight{},
 	}
 	if opts.DB != nil {

@@ -195,24 +195,41 @@ func TestOAuthSignInFailuresAreReportedAndCanBeCancelled(t *testing.T) {
 		t.Fatal("the callback address still answers after the flow ended")
 	}
 
-	// a forged answer with the wrong state does not sign anyone in
+	// A forged answer (anything on this computer can reach the callback port) is turned away: it signs nobody in, and it does not
+	// use up the flow's one answer either, so the genuine answer that follows still counts (audit 2026-10-16, M9).
 	st = oauthStatusT{}
 	a.call("mcplib.oauth.begin", map[string]string{"id": "oauthy"}, &st)
 	au, _ = url.Parse(st.URL)
 	redirect = au.Query().Get("redirect_uri")
-	resp, err = http.Get(redirect + "?code=forged&state=not-the-state")
+	for _, forged := range []string{"?code=forged&state=not-the-state", "?code=forged", "?error=access_denied", "?code=forged&state="} {
+		resp, err = http.Get(redirect + forged)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: the forged answer was not turned away: %d", forged, resp.StatusCode)
+		}
+	}
+	st = oauthStatusT{}
+	a.call("mcplib.oauth.status", map[string]string{"id": "oauthy"}, &st)
+	if st.State != "waiting" || st.SignedIn || f.Access() != "" {
+		t.Fatalf("a forged answer ended or answered the sign-in: %+v", st)
+	}
+	resp, err = http.Get(st.URL) // the genuine answer: the provider redirects the browser back with the code and the state
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	a.waitFor("the forged answer to fail", func() bool {
+	a.waitFor("the genuine answer to sign in", func() bool {
 		st = oauthStatusT{}
 		a.call("mcplib.oauth.status", map[string]string{"id": "oauthy"}, &st)
-		return st.State == "failed"
+		return st.State != "waiting"
 	})
-	if st.SignedIn || f.Access() != "" {
-		t.Fatalf("a forged answer signed in: %+v", st)
+	if !st.SignedIn || f.Access() == "" {
+		t.Fatalf("the genuine answer after forged ones did not sign in: %+v", st)
 	}
+	a.call("mcplib.oauth.signout", map[string]string{"id": "oauthy"}, &st)
 
 	// cancel while waiting
 	st = oauthStatusT{}
