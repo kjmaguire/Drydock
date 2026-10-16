@@ -2,7 +2,7 @@
   "used": {
     "tool:gh": "2.102.0",
     "tool:task": "3.54.0",
-    "tool:osv-scanner": "2.6.0",
+    "tool:osv-scanner": "2.7.0",
     "tool:opengrep": "1.31.0",
     "tool:go-licenses": "2.0.1",
     "tool:wrangler": "4.151.0",
@@ -23,7 +23,7 @@
     },
     "npm": {
       "role": "Installs the UI packages.",
-      "hold": "Comes with Node; it moves when Node does."
+      "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3)."
     },
     "go:cel.dev/cel-go": {
       "role": "Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language."
@@ -101,7 +101,7 @@
     },
     "npm:@types/node": {
       "role": "Type definitions for the Node APIs the build scripts use.",
-      "hold": "Follows the Node line the UI tooling is on (24 LTS), not the newest Node: the types must match the runtime."
+      "note": "26.6.5 on the owner's instruction (2026-10-16): the types describe Node 26 while the tooling runs on Node 24. The shipped UI is browser code, so the Node types only reach the build and test scripts; tsc passes on 26.6.5. A tooling script that starts using an API only Node 26 has would compile here and fail on Node 24, so such a change is checked by running the scripts, which CI does."
     },
     "npm:typescript": {
       "role": "Type-checks the UI before every build (TypeScript 7, the native compiler)."
@@ -177,7 +177,7 @@
     },
     "tool:osv-scanner": {
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it.",
-      "hold": "2.7.0 is out; 2.6.0 stays documented until a real run shows the deps check and the security scan read its JSON as before. An attempt to build 2.7.0 from the Go module proxy in the development sandbox (2026-10-16) ran out of disk, so the run is still owed; the owner can do it on the PC with osv-scanner 2.7.0 installed (the deps check and the Security page read its --format json)."
+      "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
     },
     "tool:opengrep": {
       "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary; you install it and choose a rules folder.",
@@ -219,7 +219,7 @@
     "tool:docker": {
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
       "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified.",
-      "hold": "29.9.1 is out; 29.8.2 is the engine the sandbox was measured with (decision P30); it moves with the next sandbox run (no Docker in the development sandbox)."
+      "hold": "29.9.1 is out; 29.8.2 stays documented: it is the engine the sandbox was measured with (decision P30), and nothing has run it on 29.9.1. Measured today with CI's ubuntu-latest image too, which carries Docker 28.0.4 (sandbox job of ci, 2026-10-16); the development sandbox has the 29.8.2 client and no daemon. It moves when a sandbox run on 29.9.1 happens, on the owner's PC with Docker Desktop updated."
     },
     "tool:golangci-lint": {
       "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."

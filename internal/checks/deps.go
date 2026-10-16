@@ -29,9 +29,9 @@ type DepsOptions struct {
 	LookPath func(file string) (string, error)
 }
 
-// osvReport is the part of osv-scanner's JSON output (--format json) the check reads. The shape follows the osv-scanner
-// documentation (results[].packages[].vulnerabilities[]); this repository has not captured output from a real run
-// because osv-scanner is not installed in the development sandbox. Unknown fields are ignored.
+// osvReport is the part of osv-scanner's JSON output (--format json) the check reads: results[].packages[].vulnerabilities[].
+// testdata/osv-scanner-2.7.0.json is output captured from a real run of osv-scanner 2.7.0 (2026-10-16, offline databases)
+// over this repository, with the advisories' texts cut; TestParseOSVReadsARealReport reads it. Unknown fields are ignored.
 type osvReport struct {
 	Results []struct {
 		Source struct {

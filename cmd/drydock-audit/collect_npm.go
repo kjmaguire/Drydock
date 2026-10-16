@@ -72,22 +72,23 @@ func npmPackages(ctx context.Context) []Item {
 	items = append(items, Item{ID: "npm:lock", Group: "UI build and test tools", Name: "(all packages in package-lock.json)", Kind: "indirect", Used: itoa(len(lock.Packages) - 1), Latest: itoa(len(lock.Packages) - 1), Status: "current", Where: "ui/package-lock.json", Note: "Count of installed packages including everything the listed ones pull in."})
 	if v, err := run(ctx, root, nil, "node", "--version"); err == nil {
 		used := strings.TrimPrefix(strings.TrimSpace(v), "v")
-		it := Item{ID: "node", Group: "Language and toolchain", Name: "Node.js (installed in this sandbox)", Kind: "runtime", Used: used, Where: "this machine; CI uses node 22 (.github/workflows/ci.yml)"}
-		// the project is on Node 22 (decision D9): compare with the newest 22.x and say what the newest line is
+		it := Item{ID: "node", Group: "Language and toolchain", Name: "Node.js (installed in this sandbox)", Kind: "runtime", Used: used, Where: "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)"}
+		// the project's line is Node 24 (CI, and the UI tooling needs 24.3+; decision D9 keeps 22 as the user's floor): compare
+		// with the newest release of the installed major and say what the newest line is
 		if major, _, ok := strings.Cut(used, "."); ok {
 			if out := lastLine(run(ctx, root, nil, "npm", "view", "node@"+major, "version")); out != "" {
 				it.Latest = strings.Trim(strings.Fields(out)[len(strings.Fields(out))-1], "'")
 			}
 		}
 		if newest := npmLatest(ctx, "node"); newest != "" {
-			it.Note = "Newest Node release overall: " + newest + ". The project stays on 22 (decision D9); the latest 22.x is the comparison."
+			it.Note = "Newest Node release overall: " + newest + ". The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
 		}
 		items = append(items, it)
 	}
 	if v, err := run(ctx, root, nil, "npm", "--version"); err == nil {
 		it := Item{ID: "npm", Group: "Language and toolchain", Name: "npm (installed in this sandbox)", Kind: "runtime", Used: strings.TrimSpace(v), Where: "this machine"}
 		it.Latest = npmLatest(ctx, "npm")
-		it.Note = "Ships with Node; the version that comes with Node 22 is the one that matters."
+		it.Note = "Ships with Node; a newer npm can be installed on top of it (npm install -g npm), which is what the development host does."
 		items = append(items, it)
 	}
 	return items

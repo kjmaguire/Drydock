@@ -312,3 +312,25 @@ func osvStandin() int {
 	code, _ := strconv.Atoi(os.Getenv("OSV_CODE"))
 	return code
 }
+
+// Output of a real osv-scanner 2.7.0 run over this repository (offline databases, 2026-10-16): the module-level advisory
+// on golang.org/x/crypto's openpgp (not imported here) and the sharp advisory in the Cloudflare starter's lock file.
+func TestParseOSVReadsARealReport(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "osv-scanner-2.7.0.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs, err := ParseOSV(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 2 {
+		t.Fatalf("%+v", fs)
+	}
+	if fs[0].Package != "golang.org/x/crypto" || fs[0].Version != "0.58.0" || fs[0].Ecosystem != "Go" || fs[0].Source != "go.mod" || strings.Join(fs[0].IDs, ",") != "GO-2026-5932" {
+		t.Errorf("%+v", fs[0])
+	}
+	if fs[1].Package != "sharp" || fs[1].Ecosystem != "npm" || fs[1].Source != "testdata/starter-cloudflare-saas/package-lock.json" || strings.Join(fs[1].IDs, ",") != "GHSA-wq5f-xc86-pv6w" {
+		t.Errorf("%+v", fs[1])
+	}
+}
