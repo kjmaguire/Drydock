@@ -268,9 +268,17 @@ func (h *HostLauncher) Cleanup(job Job) error {
 	return err
 }
 
-// Sweep deletes job folders left by an earlier run of Drydock (it stopped before cleaning up).
+// Sweep deletes job folders left by an earlier run of Drydock (it stopped before cleaning up). The folder is one a person chose
+// and may be shared with other things, so only entries named like a job of this app are deleted, never everything in "jobs"
+// (audit 2026-10-16, L35).
 func (h *HostLauncher) Sweep(context.Context) {
-	prune(filepath.Join(h.Root, "jobs"), "")
+	dir := filepath.Join(h.Root, "jobs")
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), jobNameStem) {
+			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 func (h *HostLauncher) Arch() string {

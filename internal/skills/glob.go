@@ -191,31 +191,48 @@ func GlobMatch(glob, p string) bool {
 	return false
 }
 
+// matchSegs matches the segments of a glob against the segments of a path. A glob is the text of a skill, which comes from a
+// registry or a repository, and "**" may stand many times in it: trying every split at each of them again and again took time
+// exponential in their number (a 200 character glob and a 30 directory path were enough to hold a worker for good). What is
+// asked of a pair (a place in the glob, a place in the path) is asked once (audit 2026-10-16, L34).
 func matchSegs(pat, segs []string) bool {
-	for len(pat) > 0 {
-		if pat[0] == "**" {
-			for len(pat) > 1 && pat[1] == "**" {
-				pat = pat[1:]
+	width := len(segs) + 1
+	known := make([]int8, (len(pat)+1)*width) // 0 not asked yet, 1 matches, 2 does not
+	var rest func(i, j int) bool              // pat[i:] against segs[j:]
+	rest = func(i, j int) bool {
+		at := i*width + j
+		if known[at] != 0 {
+			return known[at] == 1
+		}
+		ok := false
+		switch {
+		case i == len(pat):
+			ok = j == len(segs)
+		case pat[i] == "**":
+			k := i
+			for k+1 < len(pat) && pat[k+1] == "**" {
+				k++
 			}
-			if len(pat) == 1 {
-				return len(segs) > 0 // "dir/**" needs something below dir
-			}
-			for i := 0; i <= len(segs); i++ {
-				if matchSegs(pat[1:], segs[i:]) {
-					return true
+			if k == len(pat)-1 {
+				ok = j < len(segs) // "dir/**" needs something below dir
+			} else {
+				for from := j; from <= len(segs) && !ok; from++ {
+					ok = rest(k+1, from)
 				}
 			}
-			return false
+		case j < len(segs):
+			if m, err := path.Match(pat[i], segs[j]); err == nil && m {
+				ok = rest(i+1, j+1)
+			}
 		}
-		if len(segs) == 0 {
-			return false
+		if ok {
+			known[at] = 1
+		} else {
+			known[at] = 2
 		}
-		if m, err := path.Match(pat[0], segs[0]); err != nil || !m {
-			return false
-		}
-		pat, segs = pat[1:], segs[1:]
+		return ok
 	}
-	return len(segs) == 0
+	return rest(0, 0)
 }
 
 // AnchorDir returns the static directory a glob is rooted in ("src/api/**" -> "src/api", "migrations/**/*.sql" -> "migrations"),

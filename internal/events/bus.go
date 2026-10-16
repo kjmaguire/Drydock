@@ -74,7 +74,9 @@ func matchType(pattern, typ string) bool {
 
 // Bus is the event bus contract (brief section 19).
 type Bus interface {
-	// Publish persists e, assigns its sequence number, then fans out. It returns after the event is durable.
+	// Publish persists e, assigns its sequence number, then fans out. It returns after the event is committed: it survives the
+	// app ending or crashing. The database runs in WAL mode with synchronous=NORMAL (storage), so a power cut or an operating
+	// system crash can lose the last moments but never corrupts the file (audit 2026-10-16, L21).
 	Publish(ctx context.Context, e Event) (uint64, error)
 	// Subscribe returns a channel of live events matching f. If the subscriber falls behind its buffer the
 	// channel is closed (without the cancel func being called): the subscriber must Replay from its last seq and

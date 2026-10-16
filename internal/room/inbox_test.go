@@ -333,3 +333,30 @@ func TestAgentMessagesNeverTouchApprovals(t *testing.T) {
 		t.Fatalf("%v %+v", err, rm)
 	}
 }
+
+// A room with a long unread backlog is counted up to a cap, not message by message at every refresh (audit 2026-10-16, L18): the
+// count stops at UnreadCap, and mentions are still found among messages that have none.
+func TestAnUnreadBacklogIsCountedOnlyUpToTheCap(t *testing.T) {
+	e := newEnv(t)
+	r := e.channel("backlog")
+	sam := Human("sam")
+	e.join(r, sam, "")
+	for i := 0; i < UnreadCap+50; i++ {
+		switch i {
+		case 3, 700, UnreadCap + 40:
+			e.say(r, kyle, "ping @sam")
+		default:
+			e.say(r, kyle, "chatter")
+		}
+	}
+	us, err := e.svc.UnreadCounts(e.ctx, sam, e.project)
+	if err != nil || len(us) != 1 {
+		t.Fatalf("%v %+v", err, us)
+	}
+	if us[0].Unread != UnreadCap {
+		t.Fatalf("unread %d, want the cap %d", us[0].Unread, UnreadCap)
+	}
+	if us[0].Mentions != 3 {
+		t.Fatalf("mentions %d, want the 3 messages that mention sam", us[0].Mentions)
+	}
+}

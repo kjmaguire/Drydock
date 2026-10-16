@@ -186,16 +186,22 @@ func (c *Core) TaskDiffFile(ctx context.Context, id, path string, live, force bo
 	if f.OldPath != "" {
 		oldPath = f.OldPath
 	}
-	original, okO, errO := "", false, error(nil)
-	if f.Status != "added" {
-		original, okO, errO = src.repo.ShowFile(ctx, src.base, oldPath)
+	// How large each side is is asked before either is read (audit 2026-10-16, L22): a file of hundreds of megabytes was read into
+	// memory whole only to be told it is too large to show. Only the sides that may be shown are read.
+	limit := int64(diffViewLimit)
+	if force {
+		limit = diffViewHardLimit
 	}
-	modified, okM, errM := "", false, error(nil)
+	var sizeO, sizeM int64
+	okO, okM, errO, errM := false, false, error(nil), error(nil)
+	if f.Status != "added" {
+		sizeO, okO, errO = src.repo.BlobSize(ctx, src.base, oldPath)
+	}
 	if f.Status != "deleted" {
 		if src.kind == "live" {
-			modified, okM, errM = readInside(src.worktree, f.Path)
+			sizeM, okM, errM = sizeInside(src.worktree, f.Path)
 		} else {
-			modified, okM, errM = src.repo.ShowFile(ctx, src.head, f.Path)
+			sizeM, okM, errM = src.repo.BlobSize(ctx, src.head, f.Path)
 		}
 	}
 	gone := errors.Is(errO, git.ErrUnknownRevision) || errors.Is(errM, git.ErrUnknownRevision) ||
@@ -212,25 +218,74 @@ func (c *Core) TaskDiffFile(ctx context.Context, id, path string, live, force bo
 	if errM != nil {
 		return DiffFileContent{}, errM
 	}
-	out.Size = max(len(original), len(modified))
-	if strings.ContainsRune(original, 0) || strings.ContainsRune(modified, 0) {
-		out.Binary = true
+	out.Size = int(max(sizeO, sizeM))
+	if int64(out.Size) > limit {
+		out.TooLarge = true
 		return out, nil
 	}
-	if out.Size > diffViewHardLimit || (out.Size > diffViewLimit && !force) {
-		out.TooLarge = true
+	var original, modified string
+	if f.Status != "added" {
+		if original, _, errO = src.repo.ShowFileMax(ctx, src.base, oldPath, limit); errO != nil {
+			return DiffFileContent{}, errO
+		}
+	}
+	if f.Status != "deleted" {
+		if src.kind == "live" {
+			modified, _, errM = readInside(src.worktree, f.Path)
+		} else {
+			modified, _, errM = src.repo.ShowFileMax(ctx, src.head, f.Path, limit)
+		}
+		if errM != nil {
+			return DiffFileContent{}, errM
+		}
+	}
+	if strings.ContainsRune(original, 0) || strings.ContainsRune(modified, 0) {
+		out.Binary = true
 		return out, nil
 	}
 	out.Original, out.Modified = original, modified
 	return out, nil
 }
 
-// readInside reads rel from a worktree, refusing anything that resolves outside it (.., an absolute path, a symlink).
-func readInside(root, rel string) (string, bool, error) {
+// insidePath is the full path of rel in a worktree, or an error when it is not a path inside it (.., an absolute path).
+func insidePath(root, rel string) (string, error) {
 	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(filepath.Clean(rel), "..") {
-		return "", false, fmt.Errorf("%s is not a path inside the worktree", rel)
+		return "", fmt.Errorf("%s is not a path inside the worktree", rel)
 	}
-	full := filepath.Join(root, filepath.FromSlash(rel))
+	return filepath.Join(root, filepath.FromSlash(rel)), nil
+}
+
+// sizeInside is the size of rel in a worktree without reading it; a symbolic link is as large as the text readInside shows for it.
+// ok is false when there is no such file.
+func sizeInside(root, rel string) (size int64, ok bool, err error) {
+	full, err := insidePath(root, rel)
+	if err != nil {
+		return 0, false, err
+	}
+	st, err := os.Lstat(full)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		target, _ := os.Readlink(full)
+		return int64(len("symlink to " + target + "\n")), true, nil
+	}
+	if !st.Mode().IsRegular() {
+		return 0, false, fmt.Errorf("%s is not a regular file", rel)
+	}
+	return st.Size(), true, nil
+}
+
+// readInside reads rel from a worktree, refusing anything that resolves outside it (.., an absolute path, a symlink). The caller
+// has asked sizeInside and read only what it may show; a file that has grown since is refused here as well.
+func readInside(root, rel string) (string, bool, error) {
+	full, err := insidePath(root, rel)
+	if err != nil {
+		return "", false, err
+	}
 	st, err := os.Lstat(full)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", false, nil
@@ -246,7 +301,7 @@ func readInside(root, rel string) (string, bool, error) {
 		return "", false, fmt.Errorf("%s is not a regular file", rel)
 	}
 	if st.Size() > diffViewHardLimit {
-		return strings.Repeat(" ", diffViewHardLimit+1), true, nil // reported as too large without reading it
+		return "", true, fmt.Errorf("%s has grown past what the viewer shows", rel)
 	}
 	b, err := os.ReadFile(full)
 	return string(b), true, err

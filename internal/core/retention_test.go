@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/runfiles"
+	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
 // Agent output older than the retention period is deleted; newer output and every other event stay.
@@ -162,4 +163,94 @@ func TestTheRetentionPassPurgesOldTelemetry(t *testing.T) {
 			t.Fatalf("%s holds %d rows after the pass, want only the fresh one: %v", table, n, err)
 		}
 	}
+}
+
+// The deletion of an old run's folder leaves the files in its evidence folder that a task's evidence still names (audit
+// 2026-10-16, L23): the task's page shows the recorded diff for as long as the task exists, and the folder's deletion took it from
+// under its row. Everything else in the folder goes (the raw output is what retention is for, check logs included), and a folder
+// with nothing to keep goes whole.
+func TestRetentionKeepsTheFilesATasksEvidenceStillNames(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	c, err := Open(ctx, Config{DataDir: dir, User: "kyle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	now := time.Now()
+	day := 24 * time.Hour
+	p, err := c.CreateProject(ctx, "kept", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := c.Tasks.Create(ctx, tasks.CreateReq{ProjectID: p.ID, Title: "Work with evidence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mkRun := func(id string, files map[string]string) {
+		at := now.Add(-100 * day).UnixMilli()
+		if _, err := c.DB.Writer().ExecContext(ctx, `INSERT INTO workflow_runs(id,workflow,status,topology_hash,latest_checkpoint_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+			id, "loop", "COMPLETED", "h", "", at, at); err != nil {
+			t.Fatal(err)
+		}
+		for rel, text := range files {
+			p := filepath.Join(dir, "runs", id, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	path := func(id, rel string) string { return filepath.Join(dir, "runs", id, filepath.FromSlash(rel)) }
+	exists := func(id, rel string) bool { _, err := os.Stat(path(id, rel)); return err == nil }
+	mkRun("run_withevidence", map[string]string{"evidence/task.diff": "the patch\n", "evidence/scratch.txt": "not named by any row\n",
+		"checks/test.log": "ok gocalc\n", "checks/old.log": "not named\n", "node/1-1/stream.jsonl": strings.Repeat("x", 4096)})
+	if err := os.MkdirAll(path("run_withevidence", "empty/dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mkRun("run_unreferenced", map[string]string{"evidence/task.diff": "a patch nobody names\n", "node/1-1/stream.jsonl": "x"})
+	// an evidence file already compacted to .gz is the same file
+	mkRun("run_compacted", map[string]string{"evidence/summary.txt.gz": "pretend gzip", "evidence/other.txt": "x"})
+	for _, ev := range []tasks.Evidence{
+		{Kind: "diff", Ref: path("run_withevidence", "evidence/task.diff")},
+		{Kind: "test", Ref: path("run_withevidence", "checks/test.log")}, // raw output: retention is for these, they go
+		{Kind: "check", Ref: path("run_compacted", "evidence/summary.txt")},
+		{Kind: "commit", Ref: "0123456789abcdef0123456789abcdef01234567"}, // not a path
+	} {
+		if _, err := c.Tasks.AddEvidence(ctx, task.ID, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rep, err := c.RunRetention(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.RunsDeleted != 3 {
+		t.Fatalf("report %+v", rep)
+	}
+	for _, f := range []struct {
+		run, rel string
+		want     bool
+	}{
+		{"run_withevidence", "evidence/task.diff", true}, {"run_withevidence", "checks/test.log", false},
+		{"run_withevidence", "evidence/scratch.txt", false}, {"run_withevidence", "checks/old.log", false},
+		{"run_withevidence", "node", false}, {"run_withevidence", "empty", false},
+		{"run_unreferenced", "", false},
+		{"run_compacted", "evidence/summary.txt.gz", true}, {"run_compacted", "evidence/other.txt", false},
+	} {
+		if got := exists(f.run, f.rel); got != f.want {
+			t.Errorf("%s/%s exists %v, want %v", f.run, f.rel, got, f.want)
+		}
+	}
+	if b, err := os.ReadFile(path("run_withevidence", "evidence/task.diff")); err != nil || string(b) != "the patch\n" {
+		t.Fatalf("the kept diff: %q %v", b, err)
+	}
+	// the next pass has nothing left to do for them
+	if rep, err := c.RunRetention(ctx, now.Add(time.Hour)); err != nil || rep.BytesDeleted != 0 {
+		t.Fatalf("second pass %+v %v", rep, err)
+	}
+	// deleting the task takes its evidence rows; the files are the project's to remove when the project goes (project_delete)
 }

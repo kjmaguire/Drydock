@@ -396,53 +396,73 @@ func (s *Service) export(ctx context.Context, roomID string, kind ExportKind, r 
 	if r.By.Kind == AuthorAgent || r.By.Kind == AuthorTool {
 		return Export{}, false, fmt.Errorf("%w: exports are requested by a human, a rule or the system", ErrForbidden)
 	}
-	var out Export
+	// What the export is made from is read, rendered and scanned for secrets outside the write transaction (audit 2026-10-16, L18):
+	// the database has one writer, and the whole room's messages, their rendering and the secret scan used to hold it, so every
+	// other write in the app waited for them. The transaction below only checks the receipt again and inserts.
+	room, err := getRoom(ctx, s.db.Reader(), roomID)
+	if err != nil {
+		return Export{}, false, err
+	}
+	project := room.ProjectID
+	byReceipt := func(q querier) (Export, bool, error) {
+		ex, err := scanExport(q.QueryRowContext(ctx, `SELECT `+exportCols+` FROM room_exports WHERE scope=? AND receipt_id=?`, r.Scope, r.ReceiptID))
+		if errors.Is(err, sql.ErrNoRows) {
+			return Export{}, false, nil
+		}
+		if err != nil {
+			return Export{}, false, err
+		}
+		if ex.RoomID != roomID || ex.Kind != kind {
+			return Export{}, false, fmt.Errorf("%w: %s/%s", ErrReceiptClash, r.Scope, r.ReceiptID)
+		}
+		return ex, true, nil
+	}
+	if ex, found, err := byReceipt(s.db.Reader()); err != nil || found {
+		return ex, false, err // the same receipt again: the export it made
+	}
+	to := r.ToSeq
+	if to <= 0 {
+		if err := s.db.Reader().QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM messages WHERE room_id=?`, roomID).Scan(&to); err != nil {
+			return Export{}, false, err
+		}
+	}
+	from := r.FromSeq
+	if from <= 0 {
+		from = 1
+	}
+	var span int64
+	if err := s.db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE room_id=? AND seq>=? AND seq<=?`, roomID, from, to).Scan(&span); err != nil {
+		return Export{}, false, err
+	}
+	if span > s.opt.MaxExportMessages {
+		return Export{}, false, fmt.Errorf("%w: the range holds %d messages and an export takes at most %d; export a smaller range", ErrInvalid, span, s.opt.MaxExportMessages)
+	}
+	msgs, err := queryMessages(ctx, s.db.Reader(), `room_id=? AND seq>=? AND seq<=? ORDER BY seq`, roomID, from, to)
+	if err != nil {
+		return Export{}, false, err
+	}
+	p := exportParams{Summary: r.Summary, Title: r.Title, RoomName: room.Name, RoomKind: room.Kind, TaskID: room.TaskID}
+	content, format := render(kind, p, from, to, msgs)
+	if s.opt.Redact != nil {
+		if content, err = s.opt.Redact(content); err != nil {
+			return Export{}, false, fmt.Errorf("%w: %v", ErrBlocked, err)
+		}
+	}
+	sum := sha256.Sum256([]byte(content))
+	pj, _ := json.Marshal(p)
+	out := Export{ID: ids.New("exp"), RoomID: roomID, Scope: r.Scope, ReceiptID: r.ReceiptID, Kind: kind, Format: format, FromSeq: from, ToSeq: to,
+		Params: pj, Content: content, SHA256: hex.EncodeToString(sum[:]), CreatedBy: r.By.Key(), CreatedAt: fromMs(s.nowMs())}
 	var created bool
-	var project string
-	err := s.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		out, created = Export{}, false
-		room, err := getRoom(ctx, tx, roomID)
-		if err != nil {
+	err = s.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		created = false
+		// a request with the same receipt may have made the export while this one was being rendered: its export stands
+		if ex, found, err := byReceipt(tx); err != nil || found {
+			if found {
+				out = ex
+			}
 			return err
 		}
-		project = room.ProjectID
-		ex, err := scanExport(tx.QueryRowContext(ctx, `SELECT `+exportCols+` FROM room_exports WHERE scope=? AND receipt_id=?`, r.Scope, r.ReceiptID))
-		if err == nil {
-			if ex.RoomID != roomID || ex.Kind != kind {
-				return fmt.Errorf("%w: %s/%s", ErrReceiptClash, r.Scope, r.ReceiptID)
-			}
-			out = ex
-			return nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		to := r.ToSeq
-		if to <= 0 {
-			if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM messages WHERE room_id=?`, roomID).Scan(&to); err != nil {
-				return err
-			}
-		}
-		from := r.FromSeq
-		if from <= 0 {
-			from = 1
-		}
-		msgs, err := queryMessages(ctx, tx, `room_id=? AND seq>=? AND seq<=? ORDER BY seq`, roomID, from, to)
-		if err != nil {
-			return err
-		}
-		p := exportParams{Summary: r.Summary, Title: r.Title, RoomName: room.Name, RoomKind: room.Kind, TaskID: room.TaskID}
-		content, format := render(kind, p, from, to, msgs)
-		if s.opt.Redact != nil {
-			if content, err = s.opt.Redact(content); err != nil {
-				return fmt.Errorf("%w: %v", ErrBlocked, err)
-			}
-		}
-		sum := sha256.Sum256([]byte(content))
-		pj, _ := json.Marshal(p)
-		out = Export{ID: ids.New("exp"), RoomID: roomID, Scope: r.Scope, ReceiptID: r.ReceiptID, Kind: kind, Format: format, FromSeq: from, ToSeq: to,
-			Params: pj, Content: content, SHA256: hex.EncodeToString(sum[:]), CreatedBy: r.By.Key(), CreatedAt: fromMs(s.nowMs())}
-		_, err = tx.ExecContext(ctx, `INSERT INTO room_exports(id,room_id,scope,receipt_id,kind,format,from_seq,to_seq,params,content,sha256,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		_, err := tx.ExecContext(ctx, `INSERT INTO room_exports(id,room_id,scope,receipt_id,kind,format,from_seq,to_seq,params,content,sha256,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			out.ID, roomID, out.Scope, out.ReceiptID, string(kind), format, from, to, string(pj), content, out.SHA256, out.CreatedBy, out.CreatedAt.UnixMilli())
 		created = err == nil
 		return err

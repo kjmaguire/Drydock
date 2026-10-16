@@ -128,3 +128,22 @@ func TestStartRunsClaudeWithTheQuietEnvironment(t *testing.T) {
 		t.Errorf("argv: %s", args)
 	}
 }
+
+// A read-only session is denied every tool that runs a command, whichever shell the CLI offers (audit 2026-10-16, L28): on Windows
+// Claude Code has PowerShell next to Bash, and where there is no Git Bash it is the only one.
+func TestAReadOnlySessionIsDeniedBothShells(t *testing.T) {
+	args := New().Args(agents.RunSpec{ReadOnly: true})
+	i := slices.Index(args, "--disallowedTools")
+	if i < 0 {
+		t.Fatalf("no deny list: %v", args)
+	}
+	denied := strings.Split(args[i+1], ",")
+	for _, tool := range []string{"Bash", "PowerShell", "Edit", "Write", "MultiEdit", "NotebookEdit"} {
+		if !slices.Contains(denied, tool) {
+			t.Errorf("a read-only session may use %s: %v", tool, denied)
+		}
+	}
+	if w := New().Args(agents.RunSpec{}); slices.Contains(strings.Split(w[slices.Index(w, "--disallowedTools")+1], ","), "PowerShell") {
+		t.Error("a worker session is denied PowerShell")
+	}
+}

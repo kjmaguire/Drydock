@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -176,6 +177,10 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 		return out, err
 	}
 	decisions := c.runDecisions(ctx, runID)
+	// the manifests of the run and the usage of the task are read once, not once per execution (audit 2026-10-16, L18): a run of
+	// hundreds of turns asked the database twice for each
+	manifests := c.runManifests(ctx, runID)
+	usage := c.taskUsage(ctx, taskID)
 	for _, x := range execs {
 		v := ExecView{NodeID: string(x.NodeID), Kind: kinds[string(x.NodeID)], Step: x.Step, Attempt: x.Attempt, Status: x.Status, Error: x.Error,
 			Started: x.Started, Finished: x.Finished, SafePoint: x.SafePoint}
@@ -189,13 +194,9 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 				v.HasPrompt = true
 			}
 		}
-		var items string
-		var agentID string
-		var total int
-		if err := c.DB.Reader().QueryRowContext(ctx, `SELECT items, agent_id, total_bytes FROM context_manifests WHERE run_id=? AND node_id=? AND attempt=?`,
-			runID, string(x.NodeID), x.Attempt).Scan(&items, &agentID, &total); err == nil {
-			_ = json.Unmarshal([]byte(items), &v.Manifest)
-			v.AgentID, v.Included = agentID, total
+		if m, ok := manifests[manifestKey{string(x.NodeID), x.Attempt}]; ok {
+			_ = json.Unmarshal([]byte(m.items), &v.Manifest)
+			v.AgentID, v.Included = m.agentID, m.total
 		}
 		// a node runs at several steps with the same attempt number: the decision is the one made while this execution ran
 		for i := range decisions {
@@ -205,7 +206,7 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 			}
 		}
 		if x.Started > 0 && (kinds == nil || kinds[string(x.NodeID)] == string(workflow.KindAgentTask) || v.AgentID != "") {
-			v.Usage = c.usageBetween(ctx, taskID, x.Started, x.Finished)
+			v.Usage = usageBetween(usage, x.Started, x.Finished)
 		}
 		out.Executions = append(out.Executions, v)
 	}
@@ -244,10 +245,13 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 		case "mcp.call", "mcp.denied", "mcp.egress_blocked", "mcp.secret_redacted", "mcp.auth_failed":
 			m := e
 			m.Data = data
-			out.MCPCalls = append([]EventView{m}, out.MCPCalls...)
+			out.MCPCalls = append(out.MCPCalls, m)
 		}
-		out.Events = append([]EventView{e}, out.Events...)
+		out.Events = append(out.Events, e)
 	}
+	// read newest first so the limit keeps the newest; shown oldest first
+	slices.Reverse(out.Events)
+	slices.Reverse(out.MCPCalls)
 	return out, evRows.Err()
 }
 
@@ -286,13 +290,13 @@ func (c *Core) runDecisions(ctx context.Context, runID string) []timedDecision {
 	return out
 }
 
-// usageBetween is the task's usage recorded while a node execution ran (finished 0: still running).
-func (c *Core) usageBetween(ctx context.Context, taskID string, from, to int64) []UsageRow {
-	if to == 0 {
-		to = 1<<62 - 1
-	}
+// explainUsageLimit is the most usage rows of one task an explanation reads.
+const explainUsageLimit = 20000
+
+// taskUsage is the task's usage rows, oldest first (at most explainUsageLimit).
+func (c *Core) taskUsage(ctx context.Context, taskID string) []UsageRow {
 	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT ts,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source,cache_hit
-		FROM model_usage WHERE task_id=? AND ts>=? AND ts<=? ORDER BY id`, taskID, from, to)
+		FROM model_usage WHERE task_id=? ORDER BY id LIMIT ?`, taskID, explainUsageLimit)
 	if err != nil {
 		return nil
 	}
@@ -306,6 +310,50 @@ func (c *Core) usageBetween(ctx context.Context, taskID string, from, to int64) 
 		}
 		u.CacheHit = hit != 0
 		out = append(out, u)
+	}
+	return out
+}
+
+// usageBetween is the part of a task's usage recorded while a node execution ran (finished 0: still running), in the order it
+// was recorded.
+func usageBetween(all []UsageRow, from, to int64) []UsageRow {
+	if to == 0 {
+		to = 1<<62 - 1
+	}
+	var out []UsageRow
+	for _, u := range all {
+		if u.TS >= from && u.TS <= to {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+type manifestKey struct {
+	node    string
+	attempt int
+}
+
+type manifestRow struct {
+	items, agentID string
+	total          int
+}
+
+// runManifests is the context manifests of a run by node and attempt (the primary key of the table).
+func (c *Core) runManifests(ctx context.Context, runID string) map[manifestKey]manifestRow {
+	out := map[manifestKey]manifestRow{}
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT node_id, attempt, items, agent_id, total_bytes FROM context_manifests WHERE run_id=?`, runID)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k manifestKey
+		var m manifestRow
+		if err := rows.Scan(&k.node, &k.attempt, &m.items, &m.agentID, &m.total); err != nil {
+			return out
+		}
+		out[k] = m
 	}
 	return out
 }

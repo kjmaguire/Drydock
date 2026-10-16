@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/ids"
@@ -30,17 +31,25 @@ var (
 )
 
 const (
-	maxManifest   = 8 << 20
-	maxEntries    = 200000
-	maxTotalBytes = 8 << 30
+	maxManifest = 8 << 20
+	// The caps on what an archive may hold (audit 2026-10-16, L20). They are what a real project's export stays well under:
+	// the writer is one connection, and the rows of project.db go in through it in one transaction.
+	maxEntries    = 100000
+	maxTotalBytes = 4 << 30
 	// maxDBBytes bounds project.db, which is copied to a staging folder whole.
-	maxDBBytes = 2 << 30
+	maxDBBytes = 1 << 30
 	// maxFileBytes bounds any other file of the archive (a run's raw output).
-	maxFileBytes = 1 << 30
+	maxFileBytes = 512 << 20
 	// maxRatio is the most a file of more than 64 MiB may expand to, per byte stored: text logs and databases compress ten- to
 	// fiftyfold; a file that expands further is a compression bomb.
 	maxRatio = 200
 )
+
+// importWriteBudget is the longest the import may hold the database's one writer. The rows go in in one transaction on purpose:
+// an imported project exists whole, with everything held back that has to be, or not at all, and nothing else in the app sees
+// it half made. While it runs no other write waits less, so an archive that takes longer than this to write is refused and
+// rolled back instead of freezing the app (a variable so a test can shorten it).
+var importWriteBudget = 3 * time.Minute
 
 // Preview is what the human sees before importing; it is computed without touching the live database.
 type Preview struct {
@@ -172,7 +181,9 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 	}
 	im.NewProject, im.RunDirs = newProject, restored.dirs
 	counts := map[string]int{}
-	err = t.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	wctx, stop := context.WithTimeout(ctx, importWriteBudget)
+	defer stop()
+	err = t.DB.WriteTx(wctx, func(tx *sql.Tx) error {
 		im.Stats = Stats{}
 		for k := range counts {
 			delete(counts, k)
@@ -234,6 +245,9 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 	if err != nil {
 		for _, d := range restored.dirs {
 			_ = os.RemoveAll(d)
+		}
+		if errors.Is(wctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+			return ImportResult{}, fmt.Errorf("projectio: writing the archive took longer than %s, so nothing was imported: %w", importWriteBudget, err)
 		}
 		return ImportResult{}, err
 	}

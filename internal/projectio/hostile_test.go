@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -237,5 +238,37 @@ func TestACompressionBombAndAnOversizedDatabaseAreRefusedBeforeAnythingIsUnpacke
 	})
 	if _, err := Inspect(context.Background(), bomb); err == nil || !strings.Contains(err.Error(), "expands far more") {
 		t.Fatalf("a compression bomb: %v", err)
+	}
+}
+
+// An import holds the database's one writer for a bounded time (audit 2026-10-16, L20): an archive that takes longer to write
+// than the budget is refused and rolled back whole, with the raw run files it had restored, instead of freezing every other
+// write in the app.
+func TestAnImportThatTakesTooLongToWriteIsRolledBackWhole(t *testing.T) {
+	src, _ := newSource(t)
+	archive := exportAlpha(t, src, true)
+	defer func(old time.Duration) { importWriteBudget = old }(importWriteBudget)
+	importWriteBudget = time.Nanosecond
+
+	db := newDB(t)
+	dataDir := filepath.Join(t.TempDir(), "newdata")
+	_, err := Import(context.Background(), Target{DB: db, DataDir: dataDir, Human: "human:newuser"},
+		ImportOptions{Archive: archive, RepoPath: "/repos/relinked", Branch: "trunk", Now: 1770000000000})
+	if err == nil || !strings.Contains(err.Error(), "took longer than") || !strings.Contains(err.Error(), "nothing was imported") {
+		t.Fatalf("an import over its budget: %v", err)
+	}
+	for _, table := range []string{"projects", "tasks", "messages", "workflow_runs"} {
+		if n := count(t, db, `SELECT COUNT(*) FROM `+table); n != 0 {
+			t.Errorf("%s has %d rows after a refused import", table, n)
+		}
+	}
+	if ents, _ := os.ReadDir(filepath.Join(dataDir, "runs")); len(ents) != 0 {
+		t.Errorf("raw run files were left behind: %v", ents)
+	}
+	// with the real budget the same archive imports
+	importWriteBudget = 3 * time.Minute
+	if _, err := Import(context.Background(), Target{DB: db, DataDir: dataDir, Human: "human:newuser"},
+		ImportOptions{Archive: archive, RepoPath: "/repos/relinked", Branch: "trunk", Now: 1770000000000}); err != nil {
+		t.Fatalf("the same archive with the real budget: %v", err)
 	}
 }

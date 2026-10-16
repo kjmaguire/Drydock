@@ -3,6 +3,7 @@ package evals
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 
 	"github.com/kjmaguire/drydock/internal/budget"
@@ -18,7 +19,14 @@ type Options struct {
 	// MinN is the smallest number of accepted tasks for which per-task averages are printed for a breakdown (default 5,
 	// docs/evals.md s3.8). Below it the totals and the raw per-task rows are all that is shown.
 	MinN int `json:"minN,omitempty"`
+	// MaxCohort is the most tasks one report reads (default DefaultMaxCohort), the newest of the period: a task's facts take
+	// about ten reads of the database, and a report of every task there ever was held a connection for minutes (audit
+	// 2026-10-16, L18). A report that left tasks out says so in NotMeasured.
+	MaxCohort int `json:"maxCohort,omitempty"`
 }
+
+// DefaultMaxCohort is Options.MaxCohort when it is not set.
+const DefaultMaxCohort = 2000
 
 // Ratio is a count over a denominator. Rate is nil when the denominator is zero: a missing measurement is never printed as 0.
 type Ratio struct {
@@ -228,6 +236,9 @@ func Build(ctx context.Context, db *storage.DB, o Options) (Report, error) {
 	if o.MinN <= 0 {
 		o.MinN = 5
 	}
+	if o.MaxCohort <= 0 {
+		o.MaxCohort = DefaultMaxCohort
+	}
 	until := o.UntilMS
 	if until <= 0 {
 		until = storage.Now() + 1
@@ -251,6 +262,10 @@ func Build(ctx context.Context, db *storage.DB, o Options) (Report, error) {
 		ids = append(ids, id)
 	}
 	rows.Close()
+	cohortSize := len(ids)
+	if len(ids) > o.MaxCohort {
+		ids = ids[len(ids)-o.MaxCohort:] // the newest: the tasks are listed oldest first
+	}
 	var facts []TaskFacts
 	for _, id := range ids {
 		f, err := Facts(ctx, db, id)
@@ -284,6 +299,9 @@ func Build(ctx context.Context, db *storage.DB, o Options) (Report, error) {
 		"Cost per accepted task of the naive broadcast baseline arms B0 and B1 (docs/evals.md s5): the baseline harness is not built, so no comparison or saving is stated.",
 		"Duplicate effects, orphan processes and UI catch-up misses (docs/evals.md s3.6): measured by the engine acceptance tests and Windows checks, not recoverable from the database.",
 		"Review verdicts that failed to parse: the pipeline stores an unparseable answer as REVISE, so 'invalid' cannot be told apart in task_reviews.",
+	}
+	if cohortSize > len(ids) {
+		rep.NotMeasured = append(rep.NotMeasured, fmt.Sprintf("The %d oldest of the %d tasks in this period are not in the report: it reads the newest %d. Narrow the period or the project to see the others.", cohortSize-len(ids), cohortSize, len(ids)))
 	}
 	return rep, nil
 }

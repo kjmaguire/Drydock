@@ -22,7 +22,13 @@ type Options struct {
 	OnError func(error)
 	// Now overrides the clock (tests).
 	Now func() time.Time
+	// MaxExportMessages is the most messages one export is made from (default DefaultMaxExportMessages): the whole range is read
+	// and rendered in memory.
+	MaxExportMessages int64
 }
+
+// DefaultMaxExportMessages is Options.MaxExportMessages when it is not set.
+const DefaultMaxExportMessages = 20000
 
 // Service is the Engineering Room over SQLite and the event bus. It is safe for concurrent use: all writes go through
 // the storage single writer, and events are published only after the write transaction commits (the bus shares that
@@ -37,6 +43,9 @@ type Service struct {
 func New(db *storage.DB, bus events.Bus, opt Options) *Service {
 	if opt.Now == nil {
 		opt.Now = time.Now
+	}
+	if opt.MaxExportMessages <= 0 {
+		opt.MaxExportMessages = DefaultMaxExportMessages
 	}
 	return &Service{db: db, bus: bus, opt: opt}
 }

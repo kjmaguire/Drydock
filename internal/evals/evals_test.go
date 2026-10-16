@@ -489,3 +489,33 @@ func TestRoomRepliesStayOutOfTheRoutingReport(t *testing.T) {
 		t.Fatalf("routing with replies: %+v", rt)
 	}
 }
+
+// A report reads a bounded number of tasks, the newest, and says what it left out (audit 2026-10-16, L18): a task's facts take
+// about ten reads of the database, and a report of every task there ever was held a connection for minutes.
+func TestAReportReadsOnlyTheNewestTasksAndSaysWhatItLeftOut(t *testing.T) {
+	w := newWorld(t)
+	w.seed() // five tasks
+	rep, err := evals.Build(w.ctx, w.db, evals.Options{MaxCohort: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Rows) != 3 || rep.Rows[0].ID != "T3" || rep.Rows[1].ID != "T4" || rep.Rows[2].ID != "T5" {
+		t.Fatalf("%d rows %+v, want the 3 newest (T3 T4 T5)", len(rep.Rows), rep.Rows)
+	}
+	said := false
+	for _, n := range rep.NotMeasured {
+		said = said || (strings.Contains(n, "2 oldest of the 5 tasks") && strings.Contains(n, "newest 3"))
+	}
+	if !said {
+		t.Fatalf("the report does not say it left tasks out: %v", rep.NotMeasured)
+	}
+	all, err := evals.Build(w.ctx, w.db, evals.Options{})
+	if err != nil || len(all.Rows) != 5 {
+		t.Fatalf("the default reads all five: %d rows, %v", len(all.Rows), err)
+	}
+	for _, n := range all.NotMeasured {
+		if strings.Contains(n, "oldest of the") {
+			t.Fatalf("a complete report says it left tasks out: %q", n)
+		}
+	}
+}

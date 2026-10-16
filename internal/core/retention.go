@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/runfiles"
@@ -18,7 +19,7 @@ import (
 // durable copy is the run's stream file). The raw output and checkpoints of a run that ended (completed, failed or cancelled)
 // are compacted after rawCompactAfter (every checkpoint but the run's latest is deleted; streams, logs and saved prompts are
 // gzip-compressed in place, and runfiles reads either form) and deleted after rawDeleteAfter (all of the run's checkpoints and
-// its folder under <data>/runs). The run's row, its node executions, events, usage and evidence rows stay. Compaction and
+// its folder under <data>/runs, except the files a task's evidence still names). The run's row, its node executions, events, usage and evidence rows stay. Compaction and
 // deletion do nothing while the license is read-only (decision P13).
 const (
 	agentOutputRetention = 30 * 24 * time.Hour
@@ -228,11 +229,12 @@ func (c *Core) deleteRuns(ctx context.Context, cutoff int64, rep *RetentionRepor
 		did := n > 0
 		if dir := c.runDir(r.id); dir != "" {
 			if _, err := os.Stat(dir); err == nil {
-				rep.BytesDeleted += dirSize(dir)
-				if err := os.RemoveAll(dir); err != nil {
+				freed, removed, err := c.removeRunFiles(ctx, dir)
+				if err != nil {
 					return fmt.Errorf("delete %s: %w", r.id, err)
 				}
-				did = true
+				rep.BytesDeleted += freed
+				did = did || removed
 			}
 		}
 		if did {
@@ -242,17 +244,84 @@ func (c *Core) deleteRuns(ctx context.Context, cutoff int64, rep *RetentionRepor
 	return nil
 }
 
-func dirSize(dir string) int64 {
-	var n int64
-	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err == nil && d.Type().IsRegular() {
-			if info, err := d.Info(); err == nil {
-				n += info.Size()
+// removeRunFiles deletes what a finished run left in its folder, except the files in its evidence folder that a task's evidence
+// still names (the recorded diff, the accepted spec): the task's page shows them as long as the task exists, and they used to be
+// deleted from under their rows with the rest of the folder (audit 2026-10-16, L23). The raw output (streams, prompts, check
+// logs) is what retention is for and goes. It reports the bytes freed and whether it removed anything; a folder that is left
+// holds nothing but those files.
+func (c *Core) removeRunFiles(ctx context.Context, dir string) (freed int64, removed bool, err error) {
+	keep, err := c.evidenceFilesIn(ctx, dir)
+	if err != nil {
+		return 0, false, err
+	}
+	var walk func(d string) (kept bool, err error)
+	walk = func(d string) (bool, error) {
+		ents, err := os.ReadDir(d)
+		if err != nil {
+			return false, err
+		}
+		kept := false
+		for _, e := range ents {
+			p := filepath.Join(d, e.Name())
+			switch {
+			case e.IsDir():
+				k, err := walk(p)
+				if err != nil {
+					return false, err
+				}
+				if k {
+					kept = true
+					continue
+				}
+				if err := os.Remove(p); err != nil { // empty now
+					return false, err
+				}
+				removed = true
+			case keep[p] || keep[strings.TrimSuffix(p, runfiles.Ext)]:
+				kept = true
+			default:
+				if info, err := e.Info(); err == nil {
+					freed += info.Size()
+				}
+				if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return false, err
+				}
+				removed = true
 			}
 		}
-		return nil
-	})
-	return n
+		return kept, nil
+	}
+	if kept, err := walk(dir); err != nil {
+		return freed, removed, err
+	} else if !kept {
+		if err := os.Remove(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return freed, removed, err
+		}
+		removed = true
+	}
+	return freed, removed, nil
+}
+
+// evidenceFilesIn is the set of files in the evidence folder of a run's folder dir that a task's evidence names (by the path
+// written in the row; a file that was compacted to <name>.gz is the same file).
+func (c *Core) evidenceFilesIn(ctx context.Context, dir string) (map[string]bool, error) {
+	prefix := filepath.Join(filepath.Clean(dir), "evidence") + string(filepath.Separator)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT ref FROM task_evidence WHERE ref<>'' AND instr(ref, ?) > 0`, filepath.Join(filepath.Clean(dir), "evidence"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keep := map[string]bool{}
+	for rows.Next() {
+		var ref string
+		if err := rows.Scan(&ref); err != nil {
+			return nil, err
+		}
+		if ref = filepath.Clean(ref); strings.HasPrefix(ref, prefix) {
+			keep[ref] = true
+		}
+	}
+	return keep, rows.Err()
 }
 
 // purgeTelemetry deletes recorded spans and metrics older than the sink's retention window.

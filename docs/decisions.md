@@ -632,3 +632,15 @@ Open, owner action:
   asks before each tool call can do nothing that needs asking (the approval path in security.md s6 is a design, not built). A pack
   the last run left "refreshing" is failed when the store opens, so it is tried again. **Not verified:** the ACP approval path is
   not built.
+  **Reads, writes and files (L18, L20, L21, L22, L23, L28, L34, L35):** the sidebar's unread counts stop at 1,000 per room and skip
+  messages without mentions; a room export is read, rendered and scanned outside the write transaction and takes at most 20,000
+  messages; a run explanation reads a run's manifests and a task's usage once, and the evals report reads at most the newest 2,000
+  tasks and says what it left out. A project archive is limited to 100,000 entries, 4 GiB, 1 GiB for `project.db` and 512 MiB for
+  any other file, and its rows are written in one transaction that is given three minutes of the one writer (kept atomic on
+  purpose: an imported project exists whole, with everything held back that has to be, or not at all). The database's durability is
+  stated as it is (WAL with `synchronous=NORMAL`: a commit survives the app crashing, a power cut can lose the last moments) and
+  pinned by a test; `FULL` was measured and not chosen. The diff viewer asks git for a file's size before reading it
+  (`Repo.BlobSize`, `ShowFileMax`; a blob over the limit is never read into memory), and retention keeps the files in a run's
+  `evidence/` folder that a task's evidence still names. A read-only Claude session is denied `PowerShell` as well as `Bash`. The
+  skill glob matcher remembers its answers, so many `**` in a glob no longer take exponential time. The Windows runner's start-up
+  sweep deletes only folders named like this app's jobs. **Not verified:** `PowerShell` as a tool name and the sweep run on a PC.

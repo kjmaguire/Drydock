@@ -105,6 +105,9 @@ func dsn(path string, writer bool, extra ...string) string {
 	q := url.Values{}
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "busy_timeout(5000)")
+	// NORMAL in WAL mode: a commit survives the app crashing or being killed, and the file survives anything; a power cut or an
+	// operating system crash can lose the last commits (a decision given in the last seconds). FULL would sync the log at every
+	// commit, which a stream of events cannot afford on a PC's disk (audit 2026-10-16, L21).
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Add("_pragma", "foreign_keys(1)")
 	for _, e := range extra {

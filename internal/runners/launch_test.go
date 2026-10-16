@@ -214,11 +214,20 @@ func TestHostLauncherRunsEachJobInAFreshCopyAndPassesTheConfigurationInTheEnviro
 	if _, err := os.Stat(filepath.Join(cache, "dist", "2.330.0-win-x64", "job-marker")); err == nil {
 		t.Fatal("the job wrote into the shared runner")
 	}
-	// a folder left by an earlier Drydock is swept
+	// a folder left by an earlier Drydock is swept; what was never a job of this app is not, whatever the folder is shared with
+	// (audit 2026-10-16, L35)
 	os.MkdirAll(filepath.Join(root, "jobs", "drydock-pc-windows-old"), 0o755)
+	os.MkdirAll(filepath.Join(root, "jobs", "my-own-project"), 0o755)
+	os.WriteFile(filepath.Join(root, "jobs", "notes.txt"), []byte("mine"), 0o644)
+	os.WriteFile(filepath.Join(root, "jobs", "drydock-pc-windows-file"), []byte("a stray file"), 0o644)
 	h.Sweep(ctx)
-	if ents, _ := os.ReadDir(filepath.Join(root, "jobs")); len(ents) != 0 {
-		t.Fatalf("left: %v", ents)
+	var left []string
+	ents, _ := os.ReadDir(filepath.Join(root, "jobs"))
+	for _, e := range ents {
+		left = append(left, e.Name())
+	}
+	if strings.Join(left, ",") != "my-own-project,notes.txt" {
+		t.Fatalf("left: %v, want only what is not a job of this app", left)
 	}
 	if free, ok := h.Free(); !ok || free == 0 {
 		t.Fatal("the free space where jobs run is not measured")

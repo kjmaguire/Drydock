@@ -21,15 +21,22 @@ type Unread struct {
 	LastRead int64  `json:"lastReadSeq"`
 }
 
-// UnreadCounts returns the unread and mention counts per room for a member, archived rooms excluded. projectID may be "".
+// UnreadCap is the most unread messages (or mentions) counted for one room: a room nobody has opened for a long time would
+// otherwise be counted message by message at every refresh of the sidebar. A count at the cap means "this many or more"
+// (audit 2026-10-16, L18).
+const UnreadCap = 1000
+
+// UnreadCounts returns the unread and mention counts per room for a member, archived rooms excluded. projectID may be "". A
+// count stops at UnreadCap. Messages without mentions are skipped before their mention list is read.
 func (s *Service) UnreadCounts(ctx context.Context, member Author, projectID string) ([]Unread, error) {
 	rows, err := s.db.Reader().QueryContext(ctx, `
 SELECT r.id, r.name, r.kind, m.state, m.last_read_seq,
-  (SELECT COUNT(*) FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_read_seq AND x.author <> m.member_id),
-  (SELECT COUNT(*) FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_mention_read_seq AND x.author <> m.member_id
+  (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_read_seq AND x.author <> m.member_id LIMIT `+fmt.Sprint(UnreadCap)+`)),
+  (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_mention_read_seq AND x.author <> m.member_id
+     AND x.mentions <> '[]'
      AND EXISTS (SELECT 1 FROM json_each(x.mentions) j
                  WHERE json_extract(j.value, '$.id') = m.member_id
-                    OR EXISTS (SELECT 1 FROM json_each(j.value, '$.members') k WHERE k.value = m.member_id)))
+                    OR EXISTS (SELECT 1 FROM json_each(j.value, '$.members') k WHERE k.value = m.member_id)) LIMIT `+fmt.Sprint(UnreadCap)+`))
 FROM room_members m JOIN rooms r ON r.id = m.room_id
 WHERE m.member_id = ? AND r.archived = 0 AND (? = '' OR r.project_id = ?)
 ORDER BY r.kind, r.name`, member.Key(), projectID, projectID)

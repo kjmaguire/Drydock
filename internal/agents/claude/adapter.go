@@ -192,8 +192,10 @@ func (a *Adapter) Detect(ctx context.Context) (agents.Detection, error) {
 	return d, nil
 }
 
-// ReadOnlyDenied are the Claude Code tools a read-only session may never use: everything that writes files or runs commands.
-var ReadOnlyDenied = []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}
+// ReadOnlyDenied are the Claude Code tools a read-only session may never use: everything that writes files or runs commands. On
+// Windows Claude Code offers PowerShell next to Bash (and instead of it where there is no Git Bash), and a session that was not
+// denied it could write and run whatever it liked (audit 2026-10-16, L28); a name the CLI does not have is ignored.
+var ReadOnlyDenied = []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "PowerShell"}
 
 // PluginToolsDenied keeps the tools of MCP servers from the user's installed Claude Code plugins out of a session.
 // --strict-mcp-config keeps the user's and the repository's MCP configuration out but not plugins' servers: measured with

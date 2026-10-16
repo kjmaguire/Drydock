@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -85,5 +86,66 @@ func TestRunExplanationExplainsEveryTurn(t *testing.T) {
 		if _, err := a.c.Call(t.Context(), bad.method, mustJSON(bad.params)); err == nil {
 			t.Errorf("%s %v was answered", bad.method, bad.params)
 		}
+	}
+}
+
+// An explanation of a run with many turns reads the same things as before and attaches to each execution its own manifest and the
+// usage recorded while it ran, in the order it was recorded (audit 2026-10-16, L18: they were asked of the database once per
+// execution). The events are oldest first and the newest are kept when there are too many.
+func TestAnExplanationOfALongRunAttachesEachTurnItsOwnManifestAndUsage(t *testing.T) {
+	a := open(t, "")
+	p, _ := a.setup("gocalc")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "A long run"}, &task)
+	const run = "run_aaaaaaaaaaaa"
+	a.sql(`INSERT INTO workflow_runs(id,workflow,status,topology_hash,task_id,project_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, run, "loop", "COMPLETED", "h", task.ID, p.ID, 1000, 1000)
+	a.sql(`UPDATE tasks SET run_id=? WHERE id=?`, run, task.ID)
+	const turns = 40
+	for i := 0; i < turns; i++ {
+		start := int64(10000 + i*100)
+		a.sql(`INSERT INTO node_executions(run_id,node_id,step,attempt,status,started_at,finished_at) VALUES(?,?,?,?,?,?,?)`, run, "work", i+1, i+1, "done", start, start+50)
+		a.sql(`INSERT INTO context_manifests(run_id,node_id,attempt,task_id,agent_id,items,total_bytes,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			run, "work", i+1, task.ID, fmt.Sprintf("agent_%02d", i), fmt.Sprintf(`[{"source":"memory:item-%d","included":true,"bytes":%d}]`, i, 100+i), 100+i, start)
+		// two usage rows inside this turn, one between turns (belongs to none)
+		a.sql(`INSERT INTO model_usage(ts,task_id,agent_id,provider,model,tier,input_tokens,cost_usd) VALUES(?,?,?,?,?,?,?,?)`, start+10, task.ID, fmt.Sprintf("agent_%02d", i), "anthropic", "m", "cheap", i, 0.01)
+		a.sql(`INSERT INTO model_usage(ts,task_id,agent_id,provider,model,tier,input_tokens,cost_usd) VALUES(?,?,?,?,?,?,?,?)`, start+20, task.ID, fmt.Sprintf("agent_%02d", i), "anthropic", "m", "cheap", i+1000, 0.02)
+		a.sql(`INSERT INTO model_usage(ts,task_id,agent_id,provider,model,tier,input_tokens,cost_usd) VALUES(?,?,?,?,?,?,?,?)`, start+75, task.ID, "between", "anthropic", "m", "cheap", 7, 0.5)
+	}
+	// 305 events of the run: only the newest 300 are listed, oldest first; a few are MCP calls
+	for i := 0; i < 305; i++ {
+		typ := "test.event"
+		if i%100 == 7 {
+			typ = "mcp.call"
+		}
+		a.sql(`INSERT INTO events(ts,type,project_id,run_id,task_id,agent_id,data) VALUES(?,?,?,?,?,?,?)`, int64(20000+i), typ, p.ID, run, task.ID, "", fmt.Sprintf(`{"n":%d}`, i))
+	}
+
+	var x core.RunExplanation
+	a.call("run.explain", map[string]string{"taskId": task.ID, "runId": run}, &x)
+	if len(x.Executions) != turns {
+		t.Fatalf("%d executions", len(x.Executions))
+	}
+	for i, ex := range x.Executions {
+		if ex.Attempt != i+1 || ex.AgentID != fmt.Sprintf("agent_%02d", i) || ex.Included != 100+i || len(ex.Manifest) != 1 || ex.Manifest[0].Source != fmt.Sprintf("memory:item-%d", i) {
+			t.Fatalf("execution %d: %+v", i, ex)
+		}
+		if len(ex.Usage) != 2 || ex.Usage[0].Input != i || ex.Usage[1].Input != i+1000 || ex.Usage[0].TS != int64(10000+i*100+10) {
+			t.Fatalf("execution %d usage: %+v", i, ex.Usage)
+		}
+	}
+	if !x.EventsTruncated || len(x.Events) != 300 {
+		t.Fatalf("events: truncated %v, %d listed", x.EventsTruncated, len(x.Events))
+	}
+	for i := 1; i < len(x.Events); i++ {
+		if x.Events[i].Seq <= x.Events[i-1].Seq {
+			t.Fatalf("events are not oldest first at %d", i)
+		}
+	}
+	if string(x.Events[len(x.Events)-1].Data) != "" && x.Events[len(x.Events)-1].Seq == 0 {
+		t.Fatal("the newest event is missing")
+	}
+	// the mcp calls among the newest 300 (events 5.. of 305), oldest first
+	if len(x.MCPCalls) != 3 || x.MCPCalls[0].Seq >= x.MCPCalls[1].Seq || x.MCPCalls[1].Seq >= x.MCPCalls[2].Seq {
+		t.Fatalf("mcp calls: %+v", x.MCPCalls)
 	}
 }

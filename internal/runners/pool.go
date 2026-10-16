@@ -145,7 +145,10 @@ func (p *Pool) machine() string {
 }
 
 // NamePrefix is how this PC's runners of a kind are named on GitHub.
-func (p *Pool) NamePrefix(k Kind) string { return "drydock-" + p.machine() + "-" + string(k) + "-" }
+func (p *Pool) NamePrefix(k Kind) string { return jobNameStem + p.machine() + "-" + string(k) + "-" }
+
+// jobNameStem starts the name of every runner this app registers, and so of every job folder it makes.
+const jobNameStem = "drydock-"
 
 // Set makes the running slots match cfgs: new enabled slots start, removed or switched-off ones stop (their runner is
 // stopped and unregistered).

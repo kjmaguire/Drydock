@@ -1,9 +1,14 @@
 package room
 
 import (
+	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // seedRoom builds a task room with a realistic mix of messages.
@@ -225,5 +230,99 @@ func TestADRCandidates(t *testing.T) {
 	ee, _, _ := e.svc.ExportADRCandidates(e.ctx, empty.ID, ExportRequest{Scope: "adr", ReceiptID: "2", By: kyle})
 	if strings.TrimSpace(ee.Content) != "[]" {
 		t.Fatalf("%q", ee.Content)
+	}
+}
+
+// What an export is made from is rendered and scanned outside the write transaction (audit 2026-10-16, L18): the database has one
+// writer, and every other write in the app waited for the room's messages to be read, rendered and scanned. The secret scanner is
+// called while the export is made; a write started from inside it is a write that would wait for the writer, so it only succeeds
+// when the export does not hold the writer.
+func TestAnExportDoesNotHoldTheWriterWhileItIsRendered(t *testing.T) {
+	e := newEnv(t)
+	r := e.channel("export-writer")
+	e.say(r, kyle, "something to export")
+	var writeErr error
+	called := false
+	svc := New(e.db, e.bus, Options{Redact: func(s string) (string, error) {
+		called = true
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		writeErr = e.db.WriteTx(ctx, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE rooms SET name=name WHERE id=?`, r.ID)
+			return err
+		})
+		return s, nil
+	}})
+	ex, created, err := svc.ExportMinutes(e.ctx, r.ID, ExportRequest{Scope: "w", ReceiptID: "1", By: kyle})
+	if err != nil || !created || ex.ID == "" {
+		t.Fatalf("export: %v %v %+v", err, created, ex)
+	}
+	if !called {
+		t.Fatal("the scanner was not run")
+	}
+	if writeErr != nil {
+		t.Fatalf("a write made while the export was rendered had to wait for it: %v", writeErr)
+	}
+	// the same receipt again is the same export, rendered or not
+	again, created2, err := svc.ExportMinutes(e.ctx, r.ID, ExportRequest{Scope: "w", ReceiptID: "1", By: kyle})
+	if err != nil || created2 || again.ID != ex.ID {
+		t.Fatalf("the same receipt: %v %v %+v", err, created2, again)
+	}
+}
+
+// Two requests with the same receipt that render at the same moment make one export: the later one finds the earlier one's when
+// it writes (L18).
+func TestTwoExportsWithOneReceiptMakeOneExport(t *testing.T) {
+	e := newEnv(t)
+	r := e.channel("export-twice")
+	e.say(r, kyle, "one")
+	release := make(chan struct{})
+	var arrived sync.WaitGroup
+	arrived.Add(2)
+	svc := New(e.db, e.bus, Options{Redact: func(s string) (string, error) {
+		arrived.Done()
+		<-release
+		return s, nil
+	}})
+	type result struct {
+		ex      Export
+		created bool
+		err     error
+	}
+	out := make(chan result, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			ex, created, err := svc.ExportMinutes(e.ctx, r.ID, ExportRequest{Scope: "w", ReceiptID: "same", By: kyle})
+			out <- result{ex, created, err}
+		}()
+	}
+	arrived.Wait() // both are rendering
+	close(release)
+	a, b := <-out, <-out
+	if a.err != nil || b.err != nil {
+		t.Fatalf("%v %v", a.err, b.err)
+	}
+	if a.ex.ID != b.ex.ID || a.created == b.created {
+		t.Fatalf("one export, made by one of them: %+v / %+v", a, b)
+	}
+	var n int
+	if err := e.db.Reader().QueryRow(`SELECT COUNT(*) FROM room_exports WHERE room_id=?`, r.ID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d exports stored (%v)", n, err)
+	}
+}
+
+// An export takes a bounded number of messages, and says so (L18).
+func TestAnExportOfTooManyMessagesIsRefused(t *testing.T) {
+	e := newEnv(t)
+	r := e.channel("export-many")
+	for i := 0; i < 12; i++ {
+		e.say(r, kyle, fmt.Sprintf("message %d", i))
+	}
+	small := New(e.db, e.bus, Options{MaxExportMessages: 10})
+	if _, _, err := small.ExportMinutes(e.ctx, r.ID, ExportRequest{Scope: "w", ReceiptID: "1", By: kyle}); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "12 messages") {
+		t.Fatalf("an export over the cap: %v", err)
+	}
+	if ex, _, err := small.ExportMinutes(e.ctx, r.ID, ExportRequest{Scope: "w", ReceiptID: "2", By: kyle, FromSeq: 3, ToSeq: 12}); err != nil || ex.ID == "" {
+		t.Fatalf("a range within the cap: %v", err)
 	}
 }

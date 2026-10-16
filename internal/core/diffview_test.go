@@ -2,7 +2,9 @@ package core_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -144,6 +146,60 @@ func TestTaskDiffAnswersTheEvidenceItWasAskedFor(t *testing.T) {
 	for _, id := range []int64{foreign.ID, 999999} {
 		if err := a.callErr("task.diff", map[string]any{"id": task.ID, "evidenceId": id}); err == nil {
 			t.Errorf("evidence %d is not a diff of this task, and was answered", id)
+		}
+	}
+}
+
+// A file too large to show is reported as such without being read (audit 2026-10-16, L22): both versions used to be read into memory
+// whole (and the viewer's own limit applied only afterwards). The recorded diff names real commits, one of which holds a file
+// larger than the viewer's hard limit.
+func TestDiffViewerReportsAHugeFileWithoutReadingIt(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	a := open(t, dataDir)
+	p, repo := a.setup("gocalc")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Big file"}, &task)
+	run := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	base := run("rev-parse", "HEAD")
+	const size = 25 << 20 // above the viewer's hard limit of 20 MiB
+	if err := os.WriteFile(filepath.Join(repo, "big.txt"), []byte(strings.Repeat("0123456789abcdef\n", size/17+1)[:size]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "big.txt")
+	run("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "a big file")
+	head := run("rev-parse", "HEAD")
+
+	patch := "diff --git a/big.txt b/big.txt\nnew file mode 100644\n--- /dev/null\n+++ b/big.txt\n@@ -0,0 +1 @@\n+0123456789abcdef\n"
+	ref := filepath.Join(dataDir, "runs", "run_aaaaaaaaaaaa", "evidence", "task.diff")
+	if err := os.MkdirAll(filepath.Dir(ref), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ref, []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.c.Tasks.AddEvidence(t.Context(), task.ID, tasks.Evidence{Kind: "diff", Ref: ref, Data: []byte(`{"base":"` + base + `","commit":"` + head + `"}`)}); err != nil {
+		t.Fatal(err)
+	}
+
+	var before, after runtime.MemStats
+	for _, force := range []bool{false, true} {
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		var c core.DiffFileContent
+		a.call("task.diffFile", map[string]any{"id": task.ID, "path": "big.txt", "force": force}, &c)
+		runtime.ReadMemStats(&after)
+		if !c.TooLarge || c.Size != size || c.Original != "" || c.Modified != "" || c.Binary || c.Partial {
+			t.Fatalf("force %v: %+v", force, c)
+		}
+		if grown := after.TotalAlloc - before.TotalAlloc; grown > 8<<20 {
+			t.Fatalf("force %v: the file was read into memory (%d bytes allocated for a %d byte file)", force, grown, size)
 		}
 	}
 }
