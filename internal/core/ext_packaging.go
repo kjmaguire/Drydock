@@ -109,8 +109,8 @@ func parseLicenseKeys(spec string) (license.Keys, error) {
 	return keys, nil
 }
 
-// backupFirstDefault is when the backup scheduler first checks after start when Config.BackupFirstCheck is zero. The test
-// binary moves it out to an hour (export_test.go), so no core a test opens takes a backup of its own unless the test asks.
+// backupFirstDefault is when the backup scheduler first checks after start when Config.BackupFirstCheck is zero. The
+// internal/core test binary moves it out to an hour (export_test.go); everything else, other packages' tests included, gets 5s.
 var backupFirstDefault = 5 * time.Second
 
 func startPackaging(ctx context.Context, c *Core) (map[string]Method, func(), error) {

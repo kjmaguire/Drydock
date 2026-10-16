@@ -72,20 +72,9 @@ func TestBackupNowListVerifyAndTamperDetection(t *testing.T) {
 	if res.Backup.Name == "" || res.Backup.Size == 0 || res.Backup.SHA256 == "" {
 		t.Fatalf("backup %+v", res)
 	}
-	// the list holds the manual backup, once (a scheduled one is tolerated: in the product the first check comes 5 seconds
-	// after start, and before the test binary moved it out it once beat this test on the Windows runner)
+	// the list holds the manual backup and nothing else (in this test binary the scheduler's first check is an hour away)
 	dir, list := a.backups()
-	manual, found := 0, false
-	for _, b := range list {
-		switch {
-		case b.Label == "manual":
-			manual++
-		case b.Label != "scheduled":
-			t.Errorf("a %s backup in the list: %+v", b.Label, b)
-		}
-		found = found || b.Name == res.Backup.Name
-	}
-	if !found || manual != 1 || !strings.HasPrefix(dir, a.dataDir()) {
+	if len(list) != 1 || list[0].Label != "manual" || list[0].Name != res.Backup.Name || !strings.HasPrefix(dir, a.dataDir()) {
 		t.Fatalf("list %v in %s", list, dir)
 	}
 	var v struct {
@@ -383,12 +372,15 @@ func TestBackupSchedulerFirstCheckFollowsConfig(t *testing.T) {
 		}
 		t.Fatalf("a negative BackupFirstCheck opened: %v", err)
 	}
-	// zero is the default, which the test binary moves to an hour: every helper that opens or reopens a core gets it
-	if got := open(t, "").c.BackupFirstCheckForTest(); got != time.Hour {
-		t.Errorf("open: first check after %v", got)
+	// zero is the default, which this test binary moves to an hour, so no helper that opens or reopens a core has to set it
+	zero, err := core.Open(context.Background(), cfg(0))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := openAt(t, filepath.Join(t.TempDir(), "data")).c.BackupFirstCheckForTest(); got != time.Hour {
-		t.Errorf("openAt: first check after %v", got)
+	got := zero.BackupFirstCheckForTest()
+	zero.Close()
+	if got != time.Hour {
+		t.Errorf("zero: first check after %v", got)
 	}
 
 	// a short first check runs the real loop: the scheduler takes a backup on its own, without TestBackupTick

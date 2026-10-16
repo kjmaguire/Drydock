@@ -62,7 +62,7 @@ type Config struct {
 	// LeaseTTL for workflow runs (default 30s).
 	LeaseTTL time.Duration
 	// BackupFirstCheck is how long after start the backup scheduler first considers a backup (zero: 5s; negative is refused).
-	// In the test binary zero means an hour, so tests drive the scheduler by hand (TestBackupTick) unless they set it.
+	// In the internal/core tests zero means an hour (they drive the scheduler with TestBackupTick); elsewhere it means 5s.
 	BackupFirstCheck time.Duration
 	// GitHubAPI answers the account calls (signed-in user, organizations, repositories). Default: the user's `gh`.
 	GitHubAPI host.API

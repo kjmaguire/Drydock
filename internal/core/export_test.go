@@ -12,9 +12,10 @@ import (
 
 // Test hooks for the packaging extension. They live in a _test file so the product has no clock or key setters.
 
-// In the test binary the backup scheduler's start-up check comes an hour after start unless Config.BackupFirstCheck says
-// otherwise. Every core a test opens is covered, whichever helper opened it: on a slow runner the real 5 second check once
-// took a backup before a test had installed its clock (TestBackupFailureIsReportedEverywhere).
+// In the internal/core test binary the backup scheduler's start-up check comes an hour after start unless
+// Config.BackupFirstCheck says otherwise, so every core a test here opens, whichever helper opened it, leaves backups to the
+// test: on a slow runner the real 5 second check once took a backup before a test had installed its clock
+// (TestBackupFailureIsReportedEverywhere). Other packages' tests and the e2e harness keep the product's 5 seconds.
 func init() { backupFirstDefault = time.Hour }
 
 // TestSetLicenseKeys installs the license verification keys a build would embed with -ldflags.
