@@ -181,8 +181,18 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 			prov = &provs[i]
 		}
 	}
-	if prov == nil || prov.Kind != providers.KindHost || prov.Flavor != providers.FlavorLlamaCpp || prov.Tier != providers.TierCheap || prov.DataClass != providers.DataPrivate || prov.BaseURL != fmt.Sprintf("http://127.0.0.1:%d/v1", port) || prov.MaxConcurrent != 1 || prov.KeyRef != "" {
-		t.Fatalf("provider: %+v", prov)
+	if prov == nil || prov.Kind != providers.KindHost || prov.Flavor != providers.FlavorLlamaCpp || prov.Tier != providers.TierCheap || prov.DataClass != providers.DataPrivate || prov.BaseURL != fmt.Sprintf("http://127.0.0.1:%d/v1", port) || prov.MaxConcurrent != 1 || prov.KeyRef == "" {
+		t.Fatalf("provider (it holds the key of this start of the server): %+v", prov)
+	}
+	// the server demands that key: another program on the machine gets nothing from it (audit 2026-10-16, L32), while the
+	// provider's own probe, which carries the key, read the server's properties
+	if resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/props", port)); err != nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("the server answered a request without its key: %v %v", resp, err)
+	} else {
+		resp.Body.Close()
+	}
+	if !strings.Contains(string(prov.ServerInfo), "standin") {
+		t.Fatalf("the probe could not read /props with the key: %s", prov.ServerInfo)
 	}
 	var models []providers.Model
 	a.call("provider.models", map[string]any{"id": prov.ID}, &models)

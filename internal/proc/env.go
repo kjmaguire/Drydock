@@ -17,13 +17,14 @@ var BaseEnvNames = []string{
 }
 
 // ScrubEnv returns the entries of parent ("KEY=value") whose name is in names or starts with one of prefixes. Nothing else is
-// kept: not the app's own variables, not other tools' tokens.
+// kept: not the app's own variables, not other tools' tokens. The result is never nil, because a nil Spec.Env means "inherit the
+// whole environment" and a scrub that found nothing must not turn into that.
 func ScrubEnv(parent, names, prefixes []string) []string {
 	allow := make(map[string]bool, len(names))
 	for _, n := range names {
 		allow[strings.ToUpper(n)] = true
 	}
-	var out []string
+	out := []string{}
 	for _, kv := range parent {
 		k, _, ok := strings.Cut(kv, "=")
 		if !ok {
@@ -63,11 +64,54 @@ var ToolEnvNames = []string{
 }
 
 // ToolEnv is the environment of a project command (a check, a preview, a dependency scan): parent filtered to BaseEnvNames,
-// ToolEnvNames and the extra names the person chose to pass (the same list agents get).
+// ToolEnvNames and the extra names the person chose to pass (the same list agents get), with the user name and password taken
+// out of a proxy address unless the person passed that variable on by name (WithoutProxyCredentials).
 func ToolEnv(parent, extra []string) []string {
 	names := make([]string, 0, len(BaseEnvNames)+len(ToolEnvNames)+len(extra))
 	names = append(append(append(names, BaseEnvNames...), ToolEnvNames...), extra...)
-	return ScrubEnv(parent, names, nil)
+	return WithoutProxyCredentials(ScrubEnv(parent, names, nil), extra)
+}
+
+// proxyEnvNames are the variables that hold the address of a proxy (compared ignoring case: Windows does, and Unix tools read
+// both spellings).
+var proxyEnvNames = map[string]bool{"HTTP_PROXY": true, "HTTPS_PROXY": true, "ALL_PROXY": true}
+
+// WithoutProxyCredentials returns env with the user name and password taken out of the address in HTTP_PROXY, HTTPS_PROXY and
+// ALL_PROXY ("http://user:pass@proxy:8080" becomes "http://proxy:8080"; an address without a scheme, "user:pass@proxy:8080",
+// is cut the same way). The allowlist passes proxy settings so an agent's CLI and a build can reach the network, and a program
+// an agent steers can read its own environment; the address is what it needs, the password is a credential for another service
+// (audit 2026-10-16, L8). The names in keep are left as they are: a person who passes a proxy variable on by name chose to hand
+// its credentials over.
+func WithoutProxyCredentials(env, keep []string) []string {
+	kept := make(map[string]bool, len(keep))
+	for _, k := range keep {
+		kept[strings.ToUpper(k)] = true
+	}
+	out := make([]string, len(env))
+	for i, kv := range env {
+		out[i] = kv
+		k, v, ok := strings.Cut(kv, "=")
+		if ok && proxyEnvNames[strings.ToUpper(k)] && !kept[strings.ToUpper(k)] {
+			out[i] = k + "=" + stripUserinfo(v)
+		}
+	}
+	return out
+}
+
+// stripUserinfo removes "user:pass@" from the authority of an address that may or may not have a scheme.
+func stripUserinfo(addr string) string {
+	scheme, rest := "", addr
+	if i := strings.Index(addr, "://"); i >= 0 {
+		scheme, rest = addr[:i+3], addr[i+3:]
+	}
+	authority, tail := rest, ""
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		authority, tail = rest[:i], rest[i:]
+	}
+	if i := strings.LastIndex(authority, "@"); i >= 0 {
+		authority = authority[i+1:]
+	}
+	return scheme + authority + tail
 }
 
 // NoCwdSearchVar is the Windows setting that stops cmd.exe and CreateProcess from looking for a bare program name in the

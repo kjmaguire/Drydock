@@ -166,7 +166,7 @@ func (r *Repo) command(ctx context.Context, dir string, extraEnv []string, args 
 	}
 	cmd := exec.CommandContext(ctx, "git", append(safeDirectory(dir, r.Root), hardening(args)...)...)
 	cmd.Dir = dir
-	cmd.Env = append(r.env(), extraEnv...)
+	cmd.Env = append(r.env(!talksToARemote(args)), extraEnv...)
 	proc.Harden(cmd)
 	return cmd, nil
 }
@@ -316,9 +316,45 @@ func (r *Repo) ListFiles(ctx context.Context, dir string) ([]string, error) {
 	return files, nil
 }
 
-func (r *Repo) env() []string {
+// env is the environment of a git call on this machine. A call that talks to a remote (push) keeps the app's own environment:
+// the credential helper, ssh and askpass programs it starts read the person's login from it. Every other call gets the
+// allowlist that project commands get, plus what git's configuration reads (localEnvNames) and the GIT_* variables of keptGitEnv,
+// so whatever a configuration could still start in a call that stays on this machine (a filter, a diff driver, a pager) finds
+// none of the tokens the app was started with (audit 2026-10-16, L8).
+func (r *Repo) env(local bool) []string {
+	parent := gitEnv(os.Environ())
+	if local {
+		names := append(append(append([]string(nil), proc.BaseEnvNames...), proc.ToolEnvNames...), localEnvNames...)
+		parent = proc.ScrubEnv(parent, names, []string{"GIT_"})
+	}
 	// git for Windows starts sh, ssh and the like by name from the folder it runs in, which for a task's worktree is the agent's
-	return proc.WithSafeExeSearch(append(gitEnv(os.Environ()), r.drydockEnv()...))
+	return proc.WithSafeExeSearch(append(parent, r.drydockEnv()...))
+}
+
+// localEnvNames are variables a local git call may read beyond proc.BaseEnvNames and proc.ToolEnvNames: the Windows account
+// facts git for Windows and the MSYS runtime under it ask for. None of them carries a credential.
+var localEnvNames = []string{"ALLUSERSPROFILE", "USERDOMAIN", "USERDOMAIN_ROAMINGPROFILE", "LOGONSERVER", "SESSIONNAME", "MSYSTEM", "MSYS", "CYGWIN",
+	"PROCESSOR_ARCHITEW6432", "PROCESSOR_LEVEL", "PROCESSOR_REVISION"}
+
+// talksToARemote reports whether a git call (args as Drydock passes them, with its own -c and -C options in front of the
+// subcommand) contacts a remote and so needs the person's login.
+func talksToARemote(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "-c" || a == "-C":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			switch a {
+			case "push", "fetch", "pull", "clone", "ls-remote", "submodule", "lfs":
+				return true
+			case "remote": // asking for a remote's address is local; updating, pruning or showing one contacts it
+				return !slices.Contains(args[i+1:], "get-url")
+			}
+			return false
+		}
+	}
+	return false
 }
 
 // keptGitEnv are the GIT_* variables of the app's own environment that git calls keep: how the user reaches their remotes,

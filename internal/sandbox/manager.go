@@ -227,7 +227,7 @@ func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) er
 	for _, name := range c.ServiceNames() {
 		svc := c.Services[name]
 		args := append([]string{"run", "-d", "--name", b.Base + "-svc-" + name, "--network", b.Network, "--network-alias", name}, m.labels(b, "service", "")...)
-		args = append(args, "--security-opt", "no-new-privileges", "--pids-limit", "4096")
+		args = append(append(args, hardenArgs()...), limitArgs(c, 4096)...)
 		for _, k := range sortedKeys(svc.Env) {
 			args = append(args, "-e", k+"="+svc.Env[k])
 		}
@@ -238,9 +238,8 @@ func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) er
 		}
 	}
 	args := append([]string{"run", "-d", "--name", b.Workspace, "--hostname", "workspace", "--network", b.Network}, m.labels(b, "workspace", hash)...)
-	args = append(args, "--init", "--security-opt", "no-new-privileges",
-		"--cpus", strconv.FormatFloat(c.CPUs, 'f', -1, 64), "--memory", c.Memory, "--pids-limit", strconv.Itoa(c.Pids),
-		"--mount", "type=bind,source="+b.Spec.Worktree+",target="+Workdir)
+	args = append(append(append(args, "--init"), hardenArgs()...), limitArgs(c, c.Pids)...)
+	args = append(args, "--mount", "type=bind,source="+b.Spec.Worktree+",target="+Workdir)
 	args = append(args, vols...)
 	args = append(args, "-w", Workdir)
 	for _, kv := range b.proxyEnv() {
@@ -278,6 +277,27 @@ func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) er
 		}
 	}
 	return nil
+}
+
+// keptCaps are the Linux capabilities a workspace or a service keeps: what package managers, build tools and databases use to
+// install, own files, drop privileges and bind a port. Docker's other default capabilities (raw sockets, device nodes, chroot,
+// audit writes, changing the capability set) are dropped: nothing in a test run needs them, and a container that cannot open a raw
+// socket cannot forge packets on the task's network (audit 2026-10-16, L7).
+var keptCaps = []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL", "SETGID", "SETUID", "SETFCAP", "NET_BIND_SERVICE"}
+
+// hardenArgs are the flags for a container that runs code from the task or its images: no new privileges, and only keptCaps.
+func hardenArgs() []string {
+	args := []string{"--security-opt", "no-new-privileges", "--cap-drop", "ALL"}
+	for _, c := range keptCaps {
+		args = append(args, "--cap-add", c)
+	}
+	return args
+}
+
+// limitArgs bound a container: CPU, processes, and memory with no swap behind it (a memory limit the container can swap past
+// is not a limit). A service gets the workspace's limits, so a runaway database cannot take the machine either.
+func limitArgs(c Config, pids int) []string {
+	return []string{"--cpus", strconv.FormatFloat(c.CPUs, 'f', -1, 64), "--memory", c.Memory, "--memory-swap", c.Memory, "--pids-limit", strconv.Itoa(pids)}
 }
 
 // proxyEnv is the environment that points every tool at the egress proxy. Services are reached directly.

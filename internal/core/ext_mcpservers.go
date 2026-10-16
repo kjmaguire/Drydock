@@ -428,17 +428,21 @@ func (s *mcpServers) registerSecrets(ctx context.Context) {
 	if s.c.secrets == nil || s.c.Scanner == nil {
 		return
 	}
-	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT id,has_token,secret_env FROM mcp_library`)
+	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT id,has_token,secret_env,oauth FROM mcp_library`)
 	if err != nil {
 		return
 	}
 	type ref struct{ name, ref string }
 	var refs []ref
+	var signedIn []string
 	for rows.Next() {
 		var id, sj string
-		var tok int
-		if rows.Scan(&id, &tok, &sj) != nil {
+		var tok, oa int
+		if rows.Scan(&id, &tok, &sj, &oa) != nil {
 			continue
+		}
+		if oa != 0 {
+			signedIn = append(signedIn, id)
 		}
 		if tok != 0 {
 			refs = append(refs, ref{"mcp-" + id + "-token", mcpVaultRef(id, "token")})
@@ -453,6 +457,18 @@ func (s *mcpServers) registerSecrets(ctx context.Context) {
 	for _, r := range refs {
 		if v, err := s.c.secrets.Get(ctx, r.ref); err == nil && v != "" {
 			_ = s.c.Scanner.RegisterSecret(r.name, v)
+		}
+	}
+	// the sign-in tokens of OAuth servers too: they were taught to the scanner when they were issued, and a new start of the app
+	// knew none of them until the next refresh (audit 2026-10-16, L25)
+	for _, id := range signedIn {
+		raw, err := s.c.secrets.Get(ctx, mcpVaultRef(id, "oauth"))
+		if err != nil || raw == "" {
+			continue
+		}
+		var st oauthSaved
+		if json.Unmarshal([]byte(raw), &st) == nil {
+			s.teachOAuthSecrets(id, st)
 		}
 	}
 }
@@ -500,6 +516,11 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 		k = strings.TrimSpace(k)
 		if !envNameRe.MatchString(k) {
 			return MCPLibraryServer{}, fmt.Errorf("%q is not a valid environment variable name", k)
+		}
+		// plain variables are kept as text and shown on screen; a value the secret scanner would change is a secret that
+		// belongs in the vault (audit 2026-10-16, L6). The value is not repeated in the message.
+		if s.c.Scanner != nil && s.c.Scanner.Redact(v) != v {
+			return MCPLibraryServer{}, fmt.Errorf("the value of %s looks like a secret, and a plain variable is stored as text and shown on screen: give it as a secret variable instead", k)
 		}
 		r.Env[k] = v
 	}

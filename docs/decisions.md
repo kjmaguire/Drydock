@@ -584,3 +584,15 @@ Open, owner action:
   gate) whose every check was skipped or could not run no longer passes: it asks a person, who can have it check again, go on
   without a result this time (`{"waive_verdict": true}`, for that exact content, recorded as `waiver` evidence, not accepted
   from an agent) or stop the run (`internal/pipeline/verdict.go`).
+  **Environments, local models and network edges (L6, L7, L8, L19, L24, L25, L31-L33, L53):** a proxy address reaches an
+  agent's CLI and a project command without its password unless the person passes the variable on by name
+  (`proc.WithoutProxyCredentials`), and a git call that stays on this machine starts from the allowlist of project commands, not the
+  app's whole environment (push, fetch and the other calls that reach a remote keep it: they need the person's login); a scrub that
+  keeps nothing is an empty environment, never "inherit everything". A plain MCP environment value the secret scanner would change
+  is refused, and the sign-in tokens of OAuth servers are taught to the scanner at every start. Workspace and service containers drop
+  all capabilities but the nine development tools use and get memory limits with no swap behind them (not run against a real engine
+  here); the egress proxy shares Drydock's own list of refused addresses (NAT64, 6to4 and the reserved range included) and closes idle
+  tunnels. The local model server demands a random key (in its environment, new at every start, held by its provider row) and
+  Drydock checks `/props` with it before it calls the server ready; `llama-server --list-devices` runs in the same trimmed
+  environment; a model folder name can no longer be `..`. The gateway's failure bookkeeping is bounded by the shape of a run id and a
+  global ceiling. A staged restore is found again by name in the backup folder, as a plain file with the staged hash.

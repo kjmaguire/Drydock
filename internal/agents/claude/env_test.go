@@ -67,6 +67,28 @@ func TestChildEnvIsScrubbedAndTakesNamesToPassFromTheHuman(t *testing.T) {
 	}
 }
 
+// The CLI reaches the network through the proxy address it is given, not with the password in that address (audit 2026-10-16,
+// L8), unless the person passes the variable on by name.
+func TestChildEnvTakesTheCredentialsOutOfAProxyAddress(t *testing.T) {
+	parent := []string{"PATH=/bin", "HTTPS_PROXY=http://alice:s3cret@proxy.corp:8080", "NO_PROXY=localhost"}
+	value := func(env []string, name string) string {
+		for _, kv := range env {
+			if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+				return v
+			}
+		}
+		return "<missing>"
+	}
+	a := &Adapter{ScrubEnv: true}
+	if got := value(a.childEnv(parent), "HTTPS_PROXY"); got != "http://proxy.corp:8080" {
+		t.Fatalf("HTTPS_PROXY = %q", got)
+	}
+	a.PassEnv = func() []string { return []string{"https_proxy"} }
+	if got := value(a.childEnv(parent), "HTTPS_PROXY"); got != "http://alice:s3cret@proxy.corp:8080" {
+		t.Fatalf("a variable the person passes on by name stays as it is: %q", got)
+	}
+}
+
 func TestUserSettingsOnlyAddsTheSettingSourcesFlag(t *testing.T) {
 	has := func(args []string) bool {
 		for i, a := range args {

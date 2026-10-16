@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kjmaguire/drydock/internal/netguard"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"io"
 	"net"
@@ -37,6 +38,9 @@ type Options struct {
 	Log func(Decision)
 	// DialTimeout bounds connecting upstream (default 15 seconds).
 	DialTimeout time.Duration
+	// IdleTimeout ends a tunnel that has carried nothing in either direction for this long (default 5 minutes). Without it a
+	// connection that nobody uses, opened by a program in the workspace, holds a descriptor and a goroutine for ever.
+	IdleTimeout time.Duration
 }
 
 // Decision is what the proxy did with one request; the proxy logs it as one JSON line so Drydock can show the human what was
@@ -91,6 +95,9 @@ func New(o Options) (*Proxy, error) {
 	if p.opts.DialTimeout <= 0 {
 		p.opts.DialTimeout = 15 * time.Second
 	}
+	if p.opts.IdleTimeout <= 0 {
+		p.opts.IdleTimeout = 5 * time.Minute
+	}
 	return p, nil
 }
 
@@ -112,13 +119,11 @@ func (p *Proxy) hostAllowed(host string) bool {
 }
 
 // special reports addresses a sandbox must not reach by name: loopback, private, link-local, unique-local, carrier-grade NAT,
-// unspecified and multicast. Such an address is reachable only when it is itself on the allowlist.
+// unspecified, multicast, the reserved ranges, and an IPv6 address that embeds one of those (NAT64, 6to4). It is the same list
+// Drydock's own outgoing connections use (netguard.Blocked); the proxy's own copy of it used to be shorter (audit 2026-10-16,
+// L53). Such an address is reachable only when it is itself on the allowlist.
 func special(ip netip.Addr) bool {
-	ip = ip.Unmap()
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || ip.IsInterfaceLocalMulticast() {
-		return true
-	}
-	return netip.MustParsePrefix("100.64.0.0/10").Contains(ip) || netip.MustParsePrefix("192.0.0.0/24").Contains(ip) || netip.MustParsePrefix("198.18.0.0/15").Contains(ip)
+	return netguard.Blocked(net.IP(ip.Unmap().AsSlice()))
 }
 
 // resolve checks host and port and returns the addresses the proxy may connect to, or why not.
@@ -237,18 +242,47 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "drydock egress: tunnelling is not supported here", http.StatusInternalServerError)
 		return
 	}
-	client, buf, err := hj.Hijack()
+	rawClient, buf, err := hj.Hijack()
 	if err != nil {
 		_ = up.Close()
 		return
 	}
+	client := idleConn{Conn: rawClient, idle: p.opts.IdleTimeout}
+	up = idleConn{Conn: up, idle: p.opts.IdleTimeout}
 	if _, err := client.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); err != nil {
 		_ = client.Close()
 		_ = up.Close()
 		return
 	}
-	safe.Go("egress.Proxy.connect", func() { pipe(up, buf.Reader, client) })
+	// whatever the client sent after its CONNECT line was read into buf already: it goes upstream first, and the rest is read
+	// from the connection itself, where the idle deadline applies
+	if n := buf.Reader.Buffered(); n > 0 {
+		head, _ := buf.Reader.Peek(n)
+		if _, err := up.Write(head); err != nil {
+			_ = client.Close()
+			_ = up.Close()
+			return
+		}
+	}
+	safe.Go("egress.Proxy.connect", func() { pipe(up, client, client) })
 	safe.Go("egress.Proxy.connect#2", func() { pipe(client, up, up) })
+}
+
+// idleConn renews a deadline on every read and write, so a connection that carries nothing for idle is closed by its own
+// timeout and the copy loops that hold it end.
+type idleConn struct {
+	net.Conn
+	idle time.Duration
+}
+
+func (c idleConn) Read(b []byte) (int, error) {
+	_ = c.Conn.SetReadDeadline(time.Now().Add(c.idle))
+	return c.Conn.Read(b)
+}
+
+func (c idleConn) Write(b []byte) (int, error) {
+	_ = c.Conn.SetWriteDeadline(time.Now().Add(c.idle))
+	return c.Conn.Write(b)
 }
 
 // pipe copies src to dst and closes both ends when done.

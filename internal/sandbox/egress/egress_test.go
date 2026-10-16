@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeResolver is a labelled test double for DNS: names resolve to the addresses the test says.
@@ -205,5 +206,87 @@ func TestFromEnv(t *testing.T) {
 	env["DRYDOCK_EGRESS_PORTS"] = "http"
 	if _, err := FromEnv(func(k string) string { return env[k] }); err == nil {
 		t.Fatal("a non-numeric port is refused")
+	}
+}
+
+// The proxy refuses the same addresses Drydock's own connections do, including IPv6 addresses that embed a private IPv4 one
+// (NAT64, 6to4) and the reserved IPv4 range (audit 2026-10-16, L53).
+func TestTheProxyRefusesWhatDrydocksOwnConnectionsRefuse(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"10.0.0.1": true, "127.0.0.1": true, "169.254.169.254": true, "100.64.0.1": true, "198.18.0.1": true, "240.0.0.1": true, "255.255.255.255": true,
+		"64:ff9b::a00:1": true, "64:ff9b::7f00:1": true, "2002:a00:1::": true, "2002:7f00:1::1": true, "fc00::1": true, "fe80::1": true, "::1": true,
+		"::ffff:10.0.0.1": true,
+		"93.184.216.34":   false, "2606:4700:4700::1111": false, "64:ff9b::5db8:d822": false, "2002:5db8:d822::1": false,
+	} {
+		if got := special(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("special(%s) = %v, want %v", addr, got, want)
+		}
+	}
+	p, _ := New(Options{Allow: []string{"nat64.example"}, Resolver: fakeResolver{"nat64.example": {"64:ff9b::a00:1"}}})
+	if _, why := p.resolve(context.Background(), "nat64.example", 443); !strings.Contains(why, "private or local") {
+		t.Fatalf("a name that resolves to a NAT64 form of a private address: %q", why)
+	}
+}
+
+// A tunnel that carries nothing is closed after the idle time, and one that carries traffic is kept (audit 2026-10-16, L53).
+func TestAnIdleTunnelIsClosed(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() { // an upstream that echoes
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); _, _ = io.Copy(c, c) }()
+		}
+	}()
+	port := ln.Addr().(*net.TCPAddr).Port
+	p, err := New(Options{Allow: []string{"127.0.0.1"}, Ports: []int{port}, IdleTimeout: 300 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := startProxy(t, p)
+	open := func() (net.Conn, *bufio.Reader) {
+		c, err := net.Dial("tcp", proxy.Host)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Close() })
+		// the first bytes of the tunnel go with the CONNECT request, as a client that does not wait for the answer sends them
+		fmt.Fprintf(c, "CONNECT 127.0.0.1:%d HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\nearly", port, port)
+		br := bufio.NewReader(c)
+		resp, err := http.ReadResponse(br, nil)
+		if err != nil || resp.StatusCode != 200 {
+			t.Fatalf("CONNECT: %v %v", resp, err)
+		}
+		return c, br
+	}
+	// what was sent with the request reaches the upstream and comes back
+	c, br := open()
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	early := make([]byte, 5)
+	if _, err := io.ReadFull(br, early); err != nil || string(early) != "early" {
+		t.Fatalf("the bytes sent with the CONNECT request were lost: %q %v", early, err)
+	}
+	// traffic keeps it open past the idle time
+	for i := 0; i < 4; i++ {
+		time.Sleep(150 * time.Millisecond)
+		fmt.Fprint(c, "ping")
+		pong := make([]byte, 4)
+		if _, err := io.ReadFull(br, pong); err != nil || string(pong) != "ping" {
+			t.Fatalf("round %d: the tunnel was closed while it carried traffic: %q %v", i, pong, err)
+		}
+	}
+	// silence closes it
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	start := time.Now()
+	if _, err := br.ReadByte(); err == nil {
+		t.Fatal("a byte arrived on a silent tunnel")
+	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatalf("the tunnel was still open after %s of silence", time.Since(start))
 	}
 }

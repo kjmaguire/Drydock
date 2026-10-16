@@ -102,7 +102,8 @@ func bytesOf(n, unit string) uint64 {
 // ListDevices asks the installed server program for its devices (`--list-devices`, 20 s at most). A program that does not
 // answer leaves Probed false: the caller then knows nothing rather than "CPU only".
 func ListDevices(ctx context.Context, pm proc.Manager, program string, args []string) Devices {
-	res := proc.Probe(ctx, pm, proc.Spec{Path: program, Args: append(append([]string{}, args...), "--list-devices"), Dir: dirOf(program), Label: "llama-devices"}, 20*time.Second)
+	// the same environment the server itself starts with, not the app's whole one (audit 2026-10-16, L31)
+	res := proc.Probe(ctx, pm, proc.Spec{Path: program, Args: append(append([]string{}, args...), "--list-devices"), Dir: dirOf(program), Env: childEnv(), Label: "llama-devices"}, 20*time.Second)
 	if res.Err != nil && res.Stdout == "" && res.Stderr == "" {
 		return Devices{Error: res.Err.Error()}
 	}

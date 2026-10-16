@@ -216,6 +216,9 @@ func mergeFiles(src, dst string) error {
 	})
 }
 
+// safeName turns s into one folder name: letters, digits, '-', '.' and '_' stay, anything else becomes '_'. The result is never
+// empty, never made only of dots ("." and ".." are folders that lead elsewhere) and never ends in a dot (Windows drops it, so
+// two names would become one) (audit 2026-10-16, L33).
 func safeName(s string) string {
 	var b strings.Builder
 	for _, c := range s {
@@ -226,5 +229,12 @@ func safeName(s string) string {
 			b.WriteRune('_')
 		}
 	}
-	return b.String()
+	out := b.String()
+	if strings.Trim(out, ".") == "" {
+		return "_"
+	}
+	if strings.HasSuffix(out, ".") {
+		out = strings.TrimRight(out, ".") + "_"
+	}
+	return out
 }

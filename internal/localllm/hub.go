@@ -204,6 +204,9 @@ func (h *Hub) Variants(ctx context.Context, repo string) ([]Variant, error) {
 		if m := shard.FindStringSubmatch(base); m != nil {
 			stem = m[1]
 		}
+		if strings.Trim(stem, ".") == "" {
+			continue // "...gguf" has no name to keep a model under, and a folder named ".." leads out of the store
+		}
 		name := stem
 		quant := ""
 		if m := quantName.FindStringSubmatch(stem); m != nil {

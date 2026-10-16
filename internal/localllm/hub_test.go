@@ -193,3 +193,42 @@ func TestTheStoreKeepsDownloadedModels(t *testing.T) {
 		t.Fatal("bad id accepted")
 	}
 }
+
+// A file the Hub names "...gguf" would make a variant folder named ".." and a removal that deletes the owner's whole folder, other
+// repositories' models with it. Such a file is not offered, a model id cannot name such a folder, and the store removes only a
+// folder three levels down (audit 2026-10-16, L33).
+func TestAModelNameCannotLeadOutOfTheStore(t *testing.T) {
+	fx := llamatest.NewHub(t)
+	fx.AddModel("acme/evil-GGUF", 10, nil, map[string][]byte{"...gguf": bytesOf(10, 1), "..gguf": bytesOf(10, 2), "Real-Q4_0.gguf": bytesOf(50, 3)})
+	hub := &localllm.Hub{BaseURL: fx.URL}
+	vs, err := hub.Variants(context.Background(), "acme/evil-GGUF")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vs) != 1 || vs[0].Name != "Q4_0" {
+		t.Fatalf("only the real model is offered: %+v", vs)
+	}
+	for _, id := range []string{"acme/evil-GGUF:..", "acme/evil-GGUF:.", "acme/evil-GGUF:...", "acme/evil-GGUF:", "acme/evil-GGUF:a/b", `acme/evil-GGUF:a\b`} {
+		if _, _, ok := localllm.SplitModelID(id); ok {
+			t.Errorf("%q was accepted as a model id", id)
+		}
+	}
+	st := &localllm.Store{Dir: t.TempDir()}
+	for _, name := range []string{"..", ".", "", "...", "x.", "a b"} {
+		dir := st.VariantDir("acme/evil-GGUF", name)
+		rel, err := filepath.Rel(st.Dir, dir)
+		if err != nil || len(strings.Split(filepath.ToSlash(rel), "/")) != 3 || strings.HasPrefix(rel, "..") || strings.HasSuffix(dir, ".") {
+			t.Errorf("VariantDir(%q) = %q leaves the store's owner/repo/variant layout", name, dir)
+		}
+	}
+	// another repository's model by the same owner must survive a removal aimed at ".."
+	other := st.VariantDir("acme/other-GGUF", "Q4_0")
+	_ = os.MkdirAll(other, 0o755)
+	_ = os.WriteFile(filepath.Join(other, "other-Q4_0.gguf"), []byte("keep"), 0o644)
+	if err := st.Remove("acme/evil-GGUF:.."); err == nil {
+		t.Fatal("a removal of '..' was accepted")
+	}
+	if b, err := os.ReadFile(filepath.Join(other, "other-Q4_0.gguf")); err != nil || string(b) != "keep" {
+		t.Fatalf("another model was deleted: %v", err)
+	}
+}

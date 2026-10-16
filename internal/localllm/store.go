@@ -30,7 +30,7 @@ func ModelID(repo, variant string) string { return repo + ":" + variant }
 // SplitModelID is the inverse of ModelID.
 func SplitModelID(id string) (repo, variant string, ok bool) {
 	repo, variant, ok = strings.Cut(id, ":")
-	return repo, variant, ok && ValidRepo(repo) && variant != "" && !strings.ContainsAny(variant, `/\`)
+	return repo, variant, ok && ValidRepo(repo) && strings.Trim(variant, ".") != "" && !strings.ContainsAny(variant, `/\`)
 }
 
 // Store keeps downloaded models under Dir/<owner>/<repo>/<variant>/ with a model.json beside the files.

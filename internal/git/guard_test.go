@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // These tests plant what an agent in a task's worktree could plant in the shared .git directory (docs/security.md s3, threat
@@ -266,5 +268,53 @@ func TestInheritedGitVariablesDoNotRedirectDrydocksGit(t *testing.T) {
 	}
 	if got := gitEnv([]string{"GIT_DIR=x", "git_index_file=y", "GIT_SSH_COMMAND=ssh -i k", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_GLOBAL=/home/u/.gitconfig-ci", "PATH=/bin"}); !slices.Equal(got, []string{"GIT_SSH_COMMAND=ssh -i k", "GIT_CONFIG_GLOBAL=/home/u/.gitconfig-ci", "PATH=/bin"}) {
 		t.Fatalf("gitEnv kept %v", got)
+	}
+}
+
+// A git call that stays on this machine does not get the tokens the app was started with; push, the one call that reaches a
+// remote, keeps the environment because the person's login is read from it (audit 2026-10-16, L8).
+func TestLocalGitCallsDoNotInheritTheAppsTokens(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_not_for_git_status")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws_not_for_git_status")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-not-for-git-status")
+	t.Setenv("GIT_SSH_COMMAND", "ssh -i /home/u/key")
+	t.Setenv("GIT_CONFIG_GLOBAL", "/home/u/.gitconfig-ci")
+	t.Setenv("GIT_DIR", "/elsewhere/.git")
+	t.Setenv("PATH", os.Getenv("PATH"))
+	r := &Repo{AuthorName: "t", AuthorEmail: "t@t"}
+	has := func(env []string, name string) bool {
+		for _, kv := range env {
+			if strings.HasPrefix(kv, name+"=") {
+				return true
+			}
+		}
+		return false
+	}
+	local := r.env(true)
+	for _, bad := range []string{"GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "ANTHROPIC_API_KEY", "GIT_DIR"} {
+		if has(local, bad) {
+			t.Errorf("%s reached a local git call", bad)
+		}
+	}
+	for _, keep := range []string{"PATH", "GIT_CONFIG_GLOBAL", "GIT_SSH_COMMAND", "GIT_TERMINAL_PROMPT", "GIT_AUTHOR_NAME", proc.NoCwdSearchVar} {
+		if !has(local, keep) {
+			t.Errorf("%s was removed from a local git call", keep)
+		}
+	}
+	remote := r.env(false)
+	for _, keep := range []string{"GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "GIT_SSH_COMMAND", "PATH"} {
+		if !has(remote, keep) {
+			t.Errorf("%s was removed from a call that talks to a remote", keep)
+		}
+	}
+	if has(remote, "GIT_DIR") {
+		t.Error("GIT_DIR must never reach git")
+	}
+	for args, want := range map[string]bool{"push --set-upstream origin x": true, "fetch origin": true, "pull": true, "clone u d": true, "ls-remote origin": true,
+		"-c a=b -C /x push origin": true, "remote update": true, "remote get-url origin": false, "status --porcelain": false, "-c core.hooksPath=/x diff": false,
+		"worktree add x": false, "": false, "merge --no-ff b": false} {
+		if got := talksToARemote(strings.Fields(args)); got != want {
+			t.Errorf("talksToARemote(%q) = %v, want %v", args, got, want)
+		}
 	}
 }

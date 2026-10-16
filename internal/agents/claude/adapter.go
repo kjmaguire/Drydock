@@ -524,10 +524,14 @@ func (a *Adapter) childEnv(parent []string) []string {
 		return parent
 	}
 	names := append([]string(nil), proc.BaseEnvNames...)
+	var passed []string
 	if a.PassEnv != nil {
-		names = append(names, a.PassEnv()...)
+		passed = a.PassEnv()
+		names = append(names, passed...)
 	}
-	return proc.ScrubEnv(parent, names, []string{"CLAUDE_", "ANTHROPIC_"})
+	// a proxy address reaches the CLI without its user name and password unless the person passes that variable on by name
+	// (audit 2026-10-16, L8)
+	return proc.WithoutProxyCredentials(proc.ScrubEnv(parent, names, []string{"CLAUDE_", "ANTHROPIC_"}), passed)
 }
 
 // Quiet is env with QuietEnv in place of any value of those names it had (names compared as Windows does, ignoring case). Start

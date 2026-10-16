@@ -3,6 +3,9 @@ package localllm
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,9 +33,26 @@ type Launch struct {
 	ContextSize int    // 0: the model's own
 	GPULayers   string // "auto" (default), "all", or a number
 	LogDir      string
+	// APIKey, when set, is the key the server demands on every request but /health and the model list: it reaches the server
+	// through its environment (LLAMA_API_KEY), never its command line, which other programs on the machine can read. Any other
+	// program on the machine could otherwise use the model and read its settings (audit 2026-10-16, L32). Start also checks the
+	// answering server with it, so a different program that took the port is not taken for it.
+	APIKey string
 	// Timeout bounds the wait for the model to load (default 15 minutes: a large model from a slow disk).
 	Timeout time.Duration
 }
+
+// NewAPIKey is a random key for one start of the server.
+func NewAPIKey() string {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		panic("localllm: no randomness: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
+// childEnv is the environment llama-server and its probes start with: the allowlist that agents get, none of the app's tokens.
+func childEnv() []string { return proc.ScrubEnv(os.Environ(), proc.BaseEnvNames, nil) }
 
 // ServerState is what the page shows about the server.
 type ServerState struct {
@@ -148,7 +168,10 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 		s.set(func(st *ServerState) { st.State, st.Error = "failed", err.Error() })
 		return err
 	}
-	env := proc.ScrubEnv(os.Environ(), proc.BaseEnvNames, nil)
+	env := childEnv()
+	if l.APIKey != "" {
+		env = append(env, "LLAMA_API_KEY="+l.APIKey)
+	}
 	// the server outlives this call: the person stops it
 	p, err := s.PM.Start(context.Background(), proc.Spec{Path: l.Program, Args: Arguments(l), Dir: dirOf(l.Program), Env: env, Label: "llama-server"})
 	if err != nil {
@@ -246,7 +269,7 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 			if !current() {
 				return errStopped
 			}
-			if s.healthy(wctx, hc, base) {
+			if s.healthy(wctx, hc, base) && s.ours(wctx, hc, base, l.APIKey) {
 				var stopped bool
 				s.set(func(st *ServerState) {
 					if stopped = s.gen != gen; !stopped {
@@ -273,6 +296,29 @@ func (s *Server) healthy(ctx context.Context, hc *http.Client, base string) bool
 	}
 	resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+// ours checks that what answers on the port is the server just started: with a key, /props (which the server protects with it)
+// must answer 200 to the key as JSON. Without one nothing can be told apart, and /health is the whole check.
+func (s *Server) ours(ctx context.Context, hc *http.Client, base, key string) bool {
+	if key == "" {
+		return true
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/props", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var v map[string]json.RawMessage
+	return json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&v) == nil
 }
 
 func (s *Server) tail() string {

@@ -91,6 +91,67 @@ func TestTheServerIsStartedWithTheModelAndStopped(t *testing.T) {
 	}
 }
 
+// With a key the server is started with it in its environment (LLAMA_API_KEY) and never on its command line, answers nothing
+// but /health and the model list without it, and Start is satisfied only by a server that accepts the key (audit 2026-10-16,
+// L32). A different program that holds the port is not taken for the server.
+func TestTheServerDemandsAKeyThatIsNotOnItsCommandLine(t *testing.T) {
+	srv := &localllm.Server{PM: proc.New()}
+	port := freePort(t)
+	record := filepath.Join(t.TempDir(), "args.txt")
+	key := localllm.NewAPIKey()
+	if len(key) < 32 || key == localllm.NewAPIKey() {
+		t.Fatalf("a key must be long and new every time: %q", key)
+	}
+	l := localllm.Launch{Program: os.Args[0], Args: llamatest.Args("--record=" + record), Model: tinyModel(t), Port: port, APIKey: key, LogDir: t.TempDir(), Timeout: 30 * time.Second}
+	if err := srv.Start(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	if args, _ := os.ReadFile(record); strings.Contains(string(args), key) || strings.Contains(string(args), "api-key") {
+		t.Fatalf("the key is on the command line, where any program on the machine can read it:\n%s", args)
+	}
+	get := func(path, auth string) int {
+		req, _ := http.NewRequest(http.MethodGet, srv.State().BaseURL[:len(srv.State().BaseURL)-len("/v1")]+path, nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := get("/props", ""); got != http.StatusUnauthorized {
+		t.Fatalf("/props without the key: %d", got)
+	}
+	if got := get("/props", "Bearer wrong"); got != http.StatusUnauthorized {
+		t.Fatalf("/props with a wrong key: %d", got)
+	}
+	if got := get("/props", "Bearer "+key); got != http.StatusOK {
+		t.Fatalf("/props with the key: %d", got)
+	}
+	if got := get("/health", ""); got != http.StatusOK {
+		t.Fatalf("/health is public: %d", got)
+	}
+}
+
+// A port that another program holds is refused before anything is started (the keyed readiness check is in
+// server_internal_test.go).
+func TestAStartOnAPortAnotherProgramHoldsIsRefused(t *testing.T) {
+	impostor := &localllm.Server{PM: proc.New()}
+	port := freePort(t)
+	if err := impostor.Start(context.Background(), localllm.Launch{Program: os.Args[0], Args: llamatest.Args(), Model: tinyModel(t), Port: port, Timeout: 30 * time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	defer impostor.Stop()
+	real := &localllm.Server{PM: proc.New()}
+	err := real.Start(context.Background(), localllm.Launch{Program: os.Args[0], Args: llamatest.Args(), Model: tinyModel(t), Port: port, APIKey: localllm.NewAPIKey(), Timeout: 5 * time.Second})
+	if err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("a start on a port that another program holds: %v", err)
+	}
+}
+
 // A Stop while the model still loads ends in "stopped", never in "failed": the Start that was waiting answers that it was
 // stopped and leaves the state alone, however the process's exit and the stop are ordered.
 func TestAStopDuringTheLoadLeavesTheServerStopped(t *testing.T) {

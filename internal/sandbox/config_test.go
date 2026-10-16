@@ -222,3 +222,26 @@ func TestALogFileStopsGrowingAtItsLimit(t *testing.T) {
 		t.Fatalf("log of %d bytes with %d kept: %q", st.Size(), strings.Count(string(b), "x"), b[len(b)-80:])
 	}
 }
+
+// A workspace and a service get a reduced capability set and limits that include swap (audit 2026-10-16, L7); the flags are the
+// same for both, and the egress container keeps its own, stricter ones.
+func TestContainersKeepOnlyTheCapabilitiesDevelopmentToolsUse(t *testing.T) {
+	args := strings.Join(hardenArgs(), " ")
+	for _, want := range []string{"--security-opt no-new-privileges", "--cap-drop ALL", "--cap-add CHOWN", "--cap-add SETUID", "--cap-add SETGID", "--cap-add DAC_OVERRIDE", "--cap-add NET_BIND_SERVICE"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("the flags lack %q: %s", want, args)
+		}
+	}
+	for _, gone := range []string{"NET_RAW", "MKNOD", "SYS_CHROOT", "SETPCAP", "AUDIT_WRITE", "SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE"} {
+		if strings.Contains(args, gone) {
+			t.Errorf("%s is kept in a workspace", gone)
+		}
+	}
+	c := Config{CPUs: 1.5, Memory: "3g"}
+	lim := strings.Join(limitArgs(c, 4096), " ")
+	for _, want := range []string{"--cpus 1.5", "--memory 3g", "--memory-swap 3g", "--pids-limit 4096"} {
+		if !strings.Contains(lim, want) {
+			t.Errorf("the limits lack %q: %s", want, lim)
+		}
+	}
+}

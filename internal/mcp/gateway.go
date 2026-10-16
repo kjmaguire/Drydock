@@ -138,6 +138,7 @@ type Gateway struct {
 
 	authMu   sync.Mutex
 	authSeen map[string]*bucket
+	authAll  *bucket // every failure together, whatever the run id says
 
 	fmu     sync.Mutex
 	flights map[string]*flight
@@ -165,6 +166,7 @@ func New(opts Options) (*Gateway, error) {
 		opts: opts, ctx: ctx, cancel: cancel, httpBase: upstreamTransport(),
 		runs: map[string]*Run{}, pool: map[string]*upstream{}, authSeen: map[string]*bucket{}, flights: map[string]*flight{},
 	}
+	g.authAll = newBucket(30, 30.0/60, g.now)
 	if opts.DB != nil {
 		g.cache = &cacheStore{db: opts.DB, dir: filepath.Join(opts.DataDir, "mcp-cache"), now: opts.Now}
 	}
@@ -187,7 +189,9 @@ func (g *Gateway) Start() error {
 	g.ln = ln
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp/", g.serveMCP)
-	g.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	// the address is loopback and the callers are the agents' CLIs and the shim: small requests, and none that sit idle for long
+	// without being a held-open stream, so the header size is limited and an idle connection is closed (audit 2026-10-16, L24)
+	g.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, MaxHeaderBytes: 64 << 10, IdleTimeout: 5 * time.Minute}
 	g.wg.Add(2)
 	safe.Go("mcp.Gateway.Start", func() { defer g.wg.Done(); _ = g.srv.Serve(ln) })
 	safe.Go("mcp.Gateway.Start#2", func() { defer g.wg.Done(); g.reaper() })
@@ -549,28 +553,31 @@ func (g *Gateway) hostOK(host string) bool {
 	return p == strconv.Itoa(g.ln.Addr().(*net.TCPAddr).Port)
 }
 
-// authFailed emits mcp.auth_failed, at most a handful per run id per minute so that a flood cannot fill the event log.
+// authFailed emits mcp.auth_failed, at most a handful per run id per minute and a few dozen in all, so that a flood cannot fill
+// the event log. The run id is part of the address the caller chose: only an id of the shape Drydock makes gets a bucket of its
+// own (at most 1024 of them, each a few dozen bytes); every other path shares one, so a caller cannot make the gateway hold
+// memory in proportion to what it sends (audit 2026-10-16, L24).
 func (g *Gateway) authFailed(req *http.Request, runID string, known bool) {
+	safeID := runID
+	if !runIDRe.MatchString(safeID) {
+		safeID = "(invalid)"
+	}
 	g.authMu.Lock()
-	b := g.authSeen[runID]
+	b := g.authSeen[safeID]
 	if b == nil {
-		if len(g.authSeen) > 1024 {
+		if len(g.authSeen) >= 1024 {
 			g.authSeen = map[string]*bucket{}
 		}
 		b = newBucket(5, 5.0/60, g.now)
-		g.authSeen[runID] = b
+		g.authSeen[safeID] = b
 	}
 	g.authMu.Unlock()
-	if !b.allow() {
+	if !b.allow() || !g.authAll.allow() {
 		return
 	}
 	reason := "missing or invalid bearer token"
 	if !known {
 		reason = "unknown or ended run"
-	}
-	safeID := runID
-	if !runIDRe.MatchString(safeID) {
-		safeID = "(invalid)"
 	}
 	g.publish(req.Context(), EventAuthFailed, RunInfo{RunID: safeID}, "", map[string]any{"reason": reason, "remote": req.RemoteAddr})
 }

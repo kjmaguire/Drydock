@@ -99,9 +99,15 @@ llama-server --host 127.0.0.1 --port 9933 -m <file.gguf> --alias <owner/repo:VAR
   of evidence they beat the existing types at equal bits. The official build therefore offers `q8_0`, `q4_0`, `f16`; the
   fork, when a person opts into it, adds `turbo4` and `turbo3`.
 - The port is 9933 by default (one above llama.cpp's own 9931, so a `llama-server` the person runs by hand keeps its port).
-- The server binds the loopback address only and carries no API key: like Ollama, any program on the PC may use it.
+- The server binds the loopback address only. It is started with a new random API key for every start (the environment variable
+  `LLAMA_API_KEY`, never the command line, which other programs can read) and demands it on every request but `/health` and the
+  model list; the provider row made for it holds the key (in the vault, like any provider's), so Drydock's own calls carry it and
+  another program on the PC gets a 401 (audit 2026-10-16, L32). The server starts with the same trimmed environment the device
+  probe uses (`proc.BaseEnvNames`), none of the app's tokens. A model's folder name is made safe (`.` and `..` are not names), so a
+  file the Hub calls `...gguf` is not offered and no model id can name a folder outside the store (L33).
 
-Drydock waits for `GET /health` to answer 200 (the model is loaded; up to 15 minutes), then makes the server a provider:
+Drydock waits for `GET /health` to answer 200 (the model is loaded; up to 15 minutes) and for `GET /props` to accept the key (so
+a different program that took the port is not taken for the server), then makes the server a provider:
 name "Models on this PC (llama.cpp)", `kind=host`, `flavor=llamacpp`, `data_class=private`, `tier=cheap`,
 `max_concurrent=1`, base URL `http://127.0.0.1:9933/v1`. The provider probe (`internal/providers`) tells a llama-server apart
 by `GET /props`, lists its model as taking tool calls (the listing says nothing about it; the server's template handles

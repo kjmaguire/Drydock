@@ -676,12 +676,14 @@ func (l *localExt) serve(ctx context.Context, modelID string) error {
 		cache = src.CacheTypes[0]
 	}
 	prog, args := l.m.ServerProgram(in)
-	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir()}
+	// a new key for every start: the server demands it, and only the provider row made for it holds it (audit 2026-10-16, L32)
+	key := localllm.NewAPIKey()
+	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key}
 	if err := l.m.Server.Start(ctx, launch); err != nil {
 		return err
 	}
 	s.ModelID = modelID
-	if id, err := l.ensureProvider(ctx, s); err != nil {
+	if id, err := l.ensureProvider(ctx, s, key); err != nil {
 		l.c.logf("local models: provider: %v", err)
 	} else {
 		s.ProviderID = id
@@ -697,17 +699,15 @@ func (l *localExt) serve(ctx context.Context, modelID string) error {
 	return nil
 }
 
-// ensureProvider makes the server a provider: one row, kept at the server's address.
-func (l *localExt) ensureProvider(ctx context.Context, s LocalSettings) (string, error) {
+// ensureProvider makes the server a provider: one row, kept at the server's address and holding the key of this start.
+func (l *localExt) ensureProvider(ctx context.Context, s LocalSettings, key string) (string, error) {
 	base := fmt.Sprintf("http://127.0.0.1:%d/v1", s.Port)
 	if s.ProviderID != "" {
 		p, err := l.c.Providers.Get(ctx, s.ProviderID)
 		if err == nil {
-			if p.BaseURL != base || p.Flavor != providers.FlavorLlamaCpp {
-				p.BaseURL, p.Flavor = base, providers.FlavorLlamaCpp
-				if _, err := l.c.Providers.Update(ctx, p, ""); err != nil {
-					return "", err
-				}
+			p.BaseURL, p.Flavor = base, providers.FlavorLlamaCpp
+			if _, err := l.c.Providers.Update(ctx, p, key); err != nil {
+				return "", err
 			}
 			if !p.Enabled {
 				_ = l.c.Providers.SetEnabled(ctx, p.ID, true)
@@ -722,11 +722,14 @@ func (l *localExt) ensureProvider(ctx context.Context, s LocalSettings) (string,
 	if list, err := l.c.Providers.List(ctx); err == nil {
 		for _, p := range list {
 			if p.Kind == providers.KindHost && p.BaseURL == base {
+				if _, err := l.c.Providers.Update(ctx, p, key); err != nil {
+					return "", err
+				}
 				return p.ID, nil
 			}
 		}
 	}
-	p, err := l.c.Providers.Create(ctx, providers.NewProvider{Name: localProviderName, Kind: providers.KindHost, BaseURL: base,
+	p, err := l.c.Providers.Create(ctx, providers.NewProvider{Name: localProviderName, Kind: providers.KindHost, BaseURL: base, APIKey: key,
 		DataClass: providers.DataPrivate, Tier: providers.TierCheap, Flavor: providers.FlavorLlamaCpp, MaxConcurrent: 1})
 	if err != nil {
 		return "", err

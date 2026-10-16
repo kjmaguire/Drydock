@@ -28,7 +28,9 @@ func main() {
 	if addr == "" {
 		addr = ":3128"
 	}
-	srv := &http.Server{Addr: addr, Handler: p, ReadHeaderTimeout: 30 * time.Second}
+	// requests to a proxy are small: the headers are limited, and a connection nobody uses is closed (a CONNECT tunnel is hijacked
+	// and has its own idle timeout in the proxy)
+	srv := &http.Server{Addr: addr, Handler: p, ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10}
 	fmt.Fprintf(os.Stderr, "drydock-egress listening on %s, %d allowlist entries\n", addr, len(opts.Allow))
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

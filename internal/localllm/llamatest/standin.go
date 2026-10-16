@@ -6,6 +6,7 @@
 package llamatest
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -199,7 +200,19 @@ func Main(args []string) int {
 			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text}, "finish_reason": "stop"}},
 			"usage":   usage})
 	})
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	// like the real server: with LLAMA_API_KEY set every endpoint but the public ones wants "Authorization: Bearer <key>"
+	var handler http.Handler = mux
+	if key := os.Getenv("LLAMA_API_KEY"); key != "" {
+		public := map[string]bool{"/health": true, "/v1/health": true, "/models": true, "/v1/models": true, "/api/tags": true}
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !public[r.URL.Path] && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+key)) != 1 {
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": 401, "message": "Invalid API Key", "type": "authentication_error"}})
+				return
+			}
+			mux.ServeHTTP(w, r)
+		})
+	}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
 	go func() {

@@ -116,8 +116,10 @@ all. The proxy:
 
 - allows a host name, a domain (`*.example.com`) or an address on the list, on ports 80 and 443 only;
 - resolves names itself and connects to the address it checked, and refuses a name that resolves only to a private, loopback,
-  link-local or carrier-grade-NAT address (the human's machine, the engine's host gateway, a cloud metadata service) unless that
-  address is itself on the list;
+  link-local, carrier-grade-NAT or reserved address, or an IPv6 address that embeds one (NAT64, 6to4) (the human's machine, the
+  engine's host gateway, a cloud metadata service) unless that address is itself on the list (the same list as Drydock's own
+  outgoing connections: `internal/netguard`);
+- closes a tunnel that has carried nothing in either direction for five minutes, and limits the size of a request's headers;
 - logs one JSON line per decision; refused requests appear in `sandbox_info` and the agent is told to ask the human to add a
   host.
 
@@ -131,6 +133,12 @@ that file the allowlist cannot start, and the project settings say so; `network:
 Protected: the human's files outside the task's worktree, the human's credentials (the Claude Code login stays with the CLI on
 the host; nothing else is mounted), the human's machine's network services, the internet beyond the allowlist, other tasks
 (each has its own containers and networks), and the human's machine from the project's code (it never runs there).
+
+The workspace and every service run with no new privileges and only the Linux capabilities development tools use (CHOWN,
+DAC_OVERRIDE, FOWNER, FSETID, KILL, SETGID, SETUID, SETFCAP, NET_BIND_SERVICE: Docker's default set without raw sockets, device
+nodes, chroot, audit writes and changing the capability set), and with the project's CPU, memory (swap included) and process
+limits; a service gets the workspace's limits (audit 2026-10-16, L7). Not verified here: the same flags against a real engine
+(no container engine runs in the development environment; the sandbox tests that start containers run in CI).
 
 Not protected:
 

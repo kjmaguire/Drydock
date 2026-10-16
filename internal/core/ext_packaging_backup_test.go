@@ -2,6 +2,9 @@ package core_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -359,6 +362,58 @@ func TestFailedRestoreKeepsTheCurrentDatabase(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// A staged-restore marker is a file in the data folder: it is followed only to a backup in the backup folder, found by name, a
+// plain file, with the hash that was staged. Anything else leaves the data alone and says why (audit 2026-10-16, L19).
+func TestAPlantedRestoreMarkerCannotInstallAnotherFile(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	a := open(t, dataDir)
+	gitProject(t, a, "Alpha")
+	var res core.BackupResult
+	a.call("backup.now", nil, &res)
+	gitProject(t, a, "Beta (made after the backup)")
+	a.c.Close()
+	backups := filepath.Join(dataDir, "backups")
+	good := filepath.Join(backups, res.Backup.Name)
+	// a database from somewhere else, valid in every way a restore checks, with a sidecar of its own
+	other := filepath.Join(t.TempDir(), "drydock-20260101T000000Z-planted.db")
+	raw, _ := os.ReadFile(good)
+	os.WriteFile(other, raw, 0o600)
+	sum := sha256.Sum256(raw)
+	os.WriteFile(other+".sha256", []byte(hex.EncodeToString(sum[:])+"  x\n"), 0o600)
+	link := filepath.Join(backups, "drydock-20260102T000000Z-link.db")
+	if err := os.Symlink(other, link); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	os.WriteFile(link+".sha256", []byte(hex.EncodeToString(sum[:])+"  x\n"), 0o600) // so that only the link itself is wrong
+	for name, mk := range map[string]string{
+		"a path outside the backup folder":        fmt.Sprintf(`{"backupPath":%q,"name":%q,"sha256":%q,"backupsDir":%q}`, filepath.ToSlash(other), filepath.Base(other), hex.EncodeToString(sum[:]), filepath.ToSlash(backups)),
+		"the name of a real backup, another path": fmt.Sprintf(`{"backupPath":%q,"name":%q,"sha256":%q,"backupsDir":%q}`, filepath.ToSlash(other), res.Backup.Name, res.Backup.SHA256, filepath.ToSlash(backups)),
+		"a name with a path in it":                fmt.Sprintf(`{"backupPath":%q,"name":%q,"sha256":%q,"backupsDir":%q}`, filepath.ToSlash(other), "../"+filepath.Base(other), hex.EncodeToString(sum[:]), filepath.ToSlash(backups)),
+		"a hash that is not the recorded one":     fmt.Sprintf(`{"backupPath":%q,"name":%q,"sha256":%q,"backupsDir":%q}`, filepath.ToSlash(good), res.Backup.Name, strings.Repeat("0", 64), filepath.ToSlash(backups)),
+		"a link":                                  fmt.Sprintf(`{"backupPath":%q,"name":%q,"sha256":%q,"backupsDir":%q}`, filepath.ToSlash(link), filepath.Base(link), hex.EncodeToString(sum[:]), filepath.ToSlash(backups)),
+	} {
+		if err := os.WriteFile(filepath.Join(dataDir, "restore.pending"), []byte(mk), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		b := openAt(t, dataDir)
+		if got := b.projectNames(); len(got) != 2 {
+			t.Fatalf("%s: the data was replaced: %v", name, got)
+		}
+		if _, err := os.Stat(filepath.Join(dataDir, "restore.pending")); err == nil {
+			t.Fatalf("%s: the refused marker would be tried again", name)
+		}
+		b.c.Close()
+	}
+	// the right marker, written the way staging writes it, still works
+	c := openAt(t, dataDir)
+	c.call("backup.restore", map[string]any{"name": res.Backup.Name, "confirm": true}, nil)
+	c.c.Close()
+	d := openAt(t, dataDir)
+	if got := d.projectNames(); len(got) != 1 || got[0] != "Alpha" {
+		t.Fatalf("a real staged restore: %v", got)
+	}
 }
 
 func TestBackupSchedulerFirstCheckFollowsConfig(t *testing.T) {

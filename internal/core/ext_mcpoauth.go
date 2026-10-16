@@ -351,17 +351,23 @@ func (s *mcpServers) oauthSave(ctx context.Context, id string, st oauthSaved) er
 	if err := s.c.secrets.Put(ctx, mcpVaultRef(id, "oauth"), string(b)); err != nil {
 		return fmt.Errorf("could not keep the sign-in: %w", err)
 	}
-	if s.c.Scanner != nil && st.Token != nil {
-		// a tool result must never be able to echo the tokens back into a conversation
-		_ = s.c.Scanner.RegisterSecret("mcp-"+id+"-oauth-access", st.Token.AccessToken)
-		if st.Token.RefreshToken != "" {
-			_ = s.c.Scanner.RegisterSecret("mcp-"+id+"-oauth-refresh", st.Token.RefreshToken)
-		}
-		if st.ClientSecret != "" {
-			_ = s.c.Scanner.RegisterSecret("mcp-"+id+"-oauth-client", st.ClientSecret)
-		}
-	}
+	s.teachOAuthSecrets(id, st)
 	return nil
+}
+
+// teachOAuthSecrets makes the secret scanner know the tokens of a signed-in server, so a tool result can never echo them back
+// into a conversation.
+func (s *mcpServers) teachOAuthSecrets(id string, st oauthSaved) {
+	if s.c.Scanner == nil || st.Token == nil {
+		return
+	}
+	_ = s.c.Scanner.RegisterSecret("mcp-"+id+"-oauth-access", st.Token.AccessToken)
+	if st.Token.RefreshToken != "" {
+		_ = s.c.Scanner.RegisterSecret("mcp-"+id+"-oauth-refresh", st.Token.RefreshToken)
+	}
+	if st.ClientSecret != "" {
+		_ = s.c.Scanner.RegisterSecret("mcp-"+id+"-oauth-client", st.ClientSecret)
+	}
 }
 
 func (s *mcpServers) oauthCancel(id string) {

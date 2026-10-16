@@ -318,6 +318,33 @@ func activityWarnings(runs, agents int) []string {
 	return w
 }
 
+// confineRestore turns a staged restore marker into the backup it names, the way the person chose it: by file name in the backup
+// folder, found again by listing that folder (so a path in the marker is not followed anywhere), a plain file and not a link, and
+// with the hash its sidecar records now equal to the one that was staged. A marker is a file in the data folder, and the database
+// it makes the app install is the whole of Drydock's state (audit 2026-10-16, L19).
+func confineRestore(mk restoreMarker) (backup.Info, error) {
+	list, err := backup.List(mk.BackupsDir)
+	if err != nil {
+		return backup.Info{}, fmt.Errorf("the backup folder cannot be read: %w", err)
+	}
+	for _, b := range list {
+		if b.Name != mk.Name {
+			continue
+		}
+		if filepath.Clean(mk.BackupPath) != filepath.Clean(b.Path) {
+			return backup.Info{}, errors.New("the staged restore points outside the backup folder")
+		}
+		if st, err := os.Lstat(b.Path); err != nil || !st.Mode().IsRegular() {
+			return backup.Info{}, errors.New("the staged backup is not a plain file")
+		}
+		if b.SHA256 != mk.SHA256 {
+			return backup.Info{}, errors.New("the backup's recorded hash is not the one that was staged: it was changed after the restore was staged")
+		}
+		return b, nil
+	}
+	return backup.Info{}, fmt.Errorf("there is no backup named %s in the backup folder", mk.Name)
+}
+
 // applyPendingRestore is the hook at the top of Core.Open, before the database is opened: it applies a restore staged by
 // backup.restore. The current database is moved aside by backup.Restore, never deleted; if installing the backup fails after
 // that move, the old database is put back. The outcome is left in a small JSON file the extension reports on start.
@@ -338,7 +365,12 @@ func applyPendingRestore(ctx context.Context, dataDir string) {
 		fail("the staged restore marker is unreadable")
 		return
 	}
-	if v, err := storage.FileSchemaVersion(ctx, mk.BackupPath); err != nil {
+	info, err := confineRestore(mk)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	if v, err := storage.FileSchemaVersion(ctx, info.Path); err != nil {
 		fail("the backup cannot be read: " + err.Error())
 		return
 	} else if v > storage.LatestVersion() {
@@ -346,7 +378,6 @@ func applyPendingRestore(ctx context.Context, dataDir string) {
 		return
 	}
 	dbPath := filepath.Join(dataDir, "drydock.db")
-	info := backup.Info{Path: mk.BackupPath, Name: mk.Name, SHA256: mk.SHA256}
 	replaced, err := backup.Restore(ctx, info, dbPath, mk.BackupsDir, time.Now())
 	if err != nil {
 		if replaced != "" { // the current database was moved aside before the failure: put it back

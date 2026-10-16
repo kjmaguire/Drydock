@@ -599,3 +599,24 @@ func TestMovingAnMCPServerForgetsItsStoredCredentials(t *testing.T) {
 		t.Fatalf("a secret given with the new program was dropped: %+v", lib)
 	}
 }
+
+// A plain environment variable is stored as text and shown on screen, so a value the secret scanner would change is refused
+// and the person is pointed to the secret variables; the refusal does not repeat the value (audit 2026-10-16, L6).
+func TestAPlainEnvironmentVariableCannotHoldASecret(t *testing.T) {
+	self, _ := os.Executable()
+	a := openMCPApp(t, &claude.Adapter{Exe: os.Args[0]})
+	const token = "ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"
+	err := a.callErr("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{self}, Env: map[string]string{"GITHUB_TOKEN": token}})
+	if err == nil || !strings.Contains(err.Error(), "secret variable") || strings.Contains(err.Error(), token) {
+		t.Fatalf("a token in a plain variable: %v", err)
+	}
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Prog", Transport: "stdio", Argv: []string{self},
+		Env: map[string]string{"LOG_LEVEL": "debug", "DATA_DIR": "/home/u/data"}, SecretEnv: map[string]string{"GITHUB_TOKEN": token}}, &lib)
+	if lib.Env["LOG_LEVEL"] != "debug" || len(lib.SecretEnv) != 1 {
+		t.Fatalf("an ordinary value and a secret one: %+v", lib)
+	}
+	if b, _ := json.Marshal(lib); strings.Contains(string(b), token) {
+		t.Fatal("the library entry shows the token")
+	}
+}

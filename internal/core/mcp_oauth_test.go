@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -8,9 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/mcp/oauthfake"
+	"github.com/kjmaguire/drydock/internal/providers"
 )
 
 func newOAuthFake(t *testing.T) *oauthfake.Server {
@@ -115,6 +118,41 @@ func TestOAuthSignInKeepsRefreshesAndForgetsTheTokens(t *testing.T) {
 	}
 	if err := a.callErr("mcplib.discover", map[string]string{"id": "oauthy"}); err == nil || !strings.Contains(err.Error(), "not signed in") {
 		t.Fatalf("discover after sign-out: %v", err)
+	}
+}
+
+// The secret scanner knows the sign-in tokens of an OAuth server after the app starts again: they were taught to it when they
+// were issued, and a new start knew none of them (audit 2026-10-16, L25).
+func TestSignInTokensAreKnownToTheScannerAfterARestart(t *testing.T) {
+	f := newOAuthFake(t)
+	dir := t.TempDir()
+	creds := providers.NewMemoryCredentialStoreForTests()
+	open := func() *core.Core {
+		c, err := core.Open(context.Background(), core.Config{DataDir: dir, User: "kyle", LeaseTTL: 3 * time.Second, Credentials: creds,
+			Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: "unused"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	c1 := open()
+	a := &app{t: t, c: c1}
+	yes := true
+	var lib core.MCPLibraryServer
+	a.call("mcplib.save", core.MCPServerInput{ID: "oauthy", Display: "OAuth server", Transport: "http", URL: f.URL(), OAuth: &yes}, &lib)
+	if st := signIn(t, a, "oauthy"); !st.SignedIn {
+		t.Fatalf("sign-in: %+v", st)
+	}
+	access := f.Access()
+	echo := "the tool echoed " + access + " back"
+	if got := c1.Scanner.Redact(echo); strings.Contains(got, access) {
+		t.Fatalf("the token is not masked right after sign-in: %q", got)
+	}
+	c1.Close()
+	c2 := open()
+	defer c2.Close()
+	if got := c2.Scanner.Redact(echo); strings.Contains(got, access) {
+		t.Fatalf("after a restart the scanner does not know the stored token: %q", got)
 	}
 }
 

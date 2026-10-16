@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,6 +199,45 @@ func TestBearerTokenRequired(t *testing.T) {
 	e.g.EndRun("r-auth")
 	if c := post(ep.URL, ep.Token, nil); c != 401 {
 		t.Fatalf("ended run: %d", c)
+	}
+}
+
+// The run id in the address is the caller's: a flood of made-up ones must neither make the gateway hold memory in proportion to
+// what it was sent nor fill the event log (audit 2026-10-16, L24).
+func TestAuthFailuresOfMadeUpRunIDsAreBoundedInMemoryAndInEvents(t *testing.T) {
+	e := newEnv(t, nil)
+	req := httptest.NewRequest("POST", "http://127.0.0.1/mcp/x", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	fail := func(id string) { e.g.authFailed(req, id, false) }
+	// ids that are not of the shape Drydock makes, one of them a megabyte long, share one bucket
+	for i := 0; i < 3000; i++ {
+		fail(fmt.Sprintf("not valid %d !", i))
+	}
+	fail(strings.Repeat("A", 1<<20))
+	e.g.authMu.Lock()
+	n := len(e.g.authSeen)
+	_, hasInvalid := e.g.authSeen["(invalid)"]
+	e.g.authMu.Unlock()
+	if n != 1 || !hasInvalid {
+		t.Fatalf("%d buckets for ids nobody could have been given (the shared one: %v)", n, hasInvalid)
+	}
+	// ids of the right shape each get a bucket, the table stays bounded, and all failures together are limited
+	e.clock.Advance(time.Hour)
+	before := len(e.events(EventAuthFailed))
+	for i := 0; i < 2500; i++ {
+		fail(fmt.Sprintf("r%d", i))
+	}
+	e.g.authMu.Lock()
+	n = len(e.g.authSeen)
+	e.g.authMu.Unlock()
+	if n > 1024 {
+		t.Fatalf("%d buckets", n)
+	}
+	if got := len(e.events(EventAuthFailed)) - before; got > 31 {
+		t.Fatalf("%d events from one flood: the log can be filled", got)
+	}
+	if e.g.srv.MaxHeaderBytes != 64<<10 || e.g.srv.IdleTimeout <= 0 {
+		t.Fatalf("server limits: %d %s", e.g.srv.MaxHeaderBytes, e.g.srv.IdleTimeout)
 	}
 }
 
