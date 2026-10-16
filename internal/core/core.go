@@ -61,8 +61,8 @@ type Config struct {
 	Credentials providers.CredentialStore
 	// LeaseTTL for workflow runs (default 30s).
 	LeaseTTL time.Duration
-	// BackupFirstCheck is how long after start the backup scheduler first considers a backup (default 5s). Tests that drive
-	// the scheduler by hand set it far out, so a backup of their own does not race the one they stage.
+	// BackupFirstCheck is how long after start the backup scheduler first considers a backup (zero: 5s; negative is refused).
+	// In the test binary zero means an hour, so tests drive the scheduler by hand (TestBackupTick) unless they set it.
 	BackupFirstCheck time.Duration
 	// GitHubAPI answers the account calls (signed-in user, organizations, repositories). Default: the user's `gh`.
 	GitHubAPI host.API
@@ -176,6 +176,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	if cfg.LeaseTTL <= 0 {
 		cfg.LeaseTTL = 30 * time.Second
+	}
+	if cfg.BackupFirstCheck < 0 {
+		return nil, fmt.Errorf("core: BackupFirstCheck is %v; it must be zero (the default) or positive", cfg.BackupFirstCheck)
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err

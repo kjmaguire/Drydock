@@ -224,7 +224,7 @@ func (p *packaging) backupDue(ctx context.Context) bool {
 }
 
 func (p *packaging) backupLoop(ctx context.Context) {
-	// the first check shortly after start (Config.BackupFirstCheck), then on the interval
+	// the first check shortly after start (Config.BackupFirstCheck, default 5s), then on the interval
 	timer := time.NewTimer(p.backupFirst)
 	defer timer.Stop()
 	for {

@@ -104,9 +104,7 @@ func open(t *testing.T, dataDir string) *app {
 	if dataDir == "" {
 		dataDir = filepath.Join(dir, "data")
 	}
-	// the backup scheduler's own first check is pushed out of the way: the backup tests drive it by hand, and on a slow runner
-	// its 5 second start-up check once took a real backup before a test had installed its clock
-	c, err := core.Open(context.Background(), core.Config{DataDir: dataDir, User: "kyle", LeaseTTL: 3 * time.Second, BackupFirstCheck: time.Hour,
+	c, err := core.Open(context.Background(), core.Config{DataDir: dataDir, User: "kyle", LeaseTTL: 3 * time.Second,
 		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}}})
 	if err != nil {
 		t.Fatal(err)

@@ -72,8 +72,8 @@ func TestBackupNowListVerifyAndTamperDetection(t *testing.T) {
 	if res.Backup.Name == "" || res.Backup.Size == 0 || res.Backup.SHA256 == "" {
 		t.Fatalf("backup %+v", res)
 	}
-	// the list holds the manual backup, once; the first scheduled check (5 seconds after start) may have taken a backup of
-	// its own before it on a slow machine (the Windows runner did)
+	// the list holds the manual backup, once (a scheduled one is tolerated: in the product the first check comes 5 seconds
+	// after start, and before the test binary moved it out it once beat this test on the Windows runner)
 	dir, list := a.backups()
 	manual, found := 0, false
 	for _, b := range list {
@@ -370,4 +370,46 @@ func TestFailedRestoreKeepsTheCurrentDatabase(t *testing.T) {
 		}
 		return false
 	})
+}
+
+func TestBackupSchedulerFirstCheckFollowsConfig(t *testing.T) {
+	cfg := func(first time.Duration) core.Config {
+		return core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second, BackupFirstCheck: first}
+	}
+	// a negative first check is a mistake, and Open says so rather than quietly using the default
+	if c, err := core.Open(context.Background(), cfg(-time.Second)); err == nil || !strings.Contains(err.Error(), "BackupFirstCheck") {
+		if c != nil {
+			c.Close()
+		}
+		t.Fatalf("a negative BackupFirstCheck opened: %v", err)
+	}
+	// zero is the default, which the test binary moves to an hour: every helper that opens or reopens a core gets it
+	if got := open(t, "").c.BackupFirstCheckForTest(); got != time.Hour {
+		t.Errorf("open: first check after %v", got)
+	}
+	if got := openAt(t, filepath.Join(t.TempDir(), "data")).c.BackupFirstCheckForTest(); got != time.Hour {
+		t.Errorf("openAt: first check after %v", got)
+	}
+
+	// a short first check runs the real loop: the scheduler takes a backup on its own, without TestBackupTick
+	c, err := core.Open(context.Background(), cfg(50*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	if got := c.BackupFirstCheckForTest(); got != 50*time.Millisecond {
+		t.Fatalf("first check after %v", got)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		_, list := a.backups()
+		if len(list) == 1 && list[0].Label == "scheduled" {
+			break
+		}
+		if len(list) > 1 || time.Now().After(deadline) {
+			t.Fatalf("no single scheduled backup from the first check: %v", list)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
