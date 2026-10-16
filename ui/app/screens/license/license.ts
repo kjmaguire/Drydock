@@ -2,7 +2,7 @@
 
 import type { LicenseView } from '../../api/pkgTypes.ts';
 import type { Tone } from '../../ui/tokens.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDate, formatDateTime } from '../../lib/format.ts';
 
 export const STATE_TEXT: Record<string, string> = {
   none: 'No license',
@@ -29,6 +29,21 @@ export function stateText(state: string): string {
 
 export function stateTone(state: string): Tone {
   return state === 'active' || state === 'trial' ? 'ok' : state === 'grace' ? 'warn' : 'err';
+}
+
+/**
+ * What the License page says while Drydock's record of the latest date it has seen is ahead of this computer's clock (audit
+ * 2026-10-16, M16): which date, why the license is judged by it, and the two ways out. Not "the clock was set back": the record
+ * can be the mistake (a clock that was wrong when it was recorded), and then the clock check is reset, not the clock.
+ */
+export function clockNote(v: Pick<LicenseView, 'lastSeen'>): string {
+  const seen = v.lastSeen ? `Drydock last saw ${formatDate(v.lastSeen * 1000)}, which is` : 'Drydock has seen a date that is';
+  return `${seen} later than this computer's clock says now, so the license is judged by that date. If the clock is wrong, set it right. If Drydock's record of the date is the mistake, reset the clock check.`;
+}
+
+/** Whether the core's own message already carries the explanation clockNote gives (it adds it while the record is ahead of the clock), so the page says it once. */
+export function messageCarriesClockNote(v: Pick<LicenseView, 'message'>): boolean {
+  return v.message.includes('reset the clock check');
 }
 
 /** The label of the days row: "Expired", "Grace days left" or "Days left". */

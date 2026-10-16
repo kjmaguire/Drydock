@@ -1176,6 +1176,21 @@ export interface SandboxStatus {
   starter?: string;
   egressError?: string;
   configPath: string;
+  /**
+   * The digest of the definition shown (the one on the default branch); sandbox.trust confirms exactly the definition with the
+   * digest it is given. Absent without a valid definition.
+   */
+  fingerprint?: string;
+  /**
+   * True only when the sandbox is on and this is the definition the person confirmed. A definition that differs does not run:
+   * the project's tasks wait (in Needs you) until it is confirmed. Absent from an older core: treat as true.
+   */
+  trusted?: boolean;
+  /**
+   * What differs from the definition the person confirmed, one plain line each, or a description of the definition when none
+   * was ever confirmed. Text from the repository's definition: shown as text.
+   */
+  changes?: string[];
 }
 export interface SandboxTestStep {
   name: string;

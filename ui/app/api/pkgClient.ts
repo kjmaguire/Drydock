@@ -22,6 +22,11 @@ export interface PkgClient {
   /** Exactly one of token and path. The token is sent once and never kept. */
   licenseImport(req: { token?: string; path?: string }): Promise<LicenseView>;
   licenseClear(): Promise<LicenseView>;
+  /**
+   * Puts the record of the latest date Drydock has seen right when it is ahead of a correct clock (a human only; audited). The
+   * core refuses ("there is nothing to reset") unless that record is ahead of this computer's clock. Returns the refreshed view.
+   */
+  licenseResetClock(): Promise<LicenseView>;
   backupList(): Promise<BackupList>;
   backupNow(label?: string): Promise<BackupResult>;
   backupVerify(name: string): Promise<BackupVerify>;
@@ -47,6 +52,10 @@ export function createPkgClient(t: Transport): PkgClient {
     },
     licenseImport: (req) => call('license.import', req),
     licenseClear: () => call('license.clear'),
+    licenseResetClock: async () => {
+      const v = await call<LicenseView>('license.resetClock');
+      return { ...v, channels: arr(v.channels) };
+    },
     backupList: async () => {
       const r = await call<BackupList>('backup.list');
       return { ...r, backups: arr(r.backups), replaced: arr(r.replaced) };

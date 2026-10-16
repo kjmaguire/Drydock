@@ -22,6 +22,7 @@ import { createLocalClient, type LocalClient } from './localClient.ts';
 import type {
   AdapterInfo,
   Agent,
+  AgentConfigFinding,
   AgentDetail,
   Connection,
   ConnectionReport,
@@ -48,13 +49,23 @@ import type {
   ProjectMode,
   Room,
   Task,
+  TaskCount,
   TaskCreateReq,
   TaskDetail,
   Unread,
+  UsageTotals,
 } from './types.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const gitConfig = (v: GitConfigStatus | null): GitConfigStatus => ({ trusted: v?.trusted === true, changed: arr(v?.changed), fingerprint: v?.fingerprint ?? '' });
+const agentConfig = (v: AgentConfigFinding[] | null | undefined): AgentConfigFinding[] => arr(v).map((f) => ({ ...f, files: arr(f.files), taskId: f.taskId ?? '', trusted: f.trusted === true }));
+const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
+  rows: Number(v?.rows) || 0,
+  costUsd: Number(v?.costUsd) || 0,
+  inputTokens: Number(v?.inputTokens) || 0,
+  outputTokens: Number(v?.outputTokens) || 0,
+  estimated: Number(v?.estimated) || 0,
+});
 
 export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient {
   appInfo(): Promise<AppInfo>;
@@ -72,6 +83,14 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   projectGitConfig(id: string): Promise<GitConfigStatus>;
   /** Trusts exactly the state with this fingerprint (the one shown); a stale fingerprint is an error. Returns the new status. */
   projectTrustGitConfig(id: string, fingerprint: string): Promise<GitConfigStatus>;
+  /**
+   * What each agent CLI that acts on files in its working folder would find in the project's repository and in the worktrees of
+   * its unfinished tasks (settings, hooks, plugins, MCP servers, `.env` files). Only places with something in them; empty when
+   * nothing is found. The core does not start such a CLI where this is not trusted.
+   */
+  projectAgentConfig(id: string): Promise<AgentConfigFinding[]>;
+  /** Trusts the configuration with this fingerprint for this adapter (a human only), the one that was shown. Returns the findings read again. */
+  projectTrustAgentConfig(id: string, adapter: string, fingerprint: string): Promise<AgentConfigFinding[]>;
   githubIssues(projectId: string, labels?: string): Promise<GitHubIssue[]>;
   githubImportIssue(projectId: string, number: number): Promise<Task>;
   githubPullRequest(taskId: string): Promise<PRState>;
@@ -82,7 +101,10 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;
   taskCreate(req: TaskCreateReq): Promise<Task>;
+  /** The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. */
   taskList(projectId: string, statuses?: string[]): Promise<Task[]>;
+  /** How many tasks the project has (those in the given statuses when any are named). */
+  taskCount(projectId: string, statuses?: string[]): Promise<TaskCount>;
   taskGet(id: string): Promise<TaskDetail>;
   taskDiff(id: string): Promise<string>;
   taskAssign(id: string, assignee: string, reviewer: string): Promise<Task>;
@@ -160,6 +182,8 @@ export function createClient(t: Transport): Client {
     },
     projectGitConfig: async (id) => gitConfig(await t.call<GitConfigStatus | null>('project.gitConfig', { id })),
     projectTrustGitConfig: async (id, fingerprint) => gitConfig(await t.call<GitConfigStatus | null>('project.trustGitConfig', { id, fingerprint })),
+    projectAgentConfig: async (id) => agentConfig(await t.call<AgentConfigFinding[] | null>('project.agentConfig', { id })),
+    projectTrustAgentConfig: async (id, adapter, fingerprint) => agentConfig(await t.call<AgentConfigFinding[] | null>('project.trustAgentConfig', { id, adapter, fingerprint })),
     githubIssues: async (projectId, labels = '') => arr(await t.call<GitHubIssue[] | null>('github.issues', { projectId, labels })),
     githubImportIssue: (projectId, number) => t.call('github.importIssue', { projectId, number }),
     githubPullRequest: (taskId) => t.call('github.pullRequest', { taskId }),
@@ -170,6 +194,7 @@ export function createClient(t: Transport): Client {
     agentList: async (projectId) => arr(await t.call<Agent[] | null>('agent.list', { projectId })),
     taskCreate: (req) => t.call('task.create', req),
     taskList: async (projectId, statuses = []) => arr(await t.call<Task[] | null>('task.list', { projectId, statuses })),
+    taskCount: async (projectId, statuses = []) => ({ total: Number((await t.call<TaskCount | null>('task.count', { projectId, statuses }))?.total) || 0 }),
     taskGet: async (id) => {
       const d = await t.call<TaskDetail>('task.get', { id });
       return { ...d, evidence: arr(d.evidence), reviews: arr(d.reviews), pending: arr(d.pending) };
@@ -192,7 +217,7 @@ export function createClient(t: Transport): Client {
     usageList: async ({ taskId = '', agentId = '', limit = 0 }) => arr(await t.call<UsageRow[] | null>('usage.list', { taskId, agentId, limit })),
     agentGet: async (id) => {
       const d = await t.call<AgentDetail>('agent.get', { id });
-      return { ...d, runs: arr(d.runs), usage: arr(d.usage) };
+      return { ...d, runs: arr(d.runs), usage: arr(d.usage), usageTotals: usageTotals(d.usageTotals) };
     },
     connectionList: async () => arr(await t.call<Connection[] | null>('connection.list')),
     connectionAcknowledge: async (gateId) => {

@@ -3,10 +3,11 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Skill } from '../../api/extTypes.ts';
 import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts';
-import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
+import type { AdapterInfo, Agent, PrebuiltAgent, Project } from '../../api/types.ts';
+import { SKIP_CONFIRM_LABEL } from '../../lib/permission.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { CATALOG } from '../project/wizard-fixtures.ts';
+import { CATALOG, prebuilt } from '../project/wizard-fixtures.ts';
 import { TeamScreen } from './team-screen.tsx';
 
 afterEach(cleanup);
@@ -524,5 +525,165 @@ describe('Team: skills', () => {
       addSkills: ['docs'],
       removeSkills: ['wrangler'],
     });
+  });
+});
+
+describe('Team: a permission mode that skips approvals (M1)', () => {
+  const refusal = 'needs your confirmation: the permission mode "auto" lets this agent act without asking you first. Confirm it (confirmSkipsApprovals) to use it';
+  const risky = { ...template, permissionMode: 'auto' };
+  const applied = { agent: agent({ name: 'Payments dev' }), granted: [], skipped: [], skills: noSkills };
+  const addBtn = (r: ReturnType<typeof show>['r']) => byText<HTMLButtonElement>(r.container, 'button', 'Add to this team');
+  const box = (root: ParentNode) => byLabel<HTMLInputElement>(root, SKIP_CONFIRM_LABEL);
+
+  it('marks the crew card of an agent that has such a mode with the red badge, and no other', async () => {
+    const { r } = show([agent({ permissionMode: 'bypassPermissions' }), agent({ id: 'agt_2', name: 'Rex', permissionMode: 'acceptEdits' }), agent({ id: 'agt_3', name: 'Dan', permissionMode: 'dontAsk' })]);
+    const pay = await waitAgent(r, 'Pay');
+    expect(pay.querySelector('[data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+    expect((await waitAgent(r, 'Dan')).querySelector('[data-testid="skips-approvals-badge"]')).not.toBeNull();
+    expect((await waitAgent(r, 'Rex')).querySelector('[data-testid="skips-approvals-badge"]')).toBeNull();
+  });
+
+  it('adding an agent from a template with such a mode needs the box: Add stays off until it is ticked, and the core is told', async () => {
+    const calls: unknown[][] = [];
+    const { r } = show([], { agentTemplateList: async () => [risky], agentTemplateApply: async (...a) => (calls.push(a), applied) });
+    await waitFor(() => addBtn(r), r);
+    const warning = r.container.querySelector('[data-testid="skip-approvals-warning"]')!;
+    expect(warning.textContent).toContain('"auto" lets agents made from Payments dev act without asking you first');
+    expect(addBtn(r).disabled).toBe(true);
+    await r.act(() => addBtn(r).click());
+    expect(calls).toEqual([]);
+    await r.act(() => box(r.container).click());
+    expect(addBtn(r).disabled).toBe(false);
+    await r.act(() => addBtn(r).click());
+    await waitFor(() => expect(calls).toEqual([['tpl_1', 'prj_1', undefined, true]]), r);
+    // the box is cleared for the next one
+    await waitFor(() => expect(box(r.container).checked).toBe(false), r);
+  });
+
+  it('the box belongs to the template it was ticked for', async () => {
+    const other = { ...risky, id: 'tpl_2', name: 'Docs writer' };
+    const { r } = show([], { agentTemplateList: async () => [risky, other], agentTemplateApply: async () => applied });
+    await waitFor(() => addBtn(r), r);
+    await r.act(() => box(r.container).click());
+    expect(addBtn(r).disabled).toBe(false);
+    type(byLabel<HTMLElement>(r.container, 'Template'), 'tpl_2');
+    r.root.flush();
+    expect(r.container.querySelector('[data-testid="skip-approvals-warning"]')!.textContent).toContain('Docs writer');
+    expect(box(r.container).checked).toBe(false);
+    expect(addBtn(r).disabled).toBe(true);
+  });
+
+  it('a template that keeps approvals is added as it always was, with no box and no confirmation', async () => {
+    const calls: unknown[][] = [];
+    const { r } = show([], { agentTemplateList: async () => [{ ...template, permissionMode: 'plan' }], agentTemplateApply: async (...a) => (calls.push(a), applied) });
+    await waitFor(() => addBtn(r), r);
+    expect(r.container.querySelector('[data-testid="skip-approvals"]')).toBeNull();
+    await r.act(() => addBtn(r).click());
+    await waitFor(() => expect(calls).toEqual([['tpl_1', 'prj_1', undefined]]), r);
+  });
+
+  it('shows the core\'s refusal next to the box when the template is refused anyway', async () => {
+    const { r } = show([], {
+      agentTemplateList: async () => [risky],
+      agentTemplateApply: async () => {
+        throw new Error(refusal);
+      },
+    });
+    await waitFor(() => addBtn(r), r);
+    await r.act(() => box(r.container).click());
+    await r.act(() => addBtn(r).click());
+    const err = await waitFor(() => must(r.container.querySelector('[data-testid="skip-approvals-error"]'), 'no refusal yet'), r);
+    expect(err.textContent).toBe(refusal);
+    expect(r.container.textContent).not.toContain('Agent not created');
+  });
+
+  describe('a prebuilt agent', () => {
+    const risky_ = (): PrebuiltAgent => {
+      const e = prebuilt('team-lead');
+      return { ...e, preferred: { ...e.preferred, permissionMode: 'bypassPermissions' } };
+    };
+    const result = (id: string) => ({ id, agent: agent({ id: 'agt_9', name: 'Team Lead' }), mcp: { granted: [], skipped: [] }, skills: noSkills, notes: [] });
+    async function openGallery(client: Partial<Client>) {
+      const t = show([agent()], { agentCatalogList: async () => [risky_(), prebuilt('backend-engineer')], ...client });
+      await waitFor(() => expect(byText<HTMLButtonElement>(t.r.container, 'button', 'Add prebuilt agent').disabled).toBe(false), t.r);
+      await t.r.act(() => byText(t.r.container, 'button', 'Add prebuilt agent').click());
+      const dialog = await waitFor(() => must(t.r.container.querySelector<HTMLElement>('dialog[open] [data-testid="add-prebuilt"]'), 'no dialog'), t.r);
+      await waitFor(() => byText(dialog, 'button', 'Add Team Lead'), t.r);
+      return { ...t, dialog };
+    }
+
+    it('whose mode skips approvals is not added by one click: it asks for the box first, then tells the core', async () => {
+      const requests: unknown[] = [];
+      const { r, dialog } = await openGallery({ agentCatalogApply: async (req) => (requests.push(req), result(req.id)) });
+      await r.act(() => byText(dialog, 'button', 'Add Team Lead').click());
+      const ask = await waitFor(() => must(dialog.querySelector<HTMLElement>('[data-testid="prebuilt-confirm"]'), 'no confirmation yet'), r);
+      expect(requests).toEqual([]);
+      expect(ask.textContent).toContain('Team Lead comes with the permission mode "bypassPermissions"');
+      const add = () => byText<HTMLButtonElement>(ask, 'button', 'Add Team Lead');
+      expect(add().disabled).toBe(true);
+      await r.act(() => box(ask).click());
+      expect(add().disabled).toBe(false);
+      await r.act(() => add().click());
+      await waitFor(() => expect(requests).toEqual([{ id: 'team-lead', projectId: 'prj_1', installSkills: true, connectMcp: true, confirmSkipsApprovals: true }]), r);
+      await waitFor(() => expect(dialog.querySelector('[data-testid="prebuilt-confirm"]')).toBeNull(), r);
+      expect(dialog.querySelector('[data-testid="prebuilt-added"]')!.textContent).toContain('Team Lead joined the team');
+    });
+
+    it('can be left unconfirmed with Cancel, and an agent that keeps approvals is added at once without the flag', async () => {
+      const requests: Record<string, unknown>[] = [];
+      const { r, dialog } = await openGallery({ agentCatalogApply: async (req) => (requests.push({ ...req }), result(req.id)) });
+      const cards = Array.from(dialog.querySelectorAll('[data-testid="prebuilt"]'));
+      await r.act(() => byText(dialog, 'button', 'Add Team Lead').click());
+      await waitFor(() => dialog.querySelector('[data-testid="prebuilt-confirm"]') ?? (() => { throw new Error('no confirmation yet'); })(), r);
+      await r.act(() => byText(dialog, 'button', 'Cancel').click());
+      expect(dialog.querySelector('[data-testid="prebuilt-confirm"]')).toBeNull();
+      expect(requests).toEqual([]);
+      await r.act(() => byText(dialog, 'button', 'Add Backend Engineer').click());
+      await waitFor(() => expect(requests.map((q) => q.id)).toEqual(['backend-engineer']), r);
+      expect('confirmSkipsApprovals' in requests[0]!).toBe(false);
+      expect(cards.length).toBe(2);
+    });
+
+    it('shows the red badge on the card of an entry that comes with such a mode, and names the mode in its details', async () => {
+      const { r, dialog } = await openGallery({});
+      const [lead, engineer] = Array.from(dialog.querySelectorAll('[data-testid="prebuilt"]'));
+      expect(lead!.querySelector('[data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+      expect(engineer!.querySelector('[data-testid="skips-approvals-badge"]')).toBeNull();
+      await r.act(() => byText(lead as HTMLElement, 'button', 'What Team Lead comes with').click());
+      await waitFor(() => must(r.container.querySelector('[data-testid="prebuilt-mode"]'), 'no details yet'), r);
+      expect(r.container.querySelector('[data-testid="prebuilt-mode"]')!.textContent).toContain('bypassPermissions');
+    });
+
+    it('shows the core\'s refusal next to the box when the entry is refused anyway', async () => {
+      const { r, dialog } = await openGallery({
+        agentCatalogApply: async () => {
+          throw new Error(refusal);
+        },
+      });
+      await r.act(() => byText(dialog, 'button', 'Add Team Lead').click());
+      const ask = await waitFor(() => must(dialog.querySelector<HTMLElement>('[data-testid="prebuilt-confirm"]'), 'no confirmation yet'), r);
+      await r.act(() => box(ask).click());
+      await r.act(() => byText<HTMLButtonElement>(ask, 'button', 'Add Team Lead').click());
+      const err = await waitFor(() => must(dialog.querySelector('[data-testid="skip-approvals-error"]'), 'no refusal yet'), r);
+      expect(err.textContent).toBe(refusal);
+      expect(dialog.textContent).not.toContain('Agent not added');
+    });
+  });
+
+  it('saving an agent that has such a mode as a template says to make the template in the Library, where it can be confirmed', async () => {
+    const { r } = show([agent({ permissionMode: 'bypassPermissions' })], {
+      agentTemplateFromAgent: async () => {
+        throw new Error(refusal);
+      },
+    });
+    const card = await waitAgent(r, 'Pay');
+    await r.act(() => byText(card, 'button', 'Edit Pay').click());
+    const ed = await waitFor(() => must(editor(r), 'no editor'), r);
+    await r.act(() => byText(ed, 'button', 'Save as a template').click());
+    const note = await waitFor(() => must(ed.querySelector<HTMLElement>('[data-testid="template-needs-confirmation"]'), 'no note yet'), r);
+    expect(note.textContent).toContain(refusal);
+    expect(note.textContent).toContain('Make the template in the Library');
+    expect(note.querySelector('a[href="/library"]')).not.toBeNull();
+    expect(ed.textContent).not.toContain('Agent not changed');
   });
 });

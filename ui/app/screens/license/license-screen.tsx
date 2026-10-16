@@ -3,9 +3,8 @@
 // works with no project, so a read-only install can always reach it.
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { CircleCheck, CircleSlash, FileKey, FlaskConical, KeyRound, Lock, ShieldAlert, Trash2, TriangleAlert } from 'lucide';
+import { CircleCheck, CircleSlash, FileKey, FlaskConical, KeyRound, Lock, RotateCcw, ShieldAlert, Trash2, TriangleAlert } from 'lucide';
 import type { LicenseView } from '../../api/pkgTypes.ts';
-import { formatDateTime } from '../../lib/format.ts';
 import { starts } from '../../state/live.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -16,7 +15,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { Callout, confirmRow, DangerZone, Done, Group, intro, panel, Row, settingsColumn } from '../settings/settings-kit.tsx';
-import { daysLabel, daysText, READONLY_OFF, READONLY_USABLE, stateText, stateTone } from './license.ts';
+import { clockNote, daysLabel, daysText, messageCarriesClockNote, READONLY_OFF, READONLY_USABLE, stateText, stateTone } from './license.ts';
 
 const headCss = css({
   display: 'flex',
@@ -36,7 +35,7 @@ const cols = css({
   '& ul': { margin: '0', paddingLeft: '18px', display: 'grid', gap: '2px' },
 });
 
-const clockCss = css({ margin: '0', padding: '8px 12px', borderRadius: t.rMd, background: t.dangerSoft, fontSize: t.textMd });
+const clockCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '8px 12px', borderRadius: t.rMd, background: t.dangerSoft, fontSize: t.textMd, '& p': { margin: '0' } });
 
 const formCss = css({ display: 'grid', gap: t.s4 });
 
@@ -135,7 +134,9 @@ export function LicenseScreen(handle: Handle) {
   let tokenEl: HTMLInputElement | undefined;
   let path = '';
   let confirmClear = false;
+  let confirmReset = false;
   let done = '';
+  let clockDone = '';
 
   const reloadAll = () => {
     q.reload();
@@ -151,6 +152,18 @@ export function LicenseScreen(handle: Handle) {
       if (tokenEl) tokenEl.value = '';
       path = '';
       done = r.message;
+      reloadAll();
+    }
+    void handle.update();
+  };
+
+  /** Puts the record of the latest date seen right; the core refuses unless it is ahead of this computer's clock, and audits both times. */
+  const resetClock = async () => {
+    confirmReset = false;
+    clockDone = '';
+    const r = await act.run('reset', () => s.client.licenseResetClock());
+    if (r) {
+      clockDone = "The clock check was reset: Drydock now judges the license by this computer's clock.";
       reloadAll();
     }
     void handle.update();
@@ -197,11 +210,29 @@ export function LicenseScreen(handle: Handle) {
                 <Details v={v} />
               </div>
               {v.clockSuspect ? (
-                <p class="error-note" role="alert" mix={clockCss}>
-                  The system clock appears to have been set back. The license is judged by the latest time Drydock has seen
-                  {v.lastSeen ? ` (${formatDateTime(v.lastSeen * 1000)})` : ''}.
-                </p>
+                <div role="alert" mix={clockCss} data-testid="license-clock">
+                  {messageCarriesClockNote(v) ? null : <p data-testid="license-clock-note">{clockNote(v)}</p>}
+                  {confirmReset ? (
+                    <div mix={confirmRow} role="group" aria-label="Confirm the clock check reset">
+                      <span>
+                        Reset the clock check? Drydock then takes this computer's clock as the latest date it has seen, and the license is judged by it. The reset is written to
+                        the audit log.
+                      </span>
+                      <Button variant="danger" disabled={busy} mix={on('click', () => void resetClock())}>
+                        Yes, reset the clock check
+                      </Button>
+                      <Button mix={on('click', () => ((confirmReset = false), void handle.update()))}>Do not reset</Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Button icon={RotateCcw} disabled={busy} mix={on('click', () => ((confirmReset = true), void handle.update()))}>
+                        Reset the clock check
+                      </Button>
+                    </div>
+                  )}
+                </div>
               ) : null}
+              {clockDone ? <Done testId="license-clock-done">{clockDone}</Done> : null}
               {v.readOnly ? (
                 <Callout tone="err" icon={Lock} testId="license-readonly" title="Drydock is read-only">
                   <p>Nothing has been deleted. Importing a valid license turns work back on; workflows that were parked resume from their checkpoints.</p>

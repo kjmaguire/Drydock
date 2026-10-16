@@ -3,6 +3,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { BookmarkPlus, LayoutTemplate, UserPlus } from 'lucide';
 import type { AdapterInfo, Agent, AgentSpec, AgentUpdate, RouteModel } from '../../api/types.ts';
+import { confirmationFor, isNeedsConfirmation, needsConfirmation, splitConfirmation } from '../../lib/permission.ts';
 import { routes as appRoutes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -13,6 +14,7 @@ import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { SkipApprovals } from '../shared/skip-approvals.tsx';
 import { noSkillChanges, type SkillChanges } from '../skills/skills.ts';
 import { ClaudePracticesPanel, ModelEffortFields, RouteModelsField, claudePractices } from './fields.tsx';
 import { RunModeField } from './run-mode-field.tsx';
@@ -180,13 +182,21 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
   let pick = '';
   let name = '';
   let note = '';
+  // the mode the "acts without asking" box is ticked for, when the chosen template has such a mode (lib/permission.ts)
+  let confirmedMode = '';
 
-  const apply = async (templateId: string) => {
+  const apply = async (templateId: string, mode: string) => {
+    if (needsConfirmation(mode, confirmedMode)) return;
     note = '';
-    const r = await act.run('apply', () => s.client.agentTemplateApply(templateId, handle.props.projectId, name.trim() || undefined));
+    const confirm = confirmationFor(mode, confirmedMode).confirmSkipsApprovals;
+    const title = name.trim() || undefined;
+    const projectId = handle.props.projectId;
+    // the confirmation travels only when the mode needs it (and was ticked for): other applies are the call they always were
+    const r = await act.run('apply', () => (confirm ? s.client.agentTemplateApply(templateId, projectId, title, true) : s.client.agentTemplateApply(templateId, projectId, title)));
     if (!r) return;
     note = appliedNote(r);
     name = '';
+    confirmedMode = '';
     void handle.update();
     handle.props.onCreated();
   };
@@ -205,9 +215,12 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
     }
     const ro = s.workspace.license;
     const chosen = templates.some((x) => x.id === pick) ? pick : templates[0]!.id;
+    const tpl = templates.find((x) => x.id === chosen);
+    const mode = tpl?.permissionMode ?? '';
+    const { confirm: refusal, other: failure } = splitConfirmation(act.error);
     return (
       <section aria-label="Add an agent from a template" style={{ display: 'grid', gap: '12px' }}>
-        <ErrorNote error={act.error} what="Agent not created" />
+        <ErrorNote error={failure} what="Agent not created" />
         <div mix={templateRow}>
           <Field label="From a template">
             {(id) => (
@@ -216,7 +229,7 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
                 label="Template"
                 value={chosen}
                 options={templates.map((x) => ({ value: x.id, label: `${x.name} (${x.role}, ${x.adapter})` }))}
-                onChange={(v) => ((pick = v), void handle.update())}
+                onChange={(v) => ((pick = v), (confirmedMode = ''), void handle.update())}
               />
             )}
           </Field>
@@ -225,10 +238,17 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
               <input id={id} value={name} placeholder="the template's name" autocomplete="off" mix={on('input', (e) => ((name = e.currentTarget.value), void handle.update()))} />
             )}
           </Field>
-          <Button variant="secondary" icon={LayoutTemplate} disabled={!!act.busy || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} mix={on('click', () => void apply(chosen))}>
+          <Button
+            variant="secondary"
+            icon={LayoutTemplate}
+            disabled={!!act.busy || ro.readOnly || needsConfirmation(mode, confirmedMode)}
+            title={ro.readOnly ? ro.reason : undefined}
+            mix={on('click', () => void apply(chosen, mode))}
+          >
             Add to this team
           </Button>
         </div>
+        <SkipApprovals mode={mode} confirmed={confirmedMode} onConfirm={(m) => ((confirmedMode = m), void handle.update())} who={tpl ? `agents made from ${tpl.name}` : 'agents made from this template'} error={refusal} />
         {note ? (
           <Notice tone="ok" role="status">
             {note}
@@ -304,7 +324,13 @@ export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo 
     return (
       <form mix={[formGrid, on('submit', (e) => (e.preventDefault(), void save()))]} aria-label={`Edit ${agent.name}`} data-testid="agent-editor">
         <div mix={full} style={{ display: 'grid', gap: '8px' }}>
-          <ErrorNote error={act.error} what="Agent not changed" />
+          {isNeedsConfirmation(act.error) ? (
+            <Notice tone="warn" role="alert" testId="template-needs-confirmation" title="This agent cannot be saved as a template from here.">
+              {act.error?.message} Make the template in the <a href={appRoutes.library.href()}>Library</a>, where you can confirm the permission mode.
+            </Notice>
+          ) : (
+            <ErrorNote error={act.error} what="Agent not changed" />
+          )}
           {savedAs ? (
             <Notice tone="ok" role="status" testId="saved-as-template">
               Saved as the template {savedAs}. Find it in the <a href={appRoutes.library.href()}>Library</a>.

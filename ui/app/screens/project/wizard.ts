@@ -13,6 +13,7 @@ import {
   type SetupRequest,
 } from '../../api/types.ts';
 import type { FolderHints, RepoFolder } from '../../api/folderClient.ts';
+import { confirmationFor, needsConfirmation, SKIP_CONFIRM_LABEL } from '../../lib/permission.ts';
 
 export const STEPS = ['Basics', 'Repository', 'Connectors', 'Team', 'Review'] as const;
 export type Step = (typeof STEPS)[number];
@@ -32,10 +33,30 @@ export interface TeamMember {
   effort: string;
   permissionMode: string;
   purpose: string;
+  /**
+   * The permission mode the person ticked "I understand this agent will act without asking me first" for ('' while the box is
+   * not ticked). It counts only for that mode: another mode asks again (lib/permission.ts).
+   */
+  confirmed?: string;
+  /**
+   * A prebuilt agent's own mode and CLI: the core gives the agent the catalog entry's mode when the member's mode is left at
+   * "default" on the entry's own CLI, so that mode is what has to be confirmed then (memberMode).
+   */
+  entryMode?: string;
+  entryAdapter?: string;
   /** For display: the catalog category, skills and MCP counts. */
   category?: string;
   skills?: number;
   mcp?: string[];
+}
+
+/**
+ * The permission mode the agent gets, as the core decides it: the member's own choice, else (for a prebuilt agent on the
+ * catalog entry's own CLI) the entry's mode, else the CLI's default. A template member shows the template's mode.
+ */
+export function memberMode(m: Pick<TeamMember, 'source' | 'permissionMode' | 'adapter' | 'entryMode' | 'entryAdapter'>): string {
+  if (m.permissionMode) return m.permissionMode;
+  return m.source === 'prebuilt' && m.entryMode && m.adapter === m.entryAdapter ? m.entryMode : '';
 }
 
 export interface WizardState {
@@ -164,6 +185,8 @@ export function stepProblem(s: WizardState, step: Step): string | undefined {
       const names = s.team.map((m) => m.name.trim().toLowerCase());
       const dup = names.find((n, i) => names.indexOf(n) !== i);
       if (dup) return `Two agents are called "${s.team[names.indexOf(dup)]!.name.trim()}": give each a different name.`;
+      const unconfirmed = s.team.find((m) => needsConfirmation(memberMode(m), m.confirmed));
+      if (unconfirmed) return `${unconfirmed.name.trim()} acts without asking (${memberMode(unconfirmed)}): tick "${SKIP_CONFIRM_LABEL}" to go on, or choose another permission mode.`;
       return undefined;
     }
     case 'Review':
@@ -197,9 +220,11 @@ export function buildSetup(s: WizardState): SetupRequest {
         : { kind: 'none' };
   const agents: SetupAgent[] = s.team.map((m) => {
     const common = { name: m.name.trim(), adapter: m.adapter, model: m.model.trim(), effort: m.effort, permissionMode: m.permissionMode };
-    if (m.source === 'prebuilt') return { prebuilt: m.ref, ...common };
-    if (m.source === 'template') return { template: m.ref, name: m.name.trim() };
-    return { ...common, role: m.role.trim(), purpose: m.purpose.trim() };
+    // the flag goes with a mode that skips approvals that the person ticked the box for, and with nothing else
+    const confirm = confirmationFor(memberMode(m), m.confirmed);
+    if (m.source === 'prebuilt') return { prebuilt: m.ref, ...common, ...confirm };
+    if (m.source === 'template') return { template: m.ref, name: m.name.trim(), ...confirm };
+    return { ...common, role: m.role.trim(), purpose: m.purpose.trim(), ...confirm };
   });
   return {
     name: s.name.trim(),
@@ -246,6 +271,8 @@ export function memberFromPrebuilt(e: PrebuiltAgent, team: readonly TeamMember[]
     effort,
     permissionMode: adapter === e.preferred.adapter ? (e.preferred.permissionMode ?? '') : '',
     purpose: e.purpose,
+    entryMode: e.preferred.permissionMode ?? '',
+    entryAdapter: e.preferred.adapter,
     category: e.category,
     skills: e.skills.length,
     mcp: e.mcp,

@@ -10,6 +10,7 @@ import type { AgentTemplate } from '../../api/libraryClient.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
+import { skipsApprovals } from '../../lib/permission.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -26,6 +27,7 @@ import { actionsRow, cardHead, confirmCss, serverLogo, ServerMark, subhead, wher
 import { OAuthPanel } from '../mcp/oauth-panel.tsx';
 import { McpServerForm } from '../mcp/server-form.tsx';
 import { inputOf, whereOf } from '../mcp/server-input.ts';
+import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { TemplateForm } from '../team/template-form.tsx';
 import { serverBlurb, serverState, templateBlurb, templateState } from './tiles.ts';
 
@@ -102,6 +104,7 @@ function TemplateTile(handle: Handle<{ t: AgentTemplate; libraryIds: ReadonlySet
         blurb={templateBlurb(tp)}
         state={st.text}
         tone={st.tone}
+        badge={skipsApprovals(tp.permissionMode) ? { text: 'skips approvals', tone: 'err' } : undefined}
         selected={selected}
         onSelect={onSelect}
         testId="lib-template-tile"
@@ -310,6 +313,7 @@ function TemplatePanel(handle: Handle<{ t: AgentTemplate; servers: readonly McpL
             <code mix={faint}>{tp.adapter}</code>
             {tp.model ? <Badge>model {tp.model}</Badge> : null}
             {tp.effort ? <Badge>effort {tp.effort}</Badge> : null}
+            <SkipsBadge mode={tp.permissionMode} />
           </header>
           <ErrorNote error={act.error} what="Not changed" />
           {tp.purpose ? <p>{tp.purpose.length > 200 ? `${tp.purpose.slice(0, 200)}...` : tp.purpose}</p> : <p mix={muted}>No purpose written.</p>}

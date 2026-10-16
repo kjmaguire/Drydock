@@ -4,6 +4,7 @@
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { CornerDownLeft, Search } from 'lucide';
 import { ownsKeys } from '../lib/keys.ts';
+import { taskSearchNote } from '../lib/task-total.ts';
 import type { ThemeChoice } from '../lib/theme.ts';
 import { routes } from '../routes.ts';
 import { query as liveQuery, services, watch } from '../state/services.tsx';
@@ -241,7 +242,11 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
           />
         </div>
         <ul id={listId} role="listbox" aria-label="Results" mix={listCss}>
-          {shown.length === 0 && s.ui.paletteOpen ? <li mix={emptyCss}>Nothing matches.</li> : null}
+          {shown.length === 0 && s.ui.paletteOpen ? (
+            <li mix={emptyCss}>
+              Nothing matches.{p.taskCoverage.partial ? ` ${taskSearchNote(p.taskCoverage)}` : ''}
+            </li>
+          ) : null}
           {grouped
             ? GROUPS.map((g) => {
                 const items = shown.filter((i) => i.group === g);

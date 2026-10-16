@@ -3,10 +3,17 @@
 
 import type { Client } from '../api/client.ts';
 import type { Agent, NeedsYouItem, PresenceState, Room, Task, Unread } from '../api/types.ts';
+import { taskCoverage, type TaskCoverage } from '../lib/task-total.ts';
 import type { EventStore } from './eventStore.ts';
 import { Live, starts } from './live.ts';
 import { Model } from './services.tsx';
 import type { Workspace } from './workspace.ts';
+
+/** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
+export interface TaskPage {
+  tasks: Task[];
+  total: number | undefined;
+}
 
 export class ProjectData extends Model {
   readonly agents: Live<Agent[]>;
@@ -14,7 +21,7 @@ export class ProjectData extends Model {
   readonly unread: Live<Unread[]>;
   readonly needs: Live<NeedsYouItem[]>;
   readonly presence: Live<PresenceState[]>;
-  readonly tasks: Live<Task[]>;
+  readonly tasks: Live<TaskPage>;
   #id: string | undefined;
   #all: Live<unknown>[];
 
@@ -30,10 +37,26 @@ export class ProjectData extends Model {
       when: (e) => starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived'),
     });
     this.presence = new Live(store, { load: () => client.presenceList(), when: (e) => starts(e, 'room.presence_changed', 'agent.', 'watchdog.') });
-    this.tasks = new Live(store, { load: () => client.taskList(pid()), when: (e) => starts(e, 'task.') && mine(e) });
+    this.tasks = new Live(store, { load: () => this.#readTasks(client, pid()), when: (e) => starts(e, 'task.') && mine(e) });
     this.#all = [this.agents, this.rooms, this.unread, this.needs, this.presence, this.tasks] as Live<unknown>[];
     for (const l of this.#all) l.addEventListener('change', () => this.changed());
     workspace.addEventListener('change', () => this.#sync());
+  }
+
+  /**
+   * The list and the count in one read, so what a screen says about "N of M" is one moment's answer. The count failing (or being
+   * missing in a core that has no task.count) leaves the total unknown; the list is shown all the same.
+   */
+  async #readTasks(client: Client, projectId: string): Promise<TaskPage> {
+    const count = async (): Promise<number | undefined> => {
+      try {
+        return (await client.taskCount(projectId)).total;
+      } catch {
+        return undefined;
+      }
+    };
+    const [tasks, total] = await Promise.all([client.taskList(projectId), count()]);
+    return { tasks, total };
   }
 
   start(signal?: AbortSignal): this {
@@ -66,8 +89,19 @@ export class ProjectData extends Model {
     return this.rooms.data ?? [];
   }
 
+  /** The newest tasks the core lists (at most TASK_LIST_LIMIT), newest first. */
   get taskList(): Task[] {
-    return this.tasks.data ?? [];
+    return this.tasks.data?.tasks ?? [];
+  }
+
+  /** How many tasks the project has in all; undefined until read, or when the count could not be. */
+  get taskTotal(): number | undefined {
+    return this.tasks.data?.total;
+  }
+
+  /** Whether `taskList` is every task of the project, or only the newest of them (M21): a screen that shows it as the whole says so. */
+  get taskCoverage(): TaskCoverage {
+    return taskCoverage(this.taskList.length, this.taskTotal);
   }
 
   get needsCount(): number {

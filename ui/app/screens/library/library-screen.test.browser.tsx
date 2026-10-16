@@ -108,6 +108,25 @@ describe('Library page', () => {
     expect(r.$('[data-testid="lib-template"]')).toBeNull();
   });
 
+  it('marks a template whose permission mode skips approvals with the red badge on its tile and in its panel, and no other template (M1)', async () => {
+    const r = show({ agentTemplateList: async () => [tpl({ permissionMode: 'bypassPermissions' }), tpl({ id: 'tpl_2', name: 'Careful', permissionMode: 'plan' })] });
+    const tiles = await waitFor(() => {
+      const l = r.$$('ul[aria-label="Agent templates"] [data-testid="lib-template-tile"]');
+      if (l.length !== 2) throw new Error('not yet');
+      return Array.from(l) as HTMLElement[];
+    }, r);
+    const badge = tiles[0]!.querySelector('[data-testid="tile-badge"]')!;
+    expect(badge.textContent).toBe('skips approvals');
+    expect(badge.getAttribute('data-tone')).toBe('err');
+    expect(tiles[1]!.querySelector('[data-testid="tile-badge"]')).toBeNull();
+    await r.act(() => tiles[0]!.click());
+    const panel = await one(r, '[data-testid="lib-template"]');
+    expect(panel.querySelector('[data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+    await r.act(() => tiles[1]!.click());
+    await waitFor(() => expect(r.$('[data-testid="lib-template"]')!.getAttribute('data-template')).toBe('Careful'), r);
+    expect(r.$('[data-testid="lib-template"] [data-testid="skips-approvals-badge"]')).toBeNull();
+  });
+
   it('clicking a tile opens its panel below its grid, another tile switches it, the same tile closes it', async () => {
     const r = show({ mcpLibList: async () => [libServer({ projects: [] }), libServer({ id: 'two', display: 'Second', projects: [] })] });
     const tiles = await waitFor(() => {

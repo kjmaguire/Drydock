@@ -1,13 +1,16 @@
 // The project's sandbox (internal/core/ext_sandbox.go, docs/sandbox.md): whether task work runs its commands in a container
 // made for each task, what the definition on the default branch says, and a test that starts it once. Only the human switches
-// it, and the core refuses anyone else.
+// it, and the core refuses anyone else. The definition is a file on the default branch, so a merge can change what every later
+// task runs (the network, the allowed hosts, the image, the setup commands): switching the sandbox on records the definition
+// the person saw, and one that differs does not run until they confirm it here (audit 2026-10-16, M7). The confirmation is for
+// exactly the definition that was on screen (its fingerprint), so a definition that changed again meanwhile is refused.
 
 import { css, on, type Handle } from 'remix/component';
 import type { SandboxStatus, SandboxTestStep } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
-import { ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
 import { SettingRow, SettingsGroup, ToggleRow, errorPad, noteRow } from './settings-kit.tsx';
 
@@ -16,6 +19,14 @@ const valueCss = css({ fontSize: t.textMd, overflowWrap: 'anywhere' });
 const preCss = css({ margin: '0', padding: t.s3, background: t.bgSurface, border: `1px solid ${t.border}`, borderRadius: t.rMd, fontFamily: t.mono, fontSize: t.textSm, whiteSpace: 'pre-wrap', overflowX: 'auto' });
 const stepsCss = css({ margin: '0', padding: `0 ${t.s4} ${t.s3}`, listStyle: 'none', display: 'grid', gap: '4px', fontSize: t.textSm, '& .ok': { color: t.success }, '& .fail': { color: t.danger } });
 const actionsCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}` });
+const changedCss = css({
+  display: 'grid',
+  gap: t.s2,
+  '& p': { margin: '0' },
+  // lines of the definition, text only: a long command or host wraps instead of widening the panel
+  '& ul': { margin: '0', paddingLeft: t.s5, display: 'grid', gap: '2px', fontFamily: t.mono, fontSize: t.textSm, overflowWrap: 'anywhere' },
+  '& .row': { display: 'flex', gap: t.s2, alignItems: 'center', flexWrap: 'wrap' },
+});
 
 /** What a valid definition says, in one line. */
 export function sandboxSummary(st: SandboxStatus): string {
@@ -48,11 +59,21 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
   const q = query(handle, { load: () => s.client.sandboxStatus(handle.props.projectId), key: () => handle.props.projectId, when: (e) => e.type.startsWith('sandbox.') });
   const act = action(handle);
   let steps: SandboxTestStep[] | undefined;
+  let lastAction = ''; // what a failure is a failure of (the action's busy label is cleared by the time its error shows)
   const toggle = async (enabled: boolean) => {
+    lastAction = 'set';
     if (await act.run('set', () => s.client.sandboxSet(handle.props.projectId, enabled))) q.reload();
+  };
+  /** Confirms the definition that was on screen (its fingerprint); read again either way, a refusal shows the newer one. */
+  const confirm = async (fingerprint: string) => {
+    if (act.busy) return;
+    lastAction = 'trust';
+    await act.run('trust', () => s.client.sandboxTrust(handle.props.projectId, fingerprint));
+    q.reload();
   };
   const test = async () => {
     steps = undefined;
+    lastAction = 'test';
     const r = await act.run('test', () => s.client.sandboxTest(handle.props.projectId));
     if (r) {
       steps = r.steps;
@@ -77,7 +98,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
           <>
             {act.error ? (
               <div mix={errorPad}>
-                <ErrorNote error={act.error} what={act.busy === 'test' ? 'The test did not finish' : 'Not changed'} />
+                <ErrorNote error={act.error} what={lastAction === 'test' ? 'The test did not finish' : lastAction === 'trust' ? 'Not confirmed' : 'Not changed'} />
               </div>
             ) : null}
             <SettingRow label="Container engine">
@@ -109,6 +130,28 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
               <p mix={[noteRow, warnCss]} data-testid="sandbox-egress">
                 {st.egressError}
               </p>
+            ) : null}
+            {st.switch.enabled && st.trusted === false && st.fingerprint ? (
+              <div mix={errorPad}>
+                <Notice tone="warn" role="alert" title="The sandbox definition changed since you confirmed it." testId="sandbox-untrusted">
+                  <div mix={changedCss}>
+                    <p>
+                      Tasks of this project wait, in Needs you, until you confirm this definition. It decides the network, the hosts, the image and the setup commands every
+                      later task runs with. Read what is different; if you did not expect it, revert the change on <code>{st.branch}</code> instead of confirming it.
+                    </p>
+                    <ul aria-label="What changed in the sandbox definition" data-testid="sandbox-changes">
+                      {(st.changes ?? []).map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                    <div class="row">
+                      <Button size="sm" variant="primary" disabled={act.busy === 'trust'} data-testid="sandbox-confirm" mix={on('click', () => void confirm(st.fingerprint!))}>
+                        {act.busy === 'trust' ? 'Confirming...' : 'Confirm this definition'}
+                      </Button>
+                    </div>
+                  </div>
+                </Notice>
+              </div>
             ) : null}
             <ToggleRow
               label="Run the agents' commands in a container for each task"

@@ -133,9 +133,117 @@ describe('LicenseScreen', () => {
     expect(buttons(r2.container, 'Remove the installed license').length).toBe(0);
   });
 
-  it('warns when the clock was set back', async () => {
-    const r = mount(<LicenseScreen />, testServices({ licenseStatus: async () => lic({ clockSuspect: true, lastSeen: 1760000000 }) }));
-    await waitFor(() => tid(r.container, 'license-details'), r);
-    expect(r.container.textContent).toContain('system clock appears to have been set back');
+
+  describe('the clock check (M16)', () => {
+    const suspect = (over: Partial<LicenseView> = {}) => lic({ clockSuspect: true, lastSeen: 1_760_000_000, ...over });
+    const seen = new Date(1_760_000_000 * 1000).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    const note = (r: ReturnType<typeof mount>) => tid(r.container, 'license-clock-note').textContent!;
+
+    it('says which date Drydock last saw, why the license is judged by it and the two ways out, and not that the clock was set back', async () => {
+      const r = mount(<LicenseScreen />, testServices({ licenseStatus: async () => suspect() }));
+      await waitFor(() => tid(r.container, 'license-clock'), r);
+      expect(note(r)).toBe(
+        `Drydock last saw ${seen}, which is later than this computer's clock says now, so the license is judged by that date. If the clock is wrong, set it right. If Drydock's record of the date is the mistake, reset the clock check.`,
+      );
+      expect(r.container.textContent).not.toContain('set back');
+      expect(tid(r.container, 'license-clock').getAttribute('role')).toBe('alert');
+      expect(byText(r.container, 'button', 'Reset the clock check')).toBeTruthy();
+    });
+
+    it('says the explanation once when the core has already put it in its message, and still offers the reset', async () => {
+      const said = "Your license has expired. Drydock last saw 15 October 2026, which is later than this computer's clock says now, so the license is judged by that date. If the clock is wrong, set it right. If Drydock's record of the date is the mistake, reset the clock check on the License page.";
+      const r = mount(<LicenseScreen />, testServices({ licenseStatus: async () => suspect({ message: said }) }));
+      await waitFor(() => tid(r.container, 'license-clock'), r);
+      expect(has(r.container, '[data-testid="license-clock-note"]')).toBe(false);
+      expect(r.container.textContent!.split('reset the clock check').length - 1).toBe(1);
+      expect(byText(r.container, 'button', 'Reset the clock check')).toBeTruthy();
+    });
+
+    it('says nothing about the clock, and offers no reset, while the clock is fine', async () => {
+      const r = mount(<LicenseScreen />, testServices({ licenseStatus: async () => lic() }));
+      await waitFor(() => tid(r.container, 'license-details'), r);
+      expect(has(r.container, '[data-testid="license-clock"]')).toBe(false);
+      expect(buttons(r.container, 'Reset the clock check').length).toBe(0);
+    });
+
+    it('resets only after a second step: nothing is sent by the first click or by keeping the record', async () => {
+      let resets = 0;
+      let current = suspect();
+      const s = testServices({
+        licenseStatus: async () => current,
+        licenseResetClock: async () => {
+          resets++;
+          current = lic();
+          return current;
+        },
+      });
+      const r = mount(<LicenseScreen />, s);
+      await waitFor(() => tid(r.container, 'license-clock'), r);
+      await r.act(() => byText(r.container, 'button', 'Reset the clock check').click());
+      const row = r.container.querySelector<HTMLElement>('[role="group"][aria-label="Confirm the clock check reset"]')!;
+      expect(row.textContent).toContain("Drydock then takes this computer's clock as the latest date it has seen");
+      expect(row.textContent).toContain('written to the audit log');
+      expect(resets).toBe(0);
+      // the question can be turned down
+      await r.act(() => byText(row, 'button', 'Do not reset').click());
+      expect(r.container.querySelector('[role="group"][aria-label="Confirm the clock check reset"]')).toBeNull();
+      expect(resets).toBe(0);
+      // asked again and answered yes
+      await r.act(() => byText(r.container, 'button', 'Reset the clock check').click());
+      await r.act(() => byText(r.container, 'button', 'Yes, reset the clock check').click());
+      await waitFor(() => expect(resets).toBe(1), r);
+      // the page and the workspace read the license again, the note is gone and the person is told
+      await waitFor(() => expect(has(r.container, '[data-testid="license-clock"]')).toBe(false), r);
+      expect(tid(r.container, 'license-clock-done').textContent).toContain('The clock check was reset');
+      expect(buttons(r.container, 'Reset the clock check').length).toBe(0);
+    });
+
+    it('shows the core\'s refusal and closes the question when there is nothing to reset', async () => {
+      const refusal = "there is nothing to reset: this computer's clock is not behind the latest date Drydock has seen";
+      const r = mount(
+        <LicenseScreen />,
+        testServices({
+          licenseStatus: async () => suspect(),
+          licenseResetClock: async () => {
+            throw new Error(refusal);
+          },
+        }),
+      );
+      await waitFor(() => tid(r.container, 'license-clock'), r);
+      await r.act(() => byText(r.container, 'button', 'Reset the clock check').click());
+      await r.act(() => byText(r.container, 'button', 'Yes, reset the clock check').click());
+      const alert = await waitFor(() => {
+        const a = r.container.querySelector('.error-note [role="alert"]');
+        if (!a) throw new Error('no alert yet');
+        return a;
+      }, r);
+      expect(alert.textContent).toContain(refusal);
+      expect(r.container.querySelector('[role="group"][aria-label="Confirm the clock check reset"]')).toBeNull();
+      expect(has(r.container, '[data-testid="license-clock-done"]')).toBe(false);
+      // the note and the button are still there: nothing was reset
+      expect(buttons(r.container, 'Reset the clock check').length).toBe(1);
+    });
+
+    it('can be reset while Drydock is read-only, which a wrong record of the date may be the cause of', async () => {
+      let resets = 0;
+      let current: LicenseView = suspect({ state: 'expired', readOnly: true, banner: expiredLicense.banner });
+      const r = mount(
+        <LicenseScreen />,
+        testServices({
+          licenseStatus: async () => current,
+          licenseResetClock: async () => {
+            resets++;
+            current = lic();
+            return current;
+          },
+        }),
+      );
+      await waitFor(() => tid(r.container, 'license-readonly'), r);
+      const reset = byText<HTMLButtonElement>(r.container, 'button', 'Reset the clock check');
+      expect(reset.disabled).toBe(false);
+      await r.act(() => reset.click());
+      await r.act(() => byText<HTMLButtonElement>(r.container, 'button', 'Yes, reset the clock check').click());
+      await waitFor(() => expect(resets).toBe(1), r);
+    });
   });
 });

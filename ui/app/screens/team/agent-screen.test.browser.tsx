@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, AgentDetail, PresenceState, Project, Task } from '../../api/types.ts';
-import { lic, usage } from '../../test/fixtures.ts';
+import { lic, usage, usageTotals } from '../../test/fixtures.ts';
 import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { AgentScreen, nowChip, serversOf, skillsOf } from './agent-screen.tsx';
 
@@ -40,6 +40,7 @@ const detail: AgentDetail = {
   agent: agent(),
   runs: [{ id: 'r1', taskId: 't12', pid: 4242, cwd: '/w/t12', status: 'running', startedAt: 1_700_000_000_000, endedAt: 0 }],
   usage: [usage({ costUsd: 0.05 }), usage({ costUsd: 0.07 })],
+  usageTotals: usageTotals([usage({ costUsd: 0.05 }), usage({ costUsd: 0.07 })]),
   isolation: { level: 'guarded', summary: 'Runs in its worktree with acceptEdits.', details: null },
 };
 const sk = (name: string, over: Partial<Skill> = {}): Skill => ({
@@ -201,7 +202,7 @@ describe("an agent's page", () => {
   });
 
   it('an agent without presence, task, purpose or runs says so plainly, and an unknown id is not invented', async () => {
-    const { r } = show('agt_2', { agentGet: async () => ({ agent: rex, runs: [], usage: [] }), presenceList: async () => [] });
+    const { r } = show('agt_2', { agentGet: async () => ({ agent: rex, runs: [], usage: [], usageTotals: usageTotals() }), presenceList: async () => [] });
     await hero(r);
     expect(r.$('h1')!.textContent).toBe('Rex');
     expect(r.container.textContent).toContain('No standing instructions');
@@ -221,6 +222,59 @@ describe("an agent's page", () => {
     await waitFor(() => expect(gone.r.container.textContent).toContain('No such agent'), gone.r);
     expect(gone.r.$('[data-testid="agent-hero"]')).toBeNull();
     expect(gone.r.$('a[href="/team"]')).not.toBeNull();
+  });
+
+  it('the spend is the core\'s sum over every usage row, labelled with how many, and the list says it holds only the newest 50 (M21)', async () => {
+    // 50 listed rows of half a cent, but 120 rows in all that cost $60: the page must not add up the 50
+    const newest = Array.from({ length: 50 }, () => usage({ costUsd: 0.005 }));
+    const many: AgentDetail = { ...detail, usage: newest, usageTotals: usageTotals(newest, { rows: 120, costUsd: 60, estimated: 30, inputTokens: 1200, outputTokens: 600 }) };
+    const { r } = show('agt_1', { agentGet: async () => many });
+    await hero(r);
+    const spend = await waitFor(() => r.$('[data-testid="stat-spend"]') ?? (() => { throw new Error('no spend yet'); })(), r);
+    expect(spend.querySelector('b')!.textContent).toBe('$60.00');
+    expect(spend.querySelector('small')!.textContent).toBe('spent in all 120 usage rows, 30 estimated');
+    await r.act(() => r.$('[data-testid="agent-tab-history"]')!.click());
+    await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(50), r);
+    expect(r.$('section[aria-label="Usage"] h2')!.textContent).toContain('$60.00 in all 120 rows');
+    expect(r.$('[data-testid="usage-cut"]')!.textContent).toBe('Showing the newest 50 of 120 usage rows.');
+    expect(r.container.textContent).not.toContain('$0.25');
+  });
+
+  it('says nothing is cut when the list holds every usage row, and shows no spend for an agent with none', async () => {
+    const { r } = show('agt_1');
+    await hero(r);
+    await waitFor(() => expect(r.$('[data-testid="stat-spend"] b')!.textContent).toBe('$0.12'), r);
+    expect(r.$('[data-testid="stat-spend"] small')!.textContent).toBe('spent in all 2 usage rows');
+    await r.act(() => r.$('[data-testid="agent-tab-history"]')!.click());
+    await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(2), r);
+    expect(r.$('[data-testid="usage-cut"]')).toBeNull();
+    expect(r.$('section[aria-label="Usage"] h2')!.textContent).toContain('$0.12 in all 2 rows');
+  });
+
+  it('says the numbers and the task list come from the newest tasks while the project has more (M21)', async () => {
+    const { r } = show('agt_1', { taskCount: async () => ({ total: 999 }) });
+    await hero(r);
+    const note = await waitFor(() => r.$('[data-testid="task-total-notice"]') ?? (() => { throw new Error('no notice yet'); })(), r);
+    expect(note.textContent).toContain('Showing the newest 4 of 999 tasks.');
+    expect(note.textContent).toContain('counted from these tasks only');
+    cleanup();
+    const all = show('agt_1', { taskCount: async () => ({ total: 4 }) });
+    await hero(all.r);
+    await waitFor(() => expect(all.r.$('[data-testid="stat-merged"] b')!.textContent).toBe('2'), all.r);
+    expect(all.r.$('[data-testid="task-total-notice"]')).toBeNull();
+  });
+
+  it('marks an agent whose permission mode skips approvals in its hero and in the crew list, and no other (M1)', async () => {
+    const risky = agent({ permissionMode: 'bypassPermissions' });
+    const { r } = show('agt_1', { agentList: async () => [risky, rex], agentGet: async () => ({ ...detail, agent: risky }) });
+    await hero(r);
+    await waitFor(() => expect(r.$('[data-testid="agent-hero"] [data-testid="skips-approvals-badge"]')).not.toBeNull(), r);
+    expect(r.$('[data-testid="agent-hero"] [data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+    const [first, second] = Array.from(r.$$('[data-testid="crew-link"]'));
+    expect(first!.querySelector('[data-testid="skips-approvals-badge"]')).not.toBeNull();
+    expect(second!.querySelector('[data-testid="skips-approvals-badge"]')).toBeNull();
+    // the chips the hero lists are still its own: the badge is not one of them
+    expect(chips(r)).not.toContain('skips approvals');
   });
 
   it('helpers: the chip of what it is on, the skills that reach it, the servers it is granted', () => {

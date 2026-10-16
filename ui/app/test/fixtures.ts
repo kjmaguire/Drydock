@@ -2,7 +2,7 @@
 
 import type { BudgetStatus } from '../api/extTypes.ts';
 import type { LicenseView } from '../api/pkgTypes.ts';
-import type { UsageRow } from '../api/types.ts';
+import type { UsageRow, UsageTotals } from '../api/types.ts';
 
 export const lic = (over: Partial<LicenseView> = {}): LicenseView => ({
   configured: true,
@@ -61,6 +61,19 @@ export const usage = (over: Partial<UsageRow> = {}): UsageRow => ({
   costUsd: 0.0123,
   source: 'reported',
   cacheHit: false,
+  ...over,
+});
+
+/**
+ * The totals the core sends with an agent's usage rows (core.UsageTotals): the sums over `rows`, or what `over` says when the
+ * agent has more rows than the newest 50 the page lists (a test double; the core computes the real ones in SQL).
+ */
+export const usageTotals = (rows: readonly UsageRow[] = [], over: Partial<UsageTotals> = {}): UsageTotals => ({
+  rows: rows.length,
+  costUsd: rows.reduce((sum, u) => sum + u.costUsd, 0),
+  inputTokens: rows.reduce((sum, u) => sum + u.inputTokens, 0),
+  outputTokens: rows.reduce((sum, u) => sum + u.outputTokens, 0),
+  estimated: rows.filter((u) => u.source === 'estimated').length,
   ...over,
 });
 

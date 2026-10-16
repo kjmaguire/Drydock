@@ -78,6 +78,32 @@ describe('the Overview', () => {
     expect(rooms.querySelector('a[href="/rooms"]')).not.toBeNull();
   });
 
+  it('says its counts come from the newest tasks only while the project has more (M21)', async () => {
+    const r = mount(<OverviewScreen />, svc({ taskCount: async () => ({ total: 640 }) }));
+    const note = await waitFor(() => r.$('[data-testid="task-total-notice"]') ?? (() => { throw new Error('no notice yet'); })(), r);
+    expect(note.textContent).toContain('Showing the newest 5 of 640 tasks.');
+    expect(note.textContent).toContain('counted from these tasks only');
+    cleanup();
+    const all = mount(<OverviewScreen />, svc({ taskCount: async () => ({ total: 5 }) }));
+    await waitFor(() => expect(all.$$('[data-testid="overview-need"]')).toHaveLength(1), all);
+    expect(all.$('[data-testid="task-total-notice"]')).toBeNull();
+  });
+
+  it('marks the crew card of an agent whose permission mode skips approvals with the red badge (M1)', async () => {
+    const r = mount(
+      <OverviewScreen />,
+      svc({
+        agentList: async () => [
+          { id: 'agt1', projectId: 'prj_1', name: 'Ada', adapter: 'claude', role: 'backend', model: '', effort: '', providerId: '', permissionMode: 'bypassPermissions', status: '' },
+          { id: 'agt2', projectId: 'prj_1', name: 'Rex', adapter: 'claude', role: 'reviewer', model: '', effort: '', providerId: '', permissionMode: 'plan', status: '' },
+        ],
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="overview-agent"]')).toHaveLength(2), r);
+    expect(r.$('[data-testid="overview-agent"][data-name="Ada"] [data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+    expect(r.$('[data-testid="overview-agent"][data-name="Rex"] [data-testid="skips-approvals-badge"]')).toBeNull();
+  });
+
   it('Insights: the spend against the budget, what merged this week, the first-check rate and the last scan, each a link', async () => {
     const r = mount(<OverviewScreen />, svc());
     await waitFor(() => expect(text(r, 'overview-spend')).toContain('$2.50'), r);

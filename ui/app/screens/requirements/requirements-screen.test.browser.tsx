@@ -138,6 +138,24 @@ describe('RequirementsScreen', () => {
     await waitFor(() => expect(added).toEqual([['prj_1', 'Search', 'Search must be fast']]), r);
   });
 
+  it('says the task choice for linking criteria holds only the newest tasks while the project has more (M21)', async () => {
+    const open = async (total: number) => {
+      const r = mount(<RequirementsScreen />, servicesWith({ taskCount: async () => ({ total }) }));
+      const row = await waitFor(() => need(r.$('[data-testid="requirement"]')), r);
+      await r.act(() => byText(row, 'button', 'Open').click());
+      const detail = await waitFor(() => need(r.$('[data-testid="requirement-detail"]')), r);
+      await waitFor(() => byText(r.container, '[role="option"]', '#1 Build checkout'), r);
+      return { r, detail };
+    };
+    const more = await open(900);
+    const note = await waitFor(() => need(more.detail.querySelector('[data-testid="task-total-notice"]')), more.r);
+    expect(note.textContent).toContain('Showing the newest 1 of 900 tasks.');
+    expect(note.textContent).toContain('Older tasks cannot be chosen here.');
+    cleanup();
+    const all = await open(1);
+    expect(all.detail.querySelector('[data-testid="task-total-notice"]')).toBeNull();
+  });
+
   it('reads an uploaded file in the browser, titles it by its name and refuses one over 1 MB', async () => {
     const r = mount(<RequirementsScreen />, servicesWith({ requirementList: async () => [] }));
     await waitFor(() => byText(r.container, 'h2', 'No requirements yet.'), r);

@@ -115,6 +115,8 @@ export interface ExtClient {
   // the per-task sandbox
   sandboxStatus(projectId: string): Promise<SandboxStatus>;
   sandboxSet(projectId: string, enabled: boolean): Promise<SandboxSwitch>;
+  /** Confirms the sandbox definition with this fingerprint (the one that was shown; a human only). A stale fingerprint is refused. */
+  sandboxTrust(projectId: string, fingerprint: string): Promise<SandboxSwitch>;
   sandboxTest(projectId: string): Promise<{ steps: SandboxTestStep[] }>;
   telemetryStatus(): Promise<TelemetryStatus>;
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
@@ -280,6 +282,7 @@ export function createExtClient(t: Transport): ExtClient {
     projectdevSet: (projectId, settings) => call('projectdev.set', { projectId, settings }),
     sandboxStatus: (projectId) => call('sandbox.status', { projectId }),
     sandboxSet: (projectId, enabled) => call('sandbox.set', { projectId, enabled }),
+    sandboxTrust: (projectId, fingerprint) => call('sandbox.trust', { projectId, fingerprint }),
     sandboxTest: async (projectId) => {
       const r = await call<{ steps: SandboxTestStep[] | null }>('sandbox.test', { projectId });
       return { steps: r.steps ?? [] };

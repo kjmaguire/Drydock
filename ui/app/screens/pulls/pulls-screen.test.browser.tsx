@@ -183,6 +183,19 @@ describe('PullsScreen', () => {
     expect(byText(r.container, 'a', 'Open the task').getAttribute('href')).toBe('/task/t2');
   });
 
+  it('says the picker holds only the newest tasks while the project has more (M21), and says nothing while it holds them all', async () => {
+    const r = mount(<PullsScreen />, svc({ githubPullRequest: async () => prState(), taskCount: async () => ({ total: 600 }) }, { tasks }));
+    const note = await waitFor(() => r.$('[data-testid="task-total-notice"]') ?? (() => { throw new Error('no notice yet'); })(), r);
+    expect(note.textContent).toContain('Showing the newest 3 of 600 tasks.');
+    expect(note.textContent).toContain('The pull requests of older tasks are not listed here.');
+    // the picker itself is as it was
+    expect(optionsOf(byLabel<HTMLElement>(r.container, 'Task')).map((o) => o.label)).toEqual(['#1 Add Subtract (#3)', '#2 Add Divide (#4)']);
+    cleanup();
+    const all = mount(<PullsScreen />, svc({ githubPullRequest: async () => prState(), taskCount: async () => ({ total: 3 }) }, { tasks }));
+    await waitFor(() => expect(all.$('[data-testid="gh-pr"]')).not.toBeNull(), all);
+    expect(all.$('[data-testid="task-total-notice"]')).toBeNull();
+  });
+
   it('shows the core error when GitHub cannot be read', async () => {
     const r = mount(<PullsScreen />, svc({ githubPullRequest: async () => Promise.reject(new Error('GitHub token missing')) }, { tasks }));
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Could not read the pull request from GitHub: GitHub token missing'), r);

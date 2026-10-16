@@ -109,6 +109,32 @@ describe('the details panel', () => {
     expect(r.container.textContent).not.toContain('Loading...');
   });
 
+  it('marks an agent whose permission mode skips approvals in its Agents list, and no other (M1)', async () => {
+    const agent = (id: string, name: string, permissionMode: string) => ({ id, projectId: 'p1', name, adapter: 'claude', role: 'backend', model: '', effort: '', providerId: '', permissionMode, status: '' });
+    const s = testServices({
+      projectList: async () => [{ id: 'p1', name: 'gocalc', hasRepo: true } as never],
+      licenseStatus: async () => lic(),
+      appInfo: async () => ({}) as never,
+      agentList: async () => [agent('a1', 'Ada', 'dontAsk'), agent('a2', 'Rex', 'acceptEdits')],
+      presenceList: async () => [],
+      roomList: async () => [],
+      roomUnread: async () => [],
+      needsYouList: async () => [],
+      taskList: async () => [],
+    });
+    s.workspace.start();
+    s.project.start();
+    s.ui.setDetails(true);
+    const r = mount(<Details taskId={undefined} page="conversation" />, s);
+    const rows = await waitFor(() => {
+      const l = Array.from(r.$$('[data-testid="details-agents"] button[aria-label^="Inspect "]'));
+      if (l.length !== 2) throw new Error('not yet');
+      return l.map((b) => b.parentElement!);
+    }, r);
+    expect(rows[0]!.querySelector('[data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+    expect(rows[1]!.querySelector('[data-testid="skips-approvals-badge"]')).toBeNull();
+  });
+
   it('its tabs name no panel that is not in the page', async () => {
     const s = testServices({});
     s.ui.setDetails(true);

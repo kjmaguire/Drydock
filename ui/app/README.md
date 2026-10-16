@@ -28,8 +28,9 @@ app/
   actions/controller.tsx  route actions: lazy-import the screen module, render it with the params
   api/                transport + typed client (framework-free)
   state/              eventStore, live reads (live.ts), services/query/action/watch (services.tsx),
-                      models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts
-  lib/                pure helpers (format, composer, route, theme, graphLayout)
+                      models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts (the selected project's
+                      shared reads; its task list comes with the project's task count: taskList, taskTotal, taskCoverage)
+  lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts)
   shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
@@ -144,6 +145,18 @@ Use the kit before writing CSS:
   `Field` id names it; `label` gives an accessible name without one; `size="sm"` for toolbars, `name` for a form value.
   `selectValues(strings)` and `selectOptions(pairs)` build the options.
 - `ErrorNote` (role="alert"), `Notice`, `Loading`, `Spinner`, `Empty` (feedback.tsx).
+- **A permission mode that skips approvals** (`bypassPermissions`, `auto`, `dontAsk`; `lib/permission.ts`) is never chosen without the
+  person's confirmation, wherever it is chosen. Under the select put `<SkipApprovals mode confirmed onConfirm error?>`
+  (`screens/shared/skip-approvals.tsx`): the plain-words warning and the box "I understand this agent will act without asking me
+  first". Keep the mode the box was ticked for in the form (`let confirmedMode = ''`: another mode asks again), keep the submit
+  button off with `needsConfirmation(mode, confirmedMode)`, spread `confirmationFor(mode, confirmedMode)` into the request (it adds
+  `confirmSkipsApprovals: true` only for such a mode that was ticked), and show the core's "needs your confirmation" refusal beside
+  the box (`splitConfirmation(act.error)`: `confirm` goes to `SkipApprovals`, `other` to the form's `ErrorNote`). `<SkipsBadge mode>` is
+  the persistent red "skips approvals" on an agent, template or crew card, row or header that has such a mode.
+- **A list the core cuts says so.** `task.list` returns only the newest `TASK_LIST_LIMIT` tasks; `s.project.taskCoverage` says
+  whether `s.project.taskList` is all of them, and a screen that presents the list as the whole (a board, a picker, counts) puts
+  `<TaskTotalNotice>what the cut means here</TaskTotalNotice>` (`screens/shared/task-total.tsx`) where the list is. The same goes for
+  an agent's usage rows (`UsageTable`'s `total`, the sums come from `usageTotals`, never from adding up the rows listed).
 - `ErrorBoundary` (error-boundary.tsx): guards the components in its children (a component that throws in setup or render is replaced by the error's text with Try again and Reload; one nested inside a guarded component is not caught, the runtime reports it). `ClippedText` (clipped-text.tsx): text a server wrote, clipped to about 300 characters with Show more.
 - `Badge`, `StatusChip`, `PresenceDot`, `Avatar`, `SourceBadge`, `kv`, `muted`, `faint`, `mono` (data.tsx).
 - `Dialog` (native `<dialog>`), `Tabs` (underlined; `pills` for a page's sections), `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.

@@ -16,6 +16,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CATEGORY_LABEL } from '../project/wizard.ts';
+import { SkipsBadge } from '../shared/skip-approvals.tsx';
 
 const groupCss = css({
   display: 'grid',
@@ -118,6 +119,14 @@ export function PrebuiltDetails(handle: Handle<{ entry: PrebuiltAgent }>) {
             <dd data-testid="prebuilt-model">{e.preferred.model || "the CLI's default"}</dd>
             <dt>Effort</dt>
             <dd>{e.preferred.effort || "the CLI's default"}</dd>
+            {e.preferred.permissionMode ? (
+              <>
+                <dt>Permission mode</dt>
+                <dd data-testid="prebuilt-mode">
+                  {e.preferred.permissionMode} <SkipsBadge mode={e.preferred.permissionMode} />
+                </dd>
+              </>
+            ) : null}
             {e.alternatives.length ? (
               <>
                 <dt>Also works with</dt>
@@ -218,6 +227,7 @@ export function AgentGallery(handle: Handle<{ entries: PrebuiltAgent[]; onPick?:
                         {cli}
                         <span class="sr-only">{ok ? (pref?.wslDistro ? ` (installed in WSL ${pref.wslDistro})` : ' (installed)') : ' (not installed)'}</span>
                       </span>
+                      <SkipsBadge mode={e.preferred.permissionMode} />
                       {e.skills.length > 0 ? (
                         <button
                           type="button"

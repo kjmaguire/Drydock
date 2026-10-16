@@ -18,6 +18,7 @@ import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
 import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
 import { LicenseBanner } from './license-banner.tsx';
+import { AgentConfigBanner } from './agent-config-banner.tsx';
 import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { CommandPalette } from './palette.tsx';
 import { TopBar } from './topbar.tsx';
@@ -130,6 +131,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
               </div>
             ) : null}
             {inProject && project && projectHasRepo(project) ? <RepoConfigBanner key={project.id} projectId={project.id} /> : null}
+            {inProject && project && projectHasRepo(project) ? <AgentConfigBanner key={project.id} projectId={project.id} /> : null}
             <main id="main" tabIndex={-1} mix={mainCss}>
               {/* a page that fails to draw shows what failed here and leaves the top bar, the dock and the panel working */}
               <ErrorBoundary label="this page" resetKey={url.pathname}>

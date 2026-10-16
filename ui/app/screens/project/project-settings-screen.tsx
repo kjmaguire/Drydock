@@ -11,6 +11,7 @@ import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { Select, selectOptions } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { AgentConfigPanel } from './project-agent-config.tsx';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
 import { RunModePanel } from './project-run-mode.tsx';
 import { SandboxPanel } from './project-sandbox.tsx';
@@ -220,6 +221,7 @@ export function ProjectSettingsScreen(handle: Handle) {
           <DevSettingsPanel key={`dev-${p.id}`} projectId={p.id} />
           <RunModePanel key={`runmode-${p.id}`} projectId={p.id} />
           {projectHasRepo(p) ? <SandboxPanel key={`sandbox-${p.id}`} projectId={p.id} /> : null}
+          {projectHasRepo(p) ? <AgentConfigPanel key={`agentconfig-${p.id}`} projectId={p.id} /> : null}
           <DeleteProject key={`delete-${p.id}`} project={p} />
         </div>
       </Page>

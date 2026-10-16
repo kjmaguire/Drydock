@@ -17,6 +17,8 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
+import { SkipsBadge } from '../shared/skip-approvals.tsx';
+import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { findingsText } from '../security/security.ts';
 import { KIND_LABEL, needsTarget } from '../needs-you/needs-you.ts';
 import { DONE, WEEK_MS, WORKING, dayStart, doing, firstCheckText, greeting, mergedSince, spendLine } from './overview.ts';
@@ -198,6 +200,7 @@ export function OverviewScreen(handle: Handle) {
     const taskOf = (x: Task) => x;
     return (
       <Page title={greeting(new Date().getHours())} subtitle={`${project?.name ?? 'Project'} · ${numbers.join(' · ')}`} wide testId="overview">
+        <TaskTotalNotice>The tasks under way and the merged counts below are counted from these tasks only.</TaskTotalNotice>
         <div mix={layoutCss}>
           <div mix={colCss}>
             <Section title="Needs you" description={needs.length ? 'Each opens where you decide it.' : undefined} actions={needs.length > 2 ? <a href={routes.needsYou.href()} mix={moreLink}>All {needs.length} <Icon icon={ArrowRight} size={14} /></a> : null} testId="overview-needs">
@@ -229,6 +232,7 @@ export function OverviewScreen(handle: Handle) {
                           <Avatar id={a.id} name={a.name} size={64} kind="agent" status={presenceColor(pr)} />
                           <span class="name">{a.name}</span>
                           <span class="role">{a.role}</span>
+                          <SkipsBadge mode={a.permissionMode} />
                           <span class="act">
                             <i style={{ background: presenceColor(pr) }} aria-hidden="true" />
                             <span>{doing(pr)}</span>

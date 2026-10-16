@@ -15,6 +15,7 @@ import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { dueISO, progressText, segments, zeroTime } from './milestones.ts';
 
 const gridCss = css({
@@ -287,6 +288,7 @@ export function MilestonesScreen(handle: Handle) {
     return (
       <Page title="Milestones" icon={Flag} subtitle={q.data ? `${open} open, ${list.length - open} closed` : undefined}>
         <ErrorNote error={q.error} what="Milestones" />
+        <TaskTotalNotice>Older tasks cannot be added to a milestone from here, and one that is already in a milestone shows by its id.</TaskTotalNotice>
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
           <div mix={card}>

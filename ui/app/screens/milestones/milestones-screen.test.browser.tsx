@@ -95,6 +95,21 @@ describe('MilestonesScreen', () => {
     await waitFor(() => expect(created).toEqual([['prj_1', 'GA', undefined, '2027-03-01T00:00:00.000Z']]), r);
   });
 
+  it('says the picker holds only the newest tasks while the project has more (M21), and a milestone task beyond them shows by its id', async () => {
+    const r = mount(<MilestonesScreen />, servicesWith({ milestoneList: async () => [ms({ taskIds: ['t_old'] })], taskCount: async () => ({ total: 800 }) }));
+    const card = await waitFor(() => need(r.$('[data-testid="milestone"]')), r);
+    const note = await waitFor(() => need(r.$('[data-testid="task-total-notice"]')), r);
+    expect(note.textContent).toContain('Showing the newest 2 of 800 tasks.');
+    expect(note.textContent).toContain('Older tasks cannot be added to a milestone from here');
+    // the older task is still in the milestone, named by its id, not dropped
+    expect(byText(card, 'a', 't_old').getAttribute('href')).toBe('/task/t_old');
+    cleanup();
+    const all = mount(<MilestonesScreen />, servicesWith({ milestoneList: async () => [ms()], taskCount: async () => ({ total: 2 }) }));
+    await waitFor(() => need(all.$('[data-testid="milestone"]')), all);
+    await waitFor(() => byText(all.container, 'a', '#1 Task 1'), all);
+    expect(all.$('[data-testid="task-total-notice"]')).toBeNull();
+  });
+
   it('removes a task, closes the milestone and deletes only after a confirm', async () => {
     const calls: string[] = [];
     const r = mount(

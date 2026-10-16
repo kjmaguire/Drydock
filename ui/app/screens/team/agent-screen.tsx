@@ -24,10 +24,12 @@ import { Tabs } from '../../ui/tabs.tsx';
 import { t } from '../../ui/tokens.ts';
 import { byRole, onTeam, shortDescription } from '../skills/skills.ts';
 import { TaskDecisions } from '../shared/explain.tsx';
+import { SkipsBadge } from '../shared/skip-approvals.tsx';
+import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
 import { AgentEditor } from './agent-forms.tsx';
 import { Run } from './inspector.tsx';
-import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runsWhere, stepIndex } from './team.ts';
+import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runsWhere, spentLabel, stepIndex } from './team.ts';
 
 const layoutCss = css({
   display: 'grid',
@@ -369,9 +371,10 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
     const p = presenceFor(id, presence);
     const runs = d?.runs ?? [];
     const usage = d?.usage ?? [];
+    // what the agent spent in all comes from the core's sums over every usage row; `usage` is only the newest rows (M21)
+    const totals = d?.usageTotals;
     const task = a ? currentTask(a.id, p, runs, tasks) : undefined;
     const stats = a ? agentStats(a.id, tasks) : undefined;
-    const spend = usage.reduce((sum, u) => sum + u.costUsd, 0);
     const sk = a ? skillsOf(skills.data ?? [], a, agents) : { mine: [], accepted: [] };
     const tools = serversOf(servers.data ?? [], id);
     const notes = memory.data ?? [];
@@ -392,6 +395,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                   <span class="who">
                     <b>{x.name}</b>
                     <small>{x.role}</small>
+                    <SkipsBadge mode={x.permissionMode} />
                   </span>
                   <span class="dot" aria-hidden="true" style={{ background: presenceColor(px) }} />
                   <span class="sr-only">{doing(px)}</span>
@@ -455,7 +459,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             {stats.firstTime !== undefined ? stat(`${Math.round(stats.firstTime * 100)}%`, 'passed review first time', 'stat-first-time') : null}
             {stats.avgCostUsd !== undefined ? stat(formatUsd(stats.avgCostUsd), 'avg. per task', 'stat-avg-cost') : null}
             {stats.avgMinutes !== undefined ? stat(minutesText(stats.avgMinutes), 'avg. time', 'stat-avg-time') : null}
-            {usage.length > 0 ? stat(formatUsd(spend), 'spent in all', 'stat-spend') : null}
+            {totals && totals.rows > 0 ? stat(formatUsd(totals.costUsd), spentLabel(totals), 'stat-spend') : null}
           </div>
         </section>
         <div mix={colCss}>
@@ -586,9 +590,9 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
         </section>
         <section mix={panelCss} aria-label="Usage">
           <h2>
-            Usage <span>{usage.length ? `${formatUsd(spend)} in all` : ''}</span>
+            Usage <span>{totals && totals.rows > 0 ? `${formatUsd(totals.costUsd)} in all ${totals.rows} ${totals.rows === 1 ? 'row' : 'rows'}` : ''}</span>
           </h2>
-          <UsageTable rows={usage} />
+          <UsageTable rows={usage} total={totals?.rows} />
         </section>
         {latestTask ? (
           <section mix={panelCss} aria-label="Why this model">
@@ -659,6 +663,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                             runs {where}
                           </span>
                         ) : null}
+                        <SkipsBadge mode={a.permissionMode} />
                         {iso ? (
                           <span mix={chipCss} data-testid="agent-chip" data-isolation={iso.level} title={iso.summary}>
                             <Icon icon={iso.level === 'guarded' ? ShieldCheck : ShieldAlert} size={13} />
@@ -686,6 +691,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                     </div>
                   </div>
                   <ErrorNote error={dm.error} what="Could not open a direct message" />
+                  <TaskTotalNotice>The numbers and the task list on this page are counted from these tasks only.</TaskTotalNotice>
                   <ErrorNote error={change.error} what="Skill not changed" />
                   <ErrorNote error={detail.error} what="Could not load the agent's runs and usage" />
                   <Tabs

@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Agent, AgentDetail, Project } from '../../api/types.ts';
-import { usage } from '../../test/fixtures.ts';
+import { usage, usageTotals } from '../../test/fixtures.ts';
 import { byText, cleanup, mount, renderPlain, testServices, waitFor } from '../../test/render.tsx';
 import { CapabilityList } from './fields.tsx';
 import { AgentInspector } from './inspector.tsx';
@@ -57,6 +57,7 @@ describe('Agent inspector', () => {
         { id: 'r2', taskId: '', pid: 0, cwd: '', status: 'failed', startedAt: 1_700_000_200_000, endedAt: 0, error: 'exit 2' },
       ],
       usage: [usage({})],
+      usageTotals: usageTotals([usage({})]),
     };
     const dms: [string, string][] = [];
     const navigated: string[] = [];
@@ -86,13 +87,37 @@ describe('Agent inspector', () => {
     expect(dms).toEqual([['p', 'a1']]);
   });
 
+  it('marks a permission mode that skips approvals with the red badge next to the mode, and no other mode (M1)', async () => {
+    const modeRow = (box: HTMLElement) => Array.from(box.querySelectorAll('dt')).find((d) => d.textContent === 'Permission mode')!.nextElementSibling as HTMLElement;
+    for (const mode of ['bypassPermissions', 'auto', 'dontAsk']) {
+      const r = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent({ permissionMode: mode }), runs: [], usage: [], usageTotals: usageTotals() }) }));
+      const dd = modeRow(await inspector(r));
+      expect(dd.textContent).toContain(mode);
+      expect(dd.querySelector('[data-testid="skips-approvals-badge"]')!.textContent).toBe('skips approvals');
+      cleanup();
+    }
+    const r = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent({ permissionMode: 'acceptEdits' }), runs: [], usage: [], usageTotals: usageTotals() }) }));
+    expect(modeRow(await inspector(r)).querySelector('[data-testid="skips-approvals-badge"]')).toBeNull();
+  });
+
+  it('says the usage list holds only the newest rows when the agent has more (M21)', async () => {
+    const newest = Array.from({ length: 50 }, () => usage({}));
+    const r = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent(), runs: [], usage: newest, usageTotals: usageTotals(newest, { rows: 1203 }) }) }));
+    const box = await inspector(r);
+    expect(box.querySelectorAll('[data-testid="usage-row"]').length).toBe(50);
+    expect(box.querySelector('[data-testid="usage-cut"]')!.textContent).toBe('Showing the newest 50 of 1,203 usage rows.');
+    cleanup();
+    const few = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent(), runs: [], usage: [usage({})], usageTotals: usageTotals([usage({})]) }) }));
+    expect((await inspector(few)).querySelector('[data-testid="usage-cut"]')).toBeNull();
+  });
+
   it('shows the purpose the agent is given, or none set', async () => {
-    const r = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent({ purpose: 'Billing only.' }), runs: [], usage: [] }) }));
+    const r = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent({ purpose: 'Billing only.' }), runs: [], usage: [], usageTotals: usageTotals() }) }));
     const box = await inspector(r);
     expect(box.querySelector('[data-testid="inspector-purpose"]')!.textContent).toBe('Billing only.');
     expect(box.textContent).toContain('This agent has not run yet.');
     cleanup();
-    const r2 = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent(), runs: null, usage: null }) }));
+    const r2 = mount(<AgentInspector agentId="a1" />, setup({ agentGet: async () => ({ agent: agent(), runs: null, usage: null, usageTotals: usageTotals() }) }));
     const box2 = await inspector(r2);
     expect(box2.querySelector('[data-testid="inspector-purpose"]')!.textContent).toBe('none set');
   });
@@ -100,7 +125,7 @@ describe('Agent inspector', () => {
   it('says whether the router chooses this agent\'s model, and between which models', async () => {
     const r = mount(
       <AgentInspector agentId="a1" />,
-      setup({ agentGet: async () => ({ agent: agent({ routeModels: [{ model: 'claude-haiku-4-5', tier: 'cheap' }, { model: 'claude-opus-4-5', tier: 'premium' }] }), runs: [], usage: [] }) }),
+      setup({ agentGet: async () => ({ agent: agent({ routeModels: [{ model: 'claude-haiku-4-5', tier: 'cheap' }, { model: 'claude-opus-4-5', tier: 'premium' }] }), runs: [], usage: [], usageTotals: usageTotals() }) }),
     );
     const routing = (await inspector(r)).querySelector<HTMLElement>('[data-testid="inspector-routing"]')!;
     expect(routing.textContent).toContain('claude-haiku-4-5 (cheap), claude-opus-4-5 (premium)');
@@ -115,6 +140,7 @@ describe('Agent inspector', () => {
       agent: agent(),
       runs: [],
       usage: [],
+      usageTotals: usageTotals(),
       isolation: {
         level,
         summary: level === 'guarded' ? 'Claude Code checks keep it to its folder. This is not an operating-system sandbox.' : 'Its permission mode lets it act without asking.',
@@ -152,7 +178,7 @@ describe('Agent inspector', () => {
 
   it('re-reads when an event names the agent', async () => {
     let purpose = 'first';
-    const s = setup({ agentGet: async () => ({ agent: agent({ purpose }), runs: [], usage: [] }) });
+    const s = setup({ agentGet: async () => ({ agent: agent({ purpose }), runs: [], usage: [], usageTotals: usageTotals() }) });
     const r = mount(<AgentInspector agentId="a1" />, s);
     await waitFor(() => expect((r.container.querySelector('[data-testid="inspector-purpose"]') as HTMLElement | null)?.textContent).toBe('first'), r);
     purpose = 'second';

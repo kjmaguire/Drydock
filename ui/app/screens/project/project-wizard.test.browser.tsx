@@ -2,7 +2,9 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LicenseView } from '../../api/pkgTypes.ts';
-import type { Project, SetupRequest } from '../../api/types.ts';
+import type { AgentTemplate } from '../../api/libraryClient.ts';
+import type { PrebuiltAgent, Project, SetupRequest } from '../../api/types.ts';
+import { SKIP_CONFIRM_LABEL } from '../../lib/permission.ts';
 import { expiredLicense, lic, unconfiguredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ProjectCreateScreen } from './project-create-screen.tsx';
@@ -296,5 +298,146 @@ describe('New project wizard', () => {
     await next(r2);
     await r2.act(() => btn(r2, 'Create project').click());
     await waitFor(() => expect(r2.$('[role="alert"]')!.textContent).toContain(refusal), r2);
+  });
+});
+
+describe('New project wizard: a permission mode that skips approvals (M1)', () => {
+  // the CLI offers the modes (a Claude Code agent's list is longer than the fixture's)
+  const wide = () => {
+    const a = adapterInfo('claude', true, ['opus', 'sonnet']);
+    return { ...a, capabilities: { ...a.capabilities, permissionModes: ['default', 'acceptEdits', 'plan', 'dontAsk', 'auto', 'bypassPermissions'] } };
+  };
+  const world = (client: Partial<Client> = {}) => services(lic(), { adapterList: async () => [wide(), adapterInfo('gemini', true, ['gemini-2.5-pro']), adapterInfo('codex', false)], ...client });
+  const box = (root: ParentNode) => byLabel<HTMLInputElement>(root, SKIP_CONFIRM_LABEL);
+  const badge = (el: Element | undefined) => el?.querySelector('[data-testid="skips-approvals-badge"]') ?? null;
+  const problem = (r: R) => r.$('.problem')?.textContent ?? '';
+  const sentTo = (sent: SetupRequest[]) => ({ projectSetup: async (req: SetupRequest) => (sent.push(req), { project, agents: [], warnings: [] }) });
+  /** Starts with an empty team and the custom agent form open. */
+  async function customForm(r: R) {
+    await toTeam(r);
+    await waitFor(() => expect(members(r)).toHaveLength(3), r);
+    await r.act(() => btn(r, 'Remove all').click());
+    await r.act(() => (r.$('details summary') as HTMLElement).click());
+    type(byLabel(r.container, 'Agent name'), 'Ada');
+    type(byLabel(r.container, 'Role'), 'backend');
+  }
+
+  it('a custom agent with such a mode needs the box to be added; its row says so and keeps asking until the box is ticked for its mode', async () => {
+    const sent: SetupRequest[] = [];
+    const r = mount(<ProjectCreateScreen />, world(sentTo(sent)));
+    await customForm(r);
+    type(byLabel<HTMLElement>(r.container, 'Permissions'), 'bypassPermissions');
+    await waitFor(() => expect(r.$('[data-testid="skip-approvals-warning"]')!.textContent).toContain('"bypassPermissions" lets this agent act without asking you first'), r);
+    expect(btn(r, 'Add to team').disabled).toBe(true);
+    await r.act(() => box(r.container).click());
+    await waitFor(() => expect(btn(r, 'Add to team').disabled).toBe(false), r);
+    await r.act(() => btn(r, 'Add to team').click());
+    await waitFor(() => expect(members(r)).toHaveLength(1), r);
+    expect(badge(members(r)[0])!.textContent).toBe('skips approvals');
+    expect(box(members(r)[0]!).checked).toBe(true);
+    expect(btn(r, 'Next').disabled).toBe(false);
+    // another mode that skips approvals asks again in the row: Next is off with the reason until the box is ticked for it
+    type(byLabel<HTMLElement>(members(r)[0]!, 'Permissions'), 'auto');
+    await waitFor(() => expect(box(members(r)[0]!).checked).toBe(false), r);
+    await waitFor(() => expect(btn(r, 'Next').disabled).toBe(true), r);
+    expect(problem(r)).toBe('Ada acts without asking (auto): tick "I understand this agent will act without asking me first" to go on, or choose another permission mode.');
+    await r.act(() => box(members(r)[0]!).click());
+    await waitFor(() => expect(btn(r, 'Next').disabled).toBe(false), r);
+    await next(r);
+    expect(current(r)).toBe('Review');
+    await r.act(() => btn(r, 'Create project').click());
+    await waitFor(() => expect(sent).toHaveLength(1), r);
+    expect(sent[0]!.agents).toEqual([{ name: 'Ada', adapter: 'claude', model: '', effort: '', permissionMode: 'auto', role: 'backend', purpose: '', confirmSkipsApprovals: true }]);
+  });
+
+  it('a mode that keeps approvals asks for nothing and sends no confirmation, also after the box was ticked for another mode', async () => {
+    const sent: SetupRequest[] = [];
+    const r = mount(<ProjectCreateScreen />, world(sentTo(sent)));
+    await customForm(r);
+    type(byLabel<HTMLElement>(r.container, 'Permissions'), 'bypassPermissions');
+    await waitFor(() => box(r.container), r);
+    await r.act(() => box(r.container).click());
+    type(byLabel<HTMLElement>(r.container, 'Permissions'), 'plan');
+    await waitFor(() => expect(r.$('[data-testid="skip-approvals"]')).toBeNull(), r);
+    expect(btn(r, 'Add to team').disabled).toBe(false);
+    await r.act(() => btn(r, 'Add to team').click());
+    await waitFor(() => expect(members(r)).toHaveLength(1), r);
+    expect(badge(members(r)[0])).toBeNull();
+    await next(r);
+    await r.act(() => btn(r, 'Create project').click());
+    await waitFor(() => expect(sent).toHaveLength(1), r);
+    expect(sent[0]!.agents).toEqual([{ name: 'Ada', adapter: 'claude', model: '', effort: '', permissionMode: 'plan', role: 'backend', purpose: '' }]);
+    expect('confirmSkipsApprovals' in sent[0]!.agents[0]!).toBe(false);
+  });
+
+  it('a prebuilt agent that comes with such a mode is badged, keeps Next off until its row\'s box is ticked, and is sent with the confirmation', async () => {
+    const sent: SetupRequest[] = [];
+    const risky = (): PrebuiltAgent[] =>
+      CATALOG.map((e) => {
+        const p = prebuilt(e.id, { codex: false });
+        return e.id === 'team-lead' ? { ...p, preferred: { ...p.preferred, permissionMode: 'auto' } } : p;
+      });
+    const r = mount(<ProjectCreateScreen />, world({ agentCatalogList: async () => risky(), ...sentTo(sent) }));
+    await toTeam(r);
+    await waitFor(() => expect(members(r)).toHaveLength(3), r);
+    expect(badge(members(r)[0])!.textContent).toBe('skips approvals');
+    expect(badge(members(r)[1])).toBeNull();
+    // the suggested team is offered before the footer is worked out: Next is off from the first draw
+    expect(btn(r, 'Next').disabled).toBe(true);
+    expect(problem(r)).toContain('Team Lead acts without asking (auto)');
+    await r.act(() => box(members(r)[0]!).click());
+    await waitFor(() => expect(btn(r, 'Next').disabled).toBe(false), r);
+    await next(r);
+    await r.act(() => btn(r, 'Create project').click());
+    await waitFor(() => expect(sent).toHaveLength(1), r);
+    expect(sent[0]!.agents.map((a) => [a.prebuilt, a.permissionMode, a.confirmSkipsApprovals])).toEqual([
+      ['team-lead', 'auto', true],
+      ['backend-engineer', '', undefined],
+      ['code-reviewer', '', undefined],
+    ]);
+  });
+
+  it('a prebuilt agent left at "default" on the entry\'s own CLI still needs the box: the core gives it the entry\'s mode', async () => {
+    const risky = (): PrebuiltAgent => {
+      const p = prebuilt('team-lead', { codex: false });
+      return { ...p, preferred: { ...p.preferred, permissionMode: 'dontAsk' } };
+    };
+    const r = mount(<ProjectCreateScreen />, world({ agentCatalogList: async () => [risky(), prebuilt('backend-engineer'), prebuilt('code-reviewer')] }));
+    await toTeam(r);
+    await waitFor(() => expect(members(r)).toHaveLength(3), r);
+    type(byLabel<HTMLElement>(members(r)[0]!, 'Permissions'), '');
+    await waitFor(() => expect(valueOf(byLabel(members(r)[0]!, 'Permissions'))).toBe(''), r);
+    // "default" was chosen, but the agent would get dontAsk: that is what is shown and asked about
+    expect(badge(members(r)[0])).not.toBeNull();
+    expect(box(members(r)[0]!).checked).toBe(false);
+    expect(btn(r, 'Next').disabled).toBe(true);
+    expect(problem(r)).toContain('Team Lead acts without asking (dontAsk)');
+    await r.act(() => box(members(r)[0]!).click());
+    await waitFor(() => expect(btn(r, 'Next').disabled).toBe(false), r);
+  });
+
+  it('a template with such a mode is badged in the team, asks in its row, and is sent with the confirmation', async () => {
+    const sent: SetupRequest[] = [];
+    const tpl: AgentTemplate = { id: 'tpl1', name: 'Risky dev', role: 'backend', purpose: '', adapter: 'claude', model: '', effort: '', permissionMode: 'dontAsk', providerId: '', mcpServers: [], skills: [], createdAt: 1, updatedAt: 1 };
+    const r = mount(<ProjectCreateScreen />, world({ agentTemplateList: async () => [tpl], ...sentTo(sent) }));
+    await toTeam(r);
+    await waitFor(() => expect(members(r)).toHaveLength(3), r);
+    await r.act(() => btn(r, 'Remove all').click());
+    await waitFor(() => byLabel(r.container, 'From template'), r);
+    type(byLabel<HTMLElement>(r.container, 'From template'), 'tpl1');
+    r.root.flush();
+    await r.act(() => btn(r, 'Add from template').click());
+    await waitFor(() => expect(members(r)).toHaveLength(1), r);
+    const row = members(r)[0]!;
+    expect(row.getAttribute('data-source')).toBe('template');
+    expect(badge(row)).not.toBeNull();
+    await waitFor(() => expect(btn(r, 'Next').disabled).toBe(true), r);
+    expect(problem(r)).toContain('Risky dev acts without asking (dontAsk)');
+    await r.act(() => box(row).click());
+    await waitFor(() => expect(btn(r, 'Next').disabled).toBe(false), r);
+    await next(r);
+    await r.act(() => btn(r, 'Create project').click());
+    await waitFor(() => expect(sent).toHaveLength(1), r);
+    expect(sent[0]!.agents).toEqual([{ template: 'tpl1', name: 'Risky dev', confirmSkipsApprovals: true }]);
   });
 });

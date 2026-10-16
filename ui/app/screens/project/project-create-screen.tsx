@@ -308,12 +308,18 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
     );
   };
 
-  const team = () => {
+  /** Offers the default team once the catalog has answered (or failed); true when it has. */
+  const offerTeam = () => {
     const ready = !!catalog.data || !!catalog.error;
     if (!st.suggested && ready) {
       st.suggested = true;
       if (st.team.length === 0) st.team = suggestTeam(catalog.data ?? []);
     }
+    return ready;
+  };
+
+  const team = () => {
+    const ready = offerTeam();
     return (
       <>
         <ErrorNote error={catalog.error} what="Could not load the prebuilt agents" />
@@ -433,6 +439,8 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
     const ro = s.workspace.license;
     if (!repoTouched && gh.data?.loggedIn && st.repo === 'local' && !st.localPath) st.repo = 'github';
     const i = STEPS.indexOf(step);
+    // the default team is offered before the step's problem is read: a suggested agent can be one that needs confirming
+    if (step === 'Team') offerTeam();
     const problem = stepProblem(st, step);
     if (moved) {
       moved = false;

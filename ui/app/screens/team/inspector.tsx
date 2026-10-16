@@ -13,6 +13,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { TaskDecisions } from '../shared/explain.tsx';
+import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { UsageTable } from '../shared/usage.tsx';
 
 const time = (ms: number) => (ms > 0 ? formatDateTime(ms) : '');
@@ -195,7 +196,9 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined; onN
           </div>
           <div>
             <dt>Permission mode</dt>
-            <dd>{a.permissionMode}</dd>
+            <dd>
+              {a.permissionMode} <SkipsBadge mode={a.permissionMode} />
+            </dd>
           </div>
           {iso ? (
             <div>
@@ -241,7 +244,7 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined; onN
         ) : null}
 
         <h4 mix={sectionHead}>Usage</h4>
-        <UsageTable rows={usage} />
+        <UsageTable rows={usage} total={d.usageTotals?.rows} />
 
         {latestTask ? (
           <>

@@ -15,6 +15,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, cardGrid } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { AddPrebuilt } from './add-prebuilt.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
@@ -226,6 +227,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                       </a>
                     </h3>
                     <span class="role">{a.role}</span>
+                    <SkipsBadge mode={a.permissionMode} />
                     <span class="now">
                       <i style={{ background: presenceColor(p) }} aria-hidden="true" />
                       <span>{doing(p)}</span>

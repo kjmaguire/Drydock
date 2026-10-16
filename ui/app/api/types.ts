@@ -54,6 +54,23 @@ export interface GitConfigStatus {
   fingerprint: string;
 }
 
+/**
+ * What an agent CLI would act on in one place (core.AgentConfigFinding, project.agentConfig, docs/security.md s3 item 2b): the
+ * settings, hooks, plugins, MCP servers, commands or `.env` files its working folder brings. Drydock does not start that CLI
+ * where they are not trusted. `where` is "the repository" or a task's worktree; `files` are names relative to that folder
+ * (text from the repository: shown as text, never as markup); `fingerprint` is the state trusting accepts (names, kinds, sizes
+ * and content digests of exactly those files).
+ */
+export interface AgentConfigFinding {
+  adapter: string;
+  where: string;
+  /** Empty for the repository. */
+  taskId: string;
+  files: string[];
+  fingerprint: string;
+  trusted: boolean;
+}
+
 /** What deleting a project did (project.delete). */
 export interface ProjectDeleted {
   name: string;
@@ -126,6 +143,12 @@ export interface SetupAgent {
   practices?: boolean;
   /** Library or catalog server ids to grant (custom agents). */
   servers?: string[];
+  /**
+   * The person's confirmation of a permission mode that lets the agent act without asking (bypassPermissions, auto, dontAsk).
+   * Sent only after they ticked the box in the form, and only for such a mode; without it the core does not add the agent
+   * (core.NeedsConfirmationError becomes a warning of the result).
+   */
+  confirmSkipsApprovals?: boolean;
 }
 
 export interface SetupRequest {
@@ -230,6 +253,8 @@ export interface PrebuiltApplyReq {
   permissionMode?: string;
   installSkills: boolean;
   connectMcp: boolean;
+  /** The person's confirmation of a permission mode that lets the agent act without asking (see SetupAgent). */
+  confirmSkipsApprovals?: boolean;
 }
 
 export interface SkippedItem {
@@ -289,6 +314,8 @@ export interface AgentSpec {
   /** '' follows the project, 'native', or 'wsl' with `wslDistro`. */
   runMode?: string;
   wslDistro?: string;
+  /** The person's confirmation of a permission mode that lets the agent act without asking (see SetupAgent). */
+  confirmSkipsApprovals?: boolean;
 }
 
 /** Only the fields that are set change. The adapter cannot change: make a new agent for a different CLI. */
@@ -308,6 +335,8 @@ export interface AgentUpdate {
   removeSkills?: string[];
   runMode?: string;
   wslDistro?: string;
+  /** The person's confirmation of a change into a permission mode that lets the agent act without asking (see SetupAgent). */
+  confirmSkipsApprovals?: boolean;
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */
@@ -409,6 +438,17 @@ export interface TaskCreateReq {
   description?: string;
   acceptance?: string[];
   priority?: number;
+}
+
+/**
+ * core.TaskListDefault: task.list returns only this many of the newest tasks. A screen that shows the list as the whole says so
+ * when the project has more (task.count), see lib/task-total.ts.
+ */
+export const TASK_LIST_LIMIT = 500;
+
+/** task.count: how many tasks match (a project's tasks, or those in the given statuses). */
+export interface TaskCount {
+  total: number;
 }
 
 export interface Evidence {
@@ -881,10 +921,27 @@ export interface Isolation {
   details: string[] | null;
 }
 
+/** The sum over ALL of an agent's usage rows (core.UsageTotals); `AgentDetail.usage` lists only the newest ones. */
+export interface UsageTotals {
+  /** How many usage rows the agent has in all. */
+  rows: number;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** How many of the rows have a cost that was estimated, not reported. */
+  estimated: number;
+}
+
+/** core.AgentDetail.Usage holds this many of the newest usage rows (internal/core/ops.go). */
+export const AGENT_USAGE_ROWS = 50;
+
 export interface AgentDetail {
   agent: Agent;
   runs: AgentRun[] | null;
+  /** The newest AGENT_USAGE_ROWS rows. Sum nothing from them: `usageTotals` covers every row. */
   usage: UsageRow[] | null;
+  /** Sums over every usage row of the agent. A core that does not send them (older) shows as zero rows. */
+  usageTotals: UsageTotals;
   isolation?: Isolation;
 }
 

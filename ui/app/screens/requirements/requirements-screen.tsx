@@ -18,6 +18,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { criteriaLines, evidenceOutcome, fileProblem, linkedTaskIds, titleFromFile } from './requirements.ts';
 
 // --- trace ---
@@ -341,6 +342,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                   />
                 )}
               </Field>
+              <TaskTotalNotice>Older tasks cannot be chosen here.</TaskTotalNotice>
               <Field label="Criteria (one per line; they must appear in this requirement)">
                 {(fid) => <textarea id={fid} rows={3} value={criteria} mix={on('input', (e) => set(() => (criteria = e.currentTarget.value)))} />}
               </Field>

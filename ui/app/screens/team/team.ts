@@ -1,7 +1,7 @@
 // Pure helpers for the team page, the agent editor and the template form (no DOM, no services).
 
 import type { AppliedTemplate, SkillsInstalled } from '../../api/libraryClient.ts';
-import type { AdapterInfo, Agent, AgentRun, Capabilities, PresenceState, RouteModel, Task } from '../../api/types.ts';
+import type { AdapterInfo, Agent, AgentRun, Capabilities, PresenceState, RouteModel, Task, UsageTotals } from '../../api/types.ts';
 
 export const CAP_LABEL: [keyof Capabilities, string][] = [
   ['streaming', 'Streaming'],
@@ -171,6 +171,15 @@ export function agentStats(agentId: string, tasks: readonly Task[]): AgentStats 
     avgCostUsd: costs.length ? mean(costs) : undefined,
     avgMinutes: times.length ? mean(times) / 60_000 : undefined,
   };
+}
+
+/**
+ * The caption under an agent's spend figure: it is the sum over every usage row, so it says how many (the page lists only the
+ * newest 50) and how many of those costs were estimated, not reported (audit 2026-10-16, M21).
+ */
+export function spentLabel(t: Pick<UsageTotals, 'rows' | 'estimated'>): string {
+  const n = (x: number) => x.toLocaleString('en-US');
+  return `spent in all ${n(t.rows)} usage ${t.rows === 1 ? 'row' : 'rows'}${t.estimated > 0 ? `, ${n(t.estimated)} estimated` : ''}`;
 }
 
 /** "14 m", "1 h 05 m", "2.1 d" for an average duration in minutes. */

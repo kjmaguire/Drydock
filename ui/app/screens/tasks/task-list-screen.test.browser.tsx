@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Task } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, type, waitFor } from '../../test/render.tsx';
 import { SchedulerPanel } from './scheduler-panel.tsx';
 import { TaskCreateScreen } from './task-create-screen.tsx';
 import { TaskListScreen } from './task-list-screen.tsx';
@@ -243,5 +243,61 @@ describe('TaskCreateScreen', () => {
     await r.act(() => byText(r.container, 'button', 'Create task').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Task not created: title is required'), r);
     expect(byLabel<HTMLInputElement>(r.container, 'Task title').value).toBe('x');
+  });
+});
+
+describe('TaskListScreen: a list that is not every task (M21)', () => {
+  const notice = (r: ReturnType<typeof mount>) => r.$('[data-testid="task-total-notice"]');
+
+  it('says "Showing the newest N of M tasks" on the board while the project has more, and counts "N of M" in its head', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, taskCount: async () => ({ total: 612 }) }, { tasks }));
+    await listed(r, 3);
+    await waitFor(() => expect(notice(r)).not.toBeNull(), r);
+    expect(notice(r)!.textContent).toContain('Showing the newest 3 of 612 tasks.');
+    expect(notice(r)!.textContent).toContain('Older tasks are not on this board or in this list');
+    expect(r.container.textContent).toContain('3 of 612 tasks · 1 needs you');
+    expect(r.container.textContent).not.toContain('3 tasks · 1 needs you');
+  });
+
+  it('keeps saying it in the list view, and does not go away by itself', async () => {
+    let counts = 0;
+    const s = svc({ schedulerStatus: async () => status, taskCount: async () => (counts++, { total: 612 }) }, { tasks });
+    const r = mount(<TaskListScreen />, s);
+    await listed(r, 3);
+    await waitFor(() => expect(notice(r)).not.toBeNull(), r);
+    await showList(r);
+    expect(notice(r)!.textContent).toContain('Showing the newest 3 of 612 tasks.');
+    // a task event reads the list and the count again; the notice stays
+    const before = counts;
+    s.emit({ type: 'task.updated', projectId: 'prj_1' });
+    await waitFor(() => expect(counts).toBeGreaterThan(before), r);
+    await drain();
+    r.root.flush();
+    expect(notice(r)!.textContent).toContain('Showing the newest 3 of 612 tasks.');
+  });
+
+  it('shows nothing while the list is every task', async () => {
+    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, taskCount: async () => ({ total: 3 }) }, { tasks }));
+    await listed(r, 3);
+    await waitFor(() => expect(r.container.textContent).toContain('3 tasks · 1 needs you'), r);
+    expect(notice(r)).toBeNull();
+  });
+
+  it('does not take a list as long as the core sends it for complete when the count cannot be read', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => task({ id: `t${i}`, seq: 500 - i, title: `Task ${500 - i}` }));
+    const r = mount(
+      <TaskListScreen />,
+      svc(
+        {
+          schedulerStatus: async () => status,
+          taskCount: async () => {
+            throw new Error('the database is busy');
+          },
+        },
+        { tasks: full },
+      ),
+    );
+    await waitFor(() => expect(notice(r)).not.toBeNull(), r);
+    expect(notice(r)!.textContent).toContain('Showing the newest 500 tasks; there may be more.');
   });
 });

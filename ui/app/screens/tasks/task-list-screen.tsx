@@ -8,6 +8,7 @@ import { css, on, type Handle } from 'remix/component';
 import { CircleDashed, ClipboardList, Kanban, List, Plus, Search } from 'lucide';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
 import { agentName, formatCost, formatDateTime, presenceFor, statusLabel, statusTone } from '../../lib/format.ts';
+import { taskCountText } from '../../lib/task-total.ts';
 import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
@@ -17,6 +18,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone } from '../../ui/tokens.ts';
+import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { SchedulerPanel } from './scheduler-panel.tsx';
 import { ago, BOARD_COLUMNS, boardColumns, FILTERS, filterCounts, groupByStatus, inFilter, matchesText, type BoardColumn, type TaskFilter } from './tasks.ts';
 
@@ -318,7 +320,7 @@ export function TaskListScreen(handle: Handle) {
 
   return () => {
     const q = s.project.tasks;
-    const all = q.data ?? [];
+    const all = s.project.taskList;
     const agents = s.project.agentList;
     const presence = s.project.presence.data;
     // tasks whose run waits for the person (an item in Needs you), whatever their status says
@@ -328,7 +330,8 @@ export function TaskListScreen(handle: Handle) {
     const shown = view === 'list' ? typed.filter((x) => inFilter(x, filter, waiting)) : typed;
     const now = Date.now();
     const needing = counts.waiting;
-    const subtitle = q.data ? `${all.length} ${all.length === 1 ? 'task' : 'tasks'}${needing ? ` · ${needing} ${needing === 1 ? 'needs' : 'need'} you` : ''}` : undefined;
+    // the count is of what the core listed: "500 of 612 tasks" while the project has more (M21)
+    const subtitle = q.data ? `${taskCountText(s.project.taskCoverage)}${needing ? ` · ${needing} ${needing === 1 ? 'needs' : 'need'} you` : ''}` : undefined;
     const noMatch = (
       <Empty title="No tasks match" icon={Search}>
         <p>Nothing in this view{text.trim() ? ` matches "${text.trim()}"` : ''}.</p>
@@ -347,6 +350,7 @@ export function TaskListScreen(handle: Handle) {
         }
       >
         <ErrorNote error={q.error} what="Could not load tasks" />
+        <TaskTotalNotice>Older tasks are not on this board or in this list, and the filters and counts work on these only.</TaskTotalNotice>
         {q.loading && !q.data ? <Loading label="Loading tasks..." /> : null}
         {q.data && all.length === 0 ? (
           <Empty title="No tasks yet" icon={ClipboardList}>

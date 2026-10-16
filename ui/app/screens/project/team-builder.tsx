@@ -6,16 +6,18 @@ import { css, on, type Handle } from 'remix/component';
 import { BookTemplate, Sparkles, Trash2, UserPlus, Users } from 'lucide';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { AdapterInfo, PrebuiltAgent } from '../../api/types.ts';
+import { needsConfirmation } from '../../lib/permission.ts';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { Empty } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { ModelField } from '../shared/model-field.tsx';
+import { SkipApprovals, SkipsBadge } from '../shared/skip-approvals.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
-import { adapterChoices, memberFromPrebuilt, memberKey, setupFor, uniqueName, type TeamMember } from './wizard.ts';
+import { adapterChoices, memberFromPrebuilt, memberKey, memberMode, setupFor, uniqueName, type TeamMember } from './wizard.ts';
 
 const blockCss = css({ display: 'grid', gap: t.s3, minWidth: '0' });
 const headCss = css({
@@ -124,6 +126,7 @@ function TeamRow(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adapters
   return () => {
     const { m, entry, adapters, onChange, onRemove } = handle.props;
     const label = m.name.trim() || 'Unnamed agent';
+    const mode = memberMode(m);
     return (
       <li mix={rowCss} data-testid="team-member" data-source={m.source} data-ref={m.ref}>
         <fieldset>
@@ -133,6 +136,7 @@ function TeamRow(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adapters
               <strong>{label}</strong>
               <Badge tone="muted">{m.role || 'role?'}</Badge>
               <span class="end">
+                <SkipsBadge mode={mode} />
                 {m.source === 'prebuilt' ? <Badge tone="accent">prebuilt</Badge> : m.source === 'template' ? <Badge tone="info">template</Badge> : <Badge tone="muted">custom</Badge>}
                 {m.skills ? <Badge tone="muted">{`${m.skills} ${m.skills === 1 ? 'skill' : 'skills'}`}</Badge> : null}
                 <IconButton icon={Trash2} label={`Remove ${label} from the team`} mix={on('click', onRemove)} />
@@ -149,6 +153,7 @@ function TeamRow(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adapters
             </div>
           )}
           {m.source === 'template' ? <p class="note">The template sets the agent CLI, model and connectors.</p> : null}
+          <SkipApprovals mode={mode} confirmed={m.confirmed ?? ''} onConfirm={(c) => onChange({ ...m, confirmed: c })} who={label} />
         </fieldset>
       </li>
     );
@@ -182,7 +187,7 @@ export function TeamBuilder(
     const addPrebuilt = (e: PrebuiltAgent) => onChange([...team, memberFromPrebuilt(e, team)]);
     const firstUsable = adapters.find((a) => a.detection.installed)?.id ?? '';
     const c = { ...custom, adapter: custom.adapter || firstUsable };
-    const customOk = !!c.name.trim() && !!c.role.trim() && !!c.adapter;
+    const customOk = !!c.name.trim() && !!c.role.trim() && !!c.adapter && !needsConfirmation(memberMode(c), c.confirmed);
     const addCustom = () => {
       if (!customOk) return;
       onChange([...team, { ...c, name: uniqueName(c.name.trim(), team) }]);
@@ -257,6 +262,9 @@ export function TeamBuilder(
               <Field label="Agent name">{(id) => <input id={id} value={c.name} autocomplete="off" mix={on('input', (e) => ((custom = { ...custom, name: e.currentTarget.value }), void handle.update()))} />}</Field>
               <Field label="Role">{(id) => <input id={id} value={c.role} placeholder="backend, reviewer..." autocomplete="off" mix={on('input', (e) => ((custom = { ...custom, role: e.currentTarget.value }), void handle.update()))} />}</Field>
               <SetupFields m={c} adapters={adapters} withName={false} onChange={(m) => ((custom = m), void handle.update())} />
+            </div>
+            <div style={{ marginTop: 'var(--space-3)' }}>
+              <SkipApprovals mode={memberMode(c)} confirmed={c.confirmed ?? ''} onConfirm={(x) => ((custom = { ...custom, confirmed: x }), void handle.update())} />
             </div>
             <div style={{ marginTop: 'var(--space-3)' }}>
               <Field label="Purpose (optional)" hint="What this agent is for and how it should work. Given to the agent as standing instructions.">

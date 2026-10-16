@@ -133,6 +133,76 @@ describe('typed client', () => {
     expect(await c.projectGitConfig('p')).toEqual({ trusted: true, changed: [], fingerprint: 'fp' });
   });
 
+  /** The method and body of every call a client made through a fetch double. */
+  const sent = (f: { mock: { calls: { arguments: unknown[] }[] } }) =>
+    f.mock.calls.map((c) => c.arguments as unknown as [string, RequestInit]).map(([url, init]) => [url, JSON.parse(init.body as string)]);
+
+  it('counts the tasks and fills a missing total with zero (M21)', async () => {
+    const f = mock.fn(async () => json({ result: { total: 612 } }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.taskCount('p')).toEqual({ total: 612 });
+    expect(await c.taskCount('p', ['COMPLETED'])).toEqual({ total: 612 });
+    expect(sent(f)).toEqual([
+      ['/rpc/task.count', { projectId: 'p', statuses: [] }],
+      ['/rpc/task.count', { projectId: 'p', statuses: ['COMPLETED'] }],
+    ]);
+    const none = createClient(transport((async () => json({ result: null })) as unknown as typeof fetch));
+    expect(await none.taskCount('p')).toEqual({ total: 0 });
+  });
+
+  it('reads an agent with the sums over all its usage rows, zero where the core sent none (M21)', async () => {
+    const totals = { rows: 120, costUsd: 60, inputTokens: 1200, outputTokens: 600, estimated: 30 };
+    const c = createClient(transport((async () => json({ result: { agent: { id: 'a' }, runs: null, usage: null, usageTotals: totals } })) as unknown as typeof fetch));
+    expect(await c.agentGet('a')).toEqual({ agent: { id: 'a' }, runs: [], usage: [], usageTotals: totals });
+    const old = createClient(transport((async () => json({ result: { agent: { id: 'a' }, runs: [], usage: [] } })) as unknown as typeof fetch));
+    expect((await old.agentGet('a')).usageTotals).toEqual({ rows: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, estimated: 0 });
+  });
+
+  it('reads and trusts the agent configuration by adapter and fingerprint, with empty lists for Go nil (M3)', async () => {
+    const f = mock.fn(async (url: string) =>
+      json({ result: url.includes('trustAgentConfig') ? [] : [{ adapter: 'gemini', where: 'the repository', taskId: '', files: null, fingerprint: 'fp', trusted: false }] }),
+    );
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.projectAgentConfig('p')).toEqual([{ adapter: 'gemini', where: 'the repository', taskId: '', files: [], fingerprint: 'fp', trusted: false }]);
+    expect(await c.projectTrustAgentConfig('p', 'gemini', 'fp')).toEqual([]);
+    expect(sent(f)).toEqual([
+      ['/rpc/project.agentConfig', { id: 'p' }],
+      ['/rpc/project.trustAgentConfig', { id: 'p', adapter: 'gemini', fingerprint: 'fp' }],
+    ]);
+    const nothing = createClient(transport((async () => json({ result: null })) as unknown as typeof fetch));
+    expect(await nothing.projectAgentConfig('p')).toEqual([]);
+  });
+
+  it('confirms a sandbox definition by its fingerprint and resets the license clock check (M7, M16)', async () => {
+    const f = mock.fn(async (url: string) => json({ result: url.includes('license') ? { configured: true, channels: null, clockSuspect: false } : { enabled: true } }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.sandboxTrust('p', 'fp1')).toEqual({ enabled: true });
+    expect(await c.licenseResetClock()).toMatchObject({ configured: true, channels: [], clockSuspect: false });
+    expect(sent(f)).toEqual([
+      ['/rpc/sandbox.trust', { projectId: 'p', fingerprint: 'fp1' }],
+      ['/rpc/license.resetClock', {}],
+    ]);
+  });
+
+  it('sends the confirmation of a permission mode that skips approvals only when it is given (M1)', async () => {
+    const f = mock.fn(async () => json({ result: { agent: {}, granted: null, skipped: null, skills: null, mcp: null, notes: null } }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    await c.agentTemplateApply('tpl', 'p', 'Ada');
+    await c.agentTemplateApply('tpl', 'p', 'Ada', true);
+    await c.agentCatalogApply({ id: 'e', projectId: 'p', installSkills: true, connectMcp: true, confirmSkipsApprovals: true });
+    await c.agentCreate({ projectId: 'p', name: 'Ada', adapter: 'claude', role: 'backend', permissionMode: 'bypassPermissions', confirmSkipsApprovals: true });
+    await c.agentUpdate({ id: 'a', permissionMode: 'auto', confirmSkipsApprovals: true });
+    await c.agentTemplateSave({ name: 'T', role: 'r', purpose: '', adapter: 'claude', model: '', effort: '', permissionMode: 'dontAsk', providerId: '', mcpServers: [], skills: [], confirmSkipsApprovals: true });
+    expect(sent(f).map(([url, body]) => [url, (body as { confirmSkipsApprovals?: boolean }).confirmSkipsApprovals])).toEqual([
+      ['/rpc/agenttemplate.apply', undefined],
+      ['/rpc/agenttemplate.apply', true],
+      ['/rpc/agentcatalog.apply', true],
+      ['/rpc/agent.create', true],
+      ['/rpc/agent.update', true],
+      ['/rpc/agenttemplate.save', true],
+    ]);
+  });
+
   it('propagates RpcError from the transport', async () => {
     const c = createClient(transport((async () => json({ error: 'the reviewer must differ from the worker' }, 400)) as typeof fetch));
     await expect(c.taskAssign('t', 'a', 'a')).rejects.toMatchObject({ kind: 'bad_request', message: 'the reviewer must differ from the worker' });

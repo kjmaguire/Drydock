@@ -6,6 +6,7 @@ import { Cpu, Server } from 'lucide';
 import type { AgentTemplate, SkillChoice } from '../../api/libraryClient.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, SkillRef } from '../../api/types.ts';
+import { confirmationFor, needsConfirmation, splitConfirmation } from '../../lib/permission.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -15,6 +16,7 @@ import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { SkipApprovals } from '../shared/skip-approvals.tsx';
 import { ClaudePracticesPanel, ModelEffortFields, claudePractices } from './fields.tsx';
 import { PURPOSE_HELP, sortAdapters } from './team.ts';
 
@@ -67,6 +69,8 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
   let model = init?.model ?? '';
   let effort = init?.effort ?? '';
   let mode = init?.permissionMode ?? '';
+  // the mode the "acts without asking" box is ticked for ('' while it is not): another mode asks again (lib/permission.ts)
+  let confirmedMode = '';
   let practices = init?.practices !== false;
   let servers: string[] = init?.mcpServers ?? [];
   let skills: SkillRef[] = init?.skills ?? [];
@@ -92,6 +96,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
   });
 
   const submit = async () => {
+    if (needsConfirmation(mode, confirmedMode)) return; // the Save button is off too; Enter in a field must not get around it
     const initial = handle.props.initial;
     const adapter = adapterId();
     const caps = adapters().find((a) => a.id === adapter)?.capabilities;
@@ -105,6 +110,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
         model: caps?.modelSelection === true ? model.trim() : '',
         effort: caps?.effortControl === true ? effort.trim() : '',
         permissionMode: mode,
+        ...confirmationFor(mode, confirmedMode),
         providerId: initial?.providerId ?? '',
         mcpServers: servers,
         skills,
@@ -122,6 +128,8 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
     const chosen = list.find((a) => a.id === adapter);
     const modes = chosen?.capabilities?.permissionModes ?? [];
     const info = pr.info;
+    // the core's "needs your confirmation" belongs next to the box that answers it, not in the general failure note
+    const { confirm: refusal, other: failure } = splitConfirmation(act.error);
     return (
       <form
         mix={[formGrid, on('submit', (e) => (e.preventDefault(), void submit()))]}
@@ -129,7 +137,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
         data-testid="template-form"
       >
         <div mix={full}>
-          <ErrorNote error={act.error} what="Template not saved" />
+          <ErrorNote error={failure} what="Template not saved" />
           <ReadOnlyNote />
         </div>
         <Field label="Template name">
@@ -164,6 +172,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
             )}
           </Field>
         ) : null}
+        <SkipApprovals mode={mode} confirmed={confirmedMode} onConfirm={(m) => set(() => (confirmedMode = m))} who="agents made from this template" error={refusal} />
         <div mix={full}>
           <Field label="Purpose (optional)">
             {(id) => (
@@ -240,7 +249,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
           ) : null}
         </fieldset>
         <div mix={formActions}>
-          <Button type="submit" variant="primary" disabled={!!act.busy || ro.readOnly || !name.trim() || !role.trim() || !adapter} title={ro.readOnly ? ro.reason : undefined}>
+          <Button type="submit" variant="primary" disabled={!!act.busy || ro.readOnly || !name.trim() || !role.trim() || !adapter || needsConfirmation(mode, confirmedMode)} title={ro.readOnly ? ro.reason : undefined}>
             {act.busy === 'save' ? 'Saving...' : initial ? 'Save template' : 'Create template'}
           </Button>
           <Button mix={on('click', () => onCancel())}>Cancel</Button>

@@ -14,6 +14,7 @@ import { Field } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Page, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { IssueItem, PullRequestPanel } from './pr-parts.tsx';
 
 const pickerCss = css({
@@ -118,6 +119,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
       <Page title="Pull Requests" icon={GitPullRequest} subtitle={list.length > 0 ? `${list.length} open from tasks` : undefined}>
         <Section title="Pull requests of tasks" description="In pull request mode a finished task is pushed and a PR is opened; its CI and reviews are read from GitHub. It is merged only after its CI passed (unless you decided otherwise: Project settings, CI before merge) and you approved.">
           <ErrorNote error={s.project.tasks.error} what="Could not load tasks" />
+          <TaskTotalNotice>The pull requests of older tasks are not listed here.</TaskTotalNotice>
           {list.length === 0 ? (
             <Empty title="No task has a pull request" icon={GitPullRequest}>
               <p>In pull request mode (Project settings), a finished task is pushed and a PR is opened. It appears here with its CI and reviews.</p>

@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
-import { cleanup, mount, testServices, waitFor } from '../test/render.tsx';
+import { cleanup, mount, testServices, type, waitFor } from '../test/render.tsx';
 import { CommandPalette } from './palette.tsx';
 
 afterEach(cleanup);
@@ -43,5 +43,48 @@ describe('closing the command palette by its backdrop (L41)', () => {
     // and the next click on the backdrop closes it
     press(dlg, dlg);
     expect(s.ui.paletteOpen).toBe(false);
+  });
+});
+
+describe('searching a task list that is cut (M21)', () => {
+  // TEST DOUBLES: the project's shared reads; the palette searches the tasks the project model holds.
+  async function search(total: number | undefined) {
+    const t = { id: 't1', projectId: 'p1', seq: 1, title: 'Add Multiply', description: '', status: 'BACKLOG', priority: 0, iteration: 0, maxIterations: 3, costUsd: 0, created: 0, updated: 0, version: 1 };
+    const s = testServices({
+      chatList: async () => [],
+      projectList: async () => [{ id: 'p1', name: 'gocalc' } as never],
+      agentList: async () => [],
+      roomList: async () => [],
+      roomUnread: async () => [],
+      needsYouList: async () => [],
+      presenceList: async () => [],
+      taskList: async () => [t],
+      ...(total === undefined ? {} : { taskCount: async () => ({ total }) }),
+    });
+    s.workspace.start();
+    s.project.start();
+    const r = mount(<CommandPalette onMessage={() => {}} />, s);
+    s.ui.setPalette(true);
+    const dlg = await waitFor(() => {
+      const d = r.container.querySelector<HTMLDialogElement>('dialog[aria-label="Command palette"]')!;
+      if (!d.open) throw new Error('not open yet');
+      return d;
+    }, r);
+    await waitFor(() => expect(s.project.taskList).toHaveLength(1), r);
+    return { r, dlg, input: dlg.querySelector('input')! };
+  }
+
+  it('says which tasks were searched when nothing matches and the project has more', async () => {
+    const { r, dlg, input } = await search(700);
+    type(input, 'zzz-no-such-thing');
+    await waitFor(() => expect(dlg.textContent).toContain('Nothing matches.'), r);
+    expect(dlg.textContent).toContain('Only the newest 1 of 700 tasks are searched.');
+  });
+
+  it('says only "Nothing matches." while every task was searched', async () => {
+    const { r, dlg, input } = await search(1);
+    type(input, 'zzz-no-such-thing');
+    await waitFor(() => expect(dlg.textContent).toContain('Nothing matches.'), r);
+    expect(dlg.textContent).not.toContain('are searched');
   });
 });

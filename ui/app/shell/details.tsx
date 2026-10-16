@@ -6,6 +6,7 @@ import { PanelRightClose, PanelRightOpen } from 'lucide';
 import { agentName, formatCost, presenceFor } from '../lib/format.ts';
 import { routes } from '../routes.ts';
 import { query, services, watch } from '../state/services.tsx';
+import { SkipsBadge } from '../screens/shared/skip-approvals.tsx';
 import { AgentInspector } from '../screens/team/inspector.tsx';
 import { leadOf, RunStandup } from '../screens/team/lead.tsx';
 import { ThreadPanel } from '../screens/room/thread-panel.tsx';
@@ -95,6 +96,7 @@ export function Details(handle: Handle<{ taskId: string | undefined; page: Detai
                       <span class="name">
                         {a.name} <span style={{ color: t.textFaint, fontWeight: '400', fontSize: t.textSm }}>{a.role}</span>
                       </span>
+                      <SkipsBadge mode={a.permissionMode} />
                       <PresenceDot presence={pr} />
                       {/* the activity, unless the presence line already says it ("Paused (stopped)" over "stopped") */}
                       {pr?.activity && pr.activity !== pr.label ? <span class="act">{pr.activity}</span> : null}

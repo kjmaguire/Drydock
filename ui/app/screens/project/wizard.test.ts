@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AdapterInfo } from '../../api/types.ts';
 import type { RepoFolder } from '../../api/folderClient.ts';
-import { adapterChoices, authNote, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, memberFromPrebuilt, pushedAgo, stepProblem, suggestTeam, uniqueName } from './wizard.ts';
+import { adapterChoices, authNote, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, memberFromPrebuilt, memberMode, pushedAgo, stepProblem, suggestTeam, uniqueName, type TeamMember } from './wizard.ts';
 import { prebuilt } from './wizard-fixtures.ts';
 
 const adapter = (id: string, installed: boolean): AdapterInfo => ({ id, detection: { adapter: id, installed, status: installed ? 'ready' : 'not_installed' }, capabilities: {} as never });
@@ -184,5 +184,73 @@ describe('new-project wizard rules', () => {
     expect(authNote('oauth', false)).toBe('Needs sign-in after adding.');
     expect(authNote('bearer', true)).toContain('Works without a token');
     expect(authNote('none', false)).toBe('No sign-in needed.');
+  });
+
+  describe('a permission mode that skips approvals needs the person\'s confirmation (M1)', () => {
+    const custom = (over: Partial<TeamMember> = {}): TeamMember => ({ key: 'c', source: 'custom', name: 'Ada', role: 'backend', adapter: 'claude', model: '', effort: '', permissionMode: '', purpose: '', ...over });
+    // a catalog entry that comes with a mode that skips approvals (none does today; the core would refuse it unconfirmed)
+    const lead = (): ReturnType<typeof prebuilt> => {
+      const e = prebuilt('team-lead');
+      return { ...e, preferred: { ...e.preferred, permissionMode: 'auto' } };
+    };
+
+    it('is read from the member as the core decides it: its own mode, else the catalog entry\'s on the entry\'s own CLI', () => {
+      expect(memberMode(custom({ permissionMode: 'bypassPermissions' }))).toBe('bypassPermissions');
+      expect(memberMode(custom())).toBe('');
+      const m = memberFromPrebuilt(lead(), []);
+      expect(m.permissionMode).toBe('auto');
+      expect(memberMode(m)).toBe('auto');
+      // "default" chosen on the entry's own CLI: the core still gives the entry's mode, so that is what is confirmed
+      expect(memberMode({ ...m, permissionMode: '' })).toBe('auto');
+      // another CLI has no entry mode (a permission mode is a Claude Code setting)
+      expect(memberMode({ ...m, permissionMode: '', adapter: 'gemini' })).toBe('');
+      expect(memberMode({ ...m, source: 'template', permissionMode: 'dontAsk' })).toBe('dontAsk');
+    });
+
+    it('keeps the Team step from being complete until the box is ticked for the mode, and says which agent and what to do', () => {
+      const s = emptyWizard();
+      s.localPath = '/src/calc';
+      s.team = [custom({ permissionMode: 'bypassPermissions' })];
+      expect(stepProblem(s, 'Team')).toBe('Ada acts without asking (bypassPermissions): tick "I understand this agent will act without asking me first" to go on, or choose another permission mode.');
+      expect(stepProblem(s, 'Review')).toContain('Team: Ada acts without asking');
+      s.team[0]!.confirmed = 'bypassPermissions';
+      expect(stepProblem(s, 'Team')).toBeUndefined();
+      // choosing another such mode asks again; a mode that keeps approvals does not
+      s.team[0]!.permissionMode = 'dontAsk';
+      expect(stepProblem(s, 'Team')).toContain('(dontAsk)');
+      s.team[0]!.permissionMode = 'plan';
+      expect(stepProblem(s, 'Team')).toBeUndefined();
+      // the entry's own mode counts for a prebuilt agent left at "default"
+      s.team = [{ ...memberFromPrebuilt(lead(), []), permissionMode: '' }];
+      expect(stepProblem(s, 'Team')).toContain('Team Lead acts without asking (auto)');
+      s.team[0]!.confirmed = 'auto';
+      expect(stepProblem(s, 'Team')).toBeUndefined();
+    });
+
+    it('sends confirmSkipsApprovals: true for the agents whose mode was confirmed, and for no other', () => {
+      const s = emptyWizard();
+      s.localPath = '/src/calc';
+      const entry = lead();
+      s.team = [
+        { ...memberFromPrebuilt(entry, []), confirmed: 'auto' },
+        { key: 't', source: 'template', ref: 'tpl1', name: 'From tpl', role: 'x', adapter: 'claude', model: '', effort: '', permissionMode: 'bypassPermissions', purpose: '', confirmed: 'bypassPermissions' },
+        custom({ name: 'Ada', permissionMode: 'dontAsk', confirmed: 'dontAsk' }),
+        custom({ key: 'd', name: 'Bob', permissionMode: 'plan', confirmed: 'dontAsk' }), // ticked, then the mode was changed to one that keeps approvals
+        custom({ key: 'e', name: 'Cy', permissionMode: 'acceptEdits' }),
+      ];
+      const agents = buildSetup(s).agents;
+      expect(agents.map((a) => [a.name, a.permissionMode, a.confirmSkipsApprovals])).toEqual([
+        ['Team Lead', 'auto', true],
+        ['From tpl', undefined, true],
+        ['Ada', 'dontAsk', true],
+        ['Bob', 'plan', undefined],
+        ['Cy', 'acceptEdits', undefined],
+      ]);
+      expect('confirmSkipsApprovals' in agents[3]!).toBe(false);
+      expect('confirmSkipsApprovals' in agents[4]!).toBe(false);
+      // a box ticked for another mode that skips approvals does not carry over
+      s.team = [custom({ permissionMode: 'auto', confirmed: 'bypassPermissions' })];
+      expect('confirmSkipsApprovals' in buildSetup(s).agents[0]!).toBe(false);
+    });
   });
 });

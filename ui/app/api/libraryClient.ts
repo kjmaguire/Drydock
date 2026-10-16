@@ -39,7 +39,14 @@ export interface SkillsInstalled {
   failed: SkippedItem[];
 }
 
-export type AgentTemplateInput = Omit<AgentTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+export type AgentTemplateInput = Omit<AgentTemplate, 'id' | 'createdAt' | 'updatedAt'> & {
+  id?: string;
+  /**
+   * The person's confirmation of a permission mode that lets agents made from the template act without asking (bypassPermissions,
+   * auto, dontAsk). Read when the template is saved, not stored; sent only after they ticked the box, and only for such a mode.
+   */
+  confirmSkipsApprovals?: boolean;
+};
 
 export interface AppliedTemplate {
   agent: Agent;
@@ -80,7 +87,8 @@ export interface LibraryClient {
   agentTemplateSave(t: AgentTemplateInput): Promise<AgentTemplate>;
   agentTemplateDelete(id: string): Promise<void>;
   agentTemplateFromAgent(agentId: string): Promise<AgentTemplate>;
-  agentTemplateApply(templateId: string, projectId: string, name?: string): Promise<AppliedTemplate>;
+  /** `confirmSkipsApprovals`: the person's confirmation when the template's permission mode lets the agent act without asking. */
+  agentTemplateApply(templateId: string, projectId: string, name?: string, confirmSkipsApprovals?: boolean): Promise<AppliedTemplate>;
   /** The registry skills a template can carry. */
   agentTemplateSkillChoices(): Promise<SkillChoice[]>;
   claudePractices(role: string): Promise<ClaudePractices>;
@@ -97,8 +105,8 @@ export function createLibraryClient(t: Transport): LibraryClient {
       await t.call('agenttemplate.delete', { id });
     },
     agentTemplateFromAgent: async (agentId) => tpl(await t.call<AgentTemplate>('agenttemplate.fromAgent', { agentId })),
-    agentTemplateApply: async (templateId, projectId, name) => {
-      const r = await t.call<AppliedTemplate>('agenttemplate.apply', { templateId, projectId, name });
+    agentTemplateApply: async (templateId, projectId, name, confirmSkipsApprovals) => {
+      const r = await t.call<AppliedTemplate>('agenttemplate.apply', { templateId, projectId, name, ...(confirmSkipsApprovals ? { confirmSkipsApprovals: true } : {}) });
       return { ...r, granted: arr(r.granted), skipped: arr(r.skipped), skills: installed(r.skills) };
     },
     agentTemplateSkillChoices: async () => arr(await t.call<SkillChoice[] | null>('agenttemplate.skillChoices')).map((c) => ({ ...c, from: arr(c.from) })),
