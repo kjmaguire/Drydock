@@ -4,9 +4,11 @@
 package ciconfig
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -106,6 +108,13 @@ func TestEveryWorkflowRunsOnHostedRunnersWithAReadOnlyTokenAndATimeLimit(t *test
 	}
 }
 
+// skipsTheChain is the field set to true in a TLS configuration, and replacesTheChain the check of the certificate that stands in
+// the chain check's place.
+var (
+	skipsTheChain    = regexp.MustCompile(`InsecureSkipVerify:\s*true`)
+	replacesTheChain = regexp.MustCompile(`VerifyPeerCertificate:\s*func`)
+)
+
 var nativeLine = regexp.MustCompile(`(?m)^\s*(go|gcc|git|npm|npx|choco|node|wails3|task)\s`)
 
 // A step of several commands in PowerShell, the default shell on Windows, ends with the exit code of its last command: a failed
@@ -162,5 +171,74 @@ func TestTheSecurityChecksAndPolicyArePresent(t *testing.T) {
 		if !strings.Contains(string(d), "package-ecosystem: "+eco) {
 			t.Errorf("dependabot does not watch %s", eco)
 		}
+	}
+}
+
+// Code scanning leaves out the paths in .github/codeql/codeql-config.yml and nothing else, and the list is what was reviewed: a
+// stand-in for an authorization server that no build contains, and the one file that pins a certificate. A path added to the list
+// changes this test, so it is seen in the diff. The pin is safe to leave out only while it is the only place that skips the
+// standard certificate check, so any other non-test Go file that names InsecureSkipVerify fails here.
+func TestCodeScanningSkipsOnlyWhatWasReviewedAndOnlyThePinSkipsCertificateChecks(t *testing.T) {
+	root := repoRoot(t)
+	const pin = "internal/providers/pinned_tls.go"
+	b, err := os.ReadFile(filepath.Join(root, ".github", "codeql", "codeql-config.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		PathsIgnore []string `yaml:"paths-ignore"`
+	}
+	if err := yaml.Unmarshal(b, &cfg); err != nil {
+		t.Fatalf("the CodeQL configuration does not parse: %v", err)
+	}
+	if want := []string{"internal/integrations/itfixture", pin}; !slices.Equal(cfg.PathsIgnore, want) {
+		t.Fatalf("code scanning skips %v; what was reviewed is %v (add to both, with the reason, only after a review)", cfg.PathsIgnore, want)
+	}
+	for _, p := range cfg.PathsIgnore {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p))); err != nil {
+			t.Errorf("%s is skipped by code scanning but is not there (renamed? the entry must follow it): %v", p, err)
+		}
+	}
+	sec, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "security.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sec), "config-file: ./.github/codeql/codeql-config.yml") {
+		t.Error("security.yml does not hand the CodeQL configuration to the scan")
+	}
+	skipping := 0
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", ".claude", "node_modules", "dist-windows":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(src), "InsecureSkipVerify") {
+			rel, _ := filepath.Rel(root, p)
+			if filepath.ToSlash(rel) != pin {
+				t.Errorf("%s names InsecureSkipVerify: certificate checks are skipped in %s alone (and it is left out of code scanning); pin a certificate there or verify the chain", rel, pin)
+			} else if skipsTheChain.Match(src) && replacesTheChain.Match(src) {
+				skipping++ // the chain check is switched off, and a check of the certificate itself stands in its place
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipping != 1 {
+		t.Errorf("%s no longer switches the chain check off with a VerifyPeerCertificate in its place, or the walk did not reach it: the exclusion no longer matches the code", pin)
 	}
 }

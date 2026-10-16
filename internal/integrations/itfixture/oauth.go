@@ -140,7 +140,6 @@ func (o *OAuth) Server() http.Handler {
 			v.Set("code", code)
 			v.Set("state", q.Get("state"))
 			u.RawQuery = v.Encode()
-			// codeql[go/unvalidated-url-redirection]
 			http.Redirect(w, r, u.String(), http.StatusFound)
 		case "/device/code":
 			if r.PostForm.Get("client_id") != o.ClientID {

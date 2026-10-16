@@ -2,10 +2,6 @@ package providers
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -138,25 +134,7 @@ func NewHTTPClient(p Provider, resolve Resolver, timeout time.Duration) (*http.C
 			return nil, err
 		}
 		want, _ := hex.DecodeString(fp)
-		tr.TLSClientConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			// The chain is not verified against system roots (a self-signed certificate on a LAN host has none); the leaf the
-			// server sends must be the one whose SHA-256 the person pinned, and VerifyPeerCertificate runs on every full
-			// handshake (this client keeps no session cache, so none is resumed without it). This is the certificate pinning Go's
-			// documentation describes for InsecureSkipVerify with VerifyPeerCertificate, so the alert is suppressed in source:
-			// codeql[go/disabled-certificate-check]
-			InsecureSkipVerify: true, //nolint:gosec // pinned by SHA-256 in VerifyPeerCertificate
-			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-				if len(rawCerts) == 0 {
-					return fmt.Errorf("providers: no server certificate")
-				}
-				sum := sha256.Sum256(rawCerts[0])
-				if subtle.ConstantTimeCompare(sum[:], want) != 1 {
-					return fmt.Errorf("providers: server certificate does not match the pinned fingerprint")
-				}
-				return nil
-			},
-		}
+		tr.TLSClientConfig = pinnedTLSConfig(want) // the chain is not verified against system roots; see pinned_tls.go
 	}
 	return &http.Client{Transport: tr, Timeout: timeout, CheckRedirect: sameOriginRedirects}, nil
 }

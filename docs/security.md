@@ -329,8 +329,13 @@ code could reach.
 - **Known vulnerabilities and code scanning.** `security.yml` runs weekly, by hand and when a dependency file changes: `govulncheck`
   at a pinned release (fails if the code can reach a known vulnerability), `npm audit` against the lock file (high or worse), and
   CodeQL for Go and JavaScript/TypeScript. It is not part of the merge gate (a new advisory against an unchanged dependency must not
-  stop an unrelated change): the weekly run is read. Dependabot proposes updates with a 14-day cooldown. `SECURITY.md` says how to
-  report a vulnerability privately.
+  stop an unrelated change): the weekly run is read. CodeQL reports on everything except two paths named, with the reason, in
+  `.github/codeql/codeql-config.yml`: the stand-in for an OAuth authorization server that the integration tests use (it redirects to
+  the `redirect_uri` it is sent, as the protocol has it; no build of the product contains it) and `internal/providers/pinned_tls.go`,
+  the one place that pins a provider's certificate by its SHA-256 instead of verifying a chain (its query cannot see the check that
+  replaces the chain check). `internal/ciconfig` keeps that list to what was reviewed and fails if any other file of the product
+  skips the certificate check. Dependabot proposes updates with a 14-day cooldown. `SECURITY.md` says how to report a vulnerability
+  privately.
 - **Code an agent wrote, run by the harness.** The trial's acceptance runs it with `proc.ToolEnv` (no token) and accepts only if every
   hidden test was seen to pass (`docs/evals.md` section 13). Recorded runs are committed with the account's plugin and connector
   details and the machine's paths removed.

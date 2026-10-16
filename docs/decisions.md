@@ -671,5 +671,8 @@ Open, owner action:
   test keeps it equal to the measured module list (M20 is open item 7 of section 4: the license itself is the owner's call).
   **Not done or not verified:** `Vampire/setup-wsl` stays on its major tag (pinning it to a commit needs its repository, which was
   out of this work's reach); the environment, its secrets, private vulnerability reporting and the history of the old eval
-  transcripts are the owner's (open item 8); `security.yml`, CodeQL and the new Windows runs of the tests first run on the pull
-  request.
+  transcripts are the owner's (open item 8). `security.yml`, CodeQL and the new Windows runs of the tests first ran on the pull
+  request: CodeQL's nine alerts (integer conversions, a path guard in two archive readers, a credential in a probe's output, a size
+  computation) were fixed in the code except two it cannot be satisfied on, which the configuration leaves out by name (see
+  `docs/security.md`); the Windows runs found a lock that hid its owner's process id (`internal/datalock`), tests that compared a
+  path by its spelling or read a source file with CRLF, and tests that need the repository where the verification bundle has none.

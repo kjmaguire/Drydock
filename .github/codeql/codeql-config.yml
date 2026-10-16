@@ -1,0 +1,13 @@
+# The CodeQL configuration of .github/workflows/security.yml. Code scanning reports on everything in the repository except the
+# paths listed here, and each one is listed with the reason. internal/ciconfig keeps this list to what was reviewed: a path added
+# here changes that test, so it is seen in the diff.
+name: Drydock code scanning
+paths-ignore:
+  # The stand-in for an OAuth authorization server that the integration tests and the end-to-end binary talk to. It redirects to
+  # the redirect_uri it is sent, as the protocol has it, after refusing every address but this computer's (go/unvalidated-url-
+  # redirection cannot be satisfied by an authorization server). No build of the product contains it.
+  - internal/integrations/itfixture
+  # The one place that pins a provider's certificate by its SHA-256 instead of verifying a chain (go/disabled-certificate-check
+  # sees InsecureSkipVerify and not the stricter check that replaces the chain check). It is the only InsecureSkipVerify in the
+  # product, and a test fails if another appears anywhere else.
+  - internal/providers/pinned_tls.go
