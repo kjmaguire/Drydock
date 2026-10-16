@@ -120,11 +120,15 @@ func TestSelectPackagesOnThisRepositoryForWindows(t *testing.T) {
 			t.Errorf("%s is not in the bundle", want)
 		}
 	}
-	// its only test file is //go:build !windows: on Windows it is compiled, not tested (core-terminal covers ConPTY)
-	if _, ok := got["internal/terminal"]; ok || !contains(untested, "internal/terminal") {
-		t.Errorf("internal/terminal has no tests on Windows: selected=%v untested=%v", ok, untested)
+	// terminal_test.go is //go:build !windows (core-terminal covers ConPTY on Windows), but buffer_test.go, which tests the
+	// buffer a terminal keeps for a reader that falls behind (audit 2026-10-16, L16), is portable: on Windows the package is
+	// tested for that and still compiled for the rest
+	if _, ok := got["internal/terminal"]; !ok || contains(untested, "internal/terminal") {
+		t.Errorf("internal/terminal has a portable test file and is tested on Windows: selected=%v untested=%v", ok, untested)
 	}
-	if !strings.Contains(strings.Join(got["internal/proc"].Why, " "), "proc_windows.go") {
+	// the reason names the first file that makes the package Windows-specific (command_other.go, the !windows half of the command
+	// helper, comes before proc_windows.go): what matters is that it is asked for because of its Windows code
+	if !strings.Contains(strings.Join(got["internal/proc"].Why, " "), "windows build constraint") {
 		t.Errorf("internal/proc why: %v", got["internal/proc"].Why)
 	}
 	if !contains(got["internal/agents/runtime"].RealClaude, "TestRealClaudeTurnWithToolUseAndUsage") ||

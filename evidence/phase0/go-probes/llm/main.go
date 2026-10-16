@@ -100,7 +100,7 @@ func main() {
 		b, _ := io.ReadAll(r.Body)
 		obody = string(b)
 		n := atomic.AddInt32(&ohits, 1)
-		fmt.Printf("  [openai fake] %s %s attempt=%d auth=%q\n", r.Method, r.URL.Path, n, r.Header.Get("Authorization"))
+		fmt.Printf("  [openai fake] %s %s attempt=%d bearer=%t\n", r.Method, r.URL.Path, n, strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "))
 		w.Header().Set("x-ratelimit-remaining-requests", "99")
 		w.Header().Set("x-ratelimit-remaining-tokens", "123456")
 		if n == 1 {

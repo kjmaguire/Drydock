@@ -339,8 +339,8 @@ func ExtractSkills(tgz []byte, root string) ([]RemoteSkill, error) {
 		if entries > maxEntries {
 			return nil, errors.New("archive has too many entries")
 		}
-		if h.Typeflag != tar.TypeReg {
-			continue
+		if h.Typeflag != tar.TypeReg || strings.Contains(h.Name, "..") {
+			continue // links and devices are not read, and neither is a name with ".." in it (a file called a..b is not a skill file)
 		}
 		name := strings.ReplaceAll(h.Name, `\`, "/")
 		if i := strings.Index(name, "/"); i >= 0 {

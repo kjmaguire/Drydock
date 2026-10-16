@@ -571,8 +571,12 @@ func decodeANSIC(s string) (string, bool) {
 			for j < len(s) && j < i+3 && s[j] >= '0' && s[j] <= '7' {
 				j++
 			}
-			v, _ := strconv.ParseUint(s[i:j], 8, 16)
-			sb.WriteByte(byte(v))
+			// up to three octal digits; like bash, keep the low eight bits of a value above \377
+			n := 0
+			for k := i; k < j; k++ {
+				n = n*8 + int(s[k]-'0')
+			}
+			sb.WriteByte(byte(n & 0xff))
 			i = j - 1
 		default:
 			return s, false

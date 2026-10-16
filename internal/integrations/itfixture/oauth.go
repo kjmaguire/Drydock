@@ -131,6 +131,11 @@ func (o *OAuth) Server() http.Handler {
 				http.Error(w, "bad redirect", 400)
 				return
 			}
+			// the app's sign-in listens on this computer (RFC 8252): a redirect anywhere else is refused, as a real server would
+			if h := u.Hostname(); u.Scheme != "http" || (h != "127.0.0.1" && h != "localhost" && h != "::1") {
+				http.Error(w, "the redirect must go to this computer", 400)
+				return
+			}
 			v := u.Query()
 			v.Set("code", code)
 			v.Set("state", q.Get("state"))

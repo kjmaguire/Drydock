@@ -19,6 +19,19 @@ type TaskResult struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 
+// maxRulePriority is the largest priority (either way) a rule may give the tasks it makes: the task service's own limit
+// (tasks.MaxPriority). A value outside it is not used; the integration's mapped priority stays.
+const maxRulePriority = 1000
+
+// rulePriority is the priority a rule gives the tasks it makes, or fallback when it gives none or one outside the task service's
+// range (rules are checked when they are saved; this is the second look, at the point of use).
+func rulePriority(params map[string]any, fallback int) int {
+	if p, ok := num(params["priority"]); ok && p >= -maxRulePriority && p <= maxRulePriority {
+		return int(p)
+	}
+	return fallback
+}
+
 // Import turns one item into work. Only a human can call it (it is the "human action" of docs/integrations.md section 3):
 //
 //   - Linear issue -> BACKLOG task with the title and description quoted, labels and priority mapped, IssueRef "ENG-123".
@@ -192,9 +205,7 @@ func (s *Service) createTask(ctx context.Context, by string, it Item, projectID 
 	prio := mapping.Priority
 	template := ""
 	if rule != nil {
-		if p, ok := num(rule.Params["priority"]); ok {
-			prio = int(p)
-		}
+		prio = rulePriority(rule.Params, prio)
 		template, _ = rule.Params["template"].(string)
 	}
 	taskID, err := s.o.CreateTask(ctx, TaskInput{ProjectID: projectID, Title: taskTitle, Description: desc, Priority: prio, IssueRef: it.IssueRef, Template: template})

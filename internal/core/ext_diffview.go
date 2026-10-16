@@ -65,7 +65,7 @@ type DiffFileContent struct {
 	Binary   bool   `json:"binary,omitempty"`
 	TooLarge bool   `json:"tooLarge,omitempty"`
 	Partial  bool   `json:"partial,omitempty"`
-	Size     int    `json:"size,omitempty"`
+	Size     int64  `json:"size,omitempty"`
 }
 
 // diffSource is everything needed to read one diff: the patch and the two sides.
@@ -218,8 +218,8 @@ func (c *Core) TaskDiffFile(ctx context.Context, id, path string, live, force bo
 	if errM != nil {
 		return DiffFileContent{}, errM
 	}
-	out.Size = int(max(sizeO, sizeM))
-	if int64(out.Size) > limit {
+	out.Size = max(sizeO, sizeM)
+	if out.Size > limit {
 		out.TooLarge = true
 		return out, nil
 	}

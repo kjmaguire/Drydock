@@ -180,6 +180,10 @@ func Unzip(archive, dir string) (err error) {
 			continue
 		}
 		target := filepath.Join(tmp, name)
+		// whatever entryPath said, nothing is written outside the folder being filled (a second line, and one that reads plainly)
+		if !strings.HasPrefix(target, filepath.Clean(tmp)+string(os.PathSeparator)) {
+			return fmt.Errorf("the archive entry %s leaves its folder", f.Name)
+		}
 		mode := f.Mode()
 		switch {
 		case mode.IsDir():

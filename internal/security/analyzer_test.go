@@ -394,6 +394,9 @@ func TestPOSIXObfuscation(t *testing.T) {
 		{shell: bash, cmd: `"r"'m' -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
 		{shell: bash, cmd: `$'\x72m' -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
 		{shell: bash, cmd: `$'r\155' -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
+		// an octal escape above \377 keeps its low eight bits, as bash does: \562 is 0x172, so $'\562m' is "rm"
+		{shell: bash, cmd: `$'\562m' -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
+		{shell: bash, cmd: `$'\162\155' -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
 		{shell: bash, cmd: `{rm,-rf,x}`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
 		{shell: bash, cmd: `/bin/rm -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},
 		{shell: bash, cmd: `RM -rf x`, conf: pe, classes: "destructive", verdict: ask, kind: KindShellDestructive},

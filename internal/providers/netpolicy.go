@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -139,13 +140,15 @@ func NewHTTPClient(p Provider, resolve Resolver, timeout time.Duration) (*http.C
 		want, _ := hex.DecodeString(fp)
 		tr.TLSClientConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
-			// The chain is not verified against system roots; VerifyConnection pins the leaf instead.
-			InsecureSkipVerify: true, //nolint:gosec // pinned by SHA-256 in VerifyConnection
-			VerifyConnection: func(cs tls.ConnectionState) error {
-				if len(cs.PeerCertificates) == 0 {
+			// The chain is not verified against system roots (a self-signed certificate on a LAN host has none); the leaf the
+			// server sends must be the one whose SHA-256 the person pinned, and VerifyPeerCertificate runs on every full
+			// handshake (this client keeps no session cache, so none is resumed without it).
+			InsecureSkipVerify: true, //nolint:gosec // pinned by SHA-256 in VerifyPeerCertificate
+			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				if len(rawCerts) == 0 {
 					return fmt.Errorf("providers: no server certificate")
 				}
-				sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+				sum := sha256.Sum256(rawCerts[0])
 				if subtle.ConstantTimeCompare(sum[:], want) != 1 {
 					return fmt.Errorf("providers: server certificate does not match the pinned fingerprint")
 				}

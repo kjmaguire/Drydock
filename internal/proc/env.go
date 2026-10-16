@@ -2,6 +2,7 @@ package proc
 
 import (
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -67,8 +68,7 @@ var ToolEnvNames = []string{
 // ToolEnvNames and the extra names the person chose to pass (the same list agents get), with the user name and password taken
 // out of a proxy address unless the person passed that variable on by name (WithoutProxyCredentials).
 func ToolEnv(parent, extra []string) []string {
-	names := make([]string, 0, len(BaseEnvNames)+len(ToolEnvNames)+len(extra))
-	names = append(append(append(names, BaseEnvNames...), ToolEnvNames...), extra...)
+	names := slices.Concat(BaseEnvNames, ToolEnvNames, extra)
 	return WithoutProxyCredentials(ScrubEnv(parent, names, nil), extra)
 }
 
@@ -126,7 +126,7 @@ func WithSafeExeSearch(env []string) []string {
 	if env == nil {
 		env = os.Environ()
 	}
-	out := make([]string, 0, len(env)+1)
+	out := make([]string, 0, len(env))
 	for _, kv := range env {
 		if k, _, _ := strings.Cut(kv, "="); strings.EqualFold(k, NoCwdSearchVar) {
 			continue

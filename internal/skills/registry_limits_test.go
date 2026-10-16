@@ -194,3 +194,25 @@ func TestASkillOfOver64KiBIsReadAndOneOver128KiBIsRefused(t *testing.T) {
 		t.Fatalf("a 100 KB repository skill: %v %+v", err, res)
 	}
 }
+
+// An archive entry with ".." anywhere in its name is never read, whatever follows it (audit 2026-10-16: the scanner asked for the
+// plain rule, and a name like that is no skill file): the skills around it are found as before.
+func TestExtractSkillsNeverReadsAnEntryWithDotDotInItsName(t *testing.T) {
+	tgz := buildTarball("remix-"+sha1, map[string]string{
+		"skills/good/SKILL.md":      skillMD("good", "A skill.", "", "Do the thing."),
+		"skills/../up/SKILL.md":     skillMD("up", "Escapes its folder.", "", "No."),
+		"skills/a..b/SKILL.md":      skillMD("ab", "A name with two dots.", "", "Not read either."),
+		"skills/also-good/SKILL.md": skillMD("also-good", "Another.", "", "Do it too."),
+	})
+	got, err := ExtractSkills(tgz, "skills/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, g := range got {
+		names[g.Name] = true
+	}
+	if len(got) != 2 || !names["good"] || !names["also-good"] || names["up"] || names["ab"] {
+		t.Fatalf("only the two plain names are read: %+v", got)
+	}
+}
