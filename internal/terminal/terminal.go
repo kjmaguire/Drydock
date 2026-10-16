@@ -88,6 +88,8 @@ type term struct {
 	kill   func() error
 	onExit func(code int)
 
+	pumped chan struct{} // closed when the output has been read to its end
+
 	mu      sync.Mutex
 	buf     []byte
 	start   int64 // offset of buf[0]
@@ -95,6 +97,12 @@ type term struct {
 	exited  bool
 	code    int
 }
+
+// drainGrace is how long the exit of a program waits for its last output to be read. The output of a program that has ended is
+// still in the pseudo-terminal's buffer when the process is reaped, and a reader that stops at the exit would miss it; on Unix the
+// read ends at once and the wait is as long as that takes. A ConPTY keeps its output pipe open until it is closed, so there the
+// grace is waited out.
+const drainGrace = 300 * time.Millisecond
 
 // DefaultShell is PowerShell (pwsh when installed) on Windows and $SHELL or /bin/sh elsewhere.
 func DefaultShell() (string, []string) {
@@ -223,7 +231,7 @@ func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, e
 		p.Close()
 		return Info{}, fmt.Errorf("terminal: %w", err)
 	}
-	t := &term{pty: p, cmd: cmd, kill: kill, onExit: prog.OnExit, changed: make(chan struct{}),
+	t := &term{pty: p, cmd: cmd, kill: kill, onExit: prog.OnExit, changed: make(chan struct{}), pumped: make(chan struct{}),
 		info: Info{ID: newID(), Title: title, Cwd: dir, Shell: shell, Cols: cols, Rows: rows, StartedAt: time.Now().UTC()}}
 	// on Unix the parent's copy of the terminal's slave end would keep reads from ever ending
 	if u, ok := p.(pty.UnixPty); ok {
@@ -242,6 +250,7 @@ func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, e
 }
 
 func (t *term) pump() {
+	defer close(t.pumped)
 	b := make([]byte, 32<<10)
 	for {
 		n, err := t.pty.Read(b)
@@ -261,8 +270,8 @@ func (t *term) pump() {
 	}
 }
 
-// wait records the shell's exit. It does not wait for the output to end: a ConPTY keeps its output pipe open until it is
-// closed, so the end of the output never signals the exit.
+// wait records the shell's exit once the output it wrote has been read, or after drainGrace: a ConPTY keeps its output pipe
+// open until it is closed, so the end of the output cannot be what signals the exit.
 func (t *term) wait() {
 	code := 0
 	if err := t.cmd.Wait(); err != nil {
@@ -272,6 +281,12 @@ func (t *term) wait() {
 			code = ee.ExitCode()
 		}
 	}
+	grace := time.NewTimer(drainGrace)
+	select {
+	case <-t.pumped:
+	case <-grace.C:
+	}
+	grace.Stop()
 	t.mu.Lock()
 	t.exited, t.code = true, code
 	t.notifyLocked()

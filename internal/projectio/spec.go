@@ -31,6 +31,10 @@ type Table struct {
 	// Import may adjust a row after ids were remapped and before it is inserted into the live database. It is where
 	// everything an imported file could use to act is switched off or marked pending acceptance.
 	Import func(r Row, im *ImportEnv)
+	// Accept (optional) is asked of every row of the archive after ids were remapped; a row it refuses is not imported. The
+	// export's Where picks the project's rows, but an archive is a file anyone can make: it can hold other rows, and the
+	// importer must not assume the exporter ran.
+	Accept func(r Row, im *ImportEnv) bool
 }
 
 // Helper subselects over the live database, parameterized by @p (the project id).
@@ -58,7 +62,7 @@ var Tables = []Table{
 	{Name: "projects", Where: `id=@p`,
 		Columns: []string{"id", "name", "default_branch", "merge_strategy", "mode", "created_at", "version", "brief"},
 		Skipped: map[string]string{"workspace_id": "workspaces are not exported", "repo_path": why_localPath + "; importing requires a new repository path"},
-		Const:   map[string]any{"repo_path": ""}, Import: importProject},
+		Const:   map[string]any{"repo_path": ""}, Import: importProject, Accept: acceptOwnProject},
 	{Name: "providers", Where: `id IN (SELECT provider_id FROM agents WHERE project_id=@p AND provider_id<>'')`,
 		Columns: []string{"id", "name", "kind", "base_url", "data_class", "tier", "max_concurrent_agents", "hourly_cost", "flavor", "enabled",
 			"tls_mode", "tls_fingerprint", "lan_unencrypted", "attestations", "wire_apis", "request_overrides", "created_at"},
@@ -81,7 +85,7 @@ var Tables = []Table{
 	{Name: "messages", Where: `room_id IN ` + roomIDs, OrderBy: `room_id, seq, created_at, rowid`,
 		Columns: []string{"id", "room_id", "thread_id", "author", "type", "body", "refs", "run_id", "created_at", "seq", "reply_to_id", "supersedes_id",
 			"payload", "markers", "mentions", "trust", "task_id", "idempotency_key"},
-		Skipped: map[string]string{"event_seq": why_busSeq}},
+		Skipped: map[string]string{"event_seq": why_busSeq}, Import: importMessage},
 	{Name: "room_exports", Where: `room_id IN ` + roomIDs,
 		Columns: []string{"id", "room_id", "scope", "receipt_id", "kind", "format", "from_seq", "to_seq", "params", "content", "sha256", "created_by", "created_at"},
 		Skipped: map[string]string{"event_seq": why_busSeq}},
@@ -96,7 +100,7 @@ var Tables = []Table{
 	{Name: "task_deps", Where: `task_id IN ` + taskIDs + ` AND depends_on IN ` + taskIDs, Columns: []string{"task_id", "depends_on"}},
 	{Name: "task_evidence", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "attempt", "kind", "passed", "summary", "ref", "data", "created_at"},
-		Skipped: map[string]string{"id": why_surrogate}, Export: exportEvidence},
+		Skipped: map[string]string{"id": why_surrogate}, Export: exportEvidence, Import: importEvidence},
 	{Name: "task_reviews", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "attempt", "reviewer", "verdict", "feedback", "model", "commit_sha", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
@@ -106,7 +110,8 @@ var Tables = []Table{
 	{Name: "workflow_checkpoints", Where: `run_id IN ` + runIDs, OrderBy: `run_id, created_at, rowid`,
 		Columns: []string{"id", "run_id", "workflow", "step", "kind", "parent_id", "state", "created_at"}},
 	{Name: "node_executions", Where: `run_id IN ` + runIDs, OrderBy: `run_id, step, node_id, attempt`,
-		Columns: []string{"run_id", "node_id", "step", "attempt", "status", "output", "error", "partial_ref", "safe_point_ref", "started_at", "finished_at"}},
+		Columns: []string{"run_id", "node_id", "step", "attempt", "status", "output", "error", "partial_ref", "safe_point_ref", "started_at", "finished_at"},
+		Import:  importNodeExecution},
 	{Name: "approvals", Where: `project_id=@p OR run_id IN ` + runIDs + ` OR task_id IN ` + taskIDs, OrderBy: `created_at, id`,
 		Columns: []string{"id", "run_id", "node_id", "task_id", "project_id", "kind", "title", "payload", "action_hash", "status", "decision", "response",
 			"decided_by", "created_at", "resolved_at", "version", "expires_at", "action_kind"}, Import: importApproval},
@@ -129,10 +134,10 @@ var Tables = []Table{
 			"cost_estimated_usd", "cost_unknown_rows", "cost_source", "premium_subscription_units", "premium_turns", "wall_ms", "failure_class", "recorded_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
 	{Name: "routing_rules", Where: `scope='project:'||@p`,
-		Columns: []string{"id", "scope", "priority", "when_expr", "then_json", "enabled", "version", "created_at", "updated_at"}, Import: importRoutingRule},
+		Columns: []string{"id", "scope", "priority", "when_expr", "then_json", "enabled", "version", "created_at", "updated_at"}, Import: importRoutingRule, Accept: acceptOwnRoutingRule},
 	{Name: "budgets", Where: budgetWh,
 		Columns: []string{"id", "scope", "scope_id", "project_id", "limit_usd", "limit_tokens", "limit_turns", "warn_pct", "enabled", "note", "version",
-			"created_at", "updated_at", "updated_by"}},
+			"created_at", "updated_at", "updated_by"}, Accept: acceptProjectBudget},
 	{Name: "budget_alerts", Where: `budget_id IN (SELECT id FROM budgets WHERE ` + budgetWh + `)`, Columns: []string{"budget_id", "instance_id", "level", "ts"}},
 	{Name: "memory", Where: `project_id=@p`, OrderBy: `created_at, id`,
 		Columns: []string{"id", "project_id", "kind", "title", "body", "status", "source", "created_at", "updated_at", "version"}, Import: importMemory},
@@ -161,7 +166,7 @@ var Tables = []Table{
 	// which agents a skill is given to (with the skill's audience, who receives it); an imported skill waits for acceptance anyway
 	{Name: "agent_skills", Where: `project_id=@p AND agent_id IN ` + agentIDs, OrderBy: `skill_name, agent_id`,
 		Columns: []string{"project_id", "agent_id", "skill_name", "assigned_by", "assigned_at"}},
-	{Name: "settings", Where: `key='devloop:'||@p`, Columns: []string{"key", "value"}, Import: importSetting},
+	{Name: "settings", Where: `key='devloop:'||@p`, Columns: []string{"key", "value"}, Import: importSetting, Accept: acceptOwnSetting},
 }
 
 // ExcludedTables lists every table that is not exported, with the reason. Virtual full-text tables are rebuilt by the

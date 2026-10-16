@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -210,5 +211,49 @@ func TestPublishDuringCloseNeverHangs(t *testing.T) {
 				t.Fatalf("round %d: %v", round, err)
 			}
 		}
+	}
+}
+
+// SetRedactor rewrites an event before it is stored and before any subscriber sees it, so the database, a replay and the live
+// stream all hold the same text (audit 2026-10-16, H7).
+func TestARedactorRewritesAnEventBeforeItIsStoredOrDelivered(t *testing.T) {
+	b, db, _ := newBus(t)
+	ctx := context.Background()
+	live, cancel := b.Subscribe(Filter{})
+	defer cancel()
+	b.SetRedactor(func(e Event) Event {
+		e.Data = json.RawMessage(strings.ReplaceAll(string(e.Data), "hunter2-hunter2", "[REDACTED]"))
+		return e
+	})
+	seq, err := b.Publish(ctx, Event{Type: "agent.failed", AgentID: "a1", Data: json.RawMessage(`{"error":"login hunter2-hunter2 failed"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"error":"login [REDACTED] failed"}`
+	select {
+	case e := <-live:
+		if string(e.Data) != want {
+			t.Fatalf("subscriber saw %s", e.Data)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event delivered")
+	}
+	replayed, err := b.Replay(ctx, seq-1, Filter{}, 10)
+	if err != nil || len(replayed) != 1 || string(replayed[0].Data) != want {
+		t.Fatalf("%v %+v", err, replayed)
+	}
+	var stored string
+	if err := db.Reader().QueryRow(`SELECT data FROM events WHERE seq=?`, seq).Scan(&stored); err != nil || stored != want {
+		t.Fatalf("%v stored %q", err, stored)
+	}
+
+	// without a redactor events pass as they are
+	b.SetRedactor(nil)
+	if _, err := b.Publish(ctx, Event{Type: "agent.failed", Data: json.RawMessage(`{"error":"hunter2-hunter2"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	e := <-live
+	if string(e.Data) != `{"error":"hunter2-hunter2"}` {
+		t.Fatalf("a removed redactor still ran: %s", e.Data)
 	}
 }

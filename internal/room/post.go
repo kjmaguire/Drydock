@@ -13,6 +13,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/redact"
 )
 
 // allowedTypes is who may author what through Post (room-protocol s2). APPROVAL_REQUEST and APPROVAL are absent on
@@ -269,16 +270,28 @@ func (s *Service) Post(ctx context.Context, p PostParams) (Posted, error) {
 	if err := s.prepare(&p); err != nil {
 		return Posted{}, err
 	}
-	payload, err := normalizePayload(p.Type, p.Author, p.Body, p.Payload)
-	if err != nil {
-		return Posted{}, err
-	}
+	// The body is scanned before the payload is built from it: a decision's text and a task's title are copied from the body
+	// into the payload, and a payload made from the unscanned body kept the secret in the stored row (audit 2026-10-16, H7).
 	if s.opt.Redact != nil {
 		red, err := s.opt.Redact(p.Body)
 		if err != nil {
 			return Posted{}, fmt.Errorf("%w: %v", ErrBlocked, err)
 		}
 		p.Body = red
+	}
+	payload, err := normalizePayload(p.Type, p.Author, p.Body, p.Payload)
+	if err != nil {
+		return Posted{}, err
+	}
+	if s.opt.Redact != nil {
+		// text the caller put in the payload itself (a check's summary, a tool's output) is scanned as well, string by string
+		payload = redact.JSON(payload, func(v string) string {
+			r, err := s.opt.Redact(v)
+			if err != nil {
+				return "[REDACTED:unscannable]"
+			}
+			return r
+		})
 	}
 	var out Posted
 	var evs []pendingEvent

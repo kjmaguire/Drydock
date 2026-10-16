@@ -23,14 +23,18 @@ func newManager() Manager { return manager{} }
 var (
 	appJobOnce sync.Once
 	appJobErr  error
+	appJob     windows.Handle // never closed: the handle lives until the process exits, which kills the job; kept for tests
 )
 
 // EnterAppJob puts the Drydock process into a KILL_ON_JOB_CLOSE job so that every descendant dies with the app
-// (decision D7). If the process is already in a job that forbids nesting the error is returned and logged by the
-// caller; per-agent jobs still apply.
+// (decision D7). The app's job allows breakaway (JOB_OBJECT_LIMIT_BREAKAWAY_OK) and the per-agent jobs below it do not: the
+// updater restarts the app through a helper it starts with CREATE_BREAKAWAY_FROM_JOB, and without the flag on this job that
+// start is refused and the update never finishes (audit 2026-10-16, M18), while an agent's process, which sits in its own job
+// that forbids breakaway, still cannot leave the tree. If the process is already in a job that forbids nesting the error is
+// returned and logged by the caller; per-agent jobs still apply.
 func EnterAppJob() error {
 	appJobOnce.Do(func() {
-		job, err := newKillOnCloseJob()
+		job, err := newJob(windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK)
 		if err != nil {
 			appJobErr = err
 			return
@@ -41,18 +45,21 @@ func EnterAppJob() error {
 			windows.CloseHandle(job)
 			return
 		}
-		// Intentionally never closed: the handle lives until the process exits, which kills the job.
+		appJob = job
 	})
 	return appJobErr
 }
 
-func newKillOnCloseJob() (windows.Handle, error) {
+// newKillOnCloseJob is a job that ends every process in it when its last handle closes, and lets none of them break away.
+func newKillOnCloseJob() (windows.Handle, error) { return newJob(0) }
+
+func newJob(extraFlags uint32) (windows.Handle, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return 0, err
 	}
 	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
-	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | extraFlags
 	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
 		windows.CloseHandle(job)

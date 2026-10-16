@@ -203,3 +203,41 @@ func mustRead(t *testing.T, p string) string {
 	}
 	return string(b)
 }
+
+// A test an agent wrote can print anything it can read. Each line a check prints is scanned before it reaches the log file, the
+// result's output or the line callback (audit 2026-10-16, H7).
+func TestACheckLeavesNoSecretInItsLogOrOutput(t *testing.T) {
+	const secret = "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
+	Redact = func(s string) string { return strings.ReplaceAll(s, secret, "[REDACTED]") }
+	t.Cleanup(func() { Redact = nil })
+	dir := fixture(t, "return a + b", `func TestPrints(t *testing.T) {
+	t.Logf("auth header: Bearer `+secret+`")
+	t.Fatalf("login failed with `+secret+`")
+}
+`)
+	var mu sync.Mutex
+	var lines []string
+	res, err := Run(context.Background(), proc.New(), Spec{Name: "test", Argv: []string{"go", "test", "-v", "./..."}, Dir: dir, Parser: "go", LogDir: t.TempDir()},
+		func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Passed {
+		t.Fatalf("the test was meant to fail: %s", res.Output)
+	}
+	log := mustRead(t, res.LogRef)
+	mu.Lock()
+	got := strings.Join(lines, "\n")
+	mu.Unlock()
+	for name, text := range map[string]string{"output": res.Output, "log file": log, "line callback": got} {
+		if strings.Contains(text, secret) {
+			t.Errorf("the %s holds the secret:\n%s", name, text)
+		}
+		if !strings.Contains(text, "Bearer [REDACTED]") {
+			t.Errorf("the %s lost the line around the secret:\n%s", name, text)
+		}
+	}
+	if len(res.FailingTests) != 1 || res.FailingTests[0] != "TestPrints" {
+		t.Errorf("failing tests are still named: %v", res.FailingTests)
+	}
+}

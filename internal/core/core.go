@@ -223,19 +223,23 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	for k, v := range cfg.Adapters {
 		c.adapters[k] = v
 	}
-	c.Bus = events.NewSQLBus(db, 4096)
+	bus := events.NewSQLBus(db, 4096)
+	c.Bus = bus
 	if c.Scanner, err = security.NewScanner(); err != nil {
 		cancel()
 		_ = db.Close()
 		return nil, fmt.Errorf("secret scanner: %w", err)
 	}
+	// what agents and tools printed is scanned before an event is stored or delivered (security.md s8; audit 2026-10-16, H7)
+	bus.SetRedactor(eventRedactor(c.Scanner.Redact))
+	checks.Redact = c.Scanner.Redact
 	// every message body is scanned before it is stored, so a secret pasted into the room never reaches the database, the
 	// event log or another agent's context (security.md s8)
 	c.Room = room.New(db, c.Bus, room.Options{
 		Redact:  func(body string) (string, error) { return c.Scanner.Redact(body), nil },
 		OnError: func(err error) { c.logf("room: %v", err) },
 	})
-	c.Tasks = &tasks.Service{DB: db, Bus: c.Bus, Hooks: tasks.Hooks{
+	c.Tasks = &tasks.Service{DB: db, Bus: c.Bus, Redact: c.Scanner.Redact, Hooks: tasks.Hooks{
 		OnCreate: func(ctx context.Context, t tasks.Task) {
 			if _, err := c.Room.CreateTaskChannel(ctx, room.TaskChannelSpec{ProjectID: t.ProjectID, TaskID: t.ID, Number: t.Seq, Title: t.Title, CreatedBy: room.Human(cfg.User)}); err != nil {
 				c.logf("task channel: %v", err)
@@ -245,7 +249,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions,
-		RunMode: c.agentRunMode}
+		RunMode: c.agentRunMode, Redact: c.Scanner.Redact}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,
@@ -268,7 +272,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			return c.projectDir(p)
 		},
 	}
-	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps)})
+	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps), Redact: c.Scanner.Redact})
 	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, c.watchdogHooks(), watchdog.ForNode)
 	c.Engine.Use(workflow.KindAgentTask, c.Watch.Middleware())
 	c.Engine.Observe(c.Watch.Observer())

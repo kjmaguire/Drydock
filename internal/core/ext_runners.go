@@ -278,7 +278,7 @@ func (r *runnersExt) add(ctx context.Context, repoS string, kind runners.Kind, a
 		return RunnersView{}, errors.New("Windows runners run on Windows only")
 	}
 	if kind == runners.Windows && !accept {
-		return RunnersView{}, errors.New("a Windows runner runs each job's commands on this PC as you, with your files and your network: confirm that you accept this for " + repo.String())
+		return RunnersView{}, errors.New("a Windows runner runs each job's commands on this PC as you, with your files and your network, and that includes a workflow an agent adds to a task branch once the branch is pushed (Drydock asks before it pushes a branch that changes workflows): confirm that you accept this for " + repo.String())
 	}
 	taken := func(slots []runners.SlotConfig) error {
 		for _, s := range slots {

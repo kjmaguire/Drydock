@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
@@ -108,7 +109,7 @@ func (c *Core) diffSource(ctx context.Context, id string, live bool) (diffSource
 		switch ev[i].Kind {
 		case "diff":
 			if src.patch == "" && ev[i].Ref != "" {
-				b, err := os.ReadFile(ev[i].Ref)
+				b, err := runfiles.ReadConfined(c.cfg.DataDir, ev[i].Ref)
 				if err != nil {
 					return diffSource{}, t, fmt.Errorf("the recorded diff cannot be read: %w", err)
 				}

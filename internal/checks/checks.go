@@ -21,6 +21,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/workflow"
 	"gopkg.in/yaml.v3"
 )
@@ -28,6 +29,10 @@ import (
 // PassEnv returns the extra environment variable names the person chose to pass to agents and project commands (settings,
 // read at every start). Set by the core; nil passes none.
 var PassEnv func() []string
+
+// Redact, if set, removes secrets from every line a check prints before it reaches the log file, the result and the chunk
+// stream (the core sets it to the secret scanner; docs/security.md s8, audit 2026-10-16, H7). Nil leaves lines as they are.
+var Redact func(string) string
 
 // CommandEnv is the environment every project command starts from (a check, a preview, the dependency scan, the security
 // scan's tools): the app's environment filtered to what a toolchain needs (proc.ToolEnv) plus the variables the person
@@ -132,6 +137,9 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 		sc.Buffer(make([]byte, 1<<20), 16<<20)
 		for sc.Scan() {
 			line := sc.Text()
+			if red := Redact; red != nil && len(line) >= redact.MinString {
+				line = red(line) // a test that prints a token must not leave it in the log, the evidence or the room
+			}
 			mu.Lock()
 			fmt.Fprintln(logf, line)
 			buf.WriteString(line)

@@ -179,6 +179,15 @@ func importSummary(r projectio.ImportResult) string {
 	for _, pr := range st.Providers {
 		fmt.Fprintf(&b, " provider \"%s\" came without its key and is unauthenticated and disabled;", pr.Name)
 	}
+	if st.RefsCleared > 0 {
+		fmt.Fprintf(&b, " %d reference(s) to files outside the restored run folders were emptied;", st.RefsCleared)
+	}
+	if st.RowsRejected > 0 {
+		fmt.Fprintf(&b, " %d row(s) that were not this project's were left out;", st.RowsRejected)
+	}
+	if st.MessagesDistrusted > 0 {
+		fmt.Fprintf(&b, " %d room message(s) are stored as untrusted, whoever the file says wrote them;", st.MessagesDistrusted)
+	}
 	fmt.Fprintf(&b, " automatic scheduling and the e2e and preview commands are switched off.")
 	return b.String()
 }

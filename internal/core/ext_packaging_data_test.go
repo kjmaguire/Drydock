@@ -176,7 +176,10 @@ func TestSupportBundleRunInclusionIsOptInAndScanned(t *testing.T) {
 	a.sql(`INSERT INTO workflow_runs(id,workflow,status,project_id,topology_hash,created_at,updated_at) VALUES(?,'w','COMPLETED',?,'h',1,1)`, runID, p.ID)
 	os.MkdirAll(filepath.Join(dataDir, "runs", runID), 0o755)
 	os.WriteFile(filepath.Join(dataDir, "runs", runID, "stream.jsonl"), []byte(`{"text":"key `+plantedToken+` and RAW-OUTPUT-MARKER"}`), 0o644)
-	if _, err := a.c.Bus.Publish(context.Background(), events.Event{Type: "agent.chunk", RunID: runID, Data: json.RawMessage(`{"text":"` + plantedToken + ` RUN-EVENT-MARKER"}`)}); err != nil {
+	// A type the bus does not scan: the bundle's own scan is what is under test here. (An agent.* event is scanned before it is
+	// stored, since audit 2026-10-16 H7, so the bundle would find nothing in it; events stored before that change still hold what
+	// they held, and the bundle scans them the same way.)
+	if _, err := a.c.Bus.Publish(context.Background(), events.Event{Type: "test.chunk", RunID: runID, Data: json.RawMessage(`{"text":"` + plantedToken + ` RUN-EVENT-MARKER"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	var pv struct {

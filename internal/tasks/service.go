@@ -10,6 +10,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -100,6 +101,16 @@ type Service struct {
 	DB    *storage.DB
 	Bus   events.Bus
 	Hooks Hooks
+	// Redact, if set, removes secrets from the text an agent or a tool wrote that a task keeps: review feedback, the reason a
+	// task is blocked, the summary and data of evidence (the scanner's Redact; audit 2026-10-16, H7).
+	Redact func(string) string
+}
+
+func (s *Service) red(v string) string {
+	if s.Redact == nil {
+		return v
+	}
+	return redact.Lines(v, s.Redact)
 }
 
 // CreateReq creates a task.
@@ -409,12 +420,12 @@ func (s *Service) Transition(ctx context.Context, id string, to Status, o Transi
 			}
 			if (t.Status == Review || t.Status == Verification) && !o.Resync {
 				set = append(set, "iteration=iteration+1", "review_feedback=?")
-				args = append(args, o.Feedback)
+				args = append(args, s.red(o.Feedback))
 			}
 			set = append(set, "blocked_reason=''")
 		case Blocked:
 			set = append(set, "blocked_reason=?")
-			args = append(args, o.Reason)
+			args = append(args, s.red(o.Reason))
 		case Completed:
 			set = append(set, "completed_at=?", "accepted_by=?")
 			args = append(args, now, o.By)
@@ -587,6 +598,10 @@ func (s *Service) AddEvidence(ctx context.Context, taskID string, e Evidence) (E
 	}
 	e.TaskID = taskID
 	e.Created = storage.Now()
+	if s.Redact != nil {
+		e.Summary = s.red(e.Summary)
+		e.Data = redact.JSON(e.Data, s.Redact)
+	}
 	var passed any
 	if e.Passed != nil {
 		passed = boolInt(*e.Passed)
@@ -646,6 +661,7 @@ func (s *Service) AddReview(ctx context.Context, taskID string, r ReviewRecord) 
 		return r, fmt.Errorf("tasks: verdict must be SHIP or REVISE, got %q", r.Verdict)
 	}
 	r.TaskID, r.Created = taskID, storage.Now()
+	r.Feedback = s.red(r.Feedback)
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `INSERT INTO task_reviews(task_id,attempt,reviewer,verdict,feedback,model,commit_sha,created_at) VALUES(?,?,?,?,?,?,?,?)`,
 			taskID, r.Attempt, r.Reviewer, r.Verdict, r.Feedback, r.Model, r.Commit, r.Created)

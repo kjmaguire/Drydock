@@ -10,6 +10,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -111,6 +112,19 @@ type SQLBus struct {
 	subs    map[*subscriber]struct{}
 	bufSz   int
 	once    sync.Once
+	// redactor, when set, rewrites an event before it is stored and fanned out (SetRedactor).
+	redactor atomic.Pointer[func(Event) Event]
+}
+
+// SetRedactor installs a function that rewrites every event before it is persisted and delivered: the place where secrets in
+// agent and tool output are removed before they reach the database, a subscriber or the UI (docs/security.md s8; audit
+// 2026-10-16, H7). The function must be fast for events it does not change and must not publish. Nil removes it.
+func (b *SQLBus) SetRedactor(f func(Event) Event) {
+	if f == nil {
+		b.redactor.Store(nil)
+		return
+	}
+	b.redactor.Store(&f)
 }
 
 // NewSQLBus starts the group-commit writer. bufSize is the per-subscriber channel capacity.
@@ -147,6 +161,9 @@ func (b *SQLBus) Publish(ctx context.Context, e Event) (uint64, error) {
 	}
 	if len(e.Data) == 0 {
 		e.Data = json.RawMessage(`{}`)
+	}
+	if f := b.redactor.Load(); f != nil {
+		e = (*f)(e)
 	}
 	r := request{e: e, reply: make(chan result, 1)}
 	select {

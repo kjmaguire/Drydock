@@ -22,6 +22,10 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// ErrNewerDatabase is returned by Open for a database file a newer build of Drydock has migrated. Update Drydock, or restore a
+// backup made before the update (the Backups page lists them).
+var ErrNewerDatabase = errors.New("storage: this database was made by a newer Drydock; update Drydock, or restore a backup made before that update")
+
 // DB wraps a writer (MaxOpenConns=1, BEGIN IMMEDIATE) and a reader pool (query_only).
 type DB struct {
 	path string
@@ -30,7 +34,16 @@ type DB struct {
 }
 
 // Open opens (creating if needed) the database at path and applies all migrations.
-func Open(ctx context.Context, path string) (*DB, error) {
+func Open(ctx context.Context, path string) (*DB, error) { return open(ctx, path, nil) }
+
+// OpenUntrusted opens a database file somebody else made (a project archive's project.db) the way Open does, with the
+// connection settings that keep its schema from acting: trusted_schema off (a view, trigger, default or check constraint of the
+// file may call only functions SQLite marks innocuous) and cell_size_check on (a corrupt page is an error, not a read past it).
+func OpenUntrusted(ctx context.Context, path string) (*DB, error) {
+	return open(ctx, path, []string{"trusted_schema(0)", "cell_size_check(1)"})
+}
+
+func open(ctx context.Context, path string, pragmas []string) (*DB, error) {
 	if path != ":memory:" {
 		abs, err := filepath.Abs(path)
 		if err != nil {
@@ -41,7 +54,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 			return nil, err
 		}
 	}
-	w, err := sql.Open("sqlite", dsn(path, true))
+	w, err := sql.Open("sqlite", dsn(path, true, pragmas...))
 	if err != nil {
 		return nil, err
 	}
@@ -52,11 +65,17 @@ func Open(ctx context.Context, path string) (*DB, error) {
 		return nil, fmt.Errorf("open writer: %w", err)
 	}
 	d := &DB{path: path, w: w}
+	// a database a newer build migrated is not opened by this one: its tables have a shape this code does not know, and an older
+	// build writing to it would corrupt what the newer one relies on
+	if v, err := schemaVersion(ctx, w); err == nil && v > LatestVersion() {
+		_ = w.Close()
+		return nil, fmt.Errorf("%w (its schema is at %d, this build knows %d)", ErrNewerDatabase, v, LatestVersion())
+	}
 	if err := d.Migrate(ctx); err != nil {
 		_ = w.Close()
 		return nil, err
 	}
-	r, err := sql.Open("sqlite", dsn(path, false))
+	r, err := sql.Open("sqlite", dsn(path, false, pragmas...))
 	if err != nil {
 		_ = w.Close()
 		return nil, err
@@ -76,7 +95,7 @@ func OpenTemp(ctx context.Context, dir string) (*DB, error) {
 	return Open(ctx, filepath.Join(dir, "drydock.db"))
 }
 
-func dsn(path string, writer bool) string {
+func dsn(path string, writer bool, extra ...string) string {
 	var p string
 	if path == ":memory:" {
 		p = "file::memory:?cache=shared"
@@ -88,6 +107,9 @@ func dsn(path string, writer bool) string {
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Add("_pragma", "foreign_keys(1)")
+	for _, e := range extra {
+		q.Add("_pragma", e)
+	}
 	if writer {
 		q.Add("_txlock", "immediate")
 	} else {

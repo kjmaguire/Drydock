@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -192,7 +192,7 @@ func (c *Core) TaskDiff(ctx context.Context, id string) (string, error) {
 	}
 	for i := len(ev) - 1; i >= 0; i-- {
 		if ev[i].Kind == "diff" {
-			b, err := os.ReadFile(ev[i].Ref)
+			b, err := runfiles.ReadConfined(c.cfg.DataDir, ev[i].Ref)
 			return string(b), err
 		}
 	}

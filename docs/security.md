@@ -205,12 +205,25 @@ Scanning uses the gitleaks library (`github.com/zricethezav/gitleaks/v8` v8.30.1
 | Context Engine package, before sending to any agent or provider | outbound | Redact `[REDACTED:<rule>]` for included snippets; block the source if redaction would change meaning (config files); record in manifest |
 | LLMClient request body | outbound | Block call, event `security.secret_blocked` |
 | MCP Gateway results | inbound | Redact before the agent sees it; mark untrusted |
-| Agent output, tool output, raw run files, room messages, handoffs | inbound | Redact before persistence in SQLite/room/events; raw on-disk output is scanned asynchronously and flagged |
+| Agent output, tool output, the run's files, room messages, handoffs | inbound | Redact before persistence in SQLite, the room, events and the files under `runs/` (the list below says where each is enforced) |
 | Skills and Expert Pack content on import | inbound | Reject or quarantine (brief §9) |
 | Memory writes | inbound | Block |
 | `secrets` check node (gitleaks) on the repository | worktree | Result posted by the Secrets tool member; also a pre-commit hook in the Taskfile (P5) |
 
 Log and event pipeline additionally uses an exact-value redactor seeded with every secret currently in the credential store (cheap, catches keys that no rule matches), so the structured logger never needs to run regex rule sets per line. Gitleaks throughput under Defender on Windows is **unverified**; scanning is size-capped and runs off the UI path.
+
+**What is scanned before it is stored (built, `internal/redact`, audit 2026-10-16, H7).** The table above was the rule; this is where it is enforced. Every function takes the scanner's `Redact` (gitleaks' rules plus the exact values of the keys the app holds), and JSON is redacted string by string, never as raw text, because a secret can sit across an escape (a private key's newlines are `\n` in the text).
+
+| What | Where | How |
+|---|---|---|
+| An agent's streamed output and its stderr | `agents/runtime` (`Managed.stream`) | text goes through `redact.Stream`, which holds an unfinished word back until it is whole (a token has no space in it, so it is never split between two stored records); a tool result or other whole chunk is redacted as JSON; the pieces still held are flushed when the run ends |
+| The run's chunk files, node outputs and errors, checkpoint state, run result and failure reason | `workflow` (`Config.Redact`, `store.stateJSON`) | scanned before the write transaction opens, so a scan of a large state does not hold the database's one writer |
+| Every line a check prints | `checks.Redact` | before the log file, the result's output and the line callback; failing test names are parsed from the cleaned text |
+| Room messages | `room.Post` | the body first, then the payload built from it (a decision's text and a task's title are copied from the body), then every string of the payload; a body the scanner cannot read blocks the message, a payload string it cannot read is replaced by `[REDACTED:unscannable]` |
+| Review feedback, the reason a task is blocked, evidence summary and data | `tasks.Service.Redact` | before the row is written |
+| Events of the families that carry what a tool or a remote service printed (`agent.`, `workflow.`, `check.`, `task.`, `mcp.`, `github.`, `pipeline.`, `watchdog.`, `lead.`) | `events.SQLBus.SetRedactor` (`core.eventRedactor`) | before the event is stored, replayed or delivered; Drydock's own facts (ids, counts, states) are not scanned |
+
+Limits, stated plainly. A word is held back only until the next space, tab or line break, or 4096 bytes: a token is whole inside it, but a run of more than 4096 characters without whitespace is cut at that length and a secret across the cut is not seen. A multi-line secret (a private key's body) whose lines arrive in separate writes is scanned a piece at a time, so the scanner's multi-line rules may not match it. The scanner withholds any input over its size cap (8 MiB) whole (`[REDACTED:oversize]`) rather than store it unscanned. Nothing scans, after the fact, the files an agent CLI keeps in its own folders (Claude Code's session transcripts are its own, not Drydock's to rewrite).
 
 Limits stated plainly: Drydock cannot scan what a CLI reads directly from the worktree and sends to its own provider (a premium CLI sees the files); that is why route choice (s9) and approvals, not scanning, are the control for CLI-originated traffic. The Context Engine excludes by default `.env*`, `*.pem`, `*.pfx`, `id_rsa*`, credential files and anything gitleaks flags from relevant-files selection.
 

@@ -15,6 +15,7 @@ import (
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -758,7 +759,7 @@ func (td TemplateDeps) securityReview() workflow.NodeHandler {
 		}
 		var diff string
 		if d, ok := latestEvidence(ev, "diff"); ok {
-			b, _ := os.ReadFile(d.Ref)
+			b, _ := runfiles.ReadConfined(td.DataDir, d.Ref)
 			diff = string(b)
 		}
 		agentID := td.templateInput(in).Roles[RoleSecurity]

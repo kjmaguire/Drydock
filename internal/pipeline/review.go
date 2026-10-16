@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -158,7 +158,7 @@ func Review(d Deps) workflow.NodeHandler {
 		for i := len(evidence) - 1; i >= 0 && (diff == "" || commit == ""); i-- {
 			switch {
 			case evidence[i].Kind == "diff" && diff == "":
-				b, _ := os.ReadFile(evidence[i].Ref)
+				b, _ := runfiles.ReadConfined(d.DataDir, evidence[i].Ref)
 				diff = string(b)
 			case evidence[i].Kind == "commit" && commit == "":
 				commit = evidence[i].Ref

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -63,6 +64,33 @@ func TestKillTreeReapsGrandchildren(t *testing.T) {
 func TestEnterAppJobIsIdempotent(t *testing.T) {
 	_ = EnterAppJob() // may fail when the runner already placed us in a restrictive job; must not panic
 	_ = EnterAppJob()
+}
+
+// The updater starts its helper with CREATE_BREAKAWAY_FROM_JOB; the app's job must allow that (and still kill on close), and
+// an agent's job must not (audit 2026-10-16, M18).
+func TestTheAppJobAllowsBreakawayAndAnAgentJobDoesNot(t *testing.T) {
+	flags := func(h windows.Handle) uint32 {
+		t.Helper()
+		var info windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+		if err := windows.QueryInformationJobObject(h, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)), nil); err != nil {
+			t.Fatal(err)
+		}
+		return info.BasicLimitInformation.LimitFlags
+	}
+	if err := EnterAppJob(); err != nil || appJob == 0 {
+		t.Skipf("this process could not enter its own job here (the runner's job forbids nesting): %v", err)
+	}
+	if f := flags(appJob); f&windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK == 0 || f&windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE == 0 {
+		t.Fatalf("app job flags %#x: it must kill on close and allow breakaway", f)
+	}
+	agent, err := newKillOnCloseJob()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(agent)
+	if f := flags(agent); f&windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0 || f&windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE == 0 {
+		t.Fatalf("agent job flags %#x: it must kill on close and forbid breakaway", f)
+	}
 }
 
 func readChildPIDs(t *testing.T, r io.Reader, n int) []int {

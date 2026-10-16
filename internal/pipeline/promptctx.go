@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
@@ -208,7 +209,7 @@ func (d Deps) acceptedSpec(ctx context.Context, taskID string) string {
 	if !ok || e.Passed == nil || !*e.Passed || e.Ref == "" {
 		return ""
 	}
-	b, err := os.ReadFile(e.Ref)
+	b, err := runfiles.ReadConfined(d.DataDir, e.Ref)
 	if err != nil {
 		return ""
 	}
@@ -222,7 +223,7 @@ func (d Deps) designNotes(ctx context.Context, taskID string) string {
 		return ""
 	}
 	if e, ok := latestEvidence(ev, "design"); ok && e.Ref != "" {
-		if b, err := os.ReadFile(e.Ref); err == nil {
+		if b, err := runfiles.ReadConfined(d.DataDir, e.Ref); err == nil {
 			return clip(strings.TrimSpace(string(b)), maxDesignNotes)
 		}
 	}

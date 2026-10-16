@@ -25,13 +25,18 @@ macOS jobs cannot run on a Windows PC; they stay on GitHub's hosted runners.
 
 - **Private repositories only.** On a public repository anyone's fork could open a pull request whose workflow runs its own
   code on the PC (GitHub's own advice). Drydock reads the repository (`GET /repos/{owner}/{repo}`) and refuses anything that is
-  not `private` (public and internal alike), when the runner is added and again before every registration: a repository made
-  public later gets no new runner. Archived repositories and ones the signed-in account does not administer are refused too.
+  not `private` (public and internal alike), when the runner is added, again before every registration, and every 3 minutes while
+  a runner waits for a job: a repository made public later gets no new runner, and the one that waits is stopped, its registration
+  deleted and its files removed at the next look (a job already running finishes; the runner is ephemeral and is not registered again). Archived repositories and ones the signed-in account does not administer are refused too.
 - **Runners only run CI.** They never push or change code; Drydock's own pipeline reads the results and does the fixing, the
   local checks, the review and the pushing. A runner holds no credential that can write to the repository.
 - **A person decides.** Adding, removing, switching on or off and choosing the folder are a person's (human identity only).
   A Windows runner needs the person to accept, per repository, that its jobs run on the PC as them with their files and
-  network: Windows has no cheap container per job. Linux jobs get one.
+  network: Windows has no cheap container per job. Linux jobs get one. The same goes for a workflow an agent adds to a task
+  branch: once the branch is pushed it runs on the runner. Drydock asks a person before it pushes a branch that changes
+  CI definitions (`.github/workflows/`, `.github/actions/`, and other CI services' files; docs/github.md section 3), naming the
+  paths; a script a workflow already calls is not watched, so a Windows runner belongs to a repository whose workflows and
+  tests you trust, and a Linux (container) runner is the one for work an agent has shaped.
 - **No stored GitHub token.** Registration goes through `gh` as the signed-in account (`host.GhCLI`), like the rest of
   Drydock's GitHub calls.
 - **At most 8 runners.**

@@ -225,6 +225,40 @@ func TestOpenProgramRunsTheProgramAndEndsWithIt(t *testing.T) {
 
 // Closing the terminal while its program still runs kills it and still tells OnExit (the sign-in's clean-up hangs on it), and
 // CloseAll returns only after every OnExit ran.
+// The output of a program that ends is still in the pseudo-terminal when the process is reaped. A reader that stops at the exit
+// (the sign-in terminal does) must have all of it: the exit is reported once the output has been read.
+func TestAProgramsLastOutputIsThereWhenItsExitIsReported(t *testing.T) {
+	m := &Manager{Shell: sh}
+	defer m.CloseAll()
+	for i := 0; i < 25; i++ {
+		in, err := m.OpenProgram(t.TempDir(), "burst", 100, 30, Program{Path: "/bin/sh", Args: []string{"-c", "i=0; while [ $i -lt 800 ]; do echo line-$i; i=$((i+1)); done; echo the-end-marker; exit 3"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		code, err := m.Exited(ctx, in.ID)
+		cancel()
+		if err != nil || code != 3 {
+			t.Fatalf("run %d: code %d, %v", i, code, err)
+		}
+		c, err := m.Read(context.Background(), in.ID, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !c.Exited || !strings.Contains(string(c.Data), "the-end-marker") || c.Dropped != 0 {
+			t.Fatalf("run %d: the exit was reported before the last output was read (%d bytes, dropped %d, ends %q)", i, len(c.Data), c.Dropped, tail(string(c.Data), 40))
+		}
+		_ = m.Close(in.ID)
+	}
+}
+
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
+}
+
 func TestOnExitRunsWhenTheTerminalIsClosed(t *testing.T) {
 	m := &Manager{Shell: sh}
 	ran := make(chan int, 1)

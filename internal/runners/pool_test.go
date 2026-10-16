@@ -174,6 +174,36 @@ func TestAPoolNeverRegistersARunnerOnAPublicRepository(t *testing.T) {
 	}
 }
 
+// A repository made public while its runner waits for a job loses the runner at the next look: stopped, its files removed, its
+// registration deleted, the slot blocked. (Before this, the waiting runner stayed registered until the next job took it, and a
+// fork's pull request could be that job.)
+func TestAWaitingRunnerIsRemovedWhenItsRepositoryTurnsPublic(t *testing.T) {
+	r := newRig(t, map[string]runnerstest.Repo{"kjmaguire/shop": {Private: true, Admin: true}})
+	r.pool.RecheckEvery = 25 * time.Millisecond
+	r.pool.Set([]runners.SlotConfig{slotFor("kjmaguire/shop", runners.Linux)})
+	key := "kjmaguire/shop:linux"
+	waitUntil(t, "the runner to wait", func() bool { return r.status(t, key).State == runners.StateIdle })
+	reg := r.gh.Registrations()[0]
+	time.Sleep(80 * time.Millisecond)
+	if r.status(t, key).State != runners.StateIdle || len(r.gh.RemovedIDs()) != 0 {
+		t.Fatal("a private repository's waiting runner must be left alone")
+	}
+	r.gh.SetRepo("kjmaguire/shop", runnerstest.Repo{Private: false, Admin: true})
+	waitUntil(t, "the slot to be blocked", func() bool { return r.status(t, key).State == runners.StateBlocked })
+	if !slices.Contains(r.gh.RemovedIDs(), reg.ID) {
+		t.Fatal("the waiting runner's registration was left on GitHub")
+	}
+	if c := r.lin.CleanedNames(); len(c) == 0 || c[0] != reg.Name {
+		t.Fatalf("the runner's files were not removed: %v", c)
+	}
+	if st := r.status(t, key); !strings.Contains(st.Reason, "public") {
+		t.Fatalf("%+v", st)
+	}
+	if n := len(r.gh.Registrations()); n != 1 {
+		t.Fatalf("registered again on a public repository: %d registrations", n)
+	}
+}
+
 // The other reasons a slot waits: not enough free space where jobs run, no container engine, a repository the account does
 // not administer, and GitHub not connected. None of them registers a runner.
 func TestAPoolWaitsWhenItCannotRun(t *testing.T) {

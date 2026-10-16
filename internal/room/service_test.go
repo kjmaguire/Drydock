@@ -577,3 +577,72 @@ func TestMessagesBeforePagesBackwards(t *testing.T) {
 		t.Fatalf("before the first message: %s", bodies(rest))
 	}
 }
+
+// The scan used to run over the body after the payload had been built from it, so a decision's text and a task's title (both
+// copied from the body) kept the secret in the stored row, and so did anything the poster put in the payload (audit 2026-10-16, H7).
+func TestAPostedPayloadIsScannedLikeTheBody(t *testing.T) {
+	e := newEnv(t)
+	r := e.channel("payload")
+	agent := e.agent("dev")
+	e.join(r, Agent(agent), "dev")
+	const secret = "sk-live-123456789"
+	svc := New(e.db, e.bus, Options{Redact: func(b string) (string, error) {
+		if strings.Contains(b, "BLOCKME") {
+			return "", errors.New("the scanner cannot read this")
+		}
+		return strings.ReplaceAll(b, secret, "[redacted]"), nil
+	}})
+
+	stored := func(id string) string {
+		t.Helper()
+		var body, payload string
+		if err := e.db.Reader().QueryRow(`SELECT body, payload FROM messages WHERE id=?`, id).Scan(&body, &payload); err != nil {
+			t.Fatal(err)
+		}
+		return body + "\n" + payload
+	}
+
+	// a decision copies its title and text from the body
+	d, err := svc.Post(e.ctx, PostParams{RoomID: r.ID, Type: TypeDecision, Author: Agent(agent), Body: "use the key " + secret + " for the proxy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(d.Message.ID); strings.Contains(got, secret) || !strings.Contains(got, "[redacted]") {
+		t.Fatalf("the decision kept the secret or lost the text: %s", got)
+	}
+
+	// a task copies its title from the body
+	tk, err := svc.Post(e.ctx, PostParams{RoomID: r.ID, Type: TypeTask, Author: Agent(agent), Body: "rotate " + secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(tk.Message.ID); strings.Contains(got, secret) {
+		t.Fatalf("the task kept the secret: %s", got)
+	}
+
+	// text the caller put in the payload itself, at any depth
+	s, err := svc.Post(e.ctx, PostParams{RoomID: r.ID, Type: TypeStatus, Author: Agent(agent), Body: "checks ran",
+		Payload: map[string]any{"summary": "env had " + secret, "nested": map[string]any{"lines": []any{"fine", "token=" + secret + " end"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(s.Message.ID); strings.Contains(got, secret) || !strings.Contains(got, "env had [redacted]") {
+		t.Fatalf("the payload kept the secret or lost the text: %s", got)
+	}
+
+	// a payload string the scanner cannot read is replaced, not stored
+	u, err := svc.Post(e.ctx, PostParams{RoomID: r.ID, Type: TypeStatus, Author: Agent(agent), Body: "checks ran", Payload: map[string]any{"summary": "BLOCKME please"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(u.Message.ID); strings.Contains(got, "BLOCKME") || !strings.Contains(got, "unscannable") {
+		t.Fatalf("an unreadable payload string was stored: %s", got)
+	}
+
+	// the event the room published for each message is built from the stored row
+	for _, ev := range e.events("room.message_posted") {
+		if strings.Contains(string(ev.Data), secret) {
+			t.Fatalf("an event carries the secret: %s", ev.Data)
+		}
+	}
+}

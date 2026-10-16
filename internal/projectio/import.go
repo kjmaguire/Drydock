@@ -33,6 +33,13 @@ const (
 	maxManifest   = 8 << 20
 	maxEntries    = 200000
 	maxTotalBytes = 8 << 30
+	// maxDBBytes bounds project.db, which is copied to a staging folder whole.
+	maxDBBytes = 2 << 30
+	// maxFileBytes bounds any other file of the archive (a run's raw output).
+	maxFileBytes = 1 << 30
+	// maxRatio is the most a file of more than 64 MiB may expand to, per byte stored: text logs and databases compress ten- to
+	// fiftyfold; a file that expands further is a compression bomb.
+	maxRatio = 200
 )
 
 // Preview is what the human sees before importing; it is computed without touching the live database.
@@ -58,11 +65,15 @@ func Inspect(ctx context.Context, archive string) (Preview, error) {
 		return Preview{}, err
 	}
 	defer func() { _ = db.Close() }()
-	im := &ImportEnv{Source: filepath.Base(archive), Human: "human:you"}
+	im := &ImportEnv{Source: filepath.Base(archive), Human: "human:you", NewProject: a.m.ProjectID}
 	counts := map[string]int{}
 	for _, t := range Tables {
 		n := 0
 		err := readTable(ctx, db, t, func(r Row) error {
+			if t.Accept != nil && !t.Accept(r, im) {
+				im.Stats.RowsRejected++
+				return nil
+			}
 			n++
 			if t.Import != nil {
 				t.Import(r, im)
@@ -126,7 +137,10 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 	idmap := map[string]string{}
 	for _, tb := range Tables {
 		err := readTable(ctx, src, tb, func(r Row) error {
-			for _, v := range r {
+			for col, v := range r {
+				if err := checkIDColumn(tb.Name, col, v); err != nil {
+					return err
+				}
 				for _, s := range valueStrings(v) {
 					for _, id := range idToken.FindAllString(s, -1) {
 						if _, ok := idmap[id]; !ok {
@@ -156,6 +170,7 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 	if err != nil {
 		return ImportResult{}, err
 	}
+	im.NewProject, im.RunDirs = newProject, restored.dirs
 	counts := map[string]int{}
 	err = t.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		im.Stats = Stats{}
@@ -168,6 +183,10 @@ func Import(ctx context.Context, t Target, o ImportOptions) (ImportResult, error
 			err := readTable(ctx, src, tb, func(r Row) error {
 				for k, v := range r {
 					r[k] = rep.value(v)
+				}
+				if tb.Accept != nil && !tb.Accept(r, im) {
+					im.Stats.RowsRejected++
+					return nil
 				}
 				if tb.Import != nil {
 					tb.Import(r, im)
@@ -384,6 +403,16 @@ func openArchive(ctx context.Context, p string) (*archive, error) {
 		if _, dup := a.files[f.Name]; dup {
 			return nil, fmt.Errorf("%w: duplicate entry %q", ErrBadArchive, f.Name)
 		}
+		limit := uint64(maxFileBytes)
+		if f.Name == DBName {
+			limit = maxDBBytes
+		}
+		if f.UncompressedSize64 > limit {
+			return nil, fmt.Errorf("%w: %s is larger than %d MiB", ErrBadArchive, f.Name, limit>>20)
+		}
+		if f.UncompressedSize64 > 64<<20 && f.UncompressedSize64/maxRatio > f.CompressedSize64 {
+			return nil, fmt.Errorf("%w: %s expands far more than any real file of a project does", ErrBadArchive, f.Name)
+		}
 		total += f.UncompressedSize64
 		a.files[f.Name] = f
 	}
@@ -493,7 +522,8 @@ func (a *archive) openDB(ctx context.Context) (*storage.DB, bool, error) {
 	if v != a.m.SchemaVersion {
 		return nil, false, fmt.Errorf("%w: project.db is at schema %d but the manifest says %d", ErrBadArchive, v, a.m.SchemaVersion)
 	}
-	db, err := storage.Open(ctx, p)
+	// the file is somebody else's: its schema must not act while it is read or migrated forward
+	db, err := storage.OpenUntrusted(ctx, p)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w: project.db: %v", ErrBadArchive, err)
 	}
@@ -565,4 +595,38 @@ func (a *archive) restoreRuns(dataDir string, idmap map[string]string) (restored
 		out.files++
 	}
 	return out, nil
+}
+
+// checkIDColumn refuses a row whose key columns hold something that is not a plain name. Ids become folder names under
+// <data>/runs and in the message and attachment stores, and a row with an id such as ..\..\x would be remapped by nobody (the
+// remapper only knows the ids Drydock generates) and reach outside them.
+func checkIDColumn(table, col string, v any) error {
+	if col != "id" && !strings.HasSuffix(col, "_id") {
+		return nil
+	}
+	var s string
+	switch t := v.(type) {
+	case string:
+		s = t
+	case []byte:
+		s = string(t)
+	default:
+		return nil
+	}
+	if len(s) > 200 || strings.Contains(s, "..") || strings.ContainsAny(s, "/\\\x00") {
+		return fmt.Errorf("%w: %s.%s holds %q, which is not an id", ErrBadArchive, table, col, truncateForError(s))
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("%w: %s.%s holds %q, which is not an id", ErrBadArchive, table, col, truncateForError(s))
+		}
+	}
+	return nil
+}
+
+func truncateForError(s string) string {
+	if len(s) > 40 {
+		return s[:40] + "..."
+	}
+	return s
 }

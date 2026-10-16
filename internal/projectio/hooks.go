@@ -25,6 +25,13 @@ type ImportEnv struct {
 	RepoPath    string
 	Branch      string
 
+	// NewProject is the id the imported project gets (the archive's own id in a preview, where nothing is remapped).
+	NewProject string
+	// RunDirs are the folders under <DataDir>/runs this import restored from the archive. A stored reference to a local file
+	// is kept only inside one of them; any other path in an archive means a file of the exporting machine, or a file of this
+	// one the archive's author would like read.
+	RunDirs []string
+
 	Stats Stats
 }
 
@@ -40,6 +47,12 @@ type Stats struct {
 	AgentPurposes      int            `json:"agentPurposesCleared"`
 	AgentModesLowered  int            `json:"agentPermissionModesLowered"`
 	Providers          []ProviderNote `json:"providersNeedingKeys"`
+	// RefsCleared counts stored references to local files that pointed outside the restored run folders and were emptied;
+	// RowsRejected counts rows that did not belong to the project (another project's budget, a setting of another key);
+	// MessagesDistrusted counts room messages stored as untrusted whoever the file says wrote them.
+	RefsCleared        int `json:"fileReferencesCleared"`
+	RowsRejected       int `json:"rowsRejected"`
+	MessagesDistrusted int `json:"messagesDistrusted"`
 }
 
 // ProviderNote names an imported provider that has no key.
@@ -215,21 +228,161 @@ func importAgent(r Row, im *ImportEnv) {
 // the CI gate back to required: a file cannot declare that the repository has no CI. Only a human on this machine changes
 // them again.
 func importSetting(r Row, im *ImportEnv) {
-	var m map[string]any
-	if json.Unmarshal([]byte(str(r, "value")), &m) != nil {
-		r["value"] = "{}"
-		return
+	r["value"] = SanitizeDevSettings(str(r, "value"))
+}
+
+// SanitizeDevSettings is importSetting's change to one project's settings JSON. The reader of that JSON is encoding/json into
+// a struct, which matches a key whatever its case (autoschedule, AUTOSCHEDULE, even the Kelvin sign for k) and lets the last of
+// two keys that match win, so editing the key spelled the way the struct spells it leaves "autoschedule":true, "workerchecks":
+// true, "cimode":"none" or "E2E":{"enabled":true,"command":[...]} in force. Every key that matches one of the switches, in any
+// spelling, is therefore removed and the switch written once, off; the e2e and preview objects keep their commands (spelled
+// as the struct spells them) and lose every spelling of "enabled".
+func SanitizeDevSettings(raw string) string {
+	var in map[string]any
+	if json.Unmarshal([]byte(raw), &in) != nil {
+		return "{}"
 	}
-	m["autoSchedule"] = false
-	m["workerChecks"] = false
-	m["ciMode"] = "required"
-	delete(m, "ciNoneBy")
-	delete(m, "ciNoneAt")
-	for _, k := range []string{"e2e", "preview"} {
-		if sub, ok := m[k].(map[string]any); ok {
-			sub["enabled"] = false
+	out := map[string]any{}
+	nested := map[string]map[string]any{}
+	for k, v := range in {
+		switch {
+		case strings.EqualFold(k, "autoSchedule"), strings.EqualFold(k, "workerChecks"), strings.EqualFold(k, "ciMode"),
+			strings.EqualFold(k, "ciNoneBy"), strings.EqualFold(k, "ciNoneAt"):
+			// replaced below
+		case strings.EqualFold(k, "e2e"), strings.EqualFold(k, "preview"):
+			sub, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			name := strings.ToLower(k)
+			if nested[name] == nil {
+				nested[name] = map[string]any{}
+			}
+			for sk, sv := range sub {
+				if strings.EqualFold(sk, "enabled") {
+					continue
+				}
+				nested[name][canonicalSubKey(sk)] = sv
+			}
+		default:
+			out[k] = v
 		}
 	}
-	b, _ := json.Marshal(m)
-	r["value"] = string(b)
+	for _, name := range []string{"e2e", "preview"} {
+		sub := nested[name]
+		if sub == nil {
+			sub = map[string]any{}
+		}
+		sub["enabled"] = false
+		out[name] = sub
+	}
+	out["autoSchedule"] = false
+	out["workerChecks"] = false
+	out["ciMode"] = "required"
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+// canonicalSubKey spells the keys of the e2e and preview objects the way the settings struct does, so two spellings of one key
+// cannot both survive.
+func canonicalSubKey(k string) string {
+	for _, want := range []string{"command", "timeoutSec", "url"} {
+		if strings.EqualFold(k, want) {
+			return want
+		}
+	}
+	return k
+}
+
+// ---- references to local files ----
+
+// importEvidence empties a stored reference to a local file that is not inside a run folder this import restored. The readers
+// of evidence (the prompt of the next worker, the diff viewer, the log viewer) open the reference as a path, so an archive
+// whose reference is C:\Users\you\.ssh\id_ed25519, ..\..\x or a \\host\share path would have that file read into a prompt
+// or have this machine authenticate to a server of the archive's choosing. Commit ids, pull request references and web URLs
+// are not files and stay.
+func importEvidence(r Row, im *ImportEnv) {
+	ref := str(r, "ref")
+	if ref == "" {
+		return
+	}
+	switch str(r, "kind") {
+	case "commit", "pr", "ci":
+		return
+	}
+	if isWebURL(ref) {
+		return
+	}
+	if !im.insideRunDirs(ref) {
+		r["ref"] = ""
+		if im.DataDir != "" { // a preview restores nothing, so it would count every path
+			im.Stats.RefsCleared++
+		}
+	}
+}
+
+// importNodeExecution empties a node's stored log path unless it is inside a restored run folder, and its safe point (a hidden
+// ref in the exporting machine's repository, which this installation does not have and git must never be handed as text).
+func importNodeExecution(r Row, im *ImportEnv) {
+	if ref := str(r, "partial_ref"); ref != "" && !im.insideRunDirs(ref) {
+		r["partial_ref"] = ""
+		if im.DataDir != "" {
+			im.Stats.RefsCleared++
+		}
+	}
+	r["safe_point_ref"] = ""
+}
+
+func isWebURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// insideRunDirs reports whether ref is an absolute path inside one of the restored run folders (".." is resolved first, so
+// <data>/runs/<run>/../../x is outside).
+func (im *ImportEnv) insideRunDirs(ref string) bool {
+	if !filepath.IsAbs(ref) {
+		return false
+	}
+	clean := filepath.Clean(ref)
+	for _, d := range im.RunDirs {
+		d = filepath.Clean(d)
+		if clean == d || strings.HasPrefix(clean, d+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---- rows that are not the project's ----
+
+// acceptOwnProject keeps only the project the manifest names (an archive can carry other rows; each would become a project).
+func acceptOwnProject(r Row, im *ImportEnv) bool { return str(r, "id") == im.NewProject }
+
+// acceptOwnSetting keeps only the project's own settings key; any other key of the settings table is an installation-wide
+// setting (the backup folder, the license) that no project archive may set.
+func acceptOwnSetting(r Row, im *ImportEnv) bool { return str(r, "key") == "devloop:"+im.NewProject }
+
+// acceptProjectBudget keeps budgets of a project, a task, a run or an agent; a global or provider budget is the importing
+// installation's own, and an archive with a one-cent global budget would stop all spending.
+func acceptProjectBudget(r Row, im *ImportEnv) bool {
+	switch str(r, "scope") {
+	case "project", "task", "run", "agent":
+		return true
+	}
+	return false
+}
+
+// acceptOwnRoutingRule keeps rules scoped to this project; a workspace-wide rule would route every project's work.
+func acceptOwnRoutingRule(r Row, im *ImportEnv) bool {
+	return str(r, "scope") == "project:"+im.NewProject
+}
+
+// importMessage stores every message as untrusted. Trust decides whether the message is shown to an agent as the human's own
+// word or wrapped as data (internal/room), and an archive can name any author, including the person importing it.
+func importMessage(r Row, im *ImportEnv) {
+	if str(r, "trust") != "untrusted" {
+		r["trust"] = "untrusted"
+		im.Stats.MessagesDistrusted++
+	}
 }

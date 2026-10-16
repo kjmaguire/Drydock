@@ -359,3 +359,74 @@ func TestCreateRefusesWhatATaskCannotBe(t *testing.T) {
 		t.Fatalf("%d refused tasks were stored anyway", n)
 	}
 }
+
+// Review feedback, the reason a task is blocked and the text of evidence come from an agent or a tool, and a task keeps them for
+// good: with a scanner set they are scanned first (audit 2026-10-16, H7).
+func TestWhatAnAgentWroteIsScannedBeforeATaskKeepsIt(t *testing.T) {
+	s, _ := newSvc(t)
+	const secret = "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
+	s.Redact = func(v string) string { return strings.ReplaceAll(v, secret, "[REDACTED]") }
+	ctx := context.Background()
+	task, _ := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "Scan", MaxIterations: 3})
+	driveToReview(t, s, task.ID, "agent-1", "agent-2")
+
+	// evidence: the summary and every string of the data
+	if _, err := s.AddEvidence(ctx, task.ID, Evidence{Kind: "test", Passed: ptr(false), Summary: "FAIL: token " + secret + " rejected",
+		Data: []byte(`{"output":"curl -H 'Authorization: ` + secret + `' https://x","names":["TestA","` + secret + `"],"count":3}`)}); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := s.Evidence(ctx, task.ID)
+	if err != nil || len(ev) != 1 {
+		t.Fatalf("%v %d", err, len(ev))
+	}
+	if strings.Contains(ev[0].Summary, secret) || strings.Contains(string(ev[0].Data), secret) {
+		t.Fatalf("evidence kept the secret: %q %s", ev[0].Summary, ev[0].Data)
+	}
+	if !strings.Contains(ev[0].Summary, "[REDACTED]") || !strings.Contains(string(ev[0].Data), `"count":3`) || !strings.Contains(string(ev[0].Data), "TestA") {
+		t.Fatalf("the text around the secret must stay: %q %s", ev[0].Summary, ev[0].Data)
+	}
+
+	// the reviewer's verdict
+	if _, err := s.AddReview(ctx, task.ID, ReviewRecord{Attempt: 1, Reviewer: "agent-2", Verdict: "REVISE", Feedback: "remove the key " + secret + " from calc.go"}); err != nil {
+		t.Fatal(err)
+	}
+	rv, err := s.Reviews(ctx, task.ID)
+	if err != nil || len(rv) != 1 || strings.Contains(rv[0].Feedback, secret) || !strings.Contains(rv[0].Feedback, "remove the key [REDACTED]") {
+		t.Fatalf("%v %+v", err, rv)
+	}
+
+	// the feedback that becomes the next iteration's context
+	addPassingEvidence(t, s, task.ID)
+	if _, err := s.Transition(ctx, task.ID, Review, TransitionOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Transition(ctx, task.ID, InProgress, TransitionOpts{Feedback: "the key " + secret + " is in the diff"})
+	if err != nil || strings.Contains(got.ReviewFeedback, secret) || !strings.Contains(got.ReviewFeedback, "[REDACTED]") {
+		t.Fatalf("%v %q", err, got.ReviewFeedback)
+	}
+
+	// why the task is blocked
+	b, err := s.Transition(ctx, task.ID, Blocked, TransitionOpts{Reason: "the provider answered 401 for " + secret})
+	if err != nil || strings.Contains(b.BlockedReason, secret) || !strings.Contains(b.BlockedReason, "401 for [REDACTED]") {
+		t.Fatalf("%v %q", err, b.BlockedReason)
+	}
+
+	// nothing in the database holds the secret
+	for _, q := range []string{`SELECT summary || COALESCE(data,'') FROM task_evidence`, `SELECT feedback FROM task_reviews`,
+		`SELECT review_feedback || blocked_reason FROM tasks`} {
+		rows, err := s.DB.Reader().Query(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var v string
+			if err := rows.Scan(&v); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(v, secret) {
+				t.Fatalf("%s holds the secret: %q", q, v)
+			}
+		}
+		rows.Close()
+	}
+}

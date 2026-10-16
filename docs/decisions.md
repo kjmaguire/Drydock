@@ -500,3 +500,18 @@ Open, owner action:
   skills scan asks git through the project's guarded `Repo`; the security scan's tools get git settings in their environment
   (`proc.GitConfigEnv`). **Not verified:** the same fixes against a repository inside a WSL distro (the `GIT_DIR` values go
   through the runner's path translation, covered by its existing tests, but no distro ran here) and on Windows git.
+  **Files and programs (H1, H2):** a file Drydock reads from an agent-writable folder (project memory, the context engine's
+  inputs, library versions, skills) is opened through `internal/safefs` (`os.Root`: a link that leaves the folder reads
+  nothing), and every child process starts with `NoDefaultCurrentDirectoryInExePath=1` so cmd.exe does not run a `node.cmd`
+  the agent left in its working directory (`proc.WithSafeExeSearch`, `proc.HardenProcess`). **Imports (H3, H4, M10, M11):** an
+  archive is opened read-only through `storage.OpenUntrusted` with size and ratio limits, every table row passes an
+  `Accept` hook before it is inserted (ids are checked against the importing project, settings through the same sanitiser
+  the UI uses, evidence and node-execution references must stay inside `runs/` of the imported project), and the evidence
+  readers open files only through `runfiles.ReadConfined`. **CI definitions (H5, M8):** a push whose diff changes a workflow or
+  another CI definition waits for a person who sees the paths (`pipeline.GateCIPush`, evidence `ci_push_approved` bound to the
+  head and the paths); the runner pool re-checks its registrations while it runs. **Updater (H6, M18):** an update is accepted
+  only when its manifest carries a signature that verifies against the key compiled into the build, the download is bounded in
+  time and size, the helper that restarts the app may break away from the app's job object. **Secrets in what is stored (H7):**
+  agent and tool output, a run's records, check lines, room payloads, task feedback and evidence, and the events that carry
+  them are scanned before they are written (`internal/redact`, docs/security.md s8). **Not verified here:** every Windows-only
+  piece (the job-object test, the updater's audit hook, the cmd.exe test) runs on the Windows runner only.

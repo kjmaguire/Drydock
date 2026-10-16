@@ -76,13 +76,20 @@ func TestDiffViewerShowsBothVersionsOfEveryFile(t *testing.T) {
 
 // A recorded diff whose commits git no longer has still opens, from the patch alone, marked partial.
 func TestDiffViewerFallsBackToThePatchWhenTheCommitsAreGone(t *testing.T) {
-	a := open(t, "")
+	dataDir := filepath.Join(t.TempDir(), "data")
+	a := open(t, dataDir)
 	p, _ := a.setup("gocalc")
 	var task tasks.Task
 	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Old work"}, &task)
 	patch := "diff --git a/calc.go b/calc.go\n--- a/calc.go\n+++ b/calc.go\n@@ -1,2 +1,2 @@\n ctx\n-old\n+new\n"
-	ref := filepath.Join(t.TempDir(), "task.diff")
-	os.WriteFile(ref, []byte(patch), 0o644)
+	// the patch is a run file, kept where the readers are allowed to open evidence from (a reference elsewhere is refused)
+	ref := filepath.Join(dataDir, "runs", "run_aaaaaaaaaaaa", "evidence", "task.diff")
+	if err := os.MkdirAll(filepath.Dir(ref), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ref, []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	gone := strings.Repeat("ab", 20)
 	if _, err := a.c.Tasks.AddEvidence(t.Context(), task.ID, tasks.Evidence{Kind: "diff", Ref: ref, Data: []byte(`{"base":"` + gone + `","commit":"` + gone + `"}`)}); err != nil {
 		t.Fatal(err)

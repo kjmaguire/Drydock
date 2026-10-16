@@ -107,6 +107,10 @@ func PushPR(d Deps, src PRSource) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
+		// a branch that changes how CI runs is pushed only once a person has seen the paths (cipush.go)
+		if err := checkCIPush(ctx, d, t, func() ([]string, error) { return repo.ChangedPaths(ctx, w, cfg.BaseBranch) }, head, cfg.BaseBranch); err != nil {
+			return workflow.NodeOutput{}, err
+		}
 		if err := repo.Push(ctx, w, cfg.remote()); err != nil {
 			return githubTrouble(in, "push the branch", err)
 		}

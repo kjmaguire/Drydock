@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -120,7 +121,19 @@ func (c *Core) trustOnApproval(ctx context.Context, runID, requestID, decision s
 			Gate        string `json:"gate"`
 			Fingerprint string `json:"fingerprint"`
 		}
-		if json.Unmarshal(p.Spec.Payload, &g) != nil || g.Gate != git.GateRepoConfigChanged {
+		if json.Unmarshal(p.Spec.Payload, &g) != nil {
+			return
+		}
+		if g.Gate == pipeline.GateCIPush {
+			// a person approved pushing a branch that changes CI definitions: remember exactly that push (head and paths)
+			if info, err := c.Engine.Status(ctx, workflow.RunID(runID)); err == nil && info.TaskID != "" {
+				if _, err := pipeline.RecordGateApproval(ctx, c.Tasks, string(info.TaskID), p.Spec.Payload, c.Human()); err != nil {
+					c.logf("record the approval of a CI push: %v", err)
+				}
+			}
+			return
+		}
+		if g.Gate != git.GateRepoConfigChanged {
 			return
 		}
 		info, err := c.Engine.Status(ctx, workflow.RunID(runID))

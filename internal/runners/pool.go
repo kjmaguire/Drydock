@@ -78,6 +78,9 @@ type Pool struct {
 	Wait       func(ctx context.Context, d time.Duration) // default a timer
 	Retry      time.Duration                              // pause before looking again at a blocked slot; default 1 minute
 	MaxBackoff time.Duration                              // default 10 minutes
+	// RecheckEvery is how often a runner that is waiting for a job asks again whether its repository is still private (default
+	// 3 minutes). A repository made public while a runner waits is unregistered and stopped at the next look, not at the next job.
+	RecheckEvery time.Duration
 
 	mu      sync.Mutex
 	slots   map[string]*slot
@@ -493,8 +496,39 @@ func (p *Pool) once(ctx context.Context, s *slot) (ran bool, err error) {
 	lines := run.Lines()
 	exit := run.Wait()
 	code, exited := 0, false
+	every := p.RecheckEvery
+	if every <= 0 {
+		every = 3 * time.Minute
+	}
+	recheck := time.NewTicker(every)
+	defer recheck.Stop()
 	for !exited {
 		select {
+		case <-recheck.C:
+			// A runner that waits for a job on a repository that has since become public would take a fork's pull request.
+			// One that is busy finishes its job (it is ephemeral and is not registered again).
+			p.mu.Lock()
+			idle := s.st.State == StateIdle
+			p.mu.Unlock()
+			if !idle {
+				continue
+			}
+			if _, cerr := CheckRepo(ctx, api, cfg.Repo); !errors.Is(cerr, ErrPublic) {
+				continue
+			} else {
+				run.Stop()
+				select {
+				case <-exit:
+				case <-time.After(30 * time.Second):
+				}
+				if lines != nil {
+					for range lines {
+					}
+				}
+				_ = l.Cleanup(job)
+				unregister()
+				return ran, blocked{cerr.Error()}
+			}
 		case <-ctx.Done():
 			run.Stop()
 			select {

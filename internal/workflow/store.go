@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -61,9 +62,31 @@ type ExecRow struct {
 
 type store struct {
 	db *storage.DB
+	// redact (optional) removes secrets from the output, error, result and checkpoint state of a run before they are stored
+	// (Config.Redact; audit 2026-10-16, H7).
+	redact redact.Func
+}
+
+// text and jsonb apply the redactor to what a run records.
+func (s *store) text(v string) string {
+	if s.redact == nil {
+		return v
+	}
+	return redact.Lines(v, s.redact)
+}
+
+func (s *store) jsonb(b json.RawMessage) json.RawMessage {
+	if s.redact == nil || len(b) == 0 {
+		return b
+	}
+	return redact.JSON(b, s.redact)
 }
 
 func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint) error {
+	st, err := s.stateJSON(cp)
+	if err != nil {
+		return err
+	}
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		now := storage.Now()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workflow_runs
@@ -73,7 +96,7 @@ func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint) erro
 			string(info.ParentCP), string(cp.ID), now, now); err != nil {
 			return err
 		}
-		return insertCheckpoint(ctx, tx, cp)
+		return insertCheckpoint(ctx, tx, cp, st)
 	})
 }
 
@@ -84,12 +107,21 @@ func nz(b json.RawMessage) []byte {
 	return b
 }
 
-func insertCheckpoint(ctx context.Context, tx *sql.Tx, cp Checkpoint) error {
+// stateJSON is a checkpoint's state as it is stored: scanned for secrets, which happens before the write transaction opens (a scan
+// of a large state is not a time to hold the database's one writer).
+func (s *store) stateJSON(cp Checkpoint) ([]byte, error) {
 	st, err := json.Marshal(cp.State)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO workflow_checkpoints(id,run_id,workflow,step,kind,parent_id,state,created_at)
+	if s.redact != nil {
+		st = redact.JSON(st, s.redact)
+	}
+	return st, nil
+}
+
+func insertCheckpoint(ctx context.Context, tx *sql.Tx, cp Checkpoint, st []byte) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO workflow_checkpoints(id,run_id,workflow,step,kind,parent_id,state,created_at)
 		VALUES(?,?,?,?,?,?,?,?)`, string(cp.ID), string(cp.RunID), cp.Workflow, cp.Step, string(cp.Kind), string(cp.Parent), st, cp.Created)
 	return err
 }
@@ -270,6 +302,11 @@ type approvalInsert struct {
 }
 
 func (s *store) commit(ctx context.Context, c stepCommit) error {
+	state, err := s.stateJSON(c.cp)
+	if err != nil {
+		return err
+	}
+	result, failed := s.jsonb(c.result), s.text(c.failed)
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		if c.owner != "" {
 			if err := fence(ctx, tx, c.cp.RunID, c.owner, c.ttl); err != nil {
@@ -281,14 +318,14 @@ func (s *store) commit(ctx context.Context, c stepCommit) error {
 		now := storage.Now()
 		res, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status=?, latest_checkpoint_id=?, result=COALESCE(?,result),
 			failed_reason=?, updated_at=?, version=version+1 WHERE id=? AND status NOT IN `+terminalStatuses,
-			string(c.status), string(c.cp.ID), nullBytes(c.result), c.failed, now, string(c.cp.RunID))
+			string(c.status), string(c.cp.ID), nullBytes(result), failed, now, string(c.cp.RunID))
 		if err != nil {
 			return err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			return ErrRunTerminal
 		}
-		if err := insertCheckpoint(ctx, tx, c.cp); err != nil {
+		if err := insertCheckpoint(ctx, tx, c.cp, state); err != nil {
 			return err
 		}
 		for _, a := range c.newRequests {
@@ -315,6 +352,7 @@ const terminalStatuses = `('COMPLETED','FAILED','CANCELLED')`
 // setStatus moves a run that has not ended to status; a run that has ended (completed, failed or cancelled) is left as it is
 // and ErrRunTerminal returned, so a late write from a driver never revives a cancelled run.
 func (s *store) setStatus(ctx context.Context, run RunID, status RunStatus, reason string) error {
+	reason = s.text(reason)
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status=?, failed_reason=CASE WHEN ?<>'' THEN ? ELSE failed_reason END,
 			updated_at=?, version=version+1 WHERE id=? AND status NOT IN `+terminalStatuses, string(status), reason, reason, storage.Now(), string(run))
@@ -359,6 +397,7 @@ func (s *store) execStart(ctx context.Context, run RunID, node NodeID, step, att
 }
 
 func (s *store) execFinish(ctx context.Context, run RunID, node NodeID, step, attempt int, status string, out json.RawMessage, errMsg string) error {
+	out, errMsg = s.jsonb(out), s.text(errMsg)
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `UPDATE node_executions SET status=?, output=?, error=?, finished_at=?
 			WHERE run_id=? AND node_id=? AND step=? AND attempt=?`, status, nullBytes(out), errMsg, storage.Now(), string(run), string(node), step, attempt)

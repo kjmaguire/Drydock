@@ -177,3 +177,26 @@ func Compress(path string) (before, after int64, err error) {
 	}
 	return st.Size(), zst.Size(), nil
 }
+
+// ErrOutsideRuns is returned for a reference that is not a file inside <data>/runs.
+var ErrOutsideRuns = errors.New("runfiles: the reference is not a file inside the run folders")
+
+// InRuns reports whether ref is an absolute path inside <dataDir>/runs once ".." is resolved. Evidence rows and node records
+// store such paths and the readers open them; a record that came from an imported archive, or was edited, must not make a reader
+// open C:\\Users\\you\\.ssh\\id_ed25519 or a \\\\host\\share path.
+func InRuns(dataDir, ref string) bool {
+	if dataDir == "" || ref == "" || !filepath.IsAbs(ref) {
+		return false
+	}
+	runs := filepath.Clean(filepath.Join(dataDir, "runs"))
+	clean := filepath.Clean(ref)
+	return strings.HasPrefix(clean, runs+string(filepath.Separator))
+}
+
+// ReadConfined reads ref (or its compacted form) when InRuns says it is a run file, else ErrOutsideRuns.
+func ReadConfined(dataDir, ref string) ([]byte, error) {
+	if !InRuns(dataDir, ref) {
+		return nil, ErrOutsideRuns
+	}
+	return ReadAll(filepath.Clean(ref))
+}

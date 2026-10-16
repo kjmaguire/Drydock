@@ -265,16 +265,25 @@ func TestAcceptedSpecComesFromHumanAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := Deps{Tasks: ts}
+	d := Deps{Tasks: ts, DataDir: dir}
 	if d.acceptedSpec(ctx, tk.ID) != "" {
 		t.Fatal("no acceptance, no spec")
 	}
-	path := filepath.Join(dir, "spec.md")
+	// the pipeline keeps a task's spec under its run's folder (evidence/), the only place evidence is read from
+	path := filepath.Join(dir, "runs", "run_aaaaaaaaaaaa", "evidence", "spec.md")
+	os.MkdirAll(filepath.Dir(path), 0o755)
 	os.WriteFile(path, []byte("# T\n## Problem\nSlow.\n## Acceptance criteria\n- Given a, when b, then c\n"), 0o644)
 	ok := true
 	ts.AddEvidence(ctx, tk.ID, tasks.Evidence{Kind: "spec_accept", Passed: &ok, Ref: path, Summary: "accepted"})
 	if got := d.acceptedSpec(ctx, tk.ID); !strings.Contains(got, "Slow.") || strings.Contains(got, "then c") {
 		t.Fatalf("accepted spec %q", got)
+	}
+	// a reference to a file elsewhere (an archive's, or one edited into the row) is not read into a prompt
+	outside := filepath.Join(dir, "secret.md")
+	os.WriteFile(outside, []byte("# Not a spec\n## Problem\nCREDENTIALS\n"), 0o644)
+	ts.AddEvidence(ctx, tk.ID, tasks.Evidence{Kind: "spec_accept", Passed: &ok, Ref: outside, Summary: "accepted again"})
+	if got := d.acceptedSpec(ctx, tk.ID); got != "" {
+		t.Fatalf("a file outside the run folders was read: %q", got)
 	}
 	if b := (Deps{ProjectBrief: func(context.Context, string) string { return strings.Repeat("q", 5000) }}).brief(ctx, "p1"); len(b) > maxBriefPrompt+20 {
 		t.Fatalf("the brief in a prompt is bounded: %d", len(b))

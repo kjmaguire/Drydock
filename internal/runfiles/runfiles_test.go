@@ -80,3 +80,26 @@ func TestCompactableNames(t *testing.T) {
 		}
 	}
 }
+
+func TestOnlyFilesInsideTheRunFoldersAreReadAsEvidence(t *testing.T) {
+	data := t.TempDir()
+	inside := filepath.Join(data, "runs", "run_aaaaaaaaaaaa", "evidence", "diff.patch")
+	if err := os.MkdirAll(filepath.Dir(inside), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inside, []byte("the diff"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(data, "drydock.db")
+	os.WriteFile(secret, []byte("DATABASE"), 0o600)
+	if b, err := ReadConfined(data, inside); err != nil || string(b) != "the diff" {
+		t.Fatalf("a run file: %q %v", b, err)
+	}
+	for _, ref := range []string{secret, "", "relative/diff.patch", filepath.Join(data, "runs", "..", "drydock.db"),
+		filepath.Join(data, "runs", "run_aaaaaaaaaaaa", "..", "..", "drydock.db"), filepath.Join(data, "runs"), filepath.Join(filepath.Dir(data), "other", "runs", "x"),
+		`\\attacker\share\x`, "/etc/passwd"} {
+		if b, err := ReadConfined(data, ref); !errors.Is(err, ErrOutsideRuns) {
+			t.Errorf("%q read %q (%v)", ref, b, err)
+		}
+	}
+}

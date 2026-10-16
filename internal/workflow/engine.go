@@ -15,6 +15,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -29,6 +30,11 @@ type Config struct {
 	// commit, brief section 13). The returned ref is stored on the attempt's node_executions row. Failures are reported
 	// as events and never block the attempt.
 	SafePoint func(ctx context.Context, n NodeInfo) (string, error)
+	// Redact, if set, removes secrets from everything a run records: the chunk file of each node (agent text, tool calls and
+	// results), the output and error of each node execution, the result, the failure reason and the checkpoint state
+	// (security.Scanner.Redact; docs/security.md s8, audit 2026-10-16, H7). Later steps read what was recorded, so a secret a
+	// tool printed does not flow into the next prompt either.
+	Redact func(string) string
 }
 
 // ObserverFactory returns a StreamObserver for one node execution, or nil for none.
@@ -62,7 +68,7 @@ func New(cfg Config) *Engine {
 		host, _ := os.Hostname()
 		cfg.Owner = fmt.Sprintf("%s:%d:%s", host, os.Getpid(), ids.New("o"))
 	}
-	return &Engine{cfg: cfg, st: &store{db: cfg.DB}, graphs: map[string]*Graph{}, mw: map[NodeKind][]Middleware{}, active: map[RunID]*driver{}}
+	return &Engine{cfg: cfg, st: &store{db: cfg.DB, redact: cfg.Redact}, graphs: map[string]*Graph{}, mw: map[NodeKind][]Middleware{}, active: map[RunID]*driver{}}
 }
 
 // Register makes a graph available by name (needed for Start and Recover).
@@ -674,7 +680,7 @@ func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, st
 	var cw *chunkWriter
 	if partial != "" {
 		var err error
-		cw, err = newChunkWriter(partial)
+		cw, err = newChunkWriter(partial, e.cfg.Redact)
 		if err != nil {
 			return NodeOutput{}, err
 		}
@@ -805,9 +811,14 @@ type chunkWriter struct {
 	dirty bool
 	stop  chan struct{}
 	done  chan struct{}
+	// redact (optional) removes secrets before a chunk is written. Text and thinking arrive as small deltas, so they are held
+	// to the end of a word (redact.Stream) and written as larger chunks; every other chunk is redacted whole.
+	redact   redact.Func
+	text     *redact.Stream
+	textKind string
 }
 
-func newChunkWriter(path string) (*chunkWriter, error) {
+func newChunkWriter(path string, red redact.Func) (*chunkWriter, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -815,7 +826,10 @@ func newChunkWriter(path string) (*chunkWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &chunkWriter{f: f, w: bufio.NewWriter(f), stop: make(chan struct{}), done: make(chan struct{})}
+	c := &chunkWriter{f: f, w: bufio.NewWriter(f), stop: make(chan struct{}), done: make(chan struct{}), redact: red}
+	if red != nil {
+		c.text = redact.NewStream(red)
+	}
 	go c.flusher()
 	return c, nil
 }
@@ -845,6 +859,44 @@ func (c *chunkWriter) flusher() {
 func (c *chunkWriter) Write(ch Chunk) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.redact != nil {
+		switch ch.Kind {
+		case ChunkText, ChunkThinking:
+			var d TextDelta
+			if json.Unmarshal(ch.Data, &d) == nil {
+				if c.textKind != ch.Kind {
+					c.flushTextLocked()
+					c.textKind = ch.Kind
+				}
+				if out := c.text.Write(d.Text); out != "" {
+					c.writeLocked(Chunk{Kind: ch.Kind, Data: textData(out)})
+				}
+				return
+			}
+		}
+		c.flushTextLocked()
+		ch.Data = redact.JSON(ch.Data, c.redact)
+	}
+	c.writeLocked(ch)
+}
+
+func textData(s string) json.RawMessage {
+	b, _ := json.Marshal(TextDelta{Text: s})
+	return b
+}
+
+// flushTextLocked writes the word still held back: the stream moves on to something else, or ends.
+func (c *chunkWriter) flushTextLocked() {
+	if c.text == nil || c.textKind == "" {
+		return
+	}
+	if out := c.text.Flush(); out != "" {
+		c.writeLocked(Chunk{Kind: c.textKind, Data: textData(out)})
+	}
+	c.textKind = ""
+}
+
+func (c *chunkWriter) writeLocked(ch Chunk) {
 	b, _ := json.Marshal(ch)
 	_, _ = c.w.Write(b) // best effort: the chunk is also published; a full disk shows elsewhere
 	_ = c.w.WriteByte('\n')
@@ -854,6 +906,7 @@ func (c *chunkWriter) Write(ch Chunk) {
 func (c *chunkWriter) Sync() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.flushTextLocked() // a node's turn is over: the word still held goes out
 	_ = c.w.Flush()
 	_ = c.f.Sync()
 	c.dirty = false
@@ -958,6 +1011,10 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	}
 	st.Status = StatusRunning
 	newCP := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: run, Workflow: g.Name, Step: st.Step, Kind: CheckpointResponseEntry, Parent: cp.ID, State: st, Created: storage.Now()}
+	newState, err := e.st.stateJSON(newCP)
+	if err != nil {
+		return err
+	}
 
 	err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		if err := fence(ctx, tx, run, e.cfg.Owner, e.cfg.LeaseTTL); err != nil {
@@ -971,7 +1028,7 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return ErrRequestConsumed
 		}
-		if err := insertCheckpoint(ctx, tx, newCP); err != nil {
+		if err := insertCheckpoint(ctx, tx, newCP, newState); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RUNNING', latest_checkpoint_id=?, updated_at=?, version=version+1 WHERE id=?`,

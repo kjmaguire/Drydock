@@ -17,6 +17,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -42,6 +43,11 @@ type Runtime struct {
 	// does not say: every path that starts an agent gets the agent's own setting without each one reading it. why is set when
 	// Drydock chose the place itself (decision P58: the CLI is not installed on Windows and the agent follows its project).
 	RunMode func(ctx context.Context, agentID string) (mode, distro, why string)
+	// Redact, if set, removes secrets from the text an agent streams before it is published as agent.output (the scanner's
+	// Redact). Streamed text arrives a few characters at a time, so it is held to the end of each word: a key the model prints
+	// is whole in one event, never split across two that are each clean (redact.Stream). Other event data is redacted by the
+	// event bus (events.SQLBus.SetRedactor). Nil: text is published as it arrives.
+	Redact func(string) string
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -85,6 +91,7 @@ type Managed struct {
 	delta   strings.Builder
 	deltaK  string
 	timer   *time.Timer
+	stream  *redact.Stream // text not yet at the end of a word, when the runtime redacts
 	usage   []workflow.UsageChunk
 	stopped atomic.Bool
 
@@ -257,6 +264,9 @@ func (m *Managed) watchExit() {
 		if errMsg == "" && ei.Err != nil {
 			errMsg = ei.Err.Error()
 		}
+		if m.rt.Redact != nil { // stderr is whatever the CLI printed on its way out: a stack trace, an environment dump
+			errMsg = redact.Lines(errMsg, m.rt.Redact)
+		}
 		m.rt.publish(context.Background(), "agent.failed", m.cfg, m.RunID, map[string]any{"exitCode": ei.Code, "error": errMsg, "phase": "run"})
 	}
 	if m.rt.DB != nil {
@@ -292,9 +302,16 @@ func (m *Managed) observe(ctx context.Context, c workflow.Chunk) {
 			m.flushLocked()
 		}
 		m.deltaK = c.Kind
-		m.delta.WriteString(d.Text)
+		if m.rt.Redact != nil {
+			if m.stream == nil {
+				m.stream = redact.NewStream(m.rt.Redact)
+			}
+			m.delta.WriteString(m.stream.Write(d.Text))
+		} else {
+			m.delta.WriteString(d.Text)
+		}
 		if m.timer == nil {
-			m.timer = time.AfterFunc(50*time.Millisecond, m.flushDelta)
+			m.timer = time.AfterFunc(50*time.Millisecond, m.flushWhole)
 		}
 		m.mu.Unlock()
 		return
@@ -319,13 +336,29 @@ func (m *Managed) observe(ctx context.Context, c workflow.Chunk) {
 	m.rt.publish(ctx, "agent.output", m.cfg, m.RunID, map[string]any{"kind": c.Kind, "data": json.RawMessage(c.Data)})
 }
 
+// flushDelta ends the text in progress: whatever is held, including an unfinished word, goes out.
 func (m *Managed) flushDelta() {
 	m.mu.Lock()
 	m.flushLocked()
 	m.mu.Unlock()
 }
 
+// flushWhole is the 50 ms timer: it publishes the complete words so far and leaves an unfinished word where it is, until it
+// is finished by the text that follows or by flushDelta.
+func (m *Managed) flushWhole() {
+	m.mu.Lock()
+	m.publishDeltaLocked()
+	m.mu.Unlock()
+}
+
 func (m *Managed) flushLocked() {
+	if m.stream != nil && m.deltaK != "" {
+		m.delta.WriteString(m.stream.Flush())
+	}
+	m.publishDeltaLocked()
+}
+
+func (m *Managed) publishDeltaLocked() {
 	if m.timer != nil {
 		m.timer.Stop()
 		m.timer = nil
@@ -335,7 +368,9 @@ func (m *Managed) flushLocked() {
 	}
 	text, kind := m.delta.String(), m.deltaK
 	m.delta.Reset()
-	m.deltaK = ""
+	if m.stream == nil || m.stream.Held() == 0 {
+		m.deltaK = ""
+	}
 	data, _ := json.Marshal(workflow.TextDelta{Text: text})
 	m.rt.publish(context.Background(), "agent.output", m.cfg, m.RunID, map[string]any{"kind": kind, "data": json.RawMessage(data), "coalesced": true})
 }

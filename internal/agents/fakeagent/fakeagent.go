@@ -475,7 +475,7 @@ loop:
 				var werr error
 				if why := a.writeRefused(); why != "" {
 					werr = errors.New(why)
-				} else {
+				} else if werr = os.MkdirAll(filepath.Dir(full), 0o755); werr == nil { // a real Write creates the folders of its path
 					werr = os.WriteFile(full, []byte(st.Write.Content), 0o644)
 				}
 				in, _ := json.Marshal(map[string]any{"file_path": st.Write.Path, "content": st.Write.Content})
