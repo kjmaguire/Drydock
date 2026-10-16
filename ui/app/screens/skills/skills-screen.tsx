@@ -4,25 +4,24 @@
 // ignored. Usage says which skills earn their tokens (decision P49).
 
 import { css, on, type Handle } from 'remix/component';
-import { BookOpen, Cpu, FileCode2, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
+import { BookOpen, Cpu, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
 import type { LibrarySkill, Skill, SkillDelivery, SkillLibraryAddAll, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, kv, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
-import { Icon, type IconNode } from '../../ui/icon.tsx';
+import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, tableCard } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AudienceEditor } from './audience.tsx';
 import { Recommendations } from './recommendations.tsx';
-import { pickKey, SkillRows } from './skill-rows.tsx';
+import { pickKey, ProjectSkillRows, SkillLogo, SkillRows } from './skill-rows.tsx';
 import {
   addAllText,
   addSelectedText,
@@ -41,7 +40,6 @@ import {
   registryUpdates,
   scanText,
   skillBrand,
-  skillStateText,
   skillTone,
   sortUsage,
   syncChanges,
@@ -83,16 +81,8 @@ const panelCss = css({
   '&[data-status="blocked"]': {
     borderColor: `color-mix(in srgb, ${t.danger} 45%, ${t.border})`,
   },
-});
-const iconWrap = css({
-  display: 'inline-grid',
-  placeItems: 'center',
-  width: '32px',
-  height: '32px',
-  borderRadius: '7px',
-  background: t.bgApp,
-  color: t.textMuted,
-  boxShadow: `inset 0 0 0 1px ${t.border}`,
+  // inside an open row of the project's list: the row is the card, so the panel has no frame of its own
+  '&[data-inline]': { border: '0', borderRadius: '0', padding: '0', background: 'transparent' },
 });
 const confirmCss = css({
   display: 'flex',
@@ -131,20 +121,6 @@ const usageCss = css({
   '& td .rec': { display: 'inline-flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
 });
 
-/** The logo of a skill or registry: its brand's mark, or a neutral square with an icon when the brand has none. */
-function SkillLogo(handle: Handle<{ brand: string; icon?: IconNode }>) {
-  return () => {
-    const { brand, icon = FileCode2 } = handle.props;
-    return brand && brandKey(brand) ? (
-      <BrandLogo id={brand} size={32} />
-    ) : (
-      <span mix={iconWrap} aria-hidden="true">
-        <Icon icon={icon} size={16} />
-      </span>
-    );
-  };
-}
-
 /** The selected project skill: its text, who gets it, the decision buttons and its deliveries. */
 export function SkillPanel(
   handle: Handle<{
@@ -161,6 +137,8 @@ export function SkillPanel(
     onAudience?: (audience: 'team' | 'agents', agents: string[]) => Promise<boolean>;
     deliveries?: readonly SkillDelivery[];
     busy: boolean;
+    /** Rendered inside the open row of the project's list: no frame of its own. */
+    inline?: boolean;
   }>,
 ) {
   let editing = false;
@@ -170,14 +148,14 @@ export function SkillPanel(
     void handle.update();
   };
   return () => {
-    const { s, onAccept, onReject, onRelease, update, onUpdate, busy, agents = [], onAudience, deliveries = [] } = handle.props;
+    const { s, onAccept, onReject, onRelease, update, onUpdate, busy, agents = [], onAudience, deliveries = [], inline } = handle.props;
     const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
     const who = audienceText(onTeam(s, agents), nameOf);
     const mine = deliveries.filter((d) => d.skill === s.name);
     return (
-      <article mix={panelCss} data-testid="skill" data-skill={s.name} data-status={s.status} aria-label={s.name}>
+      <article mix={panelCss} data-testid="skill" data-skill={s.name} data-status={s.status} data-inline={inline ? '' : undefined} aria-label={s.name}>
         <header>
-          <SkillLogo brand={skillBrand(s.registryId, s.origin)} />
+          {inline ? null : <SkillLogo brand={skillBrand(s.registryId, s.origin)} />}
           <h3>{s.name}</h3>
           <Badge tone={skillTone(s.status)} testId="skill-status">
             {s.status === 'accepted' ? 'accepted ✓' : s.status}
@@ -867,7 +845,6 @@ export function SkillsScreen(handle: Handle) {
     const projectName = s.workspace.projectList.find((p) => p.id === projectId)?.name ?? projectId ?? '';
     const deliveries = del.data ?? [];
     const updates = projectId ? registryUpdates(st.data, projectId) : new Set<string>();
-    const open = skills.find((x) => x.name === selected);
     return (
       <Page
         title="Skills"
@@ -914,46 +891,35 @@ export function SkillsScreen(handle: Handle) {
             </div>
           ) : null}
           {skills.length > 0 ? (
-            <ul mix={tileGrid} aria-label="Skills in this project">
-              {skills.map((sk) => {
-                const state = skillStateText(sk, updates.has(sk.name));
-                return (
-                  <Tile
-                    key={sk.id}
-                    title={sk.name}
-                    logo={skillBrand(sk.registryId, sk.origin) || undefined}
-                    icon={FileCode2}
-                    blurb={sk.description || (sk.origin === 'registry' ? sk.registryId : 'From this repository')}
-                    state={state.text}
-                    tone={state.tone}
-                    selected={selected === sk.name}
-                    onSelect={() => set(() => (selected = selected === sk.name ? '' : sk.name))}
-                    testId="skill-tile"
-                    data={{ name: sk.name, status: sk.status, check: String(sk.status === 'accepted'), update: String(updates.has(sk.name)) }}
-                  />
-                );
-              })}
-            </ul>
-          ) : null}
-          {open ? (
-            <SkillPanel
-              key={open.id}
-              s={open}
-              busy={act.busy !== ''}
-              update={updates.has(open.name)}
-              onUpdate={update(open)}
-              onAccept={decide(s.client.skillAccept, open.name)}
-              onReject={decide(s.client.skillReject, open.name)}
-              onRelease={decide(s.client.skillRelease, open.name)}
-              agents={s.project.agentList}
-              deliveries={deliveries}
-              onAudience={async (audience, agents) => {
-                const projectId = pid();
-                if (!projectId) return false;
-                const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, open.name, audience, agents)));
-                q.reload();
-                return ok;
-              }}
+            <ProjectSkillRows
+              skills={skills}
+              updates={updates}
+              open={selected}
+              onToggle={(name) => set(() => (selected = selected === name ? '' : name))}
+              label="Skills in this project"
+              testId="skill-tile"
+              panel={(open) => (
+                <SkillPanel
+                  key={open.id}
+                  inline
+                  s={open}
+                  busy={act.busy !== ''}
+                  update={updates.has(open.name)}
+                  onUpdate={update(open)}
+                  onAccept={decide(s.client.skillAccept, open.name)}
+                  onReject={decide(s.client.skillReject, open.name)}
+                  onRelease={decide(s.client.skillRelease, open.name)}
+                  agents={s.project.agentList}
+                  deliveries={deliveries}
+                  onAudience={async (audience, agents) => {
+                    const projectId = pid();
+                    if (!projectId) return false;
+                    const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, open.name, audience, agents)));
+                    q.reload();
+                    return ok;
+                  }}
+                />
+              )}
             />
           ) : null}
         </Section>

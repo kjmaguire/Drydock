@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createProject, freshGreenRepo, workspaceNav, projectNav } from './helpers';
 
-/** Open a project skill's panel from its tile on the Skills page (the page shows tiles; the panel opens below the grid). */
+/** Open a project skill's panel from its row on the Skills page (one-line rows; the panel opens inside the row). */
 async function openSkill(page: Page, name: string) {
   await projectNav(page, 'nav-skills');
-  await page.locator(`[data-testid=skill-tile][data-name=${name}]`).click();
-  return page.locator(`[data-testid=skill][data-skill=${name}]`);
+  const row = page.locator(`[data-testid=skill-tile][data-name=${name}]`);
+  await row.locator('button.what').click();
+  return row.locator(`[data-testid=skill][data-skill=${name}]`);
 }
 
 // Skills in agent creation (decision P35), against the real core: a skill is ticked when an agent is made, the Skills page

@@ -95,7 +95,10 @@ function servicesWith(client: Partial<Client>) {
 
 type R = ReturnType<typeof mount>;
 const exists = (root: ParentNode, sel: string, text: string) => Array.from(root.querySelectorAll(sel)).some((e) => e.textContent?.trim() === text);
-const tile = (r: R, name: string) => r.$(`[data-testid="skill-tile"][data-name="${name}"]`) as HTMLButtonElement | null;
+/** A project skill's row (the `li` that carries the data attributes). */
+const tile = (r: R, name: string) => r.$(`[data-testid="skill-tile"][data-name="${name}"]`) as HTMLElement | null;
+/** The button that is the whole row. */
+const rowButton = (li: Element) => li.querySelector('button.what') as HTMLButtonElement;
 /** Wait for one element, failing the wait while it is not there. */
 const one = (r: R, sel: string) =>
   waitFor(() => {
@@ -103,24 +106,26 @@ const one = (r: R, sel: string) =>
     if (!el) throw new Error(`no ${sel}`);
     return el as HTMLElement;
   }, r);
-/** Click a project skill's tile and return the panel that opens below the grid. */
+/** Click a project skill's row and return the panel that opens inside it. */
 async function open(r: R, name: string): Promise<HTMLElement> {
-  const b = await waitFor(() => {
+  const li = await waitFor(() => {
     const x = tile(r, name);
-    if (!x) throw new Error(`no tile ${name}`);
+    if (!x) throw new Error(`no row ${name}`);
     return x;
   }, r);
-  await r.act(() => b.click());
+  await r.act(() => rowButton(li).click());
   return waitFor(() => {
-    const p = r.$(`[data-testid="skill"][data-skill="${name}"]`);
+    const p = li.querySelector(`[data-testid="skill-tile-detail"] [data-testid="skill"][data-skill="${name}"]`);
     if (!p) throw new Error('no panel');
     return p as HTMLElement;
   }, r);
 }
-const stateOf = (b: Element) => b.querySelector('small[data-tone], small:last-child')?.textContent ?? '';
+const stateOf = (li: Element) => li.querySelector('[data-testid="skill-state"]')?.textContent ?? '';
+/** A registry tile's state line (the registries are still tiles). */
+const tileStateOf = (b: Element) => b.querySelector('small[data-tone], small:last-child')?.textContent ?? '';
 
 describe('SkillsScreen', () => {
-  it('shows project skills as tiles with their state and a check on accepted ones; a repository skill has no brand, a registry one its logo', async () => {
+  it('shows project skills as one-line rows with their state and a check on accepted ones; a repository skill has no brand, a registry one its logo', async () => {
     const r = mount(
       <SkillsScreen />,
       servicesWith({
@@ -140,7 +145,8 @@ describe('SkillsScreen', () => {
     expect(go.querySelector('[data-brand]')).toBeNull(); // a repository skill: the file icon
     expect(go.querySelector('svg')).not.toBeNull();
     expect(stateOf(go)).toBe('Accepted ✓ · whole team');
-    expect(go.querySelector('small[data-tone="ok"]')).not.toBeNull();
+    expect(go.querySelector('[data-testid="skill-state"]')!.getAttribute('data-tone')).toBe('ok');
+    expect(go.textContent).toContain('Go style');
     const w = tile(r, 'wrangler')!;
     expect(w.querySelector('[data-brand="cloudflare"]')).not.toBeNull();
     expect(stateOf(w)).toBe('Accepted ✓ · 2 agents');
@@ -150,10 +156,53 @@ describe('SkillsScreen', () => {
     expect(tile(r, 'pdf')!.getAttribute('data-check')).toBe('false');
     expect(stateOf(tile(r, 'danger')!)).toBe('Blocked');
     expect(stateOf(tile(r, 'old')!)).toBe('Rejected');
-    // the whole grid is in one list, nothing is open until a tile is clicked
+    // every row is in one list, each a closed button, and nothing is open until a row is clicked
     expect(r.$('ul[aria-label="Skills in this project"]')!.querySelectorAll('[data-testid="skill-tile"]').length).toBe(5);
+    expect(r.$$('ul[aria-label="Skills in this project"] button.what[aria-expanded="false"]').length).toBe(5);
     expect(r.$('[data-testid="skill"]')).toBeNull();
+    expect(r.$('[data-testid="skill-tile-detail"]')).toBeNull();
     expect(r.container.querySelector('script')).toBe(null);
+  });
+
+  it('a row shows the short form, opens on click to the full panel in place, closes again, and one row is open at a time', async () => {
+    const long = 'Cloudflare Workers, Pages and Wrangler. Deploys a Worker with wrangler deploy and explains bindings, Durable Objects and D1 in depth.';
+    const r = mount(
+      <SkillsScreen />,
+      servicesWith({
+        skillList: async () => [skill({ status: 'accepted' }), skill({ id: 'w', name: 'wrangler', origin: 'registry', registryId: 'cloudflare-skills', status: 'accepted', roles: [], description: long, body: 'Run wrangler deploy.' })],
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="skill-tile"]').length).toBe(2), r);
+    const w = tile(r, 'wrangler')!;
+    const button = rowButton(w);
+    // closed: the first sentence only, with the logo and the state badge, and no panel
+    expect(w.querySelector('.short')!.textContent).toBe('Cloudflare Workers, Pages and Wrangler.');
+    expect(w.textContent).not.toContain('Deploys a Worker');
+    expect(w.querySelector('[data-brand="cloudflare"]')).not.toBeNull();
+    expect(stateOf(w)).toBe('Accepted ✓ · whole team');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(w.querySelector('[data-testid="skill-tile-detail"]')).toBeNull();
+    // open: the full panel inside the row, with the whole description, who gets it and the buttons
+    const panel = await open(r, 'wrangler');
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.getAttribute('aria-controls')).toBe(w.querySelector('[data-testid="skill-tile-detail"]')!.id);
+    expect(panel.textContent).toContain(long);
+    expect(panel.querySelector('[data-testid="skill-audience-text"]')!.textContent).toBe('The whole team');
+    byText(panel, 'button', 'Stop using wrangler');
+    expect(panel.hasAttribute('data-inline')).toBe(true);
+    expect(w.querySelector('.short')!.textContent).toBe('Cloudflare Workers, Pages and Wrangler.'); // the row stays above the panel
+    // the panel's own logo is not repeated: the row's is enough
+    expect(panel.querySelector('[data-brand]')).toBeNull();
+    // another row opens and this one closes: one at a time
+    await open(r, 'go-style');
+    expect(r.$$('[data-testid="skill"]').length).toBe(1);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(w.querySelector('[data-testid="skill-tile-detail"]')).toBeNull();
+    expect(rowButton(tile(r, 'go-style')!).getAttribute('aria-expanded')).toBe('true');
+    // clicking the open row closes it
+    await r.act(() => rowButton(tile(r, 'go-style')!).click());
+    await waitFor(() => expect(r.$('[data-testid="skill"]')).toBeNull(), r);
+    expect(rowButton(tile(r, 'go-style')!).getAttribute('aria-expanded')).toBe('false');
   });
 
   it('repository skills are offered: scan reports counts, the panel accepts and rejects by name', async () => {
@@ -472,10 +521,10 @@ describe('SkillsScreen', () => {
     }, r);
     expect(tiles[0]!.querySelector('[data-brand="anthropic"]')).not.toBeNull();
     // the tile is one short line; when it was synced and why a sync failed are in the panel
-    expect(stateOf(tiles[0]!)).toBe('12 skills · 1 blocked · 1 new');
+    expect(tileStateOf(tiles[0]!)).toBe('12 skills · 1 blocked · 1 new');
     expect(tiles[0]!.querySelector('small[data-tone="warn"]')).not.toBeNull();
-    expect(stateOf(tiles[1]!)).toBe('Disabled');
-    expect(stateOf(tiles[2]!)).toBe('Sync failed');
+    expect(tileStateOf(tiles[1]!)).toBe('Disabled');
+    expect(tileStateOf(tiles[2]!)).toBe('Sync failed');
     expect(tiles[2]!.querySelector('small[data-tone="bad"]')).not.toBeNull();
     expect(tiles[0]!.textContent).toBe('anthropics/skillsCurated12 skills · 1 blocked · 1 new'); // trust and license are in the panel
     expect(r.$('[data-testid="registry"]')).toBeNull();

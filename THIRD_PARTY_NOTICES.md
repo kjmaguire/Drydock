@@ -72,7 +72,7 @@ go-task (MIT), go-licenses/v2 (Apache-2.0).
 
 - **Simple Icons** 16.35.0 (CC0-1.0, https://simpleicons.org): most brand marks in `ui/app/ui/brand-logo.tsx`.
 - **LobeHub Icons**, `@lobehub/icons-static-svg` 1.95.1 (MIT, Copyright (c) LobeHub, https://github.com/lobehub/lobe-icons):
-  the Codex, Goose and Antigravity marks in `ui/app/ui/brand-logo.tsx`, copied as paths. Permission is hereby granted, free
+  the Codex, Goose, Antigravity and OpenAI marks in `ui/app/ui/brand-logo.tsx`, copied as paths. Permission is hereby granted, free
   of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software
   without restriction, subject to including the copyright notice and this permission notice; THE SOFTWARE IS PROVIDED "AS
   IS", WITHOUT WARRANTY OF ANY KIND (the MIT License, in full at https://opensource.org/license/mit).

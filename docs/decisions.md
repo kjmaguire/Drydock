@@ -429,3 +429,31 @@ Open, owner action:
   and the repositories with CI runners, which are still managed on Connections. The GitHub tile stays on Integrations and
   points to the page. Test ids, URLs, Delete project and the palette entries are unchanged; the e2e helper knows the new
   places; the layout audit covers `/github`.
+- **P69. A project's skills are one-line rows; every registry publisher has a mark; the Remix registry offers its whole skills
+  folder (2026-10-16, on the owner's requests).** (1) The owner's screenshot of Knowledge > Skills showed four tall cards ("a 1
+  line item ... and if we want to read more we can click on it and it will expand"). "In this project" is now `ProjectSkillRows`
+  (skill-rows.tsx): per skill one row with the logo, name, first sentence and a state badge; the whole row is the button and
+  opens in place to the existing `SkillPanel` (inline, no frame), one row at a time, in the same list style as the Library's rows
+  (P52) rather than a third one. Test ids and data attributes stay on the row (`skill-tile`, `data-name/status/check/update`; the
+  panel sits in `skill-tile-detail`). Registries stay tiles. (2) OpenAI, Remix, Stripe and Vercel tiles showed no logo: the
+  Remix, Stripe and Vercel marks come from Simple Icons 16.35.0 (CC0), OpenAI's from LobeHub 1.95.1 (MIT) like Codex, Goose and
+  Antigravity; Groq still has none (no licensed source). The "Cloudflare missing under MCP Servers" report was the connected
+  Cloudflare API server: a connected server is looked up by its catalog id and `cfapi` had no alias (`cfdocs` had); fixed, and a
+  browser test asserts every catalog brand and id and every `SKILL_BRANDS` value has a mark. (3) The `remix` registry root is
+  `.agents/skills/` ("fix that to the right directory"; it supersedes the root P52 chose): all 19 skills reach the Library (the
+  Remix 3 app skill and 18 written for contributors to the framework) and the person picks, as with every registry;
+  `EnsureRegistries` forgets the old root's library rows so the next sync refills it.
+- **P70. Dev Drives are detected without administrator rights, and the page says why none was found (2026-10-16, on the
+  owner's report).** `fsutil devdrv query` needs administrator rights (Microsoft's fsutil page: "You must log on as an
+  administrator ... to use fsutil") and Drydock runs as the signed-in person, so an unelevated Drydock never saw the owner's Dev
+  Drive. Drydock now asks each fixed ReFS volume itself: it opens `\\.\X:` with no access right and sends
+  FSCTL_QUERY_PERSISTENT_VOLUME_STATE (ntifs.h; the DEV_VOLUME 0x2000 and TRUSTED_VOLUME 0x4000 bits, Windows 11 22H2 and later),
+  with fsutil only as the fallback when that query fails. The answer (`runners.DevDriveScan`) is asked once per core and shared
+  by the CI runners' folder and the new project's folder hint, and when it is empty it carries a reason in words ("no fixed
+  drive on this PC uses ReFS, and a Dev Drive always does"; "D: uses ReFS but Windows does not mark it as a Dev Drive"; "the Dev
+  Drive check is not available on this Windows version (...), and fsutil devdrv query, which needs administrator rights, said
+  ...") that the UI shows after "No Dev Drive was found:". The folder for Windows jobs is chosen with the window's folder dialog
+  (the kit's Choose folder..., saved at once; the path stays in the box when the save is refused) or typed and saved with Use
+  this folder. CI's Windows job runs the volume query against C: so the FSCTL path is exercised on a real Windows (never a Dev
+  Drive, never a panic). **Not verified:** a real Dev Drive on the owner's PC; the Connections page saying "on your Dev Drive X:"
+  after this build proves it.

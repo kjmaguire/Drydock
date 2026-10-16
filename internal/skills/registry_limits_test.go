@@ -90,15 +90,24 @@ func TestFetchReadsATarballOverTheOldDownloadCap(t *testing.T) {
 }
 
 // remix-run/remix unpacks to 41 MB and MicrosoftDocs/Agent-Skills to 53 MB: past the old 32 MB read of the decompressed
-// stream, which cut the archive into an "unexpected EOF". Files outside the root are skipped, never kept.
+// stream, which cut the archive into an "unexpected EOF". Files outside the root are skipped, never kept, and a root that holds
+// many skills (the remix registry's .agents/skills/ since 2026-10-16: the app skill beside the contributor skills) yields each.
 func TestExtractSkillsReadsAnArchiveThatUnpacksPastTheOldBound(t *testing.T) {
 	tgz := buildTarball("remix-"+sha1, map[string]string{
-		"a-docs/filler.bin":             strings.Repeat("\x00", 40<<20), // sorts before the skill, so it is read first
-		".agents/skills/remix/SKILL.md": skillMD("remix", "Stand-in skill.", "", "Use remix/* imports."),
+		"a-docs/filler.bin":               strings.Repeat("\x00", 40<<20), // sorts before the skills, so it is read first
+		".agents/skills/remix/SKILL.md":   skillMD("remix", "Stand-in skill.", "", "Use remix/* imports."),
+		".agents/skills/make-pr/SKILL.md": skillMD("make-pr", "Contributor skill.", "", "Prepare the change for review."),
 	})
-	got, err := ExtractSkills(tgz, ".agents/skills/remix")
-	if err != nil || len(got) != 1 || got[0].Name != "remix" {
+	got, err := ExtractSkills(tgz, ".agents/skills/")
+	if err != nil || len(got) != 2 {
 		t.Fatalf("%v %+v", err, got)
+	}
+	names := map[string]bool{}
+	for _, g := range got {
+		names[g.Name] = true
+	}
+	if !names["remix"] || !names["make-pr"] {
+		t.Fatalf("both skills under the root: %+v", got)
 	}
 }
 

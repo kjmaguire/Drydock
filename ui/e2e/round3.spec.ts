@@ -153,15 +153,16 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await ms.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(ms).toContainText('0 of 1 completed');
 
-  // skills: repository skills are offered, never applied; the human opens the tile and accepts in its panel (decisions P48, P49)
+  // skills: repository skills are offered, never applied; the human opens the skill's row and accepts in the panel that opens
+  // inside it (decisions P48, P49)
   await projectNav(page, 'nav-skills');
   await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
   await expect(page.getByTestId('skill-scan')).toContainText('1 offered, 0 accepted');
   const goTile = page.locator('[data-testid=skill-tile][data-name=go-style]');
   await expect(goTile).toHaveAttribute('data-status', 'offered');
   await expect(goTile).toContainText('Offered');
-  await goTile.click();
-  const skill = page.locator('[data-testid=skill][data-skill=go-style]');
+  await goTile.locator('button.what').click();
+  const skill = goTile.locator('[data-testid=skill-tile-detail] [data-testid=skill][data-skill=go-style]');
   await expect(skill).toHaveAttribute('data-status', 'offered');
   await skill.getByRole('button', { name: 'Accept go-style' }).click();
   await expect(skill).toHaveAttribute('data-status', 'accepted');
@@ -169,7 +170,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(goTile).toContainText('Accepted ✓');
 
   // the Library holds the registries' skills: Sync now fills it from the harness's registry fixture (cloudflare/skills carries
-  // three stand-in skills); Add to project makes the skill accepted at once, with a status line and a check on its tile
+  // three stand-in skills); Add to project makes the skill accepted at once, with a status line and a check on its row
   const cf = page.locator('[data-testid=registry-tile][data-registry=cloudflare-skills]');
   await cf.click();
   await page.locator('[data-testid=registry][data-registry=cloudflare-skills]').getByRole('button', { name: 'Sync now' }).click();
