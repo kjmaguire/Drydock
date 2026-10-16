@@ -17,6 +17,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/applog"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/projectio"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/security"
@@ -209,7 +210,9 @@ func (p *packaging) toolVersions(ctx context.Context) map[string]string {
 			continue
 		}
 		cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		b, err := exec.CommandContext(cctx, path, args...).Output()
+		cmd := exec.CommandContext(cctx, path, args...)
+		proc.Harden(cmd)
+		b, err := cmd.Output()
 		cancel()
 		if err != nil {
 			continue

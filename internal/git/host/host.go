@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // Errors.
@@ -118,7 +120,7 @@ func (g GhCLI) command(ctx context.Context, d time.Duration, args ...string) (*e
 	ctx, cancel := context.WithTimeout(ctx, d)
 	cmd := exec.CommandContext(ctx, g.bin(), args...)
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
-	cmd.WaitDelay = 5 * time.Second
+	proc.Harden(cmd) // no console window in a windowed app, and WaitDelay: stop waiting for output a child of gh might still hold open
 	return cmd, cancel
 }
 

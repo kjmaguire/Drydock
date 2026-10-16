@@ -1,7 +1,6 @@
 package git
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // The guard (docs/security.md s3, threat T3). Linked worktrees share the main repository's .git directory, so an agent working
@@ -187,11 +188,13 @@ func configEntries(ctx context.Context, path string) (map[string]string, error) 
 		cmd.Dir = os.TempDir()
 	}
 	cmd.Env = append(gitEnv(os.Environ()), "GIT_CONFIG_NOSYSTEM=1")
-	var out, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &stderr
-	if err := cmd.Run(); err != nil {
+	proc.Harden(cmd)
+	// a configuration file is small; one that prints more than this is not read
+	out, stderr := &proc.CapWriter{Max: 8 << 20}, &proc.CapWriter{Max: 1 << 20}
+	cmd.Stdout, cmd.Stderr = out, stderr
+	if err := cmd.Run(); err != nil || out.Exceeded() {
 		// an unparseable config is a change too: git would refuse it, and so does the guard
-		return map[string]string{"config-unreadable:" + filepath.Base(path): sha(append(stderr.Bytes(), out.Bytes()...))}, nil
+		return map[string]string{"config-unreadable:" + filepath.Base(path): sha(append([]byte(stderr.String()), out.String()...))}, nil
 	}
 	vals := map[string][]string{}
 	for _, rec := range strings.Split(out.String(), "\x00") {

@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // FreeBytes is the space the current user may still write on the volume holding path.
@@ -71,7 +72,7 @@ func fsutilDevDrive(ctx context.Context, letter string) (Drive, bool, string) {
 	qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(qctx, "fsutil", "devdrv", "query", letter)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+	proc.Harden(cmd)
 	b, err := cmd.CombinedOutput()
 	out := firstLine(string(b))
 	if out == "" && err != nil {

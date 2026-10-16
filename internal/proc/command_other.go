@@ -1,6 +1,6 @@
 //go:build !windows
 
-package sandbox
+package proc
 
 import "os/exec"
 

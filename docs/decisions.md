@@ -554,3 +554,11 @@ Open, owner action:
   `project.trustAgentConfig`, docs/security.md s3 item 2b); the sandbox definition on the default branch runs only when it is the one
   the person confirmed when they switched the sandbox on, and a merged change is listed and confirmed with `sandbox.trust`
   (docs/sandbox.md).
+  **Output and processes (M6):** what a command prints is bounded wherever it is kept: a git call keeps at most 256 MiB of
+  standard output and is ended past it (`git.ErrOutputTooLarge`), a check keeps the first 2 MiB and the last 4 MiB of its output
+  in memory (`proc.HeadTail`), writes its log file up to 64 MiB, collects failing test names as the lines go by and keeps
+  reading after a line too long for the scanner (it used to block the command until it timed out), a preview's log and a
+  sandbox command's log stop at their limits, and the container client's answer is capped. Every command the app starts
+  directly (`proc.Harden`) stops waiting for its output pipes five seconds after it was cancelled, so a child that holds them
+  cannot keep a timed-out call alive, and opens no console window on Windows. **Not verified:** the no-window flag
+  (Windows-only code; vet only here).

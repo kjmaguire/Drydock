@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -240,5 +241,47 @@ func TestRestoringASafePointDoesNotDeleteThroughALinkedFolder(t *testing.T) {
 	}
 	if b, err := os.ReadFile(victim); err != nil || string(b) != "not the worktree's\n" {
 		t.Fatalf("a file outside the worktree was reached through the link: %q %v", b, err)
+	}
+}
+
+// What git prints is kept in memory, so a call that prints more than the limit is ended and says so (audit 2026-10-16, M6).
+func TestAGitCallThatPrintsTooMuchIsEndedAndSaysSo(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	w, _ := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_big", Title: "big", Parent: parent})
+	write(t, w.Path, "big.txt", strings.Repeat("0123456789abcdef\n", 200_000)) // 3.4 MB
+	if _, err := r.Commit(ctx, w, "a big file"); err != nil {
+		t.Fatal(err)
+	}
+	old := maxStdout
+	maxStdout = 1 << 20
+	defer func() { maxStdout = old }()
+	out, err := r.git(ctx, w.Path, nil, "cat-file", "-p", "HEAD:big.txt")
+	if !errors.Is(err, ErrOutputTooLarge) {
+		t.Fatalf("a 3.4 MB answer under a 1 MB limit: %d bytes, %v", len(out), err)
+	}
+	if len(out) > 1<<20 {
+		t.Fatalf("more than the limit was kept: %d", len(out))
+	}
+	// the limit is for what git prints, not for the repository: a small answer from the same repository is fine
+	if head, err := r.git(ctx, w.Path, nil, "rev-parse", "HEAD"); err != nil || len(strings.TrimSpace(head)) != 40 {
+		t.Fatalf("a small answer: %q %v", head, err)
+	}
+	// a diff that fits is still the whole diff
+	maxStdout = old
+	if diff, err := r.git(ctx, w.Path, nil, "cat-file", "-p", "HEAD:big.txt"); err != nil || len(diff) != 17*200_000 {
+		t.Fatalf("under the limit: %d bytes, %v", len(diff), err)
+	}
+}
+
+// Every git call stops waiting for its output pipes soon after it was cancelled, and opens no console window.
+func TestGitCommandsAreHardened(t *testing.T) {
+	r, _ := newRepo(t)
+	cmd, err := r.command(context.Background(), r.Root, nil, []string{"status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.WaitDelay <= 0 {
+		t.Fatal("a cancelled git call would wait for as long as a child of git holds its output")
 	}
 }

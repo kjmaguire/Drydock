@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // GitHubStatus says whether the GitHub integration (the user's own `gh`, signed in) can be used.
@@ -136,8 +136,9 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 		cmd = exec.CommandContext(ctx, "gh", "repo", "clone", fullName, dest, "--", "--quiet")
 	}
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	proc.Harden(cmd)
+	stderr := &proc.CapWriter{Max: 1 << 20}
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		_ = os.RemoveAll(dest) // a half-made clone would block the next try
 		msg := strings.TrimSpace(c.Scanner.Redact(stderr.String()))

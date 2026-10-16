@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // Engine runs the container engine's command-line client. Every container, network and volume Drydock creates carries the
@@ -40,13 +41,18 @@ func NewEngine() *Engine {
 	return &Engine{Bin: bin}
 }
 
+// maxEngineOutput is the most of the container client's answer that is kept.
+const maxEngineOutput = 64 << 20
+
 // Run runs the client with args and returns its standard output. A failure carries the client's error text.
 func (e *Engine) Run(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, e.Bin, args...)
-	hideWindow(cmd)
+	proc.Harden(cmd)
 	cmd.Stdin = stdin
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
+	// the client's answer is kept in memory, so it is bounded: a container that logs without end must not fill it (audit
+	// 2026-10-16, M6)
+	out, errb := &proc.CapWriter{Max: maxEngineOutput}, &proc.CapWriter{Max: 1 << 20}
+	cmd.Stdout, cmd.Stderr = out, errb
 	if err := cmd.Run(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return "", fmt.Errorf("%w: %s is not installed or not on PATH", ErrNoEngine, e.Bin)

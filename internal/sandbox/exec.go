@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // ExecRequest is one command to run in the workspace.
@@ -89,7 +90,7 @@ func (m *Manager) exec(ctx context.Context, b *Box, r ExecRequest, kind string) 
 	}
 	args = append(args, b.Workspace, "sh", "-c", script)
 
-	capture := newCapture()
+	capture := &proc.HeadTail{Head: headBytes, Tail: tailBytes}
 	var sink io.Writer = capture
 	var logPath string
 	if m.LogDir != "" {
@@ -103,7 +104,7 @@ func (m *Manager) exec(ctx context.Context, b *Box, r ExecRequest, kind string) 
 			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
 				defer f.Close()
 				fmt.Fprintf(f, "$ %s\n", r.Command)
-				sink = io.MultiWriter(capture, f)
+				sink = io.MultiWriter(capture, &limitedFile{f: f, max: maxLogBytes})
 			} else {
 				logPath = ""
 			}
@@ -113,13 +114,13 @@ func (m *Manager) exec(ctx context.Context, b *Box, r ExecRequest, kind string) 
 	cctx, cancel := context.WithTimeout(ctx, timeout+30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, m.Engine.Bin, args...)
-	hideWindow(cmd)
+	proc.Harden(cmd)
 	cmd.Stdin = nil
 	cmd.Stdout, cmd.Stderr = sink, sink
 	start := time.Now()
 	runErr := cmd.Run()
 	res := ExecResult{Duration: time.Since(start), LogPath: logPath}
-	res.Output, res.Bytes, res.Truncated = capture.text()
+	res.Output, res.Bytes, res.Truncated = capture.Text()
 	var ee *exec.ExitError
 	switch {
 	case runErr == nil:
@@ -165,41 +166,37 @@ func (r ExecResult) Format(command string) string {
 	return sb.String()
 }
 
-// capture keeps the head and the tail of a stream and counts its size.
-type capture struct {
-	head  bytes.Buffer
-	tail  []byte
-	total int64
+// maxLogBytes is the most of one command's output that is written to its log file; the model is told when it is more.
+const maxLogBytes = 64 << 20
+
+// limitedFile writes to a log until it holds max bytes, then drops the rest: a command that prints without end must not fill the
+// disk (audit 2026-10-16, M6). Its writes always succeed, so the command is not slowed or ended by it.
+type limitedFile struct {
+	f    *os.File
+	max  int64
+	n    int64
+	full bool
 }
 
-func newCapture() *capture { return &capture{} }
-
-func (c *capture) Write(p []byte) (int, error) {
-	c.total += int64(len(p))
-	rest := p
-	if c.head.Len() < headBytes {
-		n := headBytes - c.head.Len()
-		if n > len(rest) {
-			n = len(rest)
-		}
-		c.head.Write(rest[:n])
-		rest = rest[n:]
+func (l *limitedFile) Write(p []byte) (int, error) {
+	if l.full {
+		return len(p), nil
 	}
-	if len(rest) > 0 {
-		c.tail = append(c.tail, rest...)
-		if len(c.tail) > tailBytes {
-			c.tail = append([]byte(nil), c.tail[len(c.tail)-tailBytes:]...)
+	room := l.max - l.n
+	if int64(len(p)) > room {
+		if room > 0 {
+			_, _ = l.f.Write(p[:room])
 		}
+		l.n, l.full = l.max, true
+		_, _ = fmt.Fprintf(l.f, "\n[the log stops here: it holds the first %d MiB of the output]\n", l.max>>20)
+		return len(p), nil
+	}
+	n, err := l.f.Write(p)
+	l.n += int64(n)
+	if err != nil {
+		l.full = true // a log that cannot be written is given up; the command carries on
 	}
 	return len(p), nil
-}
-
-func (c *capture) text() (string, int64, bool) {
-	kept := int64(c.head.Len() + len(c.tail))
-	if kept == c.total {
-		return c.head.String() + string(c.tail), c.total, false
-	}
-	return c.head.String() + "\n[...]\n" + string(c.tail), c.total, true
 }
 
 // ---- background processes (a dev server, a watcher) ----

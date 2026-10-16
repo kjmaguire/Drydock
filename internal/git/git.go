@@ -34,6 +34,8 @@ var (
 	ErrNotARepo      = errors.New("git: not a git repository")
 	// ErrUnknownRevision means a commit is not in the object database (never fetched, or collected after its branch went).
 	ErrUnknownRevision = errors.New("git: unknown revision")
+	// ErrOutputTooLarge means a git call printed more than Drydock keeps in memory; the call was ended.
+	ErrOutputTooLarge = errors.New("git: the output is larger than the limit")
 )
 
 // ConflictError reports a merge/rebase that stopped on conflicts. The merge is aborted before this is returned, so
@@ -159,11 +161,13 @@ func (r *Repo) command(ctx context.Context, dir string, extraEnv []string, args 
 		}
 		cmd := exec.CommandContext(ctx, path, argv...)
 		cmd.Env = penv
+		proc.Harden(cmd)
 		return cmd, nil
 	}
 	cmd := exec.CommandContext(ctx, "git", append(safeDirectory(dir, r.Root), hardening(args)...)...)
 	cmd.Dir = dir
 	cmd.Env = append(r.env(), extraEnv...)
+	proc.Harden(cmd)
 	return cmd, nil
 }
 
@@ -383,13 +387,28 @@ func (r *Repo) gitUnguarded(ctx context.Context, dir string, extraEnv []string, 
 	if err != nil {
 		return "", &gitError{args: args, err: err}
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// What git prints is kept in memory, so it is bounded: a diff of a file an agent made huge, a listing of a tree it filled,
+	// must end the call and not the app (audit 2026-10-16, M6). Going over the limit cancels the call.
+	stdout := &proc.CapWriter{Max: maxStdout, Over: cancel}
+	stderr := &proc.CapWriter{Max: maxStderr}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	if err := cmd.Run(); err != nil {
+		if stdout.Exceeded() {
+			err = ErrOutputTooLarge
+		}
 		return stdout.String(), &gitError{args: args, stderr: strings.TrimSpace(stderr.String()), stdout: stdout.String(), err: err}
+	}
+	if stdout.Exceeded() { // a command that finished before the cancel could end it
+		return "", &gitError{args: args, stderr: strings.TrimSpace(stderr.String()), err: ErrOutputTooLarge}
 	}
 	return r.hostOutput(args, stdout.String()), nil
 }
+
+// The most a git call may print that is kept: standard output, and the error text. A var so a test can lower it.
+var (
+	maxStdout = 256 << 20
+	maxStderr = 1 << 20
+)
 
 type gitError struct {
 	args   []string
@@ -430,7 +449,9 @@ func (r *Repo) PathState(ctx context.Context, dir, rel string) (commit string, c
 
 // Version returns the git version string ("git version 2.43.0").
 func Version(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", "--version").Output()
+	cmd := exec.CommandContext(ctx, "git", "--version")
+	proc.Harden(cmd)
+	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }
 

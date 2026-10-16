@@ -5,7 +5,6 @@ package checks
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -129,7 +128,10 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 	if err != nil {
 		return res, err
 	}
-	var buf bytes.Buffer
+	// bounded: the start and the end of the output in memory, the first part in the log file, the failing tests as they go by
+	kept := &proc.HeadTail{Head: keepHead, Tail: keepTail}
+	flog := &logFile{f: logf, max: maxLogBytes}
+	fails := &failing{parser: spec.Parser}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	pump := func(r io.Reader) {
@@ -142,14 +144,17 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 				line = red(line) // a test that prints a token must not leave it in the log, the evidence or the room
 			}
 			mu.Lock()
-			fmt.Fprintln(logf, line)
-			buf.WriteString(line)
-			buf.WriteByte('\n')
+			flog.line(line)
+			_, _ = kept.Write([]byte(line + "\n"))
+			fails.add(line)
 			mu.Unlock()
 			if onLine != nil {
 				onLine(line)
 			}
 		}
+		// a line over the scanner's limit stops the scan: the rest is read and dropped, or the command blocks on a full pipe
+		// until it times out
+		drain(r)
 	}
 	wg.Add(2)
 	stdout, stderr := p.Stdout(), p.Stderr()
@@ -176,9 +181,9 @@ func Run(ctx context.Context, pm proc.Manager, spec Spec, onLine func(string)) (
 	res.ExitCode = ei.Code
 	res.Passed = ei.Code == 0 && !res.TimedOut && ei.Err == nil
 	mu.Lock()
-	full := buf.String()
+	full, _, _ := kept.Text()
+	res.FailingTests = fails.names()
 	mu.Unlock()
-	res.FailingTests = ParseFailingTests(spec.Parser, full)
 	maxCtx := spec.MaxContext
 	if maxCtx <= 0 {
 		maxCtx = 6000

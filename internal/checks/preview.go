@@ -176,6 +176,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 	h := &PreviewHandle{PID: p.PID(), LogRef: logPath, p: p, done: p.Wait(), exited: make(chan struct{})}
 	var mu sync.Mutex
 	var out strings.Builder
+	flog := &logFile{f: logf, max: maxLogBytes} // a dev server stays up for days: its log stops growing at a limit
 	found := make(chan string, 1)
 	var wg sync.WaitGroup
 	pump := func(r io.Reader) {
@@ -185,7 +186,7 @@ func StartPreview(ctx context.Context, pm proc.Manager, dir string, o PreviewOpt
 		for sc.Scan() {
 			line := sc.Text()
 			mu.Lock()
-			fmt.Fprintln(logf, line)
+			flog.line(line)
 			if out.Len() < 64<<10 {
 				out.WriteString(line + "\n")
 			}
