@@ -19,7 +19,8 @@ import { findPreviewIsolationProblems, parseJsonc } from "./previews-guard.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wranglerBin = join(root, "node_modules", "wrangler", "bin", "wrangler.js");
-const reactRouterBin = join(root, "node_modules", "@react-router", "dev", "bin.js");
+// React Router 8 ships its command line as bin.cjs (v7 had bin.js).
+const reactRouterBin = join(root, "node_modules", "@react-router", "dev", "bin.cjs");
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run");

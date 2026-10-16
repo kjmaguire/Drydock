@@ -4,11 +4,11 @@ The Drydock golden starter: a small, opinionated Cloudflare SaaS that AI coding 
 
 | Layer | Choice |
 |---|---|
-| Runtime | Cloudflare Workers (module syntax), Wrangler 4.148.0, `nodejs_compat` |
+| Runtime | Cloudflare Workers (module syntax), Wrangler 4.151.0, `nodejs_compat` |
 | API | Hono, in `src/api/`, served under `/api/*` |
-| Frontend | React Router 7 framework mode, SSR on the same Worker (`app/`) |
+| Frontend | React Router 8 framework mode, SSR on the same Worker (`app/`); the Cloudflare bindings reach loaders and actions as a typed context (`app/context.ts`) |
 | Data | D1 (`DB`, SQL migrations in `migrations/`), KV (`KV`), R2 (`ATTACHMENTS`) |
-| Tests | Vitest 4 + `@cloudflare/vitest-plugin` (real workerd, real D1/KV/R2 simulators), Playwright 1.64 for e2e |
+| Tests | Vitest 5 + `@cloudflare/vitest-plugin` (real workerd, real D1/KV/R2 simulators), Playwright 1.64 for e2e |
 | Lint / types | Biome (lint), `tsc --noEmit`, `wrangler types` output committed |
 
 ## What is a stub
@@ -102,6 +102,6 @@ Cloudflare is an agent-side template in Drydock (decision D6), not Drydock's own
 ## Notes
 
 - `.npmrc` sets `legacy-peer-deps=true`: npm 10's resolver crashes on Vitest's optional peers with this tree. All dependency versions are pinned exactly in `package.json`.
-- `@cloudflare/vitest-pool-workers` is deprecated in favour of `@cloudflare/vitest-plugin`, which this starter uses (same API, and it shares the Wrangler 4.148.0 install).
+- `@cloudflare/vitest-pool-workers` is deprecated in favour of `@cloudflare/vitest-plugin`, which this starter uses (same API, and it shares the Wrangler 4.151.0 install).
 - `wrangler dev` logs a harmless "Unable to fetch the `Request.cf` object" warning when offline.
 - `.drydock-fixtures/*.patch` are unified diffs for Drydock's integration tests (`break-test.patch` fails one API test, `break-types.patch` introduces a type error). Apply with `patch -p1 < .drydock-fixtures/<name>.patch` from the project root. They are never applied to this tree.

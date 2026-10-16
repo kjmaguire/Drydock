@@ -202,7 +202,13 @@ func TestStarterProjectFullE2E(t *testing.T) {
 		t.Skip("set DRYDOCK_RUN_STARTER_E2E=1 (and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH or an installed Playwright Chromium) to run the starter's browser tests; no Chromium is installed in this sandbox")
 	}
 	starter, _ := filepath.Abs(filepath.Join("..", "..", "testdata", "starter-cloudflare-saas"))
-	r, err := checks.RunE2E(context.Background(), proc.New(), starter, checks.E2EOptions{Enabled: true, LogDir: t.TempDir(), Timeout: 8 * time.Minute}, nil)
+	// the check runs the project's Playwright with a scrubbed environment, so the Chromium the skip message names is handed
+	// through the check's own Env (the starter's playwright.config.ts reads it)
+	var env []string
+	if p := os.Getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"); p != "" {
+		env = append(env, "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="+p)
+	}
+	r, err := checks.RunE2E(context.Background(), proc.New(), starter, checks.E2EOptions{Enabled: true, LogDir: t.TempDir(), Timeout: 8 * time.Minute, Env: env}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

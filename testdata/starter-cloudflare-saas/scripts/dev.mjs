@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wranglerBin = join(root, "node_modules", "wrangler", "bin", "wrangler.js");
-const reactRouterBin = join(root, "node_modules", "@react-router", "dev", "bin.js");
+// React Router 8 ships its command line as bin.cjs (v7 had bin.js).
+const reactRouterBin = join(root, "node_modules", "@react-router", "dev", "bin.cjs");
 const stateDir = process.env.WRANGLER_STATE_DIR || ".wrangler/state";
 
 function freePort() {

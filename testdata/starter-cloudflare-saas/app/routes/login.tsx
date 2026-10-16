@@ -1,5 +1,6 @@
 import { data, Form, redirect } from "react-router";
 import { authenticate, devLoginEnabled, loginWithEmail } from "../../src/lib/auth";
+import { cloudflareContext } from "../context";
 import type { Route } from "./+types/login";
 
 export function meta() {
@@ -7,14 +8,14 @@ export function meta() {
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { env } = context.cloudflare;
+  const { env } = context.get(cloudflareContext);
   if (await authenticate(request, env)) throw redirect("/");
   return { devLogin: devLoginEnabled(env) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
-  const result = await loginWithEmail(context.cloudflare.env, request, form.get("email"));
+  const result = await loginWithEmail(context.get(cloudflareContext).env, request, form.get("email"));
   if (!result.ok) return data({ error: result.message }, { status: result.status });
   return redirect("/", { headers: { "Set-Cookie": result.setCookie } });
 }

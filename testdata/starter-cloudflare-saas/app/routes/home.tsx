@@ -1,6 +1,7 @@
 import { data, Form, redirect } from "react-router";
 import { authenticate } from "../../src/lib/auth";
 import { createItem, deleteItem, listItems, updateItem, validateTitle } from "../../src/lib/items";
+import { cloudflareContext } from "../context";
 import type { Route } from "./+types/home";
 
 export function meta() {
@@ -8,14 +9,14 @@ export function meta() {
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { env } = context.cloudflare;
+  const { env } = context.get(cloudflareContext);
   const user = await authenticate(request, env);
   if (!user) throw redirect("/login");
   return { user, items: await listItems(env.DB, user.id) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { env } = context.cloudflare;
+  const { env } = context.get(cloudflareContext);
   const user = await authenticate(request, env);
   if (!user) throw redirect("/login");
 
