@@ -9,11 +9,13 @@ export interface DevDrive {
   trusted: boolean;
 }
 
-/** core.FolderHints: whether the window has a folder dialog, whether this is Windows, and the Dev Drives found. */
+/** core.FolderHints: whether the window has a folder dialog, whether this is Windows, the Dev Drives found, and why none was. */
 export interface FolderHints {
   canPick: boolean;
   windows: boolean;
   devDrives: DevDrive[];
+  /** Why devDrives is empty on Windows: a clause after "No Dev Drive was found: ". */
+  devDriveReason?: string;
 }
 
 /** core.RepoFolder.state. */
@@ -57,7 +59,12 @@ export function createFolderClient(t: Transport): FolderClient {
     fsPickFolder: async (title = '') => (await t.call<{ path?: string } | null>('fs.pickFolder', { title }))?.path ?? '',
     fsFolderHints: async () => {
       const h = await t.call<FolderHints | null>('fs.folderHints', {});
-      return { canPick: h?.canPick === true, windows: h?.windows === true, devDrives: Array.isArray(h?.devDrives) ? h.devDrives : [] };
+      return {
+        canPick: h?.canPick === true,
+        windows: h?.windows === true,
+        devDrives: Array.isArray(h?.devDrives) ? h.devDrives : [],
+        ...(typeof h?.devDriveReason === 'string' && h.devDriveReason ? { devDriveReason: h.devDriveReason } : {}),
+      };
     },
     repoCheck: (path) => t.call('repo.check', { path }),
     repoInit: (path) => t.call('repo.init', { path }),

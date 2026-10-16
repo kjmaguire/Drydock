@@ -17,5 +17,5 @@ func FreeBytes(path string) (uint64, error) {
 	return uint64(st.Bavail) * uint64(st.Bsize), nil
 }
 
-// DevDrives is Windows only.
-func DevDrives(context.Context) []Drive { return nil }
+// DevDrives is Windows only: nothing is found and there is no reason to give.
+func DevDrives(context.Context) DevDriveScan { return DevDriveScan{} }

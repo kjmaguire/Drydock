@@ -131,7 +131,11 @@ export function folderProblem(check: RepoFolder | undefined, initRepo: boolean):
 export function folderHint(h: FolderHints | undefined): string {
   const base = 'A folder with a Git repository, or a new folder: Drydock can make the repository.';
   if (!h || (!h.windows && h.devDrives.length === 0)) return base;
-  const found = h.devDrives.length ? ` Dev Drive ${h.devDrives.map((d) => d.letter).join(', ')} found.` : ' No Dev Drive was found on this PC.';
+  const found = h.devDrives.length
+    ? ` Dev Drive ${h.devDrives.map((d) => d.letter).join(', ')} found.`
+    : h.devDriveReason
+      ? ` No Dev Drive was found on this PC: ${h.devDriveReason}.`
+      : ' No Dev Drive was found on this PC.';
   return `${base} Keeping projects on a Windows Dev Drive is recommended: faster builds, and Microsoft Defender's performance mode.${found}`;
 }
 

@@ -164,7 +164,10 @@ describe('new-project wizard rules', () => {
   it('recommends a Dev Drive on Windows and names the ones found', () => {
     expect(folderHint(undefined)).not.toContain('Dev Drive');
     expect(folderHint({ canPick: false, windows: false, devDrives: [] })).not.toContain('Dev Drive');
-    expect(folderHint({ canPick: true, windows: true, devDrives: [] })).toContain('No Dev Drive was found');
+    expect(folderHint({ canPick: true, windows: true, devDrives: [] })).toContain('No Dev Drive was found on this PC.');
+    expect(folderHint({ canPick: true, windows: true, devDrives: [], devDriveReason: 'no fixed drive on this PC uses ReFS, and a Dev Drive always does' })).toContain(
+      'No Dev Drive was found on this PC: no fixed drive on this PC uses ReFS, and a Dev Drive always does.',
+    );
     const h = folderHint({ canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] });
     expect(h).toContain('Windows Dev Drive is recommended');
     expect(h).toContain('Dev Drive D: found.');

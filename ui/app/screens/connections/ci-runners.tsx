@@ -1,7 +1,9 @@
 // CI runners (decision P56): GitHub Actions self-hosted runners for the person's private repositories, kept by Drydock on this
 // PC. Windows jobs run on the PC in a fresh folder each (on a Dev Drive when there is one); Linux jobs run in a fresh container
 // each. Every runner takes one job, then its files go and a new one waits. Runners only run CI and report to GitHub: fixing
-// and pushing stay with Drydock's tasks. It sits on the Connections page, after the MCP gateway.
+// and pushing stay with Drydock's tasks. It sits on the Connections page, after the MCP gateway. The folder for Windows jobs
+// is chosen with the window's folder dialog (ChooseFolder; the choice is saved at once) or typed and saved with "Use this
+// folder"; when no Dev Drive was found the core's reason is shown (the check needs no administrator rights).
 
 import { css, on, type Handle } from 'remix/component';
 import type { RunnerKindName, RunnerSlot, RunnerState } from '../../api/runnersClient.ts';
@@ -12,6 +14,7 @@ import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { listCard, Section } from '../../ui/layout.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
+import { ChooseFolder } from '../shared/choose-folder.tsx';
 
 const kindsCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
 const kindCss = css({
@@ -102,6 +105,8 @@ export function CiRunners(handle: Handle) {
     want[sl.key] = on;
     void handle.update();
     const r = await act.run(`enable:${sl.key}`, () => s.client.runnersEnable(sl.repo, sl.kind, on));
+    // the answer is the new view: show it before the optimistic flag goes, else the box flips back until the reload lands
+    if (r) v.set(r);
     delete want[sl.key];
     done(r);
   };
@@ -124,6 +129,12 @@ export function CiRunners(handle: Handle) {
     if (r) root = undefined;
     done(r);
   };
+  // a folder from the window's dialog is the person's decision: it is saved at once (and stays in the box if the save fails)
+  const pickRoot = (path: string) => {
+    root = path;
+    void handle.update();
+    void setRoot(path);
+  };
 
   return () => {
     const { readOnly } = s.workspace.license;
@@ -142,7 +153,10 @@ export function CiRunners(handle: Handle) {
         ? `on your Dev Drive ${data.devDrives[0]?.letter ?? ''}${data.devDrives[0]?.trusted ? ' (trusted: Microsoft Defender scans it in performance mode)' : ''}`
         : data?.rootSource === 'chosen'
           ? 'the folder you chose'
-          : "in Drydock's own folder (no Dev Drive was found)";
+          : data?.devDriveReason
+            ? "in Drydock's own folder"
+            : "in Drydock's own folder (no Dev Drive was found)";
+    const devDriveReason = data?.rootSource === 'default' ? data.devDriveReason : undefined;
     return (
       <Section
         label="CI runners"
@@ -188,6 +202,11 @@ export function CiRunners(handle: Handle) {
             <p>
               Windows jobs run in <span mix={mono}>{data.root}</span>, {rootSource}. A job waits while less than {gb(data.minFreeBytes)} is free there.
             </p>
+            {devDriveReason ? (
+              <p mix={muted} data-testid="runner-devdrive-reason">
+                No Dev Drive was found: {devDriveReason}.
+              </p>
+            ) : null}
             <div class="line">
               <input
                 type="text"
@@ -202,6 +221,7 @@ export function CiRunners(handle: Handle) {
                   void handle.update();
                 })}
               />
+              <ChooseFolder title="Choose the folder for Windows jobs" testId="runner-root-browse" disabled={busy || winOn} onPick={pickRoot} />
               <Button type="submit" variant="secondary" size="sm" data-testid="runner-root-save" disabled={busy || winOn || !rootTyped.trim()}>
                 Use this folder
               </Button>

@@ -171,7 +171,9 @@ func TestPickFolderUsesTheWindowsDialogAndSaysWhenThereIsNone(t *testing.T) {
 	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
 		// TEST DOUBLES: the folder dialog and the Dev Drive list
 		PickFolder: func(_ context.Context, p core.FolderPick) (string, error) { asked = p; return want, nil },
-		DevDrives:  func(context.Context) []runners.Drive { return []runners.Drive{{Letter: "D:", Trusted: true}} },
+		DevDrives: func(context.Context) runners.DevDriveScan {
+			return runners.DevDriveScan{Drives: []runners.Drive{{Letter: "D:", Trusted: true}}}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

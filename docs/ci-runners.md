@@ -16,7 +16,7 @@ workflow pick with `runs-on`:
 
 | Kind | Where a job runs | A workflow asks for it with |
 |---|---|---|
-| Windows | On the PC, as the person, in a fresh folder for each job: on the first Dev Drive (`X:\DrydockRunners`) when there is one, else in Drydock's data folder, or a folder the person chooses | `runs-on: [self-hosted, Windows, drydock]` |
+| Windows | On the PC, as the person, in a fresh folder for each job: on the first Dev Drive (`X:\DrydockRunners`) when there is one, else in Drydock's data folder, or a folder the person chooses (with the window's folder dialog, or typed) | `runs-on: [self-hosted, Windows, drydock]` |
 | Linux | In a fresh container for each job on the container engine (Docker Desktop, which runs on WSL 2) | `runs-on: [self-hosted, Linux, drydock]` |
 
 macOS jobs cannot run on a Windows PC; they stay on GitHub's hosted runners.
@@ -65,6 +65,21 @@ Each runner is **ephemeral and registered just in time** (`internal/runners/pool
    a new one is made for the next job. A runner that stops without a job is a failure (its last output line is the reason)
    and the next try waits 10 s, then 20 s, up to 10 minutes.
 
+**The folder for Windows jobs and Dev Drives.** Drydock looks for Dev Drives once at start, without administrator rights:
+for every fixed drive formatted with ReFS (a Dev Drive always is) it opens the volume (`\\.\X:`, no access right asked) and
+sends `FSCTL_QUERY_PERSISTENT_VOLUME_STATE` (ntifs.h), whose answer carries the `PERSISTENT_VOLUME_STATE_DEV_VOLUME` and
+`PERSISTENT_VOLUME_STATE_TRUSTED_VOLUME` bits (Windows 11 22H2 with the September 2023 update and later). Only where that
+query fails (an older Windows, a server SKU that rejects the mask) does it fall back to `fsutil devdrv query X:`, which needs
+administrator rights and so usually answers an unelevated Drydock with an error. When no Dev Drive is found, the page says why
+after "No Dev Drive was found:", in the core's words: "no fixed drive on this PC uses ReFS, and a Dev Drive always does";
+"D: uses ReFS but Windows does not mark it as a Dev Drive" (or "D: and E: use ReFS but Windows does not mark them as Dev
+Drives"); "the Dev Drive check is not available on this Windows version (the volume state query for D: failed: <error>), and
+fsutil devdrv query, which needs administrator rights, said "<its first line>"" (or "said nothing"); "Windows did not list this
+PC's drives: <error>". The same answer feeds the new project's folder hint (`fs.folderHints`, decision P58). The folder itself
+is set on the Connections page: **Choose folder…** opens the window's folder dialog and saves the choice at once (it stays in
+the box when the save is refused, for example while a Windows runner is on), or a path is typed or pasted and saved with
+**Use this folder**; **Back to automatic** returns to the Dev Drive or Drydock's folder.
+
 Switching a runner off or removing it stops it and deletes its registration. When Drydock stops, every runner is stopped and
 unregistered. When it starts, it removes what an earlier run left (job folders, runner containers) and this PC's runners that
 GitHub still lists as offline for the repository (only names starting `drydock-<this pc>-`).
@@ -79,15 +94,19 @@ disk file grows and does not shrink by itself (`wsl --manage docker-desktop-data
 
 - `internal/runners`: `release.go` (release and SHA-256 markers), `fetch.go` (download, check, unzip, copy), `github.go`
   (repository check, just-in-time registration, removal, listing), `launch.go` (the Windows and container launchers, the
-  Dockerfile), `pool.go` (the loop above), `disk_*.go` (free space; Dev Drives from `fsutil devdrv query` on ReFS volumes).
+  Dockerfile), `pool.go` (the loop above), `disk_*.go` (free space; Dev Drives from each ReFS volume's persistent state
+  flags, `fsutil devdrv query` only as the fallback, and the reason when none is found).
 - `internal/core/ext_runners.go`: `runners.get`, `runners.add {repo, kind, acceptRunsAsYou}`, `runners.remove`,
   `runners.enable {enabled}`, `runners.root.set {path}` (refused while a Windows runner is on), `runners.log`. Settings
   `runners:slots` and `runners:root`. Event `runners.changed` (key, state, job, count; never a configuration).
 - UI: Connections page, "CI runners" (`ui/app/screens/connections/ci-runners.tsx`).
 - Tests: `internal/runners` (release parsing, checksum refusal, unzip refusals, the Windows launcher with a stand-in runner
   program, the container launcher with a stand-in engine client, the pool with the in-memory GitHub and launcher of
-  `runnerstest`), `internal/core/ext_runners_test.go`, the browser tests and `ui/e2e/runners.spec.ts` (the harness gives the
-  core the same test doubles). `TestRealRunnerRelease` (opt-in, `DRYDOCK_REAL_RUNNER_RELEASE=1`, run by CI on Windows and on
+  `runnerstest`, the Dev Drive decision and its reasons in `disk_test.go`, and on Windows `disk_windows_test.go`, which runs
+  the volume state query against C: on CI's Windows runner: C: is NTFS, so the answer must be "not a Dev Drive" whether the
+  query answers or the fsutil fallback runs, never a panic), `internal/core/ext_runners_test.go` (the reason reaches
+  `runners.get` and `fs.folderHints` through the `DevDrives` test double), the browser tests and `ui/e2e/runners.spec.ts` (the
+  harness gives the core the same test doubles). `TestRealRunnerRelease` (opt-in, `DRYDOCK_REAL_RUNNER_RELEASE=1`, run by CI on Windows and on
   the Linux Docker job) downloads the real newest release, checks it, unpacks it or builds the image, runs
   `Runner.Listener --version`, and starts the runner with a configuration that is not valid to show it reads it from the
   environment. It never registers a runner.
@@ -97,8 +116,9 @@ disk file grows and does not shrink by itself (`wsl --manage docker-desktop-data
 - A real job on a real private repository, on a PC: the registration call, the labels GitHub adds itself to a just-in-time
   runner, the runner taking a job, its self-update when a new version comes out mid-job, and the deletion afterwards.
   Everything else up to "start the runner" is checked by CI on GitHub's Windows and Linux machines.
-- Docker Desktop on Windows (the Linux image is built and run on Docker on Linux in CI), and `fsutil devdrv query`'s exact
-  wording on a PC with a Dev Drive (parsed from Microsoft's documented messages; a Dev Drive that is not recognised only
-  means jobs run in Drydock's data folder).
+- Docker Desktop on Windows (the Linux image is built and run on Docker on Linux in CI), and the volume state query against a
+  real Dev Drive (CI's Windows runner has none: the query is exercised against C:, which is not one; `fsutil devdrv query`'s
+  wording is parsed from Microsoft's documented messages). A Dev Drive that is not recognised only means jobs run in
+  Drydock's data folder, and the page says why it was not.
 - Jobs that need Docker themselves (`container:` jobs, service containers, `docker build` steps) do not work on the Linux
   runner by design (no engine socket), and on the Windows runner only if Docker is installed and the person accepts that.

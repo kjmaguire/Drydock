@@ -171,6 +171,93 @@ describe('CI runners', () => {
     await waitFor(() => expect(roots).toEqual(['E:\\ci', '']), r);
   });
 
+  it('says why no Dev Drive was found, in the core\'s words', async () => {
+    const reason = 'the Dev Drive check is not available on this Windows version (the volume state query for D: failed: The parameter is incorrect.), and fsutil devdrv query, which needs administrator rights, said "Error:  Access is denied."';
+    const { r } = show({ runnersGet: async () => view({ rootSource: 'default', root: 'C:\\Users\\kyle\\AppData\\Local\\Drydock\\runners\\work', devDrives: [], devDriveReason: reason }) });
+    const line = await waitFor(() => {
+      const el = q(r, '[data-testid="runner-devdrive-reason"]');
+      if (!el) throw new Error('not yet');
+      return el;
+    }, r);
+    expect(line.textContent).toBe(`No Dev Drive was found: ${reason}.`);
+    expect(q(r, '[data-testid="runner-root"]')!.textContent).toContain("in Drydock's own folder. A job waits");
+    expect(q(r, '[data-testid="runner-root"]')!.textContent).not.toContain('(no Dev Drive was found)');
+  });
+
+  it('shows no reason line when a Dev Drive is in use or a folder was chosen', async () => {
+    const { r } = show({ runnersGet: async () => view({ devDriveReason: 'left over, not shown' }) });
+    await waitFor(() => expect(q(r, '[data-testid="runner-root"]')?.textContent).toContain('on your Dev Drive D:'), r);
+    expect(q(r, '[data-testid="runner-devdrive-reason"]')).toBeNull();
+  });
+
+  it('chooses the folder for Windows jobs with the window\'s folder dialog and saves it at once; the typed path still works', async () => {
+    const roots: string[] = [];
+    const titles: string[] = [];
+    let state = view({ rootSource: 'default', root: 'C:\\x', devDrives: [], devDriveReason: 'no fixed drive on this PC uses ReFS, and a Dev Drive always does' });
+    const { r } = show({
+      runnersGet: async () => state,
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }),
+      fsPickFolder: async (title?: string) => (titles.push(title ?? ''), 'E:\\ci'),
+      runnersRootSet: async (path) => {
+        roots.push(path);
+        state = view({ root: path, rootSource: 'chosen' });
+        return state;
+      },
+    });
+    const browse = await waitFor(() => {
+      const b = q(r, '[data-testid="runner-root-browse"]') as HTMLButtonElement | null;
+      if (!b || b.disabled) throw new Error('not yet');
+      return b;
+    }, r);
+    expect(browse.textContent).toContain('Choose folder');
+    await r.act(() => browse.click());
+    await waitFor(() => expect(roots).toEqual(['E:\\ci']), r);
+    expect(titles).toEqual(['Choose the folder for Windows jobs']);
+    await waitFor(() => expect(q(r, '[data-testid="runner-root"]')?.textContent).toContain('E:\\ci, the folder you chose'), r);
+    // saved: the box is empty again for the next choice, and typing a path still saves with "Use this folder"
+    expect((q(r, '[data-testid="runner-root-input"]') as HTMLInputElement).value).toBe('');
+    type(q(r, '[data-testid="runner-root-input"]') as HTMLInputElement, 'F:\\jobs');
+    const save = await waitFor(() => {
+      const b = q(r, '[data-testid="runner-root-save"]') as HTMLButtonElement | null;
+      if (!b || b.disabled) throw new Error('not yet');
+      return b;
+    }, r);
+    await r.act(() => save.click());
+    await waitFor(() => expect(roots).toEqual(['E:\\ci', 'F:\\jobs']), r);
+  });
+
+  it('keeps the chosen folder in the box when the save is refused, and offers no dialog where the window has none', async () => {
+    const { r } = show({
+      runnersGet: async () => view({ rootSource: 'default', root: 'C:\\x', devDrives: [] }),
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }),
+      fsPickFolder: async () => 'E:\\ci',
+      runnersRootSet: async () => {
+        throw new Error('could not use E:\\ci: access is denied');
+      },
+    });
+    const browse = await waitFor(() => {
+      const b = q(r, '[data-testid="runner-root-browse"]') as HTMLButtonElement | null;
+      if (!b || b.disabled) throw new Error('not yet');
+      return b;
+    }, r);
+    await r.act(() => browse.click());
+    await waitFor(() => expect(r.container.textContent).toContain('access is denied'), r);
+    expect((q(r, '[data-testid="runner-root-input"]') as HTMLInputElement).value).toBe('E:\\ci');
+
+    cleanup();
+    let asked = false;
+    const plain = show({
+      runnersGet: async () => view({ rootSource: 'default', root: 'C:\\x', devDrives: [] }),
+      fsFolderHints: async () => {
+        asked = true;
+        return { canPick: false, windows: false, devDrives: [] };
+      },
+    });
+    await waitFor(() => expect(asked).toBe(true), plain.r);
+    await waitFor(() => expect(q(plain.r, '[data-testid="runner-root-save"]')).not.toBeNull(), plain.r);
+    expect(q(plain.r, '[data-testid="runner-root-browse"]')).toBeNull();
+  });
+
   it('words', () => {
     expect(gb(120 * GiB)).toBe('120 GB');
     expect(gb(3.25 * GiB)).toBe('3.3 GB');

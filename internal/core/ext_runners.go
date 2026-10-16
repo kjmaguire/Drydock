@@ -87,7 +87,7 @@ type runnersExt struct {
 
 	root       string
 	rootSource string // chosen | devdrive | default
-	devDrives  []runners.Drive
+	devDrives  runners.DevDriveScan
 }
 
 func (r *runnersExt) start(ctx context.Context) {
@@ -96,8 +96,8 @@ func (r *runnersExt) start(ctx context.Context) {
 	launchers := map[runners.Kind]runners.Launcher{
 		runners.Linux: &runners.ContainerLauncher{Engine: sandbox.NewEngine(), Cache: cache},
 	}
+	r.devDrives = c.devDrives(ctx)
 	if runtime.GOOS == "windows" {
-		r.devDrives = runners.DevDrives(ctx)
 		r.resolveRoot(ctx)
 		r.host = &runners.HostLauncher{Root: r.root, Cache: cache}
 		launchers[runners.Windows] = r.host
@@ -138,8 +138,8 @@ func (r *runnersExt) resolveRoot(ctx context.Context) {
 	switch {
 	case v != "":
 		r.root, r.rootSource = v, "chosen"
-	case len(r.devDrives) > 0:
-		r.root, r.rootSource = r.devDrives[0].Letter+`\DrydockRunners`, "devdrive"
+	case len(r.devDrives.Drives) > 0:
+		r.root, r.rootSource = r.devDrives.Drives[0].Letter+`\DrydockRunners`, "devdrive"
 	default:
 		r.root, r.rootSource = filepath.Join(r.c.cfg.DataDir, "runners", "work"), "default"
 	}
@@ -185,17 +185,19 @@ type RunnerSlot struct {
 
 // RunnersView is the Connections page's CI runners section.
 type RunnersView struct {
-	Kinds        []RunnerKind    `json:"kinds"`
-	Root         string          `json:"root,omitempty"`
-	RootSource   string          `json:"rootSource,omitempty"`
-	DevDrives    []runners.Drive `json:"devDrives"`
-	Slots        []RunnerSlot    `json:"slots"`
-	MinFreeBytes uint64          `json:"minFreeBytes"`
-	Max          int             `json:"max"`
+	Kinds      []RunnerKind    `json:"kinds"`
+	Root       string          `json:"root,omitempty"`
+	RootSource string          `json:"rootSource,omitempty"`
+	DevDrives  []runners.Drive `json:"devDrives"`
+	// DevDriveReason says why DevDrives is empty on Windows (a clause after "No Dev Drive was found: ").
+	DevDriveReason string       `json:"devDriveReason,omitempty"`
+	Slots          []RunnerSlot `json:"slots"`
+	MinFreeBytes   uint64       `json:"minFreeBytes"`
+	Max            int          `json:"max"`
 }
 
 func (r *runnersExt) view(ctx context.Context) RunnersView {
-	v := RunnersView{DevDrives: r.devDrives, Slots: []RunnerSlot{}, MinFreeBytes: runners.DefaultMinFree, Max: maxRunnerSlots}
+	v := RunnersView{DevDrives: r.devDrives.Drives, DevDriveReason: r.devDrives.Reason, Slots: []RunnerSlot{}, MinFreeBytes: runners.DefaultMinFree, Max: maxRunnerSlots}
 	if r.pool.MinFree > 0 {
 		v.MinFreeBytes = r.pool.MinFree
 	}

@@ -353,8 +353,11 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	pickFolder := func(_ context.Context, p core.FolderPick) (string, error) {
 		return filepath.Join(root, "picked-folders", fmt.Sprintf("Fresh Project %d", picks.Add(1))), nil
 	}
-	// TEST DOUBLE: one Dev Drive, D:, for the project folder's hint; the desktop app asks Windows (fsutil devdrv query)
-	devDrives := func(context.Context) []runners.Drive { return []runners.Drive{{Letter: "D:", Trusted: true}} }
+	// TEST DOUBLE: one Dev Drive, D:, for the project folder's hint and the CI runners; the desktop app asks Windows (each ReFS
+	// volume's state flags)
+	devDrives := func(context.Context) runners.DevDriveScan {
+		return runners.DevDriveScan{Drives: []runners.Drive{{Letter: "D:", Trusted: true}}}
+	}
 	runnerGitHub := runnerstest.NewGitHub(map[string]runnerstest.Repo{
 		"e2e/private-app": {Private: true, Admin: true},
 		"e2e/public-site": {Private: false, Admin: true},

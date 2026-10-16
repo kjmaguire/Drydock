@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/runners"
@@ -50,33 +49,39 @@ func init() {
 }
 
 type foldersExt struct {
-	c    *Core
-	once sync.Once
-	dev  []runners.Drive
+	c *Core
 }
 
 // FolderHints is what the project folder's field says beside the path: whether the window has a folder dialog, whether this
-// is Windows (where a Dev Drive is recommended), and the Dev Drives found.
+// is Windows (where a Dev Drive is recommended), the Dev Drives found, and when none was found on Windows, why.
 type FolderHints struct {
-	CanPick   bool            `json:"canPick"`
-	Windows   bool            `json:"windows"`
-	DevDrives []runners.Drive `json:"devDrives"`
+	CanPick        bool            `json:"canPick"`
+	Windows        bool            `json:"windows"`
+	DevDrives      []runners.Drive `json:"devDrives"`
+	DevDriveReason string          `json:"devDriveReason,omitempty"`
 }
 
 func (x *foldersExt) hints(ctx context.Context) FolderHints {
-	x.once.Do(func() {
-		switch {
-		case x.c.cfg.DevDrives != nil:
-			x.dev = x.c.cfg.DevDrives(ctx)
-		case runtime.GOOS == "windows":
-			x.dev = runners.DevDrives(ctx) // fsutil per ReFS volume: asked once
-		}
-	})
-	h := FolderHints{CanPick: x.c.cfg.PickFolder != nil, Windows: runtime.GOOS == "windows", DevDrives: x.dev}
+	dev := x.c.devDrives(ctx)
+	h := FolderHints{CanPick: x.c.cfg.PickFolder != nil, Windows: runtime.GOOS == "windows", DevDrives: dev.Drives, DevDriveReason: dev.Reason}
 	if h.DevDrives == nil {
 		h.DevDrives = []runners.Drive{}
 	}
 	return h
+}
+
+// devDrives is this PC's Dev Drives, asked once (Config.DevDrives when set, else the volumes themselves on Windows, nothing
+// elsewhere): the project folder's hint and the CI runners' Windows folder share the answer.
+func (c *Core) devDrives(ctx context.Context) runners.DevDriveScan {
+	c.devOnce.Do(func() {
+		switch {
+		case c.cfg.DevDrives != nil:
+			c.dev = c.cfg.DevDrives(ctx)
+		case runtime.GOOS == "windows":
+			c.dev = runners.DevDrives(ctx)
+		}
+	})
+	return c.dev
 }
 
 // isHuman reports whether by names a person ("human:<name>").

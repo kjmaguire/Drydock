@@ -52,6 +52,8 @@ export interface RunnersView {
   /** chosen | devdrive | default */
   rootSource?: string;
   devDrives: DevDrive[];
+  /** Why devDrives is empty on Windows: a clause after "No Dev Drive was found: ". */
+  devDriveReason?: string;
   slots: RunnerSlot[];
   minFreeBytes: number;
   max: number;

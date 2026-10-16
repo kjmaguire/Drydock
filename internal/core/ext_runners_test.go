@@ -191,3 +191,42 @@ func TestCIRunnersRefuseWhatIsNotSafeOrNotPossible(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// When no Dev Drive is found, the CI runners' view and the folder hints say why (the Dev Drive check needs no administrator
+// rights; the reason comes from the volumes themselves on Windows, here from the TEST DOUBLE), and when one is found there is
+// no reason to give.
+func TestCIRunnersSayWhyNoDevDriveWasFound(t *testing.T) {
+	reason := "the Dev Drive check is not available on this Windows version (the volume state query for D: failed: The parameter is incorrect.), and fsutil devdrv query, which needs administrator rights, said \"Error:  Access is denied.\""
+	open := func(scan runners.DevDriveScan) *app {
+		c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+			Adapters:  map[string]agents.Adapter{"claude": &claude.Adapter{Exe: "claude-not-used"}},
+			DevDrives: func(context.Context) runners.DevDriveScan { return scan }, // TEST DOUBLE: what the volumes said
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(c.Close)
+		return &app{t: t, c: c}
+	}
+	a := open(runners.DevDriveScan{Reason: reason})
+	var v core.RunnersView
+	a.call("runners.get", struct{}{}, &v)
+	if len(v.DevDrives) != 0 || v.DevDriveReason != reason {
+		t.Fatalf("%+v", v)
+	}
+	var h core.FolderHints
+	a.call("fs.folderHints", struct{}{}, &h)
+	if len(h.DevDrives) != 0 || h.DevDriveReason != reason {
+		t.Fatalf("%+v", h)
+	}
+	b := open(runners.DevDriveScan{Drives: []runners.Drive{{Letter: "E:", Trusted: true}}})
+	v, h = core.RunnersView{}, core.FolderHints{} // omitted fields would otherwise keep the first answer
+	b.call("runners.get", struct{}{}, &v)
+	if len(v.DevDrives) != 1 || v.DevDrives[0].Letter != "E:" || v.DevDriveReason != "" {
+		t.Fatalf("%+v", v)
+	}
+	b.call("fs.folderHints", struct{}{}, &h)
+	if len(h.DevDrives) != 1 || h.DevDriveReason != "" {
+		t.Fatalf("%+v", h)
+	}
+}

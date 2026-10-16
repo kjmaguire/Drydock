@@ -86,9 +86,10 @@ type Config struct {
 	// new project's "Choose folder..." (decision P58). The desktop app sets it (app/app_windows.go); without it a person types
 	// the path. The e2e harness sets a labelled stand-in.
 	PickFolder func(ctx context.Context, p FolderPick) (string, error)
-	// DevDrives lists this computer's Dev Drives for the project folder's hint (decision P58). Default: runners.DevDrives on
-	// Windows (asked once), none elsewhere; the e2e harness sets a labelled stand-in.
-	DevDrives func(ctx context.Context) []runners.Drive
+	// DevDrives lists this computer's Dev Drives, or says why none was found, for the project folder's hint (decision P58) and
+	// the CI runners' Windows folder (decision P56). Default: runners.DevDrives on Windows (asked once, no administrator rights
+	// needed), none elsewhere; tests and the e2e harness set a labelled stand-in.
+	DevDrives func(ctx context.Context) runners.DevDriveScan
 	// Runners, when set, adjusts the CI runners' pool before it starts (decision P56): tests and the e2e harness replace
 	// GitHub, the release and the launchers with labelled test doubles.
 	Runners func(p *runners.Pool)
@@ -141,6 +142,8 @@ type Core struct {
 	wsl        *wsl.Host                     // the WSL distros (ext_wsl.go)
 	rmOnce     sync.Once                     // the repo map (ext_repomap.go)
 	rm         *repomap.Mapper
+	devOnce    sync.Once // this PC's Dev Drives, asked once for the folder hint and the CI runners
+	dev        runners.DevDriveScan
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
