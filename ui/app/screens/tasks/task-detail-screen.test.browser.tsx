@@ -127,14 +127,96 @@ describe('Task view: header, properties and content', () => {
   });
 
   it('shows the raw patch on request, as text lines classed by kind', async () => {
-    const taskDiff = recorder(() => 'diff --git a/calc.go b/calc.go\n@@ -1 +1 @@\n-return 0\n+return a - b\n');
+    const taskDiff = recorder((_id: string, _evidenceId?: number) => 'diff --git a/calc.go b/calc.go\n@@ -1 +1 @@\n-return 0\n+return a - b\n');
     const d = detail({ evidence: [{ id: 1, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: '1 file', created: 0 }] });
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskDiff }));
     await ready(r);
     await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
     await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+return a - b'), r);
     expect(r.$('.diff-del')!.textContent).toBe('-return 0');
-    expect(taskDiff.calls).toEqual([['t1']]);
+    // the request names the evidence the card is keyed on (L36)
+    expect(taskDiff.calls).toEqual([['t1', 1]]);
+  });
+
+  describe('the raw patch is the one the card is about (L36)', () => {
+    const ev = (id: number, kind: string): Evidence => ({ id, taskId: 't1', attempt: 1, kind, passed: null, summary: kind, created: id });
+    const PATCHES: Record<number, string> = {
+      3: 'diff --git a/a.go b/a.go\n-old\n+FIRST PATCH\n',
+      9: 'diff --git a/a.go b/a.go\n-old\n+SECOND PATCH\n',
+    };
+
+    it('asks for the newest diff evidence by id, drops the text when a newer patch is recorded, says so, and shows the new one only when asked', async () => {
+      let d = detail({ evidence: [ev(2, 'test'), ev(3, 'diff'), ev(4, 'test')] });
+      const taskDiff = recorder((_id: string, evidenceId?: number) => PATCHES[evidenceId ?? 0] ?? 'the core would refuse this id');
+      const s = svc({ taskGet: async () => d, taskDiff });
+      const r = mount(<TaskDetailScreen id="t1" />, s);
+      await ready(r);
+      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+FIRST PATCH'), r);
+      // the newest evidence of kind diff is asked for, not the newest evidence
+      expect(taskDiff.calls).toEqual([['t1', 3]]);
+      expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
+
+      // the task goes round again and a second patch is recorded: the first is no longer on the page, the page says why
+      d = detail({ evidence: [ev(2, 'test'), ev(3, 'diff'), ev(4, 'test'), ev(8, 'test'), ev(9, 'diff')] });
+      s.emit({ type: 'task.evidence', taskId: 't1' });
+      const note = await waitFor(() => need(r.$('[data-testid="raw-diff-changed"]')), r);
+      expect(note.textContent).toBe('The patch changed since you opened it. Show it again.');
+      expect(note.getAttribute('role')).toBe('status');
+      expect(r.container.textContent).not.toContain('FIRST PATCH');
+      expect(r.$('.diff-add')).toBeNull();
+      // nothing was fetched or swapped in on its own
+      expect(taskDiff.calls).toEqual([['t1', 3]]);
+      expect(r.container.textContent).not.toContain('SECOND PATCH');
+
+      // asked again, it is the new patch, by its id, and the note goes
+      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+SECOND PATCH'), r);
+      expect(taskDiff.calls).toEqual([['t1', 3], ['t1', 9]]);
+      expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
+    });
+
+    it('does not show a patch that was read while a newer one was recorded', async () => {
+      let d = detail({ evidence: [ev(3, 'diff')] });
+      let release: (text: string) => void = () => undefined;
+      const calls: [string, number | undefined][] = [];
+      const taskDiff = async (id: string, evidenceId?: number) => {
+        calls.push([id, evidenceId]);
+        return evidenceId === 3 ? new Promise<string>((res) => (release = res)) : (PATCHES[evidenceId ?? 0] ?? '');
+      };
+      const s = svc({ taskGet: async () => d, taskDiff });
+      const r = mount(<TaskDetailScreen id="t1" />, s);
+      await ready(r);
+      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+      await waitFor(() => expect(calls).toEqual([['t1', 3]]), r);
+      // the first patch is still being read when the second is recorded
+      d = detail({ evidence: [ev(3, 'diff'), ev(9, 'diff')] });
+      s.emit({ type: 'task.evidence', taskId: 't1' });
+      await waitFor(() => expect(r.$$('[data-testid="evidence"]').length).toBe(2), r);
+      release(PATCHES[3]!);
+      await waitFor(() => need(r.$('[data-testid="raw-diff-changed"]')), r);
+      expect(r.container.textContent).not.toContain('FIRST PATCH');
+      expect(r.$('.diff-add')).toBeNull();
+      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+SECOND PATCH'), r);
+      expect(calls).toEqual([['t1', 3], ['t1', 9]]);
+    });
+
+    it('keeps its text through changes that are not a new patch', async () => {
+      let d = detail({ evidence: [ev(3, 'diff')] });
+      const taskDiff = recorder((_id: string, evidenceId?: number) => PATCHES[evidenceId ?? 0] ?? '');
+      const s = svc({ taskGet: async () => d, taskDiff });
+      const r = mount(<TaskDetailScreen id="t1" />, s);
+      await ready(r);
+      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+FIRST PATCH'), r);
+      d = detail({ evidence: [ev(3, 'diff'), ev(10, 'test')] }); // evidence of another kind is not a new patch
+      s.emit({ type: 'task.evidence', taskId: 't1' });
+      await waitFor(() => expect(r.$$('[data-testid="evidence"]').length).toBe(2), r);
+      expect(r.$('.diff-add')!.textContent).toBe('+FIRST PATCH');
+      expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
+      expect(taskDiff.calls).toEqual([['t1', 3]]);
+    });
   });
 
   it('offers no raw patch when no diff has been recorded', async () => {
@@ -306,6 +388,75 @@ describe('Evidence and the raw diff', () => {
     const r2 = renderPlain(<UnifiedDiff text={long} />);
     expect(r2.$$('.diff-line').length).toBe(3000);
     await r2.act(() => byText(r2.container, 'button', 'Show all 3005 lines').click());
-    expect(r2.$$('.diff-line').length).toBe(3005);
+    // all 3,005 lines are in the view, but only the ones near it are in the page (L37)
+    await waitFor(() => expect(r2.$('[data-testid="diff"]')!.getAttribute('data-windowed')).toBe('true'), r2);
+    expect(r2.$$('.diff-line').length).toBeLessThan(400);
+    expect(r2.$('.diff-line')!.textContent).toBe('+line 0');
+    expect(r2.$('[data-testid="diff"]')!.getAttribute('data-rows')).toBe('3005');
+  });
+
+  describe('a very long patch (L37)', () => {
+    const LINES = 50_000;
+    const lineAt = (i: number) => (i % 500 === 0 ? `@@ -${i},3 +${i},4 @@` : i % 3 === 0 ? `-removed ${i}` : i % 3 === 1 ? `+added ${i}` : ` context ${i}`);
+    const patch = Array.from({ length: LINES }, (_, i) => lineAt(i)).join('\n');
+    const lastLine = lineAt(LINES - 1);
+    const frames = () => new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+    const rowTexts = (r: ReturnType<typeof renderPlain>) => Array.from(r.$$('.diff-line')).map((e) => e.textContent!);
+
+    it('draws the first lines as it always did, and only a window of the lines once all of them are asked for', async () => {
+      const r = renderPlain(<UnifiedDiff text={patch} />);
+      // before "Show all": the first 3,000 lines, the button, and every line selectable as before
+      expect(r.$$('.diff-line').length).toBe(3000);
+      expect(r.$('[data-testid="diff"]')!.getAttribute('data-windowed')).toBe('false');
+      await r.act(() => byText(r.container, 'button', `Show all ${LINES} lines`).click());
+      const sc = await waitFor(() => need(r.$('[data-testid="diff"][data-windowed="true"]')) as HTMLElement, r);
+      // the keyboard is not lost with the button that was pressed: it is on the view of the patch
+      await waitFor(() => expect(document.activeElement).toBe(sc), r);
+      await frames();
+      // a window: far fewer rows than lines, the first lines among them, a scroller of a most height that is named
+      const drawn = rowTexts(r);
+      expect(drawn.length).toBeGreaterThan(10);
+      expect(drawn.length).toBeLessThan(300);
+      expect(drawn[0]).toBe('@@ -0,3 +0,4 @@');
+      expect(drawn).not.toContain(lastLine);
+      expect(getComputedStyle(sc).overflowY).toBe('auto');
+      expect(sc.clientHeight).toBeLessThanOrEqual(560);
+      expect(sc.scrollHeight).toBeGreaterThan(LINES * 10);
+      expect(sc.getAttribute('aria-label')).toBe('Unified diff');
+      expect(sc.getAttribute('role')).toBe('region');
+      expect(sc.getAttribute('tabindex')).toBe('0');
+      // lines keep their kind
+      expect(r.$('.diff-hunk')!.textContent).toBe('@@ -0,3 +0,4 @@');
+      expect(r.$('.diff-add')).not.toBeNull();
+      expect(r.$('.diff-del')).not.toBeNull();
+      expect(r.$('.diff-ctx')).not.toBeNull();
+    });
+
+    it('still shows the first and the last line when scrolled to them', async () => {
+      const r = renderPlain(<UnifiedDiff text={patch} />);
+      await r.act(() => byText(r.container, 'button', `Show all ${LINES} lines`).click());
+      const sc = await waitFor(() => need(r.$('[data-testid="diff"][data-windowed="true"]')) as HTMLElement, r);
+      await frames();
+      const scrollTo = async (top: number) => {
+        const before = sc.scrollTop;
+        const moved = new Promise((res) => sc.addEventListener('scroll', res, { once: true }));
+        sc.scrollTop = top;
+        if (sc.scrollTop !== before) await moved;
+        r.root.flush();
+      };
+      await scrollTo(sc.scrollHeight);
+      await waitFor(() => expect(rowTexts(r)).toContain(lastLine), r);
+      expect(rowTexts(r).length).toBeLessThan(300);
+      expect(rowTexts(r)).not.toContain('@@ -0,3 +0,4 @@');
+      await scrollTo(0);
+      await waitFor(() => expect(rowTexts(r)[0]).toBe('@@ -0,3 +0,4 @@'), r);
+      expect(rowTexts(r).length).toBeLessThan(300);
+    });
+
+    it('a patch within the cap is drawn whole and offers nothing to expand', () => {
+      const r = renderPlain(<UnifiedDiff text={Array.from({ length: 3000 }, (_, i) => `+l${i}`).join('\n')} />);
+      expect(r.$$('.diff-line').length).toBe(3000);
+      expect(r.$$('button').length).toBe(0);
+    });
   });
 });

@@ -26,7 +26,7 @@ import { ReviewPanel } from './review-panel.tsx';
 import { Interventions, leadOf } from '../team/lead.tsx';
 import { stepsFor, type Step } from './steps.ts';
 import { TaskControls } from './task-controls.tsx';
-import { elapsed, isWaitingForTask } from './tasks.ts';
+import { elapsed, isWaitingForTask, newestDiffId } from './tasks.ts';
 
 const layoutCss = css({
   display: 'grid',
@@ -221,7 +221,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
               }
             >
               <DiffViewer taskId={task.id} />
-              <DiffView key={task.id} taskId={task.id} hasDiff={d.evidence.some((e) => e.kind === 'diff')} />
+              <DiffView key={task.id} taskId={task.id} diffId={newestDiffId(d.evidence)} />
             </Section>
             <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} />
             <Section title="Usage">

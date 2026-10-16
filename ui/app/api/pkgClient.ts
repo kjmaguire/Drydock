@@ -4,8 +4,9 @@ import type {
   BackupResult,
   BackupSettings,
   BackupVerify,
-  BundleCreated,
+  BundleExists,
   BundlePreview,
+  BundleResult,
   ExportPreview,
   ExportResult,
   ImportPreview,
@@ -16,6 +17,8 @@ import type {
 } from './pkgTypes.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
+
+const isExists = (r: BundleResult): r is BundleExists => 'exists' in r && r.exists === true;
 
 export interface PkgClient {
   licenseStatus(): Promise<LicenseView>;
@@ -40,7 +43,11 @@ export interface PkgClient {
   projectImportPreview(path: string): Promise<ImportPreview>;
   projectImport(req: { path: string; repoPath: string; name?: string }): Promise<ImportResult>;
   supportbundlePreview(opts: { eventLimit?: number; includeRun?: string }): Promise<BundlePreview>;
-  supportbundleCreate(opts: { dest?: string; eventLimit?: number; includeRun?: string; acknowledgeRun?: boolean }): Promise<BundleCreated>;
+  /**
+   * Writes the bundle. When a file is already at the destination nothing is written and the answer is `{exists: true, path, size}`;
+   * send the request again with `overwrite` once the person has said it may be replaced.
+   */
+  supportbundleCreate(opts: { dest?: string; eventLimit?: number; includeRun?: string; acknowledgeRun?: boolean; overwrite?: boolean }): Promise<BundleResult>;
 }
 
 export function createPkgClient(t: Transport): PkgClient {
@@ -75,6 +82,17 @@ export function createPkgClient(t: Transport): PkgClient {
     projectImportPreview: (path) => call('project.importPreview', { path }),
     projectImport: (req) => call('project.import', { path: req.path, repoPath: req.repoPath, name: req.name ?? '' }),
     supportbundlePreview: (o) => call('supportbundle.preview', { eventLimit: o.eventLimit ?? 0, includeRun: o.includeRun ?? '' }),
-    supportbundleCreate: (o) => call('supportbundle.create', { dest: o.dest ?? '', eventLimit: o.eventLimit ?? 0, includeRun: o.includeRun ?? '', acknowledgeRun: o.acknowledgeRun ?? false }),
+    supportbundleCreate: async (o) => {
+      const r = await call<BundleResult>('supportbundle.create', {
+        dest: o.dest ?? '',
+        eventLimit: o.eventLimit ?? 0,
+        includeRun: o.includeRun ?? '',
+        acknowledgeRun: o.acknowledgeRun ?? false,
+        overwrite: o.overwrite ?? false,
+      });
+      // the screen asks a question on `exists`, so that answer is read as exactly what it must be
+      if (isExists(r)) return { exists: true, path: String(r.path ?? ''), size: Number(r.size) || 0 };
+      return { ...r, replaced: r.replaced === true };
+    },
   };
 }

@@ -20,6 +20,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { card, listCard, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ShownNotes, Targets } from '../shared/approval-text.tsx';
+import { ReachNote } from './command-line.tsx';
 import { whereOf } from './server-input.ts';
 
 /** The brand a server shows, from the catalog entry it was connected from or its own id; '' when it has none. */
@@ -180,12 +181,16 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
   let confirmRemove = false;
   // a grant ticked or unticked shows at once; the server's answer replaces it
   const want = new Map<string, boolean>();
+  // the note under the tools says which program a grant starts while the tools are not known (M24): the boxes are described by it
+  const reachId = `reach-${handle.id}`;
 
   return () => {
     const { s: srv, agents, onChanged } = handle.props;
     const ro = s.workspace.license;
     const granted = (agentId: string) => srv.agents.some((a) => a.agentId === agentId);
     for (const [a, v] of want) if (granted(a) === v) want.delete(a); // the server agrees now
+    // a grant lists the server's tools first when they were never listed, and for a program that means starting it
+    const startsOnGrant = srv.tools.length === 0 && srv.discoveredAt === 0;
     return (
       <article mix={[card, cardBody]} data-testid="mcp-server" data-server={srv.id}>
         <header mix={cardHead}>
@@ -210,9 +215,12 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
 
         <h4 mix={subhead}>Tools</h4>
         {srv.tools.length === 0 ? (
-          <p mix={muted} style={{ margin: '0' }}>
-            Tools are not known yet. Open the <a href={routes.library.href()}>Library</a>, choose the server and press Find tools.
-          </p>
+          <>
+            <p mix={muted} style={{ margin: '0' }}>
+              Tools are not known yet. Open the <a href={routes.library.href()}>Library</a>, choose the server and press Find tools.
+            </p>
+            {startsOnGrant ? <ReachNote server={srv} lead="Ticking an agent below, while the tools are not known," id={reachId} /> : null}
+          </>
         ) : (
           <ul mix={toolList} aria-label={`Tools of ${srv.display}`}>
             {srv.tools.map((tool) => (
@@ -239,6 +247,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
                 <input
                   type="checkbox"
                   aria-label={`${a.name} may use ${srv.display}`}
+                  aria-describedby={startsOnGrant ? reachId : undefined}
                   checked={want.get(a.id) ?? granted(a.id)}
                   disabled={act.busy !== ''}
                   mix={on('change', async (e) => {

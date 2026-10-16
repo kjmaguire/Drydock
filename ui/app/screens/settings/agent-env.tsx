@@ -1,15 +1,18 @@
 // The environment agent programs start with: an allowlist, plus variable NAMES the human chose to pass on. Never values.
+//
+// Every line is checked here before anything is sent (audit 2026-10-16, L38): a person who pastes `AWS_SECRET_ACCESS_KEY=abc...`
+// has put a secret where a name belongs. The page says which line is not a name, sends nothing, and never repeats the line.
 
-import { css, on, type Handle } from 'remix/component';
+import { css, on, ref, type Handle } from 'remix/component';
 import { Variable } from 'lucide';
 import type { AgentEnv } from '../../api/libraryClient.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
-import { Field, formActions } from '../../ui/form.tsx';
+import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
-import { envNames } from './settings.ts';
+import { parseEnvNames } from './settings.ts';
 import { Group, panelPad } from './settings-kit.tsx';
 
 const formCss = css({ display: 'grid', gap: t.s3 });
@@ -22,10 +25,23 @@ export function AgentEnvSection(handle: Handle) {
   let text = '';
   let saved = false;
   let seen: AgentEnv | undefined;
+  /** Which line of the box is not a name: the line's number, never its text. */
+  let error: string | undefined;
+  let form: HTMLElement | undefined;
 
   const save = async () => {
     saved = false;
-    const r = await act.run('save', () => s.client.agentEnvSet(envNames(text)));
+    const parsed = parseEnvNames(text);
+    if (!parsed.ok) {
+      // refused here: the core is not asked, and the keyboard goes to the box
+      error = parsed.error;
+      act.clear();
+      void handle.update();
+      handle.queueTask(() => form?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    error = undefined;
+    const r = await act.run('save', () => s.client.agentEnvSet(parsed.names));
     if (r) {
       saved = true;
       q.reload();
@@ -38,6 +54,7 @@ export function AgentEnvSection(handle: Handle) {
     if (q.data && q.data !== seen) {
       seen = q.data;
       text = q.data.pass.join('\n');
+      error = undefined;
     }
     return (
       <Group
@@ -55,8 +72,8 @@ export function AgentEnvSection(handle: Handle) {
       >
         <ErrorNote error={q.error ?? act.error} what="Environment" />
         <div mix={panelPad}>
-          <form mix={[formCss, on('submit', (e) => (e.preventDefault(), void save()))]}>
-            <Field label="Also pass these variables to agents (names only, one per line; a value is refused)">
+          <form mix={[formCss, ref((n: Element) => (form = n instanceof HTMLElement ? n : undefined)), on('submit', (e) => (e.preventDefault(), void save()))]}>
+            <Field label="Also pass these variables to agents (names only, one per line; a value is refused)" error={error}>
               {(id) => (
                 <textarea
                   id={id}
@@ -64,7 +81,8 @@ export function AgentEnvSection(handle: Handle) {
                   spellcheck={false}
                   placeholder={'AWS_PROFILE\nCLAUDE_CODE_USE_BEDROCK'}
                   value={text}
-                  mix={[mono, on('input', (e) => ((text = e.currentTarget.value), (saved = false), void handle.update()))]}
+                  {...errorAttrs(id, error)}
+                  mix={[mono, on('input', (e) => ((text = e.currentTarget.value), (saved = false), (error = undefined), void handle.update()))]}
                 />
               )}
             </Field>

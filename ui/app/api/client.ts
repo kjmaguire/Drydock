@@ -106,7 +106,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   /** How many tasks the project has (those in the given statuses when any are named). */
   taskCount(projectId: string, statuses?: string[]): Promise<TaskCount>;
   taskGet(id: string): Promise<TaskDetail>;
-  taskDiff(id: string): Promise<string>;
+  /**
+   * The task's diff evidence as text: the one with `evidenceId` (the core refuses an id that is not a diff of the task), or the
+   * newest when none is given. A screen that shows a patch beside an Approve button asks for the evidence its card is keyed on.
+   */
+  taskDiff(id: string, evidenceId?: number): Promise<string>;
   taskAssign(id: string, assignee: string, reviewer: string): Promise<Task>;
   /** Returns the run id. */
   taskStart(id: string): Promise<string>;
@@ -199,7 +203,7 @@ export function createClient(t: Transport): Client {
       const d = await t.call<TaskDetail>('task.get', { id });
       return { ...d, evidence: arr(d.evidence), reviews: arr(d.reviews), pending: arr(d.pending) };
     },
-    taskDiff: async (id) => (await t.call<string | null>('task.diff', { id })) ?? '',
+    taskDiff: async (id, evidenceId) => (await t.call<string | null>('task.diff', evidenceId === undefined ? { id } : { id, evidenceId })) ?? '',
     taskAssign: (id, assignee, reviewer) => t.call('task.assign', { id, assignee, reviewer }),
     taskStart: (id) => t.call('task.start', { id }),
     taskCancel: async (id) => {

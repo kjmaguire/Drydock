@@ -2,6 +2,10 @@
 // mcp.json ({"mcpServers": {...}}), or VS Code's mcp.json ({"servers": {...}}). Pure: it turns the file into library inputs
 // and says what it could not take. Secrets in the file (environment values, a bearer token) become write-only secrets that
 // go to the credential store, never plain settings.
+//
+// The file may come from a repository, and a server in it can name any program (audit 2026-10-16, M24). So a server that runs a
+// program is never ticked for the person, and importing only saves: nothing is started until the person presses the button on
+// the server's own card, which says which program that starts.
 
 import type { McpServerInput } from '../../api/mcpClient.ts';
 
@@ -16,6 +20,28 @@ export interface ImportCandidate {
 export interface ImportResult {
   candidates: ImportCandidate[];
   skipped: { name: string; reason: string }[];
+}
+
+/** The server runs a program on this computer (a command), as opposed to reaching a web address. */
+export const runsProgram = (c: ImportCandidate): boolean => c.input.transport === 'stdio';
+
+/** The servers ticked when the file has been read: the ones that reach an address. A program is ticked by the person, never for them. */
+export const startingChoice = (r: ImportResult): string[] => r.candidates.filter((c) => !runsProgram(c)).map((c) => c.input.id);
+
+/**
+ * A command line as one line of text. An argument with a space or a quote in it is put in quotes, so where one argument ends and
+ * the next begins can be read; nothing is cut or left out.
+ */
+export function commandText(argv: readonly string[]): string {
+  return argv.map((a) => (a === '' || /[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+}
+
+/**
+ * What is said once servers were imported: that nothing has been started yet and where to start one. `where` finishes
+ * "To start one, ..." (the button and the place it is).
+ */
+export function importedNote(n: number, where: string): string {
+  return `${n} server${n === 1 ? '' : 's'} imported. Nothing has been started: no program has run and no address has been contacted. To start one, ${where}; what it will run is shown beside the button.`;
 }
 
 type Raw = Record<string, unknown>;

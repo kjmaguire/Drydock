@@ -1,8 +1,8 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { ProviderDetail, ProviderEdit } from '../../api/providerClient.ts';
-import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
-import { ProviderDetailPanel } from './provider-detail.tsx';
+import { byLabel, byText, cleanup, drain, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { MAX_CONCURRENT_ERROR, ProviderDetailPanel } from './provider-detail.tsx';
 
 afterEach(cleanup);
 
@@ -131,6 +131,35 @@ describe('ProviderDetailPanel', () => {
     type(field, '90');
     await r.act(() => byText(r.container, 'button', 'Save settings').click());
     await waitFor(() => expect(updates[0]).toMatchObject({ id: 'prov_1', minEndpointUptime: 90 }), r);
+  });
+
+  it('a concurrency limit that is not a whole number is told under the field and nothing is sent, the typed key stays; empty is unlimited (M25)', async () => {
+    const updates: ProviderEdit[] = [];
+    const r = mount(
+      <ProviderDetailPanel id="prov_1" onChanged={() => undefined} />,
+      testServices({ providerDetail: async () => detail(), providerUpdate: async (e) => (updates.push(e), {}) as never }),
+    );
+    await waitFor(() => need(r, '[data-testid="price-row"]'), r);
+    const limit = () => byLabel<HTMLInputElement>(r.container, /^Max concurrent agents/);
+    const key = byLabel<HTMLInputElement>(r.container, /Replace the API key/);
+    type(key, 'sk-typed-but-not-sent');
+    for (const bad of ['many', '2.5', '1e3', '0', '-1', '4 agents']) {
+      type(limit(), bad);
+      await r.act(() => byText(r.container, 'button', 'Save settings').click());
+      await waitFor(() => expect(errorOf(limit())).toBe(MAX_CONCURRENT_ERROR), r);
+      await waitFor(() => expect(document.activeElement).toBe(limit()), r);
+    }
+    expect(updates).toEqual([]);
+    // the replacement key was not read, sent or cleared by the refused form
+    expect(key.value).toBe('sk-typed-but-not-sent');
+    await r.act(() => type(limit(), '4'));
+    expect(errorOf(limit())).toBe(null);
+    await r.act(() => byText(r.container, 'button', 'Save settings').click());
+    await waitFor(() => expect(updates[0]).toMatchObject({ id: 'prov_1', maxConcurrent: 4, apiKey: 'sk-typed-but-not-sent' }), r);
+    // empty still means unlimited (0)
+    type(limit(), '');
+    await r.act(() => byText(r.container, 'button', 'Save settings').click());
+    await waitFor(() => expect(updates[1]).toMatchObject({ id: 'prov_1', maxConcurrent: 0 }), r);
   });
 
   it('other providers have no endpoint uptime section or threshold, and send none', async () => {

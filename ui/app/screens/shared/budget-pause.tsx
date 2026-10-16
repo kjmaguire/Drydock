@@ -4,18 +4,11 @@ import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
-import { Field, formActions } from '../../ui/form.tsx';
+import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
+import { parseLimits, type LimitErrors } from '../budgets/budgets.ts';
 
 export const pctText = (p: number | null | undefined) => (p === null || p === undefined ? 'n/a' : `${Math.round(p * 100)}%`);
-
-/** Parse a number field: '' means unset. NaN is returned as undefined so the core never sees it. */
-export function numOrUndef(s: string): number | undefined {
-  const v = s.trim();
-  if (v === '') return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
 
 const panelCss = css({
   display: 'grid',
@@ -36,26 +29,45 @@ export function BudgetPausePanel(handle: Handle<{ payload: BudgetPausePayload; r
   let usd = '';
   let tokens = '';
   let turns = '';
+  // a new limit that is not a plain number is told under its field and nothing is sent (M25); an error goes when its field is edited
+  let errors: LimitErrors = {};
 
-  const resume = async (decision: 'approved' | 'rejected') => {
+  const resume = async (decision: 'approved' | 'rejected', button: HTMLElement) => {
     const { runId, requestId, onDone } = handle.props;
     if (!runId) return;
+    // stopping the run asks nothing of the limit fields: it must always be possible
+    const limits = decision === 'approved' ? parseLimits({ usd, tokens, turns }) : undefined;
+    if (limits && !limits.ok) {
+      errors = limits.errors;
+      act.clear();
+      handle.queueTask(() => button.closest('[data-testid="budget-pause"]')?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    errors = {};
     const r = await act.run(decision, () =>
       s.client.budgetResume({
         runId,
         requestId,
         decision,
-        limitUsd: decision === 'approved' ? numOrUndef(usd) : undefined,
-        limitTokens: decision === 'approved' ? numOrUndef(tokens) : undefined,
-        limitTurns: decision === 'approved' ? numOrUndef(turns) : undefined,
+        limitUsd: limits?.ok ? limits.usd : undefined,
+        limitTokens: limits?.ok ? limits.tokens : undefined,
+        limitTurns: limits?.ok ? limits.turns : undefined,
       }),
     );
     if (r !== undefined) onDone();
   };
 
-  const field = (label: string, value: () => string, set: (v: string) => void, mode: 'decimal' | 'numeric') => (
-    <Field label={label}>
-      {(id) => <input id={id} inputMode={mode} value={value()} mix={on('input', (e) => (set(e.currentTarget.value), void handle.update()))} />}
+  const field = (label: string, key: keyof LimitErrors, value: () => string, set: (v: string) => void, mode: 'decimal' | 'numeric') => (
+    <Field label={label} error={errors[key]}>
+      {(id) => (
+        <input
+          id={id}
+          inputMode={mode}
+          value={value()}
+          {...errorAttrs(id, errors[key])}
+          mix={on('input', (e) => (set(e.currentTarget.value), delete errors[key], void handle.update()))}
+        />
+      )}
     </Field>
   );
 
@@ -80,16 +92,16 @@ export function BudgetPausePanel(handle: Handle<{ payload: BudgetPausePayload; r
         <fieldset>
           <legend>Raise the limit (optional; only a limit the budget already has can be raised)</legend>
           <div mix={limits}>
-            {field('New USD limit', () => usd, (v) => (usd = v), 'decimal')}
-            {field('New token limit', () => tokens, (v) => (tokens = v), 'numeric')}
-            {field('New turn limit', () => turns, (v) => (turns = v), 'numeric')}
+            {field('New USD limit', 'usd', () => usd, (v) => (usd = v), 'decimal')}
+            {field('New token limit', 'tokens', () => tokens, (v) => (tokens = v), 'numeric')}
+            {field('New turn limit', 'turns', () => turns, (v) => (turns = v), 'numeric')}
           </div>
         </fieldset>
         <div mix={formActions}>
-          <Button variant="primary" disabled={act.busy !== '' || !runId || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} mix={on('click', () => void resume('approved'))}>
+          <Button variant="primary" disabled={act.busy !== '' || !runId || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} mix={on('click', (e) => void resume('approved', e.currentTarget))}>
             Resume
           </Button>
-          <Button disabled={act.busy !== '' || !runId} mix={on('click', () => void resume('rejected'))}>
+          <Button disabled={act.busy !== '' || !runId} mix={on('click', (e) => void resume('rejected', e.currentTarget))}>
             Stop the run
           </Button>
         </div>

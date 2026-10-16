@@ -22,6 +22,7 @@ import { Page } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t } from '../../ui/tokens.ts';
+import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { byRole, onTeam, shortDescription } from '../skills/skills.ts';
 import { TaskDecisions } from '../shared/explain.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
@@ -172,6 +173,8 @@ const statCss = css({
 });
 
 const rowsCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+// The two long lists (ui/windowed-list.tsx, L37) are not a grid with a gap: each of their rows carries its own space below it.
+const rowSpace = css({ marginBottom: t.s2 });
 const rowCss = css({
   display: 'flex',
   alignItems: 'center',
@@ -248,27 +251,37 @@ export const serversOf = (servers: readonly McpServer[], agentId: string): McpSe
 function SkillRows(handle: Handle<{ skills: readonly Skill[]; agent: Agent; busy: string; onToggle: (k: Skill, on: boolean) => void; full?: boolean }>) {
   return () => {
     const { skills, agent, busy, onToggle, full } = handle.props;
+    // a project can have hundreds of skills (a vendor's registry alone has 175): a long list draws only the rows near the view
     return (
-      <ul mix={rowsCss} aria-label="Skills">
-        {skills.map((k) => {
-          const included = byRole(k, agent.role);
-          const given = (k.agents ?? []).includes(agent.id);
-          const on = included || given;
-          return (
-            <li key={k.name} mix={rowCss} data-testid="agent-skill" data-skill={k.name} data-on={on ? 'true' : 'false'}>
-              <span class="ico" aria-hidden="true">
-                <Icon icon={BookOpen} size={15} />
-              </span>
-              <span class="what">
-                <code>{k.name}</code>
-                {k.description ? <small class="desc">{full ? k.description : shortDescription(k.description)}</small> : null}
-                {included ? <small>{(k.roles ?? []).length ? `Every ${(k.roles ?? []).join(', ')} agent gets it` : 'The whole team gets it'}</small> : null}
-              </span>
-              <Switch label={`${k.name} for ${agent.name}`} checked={on} disabled={included || busy === k.name} onChange={(v) => onToggle(k, v)} />
-            </li>
-          );
-        })}
-      </ul>
+      <WindowedList
+        {...listOf(
+          skills,
+          (k) => k.name,
+          (k) => {
+            const included = byRole(k, agent.role);
+            const given = (k.agents ?? []).includes(agent.id);
+            const on = included || given;
+            return (
+              <div role="listitem" mix={[rowCss, rowSpace]} data-testid="agent-skill" data-skill={k.name} data-on={on ? 'true' : 'false'}>
+                <span class="ico" aria-hidden="true">
+                  <Icon icon={BookOpen} size={15} />
+                </span>
+                <span class="what">
+                  <code>{k.name}</code>
+                  {k.description ? <small class="desc">{full ? k.description : shortDescription(k.description)}</small> : null}
+                  {included ? <small>{(k.roles ?? []).length ? `Every ${(k.roles ?? []).join(', ')} agent gets it` : 'The whole team gets it'}</small> : null}
+                </span>
+                <Switch label={`${k.name} for ${agent.name}`} checked={on} disabled={included || busy === k.name} onChange={(v) => onToggle(k, v)} />
+              </div>
+            );
+          },
+        )}
+        label="Skills"
+        role="list"
+        testId="agent-skills-list"
+        maxHeight={640}
+        estimate={64}
+      />
     );
   };
 }
@@ -306,20 +319,45 @@ function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: strin
 function MemoryNotes(handle: Handle<{ entries: readonly MemoryEntry[]; limit?: number }>) {
   return () => {
     const { entries, limit } = handle.props;
-    const shown = limit ? entries.slice(0, limit) : entries;
+    if (limit) {
+      return (
+        <div style={{ display: 'grid', gap: '8px' }}>
+          {entries.slice(0, limit).map((e) => (
+            <div key={e.id} mix={memCss} data-testid="agent-memory">
+              <b>{e.title}</b>
+              <p>{shortDescription(e.body, 160)}</p>
+              <small>
+                {e.kind.replace(/_/g, ' ')}
+                {e.source ? ` · from ${e.source}` : ''}
+              </small>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    // all the notes: a project can accept hundreds, each drawn as Markdown, so a long list draws only the notes near the view
     return (
-      <div style={{ display: 'grid', gap: '8px' }}>
-        {shown.map((e) => (
-          <div key={e.id} mix={memCss} data-testid="agent-memory">
-            <b>{e.title}</b>
-            {limit ? <p>{shortDescription(e.body, 160)}</p> : <Markdown source={e.body} />}
-            <small>
-              {e.kind.replace(/_/g, ' ')}
-              {e.source ? ` · from ${e.source}` : ''}
-            </small>
-          </div>
-        ))}
-      </div>
+      <WindowedList
+        {...listOf(
+          entries,
+          (e) => e.id,
+          (e) => (
+            <div role="listitem" mix={[memCss, rowSpace]} data-testid="agent-memory">
+              <b>{e.title}</b>
+              <Markdown source={e.body} />
+              <small>
+                {e.kind.replace(/_/g, ' ')}
+                {e.source ? ` · from ${e.source}` : ''}
+              </small>
+            </div>
+          ),
+        )}
+        label="Accepted notes"
+        role="list"
+        testId="agent-memory-list"
+        maxHeight={640}
+        estimate={110}
+      />
     );
   };
 }

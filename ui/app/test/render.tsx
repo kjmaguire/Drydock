@@ -181,6 +181,16 @@ export function byText<T extends HTMLElement = HTMLElement>(root: ParentNode, se
   return hit;
 }
 
+/**
+ * The error a Field shows under a control: the text of the alert the control's aria-describedby names, or null when the control
+ * is not marked invalid or points at no alert. A control that is not `aria-invalid="true"` has no error, whatever else it points at.
+ */
+export function errorOf(el: HTMLElement): string | null {
+  if (el.getAttribute('aria-invalid') !== 'true') return null;
+  const note = el.ownerDocument.getElementById(el.getAttribute('aria-describedby') ?? '');
+  return note && note.getAttribute('role') === 'alert' ? (note.textContent ?? '') : null;
+}
+
 /** Find a form control by its label text (label[for] or wrapping label or aria-label). */
 export function byLabel<T extends HTMLElement = HTMLInputElement>(root: ParentNode, text: string | RegExp): T {
   const match = (s: string | null | undefined) => {

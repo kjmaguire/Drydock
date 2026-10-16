@@ -11,12 +11,23 @@ test('Settings: extra environment variables are named, never valued; the Inspect
   const env = page.getByTestId('agent-env');
   await expect(env).toContainText('Agent programs start with a trimmed environment');
   const box = env.getByLabel(/Also pass these variables/);
-  await box.fill('AWS_PROFILE=work');
+  // a pasted NAME=value is refused on the page (L38): the core is never asked, and no message repeats the line
+  const sent: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/rpc/agentenv.set')) sent.push(req.postData() ?? '');
+  });
+  await box.fill('AWS_PROFILE\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI-e2e-value');
   await env.getByRole('button', { name: 'Save' }).click();
-  await expect(env.getByRole('alert')).toContainText('names only');
+  await expect(env.getByRole('alert')).toHaveText('Line 2 is not a variable name. Give names only, never values.');
+  await expect(box).toHaveAttribute('aria-invalid', 'true');
+  await expect(box).toBeFocused();
+  await expect(page.locator('body')).not.toContainText('wJalrXUtnFEMI-e2e-value');
+  expect(sent).toEqual([]);
   await box.fill('AWS_PROFILE\nCLAUDE_CODE_USE_BEDROCK');
+  await expect(env.getByRole('alert')).toHaveCount(0);
   await env.getByRole('button', { name: 'Save' }).click();
   await expect(env.getByRole('status')).toContainText('Saved');
+  expect(sent).toEqual([JSON.stringify({ names: ['AWS_PROFILE', 'CLAUDE_CODE_USE_BEDROCK'] })]);
   await page.reload();
   await workspaceNav(page, 'nav-settings');
   await expect(page.getByTestId('agent-env').getByLabel(/Also pass these variables/)).toHaveValue('AWS_PROFILE\nCLAUDE_CODE_USE_BEDROCK');

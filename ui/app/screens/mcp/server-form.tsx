@@ -1,5 +1,8 @@
 // Connect an MCP server once (add) or change one (edit). The credentials go to the Windows credential store and are never
 // shown again: secret values and the bearer token are write-only fields, and an empty one keeps what is stored.
+//
+// The names of a program's environment variables are checked before anything is sent (audit 2026-10-16, L38): the page says
+// which line of the box, or which secret row, is not a name, and never repeats what was typed there.
 
 import { css, on, type Handle } from 'remix/component';
 import { KeyRound, Plus, Trash2 } from 'lucide';
@@ -9,10 +12,10 @@ import { action, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
-import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Checkbox, errorAttrs, errorCss, Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
-import { buildInput, formValues } from './server-input.ts';
+import { buildInput, formValues, type FormProblems } from './server-input.ts';
 
 const full = css({ gridColumn: '1 / -1' });
 const fieldsetCss = css({
@@ -33,28 +36,44 @@ export function McpServerForm(handle: Handle<{ initial?: McpLibraryServer; onDon
   watch(handle, s.workspace);
   const act = action(handle);
   const v = formValues(handle.props.initial);
-  let localErr: Error | undefined;
+  /** Which environment fields are not names, as the last save found; each is cleared when its field is edited. */
+  let problems: FormProblems | undefined;
 
   const set = <K extends keyof typeof v>(k: K, value: (typeof v)[K]) => {
     v[k] = value;
     void handle.update();
   };
   const text = (k: 'id' | 'display' | 'url' | 'cwd' | 'token') => on<HTMLInputElement, 'input'>('input', (e) => set(k, e.currentTarget.value));
-  const area = (k: 'argv' | 'env') => on<HTMLTextAreaElement, 'input'>('input', (e) => set(k, e.currentTarget.value));
+  const area = (k: 'argv' | 'env') =>
+    on<HTMLTextAreaElement, 'input'>('input', (e) => {
+      if (k === 'env' && problems) problems = { ...problems, env: undefined };
+      set(k, e.currentTarget.value);
+    });
+  const nameRow = (i: number, name: string) => {
+    if (problems) problems = { ...problems, secrets: problems.secrets.map((x, j) => (j === i ? undefined : x)) };
+    set('secrets', v.secrets.map((x, j) => (j === i ? { ...x, name } : x)));
+  };
+
+  const removeRow = (i: number) => {
+    if (problems) problems = { ...problems, secrets: [] };
+    set('secrets', v.secrets.filter((_, j) => j !== i));
+  };
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
-    localErr = undefined;
+    const form = e.currentTarget instanceof HTMLFormElement ? e.currentTarget : undefined;
     const { initial, onDone } = handle.props;
-    let input;
-    try {
-      input = buildInput(v, initial);
-    } catch (err) {
-      localErr = err as Error;
+    const built = buildInput(v, initial);
+    if (!built.ok) {
+      // refused here: the core is not asked, and the keyboard goes to the first field that is wrong
+      problems = built.problems;
+      act.clear();
       void handle.update();
+      handle.queueTask(() => form?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    const r = await act.run('save', () => s.client.mcpLibSave(input));
+    problems = undefined;
+    const r = await act.run('save', () => s.client.mcpLibSave(built.input));
     v.token = '';
     void handle.update();
     if (r) onDone(r);
@@ -66,7 +85,7 @@ export function McpServerForm(handle: Handle<{ initial?: McpLibraryServer; onDon
     return (
       <form mix={[formGrid, on<HTMLFormElement, 'submit'>('submit', submit)]} aria-label={initial ? `Edit ${initial.display}` : 'Connect an MCP server'} data-testid="mcp-form">
         <div mix={full}>
-          <ErrorNote error={localErr ?? act.error} what="Server not saved" />
+          <ErrorNote error={act.error} what="Server not saved" />
           <ReadOnlyNote />
         </div>
         <Field
@@ -151,32 +170,44 @@ export function McpServerForm(handle: Handle<{ initial?: McpLibraryServer; onDon
               </Field>
             </div>
             <Field label="Working folder (optional)">{(id) => <input id={id} value={v.cwd} spellcheck={false} mix={text('cwd')} />}</Field>
-            <Field label="Environment, NAME=value per line (not secret)">
-              {(id) => <textarea id={id} value={v.env} rows={2} spellcheck={false} mix={area('env')} />}
+            <Field label="Environment, NAME=value per line (not secret)" error={problems?.env}>
+              {(id) => <textarea id={id} value={v.env} rows={2} spellcheck={false} {...errorAttrs(id, problems?.env)} mix={area('env')} />}
             </Field>
             <fieldset mix={fieldsetCss}>
               <legend>Secret environment variables (kept in the Windows credential store, never shown again)</legend>
-              {v.secrets.map((row, i) => (
-                <div key={i} mix={secretRow}>
-                  <input
-                    aria-label={`Secret name ${i + 1}`}
-                    value={row.name}
-                    disabled={row.existing}
-                    placeholder="API_KEY"
-                    spellcheck={false}
-                    mix={on('input', (e) => set('secrets', v.secrets.map((x, j) => (j === i ? { ...x, name: e.currentTarget.value } : x))))}
-                  />
-                  <input
-                    aria-label={`Secret value ${i + 1}`}
-                    type="password"
-                    autocomplete="off"
-                    value={row.value}
-                    placeholder={row.existing ? 'leave empty to keep' : 'value'}
-                    mix={on('input', (e) => set('secrets', v.secrets.map((x, j) => (j === i ? { ...x, value: e.currentTarget.value } : x))))}
-                  />
-                  <IconButton icon={Trash2} label="Remove" mix={[on('click', () => set('secrets', v.secrets.filter((_, j) => j !== i)))]} />
-                </div>
-              ))}
+              {v.secrets.map((row, i) => {
+                const err = problems?.secrets[i];
+                const rowId = `${handle.id}-secret-${i}`;
+                return (
+                  <div key={i}>
+                    <div mix={secretRow}>
+                      <input
+                        aria-label={`Secret name ${i + 1}`}
+                        value={row.name}
+                        disabled={row.existing}
+                        placeholder="API_KEY"
+                        spellcheck={false}
+                        {...errorAttrs(rowId, err)}
+                        mix={on('input', (e) => nameRow(i, e.currentTarget.value))}
+                      />
+                      <input
+                        aria-label={`Secret value ${i + 1}`}
+                        type="password"
+                        autocomplete="off"
+                        value={row.value}
+                        placeholder={row.existing ? 'leave empty to keep' : 'value'}
+                        mix={on('input', (e) => set('secrets', v.secrets.map((x, j) => (j === i ? { ...x, value: e.currentTarget.value } : x))))}
+                      />
+                      <IconButton icon={Trash2} label="Remove" mix={[on('click', () => removeRow(i))]} />
+                    </div>
+                    {err ? (
+                      <p mix={errorCss} id={`${rowId}-error`} role="alert">
+                        {err}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
               <div>
                 <Button size="sm" variant="ghost" icon={Plus} mix={[on('click', () => set('secrets', [...v.secrets, { name: '', value: '', existing: false }]))]}>
                   Add a secret

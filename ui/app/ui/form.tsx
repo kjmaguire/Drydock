@@ -5,7 +5,8 @@ import { t } from './tokens.ts';
 const fieldCss = css({ display: 'grid', gap: '6px', minWidth: '0' });
 const labelCss = css({ fontSize: t.textSm, fontWeight: '500', color: t.text });
 const hintCss = css({ fontSize: t.textSm, color: t.textMuted, margin: '0' });
-const errorCss = css({ fontSize: t.textSm, color: t.danger, margin: '0' });
+/** The text of a field's error. A Field draws its own; a control that is not in a Field (a row of a list) uses it for the error it shows. */
+export const errorCss = css({ fontSize: t.textSm, color: t.danger, margin: '0' });
 
 /**
  * A labelled form control. The label is tied to the control by id, so its accessible name is exactly the label text (a
@@ -23,13 +24,21 @@ export function Field(handle: Handle<{ label: RemixNode; hint?: RemixNode; error
         {children(id)}
         {hint ? <p mix={hintCss}>{hint}</p> : null}
         {error ? (
-          <p mix={errorCss} role="alert">
+          <p mix={errorCss} id={`${id}-error`} role="alert">
             {error}
           </p>
         ) : null}
       </div>
     );
   };
+}
+
+/**
+ * The attributes that tie a control to the error its Field shows under it: the control is marked invalid and the error is its
+ * description. Spread them on the control with the id the Field gave it: `<input id={id} {...errorAttrs(id, error)} />`.
+ */
+export function errorAttrs(id: string, error: string | undefined): { 'aria-invalid'?: 'true'; 'aria-describedby'?: string } {
+  return error ? { 'aria-invalid': 'true', 'aria-describedby': `${id}-error` } : {};
 }
 
 /** Grid for forms: fields flow in columns that never get narrower than 220px. */

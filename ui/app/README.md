@@ -30,9 +30,9 @@ app/
   state/              eventStore, live reads (live.ts), services/query/action/watch (services.tsx),
                       models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts (the selected project's
                       shared reads; its task list comes with the project's task count: taskList, taskTotal, taskCoverage)
-  lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total)
+  lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
-                      virtual-list (windowed feeds; its arithmetic in virtual.ts)
+                      virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
   shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
@@ -137,8 +137,15 @@ Use the kit before writing CSS:
   `row`, `stack`, `cardGrid` (layout.tsx).
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).
-- `Field` (label tied by id; children receives the id), `formGrid`, `formStack`, `formActions`, `Checkbox`, `Switch`
-  (form.tsx). Native `input`, `textarea`, `button`, `table`, `kbd`, `code`, `pre` are styled by the base layer.
+- `Field` (label tied by id; children receives the id; `error` shows a `role="alert"` message under the control), `errorAttrs(id, error)`
+  (spread on the control: `aria-invalid` and `aria-describedby`), `errorCss` (for an error outside a `Field`), `formGrid`, `formStack`,
+  `formActions`, `Checkbox`, `Switch` (form.tsx). Native `input`, `textarea`, `button`, `table`, `kbd`, `code`, `pre` are styled by the base layer.
+- **A number or a name a person types is checked on the page before anything is sent.** `lib/limits.ts` reads a limit exactly
+  (`parseDollars`, `parseWhole`, `parseInteger`, `parsePercent`: empty is "not set", anything that is not a plain number is an
+  error, never "no limit"; audit 2026-10-16, M25) and `lib/envname.ts` checks an environment variable name against the core's rule
+  (L38). A form keeps the message in a variable, shows it with `Field error` and `errorAttrs`, clears it when the field is typed in,
+  sends nothing, and moves the keyboard to the first control with `aria-invalid="true"` in `handle.queueTask`. A message about a
+  line of a box names the line (`boxLines` counts them as the box shows them) and never repeats what is on it.
 - `Select` (select.tsx): a themed dropdown, a `role="combobox"` button showing the chosen option with a chevron, over an
   anchored `listbox` of `option`s drawn with the tokens in both themes (check on the chosen one, a quiet `hint`, disabled
   options). Keyboard: arrows, Home, End, Enter, Space, Escape, letters jump to a match (and choose it while closed). The
@@ -165,6 +172,13 @@ Use the kit before writing CSS:
   `ref(list.scroller)` and `on('scroll', () => list.onScroll())` on the scroller and `handle.queueTask(() => list.settle())`
   in render. Only the rows near the view are in the DOM; `list.stick` says the reader is at the bottom, `list.toBottom()`
   jumps there. Row keys must name one place in the list (it anchors the view on them).
+- `WindowedList` (windowed-list.tsx) for a long list read from the top (findings, the lines of a patch, an agent's skills and
+  notes; audit 2026-10-16, L37): give it `count`, `rowKey(i)`, `renderRow(i)` (for an array, spread `listOf(items, key, render)`), a
+  `label` and a `role` (`list`, `table`, `region`; the rows carry the matching roles). Up to 100 rows are drawn whole, in the page; more get a named scroller (`tabindex="0"`) of a
+  `maxHeight` that draws the rows near the view. Select all, Copy and find-in-page reach only the rows drawn.
+- `pollWhile` (lib/poll.ts) for a read that repeats: it waits for each read to settle, then waits at least 500 ms (twice the time
+  the read took when longer, at most 5 s), so reads never pile up behind a busy core. `Query.reload()` and `Live.reload()` return
+  a promise that settles with the read.
 - Colors only through tokens (`t.text`, `t.bgSurface`, `tone.ok`, ...), never hex values in screens. Both themes come
   from the same tokens.
 

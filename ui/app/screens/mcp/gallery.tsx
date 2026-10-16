@@ -21,6 +21,8 @@ import { Icon } from '../../ui/icon.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { Section } from '../../ui/layout.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
+import { ReachNote } from './command-line.tsx';
+import { importedNote } from './import.ts';
 import { ImportServers } from './import-panel.tsx';
 import { OAuthPanel } from './oauth-panel.tsx';
 import { McpServerForm } from './server-form.tsx';
@@ -303,6 +305,8 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
 function OwnServerCard(handle: Handle<{ server: McpLibraryServer; onChanged: () => void }>) {
   const s = services(handle);
   const act = action(handle);
+  // the note beside the button says which program Test connection starts (M24): the button is described by it
+  const reachId = `reach-${handle.id}`;
   return () => {
     const { server: x, onChanged } = handle.props;
     const id = identityLine(x.serverInfo);
@@ -354,11 +358,13 @@ function OwnServerCard(handle: Handle<{ server: McpLibraryServer; onChanged: () 
             <p mix={instrCss}>{x.serverInfo.instructions}</p>
           </details>
         ) : null}
+        <ReachNote server={x} lead="Pressing Test connection" id={reachId} />
         <div class="row">
           <Button
             size="sm"
             icon={RefreshCw}
             disabled={act.busy !== ''}
+            aria-describedby={reachId}
             mix={[
               on('click', async () => {
                 await act.run('discover', () => s.client.mcpLibDiscover(x.id));
@@ -462,7 +468,7 @@ export function OwnServers(handle: Handle<{ linked: readonly (string | undefined
               onDone={(n) => {
                 set(() => {
                   importing = false;
-                  note = `${n} server${n === 1 ? '' : 's'} imported.`;
+                  note = importedNote(n, 'press Test connection on its card below');
                 });
                 reload();
               }}

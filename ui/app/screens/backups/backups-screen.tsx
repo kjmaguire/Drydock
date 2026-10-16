@@ -11,7 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, faint, kv, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
-import { Checkbox, Field, formActions } from '../../ui/form.tsx';
+import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Callout, Done, Group, intro, panel, panelPad, plainList, settingsColumn, tableWrap, Warn } from '../settings/settings-kit.tsx';
@@ -21,10 +21,11 @@ import {
   fingerprint,
   formFrom,
   madeMessage,
+  parseSchedule,
   restoreTitle,
   settingsKey,
-  settingsPayload,
   type Checked,
+  type ScheduleErrors,
   type ScheduleForm,
 } from './backups.ts';
 
@@ -139,6 +140,8 @@ export function BackupsScreen(handle: Handle) {
   // the schedule form: starts again from the core's answer whenever that answer changes
   let formKey = '';
   let form: ScheduleForm = { enabled: false, dir: '', daily: '', weekly: '' };
+  // a count that is not a whole number is told under its field and nothing is sent (M25); an error goes when its field is edited
+  let errors: ScheduleErrors = {};
 
   const reloadAll = () => {
     list.reload();
@@ -146,6 +149,7 @@ export function BackupsScreen(handle: Handle) {
   };
   const edit = (p: Partial<ScheduleForm>) => {
     form = { ...form, ...p };
+    errors = { ...errors, daily: 'daily' in p ? undefined : errors.daily, weekly: 'weekly' in p ? undefined : errors.weekly };
     saved = false;
     void handle.update();
   };
@@ -169,9 +173,17 @@ export function BackupsScreen(handle: Handle) {
     void handle.update();
   };
 
-  const saveSchedule = async () => {
+  const saveSchedule = async (formEl: HTMLFormElement) => {
     saved = false;
-    const r = await saveAct.run('save', () => s.client.backupSettingsSet(settingsPayload(form)));
+    const parsed = parseSchedule(form);
+    if (!parsed.ok) {
+      errors = parsed.errors;
+      saveAct.clear();
+      handle.queueTask(() => formEl.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    errors = {};
+    const r = await saveAct.run('save', () => s.client.backupSettingsSet(parsed.payload));
     if (r) {
       saved = true;
       reloadAll();
@@ -269,7 +281,7 @@ export function BackupsScreen(handle: Handle) {
                     <dt>Last successful backup</dt>
                     <dd data-testid="backup-last-success">{st.lastSuccess ? formatDateTime(st.lastSuccess) : 'none yet'}</dd>
                   </dl>
-                  <form aria-label="Backup schedule" mix={on('submit', (e) => (e.preventDefault(), void saveSchedule()))}>
+                  <form aria-label="Backup schedule" mix={on('submit', (e) => (e.preventDefault(), void saveSchedule(e.currentTarget)))}>
                     <div mix={scheduleGrid}>
                       <div class="wide">
                         <ErrorNote error={saveAct.error} what="Settings not saved" />
@@ -294,11 +306,11 @@ export function BackupsScreen(handle: Handle) {
                           )}
                         </Field>
                       </div>
-                      <Field label="Daily backups to keep">
-                        {(id) => <input id={id} inputMode="numeric" value={form.daily} mix={on('input', (e) => edit({ daily: e.currentTarget.value }))} />}
+                      <Field label="Daily backups to keep" error={errors.daily}>
+                        {(id) => <input id={id} inputMode="numeric" value={form.daily} {...errorAttrs(id, errors.daily)} mix={on('input', (e) => edit({ daily: e.currentTarget.value }))} />}
                       </Field>
-                      <Field label="Weekly backups to keep">
-                        {(id) => <input id={id} inputMode="numeric" value={form.weekly} mix={on('input', (e) => edit({ weekly: e.currentTarget.value }))} />}
+                      <Field label="Weekly backups to keep" error={errors.weekly}>
+                        {(id) => <input id={id} inputMode="numeric" value={form.weekly} {...errorAttrs(id, errors.weekly)} mix={on('input', (e) => edit({ weekly: e.currentTarget.value }))} />}
                       </Field>
                       <div mix={formActions}>
                         <Button type="submit" variant="primary" disabled={saveAct.busy !== ''}>

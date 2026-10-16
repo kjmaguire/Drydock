@@ -137,6 +137,37 @@ describe('typed client', () => {
   const sent = (f: { mock: { calls: { arguments: unknown[] }[] } }) =>
     f.mock.calls.map((c) => c.arguments as unknown as [string, RequestInit]).map(([url, init]) => [url, JSON.parse(init.body as string)]);
 
+  it('asks for the diff evidence a card is keyed on, and for the newest when no id is given (L36)', async () => {
+    const f = mock.fn(async () => json({ result: 'diff --git a/x b/x\n' }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.taskDiff('t1')).toBe('diff --git a/x b/x\n');
+    expect(await c.taskDiff('t1', 7)).toBe('diff --git a/x b/x\n');
+    expect(sent(f)).toEqual([
+      ['/rpc/task.diff', { id: 't1' }],
+      ['/rpc/task.diff', { id: 't1', evidenceId: 7 }],
+    ]);
+  });
+
+  it('creates a support bundle without overwrite unless asked, and reads the answer "a file is already there" as what it is (L39)', async () => {
+    const answers: unknown[] = [
+      { exists: true, path: 'C:\\x\\b.zip', size: 4096 },
+      { path: 'C:\\x\\b.zip', size: 5000, files: null, report: { files: null, totalSecretsRedacted: 0, notice: 'n' }, notice: 'n' },
+      { path: 'C:\\x\\b.zip', size: 5000, replaced: true, files: [], report: { files: [], totalSecretsRedacted: 2, notice: 'n' }, notice: 'n' },
+    ];
+    const f = mock.fn(async () => json({ result: answers.shift() }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.supportbundleCreate({ dest: 'C:\\x\\b.zip' })).toEqual({ exists: true, path: 'C:\\x\\b.zip', size: 4096 });
+    const made = await c.supportbundleCreate({});
+    expect('exists' in made).toBe(false);
+    expect(made).toMatchObject({ path: 'C:\\x\\b.zip', size: 5000, replaced: false });
+    expect(await c.supportbundleCreate({ dest: 'C:\\x\\b.zip', overwrite: true })).toMatchObject({ replaced: true });
+    expect(sent(f)).toEqual([
+      ['/rpc/supportbundle.create', { dest: 'C:\\x\\b.zip', eventLimit: 0, includeRun: '', acknowledgeRun: false, overwrite: false }],
+      ['/rpc/supportbundle.create', { dest: '', eventLimit: 0, includeRun: '', acknowledgeRun: false, overwrite: false }],
+      ['/rpc/supportbundle.create', { dest: 'C:\\x\\b.zip', eventLimit: 0, includeRun: '', acknowledgeRun: false, overwrite: true }],
+    ]);
+  });
+
   it('counts the tasks and fills a missing total with zero (M21)', async () => {
     const f = mock.fn(async () => json({ result: { total: 612 } }));
     const c = createClient(transport(f as unknown as typeof fetch));

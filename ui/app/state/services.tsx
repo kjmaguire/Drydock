@@ -55,7 +55,8 @@ export interface Query<T> {
   readonly data: T | undefined;
   readonly error: Error | undefined;
   readonly loading: boolean;
-  reload(): void;
+  /** Read again. The promise settles when that read has (answered, failed or been replaced by a newer one); it never rejects. */
+  reload(): Promise<void>;
   /** Show an answer the caller already has (an action's result) instead of reading again. */
   set(data: T): void;
 }

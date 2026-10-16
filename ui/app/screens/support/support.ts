@@ -1,16 +1,24 @@
 // Pure helpers for the Support bundle screen.
 
 import type { BundleFileReport, BundleReport } from '../../api/pkgTypes.ts';
-import { numOrUndef } from '../settings/forms.ts';
+import { parseWhole } from '../../lib/limits.ts';
 
 export interface BundleOpts {
   eventLimit: number | undefined;
   includeRun: string | undefined;
 }
 
-/** The options a preview and a create send: '' means the core's default, a run id is trimmed. */
-export function bundleOpts(events: string, run: string): BundleOpts {
-  return { eventLimit: numOrUndef(events), includeRun: run.trim() || undefined };
+/** What the events field says when its text is not a whole number (M25): a typo is never turned into the core's default. */
+export const EVENTS_ERROR = 'Enter how many recent events to list as a whole number greater than zero, for example 500, or leave it empty for the default.';
+
+/**
+ * The options a preview and a create send: '' means the core's default, a run id is trimmed. Text in the events field that is not
+ * a whole number is an error to show under the field, and nothing is sent.
+ */
+export function bundleOpts(events: string, run: string): { ok: true; opts: BundleOpts } | { ok: false; error: string } {
+  const n = parseWhole(events, 1, EVENTS_ERROR);
+  if (!n.ok) return { ok: false, error: n.error };
+  return { ok: true, opts: { eventLimit: n.value, includeRun: run.trim() || undefined } };
 }
 
 /** A preview belongs to the choices it was made for. */

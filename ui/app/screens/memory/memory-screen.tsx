@@ -1,5 +1,9 @@
 // Project memory: decisions, conventions and known issues agents read. Agents (and the human) propose entries; only an entry
 // the human accepts reaches agents. Entry text is outside text and is rendered inert.
+//
+// An entry's text is shown whole, as it was written, in a box of a most height that scrolls and can be reached by keyboard, with its
+// length beside it (audit 2026-10-16, M26). It is not drawn as Markdown: the Markdown view shows the end of a long paragraph behind
+// a button and leaves out link definitions, so what the person read would not be all the text that becomes the project's memory.
 
 import { css, on, type Handle } from 'remix/component';
 import { Brain, Check, Search, Trash2, X } from 'lucide';
@@ -13,9 +17,9 @@ import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
-import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
-import { kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memoryTone } from './memory.ts';
+import { visible } from '../../lib/visible.ts';
+import { bodyNote, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memoryTone } from './memory.ts';
 
 const listCss = css({
   margin: '0',
@@ -52,6 +56,24 @@ const entryCss = css({
   '&[data-status="rejected"] .body': { color: t.textMuted },
 });
 
+// the text of an entry: all of it, in a box that stops growing at a height and scrolls
+const bodyBox = css({
+  display: 'block',
+  margin: '0',
+  padding: `${t.s2} ${t.s3}`,
+  maxHeight: '320px',
+  overflow: 'auto',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: t.bgApp,
+  fontFamily: t.mono,
+  fontSize: t.textSm,
+  lineHeight: '1.55',
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  '&:focus-visible': { outline: 'none', boxShadow: t.focus },
+});
+
 /** One memory entry with its decision buttons. Delete asks first. */
 function MemoryCard(
   handle: Handle<{
@@ -69,6 +91,9 @@ function MemoryCard(
   };
   return () => {
     const { e, busy, onAccept, onReject, onDelete } = handle.props;
+    // the text comes from the core: a body that is not text is shown as no text rather than blanking the page
+    const body = typeof e.body === 'string' ? e.body : '';
+    const note = bodyNote(body);
     return (
       <li mix={entryCss} data-testid="memory" data-status={e.status} data-title={e.title}>
         <header>
@@ -78,7 +103,12 @@ function MemoryCard(
         </header>
         <p class="meta">{memoryMeta(e, formatDateTime(e.updated))}</p>
         <div class="body">
-          <Markdown source={e.body} maxChars={6000} />
+          <pre mix={bodyBox} role="group" aria-label={`Full text of the ${e.status === 'proposed' ? 'proposal' : 'entry'}`} tabIndex={0} data-testid="memory-body">
+            {visible(body)}
+          </pre>
+          <p class="meta" data-testid="memory-chars" data-over={String(note.over)}>
+            {note.text}
+          </p>
         </div>
         <div class="actions">
           {e.status === 'proposed' ? (

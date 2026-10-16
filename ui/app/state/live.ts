@@ -72,12 +72,15 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
     this.#gen++;
   }
 
-  /** Read again, keeping the current data on screen until the answer arrives. */
-  reload = (): void => {
-    if (!this.#enabled) return;
+  /**
+   * Read again, keeping the current data on screen until the answer arrives. The promise it returns settles when this read has: it
+   * answered, failed (the failure is in `error`), or a newer read took its place. It never rejects, so a poll can wait for it.
+   */
+  reload = (): Promise<void> => {
+    if (!this.#enabled) return Promise.resolve();
     const my = ++this.#gen;
     this.loading = true;
-    Promise.resolve()
+    return Promise.resolve()
       .then(() => this.#opts.load())
       .then(
         (data) => {

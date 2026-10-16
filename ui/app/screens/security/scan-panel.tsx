@@ -2,20 +2,23 @@
 // the findings with their filters, the tools on this computer with the rules folder, and the history. The project's Security
 // page and the workspace Security page both render ScanPanel over a scope (scan-scope.ts). A finding names the rule, the file
 // and the line; a secret's value is never shown. The core does the work (internal/scan); this is a projection of
-// security.scan.get re-read on security.* events and, while a scan runs, polled every 500 ms for the counters.
+// security.scan.get re-read on security.* events and, while a scan runs, read again for the counters: one read at a time, the next
+// planned when the last has answered and later when the core is slow (lib/poll.ts).
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { KeyRound, Package, ScanSearch, type IconNode } from 'lucide';
 import type { ScanToolName } from '../../api/securityClient.ts';
 import type { EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity, ToolInfo, ToolJob } from '../../api/securityTypes.ts';
 import { formatBytes, formatDateTime } from '../../lib/format.ts';
+import { pollWhile } from '../../lib/poll.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Section, card, listCard, spacer, tableCard } from '../../ui/layout.tsx';
+import { Section, card, listCard, spacer } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
+import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { Meter } from '../budgets/meter.tsx';
 import type { ScanScope } from './scan-scope.ts';
 import {
@@ -41,7 +44,6 @@ import {
   whereText,
 } from './security.ts';
 
-const POLL_MS = 500;
 const HISTORY = 10;
 
 const ENGINE_ICON: Record<EngineID, IconNode> = { secrets: KeyRound, deps: Package, sast: ScanSearch };
@@ -97,12 +99,23 @@ const chipCss = css({
 const chipSep = css({ width: '1px', height: '16px', background: t.border, margin: '0 4px' });
 const countCss = css({ marginLeft: 'auto', color: t.textMuted, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' });
 
+// The findings are a table of rows drawn with a grid, so a long list can be windowed (ui/windowed-list.tsx, L37): the header row and
+// each finding share these columns. They carry the roles of a table; the first row is the header.
+const FINDING_COLUMNS = 'minmax(78px, 92px) minmax(84px, 112px) minmax(140px, 1.2fr) minmax(150px, 1.5fr) minmax(190px, 2fr)';
 const findingsTable = css({
-  '& td': { fontSize: t.textSm },
-  '& td.what': { minWidth: '18ch', overflowWrap: 'anywhere' },
-  '& td.where': { overflowWrap: 'anywhere' },
+  minWidth: '0',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rLg,
+  background: t.bgSurface,
+  fontSize: t.textSm,
+  '& [role="row"]': { display: 'grid', gridTemplateColumns: FINDING_COLUMNS, minWidth: '720px' },
+  '& [role="columnheader"]': { padding: '8px 12px', borderBottom: `1px solid ${t.border}`, color: t.textMuted, fontWeight: '500', textAlign: 'left', whiteSpace: 'nowrap' },
+  '& [role="cell"]': { padding: '8px 12px', borderBottom: `1px solid ${t.border}`, minWidth: '0', overflowWrap: 'anywhere' },
+  '& [role="cell"].what': { minWidth: '18ch' },
+  '& [data-testid="finding"]:hover [role="cell"]': { background: t.bgHover },
   '& .ids': { display: 'inline-flex', gap: '4px', flexWrap: 'wrap', marginLeft: '6px', verticalAlign: 'middle' },
 });
+const findingsHead = css({ position: 'sticky', top: '0', zIndex: '1', background: t.bgSurface });
 const idBadge = css({
   display: 'inline-flex',
   alignItems: 'center',
@@ -172,6 +185,9 @@ const historyBtn = css({
 });
 
 const engineLabel = (id: EngineID): string => ENGINES.find((e) => e.id === id)?.name ?? id;
+
+/** Names one place in the list of findings: what the finding is, and where it is in the list shown. */
+const findingKey = (f: ScanFinding, i: number): string => `${f.engine}:${f.rule}:${f.file ?? ''}:${f.line ?? 0}:${f.package ?? ''}:${i}`;
 
 /** An engine's own bar: files while the secrets engine runs, moving stripes for an engine that cannot count, full when it finished. */
 function EngineBar(handle: Handle<{ e: EngineResult }>) {
@@ -410,16 +426,19 @@ export function ScanPanel(
     key,
   });
 
-  // the counters of a running scan are not events: poll while it runs
-  let poll: ReturnType<typeof setInterval> | undefined;
+  // The counters of a running scan are not events: read them again while it runs (L37). One read at a time: the next is planned
+  // when the last has answered, no sooner than 500 ms and no sooner than twice as long as that read took, and the poll ends with
+  // the scan or with the panel (the signal).
+  let scanRunning = false;
+  let polling = false;
   const syncPoll = (running: boolean) => {
-    if (running && poll === undefined) poll = setInterval(() => current.reload(), POLL_MS);
-    else if (!running && poll !== undefined) {
-      clearInterval(poll);
-      poll = undefined;
-    }
+    scanRunning = running;
+    if (!running || polling) return;
+    polling = true;
+    void pollWhile({ read: () => current.reload(), wanted: () => scanRunning, signal: handle.signal }).finally(() => {
+      polling = false;
+    });
   };
-  handle.signal.addEventListener('abort', () => syncPoll(false));
 
   // a report opened from the history (for the scope it was opened in); a running scan always takes over the display
   let opened: { report: ScanReport; key: string } | undefined;
@@ -608,39 +627,42 @@ export function ScanPanel(
                 {shown.length === sorted.length ? findingsText(shown.length) : `${shown.length.toLocaleString()} of ${findingsText(sorted.length)}`}
               </span>
             </div>
-            <div mix={tableCard}>
-              <table mix={findingsTable} data-testid="findings">
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>Engine</th>
-                    <th>Rule</th>
-                    <th>Where</th>
-                    <th>What</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((f, i) => (
-                    <tr key={`${f.engine}:${f.rule}:${f.file ?? ''}:${f.line ?? 0}:${f.package ?? ''}:${i}`} data-testid="finding" data-engine={f.engine} data-severity={f.severity}>
-                      <td>
-                        <Badge tone={severityTone(f.severity)}>{f.severity}</Badge>
-                      </td>
-                      <td>{engineLabel(f.engine)}</td>
-                      <td>
-                        <code>{f.rule}</code>
-                      </td>
-                      <td class="where">
-                        <Where f={f} />
-                      </td>
-                      <td class="what">
-                        {f.title}
-                        {f.engine === 'secrets' ? ' The value is not shown.' : ''}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <WindowedList
+              {...listOf(shown, findingKey, (f, i) => (
+                <div role="row" aria-rowindex={i + 2} data-testid="finding" data-engine={f.engine} data-severity={f.severity}>
+                  <div role="cell">
+                    <Badge tone={severityTone(f.severity)}>{f.severity}</Badge>
+                  </div>
+                  <div role="cell">{engineLabel(f.engine)}</div>
+                  <div role="cell">
+                    <code>{f.rule}</code>
+                  </div>
+                  <div role="cell" class="where">
+                    <Where f={f} />
+                  </div>
+                  <div role="cell" class="what">
+                    {f.title}
+                    {f.engine === 'secrets' ? ' The value is not shown.' : ''}
+                  </div>
+                </div>
+              ))}
+              label="Findings"
+              role="table"
+              testId="findings"
+              ariaRowCount={shown.length + 1}
+              estimate={44}
+              maxHeight={560}
+              mix={[findingsTable]}
+              header={
+                <div role="row" aria-rowindex={1} mix={findingsHead}>
+                  <div role="columnheader">Severity</div>
+                  <div role="columnheader">Engine</div>
+                  <div role="columnheader">Rule</div>
+                  <div role="columnheader">Where</div>
+                  <div role="columnheader">What</div>
+                </div>
+              }
+            />
             {report.truncated ? (
               <p mix={muted} data-testid="findings-truncated">
                 Showing the first {report.findings.length.toLocaleString()}; the rest were counted but not kept.

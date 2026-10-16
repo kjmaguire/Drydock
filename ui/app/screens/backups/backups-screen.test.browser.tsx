@@ -2,8 +2,9 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { BackupList, BackupSettings, BackupVerify } from '../../api/pkgTypes.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { BackupsScreen } from './backups-screen.tsx';
+import { DAILY_ERROR, WEEKLY_ERROR } from './backups.ts';
 
 afterEach(cleanup);
 
@@ -205,7 +206,7 @@ describe('BackupsScreen', () => {
     });
     await r.act(async () => (await waitFor(() => btn(r.container, 'Save schedule'), r)).click());
     await waitFor(() => tid(r.container, 'settings-saved'), r);
-    await r.act(() => type(byLabel(r.container, 'Daily backups to keep'), '0'));
+    await r.act(() => type(byLabel(r.container, 'Daily backups to keep'), '400')); // a whole number: the core is the one that refuses it
     expect(none(r.container, 'settings-saved')).toBe(true);
     fail = true;
     await r.act(() => btn(r.container, 'Save schedule').click());
@@ -216,6 +217,40 @@ describe('BackupsScreen', () => {
     }, r);
     expect(alert.textContent).toContain('between 1 and 365');
     expect(none(r.container, 'settings-saved')).toBe(true);
+  });
+
+  it('a count that is not a whole number is told under its field and nothing is sent; empty and 0 weekly are still allowed (M25)', async () => {
+    const sets: object[] = [];
+    const r = show({ backupList: async () => backups(), backupSettingsSet: async (x) => (sets.push(x), settings()) });
+    const daily = () => byLabel<HTMLInputElement>(r.container, 'Daily backups to keep');
+    const weekly = () => byLabel<HTMLInputElement>(r.container, 'Weekly backups to keep');
+    await waitFor(() => expect(daily().value).toBe('7'), r);
+    for (const bad of ['abc', '7.5', '1e3', '0', '-1', '1,000']) {
+      type(daily(), bad);
+      await r.act(() => btn(r.container, 'Save schedule').click());
+      await waitFor(() => expect(errorOf(daily())).toBe(DAILY_ERROR), r);
+      await waitFor(() => expect(document.activeElement).toBe(daily()), r);
+      expect(errorOf(weekly())).toBe(null);
+      expect(none(r.container, 'settings-saved')).toBe(true);
+    }
+    type(daily(), '7');
+    for (const bad of ['four', '4.5', '-1', '2e1']) {
+      type(weekly(), bad);
+      await r.act(() => btn(r.container, 'Save schedule').click());
+      await waitFor(() => expect(errorOf(weekly())).toBe(WEEKLY_ERROR), r);
+      expect(errorOf(daily())).toBe(null);
+    }
+    expect(sets).toEqual([]);
+    // 0 weekly backups is a real choice; an empty count leaves what the core has
+    await r.act(() => type(weekly(), '0'));
+    expect(errorOf(weekly())).toBe(null);
+    await r.act(() => btn(r.container, 'Save schedule').click());
+    await waitFor(() => expect(sets).toEqual([{ enabled: true, dir: '', daily: 7, weekly: 0 }]), r);
+    type(daily(), '');
+    type(weekly(), '');
+    await r.act(() => btn(r.container, 'Save schedule').click());
+    await waitFor(() => expect(sets[1]).toEqual({ enabled: true, dir: '', daily: undefined, weekly: undefined }), r);
+    await waitFor(() => tid(r.container, 'settings-saved'), r);
   });
 
   it('shows the core message when settings are refused', async () => {

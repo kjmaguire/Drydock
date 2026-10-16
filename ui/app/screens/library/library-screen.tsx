@@ -22,7 +22,9 @@ import { card, Page, Section } from '../../ui/layout.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { ClippedText } from '../../ui/clipped-text.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ReachNote } from '../mcp/command-line.tsx';
 import { AddMcpServer } from '../mcp/gallery.tsx';
+import { importedNote } from '../mcp/import.ts';
 import { actionsRow, cardHead, confirmCss, serverLogo, ServerMark, subhead, whereCss } from '../mcp/mcp-screen.tsx';
 import { OAuthPanel } from '../mcp/oauth-panel.tsx';
 import { McpServerForm } from '../mcp/server-form.tsx';
@@ -121,6 +123,8 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; say: Say; fail: Fail; on
   const act = action(handle);
   let editing = false;
   let confirm = false;
+  // the note beside the button says which program Find tools starts (M24): the button is described by it
+  const reachId = `reach-${handle.id}`;
   const set = (f: () => void) => {
     f();
     void handle.update();
@@ -218,11 +222,13 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; say: Say; fail: Fail; on
             </div>
           )}
           <p mix={faint}>Every tool you do not tick needs your approval for each call. Ticking is your statement that the tool cannot change anything.</p>
+          <ReachNote server={s} lead={`Pressing ${s.tools.length > 0 ? 'Test and refresh tools' : 'Find tools'}`} id={reachId} />
           <div mix={actionsRow}>
             <Button
               size="sm"
               icon={s.tools.length > 0 ? RefreshCw : Search}
               disabled={act.busy !== ''}
+              aria-describedby={reachId}
               mix={[
                 on('click', async () => {
                   const r = await act.run('discover', () => svc.client.mcpLibDiscover(s.id));
@@ -526,7 +532,7 @@ export function LibraryScreen(handle: Handle) {
               onImported={(n) => {
                 set(() => {
                   connecting = false;
-                  note = `${n} server${n === 1 ? '' : 's'} imported.`;
+                  note = importedNote(n, 'open its tile below and press Find tools');
                 });
                 reload();
               }}

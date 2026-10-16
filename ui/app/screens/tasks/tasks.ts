@@ -227,5 +227,15 @@ export function classifyDiffLine(l: string): DiffLineKind {
 
 export const DIFF_LINE_CAP = 3000;
 
+/**
+ * The id of the newest evidence of kind `diff`: the patch a task's card is about (audit 2026-10-16, L36). A patch recorded later
+ * (a new iteration) has a higher id. Undefined when no diff was recorded.
+ */
+export function newestDiffId(evidence: readonly Pick<Evidence, 'id' | 'kind'>[]): number | undefined {
+  let id: number | undefined;
+  for (const e of evidence) if (e.kind === 'diff' && (id === undefined || e.id > id)) id = e.id;
+  return id;
+}
+
 /** Split a patch into lines (a trailing newline is not an extra empty line). */
 export const diffLines = (text: string): string[] => text.replace(/\n$/, '').split('\n');

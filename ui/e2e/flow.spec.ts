@@ -76,6 +76,17 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(panel).toBeVisible({ timeout: 90_000 });
     const firstRequest = await panel.getByTestId('pending-request').getAttribute('data-request-id');
 
+    // the raw patch is asked for by the id of the diff evidence the card is about (L36)
+    const diffAsks: { id: string; evidenceId?: number }[] = [];
+    page.on('request', (req) => {
+      // task.diff itself; the dock's task.diffFiles and task.diffFile are other calls
+      if (/\/rpc\/task\.diff(\?|$)/.test(req.url())) diffAsks.push(JSON.parse(req.postData() ?? '{}'));
+    });
+    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    await expect(page.getByTestId('diff')).toBeVisible();
+    expect(diffAsks).toHaveLength(1);
+    expect(typeof diffAsks[0]!.evidenceId).toBe('number');
+
     await panel.getByRole('button', { name: 'Request changes' }).click();
     await panel.getByLabel('Feedback for the worker').fill('please add a doc comment to Subtract');
     await panel.getByRole('button', { name: 'Send feedback' }).click();
@@ -87,8 +98,14 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
       expect(id).not.toBe(firstRequest);
     }).toPass({ timeout: 90_000 });
 
+    // the patch the rework recorded is not swapped in under the reader's eyes: the old text is gone, the page says so, and the
+    // button asks for the newer evidence (L36)
+    await expect(page.getByTestId('raw-diff-changed')).toHaveText('The patch changed since you opened it. Show it again.');
+    await expect(page.getByTestId('diff')).toHaveCount(0);
     await page.getByRole('button', { name: 'Show the raw patch' }).click();
     await expect(page.locator('.diff-add', { hasText: 'Subtract returns a minus b' })).toBeVisible();
+    expect(diffAsks).toHaveLength(2);
+    expect(diffAsks[1]!.evidenceId!).toBeGreaterThan(diffAsks[0]!.evidenceId!);
 
     // the human's feedback reached the worker through the core: the channel shows the reworked report
     await openTaskChannel(page);

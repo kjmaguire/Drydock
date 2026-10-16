@@ -176,7 +176,19 @@ export interface BundlePreview {
 export interface BundleCreated {
   path: string;
   size: number;
+  /** A file was already at the path and the person said it could go (the request carried overwrite): it was replaced. */
+  replaced?: boolean;
   files: BundleFile[] | null;
   report: BundleReport;
   notice: string;
 }
+/**
+ * The answer of supportbundle.create when a file is already at the destination: nothing was written. The screen asks the
+ * person whether to replace it and sends the request again with overwrite only after they say so.
+ */
+export interface BundleExists {
+  exists: true;
+  path: string;
+  size: number;
+}
+export type BundleResult = BundleCreated | BundleExists;

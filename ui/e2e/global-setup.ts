@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const uiDir = resolve(here, '..');
 const repoRoot = resolve(uiDir, '..');
-const REPOS = 49;
+const REPOS = 51;
 const GREEN = 8;
 const LICENSED_REPOS = 4;
 // What each harness printed (stdout and stderr) and, when it stops, its diagnostics (-diag: every goroutine's stack and the

@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { SecurityScreen } from './security-screen.tsx';
 
 afterEach(cleanup);
@@ -177,6 +177,84 @@ describe('Security scan page', () => {
     expect(items[0]!.getAttribute('data-id')).toBe('scan1');
     expect(items[0]!.textContent).toContain('by kyle');
     expect(items[0]!.textContent).toContain('2 high, 2 medium');
+  });
+
+  describe('a report with thousands of findings (L37)', () => {
+    const N = 2000;
+    // three secrets (critical, so first), then 1,000 high and 1,000 medium code findings, each in a file of its own
+    const many: ScanFinding[] = [
+      ...Array.from({ length: 3 }, (_, i): ScanFinding => ({ engine: 'secrets', severity: 'critical', rule: 'aws-access-token', title: 'AWS access token', file: `keys/k${i}.txt`, line: 1 })),
+      ...Array.from({ length: N }, (_, i): ScanFinding => ({ engine: 'sast', severity: i < N / 2 ? 'high' : 'medium', rule: `rule.${i % 7}`, title: `Finding number ${i}`, file: `src/file-${String(i).padStart(4, '0')}.go`, line: i + 1 })),
+    ];
+    const big = report({ findings: many, truncated: true, counts: counts({ critical: 3, high: N / 2, medium: N / 2, total: N + 3 }) });
+    const frames = () => new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+    const rowsNow = (r: R) => Array.from(r.$$('[data-testid="finding"]')) as HTMLElement[];
+    const table = (r: R) => r.$('[data-testid="findings"]') as HTMLElement;
+
+    it('draws only the findings near the view, as a table with its header, and still reaches the first and the last', async () => {
+      const { r } = show({ securityScanGet: async () => big });
+      await waitStatus(r, 'done');
+      const sc = await waitFor(() => table(r) ?? (() => { throw new Error('no table yet'); })(), r);
+      await waitFor(() => expect(rowsNow(r).length).toBeGreaterThan(3), r);
+      await frames();
+      // the whole list is in the table's counts, a window of it in the page
+      expect(sc.getAttribute('role')).toBe('table');
+      expect(sc.getAttribute('aria-label')).toBe('Findings');
+      expect(sc.getAttribute('aria-rowcount')).toBe(String(N + 4));
+      expect(sc.getAttribute('data-windowed')).toBe('true');
+      expect(sc.getAttribute('data-rows')).toBe(String(N + 3));
+      expect(rowsNow(r).length).toBeLessThan(120);
+      expect(r.$('[data-testid="findings-count"]')!.textContent).toBe(`${(N + 3).toLocaleString()} findings`);
+      // the header row names the columns; the rows carry their place in the whole table
+      const head = sc.querySelector('[role="row"][aria-rowindex="1"]')!;
+      expect(Array.from(head.querySelectorAll('[role="columnheader"]')).map((c) => c.textContent)).toEqual(['Severity', 'Engine', 'Rule', 'Where', 'What']);
+      const first = rowsNow(r)[0]!;
+      expect(first.getAttribute('aria-rowindex')).toBe('2');
+      expect(first.getAttribute('data-engine')).toBe('secrets');
+      expect(first.textContent).toContain('keys/k0.txt:1');
+      expect(first.querySelectorAll('[role="cell"]').length).toBe(5);
+      // a scroller of a most height that is named and can be reached by keyboard
+      expect(getComputedStyle(sc).overflowY).toBe('auto');
+      expect(sc.clientHeight).toBeLessThanOrEqual(560);
+      expect(sc.scrollHeight).toBeGreaterThan(N * 20);
+      expect(sc.getAttribute('tabindex')).toBe('0');
+
+      // to the end: the last finding is there, the first is not
+      const scrollTo = async (top: number) => {
+        const before = sc.scrollTop;
+        const moved = new Promise((res) => sc.addEventListener('scroll', res, { once: true }));
+        sc.scrollTop = top;
+        if (sc.scrollTop !== before) await moved;
+        r.root.flush();
+      };
+      await scrollTo(sc.scrollHeight);
+      await waitFor(() => expect(rowsNow(r).at(-1)!.textContent).toContain(`src/file-${N - 1}.go:${N}`), r);
+      expect(rowsNow(r).at(-1)!.getAttribute('aria-rowindex')).toBe(String(N + 4));
+      expect(rowsNow(r).some((x) => x.textContent!.includes('keys/k0.txt'))).toBe(false);
+      expect(rowsNow(r).length).toBeLessThan(120);
+      await scrollTo(0);
+      await waitFor(() => expect(rowsNow(r)[0]!.textContent).toContain('keys/k0.txt:1'), r);
+      expect(r.container.textContent).not.toContain('AKIA');
+    });
+
+    it('the filters still work on a long list, and a short result is drawn whole', async () => {
+      const { r } = show({ securityScanGet: async () => big });
+      await waitStatus(r, 'done');
+      await waitFor(() => expect(rowsNow(r).length).toBeGreaterThan(3), r);
+      const engineChip = (id: string) => r.$(`[data-testid="engine-filter"][data-engine="${id}"]`) as HTMLButtonElement;
+      await r.act(() => engineChip('secrets').click());
+      expect(r.$('[data-testid="findings-count"]')!.textContent).toBe(`3 of ${(N + 3).toLocaleString()} findings`);
+      expect(table(r).getAttribute('data-windowed')).toBe('false');
+      expect(rowsNow(r).length).toBe(3);
+      expect(table(r).getAttribute('aria-rowcount')).toBe('4');
+      await r.act(() => engineChip('all').click());
+      await waitFor(() => expect(table(r).getAttribute('data-windowed')).toBe('true'), r);
+      await r.act(() => (r.$('[data-testid="sev-filter"][data-severity="medium"]') as HTMLButtonElement).click());
+      expect(r.$('[data-testid="findings-count"]')!.textContent).toBe(`${(N / 2).toLocaleString()} of ${(N + 3).toLocaleString()} findings`);
+      await waitFor(() => expect(rowsNow(r).length).toBeGreaterThan(3), r);
+      expect(rowsNow(r).every((x) => x.getAttribute('data-severity') === 'medium')).toBe(true);
+      expect(rowsNow(r).length).toBeLessThan(120);
+    });
   });
 
   it('a done scan with nothing found says so, and an errored engine shows its reason', async () => {
@@ -476,6 +554,88 @@ describe('Security scan page', () => {
     await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.getAttribute('data-found')).toBe('false'), r);
     expect(row.querySelector('[data-testid="tool-install"]')!.textContent).toBe('Install');
     expect(row.querySelector('[data-testid="tool-remove"]')).toBeNull();
+  });
+
+  describe('the counters of a running scan are read one read at a time (L37)', () => {
+    const running = () => report({ status: 'running', finishedAt: undefined, engines: [engine({ status: 'running', startedAt: 1_700_000_000_000, done: 10, total: 20 })] });
+
+    // TEST DOUBLE (labelled): the core's security.scan.get, answering each read when the test says so
+    function slowCore() {
+      const asked: ((r: ScanReport) => void)[] = [];
+      return { asked, get: () => new Promise<ScanReport>((res) => asked.push(res)) };
+    }
+    const turn = async (r: R) => {
+      await drain();
+      r.root.flush();
+      await drain();
+    };
+
+    it('starts no second read while the first is pending, however long the core takes', async (t) => {
+      const timers = t.useFakeTimers();
+      const core = slowCore();
+      const { r } = show({ securityScanGet: core.get });
+      await turn(r);
+      expect(core.asked.length).toBe(1); // the page's own first read
+      core.asked[0]!(running());
+      await turn(r);
+      expect(status(r).getAttribute('data-status')).toBe('running');
+      // 500 ms after it answered, one more read starts, and stays pending
+      await timers.advanceAsync(499);
+      await turn(r);
+      expect(core.asked.length).toBe(1);
+      await timers.advanceAsync(1);
+      await turn(r);
+      expect(core.asked.length).toBe(2);
+      // two minutes go by and the core has not answered: an interval of 500 ms would have started 240 more reads
+      for (let i = 0; i < 120; i++) await timers.advanceAsync(1000);
+      await turn(r);
+      expect(core.asked.length).toBe(2);
+      // it answers: the next read is planned from then
+      core.asked[1]!(running());
+      await turn(r);
+      await timers.advanceAsync(499);
+      await turn(r);
+      expect(core.asked.length).toBe(2);
+      await timers.advanceAsync(1);
+      await turn(r);
+      expect(core.asked.length).toBe(3);
+    });
+
+    it('stops reading when the scan is done, and when the panel is gone', async (t) => {
+      const timers = t.useFakeTimers();
+      const core = slowCore();
+      const { r } = show({ securityScanGet: core.get });
+      await turn(r);
+      core.asked[0]!(running());
+      await turn(r);
+      await timers.advanceAsync(500);
+      await turn(r);
+      expect(core.asked.length).toBe(2);
+      // the scan is done: the answer says so, and a minute later nothing has been read
+      core.asked[1]!(report({ status: 'done' }));
+      await turn(r);
+      expect(status(r).getAttribute('data-status')).toBe('done');
+      for (let i = 0; i < 60; i++) await timers.advanceAsync(1000);
+      await turn(r);
+      expect(core.asked.length).toBe(2);
+
+      // a second panel: the scan is running, one read in, and the panel goes away
+      cleanup();
+      const again = slowCore();
+      const gone = show({ securityScanGet: again.get });
+      await turn(gone.r);
+      again.asked[0]!(running());
+      await turn(gone.r);
+      await timers.advanceAsync(500);
+      await turn(gone.r);
+      expect(again.asked.length).toBe(2);
+      again.asked[1]!(running());
+      await turn(gone.r);
+      cleanup();
+      for (let i = 0; i < 60; i++) await timers.advanceAsync(1000);
+      await drain();
+      expect(again.asked.length).toBe(2);
+    });
   });
 
   it('without canInstall (the browser on a development host) no Install is offered and the hint says Windows', async () => {

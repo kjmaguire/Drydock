@@ -129,6 +129,24 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     await waitFor(() => expect(byLabel<HTMLInputElement>(card, 'Pay may use Other').checked).toBe(true), r);
   });
 
+  it('a server whose tools were never listed says that ticking an agent starts its program, which one, and describes the boxes by it (M24)', async () => {
+    const r = show({ mcpServerList: async () => [projServer({ tools: [], discoveredAt: 0, argv: ['node', 'C:\\srv\\main.js', '--port', '0'] })] });
+    const card = await waitFor(() => {
+      const c = r.$('[data-testid="mcp-server"]');
+      if (!c?.querySelector('[aria-label="Pay may use Test server"]')) throw new Error('not yet');
+      return c as HTMLElement;
+    }, r);
+    const note = card.querySelector<HTMLElement>('[data-testid="reach-note"]')!;
+    expect(note.textContent).toContain('Ticking an agent below, while the tools are not known, starts this program on this computer, with your rights:');
+    expect(note.querySelector('[data-testid="command-line"]')!.textContent).toBe('node C:\\srv\\main.js --port 0');
+    for (const who of ['Pay', 'Rev']) expect(byLabel<HTMLInputElement>(card, `${who} may use Test server`).getAttribute('aria-describedby')).toBe(note.id);
+    // once the tools are known (or the server is a web address that was reached) there is nothing to say
+    const known = show({ mcpServerList: async () => [projServer()] });
+    const card2 = await server(known);
+    expect(card2.querySelector('[data-testid="reach-note"]')).toBeNull();
+    expect(byLabel<HTMLInputElement>(card2, 'Pay may use Test server').getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('a ticked grant shows at once while the core answers, and goes back when the core refuses', async () => {
     let release: (ok: boolean) => void = () => {};
     const r = show({

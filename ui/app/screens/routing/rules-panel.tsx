@@ -4,14 +4,14 @@
 import { css, on, type Handle } from 'remix/component';
 import { ListOrdered, Pencil, Plus, Trash2 } from 'lucide';
 import type { RouteRule } from '../../api/extTypes.ts';
+import { parseInteger } from '../../lib/limits.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
-import { Checkbox, Field, formActions } from '../../ui/form.tsx';
+import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { card, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { numOrUndef } from '../shared/budget-pause.tsx';
 import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, RUN_KINDS, sortRules, splitChain, withChain } from './routing.ts';
 
 const editorCss = css({
@@ -22,11 +22,15 @@ const editorCss = css({
   '& textarea': { fontFamily: t.mono, fontSize: t.textSm },
 });
 
+/** What the priority says when its text is not a whole number (M25): a typo is never saved as priority 0. */
+export const PRIORITY_ERROR = 'Enter the priority as a whole number, for example 10. A rule with a higher number is checked first.';
+
 function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCancel: () => void }>) {
   const s = services(handle);
   const act = action(handle);
   const r0 = handle.props.rule;
   let priority = String(r0.priority);
+  let priorityError: string | undefined;
   let when = r0.when;
   const split = splitChain(r0.then);
   let then = JSON.stringify(split.rest, null, 2);
@@ -34,8 +38,17 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
   let scope = r0.scope;
   let enabled = r0.enabled;
 
-  const save = async () => {
+  const save = async (button: HTMLElement) => {
     const { rule, onSaved } = handle.props;
+    // an empty priority is 0; text that is not a whole number is told under the field and nothing is sent
+    const rank = parseInteger(priority, PRIORITY_ERROR);
+    if (!rank.ok) {
+      priorityError = rank.error;
+      act.clear();
+      handle.queueTask(() => button.closest('[data-testid="rule-editor"]')?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    priorityError = undefined;
     const parsed = parseThen(then);
     if (!parsed.ok) {
       await act.run('parse', async () => {
@@ -44,7 +57,7 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
       return;
     }
     const action = withChain(parsed.value, parseChain(chain));
-    const r = await act.run('save', () => s.client.routeRulesSet({ ...rule, scope, priority: numOrUndef(priority) ?? 0, when, then: action, enabled }));
+    const r = await act.run('save', () => s.client.routeRulesSet({ ...rule, scope, priority: rank.value ?? 0, when, then: action, enabled }));
     if (r) onSaved();
   };
 
@@ -61,7 +74,9 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
           <ErrorNote error={act.error} what="Rule not saved" />
         </div>
         <Field label="Scope (workspace or project:<id>)">{(id) => <input id={id} value={scope} spellcheck={false} mix={set((v) => (scope = v))} />}</Field>
-        <Field label="Priority">{(id) => <input id={id} inputMode="numeric" value={priority} mix={set((v) => (priority = v))} />}</Field>
+        <Field label="Priority" error={priorityError}>
+          {(id) => <input id={id} inputMode="numeric" value={priority} {...errorAttrs(id, priorityError)} mix={set((v) => ((priority = v), (priorityError = undefined)))} />}
+        </Field>
         <div class="wide">
           <Field label="When (CEL expression)">{(id) => <textarea id={id} rows={2} spellcheck={false} value={when} mix={set((v) => (when = v))} />}</Field>
           <p mix={faint} data-testid="run-kinds-hint">
@@ -97,7 +112,7 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
           Saving is checked against version {rule.version}; if the rule changed since you read it, the core refuses and you reload.
         </p>
         <div mix={formActions}>
-          <Button variant="primary" disabled={act.busy !== ''} mix={on('click', () => void save())}>
+          <Button variant="primary" disabled={act.busy !== ''} mix={on('click', (e) => void save(e.currentTarget))}>
             Save rule
           </Button>
           <Button mix={on('click', () => onCancel())}>Cancel</Button>

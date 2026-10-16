@@ -277,6 +277,122 @@ describe("an agent's page", () => {
     expect(chips(r)).not.toContain('skips approvals');
   });
 
+  describe('a project with hundreds of skills and notes (L37)', () => {
+    const N = 400;
+    const manySkills: Skill[] = Array.from({ length: N }, (_, i) => sk(`skill-${String(i).padStart(3, '0')}`, i === 0 ? { agents: ['agt_1'] } : {}));
+    const manyNotes: MemoryEntry[] = Array.from({ length: N }, (_, i) => ({
+      id: `m${i}`,
+      projectId: 'prj_1',
+      kind: 'convention',
+      title: `Note number ${i}`,
+      body: `Body of note ${i}.\n\nA second paragraph of note ${i}.`,
+      status: 'accepted',
+      source: `#${i} review`,
+      created: i,
+      updated: i,
+    }));
+    const frames = () => new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+    type R = ReturnType<typeof show>['r'];
+    const skillRows = (r: R) => Array.from(r.$$('[data-testid="agent-skill"]')) as HTMLElement[];
+    const noteRows = (r: R) => Array.from(r.$$('[data-testid="agent-memory"]')) as HTMLElement[];
+    /** Scrolls a scroller to `top` and lets the window follow. */
+    const scrollTo = async (r: R, sc: HTMLElement, top: number) => {
+      const before = sc.scrollTop;
+      const moved = new Promise((res) => sc.addEventListener('scroll', res, { once: true }));
+      sc.scrollTop = top;
+      if (sc.scrollTop !== before) await moved;
+      r.root.flush();
+    };
+
+    it('draws only the skills near the view in the Skills & tools tab, reaches the first and the last, and the switch of a row that was scrolled to still works', async () => {
+      const calls: unknown[] = [];
+      const { r } = show('agt_1', { skillList: async () => manySkills, agentUpdate: async (u) => (calls.push(u), agent()) });
+      await hero(r);
+      // the overview shows five, whole, and says how many there are
+      await waitFor(() => expect(skillRows(r).length).toBe(5), r);
+      expect(r.$('[data-testid="agent-skills-list"]')!.getAttribute('data-windowed')).toBe('false');
+      expect(byText(r.container, 'button', `All ${N} skills`)).toBeTruthy();
+
+      await r.act(() => r.$('[data-testid="agent-tab-skills"]')!.click());
+      const sc = await waitFor(() => (r.$('[data-testid="agent-skills-list"][data-windowed="true"]') as HTMLElement | null) ?? (() => { throw new Error('no scroller yet'); })(), r);
+      await waitFor(() => expect(skillRows(r).length).toBeGreaterThan(3), r);
+      await frames();
+      // a named list that can be reached by keyboard and holds a window of the skills, not all of them
+      expect(sc.getAttribute('role')).toBe('list');
+      expect(sc.getAttribute('aria-label')).toBe('Skills');
+      expect(sc.getAttribute('tabindex')).toBe('0');
+      expect(sc.getAttribute('data-rows')).toBe(String(N));
+      expect(skillRows(r).length).toBeLessThan(80);
+      expect(skillRows(r).every((x) => x.getAttribute('role') === 'listitem')).toBe(true);
+      expect(getComputedStyle(sc).overflowY).toBe('auto');
+      expect(sc.clientHeight).toBeLessThanOrEqual(640);
+      expect(sc.scrollHeight).toBeGreaterThan(N * 40);
+      expect(skillRows(r)[0]!.getAttribute('data-skill')).toBe('skill-000');
+      // the first skill was given to the agent; the rest were not
+      expect(skillRows(r)[0]!.getAttribute('data-on')).toBe('true');
+      expect(skillRows(r)[1]!.getAttribute('data-on')).toBe('false');
+
+      await scrollTo(r, sc, sc.scrollHeight);
+      await waitFor(() => expect(skillRows(r).at(-1)!.getAttribute('data-skill')).toBe(`skill-${N - 1}`), r);
+      expect(skillRows(r).some((x) => x.getAttribute('data-skill') === 'skill-000')).toBe(false);
+      expect(skillRows(r).length).toBeLessThan(80);
+      // a switch in the window works as it does in a short list
+      await r.act(() => r.$(`[data-testid="agent-skill"][data-skill="skill-${N - 1}"] button[role="switch"]`)!.click());
+      await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', addSkills: [`skill-${N - 1}`] }]), r);
+      // and the way back to the top
+      await scrollTo(r, sc, 0);
+      await waitFor(() => expect(skillRows(r)[0]!.getAttribute('data-skill')).toBe('skill-000'), r);
+    });
+
+    it('draws only the notes near the view in the Memory tab, each as Markdown, and reaches the first and the last', async () => {
+      const { r } = show('agt_1', { memoryList: async () => manyNotes });
+      await hero(r);
+      // the overview shows three, whole
+      await waitFor(() => expect(noteRows(r).length).toBe(3), r);
+      expect(r.$('[data-testid="agent-memory-list"]')).toBeNull();
+      await r.act(() => r.$('[data-testid="agent-tab-memory"]')!.click());
+      const sc = await waitFor(() => (r.$('[data-testid="agent-memory-list"][data-windowed="true"]') as HTMLElement | null) ?? (() => { throw new Error('no scroller yet'); })(), r);
+      await waitFor(() => expect(noteRows(r).length).toBeGreaterThan(2), r);
+      await frames();
+      expect(sc.getAttribute('role')).toBe('list');
+      expect(sc.getAttribute('aria-label')).toBe('Accepted notes');
+      expect(sc.getAttribute('tabindex')).toBe('0');
+      expect(sc.getAttribute('data-rows')).toBe(String(N));
+      expect(noteRows(r).length).toBeLessThan(80);
+      expect(noteRows(r).every((x) => x.getAttribute('role') === 'listitem')).toBe(true);
+      expect(sc.clientHeight).toBeLessThanOrEqual(640);
+      expect(sc.scrollHeight).toBeGreaterThan(N * 60);
+      // a note is still drawn as Markdown: two paragraphs, its title, its kind and where it came from
+      const first = noteRows(r)[0]!;
+      expect(first.querySelector('b')!.textContent).toBe('Note number 0');
+      expect(first.querySelectorAll('p').length).toBe(2);
+      expect(first.textContent).toContain('A second paragraph of note 0.');
+      expect(first.textContent).toContain('convention · from #0 review');
+
+      await scrollTo(r, sc, sc.scrollHeight);
+      await waitFor(() => expect(noteRows(r).at(-1)!.querySelector('b')!.textContent).toBe(`Note number ${N - 1}`), r);
+      expect(noteRows(r).some((x) => x.querySelector('b')!.textContent === 'Note number 0')).toBe(false);
+      expect(noteRows(r).length).toBeLessThan(80);
+      await scrollTo(r, sc, 0);
+      await waitFor(() => expect(noteRows(r)[0]!.querySelector('b')!.textContent).toBe('Note number 0'), r);
+    });
+
+    it('a short list in these tabs is drawn whole, in the page, as a list of items', async () => {
+      const { r } = show('agt_1');
+      await hero(r);
+      await r.act(() => r.$('[data-testid="agent-tab-skills"]')!.click());
+      await waitFor(() => expect(skillRows(r).length).toBe(3), r);
+      const list = r.$('[data-testid="agent-skills-list"]')!;
+      expect(list.getAttribute('data-windowed')).toBe('false');
+      expect(list.getAttribute('role')).toBe('list');
+      expect(list.getAttribute('tabindex')).toBeNull();
+      expect(skillRows(r).every((x) => x.getAttribute('role') === 'listitem' && list.contains(x))).toBe(true);
+      await r.act(() => r.$('[data-testid="agent-tab-memory"]')!.click());
+      await waitFor(() => expect(noteRows(r).length).toBe(1), r);
+      expect(r.$('[data-testid="agent-memory-list"]')!.getAttribute('data-windowed')).toBe('false');
+    });
+  });
+
   it('helpers: the chip of what it is on, the skills that reach it, the servers it is granted', () => {
     expect(nowChip(presence, tasks[0])).toBe('Working on #12');
     expect(nowChip(undefined, tasks[0])).toBe('On #12');

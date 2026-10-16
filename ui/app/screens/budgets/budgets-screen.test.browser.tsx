@@ -3,7 +3,8 @@ import { afterEach, describe, it } from 'remix/test';
 import type { BudgetRow, BudgetSet } from '../../api/extTypes.ts';
 import type { Client } from '../../api/client.ts';
 import { budget, budgetStatus } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { TOKENS_ERROR, TURNS_ERROR, USD_ERROR, WARN_ERROR } from './budgets.ts';
 import { BudgetsScreen } from './budgets-screen.tsx';
 
 afterEach(cleanup);
@@ -92,6 +93,94 @@ describe('BudgetsScreen', () => {
     expect(calls[0]).toMatchObject({ scope: 'project', scopeId: 'prj_1', limitUsd: 12.5, limitTokens: null, limitTurns: null, warnPct: 0.8, enabled: true });
     await waitFor(() => expect(r.$$('[data-testid="budget"]').length).toBe(1), r);
     expect(r.$('form[aria-label="New budget"]')).toBeNull();
+  });
+
+  it('a mistyped limit is told under its own field, marked invalid, and nothing is sent: it is never saved as "no limit" (M25)', async () => {
+    const calls: BudgetSet[] = [];
+    const r = mount(
+      <BudgetsScreen />,
+      servicesWith({
+        budgetList: async () => [],
+        budgetSet: async (b) => (calls.push(b), budget({ ...b, id: 'bud_9' })),
+      }),
+    );
+    await waitFor(until(() => text(r.container).includes('No budgets')), r);
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const form = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    const field = (label: string) => byLabel<HTMLInputElement>(form, label);
+    const submit = () => r.act(() => byText(form, 'button', 'Add budget').click());
+    const cases: [string, string, string][] = [
+      ['Limit in USD', '5 dollars', USD_ERROR],
+      ['Limit in USD', '$5', USD_ERROR],
+      ['Limit in USD', '1,000', USD_ERROR],
+      ['Limit in USD', '1e999', USD_ERROR],
+      ['Limit in USD', 'abc', USD_ERROR],
+      ['Limit in tokens', '200,000', TOKENS_ERROR],
+      ['Limit in tokens', '2e5', TOKENS_ERROR],
+      ['Limit in turns', 'forty', TURNS_ERROR],
+      ['Warn at (percent)', '80%', WARN_ERROR],
+    ];
+    for (const [label, bad, message] of cases) {
+      const usual = { 'Limit in USD': '', 'Limit in tokens': '', 'Limit in turns': '', 'Warn at (percent)': '80' };
+      for (const [l, v] of Object.entries(usual)) type(field(l), v);
+      type(field('Limit in USD'), label === 'Limit in USD' ? bad : '5'); // another limit that is fine must not hide the mistake
+      if (label !== 'Limit in USD') type(field(label), bad);
+      await submit();
+      await waitFor(() => expect(errorOf(field(label))).toBe(message), r);
+      // the other fields say nothing, and the keyboard is on the one to fix
+      for (const other of Object.keys(usual).filter((l) => l !== label)) expect(errorOf(field(other))).toBe(null);
+      await waitFor(() => expect(document.activeElement).toBe(field(label)), r);
+      expect(form.querySelectorAll('[role="alert"]').length).toBe(1);
+    }
+    expect(calls).toEqual([]);
+    // fixing the field takes its error away at once, and the budget is saved with the limit the person typed
+    await r.act(() => type(field('Warn at (percent)'), '80'));
+    expect(errorOf(field('Warn at (percent)'))).toBe(null);
+    type(field('Limit in USD'), '12.50');
+    await submit();
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ limitUsd: 12.5, limitTokens: null, limitTurns: null, warnPct: 0.8 });
+  });
+
+  it('a blank limit still means no limit on that one, and a valid value still saves (M25)', async () => {
+    const calls: BudgetSet[] = [];
+    const r = mount(
+      <BudgetsScreen />,
+      servicesWith({
+        budgetList: async () => [],
+        budgetSet: async (b) => (calls.push(b), budget({ ...b, id: 'bud_9' })),
+      }),
+    );
+    await waitFor(until(() => text(r.container).includes('No budgets')), r);
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const form = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    type(byLabel(form, 'Limit in tokens'), ' 250000 ');
+    type(byLabel(form, 'Limit in turns'), '40');
+    await r.act(() => byText(form, 'button', 'Add budget').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ limitUsd: null, limitTokens: 250000, limitTurns: 40, warnPct: 0.8 });
+  });
+
+  it('with every limit blank the core\'s own "set at least one limit" message is still the one shown (M25)', async () => {
+    const r = mount(
+      <BudgetsScreen />,
+      servicesWith({
+        budgetList: async () => [],
+        budgetSet: async () => {
+          throw new Error('budget: set at least one of limitUsd, limitTokens, limitTurns');
+        },
+      }),
+    );
+    await waitFor(until(() => text(r.container).includes('No budgets')), r);
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const form = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    await r.act(() => byText(form, 'button', 'Add budget').click());
+    await waitFor(() => expect(text(form.querySelector('[role="alert"]')!)).toContain('Budget not saved: budget: set at least one of limitUsd'), r);
+    // a mistyped limit afterwards takes the core's message away and shows its own under the field
+    type(byLabel(form, 'Limit in USD'), 'lots');
+    await r.act(() => byText(form, 'button', 'Add budget').click());
+    await waitFor(() => expect(errorOf(byLabel(form, 'Limit in USD'))).toBe(USD_ERROR), r);
+    expect(text(form)).not.toContain('set at least one');
   });
 
   it('shows the core error when a budget is refused', async () => {

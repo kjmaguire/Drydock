@@ -3,7 +3,8 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { RouteRule } from '../../api/extTypes.ts';
 import type { Provider } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { PRIORITY_ERROR } from './rules-panel.tsx';
 import { RoutingScreen } from './routing-screen.tsx';
 
 afterEach(cleanup);
@@ -55,6 +56,27 @@ describe('RoutingScreen', () => {
     await r.act(() => byText(ed, 'button', 'Save rule').click());
     await waitFor(() => expect(calls[0]).toEqual({ ...rule, priority: 9 }), r);
     await waitFor(has(r, /version 3 is stale/), r);
+  });
+
+  it('a priority that is not a whole number is told under the field and nothing is sent; it is never saved as 0 (M25)', async () => {
+    const calls: RouteRule[] = [];
+    const r = mountWith({ routeRulesList: async () => [rule], routeRulesSet: async (x) => (calls.push(x), x) });
+    const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    await r.act(() => byText(row, 'button', 'Edit').click());
+    const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    const priority = () => byLabel<HTMLInputElement>(ed, /^Priority/);
+    for (const bad of ['high', '1e3', '2.5', '--3', '10 first']) {
+      type(priority(), bad);
+      await r.act(() => byText(ed, 'button', 'Save rule').click());
+      await waitFor(() => expect(errorOf(priority())).toBe(PRIORITY_ERROR), r);
+      await waitFor(() => expect(document.activeElement).toBe(priority()), r);
+    }
+    expect(calls).toEqual([]);
+    // a negative whole number is a priority; so is an empty field (0)
+    await r.act(() => type(priority(), '-3'));
+    expect(errorOf(priority())).toBe(null);
+    await r.act(() => byText(ed, 'button', 'Save rule').click());
+    await waitFor(() => expect(calls[0]).toEqual({ ...rule, priority: -3 }), r);
   });
 
   it('refuses an action that is not JSON before calling the core', async () => {

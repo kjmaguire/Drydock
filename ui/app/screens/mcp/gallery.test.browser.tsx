@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
 import { IntegrationsScreen } from '../integrations/integrations-screen.tsx';
 import { devLicense, galleryCard, libServer, pay, rev } from './fixtures.ts';
 import { identityLine } from './gallery.tsx';
@@ -381,12 +381,51 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     await r.act(() => byText(panel, 'button', 'Read servers').click());
     await waitFor(() => expect(panel.querySelectorAll('[data-testid="import-candidate"]').length).toBe(2), r);
     expect(panel.textContent).toContain('GITHUB_PERSONAL_ACCESS_TOKEN) are kept in the credential store');
+    // the address is ticked; the program is the person's to tick (M24)
+    const candidates = Array.from(panel.querySelectorAll<HTMLElement>('[data-testid="import-candidate"]'));
+    expect(candidates.map((c) => [c.getAttribute('data-id'), c.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked])).toEqual([
+      ['docs', true],
+      ['gh', false],
+    ]);
+    await r.act(() => candidates[1]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     await r.act(() => byText(panel, 'button', 'Import 2 servers').click());
-    await waitFor(() => expect(discovered).toEqual(['docs', 'gh']), r);
+    await waitFor(() => expect(saves.length).toBe(2), r);
     expect(saves).toEqual([
       { id: 'docs', display: 'docs', transport: 'http', url: 'https://learn.microsoft.com/api/mcp' },
       { id: 'gh', display: 'gh', transport: 'stdio', argv: ['github-mcp-server', 'stdio'], secretEnv: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_x' } },
     ]);
+    // saving started nothing, and the page says so and where to start a server
+    const note = await waitFor(() => must(r.$('[data-testid="own-servers"] [role="status"]')) as HTMLElement, r);
+    await waitFor(() => expect(note.textContent).toContain('2 servers imported. Nothing has been started'), r);
+    expect(note.textContent).toContain('press Test connection on its card below');
+    await drain();
+    expect(discovered).toEqual([]);
+  });
+
+  it('an own server\'s Test connection says which program it starts or which address it reaches, whole, before it is pressed (M24)', async () => {
+    const discovered: unknown[] = [];
+    const long = Array.from({ length: 60 }, (_, i) => `--flag-${i}`);
+    const r = show({
+      mcpLibList: async () => [
+        libServer({ id: 'prog', display: 'My program', discoveredAt: 0, tools: [], argv: ['C:\\Tools\\my server.exe', ...long, 'LAST-ARGUMENT'] }),
+        libServer({ id: 'site', display: 'My site', transport: 'http', url: 'https://tracker.example.com/mcp', argv: undefined, discoveredAt: 0, tools: [] }),
+      ],
+      mcpLibDiscover: (async (id: unknown) => (discovered.push(id), libServer())) as never,
+    });
+    const prog = await waitFor(() => must(r.$('[data-testid="own-server"][data-id="prog"]')) as HTMLElement, r);
+    const note = prog.querySelector<HTMLElement>('[data-testid="reach-note"]')!;
+    expect(note.textContent).toContain('Pressing Test connection starts this program on this computer, with your rights:');
+    const cmd = note.querySelector<HTMLElement>('[data-testid="command-line"]')!;
+    expect(cmd.textContent!.startsWith('"C:\\Tools\\my server.exe" --flag-0 ')).toBe(true);
+    expect(cmd.textContent!.endsWith(' --flag-59 LAST-ARGUMENT')).toBe(true);
+    expect(getComputedStyle(cmd).overflowY).toBe('auto');
+    expect(byText(prog, 'button', 'Test connection').getAttribute('aria-describedby')).toBe(note.id);
+    const site = await waitFor(() => must(r.$('[data-testid="own-server"][data-id="site"]')) as HTMLElement, r);
+    expect(site.querySelector('[data-testid="reach-note"]')!.textContent).toBe('Pressing Test connection connects to this web address: https://tracker.example.com/mcp');
+    // the statement is there without a press; the press is what reaches the server
+    expect(discovered).toEqual([]);
+    await r.act(() => byText(prog, 'button', 'Test connection').click());
+    await waitFor(() => expect(discovered).toEqual(['prog']), r);
   });
 
   it('keeps every key typed into the import box, and reads the whole file (H12)', async () => {

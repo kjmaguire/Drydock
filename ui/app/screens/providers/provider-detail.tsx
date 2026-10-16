@@ -7,20 +7,23 @@ import { KeyRound } from 'lucide';
 import type { EndpointUptimeView, ProviderEdit } from '../../api/providerClient.ts';
 import type { Provider, ProviderModel } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { parseWhole } from '../../lib/limits.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
-import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { errorAttrs, Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectOptions, selectValues } from '../../ui/select.tsx';
 import { tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
-import { numOrUndef } from '../shared/budget-pause.tsx';
 import { avoidedEndpointText, keyInfoText, QUOTA_KINDS, quotaFraction, quotaKindLabel, rawPrice, uptimeThreshold } from './providers.ts';
 
 const sectionCss = css({ display: 'grid', gap: t.s3, '& > h3': { fontSize: t.textMd, fontWeight: '600' } });
 const panelCss = css({ display: 'grid', gap: t.s6 });
+
+/** What the concurrency limit says when its text is not a whole number (M25): a typo is never saved as "unlimited". */
+export const MAX_CONCURRENT_ERROR = 'Enter the most agents that may run at once as a whole number greater than zero, or leave it empty for no limit.';
 
 /** Setup reads the provider once (like a form's initial values); after a save the fields keep what was saved. */
 function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView; busy: string; onSave: (e: ProviderEdit) => void }>) {
@@ -31,6 +34,7 @@ function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView;
   let tier = d0.tier;
   let dataClass = d0.dataClass;
   let maxc = String(d0.maxConcurrent || '');
+  let maxcError: string | undefined;
   // The replacement key lives only in the (uncontrolled) input: read once on submit and cleared at once.
   let keyInput: HTMLInputElement | undefined;
 
@@ -54,6 +58,17 @@ function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView;
           formGrid,
           on('submit', (e) => {
             e.preventDefault();
+            // empty is "unlimited" (0); text that is not a whole number is told under the field and nothing is sent. The typed
+            // replacement key is read only after this, so it stays in its field when the form is sent back.
+            const limit = parseWhole(maxc, 1, MAX_CONCURRENT_ERROR);
+            if (!limit.ok) {
+              maxcError = limit.error;
+              void handle.update();
+              const form = e.currentTarget;
+              handle.queueTask(() => form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+              return;
+            }
+            maxcError = undefined;
             const apiKey = keyInput?.value ?? '';
             if (keyInput) keyInput.value = '';
             onSave({
@@ -62,7 +77,7 @@ function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView;
               baseUrl,
               tier,
               dataClass,
-              maxConcurrent: numOrUndef(maxc) ?? 0,
+              maxConcurrent: limit.value ?? 0,
               apiKey: apiKey || undefined,
               minEndpointUptime: uptime ? uptimeThreshold(minUp) : undefined,
             });
@@ -89,7 +104,17 @@ function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView;
             />
           )}
         </Field>
-        <Field label="Max concurrent agents (empty: unlimited)">{(id) => <input id={id} inputMode="numeric" value={maxc} mix={text((v) => (maxc = v))} />}</Field>
+        <Field label="Max concurrent agents (empty: unlimited)" error={maxcError}>
+          {(id) => (
+            <input
+              id={id}
+              inputMode="numeric"
+              value={maxc}
+              {...errorAttrs(id, maxcError)}
+              mix={text((v) => ((maxc = v), (maxcError = undefined)))}
+            />
+          )}
+        </Field>
         {uptime ? (
           <Field label={`Skip endpoints below this recent uptime, % (default ${uptime.defaultMinUptime}; 0 turns it off)`}>
             {(id) => <input id={id} type="number" min="0" max="100" step="any" inputMode="decimal" value={minUp} mix={text((v) => (minUp = v))} />}

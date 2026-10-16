@@ -5,13 +5,13 @@ import { css, on, type Handle } from 'remix/component';
 import { Bot, ChevronDown, MessageSquareReply, Trash2, UserPlus } from 'lucide';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { formatCost } from '../../lib/format.ts';
+import { parseWhole } from '../../lib/limits.ts';
 import { action, query, services } from '../../state/services.tsx';
-import { numOrUndef } from '../shared/budget-pause.tsx';
 import { ExplainText } from '../shared/explain.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
-import { Field } from '../../ui/form.tsx';
+import { errorAttrs, Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -82,6 +82,8 @@ const memberRow = css({
   '& .who span': { color: t.textMuted, fontSize: t.textSm },
 });
 const listCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
+/** What the round limit says when its text is not a whole number (M25): a typo is never turned into the default. */
+export const ROUNDS_ERROR = 'Enter the round limit as a whole number greater than zero, for example 3, or leave it empty for the default.';
 const tableWrap = css({ border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'auto', '& tr:last-child td': { borderBottom: '0' } });
 
 /** Who answers in this room, how, and what the agents have done. Changing members or the mode is a human action. */
@@ -99,22 +101,33 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
   let order: string[] = init.modeParams?.order ?? [];
   let moderator = init.modeParams?.moderator ?? '';
   let rounds = String(init.modeParams?.max_rounds ?? 3);
+  let roundsError: string | undefined;
   let invite = '';
   let explainOf: string | undefined; // the decision whose "Why this model?" is open
   const update = () => void handle.update();
 
   const name = (key: string) => (key.startsWith('human:') ? key.slice(6) : (handle.props.agents.find((a) => a.id === key)?.name ?? key));
 
-  const saveMode = () =>
-    act.run('mode', () =>
+  const saveMode = (button: HTMLElement) => {
+    // empty is the core's default (0); text that is not a whole number is told under the field and nothing is sent
+    const limit = parseWhole(rounds, 1, ROUNDS_ERROR);
+    if (!limit.ok) {
+      roundsError = limit.error;
+      act.clear();
+      handle.queueTask(() => button.closest('[data-testid="room-agents"]')?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return undefined;
+    }
+    roundsError = undefined;
+    return act.run('mode', () =>
       s.client.roomSetMode({
         roomId: handle.props.room.id,
         mode,
         order: mode === 'sequential' ? order : [],
         moderator: mode === 'moderator' ? moderator : '',
-        maxRounds: numOrUndef(rounds) ?? 0,
+        maxRounds: limit.value ?? 0,
       }),
     );
+  };
 
   return () => {
     const { room, agents, members, lastHumanMessageId } = handle.props;
@@ -221,17 +234,19 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                     </Field>
                   </div>
                 ) : null}
-                <div style={{ width: '120px' }}>
-                  <Field label="Round limit">
+                <div style={roundsError ? { flex: '1 1 280px' } : { width: '120px' }}>
+                  <Field label="Round limit" error={roundsError}>
                     {(id) => (
                       <input
                         id={id}
                         aria-label="Round limit"
                         inputMode="numeric"
                         value={rounds}
+                        {...errorAttrs(id, roundsError)}
                         mix={[
                           on('input', (e) => {
                             rounds = (e.currentTarget as HTMLInputElement).value;
+                            roundsError = undefined;
                             update();
                           }),
                         ]}
@@ -239,7 +254,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                     )}
                   </Field>
                 </div>
-                <Button variant="primary" disabled={busy} mix={[on('click', () => void saveMode())]}>
+                <Button variant="primary" disabled={busy} mix={[on('click', (e) => void saveMode(e.currentTarget))]}>
                   {act.busy === 'mode' ? 'Saving...' : 'Save mode'}
                 </Button>
               </div>

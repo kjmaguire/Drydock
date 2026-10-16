@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { TelemetryStatus } from '../../api/extTypes.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT } from './settings.ts';
 import { SettingsScreen, UpdatesSection } from './settings-screen.tsx';
@@ -175,32 +175,103 @@ describe('TelemetryPanel', () => {
 });
 
 describe('AgentEnvSection', () => {
-  it('shows what agents keep, saves names only and shows the core refusal of a value', async () => {
-    let fail = false;
-    const sets: string[][] = [];
+  /** The section with a stand-in client that records every call of agentEnvSet, whatever it answers. */
+  function envSection(setting: (names: string[]) => Promise<void> = async () => undefined) {
+    const calls: string[][] = [];
     const r = mount(
       <AgentEnvSection />,
       testServices({
         agentEnvGet: async () => ({ pass: ['AWS_PROFILE'], kept: ['PATH', 'HOME'], prefixes: ['CLAUDE_', 'ANTHROPIC_'] }),
         agentEnvSet: async (names) => {
-          if (fail) throw new Error('"AWS_PROFILE=work" is not an environment variable name (give names only, never values)');
-          sets.push(names);
+          calls.push(names);
+          await setting(names);
           return { pass: names, kept: ['PATH'], prefixes: ['CLAUDE_'] };
         },
       }),
     );
     const box = byLabel<HTMLTextAreaElement>(r.container, /Also pass these variables/);
+    return { r, calls, box };
+  }
+
+  it('shows what agents keep and saves names only, trimmed and without blank lines', async () => {
+    const { r, calls, box } = envSection();
     await waitFor(() => expect(box.value).toBe('AWS_PROFILE'), r);
     expect(tid(r.container, 'agent-env').textContent).toContain('Agent programs start with a trimmed environment');
     expect(r.container.querySelector('details')!.textContent).toContain('PATH, HOME');
     await r.act(() => type(box, 'AWS_PROFILE\n\n CLAUDE_CODE_USE_BEDROCK '));
     await r.act(() => btn(r.container, 'Save').click());
-    await waitFor(() => expect(sets).toEqual([['AWS_PROFILE', 'CLAUDE_CODE_USE_BEDROCK']]), r);
+    await waitFor(() => expect(calls).toEqual([['AWS_PROFILE', 'CLAUDE_CODE_USE_BEDROCK']]), r);
     await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toContain('Saved'), r);
-    fail = true;
-    await r.act(() => type(box, 'AWS_PROFILE=work'));
+    // typing again takes the "Saved" back
+    await r.act(() => type(box, 'AWS_PROFILE'));
     expect(r.container.querySelector('[role="status"]')).toBe(null);
+  });
+
+  it('refuses a pasted NAME=value before anything is sent, says which line it is, and repeats nothing of it anywhere on the page (L38)', async () => {
+    const { r, calls, box } = envSection();
+    await waitFor(() => expect(box.value).toBe('AWS_PROFILE'), r);
+    // nothing the person typed goes to the console either
+    const logged: string[] = [];
+    const real = { log: console.log, info: console.info, warn: console.warn, error: console.error, debug: console.debug };
+    for (const k of Object.keys(real) as (keyof typeof real)[]) console[k] = (...a: unknown[]) => void logged.push(a.map(String).join(' '));
+    try {
+      await r.act(() => type(box, 'AWS_PROFILE\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG'));
+      await r.act(() => btn(r.container, 'Save').click());
+      await waitFor(() => expect(errorOf(box)).toBe('Line 2 is not a variable name. Give names only, never values.'), r);
+    } finally {
+      Object.assign(console, real);
+    }
+    // the core was not asked, the keyboard is on the box, and nothing says "Saved"
+    expect(calls).toEqual([]);
+    expect(document.activeElement).toBe(box);
+    expect(r.container.querySelector('[role="status"]')).toBe(null);
+    // no message, title, label or other attribute anywhere on the page holds any part of the line (the box itself holds what was typed)
+    const holds = (needle: string) =>
+      Array.from(r.container.querySelectorAll('*')).filter(
+        (el) => el !== box && (Array.from(el.attributes).some((a) => a.value.includes(needle)) || (el.children.length === 0 && (el.textContent ?? '').includes(needle))),
+      );
+    const pieces = ['AWS_SECRET', 'ACCESS_KEY', 'wJalr', 'MDENG', 'K7MDENG'];
+    expect(pieces.map((piece) => ({ piece, found: holds(piece).map((el) => el.outerHTML) }))).toEqual(pieces.map((piece) => ({ piece, found: [] })));
+    expect(logged.filter((l) => l.includes('wJalr') || l.includes('AWS_SECRET'))).toEqual([]);
+    expect(document.title).not.toContain('wJalr');
+  });
+
+  it('counts the lines as the box shows them, blank ones included, and a corrected box is sent as it is', async () => {
+    const { r, calls, box } = envSection();
+    await waitFor(() => expect(box.value).toBe('AWS_PROFILE'), r);
+    await r.act(() => type(box, 'AWS_PROFILE\n\n  \nAWS_PROFILE=work'));
     await r.act(() => btn(r.container, 'Save').click());
-    await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('names only'), r);
+    await waitFor(() => expect(errorOf(box)).toBe('Line 4 is not a variable name. Give names only, never values.'), r);
+    // no message (alert or status) and no title or label holds "work", the value that was pasted (the page's own prose has the word)
+    const messages = Array.from(r.container.querySelectorAll('[role="alert"], [role="status"]')).map((el) => el.textContent ?? '');
+    const names = Array.from(r.container.querySelectorAll('[title], [aria-label]')).flatMap((el) => [el.getAttribute('title') ?? '', el.getAttribute('aria-label') ?? '']);
+    expect([...messages, ...names].filter((x) => x.includes('work'))).toEqual([]);
+    expect(r.container.textContent).not.toContain('AWS_PROFILE=work');
+    expect(calls).toEqual([]);
+    // typing takes the message away at once; the corrected names go to the core
+    await r.act(() => type(box, 'AWS_PROFILE\n\n  \nAWS_REGION'));
+    expect(errorOf(box)).toBe(null);
+    expect(r.container.querySelector('[role="alert"]')).toBe(null);
+    await r.act(() => btn(r.container, 'Save').click());
+    await waitFor(() => expect(calls).toEqual([['AWS_PROFILE', 'AWS_REGION']]), r);
+    await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toContain('Saved'), r);
+  });
+
+  it("still shows the core's own refusal when it has one", async () => {
+    const { r, calls, box } = envSection(async () => {
+      throw new Error('the settings could not be written');
+    });
+    await waitFor(() => expect(box.value).toBe('AWS_PROFILE'), r);
+    await r.act(() => type(box, 'AWS_PROFILE\nAWS_REGION'));
+    await r.act(() => btn(r.container, 'Save').click());
+    await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('the settings could not be written'), r);
+    expect(calls).toEqual([['AWS_PROFILE', 'AWS_REGION']]);
+    expect(errorOf(box)).toBe(null);
+    // a line the page refuses is the only thing it says then: the core's earlier answer is not left beside it
+    await r.act(() => type(box, 'AWS_PROFILE\nAWS_REGION=eu'));
+    await r.act(() => btn(r.container, 'Save').click());
+    await waitFor(() => expect(errorOf(box)).toBe('Line 2 is not a variable name. Give names only, never values.'), r);
+    expect(Array.from(r.container.querySelectorAll('[role="alert"]')).map((x) => x.textContent)).toEqual(['Line 2 is not a variable name. Give names only, never values.']);
+    expect(calls.length).toBe(1);
   });
 });

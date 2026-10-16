@@ -11,6 +11,18 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await projectNav(page, 'nav-budgets');
   await expect(page.getByText('No budgets')).toBeVisible();
   await page.getByRole('button', { name: 'Add budget' }).first().click();
+  // a limit that is not a plain number is refused under its field and never saved as "no limit" (M25): the core is not asked
+  const budgetSets: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/rpc/budget.set')) budgetSets.push(req.postData() ?? '');
+  });
+  await page.getByLabel('Limit in USD').fill('5 dollars');
+  await page.getByRole('button', { name: 'Add budget' }).last().click();
+  await expect(page.getByLabel('Limit in USD')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByRole('alert')).toHaveText('Enter the limit in dollars, for example 12.50.');
+  await expect(page.getByLabel('Limit in USD')).toBeFocused();
+  await expect(page.getByTestId('budget')).toHaveCount(0);
+  expect(budgetSets).toEqual([]);
   await page.getByLabel('Limit in USD').fill('5');
   await page.getByLabel('Note').fill('e2e budget');
   await page.getByRole('button', { name: 'Add budget' }).last().click();
@@ -200,6 +212,20 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await mem.getByRole('button', { name: 'Delete' }).click();
   await mem.getByRole('button', { name: 'Yes, delete' }).click();
   await expect(mem).toHaveCount(0);
+
+  // a long proposal is shown whole before it can be accepted (M26): the last line is in the box, with the length beside it
+  const long = `${'Run gofmt before every commit.\n'.repeat(240)}LAST-LINE-MARKER`;
+  await page.getByLabel('Title', { exact: true }).fill('A long rule');
+  await page.getByLabel('Body').fill(long);
+  await page.getByRole('button', { name: 'Propose' }).click();
+  const big = page.locator('[data-testid=memory][data-title="A long rule"]');
+  await expect(big).toHaveAttribute('data-status', 'proposed');
+  await expect(big.getByTestId('memory-body')).toContainText('LAST-LINE-MARKER');
+  await expect(big.getByTestId('memory-body')).toHaveAttribute('tabindex', '0');
+  await expect(big.getByTestId('memory-chars')).toHaveText(`${[...long].length.toLocaleString('en-US')} characters`);
+  await big.getByRole('button', { name: 'Delete' }).click();
+  await big.getByRole('button', { name: 'Yes, delete' }).click();
+  await expect(big).toHaveCount(0);
 });
 
 test('development flow: the Feature template stops at the spec gate; reject with feedback, accept with edited criteria, red then green, approve', async ({ page }) => {

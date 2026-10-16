@@ -2,7 +2,8 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { BudgetPausePayload } from '../../api/extTypes.ts';
 import { budgetStatus, expiredLicense, usage } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { TOKENS_ERROR, TURNS_ERROR, USD_ERROR } from '../budgets/budgets.ts';
 import { BudgetPausePanel } from './budget-pause.tsx';
 import { ExplainText, TaskDecisions } from './explain.tsx';
 import { UsageTable, distinctSources } from './usage.tsx';
@@ -37,6 +38,47 @@ describe('BudgetPausePanel', () => {
     await waitFor(() => expect(done).toBe(1), r);
     await r.act(() => byText(r.container, 'button', 'Stop the run').click());
     await waitFor(() => expect(calls[1]).toEqual({ runId: 'run-9', requestId: 'req-3', decision: 'rejected', limitUsd: undefined, limitTokens: undefined, limitTurns: undefined }), r);
+  });
+
+  it('a new limit that is not a plain number is told under its field and the run is not resumed; blank fields still resume with one more turn (M25)', async () => {
+    const calls: unknown[] = [];
+    const s = testServices({ budgetResume: async (p) => (calls.push(p), { runId: 'r', requestId: 'q', decision: 'approved', raised: [], by: 'human:kyle' }) as never });
+    const payload: BudgetPausePayload = { gate: 'budget', message: 'Budget limit reached: project prj_1 at 100%.', exceeded: [budgetStatus({ state: 'exceeded', pct: 1.1 })] };
+    let done = 0;
+    const r = mount(<BudgetPausePanel payload={payload} runId="run-9" requestId="req-3" onDone={() => done++} />, s);
+    const usd = () => byLabel<HTMLInputElement>(r.container, 'New USD limit');
+    const tokens = () => byLabel<HTMLInputElement>(r.container, 'New token limit');
+    const turns = () => byLabel<HTMLInputElement>(r.container, 'New turn limit');
+    for (const [field, bad, message] of [
+      [usd, '5 dollars', USD_ERROR],
+      [usd, '$5', USD_ERROR],
+      [usd, '1,000', USD_ERROR],
+      [usd, '1e999', USD_ERROR],
+      [usd, 'abc', USD_ERROR],
+      [tokens, '1e6', TOKENS_ERROR],
+      [turns, '2.5', TURNS_ERROR],
+    ] as const) {
+      for (const f of [usd, tokens, turns]) type(f(), '');
+      type(field(), bad);
+      await r.act(() => byText(r.container, 'button', 'Resume').click());
+      await waitFor(() => expect(errorOf(field())).toBe(message), r);
+      await waitFor(() => expect(document.activeElement).toBe(field()), r);
+      for (const other of [usd, tokens, turns].filter((f) => f !== field)) expect(errorOf(other())).toBe(null);
+    }
+    expect(calls).toEqual([]);
+    expect(done).toBe(0);
+    // stopping the run asks nothing of the fields: it is always possible, and sends no limit
+    await r.act(() => byText(r.container, 'button', 'Stop the run').click());
+    await waitFor(() => expect(calls).toEqual([{ runId: 'run-9', requestId: 'req-3', decision: 'rejected', limitUsd: undefined, limitTokens: undefined, limitTurns: undefined }]), r);
+    // blank fields still resume without a new limit (exactly one more turn); a plain number is sent as it is
+    for (const f of [usd, tokens, turns]) type(f(), '');
+    await r.act(() => byText(r.container, 'button', 'Resume').click());
+    await waitFor(() => expect(calls[1]).toEqual({ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: undefined, limitTokens: undefined, limitTurns: undefined }), r);
+    type(usd(), '12.50');
+    type(tokens(), ' 500000 ');
+    await r.act(() => byText(r.container, 'button', 'Resume').click());
+    await waitFor(() => expect(calls[2]).toEqual({ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: 12.5, limitTokens: 500000, limitTurns: undefined }), r);
+    expect(errorOf(usd())).toBe(null);
   });
 
   it('read-only turns off approving but never refusing: Stop the run stays available', async () => {

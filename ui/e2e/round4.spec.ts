@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
@@ -203,6 +205,68 @@ test('support bundle: preview lists files and the scrub report, a planted secret
   await page.getByRole('button', { name: 'Preview the bundle' }).click();
   await expect(page.getByRole('alert')).toContainText('there is no run');
   expect(readFileSync(path).length).toBeGreaterThan(0);
+});
+
+// Audit 2026-10-16, L39: a bundle is never written over a file by itself. The real core answers that the file exists and writes
+// nothing; the page asks, and only "Yes, replace it" sends the request again with overwrite. What was written is shown.
+test('support bundle: a file already at the destination is not written over until the person says so, and the bundle that was written is shown (L39)', async ({ page }) => {
+  // the folder's full path: Windows' temp folder can be a short 8.3 path, and Drydock names the folder it resolves to
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'drydock-e2e-bundle-')));
+  const dest = join(dir, 'report.zip');
+  try {
+    // the Support bundle page needs no project (and so takes no fresh repository from the pool)
+    const support = new URL(appUrl());
+    support.pathname = '/support';
+    await page.goto(support.toString());
+    await expect(page.getByRole('heading', { level: 1, name: 'Support bundle' })).toBeVisible();
+    await page.getByRole('button', { name: 'Preview the bundle' }).click();
+    await expect(page.getByTestId('bundle-preview')).toBeVisible();
+    await page.getByLabel(/^Save to/).fill(dest);
+
+    // nothing is there yet: the bundle is written, and the page shows what is in it and its own scrub report
+    await page.getByRole('button', { name: 'Create the bundle' }).click();
+    await expect(page.getByTestId('bundle-path')).toHaveText(dest);
+    await expect(page.getByTestId('bundle-replaced')).toHaveCount(0);
+    await expect(page.getByTestId('bundle-exists')).toHaveCount(0);
+    const written = page.getByTestId('bundle-written');
+    await expect(written).toBeVisible();
+    const entries = Object.keys(readZip(dest));
+    expect(entries.length).toBeGreaterThan(1);
+    await expect(written.getByTestId('bundle-written-file')).toHaveCount(entries.length);
+    await expect(written.getByTestId('written-scrub-total')).toHaveText(/^\d+$/);
+
+    // a file of someone's is at that name now: the core writes nothing and the page asks
+    const mine = 'a file that was there before, not a bundle';
+    writeFileSync(dest, mine);
+    await page.getByRole('button', { name: 'Create the bundle' }).click();
+    const ask = page.getByTestId('bundle-exists');
+    await expect(ask).toBeVisible();
+    await expect(ask).toHaveAttribute('role', 'alert');
+    await expect(page.getByTestId('bundle-exists-path')).toHaveText(dest);
+    await expect(ask).toContainText(`(${Buffer.byteLength(mine)} B). Replace it?`);
+    await expect(page.getByTestId('bundle-created')).toHaveCount(0);
+    expect(readFileSync(dest, 'utf8')).toBe(mine);
+
+    // "Keep it": still nothing written, said so, and the keyboard is back on the button that asked
+    await page.getByRole('button', { name: 'Keep it' }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(page.getByTestId('bundle-kept')).toContainText('Nothing was written');
+    await expect(page.getByTestId('bundle-create')).toBeFocused();
+    expect(readFileSync(dest, 'utf8')).toBe(mine);
+
+    // asked again and told to replace it: now it is written, and the page says it replaced the earlier file
+    await page.getByRole('button', { name: 'Create the bundle' }).click();
+    await expect(ask).toBeVisible();
+    await expect(page.getByTestId('bundle-kept')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Yes, replace it' }).click();
+    await expect(page.getByTestId('bundle-replaced')).toHaveText('It replaced the earlier file.');
+    await expect(ask).toHaveCount(0);
+    expect(Object.keys(readZip(dest)).length).toBe(entries.length);
+    await expect(written.getByTestId('bundle-written-file')).toHaveCount(entries.length);
+    await expect(page.getByTestId('bundle-create')).toBeFocused();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('licensed test harness: no license is read-only and says why; expired is read-only; an active license turns work on; removing it turns work off again; reading, backup and export stay usable', async ({ page }) => {

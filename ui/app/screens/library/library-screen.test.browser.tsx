@@ -338,7 +338,8 @@ describe('Library page', () => {
 
   it('imports servers from a file in the same dialog, below the built-in servers', async () => {
     const saves: Calls = [];
-    const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never, mcpLibDiscover: async () => libServer() });
+    const discovers: Calls = [];
+    const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never, mcpLibDiscover: rec(discovers, () => libServer()) as never });
     await waitFor(() => byText(r.container, 'button', 'Connect an MCP server'), r);
     await r.act(() => byText(r.container, 'button', 'Connect an MCP server').click());
     const custom = await one(r, '[data-testid="mcp-add-custom"]');
@@ -348,7 +349,9 @@ describe('Library page', () => {
     await r.act(() => byText(panel, 'button', 'Read servers').click());
     await r.act(() => byText(panel, 'button', 'Import 1 server').click());
     await waitFor(() => expect(saves.length).toBe(1), r);
-    await waitFor(() => expect(note(r)).toBe('1 server imported.'), r);
+    // saving started nothing, and the page says so and where to start a server (M24)
+    await waitFor(() => expect(note(r)).toBe('1 server imported. Nothing has been started: no program has run and no address has been contacted. To start one, open its tile below and press Find tools; what it will run is shown beside the button.'), r);
+    expect(discovers).toEqual([]);
     expect(r.$('dialog[open]')).toBeNull();
   });
 
@@ -380,18 +383,54 @@ describe('Library page', () => {
     expect(tp.getAttribute('data-template')).toBe('Payments dev');
   });
 
-  it('says which environment line is wrong and saves nothing', async () => {
+  it('says which environment line is wrong, without repeating it, and saves nothing (L38)', async () => {
     const saves: Calls = [];
     const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never });
     const f = await customForm(r);
     type(byLabel(f, 'Short id'), 'tst');
     type(byLabel(f, 'Name'), 'Test server');
     type(byLabel<HTMLTextAreaElement>(f, /^Command, one argument per line/), 'srv.exe');
-    type(byLabel<HTMLTextAreaElement>(f, /^Environment/), 'NOEQUALS');
+    type(byLabel<HTMLTextAreaElement>(f, /^Environment/), 'MODE=x\nNOEQUALS');
     await r.act(() => byText(f, 'button', 'Connect server').click());
-    await waitFor(() => expect(f.querySelector('[role="alert"]')!.textContent).toContain('Environment: "NOEQUALS" is not NAME=value'), r);
+    await waitFor(() => expect(f.querySelector('[role="alert"]')!.textContent).toBe('Line 2 is not NAME=value. A name has letters, digits and _ only, at most 64, and does not start with a digit.'), r);
     expect(f.querySelectorAll('[role="alert"]').length).toBe(1);
+    expect(f.querySelector('[role="alert"]')!.textContent).not.toContain('NOEQUALS');
+    expect(byLabel<HTMLTextAreaElement>(f, /^Environment/).getAttribute('aria-invalid')).toBe('true');
     expect(saves).toEqual([]);
+  });
+
+  it('Find tools says which program it starts, whole, and the button is described by it; Test and refresh tools and a web address say theirs (M24)', async () => {
+    const discovers: Calls = [];
+    const fresh = libServer({ id: 'fresh', display: 'Fresh', tools: [], discoveredAt: 0, projects: [], argv: ['npx', '-y', '@scope/pkg@1.2.3', '--root', 'C:\\My Work'], cwd: 'C:\\work' });
+    const r = show({ mcpLibList: async () => [fresh], mcpLibDiscover: rec(discovers, () => fresh) as never });
+    const card = await pick(r, 'lib-mcp');
+    const note = card.querySelector<HTMLElement>('[data-testid="reach-note"]')!;
+    expect(note.getAttribute('data-transport')).toBe('stdio');
+    expect(note.textContent).toContain('Pressing Find tools starts this program on this computer, with your rights:');
+    expect(note.querySelector('[data-testid="command-line"]')!.textContent).toBe('npx -y @scope/pkg@1.2.3 --root "C:\\My Work"');
+    expect(note.textContent).toContain('In the folder C:\\work');
+    const find = byText(card, 'button', 'Find tools');
+    expect(find.getAttribute('aria-describedby')).toBe(note.id);
+    expect(note.id).not.toBe('');
+    // the note is on the screen before the button is pressed, and pressing it is the only thing that reaches the server
+    expect(discovers).toEqual([]);
+    await r.act(() => find.click());
+    await waitFor(() => expect(discovers).toEqual([['fresh']]), r);
+
+    // a server whose tools are known: the button is Test and refresh tools and the note says so
+    const r2 = show({ mcpLibList: async () => [libServer({ projects: [] })] });
+    const card2 = await pick(r2, 'lib-mcp');
+    expect(card2.querySelector('[data-testid="reach-note"]')!.textContent).toContain('Pressing Test and refresh tools starts this program on this computer');
+    expect(card2.querySelector('[data-testid="command-line"]')!.textContent).toBe('C:\\tools\\srv.exe --flag');
+    expect(byText(card2, 'button', 'Test and refresh tools').getAttribute('aria-describedby')).toBe(card2.querySelector('[data-testid="reach-note"]')!.id);
+
+    // a web address: it connects, and says to what
+    const r3 = show({ mcpLibList: async () => [libServer({ id: 'web', display: 'Web thing', transport: 'http', url: 'https://mcp.example.com/mcp', argv: undefined, tools: [], discoveredAt: 0, projects: [] })] });
+    const card3 = await pick(r3, 'lib-mcp');
+    const note3 = card3.querySelector<HTMLElement>('[data-testid="reach-note"]')!;
+    expect(note3.getAttribute('data-transport')).toBe('http');
+    expect(note3.textContent).toBe('Pressing Find tools connects to this web address: https://mcp.example.com/mcp');
+    expect(card3.querySelector('[data-testid="command-line"]')).toBeNull();
   });
 
   it('disconnecting needs a confirmation that says what it removes', async () => {

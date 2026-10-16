@@ -2,8 +2,8 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { RoomTurn } from '../../api/extTypes.ts';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { RoomAgentsPanel } from './room-agents.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { ROUNDS_ERROR, RoomAgentsPanel } from './room-agents.tsx';
 
 afterEach(cleanup);
 
@@ -56,6 +56,32 @@ describe('RoomAgentsPanel', () => {
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
     await r.act(() => button(r, 'Save mode').click());
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('moderator mode needs a moderator'), r);
+  });
+
+  it('a round limit that is not a whole number is told under the field and nothing is sent; an empty one is the default (M25)', async () => {
+    const calls: unknown[] = [];
+    const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [] });
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    r.container.querySelector<HTMLDetailsElement>('details[data-testid="room-agents"]')!.open = true; // focus can only go to a field that is shown
+    const limit = () => byLabel<HTMLInputElement>(r.container, 'Round limit');
+    for (const bad of ['three', '3.5', '1e3', '0', '-2', '5 rounds']) {
+      await r.act(() => type(limit(), bad));
+      await r.act(() => button(r, 'Save mode').click());
+      await waitFor(() => expect(errorOf(limit())).toBe(ROUNDS_ERROR), r);
+      // the keyboard goes to the field that needs fixing, and the page is not left saying it saved
+      await waitFor(() => expect(document.activeElement).toBe(limit()), r);
+    }
+    expect(calls).toEqual([]);
+    // typing again takes the old error away; a whole number saves
+    await r.act(() => type(limit(), '4'));
+    expect(errorOf(limit())).toBe(null);
+    await r.act(() => button(r, 'Save mode').click());
+    await waitFor(() => expect(calls).toEqual([{ roomId: 'room_1', mode: 'auto', order: [], moderator: '', maxRounds: 4 }]), r);
+    // an empty field still means "the core's default" (0)
+    await r.act(() => type(limit(), ''));
+    await r.act(() => button(r, 'Save mode').click());
+    await waitFor(() => expect(calls[1]).toEqual({ roomId: 'room_1', mode: 'auto', order: [], moderator: '', maxRounds: 0 }), r);
+    expect(errorOf(limit())).toBe(null);
   });
 
   it('invites an agent, removes one, asks for a reply and lists turns with cost not reported when zero', async () => {

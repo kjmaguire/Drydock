@@ -2,7 +2,7 @@
 
 import type { BackupInfo, BackupResult, BackupSettings, BackupVerify, RestoreStatus } from '../../api/pkgTypes.ts';
 import { formatBytes } from '../../lib/format.ts';
-import { numOrUndef } from '../settings/forms.ts';
+import { parseWhole } from '../../lib/limits.ts';
 
 /** A verification belongs to the file as it was when checked (name, time, size): a pruned or replaced file loses it. */
 export function fingerprint(b: BackupInfo): string {
@@ -58,6 +58,29 @@ export function settingsKey(s: BackupSettings): string {
   return `${s.enabled}|${s.dir}|${s.daily}|${s.weekly}`;
 }
 
-export function settingsPayload(f: ScheduleForm): { enabled: boolean; dir: string; daily: number | undefined; weekly: number | undefined } {
-  return { enabled: f.enabled, dir: f.dir.trim(), daily: numOrUndef(f.daily), weekly: numOrUndef(f.weekly) };
+// What a backup count says when its text is not a whole number (M25): a typo is never saved as "keep the old value".
+export const DAILY_ERROR = 'Enter how many daily backups to keep as a whole number greater than zero, for example 7.';
+export const WEEKLY_ERROR = 'Enter how many weekly backups to keep as a whole number, for example 4. Enter 0 to keep none.';
+
+export interface ScheduleErrors {
+  daily?: string;
+  weekly?: string;
+}
+
+export interface SchedulePayload {
+  enabled: boolean;
+  dir: string;
+  daily: number | undefined;
+  weekly: number | undefined;
+}
+
+/**
+ * The backup.settings.set request for the form, or what is wrong with it. An empty count is left as the core has it (undefined);
+ * text that is not a whole number is an error under its field and nothing is sent. Daily is at least 1; weekly may be 0 (keep none).
+ */
+export function parseSchedule(f: ScheduleForm): { ok: true; payload: SchedulePayload } | { ok: false; errors: ScheduleErrors } {
+  const daily = parseWhole(f.daily, 1, DAILY_ERROR);
+  const weekly = parseWhole(f.weekly, 0, WEEKLY_ERROR);
+  if (!daily.ok || !weekly.ok) return { ok: false, errors: { daily: daily.ok ? undefined : daily.error, weekly: weekly.ok ? undefined : weekly.error } };
+  return { ok: true, payload: { enabled: f.enabled, dir: f.dir.trim(), daily: daily.value, weekly: weekly.value } };
 }

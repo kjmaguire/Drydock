@@ -74,4 +74,45 @@ describe('Live', () => {
     live.stop();
     store.stop();
   });
+
+  it('reload() returns a promise that settles when its read has, whether it answered, failed or was replaced, and never rejects (L37)', async () => {
+    const store = new EventStore(new FakeTransport(), { scheduler: new ManualScheduler(), backoff: () => 100 });
+    const releases: ((v: string) => void)[] = [];
+    let fail = false;
+    const live = new Live(store, {
+      load: () => (fail ? Promise.reject(new Error('core is down')) : new Promise<string>((r) => releases.push(r))),
+    });
+    // it settles only when the read has answered
+    let settled = 0;
+    void live.reload().then(() => settled++);
+    await tick();
+    expect(settled).toBe(0);
+    releases[0]!('one');
+    await tick();
+    expect(settled).toBe(1);
+    expect(live.data).toBe('one');
+
+    // a read that is replaced by a newer one still settles (its answer is dropped), and so does the newer one
+    let first = 0;
+    let second = 0;
+    void live.reload().then(() => first++);
+    await tick();
+    void live.reload().then(() => second++);
+    await tick();
+    releases[2]!('newer');
+    await tick();
+    expect(second).toBe(1);
+    expect(first).toBe(0); // the older read is still in flight: its promise settles with it
+    releases[1]!('older');
+    await tick();
+    expect(first).toBe(1);
+    expect(second).toBe(1);
+    expect(live.data).toBe('newer');
+
+    // a read that fails settles too, with the failure in `error`
+    fail = true;
+    await live.reload();
+    expect(live.error?.message).toBe('core is down');
+    expect(live.data).toBe('newer');
+  });
 });

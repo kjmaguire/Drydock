@@ -1,5 +1,6 @@
 // Pure data for the Settings screen.
 
+import { boxLines, isEnvName } from '../../lib/envname.ts';
 import type { ThemeChoice } from '../../lib/theme.ts';
 
 /** docs/ui.md section 4: features that do not exist yet, with the slice that owns them. Keep in step with that table. */
@@ -19,10 +20,23 @@ export const THEMES: { value: ThemeChoice; label: string; hint: string }[] = [
   { value: 'light', label: 'Light', hint: 'Light everywhere' },
 ];
 
-/** The names typed into the agent-environment box: one per line, trimmed, blank lines dropped. */
-export function envNames(text: string): string[] {
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean);
+/**
+ * What the agent-environment box says about line `n` when it is not a name. It names the line and never repeats it: a line that
+ * is not a name may be NAME=value with a secret in it (audit 2026-10-16, L38).
+ */
+export const envLineError = (n: number): string => `Line ${n} is not a variable name. Give names only, never values.`;
+
+/**
+ * The names typed into the agent-environment box: one per line, trimmed, blank lines skipped. The first line that is not a name is
+ * refused here, before anything is sent, and counted as the person sees the lines in the box.
+ */
+export function parseEnvNames(text: string): { ok: true; names: string[] } | { ok: false; error: string } {
+  const names: string[] = [];
+  for (const line of boxLines(text)) {
+    const name = line.text.trim();
+    if (name === '') continue;
+    if (!isEnvName(name)) return { ok: false, error: envLineError(line.n) };
+    names.push(name);
+  }
+  return { ok: true, names };
 }
