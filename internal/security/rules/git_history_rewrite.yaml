@@ -1,0 +1,66 @@
+# Command class: git_history_rewrite. Rewrites or removes history. Force pushes carry kind git_force_push and are never
+# remembered by stored rules (docs/security.md s5).
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7).
+class: git_history_rewrite
+rules:
+  - id: git_history_rewrite.push_force
+    programs: [git]
+    subcommands: [push]
+    flags_any: ["-f", "--force", "--force-with-lease", "--force-if-includes", "--mirror", "--prune"]
+    kind: git_force_push
+    also_classes: [destructive, network]
+    paths: none
+    reason: force push rewrites remote history
+  - id: git_history_rewrite.push_plus_refspec
+    programs: [git]
+    subcommands: [push]
+    args_regex: ['^\+']
+    kind: git_force_push
+    also_classes: [destructive, network]
+    paths: none
+    reason: a +refspec is a force push
+  - id: git_history_rewrite.push_delete
+    programs: [git]
+    subcommands: [push]
+    flags_any: ["-d", "--delete"]
+    kind: git_branch_delete
+    also_classes: [destructive, network]
+    paths: none
+    reason: deletes a remote ref
+  - id: git_history_rewrite.push_colon_refspec
+    programs: [git]
+    subcommands: [push]
+    args_regex: ['^:\S']
+    kind: git_branch_delete
+    also_classes: [destructive, network]
+    paths: none
+    reason: an empty-source refspec deletes a remote ref
+  - id: git_history_rewrite.rebase
+    programs: [git]
+    subcommands: [rebase, filter-branch, filter-repo, replace, "update-ref"]
+    flags_none: ["--abort", "--quit"]
+    kind: shell_destructive
+    paths: none
+    reason: rewrites commits
+  - id: git_history_rewrite.amend
+    programs: [git]
+    subcommands: [commit]
+    flags_any: ["--amend"]
+    kind: shell_destructive
+    paths: none
+    reason: rewrites the last commit
+  - id: git_history_rewrite.reflog_gc
+    programs: [git]
+    subcommands: ["reflog expire", "reflog delete", gc, prune, "gc --prune"]
+    flags_any: ["--expire", "--prune", "--expire-unreachable", "--all", "--aggressive"]
+    kind: shell_destructive
+    also_classes: [destructive]
+    paths: none
+    reason: discards recovery data
+  - id: git_history_rewrite.tag_delete
+    programs: [git]
+    subcommands: [tag]
+    flags_any: ["-d", "--delete"]
+    kind: shell_destructive
+    paths: none
+    reason: deletes a tag

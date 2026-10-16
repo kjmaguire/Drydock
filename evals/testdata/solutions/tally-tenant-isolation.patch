@@ -1,0 +1,594 @@
+diff --git a/internal/api/invoices.go b/internal/api/invoices.go
+index 843d000..cb88635 100644
+--- a/internal/api/invoices.go
++++ b/internal/api/invoices.go
+@@ -108,12 +108,9 @@ func (s *Server) createInvoice(w http.ResponseWriter, r *http.Request, p auth.Pr
+ 			return
+ 		}
+ 	}
++	// A customer of another organization is answered like one that does not exist (the store says ErrNotFound for both).
+ 	inv, err := s.store.CreateInvoice(store.Invoice{OrgID: p.OrgID, CustomerID: in.CustomerID, Currency: in.Currency, Lines: in.Lines, DiscountPercent: in.DiscountPercent}, s.clock.Now())
+ 	if err != nil {
+-		if errors.Is(err, store.ErrCustomerOrgMismatch) {
+-			writeError(w, http.StatusUnprocessableEntity, "customer_org_mismatch", fmt.Sprintf("customer %s belongs to another organization", in.CustomerID))
+-			return
+-		}
+ 		s.storeError(w, err)
+ 		return
+ 	}
+@@ -132,7 +129,7 @@ func (s *Server) getInvoice(w http.ResponseWriter, r *http.Request, p auth.Princ
+ 
+ // getInvoiceLines answers an invoice's lines with each line's amount, for the dashboard's invoice table.
+ func (s *Server) getInvoiceLines(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	inv, ok := s.store.InvoiceByID(r.PathValue("id"))
++	inv, ok := s.store.Invoice(p.OrgID, r.PathValue("id"))
+ 	if !ok {
+ 		writeError(w, http.StatusNotFound, "not_found", "no such invoice")
+ 		return
+diff --git a/internal/api/isolation_test.go b/internal/api/isolation_test.go
+new file mode 100644
+index 0000000..0947944
+--- /dev/null
++++ b/internal/api/isolation_test.go
+@@ -0,0 +1,196 @@
++package api_test
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"net/http"
++	"strings"
++	"testing"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++// sameAnswer fails unless two answers are the same once the IDs they name are left out: another organization's ID must be
++// answered exactly like an ID that does not exist.
++func sameAnswer(t *testing.T, what string, other, unknown *apitest.Response, otherID, unknownID string) {
++	t.Helper()
++	a := bytes.ReplaceAll(other.Body, []byte(otherID), []byte("ID"))
++	b := bytes.ReplaceAll(unknown.Body, []byte(unknownID), []byte("ID"))
++	if other.Code != unknown.Code || !bytes.Equal(a, b) {
++		t.Fatalf("%s: another organization's ID got %s, an unknown ID got %s", what, other, unknown)
++	}
++}
++
++func TestInvoiceLinesOfAnotherOrg(t *testing.T) {
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	var inv struct{ ID string }
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": c.ID, "currency": "USD",
++		"lines": []map[string]any{{"description": "Secret consulting", "quantity": 1, "unit_amount": 900}}}, &inv)
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+inv.ID+"/lines", e.Acme.Key, nil, nil)
++
++	other := e.Do("GET", "/v1/invoices/"+inv.ID+"/lines", e.Globex.Key, nil)
++	if other.Code != http.StatusNotFound || other.Map(t)["error"] != "not_found" {
++		t.Fatalf("another organization's invoice lines: %s", other)
++	}
++	sameAnswer(t, "invoice lines", other, e.Do("GET", "/v1/invoices/in_999999/lines", e.Globex.Key, nil), inv.ID, "in_999999")
++}
++
++func TestBodyIDsOfAnotherOrg(t *testing.T) {
++	e := apitest.New(t)
++	acmeCustomer := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	globexPlan := e.CreatePlan(e.Globex, "Team", "EUR", "10.00")
++
++	sub := func(customerID string) *apitest.Response {
++		return e.Do("POST", "/v1/subscriptions", e.Globex.Key, map[string]any{"customer_id": customerID, "plan_id": globexPlan.ID})
++	}
++	sameAnswer(t, "subscription for another organization's customer", sub(acmeCustomer.ID), sub("cus_999999"), acmeCustomer.ID, "cus_999999")
++
++	invoice := func(customerID string) *apitest.Response {
++		return e.Do("POST", "/v1/invoices", e.Globex.Key, map[string]any{"customer_id": customerID, "currency": "EUR",
++			"lines": []map[string]any{{"description": "x", "quantity": 1, "unit_amount": 100}}})
++	}
++	r := invoice(acmeCustomer.ID)
++	if r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("invoice for another organization's customer: %s", r)
++	}
++	sameAnswer(t, "invoice for another organization's customer", r, invoice("cus_999999"), acmeCustomer.ID, "cus_999999")
++
++	if subs := e.Store.Subscriptions(e.Globex.ID, store.SubscriptionFilter{}); len(subs) != 0 {
++		t.Fatalf("subscriptions were created: %+v", subs)
++	}
++	for _, org := range []string{e.Acme.ID, e.Globex.ID} {
++		if invs := e.Store.ListInvoices(org, store.InvoiceFilter{}); len(invs) != 0 {
++			t.Fatalf("invoices were created: %+v", invs)
++		}
++	}
++}
++
++func TestCustomerEmailsArePerOrg(t *testing.T) {
++	e := apitest.New(t)
++	find := func(org apitest.Org, email string) []store.Customer {
++		t.Helper()
++		var page struct{ Items []store.Customer }
++		e.MustDo(http.StatusOK, "GET", "/v1/customers?email="+email, org.Key, nil, &page)
++		return page.Items
++	}
++	jane := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	if got := find(e.Globex, "jane@example.com"); len(got) != 0 {
++		t.Fatalf("Globex finds Acme's customer: %+v", got)
++	}
++	globexJane := e.CreateCustomer(e.Globex, "Jane at Globex", "JANE@example.com")
++	if got := find(e.Acme, "jane@example.com"); len(got) != 1 || got[0].ID != jane.ID {
++		t.Fatalf("Acme's lookup = %+v, want only %s", got, jane.ID)
++	}
++	if got := find(e.Globex, "jane@example.com"); len(got) != 1 || got[0].ID != globexJane.ID {
++		t.Fatalf("Globex's lookup = %+v, want only %s", got, globexJane.ID)
++	}
++	if r := e.Do("POST", "/v1/customers", e.Acme.Key, map[string]string{"name": "Jane again", "email": "jane@example.com"}); r.Code != http.StatusConflict {
++		t.Fatalf("a duplicate in Acme after Globex used the address: %s", r)
++	}
++	e.MustDo(http.StatusOK, "PATCH", "/v1/customers/"+globexJane.ID, e.Globex.Key, map[string]string{"email": "jane.g@example.com"}, nil)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+globexJane.ID, e.Globex.Key, nil, nil)
++	if got := find(e.Acme, "jane@example.com"); len(got) != 1 || got[0].ID != jane.ID {
++		t.Fatalf("Acme's lookup after Globex's changes = %+v", got)
++	}
++	if r := e.Do("POST", "/v1/customers", e.Acme.Key, map[string]string{"name": "Jane again", "email": "Jane@Example.com"}); r.Code != http.StatusConflict {
++		t.Fatalf("a duplicate in Acme after Globex's changes: %s", r)
++	}
++}
++
++func TestDeleteAnotherOrgsEndpoint(t *testing.T) {
++	e := apitest.New(t)
++	var ep store.WebhookEndpoint
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", e.Acme.Key, map[string]any{"url": "https://hooks.acme.example/in", "events": []string{"*"}}, &ep)
++	e.CreateCustomer(e.Acme, "Jane", "jane@example.com") // a pending delivery
++	r := e.Do("DELETE", "/v1/webhook-endpoints/"+ep.ID, e.Globex.Key, nil)
++	if r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("delete another organization's endpoint: %s", r)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, nil, nil)
++	if n, err := e.Webhooks.RunDue(context.Background()); err != nil || n != 1 {
++		t.Fatalf("the pending delivery is gone: RunDue = %d, %v", n, err)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, nil, nil)
++}
++
++// TestEveryPathHidesOtherOrgs asks for each of Acme's objects with Globex's key: every answer is 404 not_found, exactly as
++// for an unknown ID, and nothing of Acme's changes.
++func TestEveryPathHidesOtherOrgs(t *testing.T) {
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	plan := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	var sub store.Subscription
++	e.MustDo(http.StatusCreated, "POST", "/v1/subscriptions", e.Acme.Key, map[string]any{"customer_id": c.ID, "plan_id": plan.ID}, &sub)
++	inv := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{})[0]
++	var ep store.WebhookEndpoint
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", e.Acme.Key, map[string]any{"url": "https://hooks.acme.example/in", "events": []string{"*"}}, &ep)
++	evt := e.Store.Events(e.Acme.ID, "")[0]
++	member, memberKey := e.AddMember(e.Acme, "member@acme.example", store.RoleMember)
++	key, _ := e.Store.APIKeyByToken(memberKey)
++	var invite store.Invite
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "new@acme.example", "role": "viewer"}, &invite)
++	before := e.Store.Export()
++
++	for _, x := range []struct {
++		method, path, id string
++		body             any
++	}{
++		{"GET", "/v1/customers/%s", c.ID, nil},
++		{"PATCH", "/v1/customers/%s", c.ID, map[string]string{"name": "X"}},
++		{"DELETE", "/v1/customers/%s", c.ID, nil},
++		{"GET", "/v1/plans/%s", plan.ID, nil},
++		{"PATCH", "/v1/plans/%s", plan.ID, map[string]any{"active": false}},
++		{"GET", "/v1/subscriptions/%s", sub.ID, nil},
++		{"PATCH", "/v1/subscriptions/%s", sub.ID, map[string]any{"quantity": 3}},
++		{"POST", "/v1/subscriptions/%s/cancel", sub.ID, nil},
++		{"POST", "/v1/subscriptions/%s/usage", sub.ID, map[string]any{"quantity": 1}},
++		{"GET", "/v1/invoices/%s", inv.ID, nil},
++		{"GET", "/v1/invoices/%s/lines", inv.ID, nil},
++		{"POST", "/v1/invoices/%s/pay", inv.ID, map[string]string{"payment_method": "pm_card_visa"}},
++		{"POST", "/v1/invoices/%s/void", inv.ID, nil},
++		{"GET", "/v1/webhook-endpoints/%s", ep.ID, nil},
++		{"PATCH", "/v1/webhook-endpoints/%s", ep.ID, map[string]any{"enabled": false}},
++		{"DELETE", "/v1/webhook-endpoints/%s", ep.ID, nil},
++		{"GET", "/v1/webhook-endpoints/%s/deliveries", ep.ID, nil},
++		{"GET", "/v1/events/%s", evt.ID, nil},
++		{"PATCH", "/v1/members/%s", member.ID, map[string]string{"role": "viewer"}},
++		{"DELETE", "/v1/members/%s", member.ID, nil},
++		{"DELETE", "/v1/invites/%s", invite.ID, nil},
++		{"DELETE", "/v1/api-keys/%s", key.ID, nil},
++	} {
++		const unknownID = "zz_999999"
++		other := e.Do(x.method, fmtPath(x.path, x.id), e.Globex.Key, x.body)
++		if other.Code != http.StatusNotFound || other.Map(t)["error"] != "not_found" {
++			t.Errorf("%s %s with another organization's ID: %s", x.method, x.path, other)
++			continue
++		}
++		unknown := e.Do(x.method, fmtPath(x.path, unknownID), e.Globex.Key, x.body)
++		sameAnswer(t, x.method+" "+x.path, other, unknown, x.id, unknownID)
++	}
++	after := e.Store.Export()
++	before.APIKeys, after.APIKeys = nil, nil // last use times
++	if !equalJSON(t, before, after) {
++		t.Fatal("Globex's requests changed Acme's data")
++	}
++	if n := len(e.Gateway.Calls()); n != 0 {
++		t.Fatalf("%d charges", n)
++	}
++}
++
++func fmtPath(pattern, id string) string { return strings.Replace(pattern, "%s", id, 1) }
++
++func equalJSON(t *testing.T, a, b any) bool {
++	t.Helper()
++	ja, err := json.Marshal(a)
++	if err != nil {
++		t.Fatal(err)
++	}
++	jb, err := json.Marshal(b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return bytes.Equal(ja, jb)
++}
+diff --git a/internal/api/respond.go b/internal/api/respond.go
+index f27c62b..a69f2ea 100644
+--- a/internal/api/respond.go
++++ b/internal/api/respond.go
+@@ -36,7 +36,8 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+ // storeError answers for an error from the store or a service.
+ func (s *Server) storeError(w http.ResponseWriter, err error) {
+ 	switch {
+-	case errors.Is(err, store.ErrNotFound):
++	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrCustomerOrgMismatch):
++		// another organization's object is answered exactly like one that does not exist
+ 		writeError(w, http.StatusNotFound, "not_found", "no such object")
+ 	case errors.Is(err, store.ErrEmailTaken):
+ 		writeError(w, http.StatusConflict, "email_taken", err.Error())
+@@ -44,8 +45,6 @@ func (s *Server) storeError(w http.ResponseWriter, err error) {
+ 		writeError(w, http.StatusConflict, "already_member", err.Error())
+ 	case errors.Is(err, store.ErrConflict):
+ 		writeError(w, http.StatusConflict, "conflict", err.Error())
+-	case errors.Is(err, store.ErrCustomerOrgMismatch):
+-		writeError(w, http.StatusUnprocessableEntity, "customer_org_mismatch", err.Error())
+ 	case errors.Is(err, store.ErrInvalid):
+ 		writeError(w, http.StatusUnprocessableEntity, "invalid", err.Error())
+ 	default:
+diff --git a/internal/api/server.go b/internal/api/server.go
+index 067937f..a90dddb 100644
+--- a/internal/api/server.go
++++ b/internal/api/server.go
+@@ -1,6 +1,8 @@
+ // Package api is Tally's JSON HTTP API (version 1). Every request under /v1/ presents an API key as
+ // "Authorization: Bearer <token>"; the key acts as the member who created it, in that member's organization, with the
+-// member's current role. The API only ever shows the caller's organization's data.
++// member's current role. The API only ever shows or changes the caller's organization's data: another organization's
++// object is answered exactly like one that does not exist (404 not_found in the path, the same answer as an unknown ID in a
++// body or query), so handlers only use the store methods that take the caller's orgID.
+ package api
+ 
+ import (
+diff --git a/internal/api/webhooks.go b/internal/api/webhooks.go
+index 91c6e0a..bcdd649 100644
+--- a/internal/api/webhooks.go
++++ b/internal/api/webhooks.go
+@@ -102,7 +102,7 @@ func (s *Server) updateEndpoint(w http.ResponseWriter, r *http.Request, p auth.P
+ }
+ 
+ func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	if err := s.store.DeleteWebhookEndpoint(r.PathValue("id")); err != nil {
++	if err := s.store.DeleteOrgWebhookEndpoint(p.OrgID, r.PathValue("id")); err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
+diff --git a/internal/store/billing.go b/internal/store/billing.go
+index 0332c41..8da8422 100644
+--- a/internal/store/billing.go
++++ b/internal/store/billing.go
+@@ -98,7 +98,8 @@ func (s *Store) UpdatePlan(orgID, id string, f func(*Plan) error) (Plan, error)
+ 
+ // ---- subscriptions
+ 
+-// CreateSubscription stores a new subscription. The caller sets its status and periods.
++// CreateSubscription stores a new subscription for one of the organization's customers and plans; a customer or plan of
++// another organization is ErrNotFound, like one that does not exist. The caller sets its status and periods.
+ func (s *Store) CreateSubscription(sub Subscription, now time.Time) (Subscription, error) {
+ 	if sub.Quantity <= 0 {
+ 		return Subscription{}, invalid("the quantity must be at least 1")
+@@ -108,7 +109,7 @@ func (s *Store) CreateSubscription(sub Subscription, now time.Time) (Subscriptio
+ 	}
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	if _, ok := s.customers[sub.CustomerID]; !ok {
++	if c, ok := s.customers[sub.CustomerID]; !ok || c.OrgID != sub.OrgID {
+ 		return Subscription{}, ErrNotFound
+ 	}
+ 	if p, ok := s.plans[sub.PlanID]; !ok || p.OrgID != sub.OrgID {
+@@ -242,6 +243,7 @@ func (s *Store) UsageTotal(orgID, subID string, from, to time.Time) int64 {
+ // ---- invoices
+ 
+ // CreateInvoice stores an invoice for one of the organization's customers, with the organization's tax rate. It is open.
++// A customer of another organization is ErrNotFound, like one that does not exist.
+ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 	if !inv.Currency.Valid() {
+ 		return Invoice{}, invalid("unknown currency %q", inv.Currency)
+@@ -260,13 +262,9 @@ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 	if !ok {
+ 		return Invoice{}, ErrNotFound
+ 	}
+-	c, ok := s.customers[inv.CustomerID]
+-	if !ok {
++	if c, ok := s.customers[inv.CustomerID]; !ok || c.OrgID != inv.OrgID {
+ 		return Invoice{}, ErrNotFound
+ 	}
+-	if c.OrgID != inv.OrgID {
+-		return Invoice{}, ErrCustomerOrgMismatch
+-	}
+ 	inv.ID = s.newID("in")
+ 	inv.TaxRateBP = org.TaxRateBP
+ 	inv.Status = InvoiceOpen
+diff --git a/internal/store/customers.go b/internal/store/customers.go
+index 73ff6bc..c294b15 100644
+--- a/internal/store/customers.go
++++ b/internal/store/customers.go
+@@ -18,8 +18,8 @@ func (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Custom
+ 	if _, ok := s.orgs[orgID]; !ok {
+ 		return Customer{}, ErrNotFound
+ 	}
+-	key := normEmail(email)
+-	if id, ok := s.customersByEmail[key]; ok && s.customers[id].OrgID == orgID {
++	key := customerEmailKey(orgID, email)
++	if _, ok := s.customersByEmail[key]; ok {
+ 		return Customer{}, ErrEmailTaken
+ 	}
+ 	c := Customer{ID: s.newID("cus"), OrgID: orgID, Name: name, Email: email, CreatedAt: now.UTC()}
+@@ -73,15 +73,20 @@ func (s *Store) SearchCustomers(orgID, q string) []Customer {
+ 	return out
+ }
+ 
+-// FindCustomerByEmail returns the organization's customer with this email address, ignoring case.
++// FindCustomerByEmail returns the organization's customer with this email address, ignoring case. Customers of other
++// organizations are never found, even with the same address.
+ func (s *Store) FindCustomerByEmail(orgID, email string) (Customer, bool) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	id, ok := s.customersByEmail[normEmail(email)]
++	id, ok := s.customersByEmail[customerEmailKey(orgID, email)]
+ 	if !ok {
+ 		return Customer{}, false
+ 	}
+-	return copyCustomer(s.customers[id]), true
++	c, ok := s.customers[id]
++	if !ok || c.OrgID != orgID {
++		return Customer{}, false
++	}
++	return copyCustomer(c), true
+ }
+ 
+ // UpdateCustomer changes a customer with f, which may refuse with an error. The ID and organization cannot change.
+@@ -104,11 +109,13 @@ func (s *Store) UpdateCustomer(orgID, id string, f func(*Customer) error) (Custo
+ 	if c.DefaultPaymentMethod != "" && !strings.HasPrefix(c.DefaultPaymentMethod, "pm_") {
+ 		return Customer{}, invalid("a payment method looks like pm_...")
+ 	}
+-	if newKey := normEmail(c.Email); newKey != normEmail(old.Email) {
+-		if other, ok := s.customersByEmail[newKey]; ok && s.customers[other].OrgID == orgID {
++	if oldKey, newKey := customerEmailKey(orgID, old.Email), customerEmailKey(orgID, c.Email); newKey != oldKey {
++		if _, ok := s.customersByEmail[newKey]; ok {
+ 			return Customer{}, ErrEmailTaken
+ 		}
+-		delete(s.customersByEmail, normEmail(old.Email))
++		if s.customersByEmail[oldKey] == id {
++			delete(s.customersByEmail, oldKey)
++		}
+ 		s.customersByEmail[newKey] = c.ID
+ 	}
+ 	s.customers[id] = c
+@@ -124,8 +131,8 @@ func (s *Store) DeleteCustomer(orgID, id string) error {
+ 		return ErrNotFound
+ 	}
+ 	delete(s.customers, id)
+-	if s.customersByEmail[normEmail(c.Email)] == id {
+-		delete(s.customersByEmail, normEmail(c.Email))
++	if key := customerEmailKey(orgID, c.Email); s.customersByEmail[key] == id {
++		delete(s.customersByEmail, key)
+ 	}
+ 	return nil
+ }
+diff --git a/internal/store/state.go b/internal/store/state.go
+index b1610e6..681b250 100644
+--- a/internal/store/state.go
++++ b/internal/store/state.go
+@@ -145,7 +145,7 @@ func FromState(st State) (*Store, error) {
+ 			return nil, err
+ 		}
+ 		s.customers[c.ID] = copyCustomer(c)
+-		s.customersByEmail[normEmail(c.Email)] = c.ID
++		s.customersByEmail[customerEmailKey(c.OrgID, c.Email)] = c.ID
+ 	}
+ 	for _, p := range st.Plans {
+ 		if err := dup("plan", p.ID, seen); err != nil {
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 71ce935..10e744b 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1,8 +1,9 @@
+ // Package store keeps Tally's data in memory. It is safe for concurrent use.
+ //
+ // Every object belongs to one organization. Methods that take an orgID only ever see that organization's objects; the few
+-// methods that find an object by ID alone (CustomerByID, InvoiceByID, EventByID) are for background jobs and the admin
+-// tool, which act on behalf of the system rather than a member.
++// methods that find or change an object by ID alone (CustomerByID, InvoiceByID, EventByID, DeleteWebhookEndpoint) are for
++// background jobs and the admin tool, which act on behalf of the system rather than a member. Code that serves a member
++// uses the methods that take an orgID.
+ package store
+ 
+ import (
+@@ -23,7 +24,9 @@ var (
+ 	ErrConflict      = errors.New("conflict")
+ 	ErrEmailTaken    = fmt.Errorf("%w: email address already in use", ErrConflict)
+ 	ErrAlreadyMember = fmt.Errorf("%w: already a member", ErrConflict)
+-	// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.
++	// ErrCustomerOrgMismatch was returned when an object named a customer of another organization. The store now answers
++	// ErrNotFound for that, exactly as for a customer that does not exist, so that it does not reveal that the customer
++	// exists; the variable is kept for callers that still check it.
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
+ )
+ 
+@@ -41,7 +44,7 @@ type Store struct {
+ 	invites      map[string]Invite
+ 
+ 	customers        map[string]Customer
+-	customersByEmail map[string]string // lower-case email -> customer ID
++	customersByEmail map[emailKey]string // organization and lower-case email -> customer ID
+ 
+ 	plans     map[string]Plan
+ 	subs      map[string]Subscription
+@@ -55,12 +58,18 @@ type Store struct {
+ 
+ type memberKey struct{ org, user string }
+ 
++// emailKey finds a customer by email address within one organization: two organizations may each have a customer with the
++// same address.
++type emailKey struct{ org, email string }
++
++func customerEmailKey(orgID, email string) emailKey { return emailKey{orgID, normEmail(email)} }
++
+ // New returns an empty store.
+ func New() *Store {
+ 	return &Store{
+ 		orgs: map[string]Org{}, users: map[string]User{}, usersByEmail: map[string]string{}, members: map[memberKey]Member{},
+ 		apiKeys: map[string]APIKey{}, keysByToken: map[string]string{}, invites: map[string]Invite{},
+-		customers: map[string]Customer{}, customersByEmail: map[string]string{},
++		customers: map[string]Customer{}, customersByEmail: map[emailKey]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
+ 	}
+diff --git a/internal/store/store_test.go b/internal/store/store_test.go
+index d2ef746..593d2f5 100644
+--- a/internal/store/store_test.go
++++ b/internal/store/store_test.go
+@@ -255,3 +255,83 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestCustomerEmailsArePerOrg(t *testing.T) {
++	s := New()
++	a, b := newOrg(t, s, "A"), newOrg(t, s, "B")
++	ca, err := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := s.FindCustomerByEmail(b.ID, "jane@example.com"); ok {
++		t.Fatal("B finds A's customer by email")
++	}
++	cb, err := s.CreateCustomer(b.ID, "Jane B", "JANE@example.com", t0)
++	if err != nil {
++		t.Fatalf("B cannot use an address A uses: %v", err)
++	}
++	check := func(s *Store) {
++		t.Helper()
++		if got, ok := s.FindCustomerByEmail(a.ID, "jane@example.com"); !ok || got.ID != ca.ID {
++			t.Fatalf("A finds %+v %v, want %s", got, ok, ca.ID)
++		}
++		if got, ok := s.FindCustomerByEmail(b.ID, "Jane@Example.com"); !ok || got.ID != cb.ID {
++			t.Fatalf("B finds %+v %v, want %s", got, ok, cb.ID)
++		}
++	}
++	check(s)
++	if _, err := s.CreateCustomer(a.ID, "Jane 2", "jane@example.com", t0); !errors.Is(err, ErrEmailTaken) {
++		t.Fatalf("a duplicate in A: %v", err)
++	}
++	reloaded, err := FromState(s.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	check(reloaded)
++	if _, err := s.UpdateCustomer(b.ID, cb.ID, func(c *Customer) error { c.Email = "other@example.com"; return nil }); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.DeleteCustomer(b.ID, cb.ID); err != nil {
++		t.Fatal(err)
++	}
++	if got, ok := s.FindCustomerByEmail(a.ID, "jane@example.com"); !ok || got.ID != ca.ID {
++		t.Fatalf("B's changes broke A's lookup: %+v %v", got, ok)
++	}
++	if _, err := s.CreateCustomer(a.ID, "Jane 2", "jane@example.com", t0); !errors.Is(err, ErrEmailTaken) {
++		t.Fatalf("a duplicate in A after B's changes: %v", err)
++	}
++}
++
++func TestObjectsNameOnlyTheirOrgsCustomers(t *testing.T) {
++	s := New()
++	a, b := newOrg(t, s, "A"), newOrg(t, s, "B")
++	ca, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	pb, _ := s.CreatePlan(Plan{OrgID: b.ID, Name: "Pro", Currency: money.USD, UnitAmount: 100, Interval: Monthly}, t0)
++	if _, err := s.CreateSubscription(Subscription{OrgID: b.ID, CustomerID: ca.ID, PlanID: pb.ID, Quantity: 1, Status: Active}, t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("a subscription for another organization's customer: %v", err)
++	}
++	if _, err := s.CreateInvoice(Invoice{OrgID: b.ID, CustomerID: ca.ID, Currency: money.USD, Lines: []Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("an invoice for another organization's customer: %v", err)
++	}
++}
++
++func TestDeleteOrgWebhookEndpoint(t *testing.T) {
++	s := New()
++	a, b := newOrg(t, s, "A"), newOrg(t, s, "B")
++	ep, err := s.CreateWebhookEndpoint(WebhookEndpoint{OrgID: a.ID, URL: "https://hooks.example/", Events: []string{"*"}, Enabled: true}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := s.DeleteOrgWebhookEndpoint(b.ID, ep.ID); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("deleted through another org: %v", err)
++	}
++	if _, ok := s.WebhookEndpoint(a.ID, ep.ID); !ok {
++		t.Fatal("the endpoint is gone")
++	}
++	if err := s.DeleteOrgWebhookEndpoint(a.ID, ep.ID); err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := s.WebhookEndpoint(a.ID, ep.ID); ok {
++		t.Fatal("the endpoint is still there")
++	}
++}
+diff --git a/internal/store/webhooks.go b/internal/store/webhooks.go
+index 35fa1ec..8b7a171 100644
+--- a/internal/store/webhooks.go
++++ b/internal/store/webhooks.go
+@@ -68,20 +68,38 @@ func (s *Store) UpdateWebhookEndpoint(orgID, id string, f func(*WebhookEndpoint)
+ 	return copyEndpoint(ep), nil
+ }
+ 
+-// DeleteWebhookEndpoint removes an endpoint and its pending deliveries.
++// DeleteWebhookEndpoint removes an endpoint of any organization and its pending deliveries (the admin tool). Code that
++// serves a member uses DeleteOrgWebhookEndpoint.
+ func (s *Store) DeleteWebhookEndpoint(id string) error {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	if _, ok := s.endpoints[id]; !ok {
+ 		return ErrNotFound
+ 	}
++	s.deleteEndpoint(id)
++	return nil
++}
++
++// DeleteOrgWebhookEndpoint removes one of an organization's endpoints and its pending deliveries. Another organization's
++// endpoint is ErrNotFound and stays as it is.
++func (s *Store) DeleteOrgWebhookEndpoint(orgID, id string) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if ep, ok := s.endpoints[id]; !ok || ep.OrgID != orgID {
++		return ErrNotFound
++	}
++	s.deleteEndpoint(id)
++	return nil
++}
++
++// deleteEndpoint removes an endpoint and its pending deliveries. The caller holds the lock.
++func (s *Store) deleteEndpoint(id string) {
+ 	delete(s.endpoints, id)
+ 	for did, d := range s.delivs {
+ 		if d.EndpointID == id && d.Status == DeliveryPending {
+ 			delete(s.delivs, did)
+ 		}
+ 	}
+-	return nil
+ }
+ 
+ func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {

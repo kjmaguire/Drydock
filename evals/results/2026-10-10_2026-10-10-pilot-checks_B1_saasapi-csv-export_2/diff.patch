@@ -1,0 +1,178 @@
+diff --git a/start/internal/api/api.go b/result/internal/api/api.go
+index 0fb8ce1..cf87722 100644
+--- a/start/internal/api/api.go
++++ b/result/internal/api/api.go
+@@ -4,7 +4,9 @@ package api
+ import (
+ 	"encoding/json"
+ 	"errors"
++	"io"
+ 	"net/http"
++	"strings"
+ 	"time"
+ 
+ 	"example.com/saasapi/internal/billing"
+@@ -34,6 +36,7 @@ func New(st *store.Store, opt Options) *Server {
+ 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+ 	})
+ 	s.mux.HandleFunc("GET /api/customers", s.authed(s.listCustomers))
++	s.mux.HandleFunc("GET /api/customers.csv", s.authed(s.exportCustomers))
+ 	s.mux.HandleFunc("POST /api/customers", s.authed(s.createCustomer))
+ 	s.mux.HandleFunc("GET /api/customers/{id}", s.authed(s.getCustomer))
+ 	s.mux.HandleFunc("GET /api/invoices", s.authed(s.listInvoices))
+@@ -64,6 +67,50 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request, acct stor
+ 	writeJSON(w, http.StatusOK, map[string]any{"items": s.store.Customers(acct.ID)})
+ }
+ 
++// exportCustomers answers the account's customers as a CSV file for download.
++func (s *Server) exportCustomers(w http.ResponseWriter, r *http.Request, acct store.Account) {
++	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
++	w.Header().Set("Content-Disposition", `attachment; filename="customers.csv"`)
++	w.WriteHeader(http.StatusOK)
++	_ = writeCustomersCSV(w, s.store.Customers(acct.ID))
++}
++
++// writeCustomersCSV writes a header row and one RFC 4180 row per customer, with CRLF line endings.
++func writeCustomersCSV(w io.Writer, customers []store.Customer) error {
++	if _, err := io.WriteString(w, "id,name,email,plan,created_at\r\n"); err != nil {
++		return err
++	}
++	for _, c := range customers {
++		row := []string{
++			csvField(c.ID),
++			csvField(neutralizeFormula(c.Name)),
++			csvField(neutralizeFormula(c.Email)),
++			csvField(string(c.Plan)),
++			csvField(c.CreatedAt.UTC().Format(time.RFC3339)),
++		}
++		if _, err := io.WriteString(w, strings.Join(row, ",")+"\r\n"); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++// csvField quotes a field that contains a comma, a double quote or a line break, doubling its quotes.
++func csvField(s string) string {
++	if !strings.ContainsAny(s, ",\"\r\n") {
++		return s
++	}
++	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
++}
++
++// neutralizeFormula puts a single quote in front of a value that a spreadsheet would read as a formula.
++func neutralizeFormula(s string) string {
++	if s != "" && strings.ContainsRune("=+-@", rune(s[0])) {
++		return "'" + s
++	}
++	return s
++}
++
+ func (s *Server) createCustomer(w http.ResponseWriter, r *http.Request, acct store.Account) {
+ 	var in struct {
+ 		Name  string     `json:"name"`
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index bdb8a35..688f3b4 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -1,9 +1,11 @@
+ package api_test
+ 
+ import (
++	"encoding/csv"
+ 	"encoding/json"
+ 	"net/http"
+ 	"net/http/httptest"
++	"reflect"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -99,3 +101,88 @@ func TestAnInvoiceHasItsTotals(t *testing.T) {
+ 		t.Fatalf("cross-account invoice: %d", r.Code)
+ 	}
+ }
++
++func TestCustomersCSVNeedsAKey(t *testing.T) {
++	srv, _ := newServer(t)
++	for _, key := range []string{"", "nope"} {
++		if r := do(t, srv, "GET", "/api/customers.csv", key, ""); r.Code != http.StatusUnauthorized {
++			t.Fatalf("key %q: status %d", key, r.Code)
++		}
++	}
++}
++
++func TestCustomersCSVIsTheCallersCustomersSortedByID(t *testing.T) {
++	srv, st := newServer(t)
++	// 05:06:07 at UTC+2 is 03:06:07 UTC.
++	when := time.Date(2026, 3, 4, 5, 6, 7, 0, time.FixedZone("UTC+2", 2*3600))
++	first, _ := st.CreateCustomer("acc_acme", "Jane Doe", "jane@example.com", store.PlanPro, when)
++	st.CreateCustomer("acc_globex", "Hank", "hank@globex.test", store.PlanFree, when)
++	second, _ := st.CreateCustomer("acc_acme", "Ann, Lee", "ann@example.com", store.PlanFree, when.Add(time.Hour))
++
++	r := do(t, srv, "GET", "/api/customers.csv", "key-acme", "")
++	if r.Code != http.StatusOK {
++		t.Fatalf("export: %d %s", r.Code, r.Body)
++	}
++	if ct := r.Header().Get("Content-Type"); ct != "text/csv; charset=utf-8" {
++		t.Fatalf("Content-Type %q", ct)
++	}
++	if cd := r.Header().Get("Content-Disposition"); cd != `attachment; filename="customers.csv"` {
++		t.Fatalf("Content-Disposition %q", cd)
++	}
++	want := "id,name,email,plan,created_at\r\n" +
++		first.ID + ",Jane Doe,jane@example.com,pro,2026-03-04T03:06:07Z\r\n" +
++		second.ID + `,"Ann, Lee",ann@example.com,free,2026-03-04T04:06:07Z` + "\r\n"
++	if got := r.Body.String(); got != want {
++		t.Fatalf("body:\n%q\nwant:\n%q", got, want)
++	}
++}
++
++func TestCustomersCSVWithNoCustomersIsJustTheHeader(t *testing.T) {
++	srv, _ := newServer(t)
++	r := do(t, srv, "GET", "/api/customers.csv", "key-acme", "")
++	if r.Code != http.StatusOK || r.Body.String() != "id,name,email,plan,created_at\r\n" {
++		t.Fatalf("status %d body %q", r.Code, r.Body)
++	}
++}
++
++func TestCustomersCSVQuotesFieldsAndNeutralizesFormulas(t *testing.T) {
++	srv, st := newServer(t)
++	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	names := []struct{ name, email string }{
++		{`=HYPERLINK("http://x","click")`, "=x@evil.test"},
++		{"+1 555", "+15@example.com"},
++		{"@SUM(A1)", "-ann@example.com"},
++		{"Quote \"Q\"\nNew line", "a=b@example.com"},
++		{"Plain, not formula", "plain@example.com"},
++	}
++	var ids []string
++	for _, n := range names {
++		c, err := st.CreateCustomer("acc_acme", n.name, n.email, store.PlanFree, now)
++		if err != nil {
++			t.Fatal(err)
++		}
++		ids = append(ids, c.ID)
++	}
++
++	r := do(t, srv, "GET", "/api/customers.csv", "key-acme", "")
++	if r.Code != http.StatusOK {
++		t.Fatalf("export: %d", r.Code)
++	}
++	// encoding/csv rejects malformed quoting, so a parse that succeeds is valid RFC 4180.
++	records, err := csv.NewReader(strings.NewReader(r.Body.String())).ReadAll()
++	if err != nil {
++		t.Fatalf("not valid CSV: %v\n%s", err, r.Body)
++	}
++	ts := "2026-01-02T03:04:05Z"
++	want := [][]string{
++		{"id", "name", "email", "plan", "created_at"},
++		{ids[0], `'=HYPERLINK("http://x","click")`, "'=x@evil.test", "free", ts},
++		{ids[1], "'+1 555", "'+15@example.com", "free", ts},
++		{ids[2], "'@SUM(A1)", "'-ann@example.com", "free", ts},
++		{ids[3], "Quote \"Q\"\nNew line", "a=b@example.com", "free", ts},
++		{ids[4], "Plain, not formula", "plain@example.com", "free", ts},
++	}
++	if !reflect.DeepEqual(records, want) {
++		t.Fatalf("records:\n%q\nwant:\n%q", records, want)
++	}
++}

@@ -1,0 +1,94 @@
+{
+ "results": [
+  {
+   "source": {
+    "path": "go.mod",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "golang.org/x/crypto",
+      "version": "0.58.0",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/golang.org/x/crypto@0.58.0"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GO-2026-5932"
+       ],
+       "aliases": [
+        "GO-2026-5932"
+       ],
+       "max_severity": ""
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GO-2026-5932",
+       "modified": "2026-07-10T05:44:31.101996029Z",
+       "published": "2026-07-07T22:15:29Z",
+       "related": [
+        "CGA-485h-x96h-hqh7"
+       ],
+       "schema_version": "1.7.5",
+       "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "source": {
+    "path": "testdata/starter-cloudflare-saas/package-lock.json",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "sharp",
+      "version": "0.35.4",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/sharp@0.35.4?source=PUBLIC_REGISTRY"
+     },
+     "dependency_groups": [
+      "dev"
+     ],
+     "groups": [
+      {
+       "ids": [
+        "GHSA-wq5f-xc86-pv6w"
+       ],
+       "aliases": [
+        "GHSA-wq5f-xc86-pv6w"
+       ],
+       "max_severity": "8.9"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-wq5f-xc86-pv6w",
+       "modified": "2026-10-06T14:00:05.018410153Z",
+       "published": "2026-10-06T13:43:57Z",
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:L/AC:L/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "sharp : Vulnerability in librsvg dependency CVE-2026-96889"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "experimental_config": {
+  "licenses": {
+   "summary": false,
+   "allowlist": null
+  }
+ }
+}

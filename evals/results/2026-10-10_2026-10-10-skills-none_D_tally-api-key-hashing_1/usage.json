@@ -1,0 +1,50 @@
+[
+  {
+    "ts": 1791668801558,
+    "taskId": "task_4aa2f9b1c464",
+    "agentId": "agt_d204308b8f49",
+    "provider": "claude",
+    "model": "claude-haiku-5-5",
+    "tier": "premium",
+    "inputTokens": 6,
+    "outputTokens": 2653,
+    "cachedTokens": 51041,
+    "cacheWriteTokens": 21814,
+    "reasoningTokens": 1934,
+    "costUsd": 0.0062003100000000005,
+    "source": "reported",
+    "cacheHit": false
+  },
+  {
+    "ts": 1791668783050,
+    "taskId": "task_4aa2f9b1c464",
+    "agentId": "agt_1b0ccb742459",
+    "provider": "claude",
+    "model": "claude-haiku-5-5",
+    "tier": "premium",
+    "inputTokens": 8,
+    "outputTokens": 1987,
+    "cachedTokens": 47630,
+    "cacheWriteTokens": 7593,
+    "reasoningTokens": 896,
+    "costUsd": 0.0029892,
+    "source": "reported",
+    "cacheHit": false
+  },
+  {
+    "ts": 1791668763545,
+    "taskId": "task_4aa2f9b1c464",
+    "agentId": "agt_1b0ccb742459",
+    "provider": "claude",
+    "model": "claude-haiku-5-5",
+    "tier": "premium",
+    "inputTokens": 36,
+    "outputTokens": 30481,
+    "cachedTokens": 1014979,
+    "cacheWriteTokens": 80153,
+    "reasoningTokens": 13578,
+    "costUsd": 0.04142449,
+    "source": "reported",
+    "cacheHit": false
+  }
+]

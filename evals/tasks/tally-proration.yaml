@@ -1,0 +1,37 @@
+# Money arithmetic with exact rounding rules, plus pending downgrades that take effect at renewal.
+id: tally-proration
+title: "Prorate mid-period plan changes"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  Changing a subscription's plan or quantity applies at once and is not billed until the next period, so an upgrade in the
+  middle of a period is free. Implement proration for PATCH /v1/subscriptions/{id}:
+
+  - A subscription's value is its plan's unit_amount times its quantity. A change that raises the value is an upgrade, one that
+    lowers it a downgrade; a change that keeps it equal applies at once and bills nothing.
+  - An upgrade applies at once and is billed at once with a new invoice for the subscription with exactly two lines:
+    1. "Unused time on <old plan name>": quantity 1, unit_amount = -round(old value * remaining / length)
+    2. "Remaining time on <new plan name>": quantity 1, unit_amount = round(new value * remaining / length)
+    where remaining is the time from now to the end of the current period and length the current period's length, both in
+    seconds, and round rounds half away from zero to a whole minor unit. The invoice gets the subscription's discount_percent
+    and the organization's tax like any invoice, and it is charged to the customer's default payment method like a renewal
+    invoice: without a payment method it stays open; when the charge is declined the change still applies and the
+    subscription becomes past_due. The current period does not change.
+  - A downgrade does not apply now. The subscription shows it as "pending_plan_id" and "pending_quantity" (both null when
+    nothing is pending) and it takes effect at the next renewal, which then bills the new plan and quantity. A later upgrade,
+    or a PATCH back to the current plan and quantity, clears the pending change.
+  - Both plans must have the same currency and interval, and neither may be metered: otherwise 422
+    {"error":"incompatible_plan"}.
+  - A trialing subscription changes at once and bills nothing. A canceled one cannot change (409, as today).
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-proration
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

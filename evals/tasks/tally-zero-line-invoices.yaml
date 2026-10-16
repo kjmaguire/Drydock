@@ -1,0 +1,33 @@
+# An incident from a log line: find the root cause, fix the crash and the data that causes it.
+id: tally-zero-line-invoices
+title: "Incident: invoice list answers 500"
+suite: tally
+fixture: testdata/fixtures/tally
+class: test-fix loop
+risk: medium
+size: small
+expected_roles: [backend, reviewer]
+prompt: |
+  Incident: since Monday GET /v1/invoices answers 500 for some organizations, and so does GET /v1/invoices/{id} for some of
+  their invoices. The server log shows:
+
+      level=ERROR msg=panic method=GET path=/v1/invoices panic="runtime error: index out of range [0] with length 0"
+
+  Find the cause and fix it so that it cannot happen again:
+
+  - Every answer that shows an invoice (list, get, create, pay, void) works for any invoice the store can hold, including one
+    without lines; its "description" is then "".
+  - A licensed plan whose price is 0 (a free plan) is invoiced like any other: its invoices (the first one and every renewal)
+    have one line for the plan, with the description renewals use today ("<plan name>, <period>"), the subscription's
+    quantity, and unit_amount 0. Such an invoice has nothing to charge and is marked paid at once, as today.
+  - A metered renewal with no usage in the period creates no invoice at all.
+
+  Add a test that reproduces the incident.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-zero-line-invoices
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

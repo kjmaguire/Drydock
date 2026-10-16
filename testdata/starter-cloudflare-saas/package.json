@@ -1,0 +1,44 @@
+{
+  "name": "starter-cloudflare-saas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Drydock golden starter: minimal Cloudflare SaaS (Workers + Hono + D1 + KV + R2 + React Router 7 SSR).",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "types": "wrangler types --strict-vars=false",
+    "build": "react-router build",
+    "test": "vitest run --reporter=default --reporter=json --outputFile.json=test-results/vitest.json",
+    "lint": "biome lint --reporter=github .",
+    "lint:json": "biome lint --reporter=json .",
+    "format": "biome format --write .",
+    "typecheck": "react-router typegen && wrangler types --strict-vars=false --check && tsc --noEmit --pretty false",
+    "e2e": "playwright test",
+    "dev": "node scripts/dev.mjs",
+    "preview": "node scripts/preview.mjs",
+    "migrate:local": "wrangler d1 migrations apply DB --local --persist-to .wrangler/state"
+  },
+  "dependencies": {
+    "hono": "4.13.13",
+    "isbot": "5.2.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.4.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@cloudflare/vite-plugin": "1.64.0",
+    "@cloudflare/vitest-plugin": "1.4.3",
+    "@playwright/test": "1.64.1",
+    "@react-router/dev": "8.4.0",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5",
+    "wrangler": "4.151.0"
+  }
+}

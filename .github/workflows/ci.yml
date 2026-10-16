@@ -1,0 +1,312 @@
+# Windows is the only product target, so this is the only CI platform (decision P1). The repository is public since
+# 2026-10-10, so GitHub-hosted Windows runners are free and these jobs run on every pull request (decision P2 resolved).
+# Every job runs on a GitHub-hosted runner, named outright: a pull request from a fork runs these workflows, so a self-hosted
+# runner (anyone's fork could run code on that PC) is not an option and no repository variable can name one (audit 2026-10-16,
+# M19; docs/windows-runner.md). The workflows get a read-only token and do not keep it in the checked-out workspace.
+# A step of several commands in the default shell (PowerShell) stops at the first command that fails
+# ($PSNativeCommandUseErrorActionPreference): the step's own exit code is the last command's alone (audit 2026-10-16, L49).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+# a newer push to the same branch or pull request supersedes the run still going (the Windows jobs take 15 minutes)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  go:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    # CGO on, said outright: the repo map's tree-sitter parser is C (decision P62), and without a C compiler Go would quietly
+    # build the tests without it. GitHub's Windows images have MinGW gcc on PATH.
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7
+        # some Go tests drive Node projects (the e2e and preview checks, the npm templates); without Node they skip
+        with:
+          node-version: "24"
+      - name: Git identity for tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: Placeholder for the built UI
+        # the ui package embeds ui/dist (Windows only), which only `npm run build` makes; the app job builds the real one
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ui/dist | Out-Null
+          Set-Content ui/dist/index.html '<!doctype html><title>Drydock</title>'
+      - name: The C compiler for the repo map (MinGW gcc)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          gcc --version
+          go env CC CGO_ENABLED
+      - run: go vet ./...
+      - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are never used here)
+        # the paid real-agent tests run only in verify.yml, on request
+        env:
+          DRYDOCK_NO_REAL_AGENTS: "1"
+        # the output is kept in a file as well, so a failure can be listed on its own below
+        # the trial suite's hidden-check self-check runs in its own job (below): it builds and tests every task's fixture
+        # twice at once, and on one runner it starved the other packages' tests
+        run: |
+          go test ./... -count=1 -timeout 25m -skip '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' | Tee-Object -FilePath "$env:RUNNER_TEMP/go-test.log"
+          exit $LASTEXITCODE
+      - name: Show the failed tests
+        # the core package logs thousands of lines, which bury a failing test in the log above
+        if: failure()
+        run: |
+          $log = "$env:RUNNER_TEMP/go-test.log"
+          if (-not (Test-Path $log)) { "no test log"; exit 0 }
+          Select-String -Path $log -Pattern '^\s*--- FAIL|^FAIL\s|^panic:|^\s+\S+\.go:\d+:' | ForEach-Object { $_.Line }
+      - name: Windows-only process tree tests
+        run: go test ./internal/proc -run "TestKillTree|TestEnterAppJob" -count=1 -v
+      - name: The build without CGO still works and says it has no repo map
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          go vet ./internal/repomap ./internal/mcp ./internal/core
+          go test ./internal/repomap ./internal/mcp -count=1
+      - name: The real Actions runner release (downloaded, checked and started; nothing is registered)
+        # decision P56: the CI runners feature unpacks the newest runner and passes its one-job configuration in the
+        # environment; this proves both on Windows without attaching a runner to any repository
+        env:
+          DRYDOCK_REAL_RUNNER_RELEASE: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go test ./internal/runners -run TestRealRunnerRelease -count=1 -v -timeout 20m
+  wsl:
+    # The WSL run mode (decision P41) against a real distro: Vampire/setup-wsl installs Ubuntu 24.04 under WSL 2 on the
+    # GitHub-hosted Windows runner (WSL 2 is available on its images; the action defaults to it since v6), and the tests drive
+    # it through the real wsl.exe with the LABELLED stand-in claude (internal/wsl/wsltest), never a real Claude Code: the
+    # UTF-16 distro list, detection through a login shell, the launch with translated paths, stream-json both ways over
+    # wsl.exe's pipes, the MCP shim (a Windows program) started from inside through interop with only what WSLENV names, a
+    # repository inside the distro with its worktree next to it, and that stopping kills the run's Linux processes.
+    # It installs a distro, which only a GitHub-hosted runner may get.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: git
+      - name: Git identity for tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: The WSL run mode against the real distro (stand-in claude; nothing is signed in, nothing is spent)
+        env:
+          DRYDOCK_NO_REAL_AGENTS: "1"
+          DRYDOCK_WSL_TEST_DISTRO: Ubuntu-24.04
+        run: go test ./internal/wsl/ ./internal/git/ ./internal/agents/claude/ -run "TestRealWSL" -count=1 -v
+  trial-suite:
+    # every trial task's hidden check fails on the fixture and passes on its reference solution (docs/evals.md section 13)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Git identity for tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: Self-check of every task of every suite
+        run: go test ./internal/trial -count=1 -timeout 30m -run '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' -v
+  repomap-cgo:
+    # Decisions D5 and P62: the repo map's tree-sitter parser is C, built with MinGW gcc. This job is quick to read on its
+    # own: the parser and every language's tag query on Windows, then the Phase 0 probe (the go job runs the same tests among
+    # all the others).
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Git identity for tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - name: The repo map with the real parser (every language, a real git checkout)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          gcc --version
+          go test ./internal/repomap -count=1 -v
+      - name: Build and run the tree-sitter probe with CGO
+        working-directory: evidence/phase0/go-probes/ts
+        run: go run .
+  ui:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        # the end-to-end suite builds and starts the real core (cmd/drydock-e2e)
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Git identity for the end-to-end suite
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global user.name "Drydock CI"
+          git config --global user.email "ci@drydock.invalid"
+          git config --global core.autocrlf false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      # remix test runs the component tests in a real Chromium page
+      - run: npx playwright install chromium
+        working-directory: ui
+      - run: npm test
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+      - name: End-to-end tests (the built UI against the real core and the scripted agent)
+        working-directory: ui
+        env:
+          DRYDOCK_E2E_USE_DEFAULT_CHROMIUM: "1"
+          DRYDOCK_NO_REAL_AGENTS: "1"
+        run: npx playwright test
+      # the same evidence in the job log, readable where artifact downloads are not: each failed test's error context (the
+      # step it stopped at and the page), and the end of each e2e core's log and (scrubbed) event log
+      - name: Show the end-to-end evidence of a failed run
+        if: failure()
+        working-directory: ui
+        shell: pwsh
+        run: |
+          if (-not (Test-Path test-results)) { "no test-results"; exit 0 }
+          Get-ChildItem test-results -Recurse -Filter error-context.md | ForEach-Object { "===== $($_.Directory.Name)/error-context.md"; Get-Content $_.FullName -TotalCount 250 }
+          Get-ChildItem test-results -File -Filter 'core*.log' | ForEach-Object { "===== $($_.Name) (last 300 lines)"; Get-Content $_.FullName -Tail 300 }
+          Get-ChildItem test-results -File -Filter 'core*.events.txt' | ForEach-Object { "===== $($_.Name) (last 200 lines)"; Get-Content $_.FullName -Tail 200 }
+      # a failed run keeps its evidence: Playwright's traces and error context, and each e2e core's own log, goroutine stacks
+      # and event log (ui/test-results/core*.log, core*.goroutines.txt, core*.events.txt; ui/e2e/global-setup.ts)
+      - name: Keep the end-to-end evidence of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-test-results
+          path: ui/test-results
+          if-no-files-found: warn
+          retention-days: 14
+  lint:
+    # golangci-lint with the committed .golangci.yml, for the Windows build and for the Linux development build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Placeholder for the built UI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ui/dist | Out-Null
+          Set-Content ui/dist/index.html '<!doctype html><title>Drydock</title>'
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+      - name: Lint (Windows)
+        run: golangci-lint run ./...
+      - name: Lint (Linux build)
+        env:
+          GOOS: linux
+        run: golangci-lint run ./...
+  sandbox:
+    # The one Linux job, a test-only exception to decision P1: the sandbox runs project commands in Linux containers, and
+    # GitHub's Windows runners have no Linux container engine. It proves the network allowlist and the container setup
+    # with a real Docker engine; a missing engine fails the job instead of skipping.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Sandbox tests with Docker
+        env:
+          DRYDOCK_REQUIRE_DOCKER: "1"
+          DRYDOCK_NO_REAL_AGENTS: "1"
+        run: go test ./internal/sandbox/... -count=1 -timeout 25m -v
+      - name: The real Actions runner image (built from the checked release and started; nothing is registered)
+        env:
+          DRYDOCK_REAL_RUNNER_RELEASE: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go test ./internal/runners -run TestRealRunnerRelease -count=1 -v -timeout 20m
+  app:
+    needs: [go, ui]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm ci && npm run build
+        working-directory: ui
+      - name: Build the Wails app (CGO on, for the repo map's tree-sitter parser; MinGW gcc from the runner image)
+        # Wails v3 needs no CGO on Windows, but the repo map does (decision P62): a build without it has no repo map
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          gcc --version
+          go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .
+      - name: The app was built with CGO and the tree-sitter parser
+        shell: pwsh
+        run: |
+          $info = go version -m drydock.exe | Out-String
+          if ($info -notmatch 'CGO_ENABLED=1') { throw "drydock.exe was built without CGO: it has no repo map" }
+          if ($info -notmatch 'github.com/tree-sitter/go-tree-sitter') { throw "drydock.exe has no tree-sitter parser" }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: drydock-windows-unsigned
+          path: drydock.exe

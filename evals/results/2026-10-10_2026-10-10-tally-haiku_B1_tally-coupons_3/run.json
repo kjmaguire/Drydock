@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-coupons",
+  "taskClass": "iteration",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "4f801973af5d8a099f10e1e48f3e572dbd5a464b",
+  "startedAt": "2026-10-10T05:41:10.129975253Z",
+  "wallMs": 296196,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 853,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1387,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.033s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.002s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.009s\nok  \texample.com/tally/internal/reports\t0.007s\nok  \texample.com/tally/internal/snapshot\t0.016s\nok  \texample.com/tally/internal/store\t0.008s\nok  \texample.com/tally/internal/subscriptions\t0.010s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2244
+  },
+  "costUsd": 0.37258720000000006,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 56,
+    "output": 71078,
+    "cacheRead": 3074148,
+    "cacheWrite": 145909
+  },
+  "sessions": 1,
+  "modelTurns": 37,
+  "toolUses": {
+    "Bash": 17,
+    "Edit": 4,
+    "Read": 11,
+    "Write": 4
+  }
+}

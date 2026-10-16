@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Fixed every cross-organization path I found: `GET /v1/invoices/{id}/lines`, `customer_id` in invoice and subscription creation, `DELETE /v1/webhook-endpoints/{id}`, and the customer email lookup together with its shared email index.\n- Those requests now answer exactly as they do for an unknown ID, or find nothing for `?email=`. The API tests fail on the old code and pass on the new code.\n- `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791671306453
+  },
+  {
+    "id": 2,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 640ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-2/data/runs/run_0b458638616b/checks/build_2d68de99ba16.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 639,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671307129
+  },
+  {
+    "id": 3,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 660ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-2/data/runs/run_0b458638616b/checks/test_86dca99a357e.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 657,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671307789
+  },
+  {
+    "id": 4,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 540ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-2/data/runs/run_0b458638616b/checks/lint_5ad59000c9f4.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 538,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671308330
+  },
+  {
+    "id": 5,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-2/data/runs/run_0b458638616b/checks/secrets_34f025ebf253.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 24,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671308358
+  },
+  {
+    "id": 6,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +217 -28",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-2/data/runs/run_0b458638616b/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 217,
+      "Deletions": 28,
+      "base": "166596e797d5e13ff268c83a0120d86a22999675",
+      "commit": "ced4f1301f6da396483f26dfd7939a5d535da86a"
+    },
+    "created": 1791671308522
+  },
+  {
+    "id": 7,
+    "taskId": "task_0799991e959a",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit ced4f1301f",
+    "ref": "ced4f1301f6da396483f26dfd7939a5d535da86a",
+    "data": {},
+    "created": 1791671308523
+  }
+]

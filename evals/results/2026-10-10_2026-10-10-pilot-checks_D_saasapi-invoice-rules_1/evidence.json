@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `billing.Compute` follows the five rules in the task (subtotal, coupon rounded half up, credit clamped at zero, tax rounded half up, total and discount). Exported names, signatures and JSON tags are unchanged.\n- New tests in `internal/billing` cover coupon+credit ordering, a coupon+credit+tax case, the credit cap, and half-cent rounding for both coupon and tax. `go build ./...`, `go test ./...` and `go vet ./...` all pass.\n- Only the billing package changes, with no commit.",
+    "data": {},
+    "created": 1791596711804
+  },
+  {
+    "id": 2,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 460ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-rules-D-1/data/runs/run_9aeb40ce0328/checks/build-1791596711834502687.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 461,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596712296
+  },
+  {
+    "id": 3,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 170ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-rules-D-1/data/runs/run_9aeb40ce0328/checks/test-1791596712298231144.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 174,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596712473
+  },
+  {
+    "id": 4,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 160ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-rules-D-1/data/runs/run_9aeb40ce0328/checks/lint-1791596712475605567.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 159,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596712635
+  },
+  {
+    "id": 5,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-rules-D-1/data/runs/run_9aeb40ce0328/checks/secrets-1791596712650964451.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 13,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791596712651
+  },
+  {
+    "id": 6,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "2 file(s), +66 -6",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-rules-D-1/data/runs/run_9aeb40ce0328/evidence/task.diff",
+    "data": {
+      "Files": 2,
+      "Insertions": 66,
+      "Deletions": 6,
+      "base": "dfda6d0450874790cd5337dfaba221bfb8834660",
+      "commit": "5e68c97d0ed176b372903027b3a81bdb77268cb4"
+    },
+    "created": 1791596712780
+  },
+  {
+    "id": 7,
+    "taskId": "task_52f4e1131478",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5e68c97d0e",
+    "ref": "5e68c97d0ed176b372903027b3a81bdb77268cb4",
+    "data": {},
+    "created": 1791596712781
+  }
+]

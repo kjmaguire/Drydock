@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "96f732b7e6c8e4780ebf797a78a9223700061aa1",
+  "startedAt": "2026-10-10T05:17:13.417045777Z",
+  "wallMs": 424159,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1324,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2266,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t1.360s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.009s\nok  \texample.com/tally/internal/snapshot\t0.023s\nok  \texample.com/tally/internal/store\t0.011s\nok  \texample.com/tally/internal/subscriptions\t0.012s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 3595
+  },
+  "costUsd": 0.15795679,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 90,
+    "output": 91260,
+    "cacheRead": 2591787,
+    "cacheWrite": 240093
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_cc2b66279eb6",
+      "feedback": "1) internal/api/customers_import.go:145 uses store.FindCustomerByEmail(orgID, ...), but internal/store/customers.go:120-128 ignores orgID, so an email held by another organization's customer is wrongly reported as email_taken; the spec says only the same organization's customers block an email. Fix the lookup to return only customers with s.customers[id].OrgID == orgID (this also fixes GET /v1/customers?email=). 2) customersByEmail (customers.go:58, 120-128, and CreateCustomers' check) maps each email to one customer across all organizations, so a same-organization duplicate can be missed when another organization shares the email; make the lookup per organization. 3) Add an import test where another organization already has the email and the import succeeds, plus a store test with two organizations sharing an email."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_cc2b66279eb6"
+    }
+  ],
+  "coreTaskId": "task_845e0cecaadb"
+}

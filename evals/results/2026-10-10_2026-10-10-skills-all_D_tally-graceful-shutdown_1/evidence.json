@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `Shutdown`, `Pending` and `ErrStopped` are in `internal/jobs/jobs.go`. `Stop` delegates with a 30s timeout, jobs run under cancelable contexts, and panics are recovered. `cmd/tally` calls `Shutdown` on SIGTERM before saving the snapshot.\n- New tests in `internal/jobs/jobs_test.go` cover `ErrStopped` after shutdown, unstarted jobs not run, `Pending` order, the nil vs `ctx.Err()` returns, panic recovery, repeated `Shutdown`/`Stop`, and no leftover goroutines.\n- `go build ./...`, `go vet ./...` and `go test ./...` all pass.",
+    "data": {},
+    "created": 1791669276467
+  },
+  {
+    "id": 2,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 780ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/build_0fdfd71af1d0.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 779,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669277289
+  },
+  {
+    "id": 3,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 880ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/test_f0bff96e9dc2.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 880,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669278173
+  },
+  {
+    "id": 4,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 620ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/lint_e0c457df9c8f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 619,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669278795
+  },
+  {
+    "id": 5,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/secrets_d6b159effa9c.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669278815
+  },
+  {
+    "id": 6,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +354 -11",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 354,
+      "Deletions": 11,
+      "base": "986d7a1fe5d264e7619896fb8c3293ce77f038e5",
+      "commit": "850b13812a63ed1a98662e8b8e39d1a15fe7dea1"
+    },
+    "created": 1791669278951
+  },
+  {
+    "id": 7,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 850b13812a",
+    "ref": "850b13812a63ed1a98662e8b8e39d1a15fe7dea1",
+    "data": {},
+    "created": 1791669278952
+  },
+  {
+    "id": 8,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `Shutdown`, `Pending` and `ErrStopped` are in `internal/jobs/jobs.go`, and the reviewer's fix is in. The tests in `internal/jobs/jobs_test.go` now include the repeat-`Shutdown` regression test, alongside the earlier coverage. `go build ./...`, `go vet ./...` and `go test ./...` all pass. Nothing is committed.",
+    "data": {},
+    "created": 1791669341820
+  },
+  {
+    "id": 9,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 530ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/build_f3ec6e430924.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 528,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669342386
+  },
+  {
+    "id": 10,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 520ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/test_bf3981a0b660.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 522,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669342909
+  },
+  {
+    "id": 11,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 460ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/lint_910ab0bcea79.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 462,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669343373
+  },
+  {
+    "id": 12,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/checks/secrets_1af73342029f.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 11,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669343387
+  },
+  {
+    "id": 13,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +408 -11",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-graceful-shutdown-D-1/data/runs/run_a570ac68feb0/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 408,
+      "Deletions": 11,
+      "base": "986d7a1fe5d264e7619896fb8c3293ce77f038e5",
+      "commit": "01c25df5d58a29dcc81830360e7ef5a8a2e613dc"
+    },
+    "created": 1791669343520
+  },
+  {
+    "id": 14,
+    "taskId": "task_2dae4307e331",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 01c25df5d5",
+    "ref": "01c25df5d58a29dcc81830360e7ef5a8a2e613dc",
+    "data": {},
+    "created": 1791669343521
+  }
+]

@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every listed 2xx request writes one audit entry in the exact shape, with `changes` on updates and no secrets. Failed requests write nothing. The log is saved in the snapshot.\n- `GET /v1/audit-events` returns the org's entries newest first, with `action`, `target_id` and `actor_id` filters and paging. Owners and admins only; others get 403 `{\"error\":\"forbidden\"}`.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, with new tests covering recording, failures, secrets, access, filters, paging, org isolation and save/load.",
+    "data": {},
+    "created": 1791669667889
+  },
+  {
+    "id": 2,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 640ms",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-audit-log-D-1/data/runs/run_4e26455c8ba5/checks/build_06766162dd68.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 635,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669668592
+  },
+  {
+    "id": 3,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 580ms",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-audit-log-D-1/data/runs/run_4e26455c8ba5/checks/test_e088ac0ead4b.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 584,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669669178
+  },
+  {
+    "id": 4,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 480ms",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-audit-log-D-1/data/runs/run_4e26455c8ba5/checks/lint_0369f25d6c33.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 476,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669669656
+  },
+  {
+    "id": 5,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-audit-log-D-1/data/runs/run_4e26455c8ba5/checks/secrets_0175a4fae5d3.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 32,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669669690
+  },
+  {
+    "id": 6,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "14 file(s), +583 -1",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-audit-log-D-1/data/runs/run_4e26455c8ba5/evidence/task.diff",
+    "data": {
+      "Files": 14,
+      "Insertions": 583,
+      "Deletions": 1,
+      "base": "9d28c18dd98e168de24e94eb309f38937f401148",
+      "commit": "2c2402a7a806c8ced4fb58d48f4fa82608984949"
+    },
+    "created": 1791669669857
+  },
+  {
+    "id": 7,
+    "taskId": "task_ee485661af3c",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 2c2402a7a8",
+    "ref": "2c2402a7a806c8ced4fb58d48f4fa82608984949",
+    "data": {},
+    "created": 1791669669858
+  }
+]

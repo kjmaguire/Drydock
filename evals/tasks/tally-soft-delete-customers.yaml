@@ -1,0 +1,33 @@
+# A cross-cutting change: every read path, uniqueness, restore and purge.
+id: tally-soft-delete-customers
+title: "Soft-delete customers"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  Deleting a customer erases it, which breaks its invoices (their "customer" becomes null) and loses history our users need
+  for accounting. Make deleting a customer a soft delete:
+
+  - DELETE /v1/customers/{id} marks the customer deleted at the service's clock time instead of removing it, and answers 204.
+    A customer with a subscription that is not canceled cannot be deleted: 409 {"error":"has_active_subscriptions"}.
+  - A deleted customer behaves as if it did not exist everywhere in the API: GET, PATCH and DELETE /v1/customers/{id} answer
+    404 not_found; it is left out of GET /v1/customers (with or without ?q= or ?email=) and of /v1/customers/export.csv;
+    creating an invoice or a subscription for it answers 404 not_found.
+  - Its email address is free again: a new customer may use it.
+  - Its invoices and payments stay readable. On an invoice, its "customer" is {"id", "name", "email", "deleted": true}.
+  - POST /v1/customers/{id}/restore undoes the deletion within 30 days of it (200 with the customer). After 30 days, or for a
+    customer that is not deleted, 404 not_found. When another customer now uses its email address, 409 {"error":"email_taken"}.
+  - store.PurgeDeletedCustomers(now time.Time) int removes the customers deleted more than 30 days before now and returns how
+    many it removed. On a purged customer's invoices "customer" is null, as today after a delete.
+  - Deleting still sends the customer.deleted event.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-soft-delete-customers
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

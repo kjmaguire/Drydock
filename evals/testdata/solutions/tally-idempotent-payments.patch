@@ -1,0 +1,521 @@
+diff --git a/internal/api/idempotency.go b/internal/api/idempotency.go
+new file mode 100644
+index 0000000..75c6b0d
+--- /dev/null
++++ b/internal/api/idempotency.go
+@@ -0,0 +1,158 @@
++package api
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"net/http"
++	"sync"
++	"time"
++)
++
++// IdempotencyTTL is how long a kept response is replayed for its Idempotency-Key.
++const IdempotencyTTL = 24 * time.Hour
++
++// maxIdempotencyKey is the longest Idempotency-Key accepted.
++const maxIdempotencyKey = 255
++
++// idempotencyKey reads a request's Idempotency-Key header. ok is false when the header is there but is not 1 to 255
++// printable ASCII characters.
++func idempotencyKey(r *http.Request) (key string, present, ok bool) {
++	vals := r.Header.Values("Idempotency-Key")
++	if len(vals) == 0 {
++		return "", false, true
++	}
++	if len(vals) > 1 {
++		return "", true, false
++	}
++	key = vals[0]
++	if len(key) < 1 || len(key) > maxIdempotencyKey {
++		return "", true, false
++	}
++	for i := 0; i < len(key); i++ {
++		if key[i] < 0x20 || key[i] > 0x7e {
++			return "", true, false
++		}
++	}
++	return key, true, true
++}
++
++// idempotency keeps, for each organization's Idempotency-Keys, the response of the first request that used it.
++type idempotency struct {
++	mu      sync.Mutex
++	entries map[idemKey]*idemEntry
++	swept   time.Time
++}
++
++type idemKey struct{ org, key string }
++
++type idemEntry struct {
++	fingerprint [32]byte // the invoice and the request body
++	done        bool     // false while the first request is being handled
++	status      int
++	contentType string
++	body        []byte
++	expires     time.Time
++}
++
++// idemState is what begin found for a key.
++type idemState int
++
++const (
++	idemNew        idemState = iota // the key is reserved for this request
++	idemReplay                      // the kept response is returned
++	idemInProgress                  // a request with the key is being handled
++	idemReused                      // the key was used for another request
++)
++
++func newIdempotency() *idempotency { return &idempotency{entries: map[idemKey]*idemEntry{}} }
++
++func idemFingerprint(target string, body []byte) [32]byte {
++	h := sha256.New()
++	h.Write([]byte(target))
++	h.Write([]byte{0})
++	h.Write(body)
++	var fp [32]byte
++	h.Sum(fp[:0])
++	return fp
++}
++
++// begin looks a key up for a request with fingerprint fp. For idemNew the key is reserved until finish or abort; for
++// idemReplay the kept response is returned.
++func (s *idempotency) begin(k idemKey, fp [32]byte, now time.Time) (idemState, idemEntry) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if now.Sub(s.swept) > time.Hour {
++		for key, e := range s.entries {
++			if e.done && !now.Before(e.expires) {
++				delete(s.entries, key)
++			}
++		}
++		s.swept = now
++	}
++	if e, ok := s.entries[k]; ok {
++		switch {
++		case !e.done:
++			return idemInProgress, idemEntry{}
++		case now.Before(e.expires) && e.fingerprint != fp:
++			return idemReused, idemEntry{}
++		case now.Before(e.expires):
++			return idemReplay, *e
++		}
++	}
++	s.entries[k] = &idemEntry{fingerprint: fp}
++	return idemNew, idemEntry{}
++}
++
++// finish keeps the response of the request that reserved k, to be replayed until expires.
++func (s *idempotency) finish(k idemKey, status int, contentType string, body []byte, expires time.Time) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if e, ok := s.entries[k]; ok && !e.done {
++		e.done, e.status, e.contentType, e.body, e.expires = true, status, contentType, body, expires
++	}
++}
++
++// abort frees k without keeping a response: a retry with the key is handled as new.
++func (s *idempotency) abort(k idemKey) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if e, ok := s.entries[k]; ok && !e.done {
++		delete(s.entries, k)
++	}
++}
++
++// responseCapture is a ResponseWriter that keeps the response so that it can be kept and then sent.
++type responseCapture struct {
++	header http.Header
++	status int
++	body   bytes.Buffer
++}
++
++func newResponseCapture() *responseCapture { return &responseCapture{header: http.Header{}} }
++
++func (c *responseCapture) Header() http.Header { return c.header }
++
++func (c *responseCapture) WriteHeader(status int) {
++	if c.status == 0 {
++		c.status = status
++	}
++}
++
++func (c *responseCapture) Write(b []byte) (int, error) {
++	if c.status == 0 {
++		c.status = http.StatusOK
++	}
++	return c.body.Write(b)
++}
++
++// sendTo writes the captured response to w.
++func (c *responseCapture) sendTo(w http.ResponseWriter) {
++	for k, vs := range c.header {
++		w.Header()[k] = vs
++	}
++	if c.status == 0 {
++		c.status = http.StatusOK
++	}
++	w.WriteHeader(c.status)
++	_, _ = w.Write(c.body.Bytes())
++}
+diff --git a/internal/api/idempotency_test.go b/internal/api/idempotency_test.go
+new file mode 100644
+index 0000000..2b7e829
+--- /dev/null
++++ b/internal/api/idempotency_test.go
+@@ -0,0 +1,118 @@
++package api_test
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/payments"
++)
++
++func payWithKey(e *apitest.Env, key, invoiceID, body string) *apitest.Response {
++	h := http.Header{}
++	if key != "" {
++		h.Set("Idempotency-Key", key)
++	}
++	return e.DoWith("POST", "/v1/invoices/"+invoiceID+"/pay", e.Acme.Key, body, h)
++}
++
++func newInvoice(t *testing.T, e *apitest.Env, email string, amount int) string {
++	t.Helper()
++	c := e.CreateCustomer(e.Acme, "Jane", email)
++	var inv struct{ ID string }
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": c.ID, "currency": "USD",
++		"lines": []map[string]any{{"description": "Work", "quantity": 1, "unit_amount": amount}}}, &inv)
++	return inv.ID
++}
++
++func TestPayIdempotencyKey(t *testing.T) {
++	e := apitest.New(t)
++	inv := newInvoice(t, e, "jane@example.com", 1000)
++	other := newInvoice(t, e, "john@example.com", 2000)
++	visa := `{"payment_method":"pm_card_visa"}`
++	first := payWithKey(e, "order-1", inv, visa)
++	if first.Code != http.StatusOK || first.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("first: %s", first)
++	}
++	again := payWithKey(e, "order-1", inv, visa)
++	if again.Code != http.StatusOK || string(again.Body) != string(first.Body) || again.Header.Get("Idempotent-Replayed") != "true" {
++		t.Fatalf("replay: %s %v", again, again.Header)
++	}
++	for _, r := range []*apitest.Response{payWithKey(e, "order-1", other, visa), payWithKey(e, "order-1", inv, `{"payment_method":"pm_card_mastercard"}`)} {
++		if r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "idempotency_key_reused" {
++			t.Fatalf("reused key: %s", r)
++		}
++	}
++	if r := e.DoWith("POST", "/v1/invoices/"+other+"/pay", e.Globex.Key, visa, http.Header{"Idempotency-Key": {"order-1"}}); r.Code != http.StatusNotFound {
++		t.Fatalf("Globex's own use of the key: %s", r)
++	}
++	for _, bad := range []string{strings.Repeat("k", 256), "tab\there", "café"} {
++		if r := payWithKey(e, bad, other, visa); r.Code != http.StatusBadRequest || r.Map(t)["error"] != "invalid_idempotency_key" {
++			t.Fatalf("key %q: %s", bad, r)
++		}
++	}
++	e.Clock.Advance(24*time.Hour + time.Second)
++	if r := payWithKey(e, "order-1", other, visa); r.Code != http.StatusOK || r.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("a key 24 hours later counts as new: %s", r)
++	}
++	if n := len(e.Gateway.Charges()); n != 2 {
++		t.Fatalf("%d charges, want 2", n)
++	}
++}
++
++func TestPayServerErrorsAreNotKept(t *testing.T) {
++	e := apitest.New(t)
++	inv := newInvoice(t, e, "jane@example.com", 1000)
++	if r := payWithKey(e, "k", inv, `{"payment_method":"pm_gateway_down"}`); r.Code != http.StatusServiceUnavailable {
++		t.Fatalf("gateway down: %s", r)
++	}
++	if r := payWithKey(e, "k", inv, `{"payment_method":"pm_gateway_down"}`); r.Code != http.StatusServiceUnavailable || r.Header.Get("Idempotent-Replayed") != "" {
++		t.Fatalf("a 503 was replayed: %s", r)
++	}
++	if n := len(e.Gateway.Calls()); n != 2 {
++		t.Fatalf("the retry did not try the payment again: %d calls", n)
++	}
++}
++
++func TestPayInProgress(t *testing.T) {
++	e := apitest.New(t)
++	inv := newInvoice(t, e, "jane@example.com", 1000)
++	entered, release := make(chan struct{}), make(chan struct{})
++	e.Gateway.OnCharge = func(payments.ChargeRequest) {
++		select {
++		case <-entered:
++		default:
++			close(entered)
++			<-release
++		}
++	}
++	serve := func(key string) *httptest.ResponseRecorder {
++		req := httptest.NewRequest("POST", "/v1/invoices/"+inv+"/pay", strings.NewReader(`{"payment_method":"pm_card_visa"}`))
++		req.Header.Set("Authorization", "Bearer "+e.Acme.Key)
++		if key != "" {
++			req.Header.Set("Idempotency-Key", key)
++		}
++		rec := httptest.NewRecorder()
++		e.Server.ServeHTTP(rec, req)
++		return rec
++	}
++	done := make(chan *httptest.ResponseRecorder, 1)
++	go func() { done <- serve("slow") }()
++	<-entered
++	if r := serve("slow"); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), `"request_in_progress"`) {
++		t.Fatalf("the same key meanwhile: %d %s", r.Code, r.Body)
++	}
++	if r := serve(""); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), `"payment_in_progress"`) {
++		t.Fatalf("another pay request meanwhile: %d %s", r.Code, r.Body)
++	}
++	close(release)
++	if r := <-done; r.Code != http.StatusOK {
++		t.Fatalf("the first request: %d %s", r.Code, r.Body)
++	}
++	if n := len(e.Gateway.Charges()); n != 1 {
++		t.Fatalf("%d charges", n)
++	}
++}
+diff --git a/internal/api/invoices.go b/internal/api/invoices.go
+index 843d000..16307bd 100644
+--- a/internal/api/invoices.go
++++ b/internal/api/invoices.go
+@@ -1,8 +1,11 @@
+ package api
+ 
+ import (
++	"bytes"
++	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"io"
+ 	"net/http"
+ 	"strings"
+ 
+@@ -149,12 +152,72 @@ func (s *Server) getInvoiceLines(w http.ResponseWriter, r *http.Request, p auth.
+ }
+ 
+ // payInvoice charges an invoice: {"payment_method": "pm_..."}, or the customer's default payment method when it is absent.
++//
++// With an Idempotency-Key header (1 to 255 printable ASCII characters, one namespace per organization), the first response
++// for the key is kept for IdempotencyTTL and a repeat of the request (the same invoice and body) gets it again, with
++// Idempotent-Replayed: true, and charges nothing. The key with another invoice or body is refused, and so is a repeat while
++// the first request is still being handled. Responses with a 5xx status are not kept, so a retry pays again.
+ func (s *Server) payInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	key, present, ok := idempotencyKey(r)
++	if !ok {
++		writeError(w, http.StatusBadRequest, "invalid_idempotency_key", "the Idempotency-Key is 1 to 255 printable ASCII characters")
++		return
++	}
++	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
++	if err != nil {
++		writeError(w, http.StatusBadRequest, "invalid_json", "the body could not be read: "+err.Error())
++		return
++	}
++	if !present {
++		s.charge(w, r, p, body)
++		return
++	}
++	k := idemKey{org: p.OrgID, key: key}
++	now := s.clock.Now()
++	state, kept := s.idem.begin(k, idemFingerprint(r.PathValue("id"), body), now)
++	switch state {
++	case idemInProgress:
++		writeError(w, http.StatusConflict, "request_in_progress", "a request with this Idempotency-Key is still being handled; try again later")
++		return
++	case idemReused:
++		writeError(w, http.StatusUnprocessableEntity, "idempotency_key_reused", "this Idempotency-Key was used for another request")
++		return
++	case idemReplay:
++		if kept.contentType != "" {
++			w.Header().Set("Content-Type", kept.contentType)
++		}
++		w.Header().Set("Idempotent-Replayed", "true")
++		w.WriteHeader(kept.status)
++		_, _ = w.Write(kept.body)
++		return
++	}
++	settled := false
++	defer func() {
++		if !settled {
++			s.idem.abort(k) // the handler panicked: free the key
++		}
++	}()
++	rec := newResponseCapture()
++	s.charge(rec, r, p, body)
++	if rec.status >= 500 {
++		s.idem.abort(k)
++	} else {
++		s.idem.finish(k, rec.status, rec.header.Get("Content-Type"), bytes.Clone(rec.body.Bytes()), now.Add(IdempotencyTTL))
++	}
++	settled = true
++	rec.sendTo(w)
++}
++
++// charge pays an invoice with the payment method in body and answers the invoice and the payment.
++func (s *Server) charge(w http.ResponseWriter, r *http.Request, p auth.Principal, body []byte) {
+ 	var in struct {
+ 		PaymentMethod string `json:"payment_method"`
+ 	}
+-	if r.ContentLength != 0 && !decode(w, r, &in) {
+-		return
++	if len(body) > 0 {
++		if err := json.NewDecoder(bytes.NewReader(body)).Decode(&in); err != nil {
++			writeError(w, http.StatusBadRequest, "invalid_json", "the body is not valid JSON: "+err.Error())
++			return
++		}
+ 	}
+ 	inv, pay, err := s.pay.Pay(r.Context(), p.OrgID, r.PathValue("id"), in.PaymentMethod)
+ 	if err != nil {
+@@ -175,6 +238,8 @@ func (s *Server) payError(w http.ResponseWriter, err error) {
+ 		writeError(w, http.StatusConflict, "invoice_void", err.Error())
+ 	case errors.Is(err, payments.ErrNoPaymentMethod):
+ 		writeError(w, http.StatusUnprocessableEntity, "no_payment_method", err.Error())
++	case errors.Is(err, payments.ErrPaymentInProgress):
++		writeError(w, http.StatusConflict, "payment_in_progress", "a payment of this invoice is in progress; nothing was charged")
+ 	case errors.Is(err, payments.ErrUnavailable):
+ 		writeError(w, http.StatusServiceUnavailable, "gateway_unavailable", "the payment gateway is unavailable; nothing was charged, try again")
+ 	default:
+diff --git a/internal/api/server.go b/internal/api/server.go
+index 067937f..0c94874 100644
+--- a/internal/api/server.go
++++ b/internal/api/server.go
+@@ -44,6 +44,7 @@ type Server struct {
+ 	mail    mail.Sender
+ 	log     *slog.Logger
+ 	baseURL string
++	idem    *idempotency // Idempotency-Keys of POST /v1/invoices/{id}/pay
+ 	mux     *http.ServeMux
+ 	handler http.Handler
+ }
+@@ -54,7 +55,7 @@ func New(st *store.Store, opt Options) *Server {
+ 		panic("api.New: Options.Payments and Options.Subscriptions are required")
+ 	}
+ 	s := &Server{store: st, clock: opt.Clock, pay: opt.Payments, subs: opt.Subscriptions, hooks: opt.Webhooks, mail: opt.Mail, log: opt.Logger,
+-		baseURL: strings.TrimRight(opt.BaseURL, "/"), mux: http.NewServeMux()}
++		baseURL: strings.TrimRight(opt.BaseURL, "/"), idem: newIdempotency(), mux: http.NewServeMux()}
+ 	if s.clock == nil {
+ 		s.clock = clock.Real{}
+ 	}
+diff --git a/internal/payments/payments.go b/internal/payments/payments.go
+index a311174..aa3352d 100644
+--- a/internal/payments/payments.go
++++ b/internal/payments/payments.go
+@@ -5,6 +5,7 @@ import (
+ 	"context"
+ 	"errors"
+ 	"fmt"
++	"sync"
+ 
+ 	"example.com/tally/internal/billing"
+ 	"example.com/tally/internal/clock"
+@@ -44,6 +45,8 @@ var (
+ 	ErrAlreadyPaid     = errors.New("the invoice is already paid")
+ 	ErrInvoiceVoid     = errors.New("the invoice is void")
+ 	ErrNoPaymentMethod = errors.New("no payment method to charge")
++	// ErrPaymentInProgress means another payment of the same invoice is under way; nothing was charged.
++	ErrPaymentInProgress = errors.New("a payment of the invoice is in progress")
+ )
+ 
+ // Publisher sends events to the organization's webhook endpoints (webhooks.Service).
+@@ -51,19 +54,48 @@ type Publisher interface {
+ 	Publish(ctx context.Context, orgID, eventType string, data any) error
+ }
+ 
+-// Service pays invoices.
++// Service pays invoices. It pays each invoice at most once at a time.
+ type Service struct {
+ 	Store     *store.Store
+ 	Gateway   Gateway
+ 	Clock     clock.Clock
+ 	Publisher Publisher // nil: no events
++
++	mu     sync.Mutex
++	paying map[string]bool // invoices being paid, by organization and ID
++}
++
++// claim marks an invoice as being paid, or reports false when another payment of it is under way.
++func (s *Service) claim(orgID, invoiceID string) (release func(), ok bool) {
++	k := orgID + "/" + invoiceID
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.paying[k] {
++		return nil, false
++	}
++	if s.paying == nil {
++		s.paying = map[string]bool{}
++	}
++	s.paying[k] = true
++	return func() {
++		s.mu.Lock()
++		defer s.mu.Unlock()
++		delete(s.paying, k)
++	}, true
+ }
+ 
+ // Pay charges an open invoice's total to paymentMethod, or to the customer's default payment method when it is empty, and
+ // marks the invoice paid. An invoice whose total is zero or less is marked paid without a charge. A declined charge is
+ // recorded as a failed payment and returned as a *DeclineError; when the gateway is unavailable nothing is recorded and the
+-// error wraps ErrUnavailable.
++// error wraps ErrUnavailable. While one payment of an invoice is under way, another one fails at once with
++// ErrPaymentInProgress, so an invoice is never charged twice.
+ func (s *Service) Pay(ctx context.Context, orgID, invoiceID, paymentMethod string) (store.Invoice, store.Payment, error) {
++	release, ok := s.claim(orgID, invoiceID)
++	if !ok {
++		inv, _ := s.Store.Invoice(orgID, invoiceID)
++		return inv, store.Payment{}, ErrPaymentInProgress
++	}
++	defer release()
+ 	inv, ok := s.Store.Invoice(orgID, invoiceID)
+ 	if !ok {
+ 		return store.Invoice{}, store.Payment{}, store.ErrNotFound
+diff --git a/internal/payments/payments_test.go b/internal/payments/payments_test.go
+index 78a21d3..f54e227 100644
+--- a/internal/payments/payments_test.go
++++ b/internal/payments/payments_test.go
+@@ -111,3 +111,35 @@ func TestPayVoidAndFree(t *testing.T) {
+ 		t.Fatalf("void: %v", err)
+ 	}
+ }
++
++func TestPayOneAtATime(t *testing.T) {
++	s, gw, _, inv := setup(t, store.Line{Description: "x", Quantity: 1, UnitAmount: 500})
++	entered, release := make(chan struct{}), make(chan struct{})
++	gw.OnCharge = func(ChargeRequest) {
++		select {
++		case <-entered:
++		default:
++			close(entered)
++			<-release
++		}
++	}
++	done := make(chan error, 1)
++	go func() {
++		_, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa")
++		done <- err
++	}()
++	<-entered
++	if _, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa"); !errors.Is(err, ErrPaymentInProgress) {
++		t.Fatalf("a second payment while the first is under way: %v", err)
++	}
++	close(release)
++	if err := <-done; err != nil {
++		t.Fatal(err)
++	}
++	if _, _, err := s.Pay(context.Background(), inv.OrgID, inv.ID, "pm_card_visa"); !errors.Is(err, ErrAlreadyPaid) {
++		t.Fatalf("pay after the first finished: %v", err)
++	}
++	if n := len(gw.Charges()); n != 1 {
++		t.Fatalf("%d charges", n)
++	}
++}

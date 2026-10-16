@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-tiered-pricing",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "e8e160750440daf536cb4068fff3b3c12ff64ea1",
+  "startedAt": "2026-10-10T05:00:07.609521442Z",
+  "wallMs": 399399,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1133,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1916,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.019s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.003s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.002s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.081s\nok  \texample.com/tally/internal/snapshot\t0.071s\nok  \texample.com/tally/internal/store\t0.003s\nok  \texample.com/tally/internal/subscriptions\t0.010s\nok  \texample.com/tally/internal/webhooks\t0.006s\n"
+      }
+    ],
+    "durationMs": 3059
+  },
+  "costUsd": 0.15682977,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 100,
+    "output": 87220,
+    "cacheRead": 2678349,
+    "cacheWrite": 256922
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_8f567def2299",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe tiered pricing math, renewal billing and most validation look right. One requirement gap: a tier with a non-string amount gets the wrong error code.\n\n- `internal/api/plans.go:19-23` (`tierIn`) declares `UnitAmount` and `FlatAmount` as `string`. A body such as `{\"up_to\": 10, \"unit_amount\": 1}` fails in `decode()` (`internal/api/respond.go:27-34`) and returns 400 `invalid_json`. The task says invalid tiers must return 422 `invalid_tiers`, and the worker's own definition of done says \"on any violation\". Numeric or otherwise mistyped `unit_amount`/`flat_amount` values are violations, so they need the same 422. The same applies to a non-string `tiers_mode` or a non-array `tiers`, which also fail at decode. The existing `up_to` case is handled because it is a `json.RawMessage`. Fix: decode the amount fields as `json.RawMessage` and parse them in `parseTiers`, or decode the tiers body loosely and map any type error to `store.ErrInvalidTiers`. Add a test case with a numeric `unit_amount` to `TestTieredPlans`.\n\nEverything else I checked is correct. `TieredAmount` gives the expected values, including the inclusive boundary at 10 and 20 and the zero-quantity case. The renewal early return (`subscriptions.go:221-222`) returns `paid=true` and the caller still advances the period, so a no-usage tiered period is not invoiced and the subscription stays active.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"internal/api/plans.go (tierIn, ~lines 19-23): UnitAmount and FlatAmount are typed string, so a t\n...[truncated]"
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_8f567def2299",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe change is mostly right: `TieredAmount` checks out on the worked cases, the subscription path handles tiered periods correctly, and `ParseMajor(\"\")` errors, so a missing `unit_amount` is rejected. One spec violation remains.\n\n```json\n{\"verdict\":\"REVISE\",\"feedback\":\"1) internal/api/plans.go, createPlan / parseTiersBody (around lines 124-150 and the wantsTiers check): an explicit empty \\\"tiers\\\": [] with no \\\"tiers_mode\\\" bypasses validation. wantsTiers returns true because the raw tiers are not null, parseTiers returns an empty slice, and store.checkTiers returns nil early because !p.Tiered() \u0026\u0026 p.TiersMode == \\\"\\\". The result is a 201. Two spec cases break: a metered plan with tiers but no valid tiers_mode must be 422 invalid_tiers, and a licensed plan with \\\"tiers\\\": [] plus a \\\"price\\\" is stored with UnitAmount 0 and the price silently dropped, where the spec requires 422 invalid_tiers for tiers on a licensed plan. Fix: in parseTiersBody, after parseTiers, return fmt.Errorf(\\\"%w: a tiered plan needs at least one tier\\\", store.ErrInvalidTiers) when len(tiers) == 0. Add a case to TestTieredPlans for plan(\\\"metered\\\", \\\"\\\", []map[string]any{}...) — note the existing 'no tiers at all' case passes []map[string]any{}... which expands to zero arguments, so it sends no \\\"tiers\\\" key and does not test an empty list. Give that case an explicit \\\"tiers\\\": []any{} in the body, and add one for a licensed plan with \\\"tiers\\\": [] and a price.\"}\n```"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_8f567def2299"
+    }
+  ],
+  "coreTaskId": "task_55df363fe7d0"
+}

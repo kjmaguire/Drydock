@@ -1,0 +1,111 @@
+diff --git a/start/internal/billing/invoice.go b/result/internal/billing/invoice.go
+index b22d367..f127a66 100644
+--- a/start/internal/billing/invoice.go
++++ b/result/internal/billing/invoice.go
+@@ -11,15 +11,24 @@ type Totals struct {
+ 	TotalCents    int64 `json:"total_cents"`
+ }
+ 
+-// Compute returns the totals of an invoice: the subtotal of its lines, the credit and the coupon, then tax.
++// Compute returns the totals of an invoice: the subtotal of its lines, then the coupon, then the credit, then tax.
++// Amounts are non-negative, so the half-up rounding below is plain integer arithmetic.
+ func Compute(inv store.Invoice) Totals {
+ 	var subtotal int64
+ 	for _, l := range inv.Lines {
+ 		subtotal += int64(l.Quantity) * l.UnitCents
+ 	}
+-	afterCredit := subtotal - inv.CreditCents
+-	coupon := afterCredit * int64(inv.CouponPercent) / 100
+-	discounted := afterCredit - coupon
+-	tax := discounted * int64(inv.TaxRateBP) / 10000
+-	return Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}
++	coupon := (subtotal*int64(inv.CouponPercent) + 50) / 100
++	afterCoupon := subtotal - coupon
++	afterDiscounts := afterCoupon - inv.CreditCents
++	if afterDiscounts < 0 {
++		afterDiscounts = 0
++	}
++	tax := (afterDiscounts*int64(inv.TaxRateBP) + 5000) / 10000
++	return Totals{
++		SubtotalCents: subtotal,
++		DiscountCents: subtotal - afterDiscounts,
++		TaxCents:      tax,
++		TotalCents:    afterDiscounts + tax,
++	}
+ }
+diff --git a/start/internal/billing/invoice_test.go b/result/internal/billing/invoice_test.go
+index 7e5563c..0c6fde9 100644
+--- a/start/internal/billing/invoice_test.go
++++ b/result/internal/billing/invoice_test.go
+@@ -21,3 +21,71 @@ func TestTaxIsAddedToTheSubtotal(t *testing.T) {
+ 		t.Fatalf("got %+v, want %+v", got, want)
+ 	}
+ }
++
++func TestCouponCreditAndTax(t *testing.T) {
++	seats := func(quantity int, unitCents int64) []store.LineItem {
++		return []store.LineItem{{Description: "Seats", Quantity: quantity, UnitCents: unitCents}}
++	}
++	tests := []struct {
++		name string
++		inv  store.Invoice
++		want Totals
++	}{
++		{
++			name: "subtotal is quantity times unit price summed over lines",
++			inv: store.Invoice{Lines: []store.LineItem{
++				{Description: "Seats", Quantity: 3, UnitCents: 333},
++				{Description: "Setup", Quantity: 1, UnitCents: 1},
++			}},
++			want: Totals{SubtotalCents: 1000, TotalCents: 1000},
++		},
++		{
++			name: "coupon half rounds up to the cent",
++			inv:  store.Invoice{Lines: seats(1, 1005), CouponPercent: 50},
++			// 502.5 rounds up to 503, so 502 is left.
++			want: Totals{SubtotalCents: 1005, DiscountCents: 503, TotalCents: 502},
++		},
++		{
++			name: "coupon below half rounds down",
++			inv:  store.Invoice{Lines: seats(1, 1001), CouponPercent: 10},
++			// 100.1 rounds down to 100.
++			want: Totals{SubtotalCents: 1001, DiscountCents: 100, TotalCents: 901},
++		},
++		{
++			name: "coupon applies before credit",
++			inv:  store.Invoice{Lines: seats(1, 1000), CouponPercent: 10, CreditCents: 950},
++			// Coupon 100 leaves 900, and the credit takes it to zero. Taking the credit first would leave 45.
++			want: Totals{SubtotalCents: 1000, DiscountCents: 1000, TotalCents: 0},
++		},
++		{
++			name: "credit larger than the rest is capped at zero",
++			inv:  store.Invoice{Lines: seats(1, 1000), CreditCents: 5000, TaxRateBP: 825},
++			want: Totals{SubtotalCents: 1000, DiscountCents: 1000, TotalCents: 0},
++		},
++		{
++			name: "full coupon leaves nothing to tax",
++			inv:  store.Invoice{Lines: seats(2, 4999), CouponPercent: 100, TaxRateBP: 825},
++			want: Totals{SubtotalCents: 9998, DiscountCents: 9998},
++		},
++		{
++			name: "tax half rounds up to the cent",
++			inv:  store.Invoice{Lines: seats(1, 1005), TaxRateBP: 1000},
++			// 100.5 rounds up to 101.
++			want: Totals{SubtotalCents: 1005, TaxCents: 101, TotalCents: 1106},
++		},
++		{
++			name: "tax is charged on the amount after coupon and credit",
++			inv:  store.Invoice{Lines: seats(1, 10000), CouponPercent: 25, CreditCents: 1000, TaxRateBP: 825},
++			// Coupon 2500, credit 1000, leaving 6500. Tax is 536.25, rounded to 536.
++			want: Totals{SubtotalCents: 10000, DiscountCents: 3500, TaxCents: 536, TotalCents: 7036},
++		},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got := Compute(tt.inv)
++			if got != tt.want {
++				t.Fatalf("got %+v, want %+v", got, tt.want)
++			}
++		})
++	}
++}

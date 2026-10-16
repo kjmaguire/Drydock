@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-pilot-checks",
+  "commit": "895299ed5eba",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "saasapi-invoice-pages",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "dab7407a88414a738d8b54504b7194ba716134c7",
+  "startedAt": "2026-10-10T01:50:35.42361458Z",
+  "wallMs": 160660,
+  "ceilingUsd": 2,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 267,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 441,
+        "output": "?   \texample.com/saasapi/cmd/server\t[no test files]\nok  \texample.com/saasapi/internal/api\t0.006s\nok  \texample.com/saasapi/internal/billing\t0.002s\n?   \texample.com/saasapi/internal/store\t[no test files]\n"
+      }
+    ],
+    "durationMs": 711
+  },
+  "costUsd": 0.04066402,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 36,
+    "output": 34763,
+    "cacheRead": 830952,
+    "cacheWrite": 74847
+  },
+  "sessions": 2,
+  "reviews": [
+    {
+      "verdict": "SHIP",
+      "by": "agt_f8547c30ca15"
+    }
+  ],
+  "coreTaskId": "task_e1e75a14492f"
+}

@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-seat-limits",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "fcec6dc64f54517c7c9a36edeeedbc910d45f3d2",
+  "startedAt": "2026-10-10T05:08:44.411387321Z",
+  "wallMs": 253429,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1261,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2085,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.430s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.002s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.002s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.002s\nok  \texample.com/tally/internal/payments\t0.002s\nok  \texample.com/tally/internal/reports\t0.002s\nok  \texample.com/tally/internal/snapshot\t0.022s\nok  \texample.com/tally/internal/store\t0.008s\nok  \texample.com/tally/internal/subscriptions\t0.006s\nok  \texample.com/tally/internal/webhooks\t0.006s\n"
+      }
+    ],
+    "durationMs": 3350
+  },
+  "costUsd": 0.07744308999999999,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 72,
+    "output": 50552,
+    "cacheRead": 1686729,
+    "cacheWrite": 176463
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_56766e540974",
+      "feedback": "internal/store/store.go AcceptInvite (~line 512): the check `if !found || inv.RevokedAt != nil` lets an already-accepted invite token be accepted again. RemoveMember does not touch the invite, so after a member is removed their old token re-creates them via addMember with no seat check, and the org can exceed its plan limit (e.g. free plan: owner + A accepted, remove A, fill with two pending invites, re-accept A's token -\u003e 4 seats used, limit 3). Fix: also reject when inv.AcceptedAt != nil (ideally return ErrNotFound as for revoked invites). Add a test in internal/api/seats_test.go covering accept, remove member, fill the plan, then re-accept the same token, expecting it to fail and used to stay at the limit."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_56766e540974"
+    }
+  ],
+  "coreTaskId": "task_53a0f657aa42"
+}

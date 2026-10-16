@@ -1,0 +1,237 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- PATCH /v1/subscriptions/{id} applies upgrades at once and bills a two-line prorated invoice, charged to the default payment method. Downgrades are stored as pending and applied at renewal. Incompatible plans return 422, and trialing and canceled subscriptions follow the rules in the task.\n- New tests cover upgrade, downgrade, equal-value, pending-clear, trial, canceled, incompatible-plan, and declined-charge cases. `go build ./...`, `go vet ./...` and `go test ./...` pass.\n- Existing exported names, signatures and API fields keep working.",
+    "data": {},
+    "created": 1791671063483
+  },
+  {
+    "id": 2,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.81s",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/build_27c2193789cb.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1806,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671065350
+  },
+  {
+    "id": 3,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.03s",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/test_cf74122407e0.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1034,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671066386
+  },
+  {
+    "id": 4,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 910ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/lint_f690ef176082.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 908,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671067296
+  },
+  {
+    "id": 5,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/secrets_e2836a03f751.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 24,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671067322
+  },
+  {
+    "id": 6,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +438 -13",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 438,
+      "Deletions": 13,
+      "base": "94a1ae3e2597188fb980ffd93902640bf9fc1d16",
+      "commit": "f28a6d92fb8237acf8d9db918990e2f42bfe8431"
+    },
+    "created": 1791671067524
+  },
+  {
+    "id": 7,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f28a6d92fb",
+    "ref": "f28a6d92fb8237acf8d9db918990e2f42bfe8431",
+    "data": {},
+    "created": 1791671067525
+  },
+  {
+    "id": 8,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 950ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/build_5f0fececabf2.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 953,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671254666
+  },
+  {
+    "id": 9,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 560ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/test_5136563c7b72.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 562,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671255230
+  },
+  {
+    "id": 10,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 410ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/lint_6a894a72e827.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 409,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671255642
+  },
+  {
+    "id": 11,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/secrets_c891bdeff72d.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671255664
+  },
+  {
+    "id": 12,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +569 -13",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 569,
+      "Deletions": 13,
+      "base": "94a1ae3e2597188fb980ffd93902640bf9fc1d16",
+      "commit": "833870250c1b0ec49826b8282068200cd942fe0a"
+    },
+    "created": 1791671255803
+  },
+  {
+    "id": 13,
+    "taskId": "task_f52cf555ad1c",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 833870250c",
+    "ref": "833870250c1b0ec49826b8282068200cd942fe0a",
+    "data": {},
+    "created": 1791671255804
+  }
+]

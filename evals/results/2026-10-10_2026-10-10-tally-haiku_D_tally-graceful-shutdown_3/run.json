@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "fd63404a00cd78c76d9fd80966926e54f1332f5b",
+  "startedAt": "2026-10-10T05:28:05.523381387Z",
+  "wallMs": 378103,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1242,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2591,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.015s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.005s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.703s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.006s\nok  \texample.com/tally/internal/payments\t0.003s\nok  \texample.com/tally/internal/reports\t0.009s\nok  \texample.com/tally/internal/snapshot\t0.018s\nok  \texample.com/tally/internal/store\t0.040s\nok  \texample.com/tally/internal/subscriptions\t0.021s\nok  \texample.com/tally/internal/webhooks\t0.010s\n"
+      }
+    ],
+    "durationMs": 3837
+  },
+  "costUsd": 0.09675752,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 84,
+    "output": 74998,
+    "cacheRead": 1824692,
+    "cacheWrite": 205016
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_05a433f57f63",
+      "feedback": "internal/jobs/jobs.go, Shutdown: the already-closed branch does `\u003c-r.done` without honoring its ctx, so a second Shutdown or Stop-after-Shutdown can block indefinitely while the first call waits on a stuck job. The spec requires that these calls return at once (nil once the first call has finished). Fix: replace the wait with a select on r.done and ctx.Done(), returning nil when done is closed and ctx.Err() otherwise. Add a test where the first Shutdown is blocked on a job that ignores cancellation, then assert that a second Shutdown with a short timeout returns within that timeout."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_05a433f57f63",
+      "feedback": "1) cmd/tally/main.go:86-88: runner.Pending() is only counted in a log line and then discarded, so queued and cancelled jobs are lost on SIGTERM. The task says the caller saves Pending()'s jobs. Persist or hand off the pending work (or explicitly document why Job closures cannot be saved and what recovery path replaces it). 2) internal/jobs/jobs.go Shutdown second-call path: a second Shutdown or Stop blocks until the first call finishes or its ctx ends, but the task says a second call 'returns at once'. Either return immediately (nil only if the first call has finished, otherwise a defined result) or document the chosen reading and why. 3) Optional: workers send on r.exited before their goroutine returns, so 'none of the runner's goroutines is left' holds only in practice; a goroutine-leak test could flake."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_05a433f57f63"
+    }
+  ],
+  "coreTaskId": "task_1181bbb1f8f9"
+}

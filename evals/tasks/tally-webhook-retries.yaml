@@ -1,0 +1,34 @@
+# A retry schedule on a fake clock, a stop condition, and a rate-limited alert.
+id: tally-webhook-retries
+title: "Retry failed webhook deliveries"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  A webhook delivery that fails is never tried again, so a receiver that was down for one minute loses those events for good.
+  Add retries:
+
+  - An attempt fails when the request cannot be sent or gets no answer, when the answer's status is not 2xx (redirects are not
+    followed, so a 3xx fails), or when it takes longer than 10 seconds.
+  - After a failed attempt the delivery stays pending and is tried again 1 minute later; after further failures, 5 minutes,
+    30 minutes, 2 hours, 8 hours and 24 hours later, each counted from the failed attempt on the service's clock: 7 attempts in
+    all. After the 7th failed attempt the delivery is failed for good.
+  - An answer of 410 Gone stops at once: the delivery is failed for good, and the endpoint is disabled (enabled false,
+    disabled_reason "gone"), so its other pending deliveries are not sent.
+  - When a delivery fails for good after 7 attempts, email every owner of the organization with the subject
+    "Webhook endpoint failing: <endpoint URL>". At most one such email per endpoint in any 24 hours. The webhooks Service gets
+    the mail.Sender through a new field Mail in webhooks.Options; apitest.New passes the Env's Outbox.
+  - A delivery's JSON shows the number of attempts, last_attempt_at, next_attempt_at (null when no attempt is planned),
+    and the latest attempt's response_status and error. Its status is pending until it succeeds or fails for good.
+  - RunDue sends what is due at the clock's current time and returns how many attempts it made.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-webhook-retries
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

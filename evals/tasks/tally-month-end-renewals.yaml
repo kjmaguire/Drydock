@@ -1,0 +1,32 @@
+# Date arithmetic where the obvious fix still drifts after a short month; plus late and missed renewals.
+id: tally-month-end-renewals
+title: "Fix billing periods that drift at month ends"
+suite: tally
+fixture: testdata/fixtures/tally
+class: test-fix loop
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Billing periods drift. A monthly subscription that started on January 31 renews on March 3 (Go's AddDate turns February 31
+  into March 3) and every later period then ends on the 3rd. And when the renewal job runs late, the next period starts when
+  the job ran instead of when the previous period ended. Make billing periods follow these rules:
+
+  - A subscription's anchor is the start of its first paid period: StartedAt, or TrialEnd for one that started with a trial.
+  - Period n (n = 0, 1, 2, ...) of a monthly plan starts n months after the anchor: on the anchor's day of the month, at the
+    anchor's time of day, or on the last day of that month when the month is shorter. Each period ends exactly where the next
+    one starts. Yearly plans work the same with years (an anchor of February 29 gives February 28 in common years and
+    February 29 in leap years).
+  - The anchor never drifts: after a short month the next period is back on the anchor's day (Jan 31, Feb 28, Mar 31, Apr 30).
+  - RenewDue brings every subscription up to date: when one is several periods behind (the job did not run for two months),
+    each missed period is renewed in order, each with its own invoice for that period. A renewal never depends on when the job
+    happens to run.
+  - Times are UTC.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-month-end-renewals
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

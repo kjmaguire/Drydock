@@ -1,0 +1,19 @@
+# Cloudflare Developer Docs (docs/expert-packs.md section 2). Hybrid: a local FTS5 copy plus the cfdocs MCP server as a supplement.
+# Nothing is fetched until a human installs this pack and starts a refresh. The structure of the live site (per-product
+# llms.txt, <page>/index.md) is taken from Phase 0 evidence and has not been exercised from this repository.
+schema: 1
+id: cloudflare
+title: Cloudflare Developer Docs
+kind: hybrid
+visibility: public
+license: {content: CC-BY-4.0, code: MIT, attribution_required: true, attribution: "Cloudflare Developer Documentation (developers.cloudflare.com), CC BY 4.0"}
+sources:
+  - {type: llms_txt, url: https://developers.cloudflare.com/llms.txt, follow: per_product_llms_txt, page_format: markdown_suffix}
+crawl: {respect_robots: true, require_content_signal: ai-input, allowed_hosts: [developers.cloudflare.com],
+        deny_paths: [/client-ip-geolocation, /constellation, /cdn-cgi/, /email-security/], rps: 2, concurrency: 2}
+chunking: {split_on: [h1, h2, h3], target_tokens: 350, max_tokens: 700}
+refresh: {mode: scheduled, interval: 7d, digest: {enabled: true, tier: cheap, data_class: trainable_ok}}
+freshness: {warn_after: 14d, stale_after: 30d}
+live: {mcp: cfdocs, tool: search_cloudflare_documentation, arg: query, use: supplement}
+attach: {instructions: "Cloudflare: prefer Workers over Pages for new projects; use `wrangler preview`/`versions upload`, never `deploy`, from agent processes. Search the pack before asserting API details.", default_k: 5, roles: [Backend, DevOps]}
+consult: {max_chunks: 8, route: trainable_ok}

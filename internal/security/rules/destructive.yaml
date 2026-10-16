@@ -1,0 +1,129 @@
+# Command class: destructive. Irreversible deletion or overwrite. Decision: ask (kind shell_destructive unless the rule
+# names a more specific kind); rules with hard_deny are not approvable from an agent process.
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7).
+class: destructive
+rules:
+  - id: destructive.posix.rm
+    programs: [rm, rmdir, unlink, shred]
+    kind: shell_destructive
+    paths: positional
+    reason: deletes files
+  - id: destructive.posix.rm_root
+    programs: [rm]
+    flags_any: ["--no-preserve-root"]
+    hard_deny: true
+    paths: positional
+    reason: rm --no-preserve-root
+  - id: destructive.posix.find_delete
+    programs: [find]
+    flags_any: ["-delete"]
+    paths: positional
+    reason: find -delete
+  - id: destructive.posix.dd
+    programs: [dd]
+    args_regex: ['^of=']
+    paths: heuristic
+    reason: dd writes to a target
+  - id: destructive.posix.kill
+    programs: [kill, killall, pkill]
+    paths: none
+    reason: terminates processes
+  - id: destructive.git.clean
+    programs: [git]
+    subcommands: [clean]
+    flags_any: ["-f", "--force"]
+    also_classes: [git_history_rewrite]
+    paths: heuristic
+    reason: git clean -f removes untracked files
+  - id: destructive.git.reset_hard
+    programs: [git]
+    subcommands: [reset]
+    flags_any: ["--hard"]
+    also_classes: [git_history_rewrite]
+    paths: heuristic
+    reason: git reset --hard discards work
+  - id: destructive.git.rm
+    programs: [git]
+    subcommands: [rm]
+    paths: heuristic
+    reason: git rm deletes files
+  - id: destructive.git.branch_delete
+    programs: [git]
+    subcommands: [branch]
+    flags_any: ["-D", "-d", "--delete"]
+    kind: git_branch_delete
+    also_classes: [git_history_rewrite]
+    paths: none
+    reason: deletes a branch
+  - id: destructive.git.stash_drop
+    programs: [git]
+    subcommands: ["stash drop", "stash clear"]
+    paths: none
+    reason: drops stashed work
+  - id: destructive.git.discard_restore
+    programs: [git]
+    subcommands: [restore]
+    flags_none: ["--staged", "-S"]
+    paths: heuristic
+    reason: git restore discards working tree changes
+  - id: destructive.git.discard_checkout
+    programs: [git]
+    subcommands: [checkout]
+    flags_any: ["--"]
+    paths: heuristic
+    reason: git checkout -- discards working tree changes
+  - id: destructive.git.discard_checkout_dot
+    programs: [git]
+    subcommands: [checkout]
+    args_regex: ['^\.$', '^:/$']
+    paths: heuristic
+    reason: git checkout . discards working tree changes
+  - id: destructive.git.force_checkout
+    programs: [git]
+    subcommands: [checkout, switch]
+    flags_any: ["--force", "-f", "--discard-changes"]
+    paths: heuristic
+    reason: discards local changes
+  - id: destructive.docker.prune
+    programs: [docker, podman]
+    subcommands: ["system prune", "volume rm", "volume prune", "image prune", rm, rmi, "container prune"]
+    paths: none
+    reason: removes containers, images or volumes
+  - id: destructive.ps.remove
+    programs: [remove-item, remove-itemproperty, clear-content, clear-item, clear-itemproperty, clear-recyclebin, stop-process, remove-psdrive]
+    ci: true
+    shells: [powershell]
+    paths: positional
+    reason: deletes or clears items
+  - id: destructive.ps.disk
+    programs: [format-volume, clear-disk, remove-partition, initialize-disk, stop-computer, restart-computer]
+    ci: true
+    shells: [powershell]
+    hard_deny: true
+    paths: none
+    reason: disk or power operation
+  - id: destructive.cmd.del
+    programs: [del, erase, rd, rmdir, takeown, icacls, taskkill, cipher]
+    ci: true
+    shells: [cmd]
+    paths: positional
+    reason: deletes files or changes ownership and ACLs
+  - id: destructive.cmd.robocopy_mirror
+    programs: [robocopy]
+    flags_any: ["/mir", "/purge"]
+    ci: true
+    shells: [cmd]
+    paths: positional
+    reason: robocopy /mir and /purge delete destination files
+  - id: destructive.cmd.reg_delete
+    programs: [reg]
+    subcommands: [delete]
+    ci: true
+    shells: [cmd, powershell]
+    paths: none
+    reason: deletes registry keys
+  - id: destructive.format
+    programs: [format, diskpart, "mkfs*", fdisk, parted, wipefs]
+    hard_deny: true
+    paths: none
+    reason: formats or repartitions a disk

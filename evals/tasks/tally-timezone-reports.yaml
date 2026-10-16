@@ -1,0 +1,33 @@
+# Time zones with daylight-saving days of 23 and 25 hours, odd offsets, buckets and a new answer shape.
+id: tally-timezone-reports
+title: "Revenue report in the organization's time zone"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  The revenue report groups payments by UTC day, so an organization in New York sees its evening payments on the next day.
+  Group by the organization's own time zone (its "time_zone") and make the report complete. The dashboard ships the matching
+  change, so the answer's shape changes as described here.
+
+  - GET /v1/reports/revenue?from=YYYY-MM-DD&to=YYYY-MM-DD[&group=day|week|month]: from and to are days in the organization's
+    time zone, both included. A succeeded payment belongs to the day, in that time zone, when it was made; days have the
+    length they really have there (23 or 25 hours when daylight saving time starts or ends).
+  - group is day (the default), week or month. A week starts on Monday; a month is a calendar month. A bucket is named by the
+    first day of the week or month, even when that day is before from, and only counts payments from from to to.
+  - The answer is {"time_zone": <the organization's>, "group": <the group>, "buckets": [{"start": "YYYY-MM-DD", "amounts":
+    {<currency>: <minor units>, ...}, "payments": <count>}, ...]} with every bucket from the one holding from to the one holding
+    to, in order, also those without payments ({"amounts": {}, "payments": 0}). amounts adds up the payments per currency and
+    leaves out currencies without payments.
+  - from or to missing or not a valid date: 400 {"error":"invalid_date"}; to before from or more than 366 days in the range:
+    400 {"error":"invalid_range"}; another group: 400 {"error":"invalid_group"}.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-timezone-reports
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

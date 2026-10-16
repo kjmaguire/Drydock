@@ -1,0 +1,351 @@
+diff --git a/start/README.md b/result/README.md
+index 7aa8d92..d84cbe0 100644
+--- a/start/README.md
++++ b/result/README.md
+@@ -9,7 +9,7 @@ happened. Its own staff work in the organization as members with roles. Go stand
+ | Package | What it does |
+ |---|---|
+ | `internal/store` | Everything Tally knows, in memory, safe for concurrent use. Every object belongs to one organization; methods that take an `orgID` only see that organization's objects. |
+-| `internal/money` | Currencies and amounts. Amounts are `int64` counts of the currency's minor unit (cents for USD), never floats. |
++| `internal/money` | Currencies and amounts. Amounts are `int64` counts of the currency's minor unit (cents for USD, yen for JPY, fils for KWD), never floats. |
+ | `internal/billing` | Invoice arithmetic (`Compute`) and billing periods (`AddInterval`). No state. |
+ | `internal/payments` | Charges invoices through the payment `Gateway`; `Fake` is the gateway of tests and the demo server. |
+ | `internal/subscriptions` | Starts, changes, cancels and renews subscriptions (`RenewDue` runs every 30 seconds in the server). |
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..7fd9a34 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -157,6 +157,37 @@ func TestPlans(t *testing.T) {
+ 	if r := e.Do("POST", "/v1/plans", e.Acme.Key, map[string]any{"name": "X", "currency": "USD", "price": "1", "interval": "week"}); r.Code != http.StatusUnprocessableEntity {
+ 		t.Fatalf("weekly: %s", r)
+ 	}
++
++	// Currencies with 0 and 3 decimals: the price is read and shown in the currency's own major unit.
++	for _, c := range []struct {
++		currency, price, wantPrice, wantFormatted string
++		wantAmount                                int64
++	}{
++		{"JPY", "1000", "1000", "¥1,000", 1000},
++		{"KWD", "1.250", "1.250", "KWD 1.250", 1250},
++		{"KWD", "7", "7.000", "KWD 7.000", 7000},
++		{"USD", "1234.5", "1234.50", "$1,234.50", 123450},
++	} {
++		var got struct {
++			store.Plan
++			Price          string `json:"price"`
++			PriceFormatted string `json:"price_formatted"`
++		}
++		e.MustDo(http.StatusCreated, "POST", "/v1/plans", e.Acme.Key, map[string]any{"name": "Multi", "currency": c.currency, "price": c.price, "interval": "month"}, &got)
++		if got.UnitAmount != c.wantAmount || got.Price != c.wantPrice || got.PriceFormatted != c.wantFormatted {
++			t.Fatalf("%s %s: plan = %+v", c.currency, c.price, got)
++		}
++	}
++	for _, bad := range []map[string]any{
++		{"name": "X", "currency": "JPY", "price": "1000.5", "interval": "month"},
++		{"name": "X", "currency": "JPY", "price": "1000.00", "interval": "month"},
++		{"name": "X", "currency": "KWD", "price": "1.2345", "interval": "month"},
++		{"name": "X", "currency": "USD", "price": "1.234", "interval": "month"},
++	} {
++		if r := e.Do("POST", "/v1/plans", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid_amount" {
++			t.Fatalf("%v: %s", bad, r)
++		}
++	}
+ 	e.MustDo(http.StatusOK, "PATCH", "/v1/plans/"+p.ID, e.Acme.Key, map[string]any{"active": false}, &p)
+ 	if p.Active {
+ 		t.Fatal("still active")
+@@ -227,6 +258,18 @@ func TestSubscriptionsAndInvoices(t *testing.T) {
+ 	if manual.Subtotal != 49250 || manual.Discount != 4925 || manual.Total != 44325 || manual.Description != "Consulting and 1 more" || manual.TotalFormatted != "€443.25" {
+ 		t.Fatalf("manual invoice = %+v", manual)
+ 	}
++	var yen invoice
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": c.ID, "currency": "JPY",
++		"lines": []map[string]any{{"description": "Tea", "quantity": 3, "unit_amount": 1500}}}, &yen)
++	if yen.Total != 4500 || yen.TotalFormatted != "¥4,500" {
++		t.Fatalf("yen invoice = %+v", yen)
++	}
++	var dinar invoice
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": c.ID, "currency": "KWD",
++		"lines": []map[string]any{{"description": "Licence", "quantity": 1, "unit_amount": 1250}}}, &dinar)
++	if dinar.Total != 1250 || dinar.TotalFormatted != "KWD 1.250" {
++		t.Fatalf("dinar invoice = %+v", dinar)
++	}
+ 	var lines struct {
+ 		Items []struct {
+ 			Description string
+diff --git a/start/internal/api/plans.go b/result/internal/api/plans.go
+index 3121ef5..6fd9115 100644
+--- a/start/internal/api/plans.go
++++ b/result/internal/api/plans.go
+@@ -2,7 +2,6 @@ package api
+ 
+ import (
+ 	"errors"
+-	"fmt"
+ 	"net/http"
+ 
+ 	"example.com/tally/internal/auth"
+@@ -10,7 +9,7 @@ import (
+ 	"example.com/tally/internal/store"
+ )
+ 
+-// planView is a plan with its price in major units ("12.50") and formatted for people ("$12.50").
++// planView is a plan with its price in major units ("12.50", "1000" for JPY) and formatted for people ("$12.50", "¥1,000").
+ type planView struct {
+ 	store.Plan
+ 	Price          string `json:"price"`
+@@ -18,7 +17,7 @@ type planView struct {
+ }
+ 
+ func viewPlan(p store.Plan) planView {
+-	return planView{Plan: p, Price: fmt.Sprintf("%.2f", float64(p.UnitAmount)/100), PriceFormatted: money.Format(p.UnitAmount, p.Currency)}
++	return planView{Plan: p, Price: money.FormatMajor(p.UnitAmount, p.Currency), PriceFormatted: money.Format(p.UnitAmount, p.Currency)}
+ }
+ 
+ func (s *Server) listPlans(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+diff --git a/start/internal/money/money.go b/result/internal/money/money.go
+index abb53cc..7461d86 100644
+--- a/start/internal/money/money.go
++++ b/result/internal/money/money.go
+@@ -1,5 +1,5 @@
+-// Package money handles amounts of money. An amount is an int64 count of its currency's minor unit (cents for USD), never a
+-// float.
++// Package money handles amounts of money. An amount is an int64 count of its currency's minor unit (cents for USD, yen for
++// JPY, fils for KWD), never a float.
+ package money
+ 
+ import (
+@@ -23,23 +23,38 @@ const (
+ 
+ var symbols = map[Currency]string{USD: "$", EUR: "€", GBP: "£", JPY: "¥", KWD: "KWD "}
+ 
++// decimals is how many digits follow the decimal point in each currency's major unit: the exponent of its minor unit in
++// ISO 4217.
++var decimals = map[Currency]int{USD: 2, EUR: 2, GBP: 2, JPY: 0, KWD: 3}
++
+ // Valid reports whether c is a currency Tally bills in.
+ func (c Currency) Valid() bool {
+ 	_, ok := symbols[c]
+ 	return ok
+ }
+ 
++// MinorUnits is how many decimal places c's major unit has: 2 for USD ($1.00 is 100 cents), 0 for JPY (¥1 is one yen) and
++// 3 for KWD (1 dinar is 1000 fils). A currency Tally does not bill in has 2.
++func (c Currency) MinorUnits() int {
++	if d, ok := decimals[c]; ok {
++		return d
++	}
++	return 2
++}
++
+ // ErrInvalidAmount is returned for an amount that cannot be read.
+ var ErrInvalidAmount = errors.New("invalid amount")
+ 
+-// ParseMajor reads an amount a person typed in major units ("12.50", "7") and returns it in minor units.
++// ParseMajor reads an amount a person typed in major units ("12.50", "7") and returns it in minor units. It accepts at
++// most c.MinorUnits() decimals and pads fewer: "12.5" USD is 1250, "7" KWD is 7000. A JPY amount has no decimal point.
+ func ParseMajor(s string, c Currency) (int64, error) {
+ 	if !c.Valid() {
+ 		return 0, fmt.Errorf("%w: unknown currency %q", ErrInvalidAmount, c)
+ 	}
+ 	s = strings.TrimSpace(s)
+ 	whole, frac, hasDot := strings.Cut(s, ".")
+-	if whole == "" || (hasDot && frac == "") || len(frac) > 2 {
++	digits := c.MinorUnits()
++	if whole == "" || (hasDot && frac == "") || len(frac) > digits {
+ 		return 0, fmt.Errorf("%w: %q", ErrInvalidAmount, s)
+ 	}
+ 	for _, r := range whole + frac {
+@@ -47,7 +62,7 @@ func ParseMajor(s string, c Currency) (int64, error) {
+ 			return 0, fmt.Errorf("%w: %q", ErrInvalidAmount, s)
+ 		}
+ 	}
+-	for len(frac) < 2 {
++	for len(frac) < digits {
+ 		frac += "0"
+ 	}
+ 	n, err := strconv.ParseInt(whole+frac, 10, 64)
+@@ -57,19 +72,51 @@ func ParseMajor(s string, c Currency) (int64, error) {
+ 	return n, nil
+ }
+ 
+-// Format renders an amount for people: "$1,234.50", "-€0.99".
++// Format renders an amount for people, with the currency's symbol and a comma between thousands: "$1,234.50", "-€0.99",
++// "¥1,000", "KWD 1.250".
+ func Format(amount int64, c Currency) string {
+-	sign := ""
++	return sign(amount) + symbols[c] + majorDigits(amount, c, true)
++}
++
++// FormatMajor renders an amount in major units as a person types it, with no symbol and no thousands separator: "12.50",
++// "1000", "1.250", "-5.00".
++func FormatMajor(amount int64, c Currency) string {
++	return sign(amount) + majorDigits(amount, c, false)
++}
++
++// sign is "-" for a negative amount and "" otherwise.
++func sign(amount int64) string {
+ 	if amount < 0 {
+-		sign, amount = "-", -amount
++		return "-"
++	}
++	return ""
++}
++
++// majorDigits writes the absolute value of amount in c's major unit, with exactly c.MinorUnits() decimals, and a comma
++// between each group of three digits in the whole part when grouped is true. It works on uint64 so that the most negative
++// amount has a magnitude too.
++func majorDigits(amount int64, c Currency, grouped bool) string {
++	u := uint64(amount)
++	if amount < 0 {
++		u = uint64(-amount)
++	}
++	digits := c.MinorUnits()
++	scale := uint64(1)
++	for i := 0; i < digits; i++ {
++		scale *= 10
++	}
++	whole := strconv.FormatUint(u/scale, 10)
++	if grouped {
++		whole = group(whole)
++	}
++	if digits == 0 {
++		return whole
+ 	}
+-	whole, frac := amount/100, amount%100
+-	return fmt.Sprintf("%s%s%s.%02d", sign, symbols[c], group(whole), frac)
++	return fmt.Sprintf("%s.%0*d", whole, digits, u%scale)
+ }
+ 
+-// group writes n with a comma between each group of three digits.
+-func group(n int64) string {
+-	s := strconv.FormatInt(n, 10)
++// group puts a comma between each group of three digits in s, a string of digits.
++func group(s string) string {
+ 	var b strings.Builder
+ 	for i, r := range s {
+ 		if i > 0 && (len(s)-i)%3 == 0 {
+diff --git a/start/internal/money/money_test.go b/result/internal/money/money_test.go
+index 08962ad..44942d8 100644
+--- a/start/internal/money/money_test.go
++++ b/result/internal/money/money_test.go
+@@ -2,6 +2,7 @@ package money
+ 
+ import (
+ 	"errors"
++	"math"
+ 	"testing"
+ )
+ 
+@@ -16,17 +17,41 @@ func TestParseMajor(t *testing.T) {
+ 		{"7", EUR, 700},
+ 		{"0.99", GBP, 99},
+ 		{" 1000.00 ", USD, 100000},
++		{"1000", JPY, 1000},
++		{"1", JPY, 1},
++		{"0.125", KWD, 125},
++		{"7", KWD, 7000},
++		{"1.250", KWD, 1250},
++		{"0.005", KWD, 5},
+ 	} {
+ 		got, err := ParseMajor(c.in, c.cur)
+ 		if err != nil || got != c.want {
+ 			t.Errorf("ParseMajor(%q, %s) = %d, %v; want %d", c.in, c.cur, got, err, c.want)
+ 		}
+ 	}
+-	for _, in := range []string{"", "abc", "-1", "1.", ".5", "1.234", "1,000"} {
++	for _, in := range []string{"", "abc", "-1", "+1", "1.", ".5", "1.234", "1,000", "1 000", "1 .5", "1.2.3", "1e3", "0x10"} {
+ 		if _, err := ParseMajor(in, USD); !errors.Is(err, ErrInvalidAmount) {
+ 			t.Errorf("ParseMajor(%q) = %v, want ErrInvalidAmount", in, err)
+ 		}
+ 	}
++	for _, c := range []struct {
++		in  string
++		cur Currency
++	}{
++		{"1000.0", JPY},  // JPY has no decimals
++		{"1000.00", JPY}, // ...not even zeros
++		{"1000.", JPY},
++		{"1.2345", KWD}, // KWD has three
++		{"1.234", EUR},  // EUR has two
++		{"-5", JPY},
++		{"1,000", JPY},
++		{"", JPY},
++		{"99999999999999999999", USD}, // overflows int64
++	} {
++		if _, err := ParseMajor(c.in, c.cur); !errors.Is(err, ErrInvalidAmount) {
++			t.Errorf("ParseMajor(%q, %s) = %v, want ErrInvalidAmount", c.in, c.cur, err)
++		}
++	}
+ 	if _, err := ParseMajor("1", "XYZ"); !errors.Is(err, ErrInvalidAmount) {
+ 		t.Errorf("unknown currency: %v", err)
+ 	}
+@@ -43,6 +68,21 @@ func TestFormat(t *testing.T) {
+ 		{-99, EUR, "-€0.99"},
+ 		{0, GBP, "£0.00"},
+ 		{100000, GBP, "£1,000.00"},
++		{1234550, USD, "$12,345.50"},
++		{99, USD, "$0.99"},
++		{-500, USD, "-$5.00"},
++		{99, EUR, "€0.99"},
++		{1200, GBP, "£12.00"},
++		{1000, JPY, "¥1,000"},
++		{5, JPY, "¥5"},
++		{-5, JPY, "-¥5"},
++		{1234567, JPY, "¥1,234,567"},
++		{1250, KWD, "KWD 1.250"},
++		{5, KWD, "KWD 0.005"},
++		{-5, KWD, "-KWD 0.005"},
++		{1000000, KWD, "KWD 1,000.000"},
++		{0, KWD, "KWD 0.000"},
++		{math.MinInt64, JPY, "-¥9,223,372,036,854,775,808"},
+ 	} {
+ 		if got := Format(c.amount, c.cur); got != c.want {
+ 			t.Errorf("Format(%d, %s) = %q, want %q", c.amount, c.cur, got, c.want)
+@@ -50,6 +90,47 @@ func TestFormat(t *testing.T) {
+ 	}
+ }
+ 
++func TestFormatMajor(t *testing.T) {
++	for _, c := range []struct {
++		amount int64
++		cur    Currency
++		want   string
++	}{
++		{1250, USD, "12.50"},
++		{123456789, USD, "1234567.89"},
++		{-500, USD, "-5.00"},
++		{1000, JPY, "1000"},
++		{-5, JPY, "-5"},
++		{1250, KWD, "1.250"},
++		{7000, KWD, "7.000"},
++		{5, KWD, "0.005"},
++	} {
++		if got := FormatMajor(c.amount, c.cur); got != c.want {
++			t.Errorf("FormatMajor(%d, %s) = %q, want %q", c.amount, c.cur, got, c.want)
++		}
++	}
++}
++
++func TestParseFormatRoundTrip(t *testing.T) {
++	for _, c := range []struct {
++		major string
++		cur   Currency
++	}{{"12.50", USD}, {"1000", JPY}, {"1.250", KWD}, {"0.99", EUR}} {
++		n, err := ParseMajor(c.major, c.cur)
++		if err != nil || FormatMajor(n, c.cur) != c.major {
++			t.Errorf("%s %s: ParseMajor = %d, %v; FormatMajor = %q", c.major, c.cur, n, err, FormatMajor(n, c.cur))
++		}
++	}
++}
++
++func TestMinorUnits(t *testing.T) {
++	for c, want := range map[Currency]int{USD: 2, EUR: 2, GBP: 2, JPY: 0, KWD: 3} {
++		if got := c.MinorUnits(); got != want {
++			t.Errorf("%s.MinorUnits() = %d, want %d", c, got, want)
++		}
++	}
++}
++
+ func TestRounding(t *testing.T) {
+ 	for _, c := range []struct {
+ 		amount int64

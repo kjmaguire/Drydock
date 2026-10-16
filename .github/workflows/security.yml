@@ -1,0 +1,90 @@
+# The repository's own automatic security checks (audit 2026-10-16, L52): known vulnerabilities in the Go and npm dependencies,
+# and CodeQL code scanning. They run weekly, by hand, and when a dependency file changes; they are not part of the merge gate in
+# ci.yml, because a new advisory against an unchanged dependency must not stop an unrelated change (read the weekly run).
+# The tracked files are also scanned for secrets by a test that runs with every Go test (internal/security).
+# govulncheck is pinned to a release and run with go run, so the code that checks the code is the one Go's checksum database
+# vouches for. CodeQL's results go to the repository's Security tab.
+name: security
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "ui/package.json"
+      - "ui/package-lock.json"
+      - ".github/workflows/security.yml"
+      - ".github/codeql/codeql-config.yml"
+  push:
+    branches: [main]
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "ui/package.json"
+      - "ui/package-lock.json"
+      - ".github/workflows/security.yml"
+      - ".github/codeql/codeql-config.yml"
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  govulncheck:
+    # fails when the code can reach a known vulnerability in a dependency or in the standard library the build includes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Known vulnerabilities in what is built and called
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+  npm-audit:
+    # the advisories against the UI's locked packages, from the lock file alone (nothing is installed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Advisories of high severity or worse against the locked UI packages
+        working-directory: ui
+        run: npm audit --package-lock-only --audit-level=high
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+          config-file: ./.github/codeql/codeql-config.yml
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

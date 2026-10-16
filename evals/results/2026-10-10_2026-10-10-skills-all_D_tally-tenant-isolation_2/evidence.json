@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every route that takes an object ID in the path or body answers another organization's ID exactly like an unknown one (404 `not_found`), and no route can change or delete another org's data. Fixed the five leaks below.\n- Email lookups and the email-uniqueness index are per organization, so two orgs can each hold the same customer email without affecting each other.\n- New tests in `internal/api` and `internal/store` cover each instance. They failed before the fix and pass after it. `go build ./...`, `go test ./...` and `go vet ./...` all pass, and existing exported names and signatures are un\n...[truncated]",
+    "data": {},
+    "created": 1791671604051
+  },
+  {
+    "id": 2,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 490ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/build_628f46471f59.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 490,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671604579
+  },
+  {
+    "id": 3,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 400ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/test_fe2b2d8a5830.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 403,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671604984
+  },
+  {
+    "id": 4,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 360ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/lint_46310d5c2df8.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 359,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671605347
+  },
+  {
+    "id": 5,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/secrets_8d006aa69901.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 23,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671605372
+  },
+  {
+    "id": 6,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +332 -32",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 332,
+      "Deletions": 32,
+      "base": "524df33fd14c6d8d23afc81d8e1e81c3b6c3e4bb",
+      "commit": "eaec99b2fffd5328d4e000d1810e61342db8bbe7"
+    },
+    "created": 1791671605501
+  },
+  {
+    "id": 7,
+    "taskId": "task_06ed53feedcc",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit eaec99b2ff",
+    "ref": "eaec99b2fffd5328d4e000d1810e61342db8bbe7",
+    "data": {},
+    "created": 1791671605501
+  }
+]

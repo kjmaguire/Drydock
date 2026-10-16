@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Per-key sliding-window limiter in `internal/api`: 60/min for free-plan keys, 600/min for pro, with 429, `{\"error\":\"rate_limited\"}` and a `Retry-After` header on rejection. Rejected requests aren't counted.\n- for missing or unknown keys (not counted), and `/healthz` unlimited. Time comes from `api.Options.Now`, and the limiter is safe for concurrent use.\n- New tests cover the limits, window expiry via a fake clock, per-key isolation, Retry-After values, and concurrency. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791597492938
+  },
+  {
+    "id": 2,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 460ms",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-2/data/runs/run_3480fea081c2/checks/build-1791597492971444439.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 455,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597493427
+  },
+  {
+    "id": 3,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 150ms",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-2/data/runs/run_3480fea081c2/checks/test-1791597493429320385.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 146,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597493576
+  },
+  {
+    "id": 4,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 170ms",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-2/data/runs/run_3480fea081c2/checks/lint-1791597493578109010.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 167,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597493746
+  },
+  {
+    "id": 5,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-2/data/runs/run_3480fea081c2/checks/secrets-1791597493770690765.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791597493771
+  },
+  {
+    "id": 6,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +254 -4",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-2/data/runs/run_3480fea081c2/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 254,
+      "Deletions": 4,
+      "base": "49c078496a8e438bd079ee5197daf24da9718bcb",
+      "commit": "256efdb6d4fcb4b5df49620cbb4f53f9c5ded076"
+    },
+    "created": 1791597493914
+  },
+  {
+    "id": 7,
+    "taskId": "task_9349cda36b3e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 256efdb6d4",
+    "ref": "256efdb6d4fcb4b5df49620cbb4f53f9c5ded076",
+    "data": {},
+    "created": 1791597493915
+  }
+]

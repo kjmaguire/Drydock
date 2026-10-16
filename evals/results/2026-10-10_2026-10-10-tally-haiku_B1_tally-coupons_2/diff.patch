@@ -1,0 +1,1309 @@
+diff --git a/result/internal/api/coupons.go b/result/internal/api/coupons.go
+new file mode 100644
+index 0000000..48afb57
+--- /dev/null
++++ b/result/internal/api/coupons.go
+@@ -0,0 +1,149 @@
++package api
++
++import (
++	"errors"
++	"net/http"
++	"strings"
++	"time"
++
++	"example.com/tally/internal/auth"
++	"example.com/tally/internal/money"
++	"example.com/tally/internal/store"
++)
++
++// couponView is a coupon as the API shows it: with how many subscriptions hold it.
++type couponView struct {
++	store.Coupon
++	TimesRedeemed int `json:"times_redeemed"`
++}
++
++func (s *Server) viewCoupon(c store.Coupon) couponView {
++	return couponView{Coupon: c, TimesRedeemed: s.store.CouponRedemptions(c.OrgID, c.Code)}
++}
++
++func couponViewKey(v couponView) cursor { return cursor{T: v.CreatedAt, ID: v.ID} }
++
++// listCoupons lists the organization's coupons, oldest first.
++func (s *Server) listCoupons(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	pg, ok := parsePage(w, r)
++	if !ok {
++		return
++	}
++	coupons := s.store.Coupons(p.OrgID)
++	views := make([]couponView, 0, len(coupons))
++	for _, c := range coupons {
++		views = append(views, s.viewCoupon(c))
++	}
++	items, next := pageOf(views, couponViewKey, pg)
++	writeJSON(w, http.StatusOK, list{Items: items, NextCursor: next})
++}
++
++// createCoupon takes a percentage ("percent_off") or an amount ("amount_off", in major units as a string, with "currency"),
++// a "duration" (once, repeating or forever), "duration_in_months" for a repeating coupon, and optionally "max_redemptions"
++// and "redeem_by" (RFC 3339).
++func (s *Server) createCoupon(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	var in struct {
++		Code             string               `json:"code"`
++		PercentOff       int                  `json:"percent_off"`
++		AmountOff        *string              `json:"amount_off"`
++		Currency         money.Currency       `json:"currency"`
++		Duration         store.CouponDuration `json:"duration"`
++		DurationInMonths *int                 `json:"duration_in_months"`
++		MaxRedemptions   *int                 `json:"max_redemptions"`
++		RedeemBy         *string              `json:"redeem_by"`
++	}
++	if !decode(w, r, &in) {
++		return
++	}
++	c := store.Coupon{OrgID: p.OrgID, Code: in.Code, PercentOff: in.PercentOff, Currency: in.Currency, Duration: in.Duration}
++	if in.AmountOff != nil {
++		amount, err := money.ParseMajor(*in.AmountOff, in.Currency)
++		if err != nil || amount <= 0 {
++			writeError(w, http.StatusUnprocessableEntity, "invalid", "amount_off is a positive amount in major units, such as \"12.50\", with a currency")
++			return
++		}
++		c.AmountOff = amount
++	}
++	if in.DurationInMonths != nil {
++		if in.Duration != store.DurationRepeating {
++			writeError(w, http.StatusUnprocessableEntity, "invalid", "duration_in_months is only for a repeating coupon")
++			return
++		}
++		c.DurationInMonths = *in.DurationInMonths
++	}
++	if in.MaxRedemptions != nil {
++		if *in.MaxRedemptions < 1 {
++			writeError(w, http.StatusUnprocessableEntity, "invalid", "max_redemptions is at least 1")
++			return
++		}
++		c.MaxRedemptions = *in.MaxRedemptions
++	}
++	if in.RedeemBy != nil {
++		t, err := time.Parse(time.RFC3339, *in.RedeemBy)
++		if err != nil {
++			writeError(w, http.StatusUnprocessableEntity, "invalid", "redeem_by is an RFC 3339 time")
++			return
++		}
++		c.RedeemBy = &t
++	}
++	coupon, err := s.store.CreateCoupon(c, s.clock.Now())
++	if errors.Is(err, store.ErrCouponCodeTaken) {
++		writeError(w, http.StatusConflict, "code_taken", err.Error())
++		return
++	}
++	if err != nil {
++		s.storeError(w, err)
++		return
++	}
++	writeJSON(w, http.StatusCreated, s.viewCoupon(coupon))
++}
++
++// getCoupon finds one of the organization's coupons by its code, ignoring case.
++func (s *Server) getCoupon(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	c, ok := s.store.Coupon(p.OrgID, r.PathValue("code"))
++	if !ok {
++		writeError(w, http.StatusNotFound, "not_found", "no such coupon")
++		return
++	}
++	writeJSON(w, http.StatusOK, s.viewCoupon(c))
++}
++
++// couponError answers for a refused coupon redemption.
++func (s *Server) couponError(w http.ResponseWriter, err error) {
++	switch {
++	case errors.Is(err, store.ErrNoCoupon):
++		writeError(w, http.StatusNotFound, "not_found", "no such coupon")
++	case errors.Is(err, store.ErrCouponExpired):
++		writeError(w, http.StatusUnprocessableEntity, "coupon_expired", err.Error())
++	case errors.Is(err, store.ErrCouponExhausted):
++		writeError(w, http.StatusUnprocessableEntity, "coupon_exhausted", err.Error())
++	case errors.Is(err, store.ErrCurrencyMismatch):
++		writeError(w, http.StatusUnprocessableEntity, "currency_mismatch", err.Error())
++	case errors.Is(err, store.ErrCouponApplied):
++		writeError(w, http.StatusConflict, "coupon_already_applied", err.Error())
++	case errors.Is(err, store.ErrSubscriptionCanceled):
++		writeError(w, http.StatusConflict, "subscription_canceled", err.Error())
++	default:
++		s.subError(w, err)
++	}
++}
++
++// applyCoupon applies a coupon to a subscription: {"code": "..."}.
++func (s *Server) applyCoupon(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	var in struct {
++		Code string `json:"code"`
++	}
++	if !decode(w, r, &in) {
++		return
++	}
++	if strings.TrimSpace(in.Code) == "" {
++		writeError(w, http.StatusUnprocessableEntity, "invalid", "a coupon code is required")
++		return
++	}
++	sub, err := s.subs.ApplyCoupon(r.Context(), p.OrgID, r.PathValue("id"), in.Code)
++	if err != nil {
++		s.couponError(w, err)
++		return
++	}
++	writeJSON(w, http.StatusOK, sub)
++}
+diff --git a/result/internal/api/coupons_test.go b/result/internal/api/coupons_test.go
+new file mode 100644
+index 0000000..ba69b3c
+--- /dev/null
++++ b/result/internal/api/coupons_test.go
+@@ -0,0 +1,222 @@
++package api_test
++
++import (
++	"context"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++// apiSub starts a subscription for a new customer with this email, to a 20.00 USD monthly plan through the API.
++func apiSub(t *testing.T, e *apitest.Env, email string) store.Subscription {
++	t.Helper()
++	c := e.CreateCustomer(e.Acme, "Jane", email)
++	p := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	var sub store.Subscription
++	e.MustDo(http.StatusCreated, "POST", "/v1/subscriptions", e.Acme.Key, map[string]any{"customer_id": c.ID, "plan_id": p.ID}, &sub)
++	return sub
++}
++
++func TestCreateCoupon(t *testing.T) {
++	e := apitest.New(t)
++	r := e.Do("POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "SPRING15", "percent_off": 15, "duration": "once"})
++	if r.Code != http.StatusCreated {
++		t.Fatalf("percent coupon: %s", r)
++	}
++	m := r.Map(t)
++	if m["code"] != "SPRING15" || m["percent_off"] != float64(15) || m["duration"] != "once" || m["times_redeemed"] != float64(0) ||
++		!strings.HasPrefix(m["id"].(string), "cpn_") {
++		t.Fatalf("coupon = %v", m)
++	}
++	if _, ok := m["amount_off"]; ok {
++		t.Fatalf("a percentage coupon shows an amount: %v", m)
++	}
++
++	r = e.Do("POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "TENEUR", "amount_off": "10.50", "currency": "EUR",
++		"duration": "repeating", "duration_in_months": 3, "max_redemptions": 2, "redeem_by": "2026-06-30T00:00:00Z"})
++	if r.Code != http.StatusCreated {
++		t.Fatalf("amount coupon: %s", r)
++	}
++	m = r.Map(t)
++	if m["amount_off"] != float64(1050) || m["currency"] != "EUR" || m["duration_in_months"] != float64(3) || m["max_redemptions"] != float64(2) ||
++		m["redeem_by"] != "2026-06-30T00:00:00Z" {
++		t.Fatalf("amount coupon = %v", m)
++	}
++}
++
++func TestCreateCouponRefusals(t *testing.T) {
++	e := apitest.New(t)
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "TAKEN1", "percent_off": 5, "duration": "forever"}, nil)
++
++	if r := e.Do("POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "taken1", "percent_off": 5, "duration": "forever"}); r.Code != http.StatusConflict || r.Map(t)["error"] != "code_taken" {
++		t.Fatalf("a taken code: %s", r)
++	}
++	// the code is only unique within an organization
++	if r := e.Do("POST", "/v1/coupons", e.Globex.Key, map[string]any{"code": "taken1", "percent_off": 5, "duration": "forever"}); r.Code != http.StatusCreated {
++		t.Fatalf("another organization's code: %s", r)
++	}
++	bodies := map[string]map[string]any{
++		"code too short":           {"code": "AB", "percent_off": 5, "duration": "once"},
++		"code with a space":        {"code": "A B C", "percent_off": 5, "duration": "once"},
++		"no discount":              {"code": "NODISC", "duration": "once"},
++		"percent and amount":       {"code": "BOTHOF", "percent_off": 5, "amount_off": "1.00", "currency": "USD", "duration": "once"},
++		"percent over 100":         {"code": "OVER100", "percent_off": 101, "duration": "once"},
++		"amount without currency":  {"code": "NOCUR1", "amount_off": "1.00", "duration": "once"},
++		"amount of zero":           {"code": "ZEROAM", "amount_off": "0", "currency": "USD", "duration": "once"},
++		"amount not a number":      {"code": "BADAMT", "amount_off": "ten", "currency": "USD", "duration": "once"},
++		"amount with a percent":    {"code": "MIXED1", "percent_off": 5, "amount_off": "0", "currency": "USD", "duration": "once"},
++		"unknown duration":         {"code": "WHEN01", "percent_off": 5, "duration": "yearly"},
++		"repeating without months": {"code": "REPEAT", "percent_off": 5, "duration": "repeating"},
++		"months over 36":           {"code": "LONGER", "percent_off": 5, "duration": "repeating", "duration_in_months": 37},
++		"months on once":           {"code": "ONCE00", "percent_off": 5, "duration": "once", "duration_in_months": 2},
++		"max redemptions of zero":  {"code": "MAXZER", "percent_off": 5, "duration": "once", "max_redemptions": 0},
++		"redeem by not a time":     {"code": "LATER1", "percent_off": 5, "duration": "once", "redeem_by": "tomorrow"},
++	}
++	for name, body := range bodies {
++		r := e.Do("POST", "/v1/coupons", e.Acme.Key, body)
++		if r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid" {
++			t.Errorf("%s: %s", name, r)
++		}
++	}
++}
++
++func TestCouponsListAndGet(t *testing.T) {
++	e := apitest.New(t)
++	for _, code := range []string{"FIRST01", "SECOND2", "THIRD03"} {
++		e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": code, "percent_off": 5, "duration": "forever"}, nil)
++		e.Clock.Advance(time.Minute)
++	}
++	type couponPage struct {
++		Items      []struct{ Code string } `json:"items"`
++		NextCursor string                  `json:"next_cursor"`
++	}
++	var first, second couponPage
++	e.MustDo(http.StatusOK, "GET", "/v1/coupons?limit=2", e.Acme.Key, nil, &first)
++	if len(first.Items) != 2 || first.Items[0].Code != "FIRST01" || first.Items[1].Code != "SECOND2" || first.NextCursor == "" {
++		t.Fatalf("first page = %+v", first)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/coupons?limit=2&cursor="+first.NextCursor, e.Acme.Key, nil, &second)
++	if len(second.Items) != 1 || second.Items[0].Code != "THIRD03" || second.NextCursor != "" {
++		t.Fatalf("second page = %+v", second)
++	}
++
++	var c map[string]any
++	e.MustDo(http.StatusOK, "GET", "/v1/coupons/second2", e.Acme.Key, nil, &c)
++	if c["code"] != "SECOND2" {
++		t.Fatalf("GET by code, ignoring case: %v", c)
++	}
++	if r := e.Do("GET", "/v1/coupons/NOPE01", e.Acme.Key, nil); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("unknown code: %s", r)
++	}
++	if r := e.Do("GET", "/v1/coupons/FIRST01", e.Globex.Key, nil); r.Code != http.StatusNotFound {
++		t.Fatalf("another organization's coupon: %s", r)
++	}
++}
++
++func TestApplyCoupon(t *testing.T) {
++	e := apitest.New(t)
++	sub := apiSub(t, e, "jane@example.com")
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "SPRING15", "percent_off": 15, "duration": "forever"}, nil)
++
++	var got store.Subscription
++	e.MustDo(http.StatusOK, "POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Acme.Key, map[string]string{"code": "spring15"}, &got)
++	if got.Coupon != "SPRING15" || got.CouponRedeemedAt == nil || !got.CouponRedeemedAt.Equal(e.Clock.Now()) {
++		t.Fatalf("subscription = %+v", got)
++	}
++	var shown map[string]any
++	e.MustDo(http.StatusOK, "GET", "/v1/subscriptions/"+sub.ID, e.Acme.Key, nil, &shown)
++	if shown["coupon"] != "SPRING15" {
++		t.Fatalf("GET subscription: %v", shown)
++	}
++	var coupon map[string]any
++	e.MustDo(http.StatusOK, "GET", "/v1/coupons/SPRING15", e.Acme.Key, nil, &coupon)
++	if coupon["times_redeemed"] != float64(1) {
++		t.Fatalf("times_redeemed = %v", coupon["times_redeemed"])
++	}
++
++	if r := e.Do("POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Acme.Key, map[string]string{"code": "SPRING15"}); r.Code != http.StatusConflict || r.Map(t)["error"] != "coupon_already_applied" {
++		t.Fatalf("a second coupon: %s", r)
++	}
++	if r := e.Do("POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Acme.Key, map[string]string{"code": "  "}); r.Code != http.StatusUnprocessableEntity {
++		t.Fatalf("an empty code: %s", r)
++	}
++	if r := e.Do("POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Acme.Key, map[string]string{"code": "NOPE01"}); r.Code != http.StatusNotFound || r.Map(t)["error"] != "not_found" {
++		t.Fatalf("unknown coupon: %s", r)
++	}
++	if r := e.Do("POST", "/v1/subscriptions/sub_999999/coupon", e.Acme.Key, map[string]string{"code": "SPRING15"}); r.Code != http.StatusNotFound {
++		t.Fatalf("unknown subscription: %s", r)
++	}
++	if r := e.Do("POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Globex.Key, map[string]string{"code": "SPRING15"}); r.Code != http.StatusNotFound {
++		t.Fatalf("another organization's subscription: %s", r)
++	}
++}
++
++func TestApplyCouponRefusals(t *testing.T) {
++	e := apitest.New(t)
++	apply := func(sub store.Subscription, code string) *apitest.Response {
++		return e.Do("POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Acme.Key, map[string]string{"code": code})
++	}
++	expired := e.Clock.Now().Add(24 * time.Hour).Format(time.RFC3339)
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "EXPIRES", "percent_off": 5, "duration": "once", "redeem_by": expired}, nil)
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "ONEONLY", "percent_off": 5, "duration": "once", "max_redemptions": 1}, nil)
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "EUROFF", "amount_off": "5.00", "currency": "EUR", "duration": "once"}, nil)
++
++	first := apiSub(t, e, "first@example.com")
++	second := apiSub(t, e, "second@example.com")
++	third := apiSub(t, e, "third@example.com")
++	if r := apply(first, "ONEONLY"); r.Code != http.StatusOK {
++		t.Fatalf("the first redemption: %s", r)
++	}
++	if r := apply(second, "ONEONLY"); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "coupon_exhausted" {
++		t.Fatalf("exhausted: %s", r)
++	}
++	if r := apply(first, "EXPIRES"); r.Code != http.StatusConflict || r.Map(t)["error"] != "coupon_already_applied" {
++		t.Fatalf("already applied: %s", r)
++	}
++	if r := apply(second, "EUROFF"); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "currency_mismatch" {
++		t.Fatalf("currency: %s", r)
++	}
++	if r := apply(third, "EXPIRES"); r.Code != http.StatusOK {
++		t.Fatalf("before redeem-by: %s", r)
++	}
++	e.Clock.Advance(48 * time.Hour)
++	if r := apply(second, "EXPIRES"); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "coupon_expired" {
++		t.Fatalf("after redeem-by: %s", r)
++	}
++	e.MustDo(http.StatusOK, "POST", "/v1/subscriptions/"+second.ID+"/cancel", e.Acme.Key, nil, nil)
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "CANCEL1", "percent_off": 5, "duration": "forever"}, nil)
++	if r := apply(second, "CANCEL1"); r.Code != http.StatusConflict || r.Map(t)["error"] != "subscription_canceled" {
++		t.Fatalf("canceled: %s", r)
++	}
++}
++
++func TestCouponDiscountsTheInvoicesAfterIt(t *testing.T) {
++	e := apitest.New(t)
++	sub := apiSub(t, e, "jane@example.com")
++	e.MustDo(http.StatusCreated, "POST", "/v1/coupons", e.Acme.Key, map[string]any{"code": "SPRING15", "percent_off": 15, "duration": "forever"}, nil)
++	e.MustDo(http.StatusOK, "POST", "/v1/subscriptions/"+sub.ID+"/coupon", e.Acme.Key, map[string]string{"code": "SPRING15"}, nil)
++
++	e.Clock.Set(sub.CurrentPeriodEnd)
++	if n, err := e.Subs.RenewDue(context.Background()); err != nil || n != 1 {
++		t.Fatalf("RenewDue = %d, %v", n, err)
++	}
++	var invs struct {
++		Items []map[string]any `json:"items"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?subscription_id="+sub.ID, e.Acme.Key, nil, &invs)
++	if len(invs.Items) != 2 {
++		t.Fatalf("invoices = %v", invs.Items)
++	}
++	first, renewal := invs.Items[0], invs.Items[1]
++	if first["coupon"] != "" || first["discount"] != float64(0) || first["total"] != float64(2000) {
++		t.Fatalf("the first invoice = %v", first)
++	}
++	// 15% of 20.00 is 3.00 off
++	if renewal["coupon"] != "SPRING15" || renewal["discount"] != float64(300) || renewal["total"] != float64(1700) || renewal["discount_percent"] != float64(0) {
++		t.Fatalf("the renewal = %v", renewal)
++	}
++}
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..5b0b951 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -116,6 +116,11 @@ func (s *Server) routes() {
+ 	m.HandleFunc("PATCH /v1/subscriptions/{id}", s.authed(s.updateSubscription))
+ 	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", s.authed(s.cancelSubscription))
+ 	m.HandleFunc("POST /v1/subscriptions/{id}/usage", s.authed(s.reportUsage))
++	m.HandleFunc("POST /v1/subscriptions/{id}/coupon", s.authed(s.applyCoupon))
++
++	m.HandleFunc("GET /v1/coupons", s.authed(s.listCoupons))
++	m.HandleFunc("POST /v1/coupons", s.authed(s.createCoupon))
++	m.HandleFunc("GET /v1/coupons/{code}", s.authed(s.getCoupon))
+ 
+ 	m.HandleFunc("GET /v1/invoices", s.authed(s.listInvoices))
+ 	m.HandleFunc("POST /v1/invoices", s.authed(s.createInvoice))
+diff --git a/start/internal/billing/billing.go b/result/internal/billing/billing.go
+index be8baaf..4bc41a0 100644
+--- a/start/internal/billing/billing.go
++++ b/result/internal/billing/billing.go
+@@ -16,20 +16,34 @@ type Totals struct {
+ 	Total    int64 `json:"total"`
+ }
+ 
+-// Compute returns an invoice's totals: the sum of its lines, the discount (DiscountPercent of the subtotal), and tax at the
+-// invoice's rate on the subtotal after the discount. The discount and the tax are each rounded half away from zero to a
+-// whole minor unit.
++// Compute returns an invoice's totals: the sum of its lines, the discount, and tax at the invoice's rate on the subtotal
++// after the discount. The discount and the tax are each rounded half away from zero to a whole minor unit.
+ func Compute(inv store.Invoice) Totals {
+ 	var subtotal int64
+ 	for _, l := range inv.Lines {
+ 		subtotal += l.Amount()
+ 	}
+-	discount := money.Percent(subtotal, inv.DiscountPercent)
++	discount := discountOf(inv, subtotal)
+ 	taxable := subtotal - discount
+ 	tax := money.BasisPoints(taxable, inv.TaxRateBP)
+ 	return Totals{Subtotal: subtotal, Discount: discount, Tax: tax, Total: taxable + tax}
+ }
+ 
++// discountOf is the coupon's discount when a coupon discounted the invoice, otherwise DiscountPercent of the subtotal. An
++// amount off is never more than the subtotal.
++func discountOf(inv store.Invoice, subtotal int64) int64 {
++	switch {
++	case inv.Coupon != "" && inv.CouponPercentOff > 0:
++		return money.Percent(subtotal, inv.CouponPercentOff)
++	case inv.Coupon != "" && inv.CouponAmountOff > 0:
++		if subtotal <= 0 {
++			return 0
++		}
++		return min(inv.CouponAmountOff, subtotal)
++	}
++	return money.Percent(subtotal, inv.DiscountPercent)
++}
++
+ // AddInterval returns t moved forward by one billing interval: a month or a year.
+ func AddInterval(t time.Time, iv store.Interval) time.Time {
+ 	if iv == store.Yearly {
+diff --git a/start/internal/billing/billing_test.go b/result/internal/billing/billing_test.go
+index 42acf0d..56fb3aa 100644
+--- a/start/internal/billing/billing_test.go
++++ b/result/internal/billing/billing_test.go
+@@ -37,3 +37,40 @@ func TestAddInterval(t *testing.T) {
+ 		t.Errorf("yearly: %v", got)
+ 	}
+ }
++
++func TestComputeWithPercentCoupon(t *testing.T) {
++	// subtotal 5000; 15% off is 750; taxable 4250; tax 8.25% of 4250 is 350.625 -> 351
++	inv := store.Invoice{Lines: []store.Line{{Description: "x", Quantity: 1, UnitAmount: 5000}}, TaxRateBP: 825,
++		Coupon: "SPRING15", CouponPercentOff: 15}
++	if got := Compute(inv); got != (Totals{Subtotal: 5000, Discount: 750, Tax: 351, Total: 4601}) {
++		t.Fatalf("Compute = %+v", got)
++	}
++}
++
++func TestComputeWithAmountCoupon(t *testing.T) {
++	inv := store.Invoice{Lines: []store.Line{{Description: "x", Quantity: 2, UnitAmount: 1000}}, TaxRateBP: 1000,
++		Coupon: "TEN", CouponAmountOff: 1000}
++	// subtotal 2000; 1000 off; taxable 1000; tax 100
++	if got := Compute(inv); got != (Totals{Subtotal: 2000, Discount: 1000, Tax: 100, Total: 1100}) {
++		t.Fatalf("Compute = %+v", got)
++	}
++}
++
++func TestComputeAmountCouponNeverExceedsTheSubtotal(t *testing.T) {
++	inv := store.Invoice{Lines: []store.Line{{Description: "x", Quantity: 1, UnitAmount: 500}}, Coupon: "BIG", CouponAmountOff: 9999}
++	if got := Compute(inv); got != (Totals{Subtotal: 500, Discount: 500, Total: 0}) {
++		t.Fatalf("Compute = %+v", got)
++	}
++	credit := store.Invoice{Lines: []store.Line{{Description: "credit", Quantity: 1, UnitAmount: -300}}, Coupon: "BIG", CouponAmountOff: 100}
++	if got := Compute(credit); got.Discount != 0 || got.Total != -300 {
++		t.Fatalf("Compute of a negative subtotal = %+v", got)
++	}
++}
++
++func TestCouponReplacesTheSubscriptionsDiscount(t *testing.T) {
++	inv := store.Invoice{Lines: []store.Line{{Description: "x", Quantity: 1, UnitAmount: 1000}}, DiscountPercent: 50,
++		Coupon: "TEN", CouponAmountOff: 1000}
++	if got := Compute(inv); got.Discount != 1000 || got.Total != 0 {
++		t.Fatalf("Compute = %+v, want the coupon's discount only", got)
++	}
++}
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..d293764 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -204,6 +204,10 @@ func copySub(sub Subscription) Subscription {
+ 		t := *sub.CanceledAt
+ 		sub.CanceledAt = &t
+ 	}
++	if sub.CouponRedeemedAt != nil {
++		t := *sub.CouponRedeemedAt
++		sub.CouponRedeemedAt = &t
++	}
+ 	return sub
+ }
+ 
+diff --git a/result/internal/store/coupons.go b/result/internal/store/coupons.go
+new file mode 100644
+index 0000000..8385745
+--- /dev/null
++++ b/result/internal/store/coupons.go
+@@ -0,0 +1,167 @@
++package store
++
++import (
++	"regexp"
++	"sort"
++	"strings"
++	"time"
++)
++
++var couponCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{3,32}$`)
++
++// ---- coupons
++
++// CreateCoupon adds a coupon to an organization. Its code must be unique in the organization, ignoring case.
++func (s *Store) CreateCoupon(c Coupon, now time.Time) (Coupon, error) {
++	c.Code = strings.TrimSpace(c.Code)
++	if err := checkCoupon(c); err != nil {
++		return Coupon{}, err
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if _, ok := s.orgs[c.OrgID]; !ok {
++		return Coupon{}, ErrNotFound
++	}
++	if _, ok := s.couponsByKey[couponKey(c.OrgID, c.Code)]; ok {
++		return Coupon{}, ErrCouponCodeTaken
++	}
++	c.ID = s.newID("cpn")
++	c.CreatedAt = now.UTC()
++	if c.RedeemBy != nil {
++		t := c.RedeemBy.UTC()
++		c.RedeemBy = &t
++	}
++	s.coupons[c.ID] = copyCoupon(c)
++	s.couponsByKey[couponKey(c.OrgID, c.Code)] = c.ID
++	return copyCoupon(c), nil
++}
++
++func checkCoupon(c Coupon) error {
++	switch {
++	case !couponCodeRe.MatchString(c.Code):
++		return invalid("a coupon code is 3 to 32 letters, digits, dashes or underscores")
++	case (c.PercentOff != 0) == (c.AmountOff != 0):
++		return invalid("a coupon takes exactly one of percent_off and amount_off")
++	case c.PercentOff != 0 && (c.PercentOff < 1 || c.PercentOff > 100):
++		return invalid("percent_off is 1 to 100")
++	case c.AmountOff != 0 && (c.AmountOff < 0 || !c.Currency.Valid()):
++		return invalid("amount_off is a positive amount in a currency Tally bills in")
++	case c.PercentOff != 0 && c.Currency != "":
++		return invalid("a percentage coupon has no currency")
++	}
++	switch c.Duration {
++	case DurationOnce, DurationForever:
++		if c.DurationInMonths != 0 {
++			return invalid("duration_in_months is only for a repeating coupon")
++		}
++	case DurationRepeating:
++		if c.DurationInMonths < 1 || c.DurationInMonths > 36 {
++			return invalid("a repeating coupon lasts 1 to 36 months")
++		}
++	default:
++		return invalid("a coupon's duration is once, repeating or forever")
++	}
++	if c.MaxRedemptions < 0 {
++		return invalid("max_redemptions is at least 1")
++	}
++	return nil
++}
++
++func couponKey(orgID, code string) string { return orgID + "\x00" + strings.ToLower(code) }
++
++// couponByCode finds a coupon by code, ignoring case. The caller holds the lock.
++func (s *Store) couponByCode(orgID, code string) (Coupon, bool) {
++	id, ok := s.couponsByKey[couponKey(orgID, code)]
++	if !ok {
++		return Coupon{}, false
++	}
++	return copyCoupon(s.coupons[id]), true
++}
++
++// Coupon returns one of an organization's coupons, found by code ignoring case.
++func (s *Store) Coupon(orgID, code string) (Coupon, bool) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.couponByCode(orgID, code)
++}
++
++// Coupons returns an organization's coupons, oldest first.
++func (s *Store) Coupons(orgID string) []Coupon {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	out := []Coupon{}
++	for _, c := range s.coupons {
++		if c.OrgID == orgID {
++			out = append(out, copyCoupon(c))
++		}
++	}
++	sort.Slice(out, func(i, j int) bool {
++		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
++			return out[i].CreatedAt.Before(out[j].CreatedAt)
++		}
++		return out[i].ID < out[j].ID
++	})
++	return out
++}
++
++// CouponRedemptions counts the subscriptions of an organization that hold a coupon, canceled ones included.
++func (s *Store) CouponRedemptions(orgID, code string) int {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.redemptions(orgID, code)
++}
++
++// redemptions counts the subscriptions holding a coupon. The caller holds the lock.
++func (s *Store) redemptions(orgID, code string) int {
++	n := 0
++	for _, sub := range s.subs {
++		if sub.OrgID == orgID && sub.Coupon == code {
++			n++
++		}
++	}
++	return n
++}
++
++// RedeemCoupon applies the coupon with this code to a subscription at now. It refuses when the coupon is unknown, has
++// passed its redeem-by time, has no redemptions left, is in another currency than the subscription's plan, when the
++// subscription already has a coupon, or when it is canceled. The checks and the change happen under one lock, so
++// concurrent redemptions cannot exceed max_redemptions.
++func (s *Store) RedeemCoupon(orgID, subID, code string, now time.Time) (Subscription, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	c, ok := s.couponByCode(orgID, code)
++	if !ok {
++		return Subscription{}, ErrNoCoupon
++	}
++	sub, ok := s.subs[subID]
++	if !ok || sub.OrgID != orgID {
++		return Subscription{}, ErrNotFound
++	}
++	if c.RedeemBy != nil && now.After(*c.RedeemBy) {
++		return Subscription{}, ErrCouponExpired
++	}
++	if c.MaxRedemptions > 0 && s.redemptions(orgID, c.Code) >= c.MaxRedemptions {
++		return Subscription{}, ErrCouponExhausted
++	}
++	if c.Currency != "" && s.plans[sub.PlanID].Currency != c.Currency {
++		return Subscription{}, ErrCurrencyMismatch
++	}
++	if sub.Coupon != "" {
++		return Subscription{}, ErrCouponApplied
++	}
++	if sub.Status == Canceled {
++		return Subscription{}, ErrSubscriptionCanceled
++	}
++	t := now.UTC()
++	sub.Coupon, sub.CouponRedeemedAt = c.Code, &t
++	s.subs[subID] = sub
++	return copySub(sub), nil
++}
++
++func copyCoupon(c Coupon) Coupon {
++	if c.RedeemBy != nil {
++		t := *c.RedeemBy
++		c.RedeemBy = &t
++	}
++	return c
++}
+diff --git a/result/internal/store/coupons_test.go b/result/internal/store/coupons_test.go
+new file mode 100644
+index 0000000..b0ce6ad
+--- /dev/null
++++ b/result/internal/store/coupons_test.go
+@@ -0,0 +1,247 @@
++package store
++
++import (
++	"errors"
++	"reflect"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/money"
++)
++
++// couponFixture is an organization with a customer, a USD plan and a EUR plan, and a subscription on the USD plan.
++type couponFixture struct {
++	s          *Store
++	org, other Org
++	customer   Customer
++	usd, eur   Plan
++	sub        Subscription
++}
++
++func newCouponFixture(t *testing.T) couponFixture {
++	t.Helper()
++	s := New()
++	f := couponFixture{s: s}
++	f.org = newOrg(t, s, "Acme")
++	f.other = newOrg(t, s, "Globex")
++	c, err := s.CreateCustomer(f.org.ID, "Jane", "jane@example.com", t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.customer = c
++	f.usd = mustPlan(t, s, f.org.ID, money.USD)
++	f.eur = mustPlan(t, s, f.org.ID, money.EUR)
++	f.sub = mustSub(t, s, f.org.ID, c.ID, f.usd.ID)
++	return f
++}
++
++func mustPlan(t *testing.T, s *Store, orgID string, cur money.Currency) Plan {
++	t.Helper()
++	p, err := s.CreatePlan(Plan{OrgID: orgID, Name: "Team " + string(cur), Currency: cur, UnitAmount: 1000, Interval: Monthly}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return p
++}
++
++func mustSub(t *testing.T, s *Store, orgID, customerID, planID string) Subscription {
++	t.Helper()
++	sub, err := s.CreateSubscription(Subscription{OrgID: orgID, CustomerID: customerID, PlanID: planID, Quantity: 1, Status: Active,
++		CurrentPeriodStart: t0, CurrentPeriodEnd: t0.AddDate(0, 1, 0)}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return sub
++}
++
++func TestCreateCouponValidation(t *testing.T) {
++	f := newCouponFixture(t)
++	valid := func() Coupon {
++		return Coupon{OrgID: f.org.ID, Code: "SPRING15", PercentOff: 15, Duration: DurationOnce}
++	}
++	cases := map[string]func(c *Coupon){
++		"code too short":           func(c *Coupon) { c.Code = "AB" },
++		"code too long":            func(c *Coupon) { c.Code = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456" },
++		"code with a space":        func(c *Coupon) { c.Code = "SPRING 15" },
++		"code with a dot":          func(c *Coupon) { c.Code = "SPRING.15" },
++		"no discount":              func(c *Coupon) { c.PercentOff = 0 },
++		"percent and amount":       func(c *Coupon) { c.AmountOff, c.Currency = 100, money.USD },
++		"percent over 100":         func(c *Coupon) { c.PercentOff = 101 },
++		"negative percent":         func(c *Coupon) { c.PercentOff = -5 },
++		"amount without currency":  func(c *Coupon) { c.PercentOff, c.AmountOff = 0, 100 },
++		"currency on a percentage": func(c *Coupon) { c.Currency = money.USD },
++		"unknown duration":         func(c *Coupon) { c.Duration = "yearly" },
++		"repeating without months": func(c *Coupon) { c.Duration = DurationRepeating },
++		"months over 36":           func(c *Coupon) { c.Duration, c.DurationInMonths = DurationRepeating, 37 },
++		"months on once":           func(c *Coupon) { c.DurationInMonths = 3 },
++		"negative max":             func(c *Coupon) { c.MaxRedemptions = -1 },
++	}
++	for name, mutate := range cases {
++		c := valid()
++		mutate(&c)
++		if _, err := f.s.CreateCoupon(c, t0); !errors.Is(err, ErrInvalid) {
++			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
++		}
++	}
++	amount := Coupon{OrgID: f.org.ID, Code: "TENOFF", AmountOff: 1000, Currency: money.EUR, Duration: DurationForever}
++	if _, err := f.s.CreateCoupon(amount, t0); err != nil {
++		t.Fatalf("a valid amount coupon: %v", err)
++	}
++	if _, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "MORE_2-OK", PercentOff: 100, Duration: DurationOnce}, t0); err != nil {
++		t.Fatalf("a valid coupon with dashes and underscores: %v", err)
++	}
++}
++
++func TestCouponCodesAreUniqueIgnoringCase(t *testing.T) {
++	f := newCouponFixture(t)
++	c, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "Spring15", PercentOff: 15, Duration: DurationOnce}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "SPRING15", PercentOff: 5, Duration: DurationOnce}, t0); !errors.Is(err, ErrCouponCodeTaken) {
++		t.Fatalf("a code differing in case: err = %v", err)
++	}
++	if _, err := f.s.CreateCoupon(Coupon{OrgID: f.other.ID, Code: "spring15", PercentOff: 5, Duration: DurationOnce}, t0); err != nil {
++		t.Fatalf("another organization may use the code: %v", err)
++	}
++	got, ok := f.s.Coupon(f.org.ID, "sPrInG15")
++	if !ok || got.ID != c.ID || got.Code != "Spring15" {
++		t.Fatalf("Coupon = %+v, %v", got, ok)
++	}
++	if _, ok := f.s.Coupon(f.other.ID, "Spring15"); !ok {
++		t.Fatal("the other organization's coupon is missing")
++	}
++	if _, ok := f.s.Coupon(f.org.ID, "NOPE1"); ok {
++		t.Fatal("found a coupon that does not exist")
++	}
++}
++
++func TestCouponsAreListedOldestFirst(t *testing.T) {
++	f := newCouponFixture(t)
++	for i, code := range []string{"BBB111", "AAA111", "CCC111"} {
++		if _, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: code, PercentOff: 1, Duration: DurationOnce}, t0.Add(time.Duration(i)*time.Hour)); err != nil {
++			t.Fatal(err)
++		}
++	}
++	var codes []string
++	for _, c := range f.s.Coupons(f.org.ID) {
++		codes = append(codes, c.Code)
++	}
++	if !reflect.DeepEqual(codes, []string{"BBB111", "AAA111", "CCC111"}) {
++		t.Fatalf("codes = %v", codes)
++	}
++	if got := f.s.Coupons(f.other.ID); len(got) != 0 {
++		t.Fatalf("another organization's coupons: %+v", got)
++	}
++}
++
++func TestRedeemCoupon(t *testing.T) {
++	f := newCouponFixture(t)
++	now := t0.Add(time.Hour)
++	if _, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "SPRING15", PercentOff: 15, Duration: DurationForever}, t0); err != nil {
++		t.Fatal(err)
++	}
++	sub, err := f.s.RedeemCoupon(f.org.ID, f.sub.ID, "spring15", now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if sub.Coupon != "SPRING15" || sub.CouponRedeemedAt == nil || !sub.CouponRedeemedAt.Equal(now) {
++		t.Fatalf("subscription = %+v", sub)
++	}
++	if got, _ := f.s.Subscription(f.org.ID, f.sub.ID); got.Coupon != "SPRING15" {
++		t.Fatalf("the change was not stored: %+v", got)
++	}
++	if _, err := f.s.RedeemCoupon(f.org.ID, f.sub.ID, "SPRING15", now); !errors.Is(err, ErrCouponApplied) {
++		t.Fatalf("a second coupon: err = %v", err)
++	}
++}
++
++func TestRedeemCouponRefusals(t *testing.T) {
++	f := newCouponFixture(t)
++	redeemBy := t0.Add(24 * time.Hour)
++	mustCoupon := func(c Coupon) {
++		t.Helper()
++		c.OrgID = f.org.ID
++		if _, err := f.s.CreateCoupon(c, t0); err != nil {
++			t.Fatal(err)
++		}
++	}
++	mustCoupon(Coupon{Code: "LATE", PercentOff: 10, Duration: DurationOnce, RedeemBy: &redeemBy})
++	mustCoupon(Coupon{Code: "ONCE", PercentOff: 10, Duration: DurationOnce, MaxRedemptions: 1})
++	mustCoupon(Coupon{Code: "EURAMOUNT", AmountOff: 100, Currency: money.EUR, Duration: DurationOnce})
++
++	// the coupon ONCE takes the only redemption
++	other := mustSub(t, f.s, f.org.ID, f.customer.ID, f.usd.ID)
++	if _, err := f.s.RedeemCoupon(f.org.ID, other.ID, "ONCE", t0); err != nil {
++		t.Fatal(err)
++	}
++
++	cases := []struct {
++		name  string
++		sub   string
++		code  string
++		now   time.Time
++		want  error
++		setup func()
++	}{
++		{"unknown code", f.sub.ID, "NOPE1", t0, ErrNoCoupon, nil},
++		{"unknown subscription", "sub_999999", "LATE", t0, ErrNotFound, nil},
++		{"after redeem-by", f.sub.ID, "LATE", redeemBy.Add(time.Second), ErrCouponExpired, nil},
++		{"exhausted", f.sub.ID, "ONCE", t0, ErrCouponExhausted, nil},
++		{"currency", f.sub.ID, "EURAMOUNT", t0, ErrCurrencyMismatch, nil},
++		{"canceled", f.sub.ID, "LATE", t0, ErrSubscriptionCanceled, func() {
++			_, _ = f.s.UpdateSubscription(f.org.ID, f.sub.ID, func(s *Subscription) error { s.Status = Canceled; return nil })
++		}},
++	}
++	for _, c := range cases {
++		if c.setup != nil {
++			c.setup()
++		}
++		if _, err := f.s.RedeemCoupon(f.org.ID, c.sub, c.code, c.now); !errors.Is(err, c.want) {
++			t.Errorf("%s: err = %v, want %v", c.name, err, c.want)
++		}
++	}
++	if n := f.s.CouponRedemptions(f.org.ID, "ONCE"); n != 1 {
++		t.Fatalf("ONCE is held by %d subscriptions", n)
++	}
++	if got, _ := f.s.Subscription(f.org.ID, f.sub.ID); got.Coupon != "" {
++		t.Fatalf("a refused redemption changed the subscription: %+v", got)
++	}
++}
++
++func TestRedeemCouponOnTheRedeemByTimeStillWorks(t *testing.T) {
++	f := newCouponFixture(t)
++	redeemBy := t0.Add(time.Hour)
++	if _, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "LATEST", PercentOff: 10, Duration: DurationOnce, RedeemBy: &redeemBy}, t0); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := f.s.RedeemCoupon(f.org.ID, f.sub.ID, "LATEST", redeemBy); err != nil {
++		t.Fatalf("at the redeem-by time: %v", err)
++	}
++}
++
++func TestCouponStateRoundTrip(t *testing.T) {
++	f := newCouponFixture(t)
++	redeemBy := t0.Add(48 * time.Hour)
++	if _, err := f.s.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "SAVE20", PercentOff: 20, Duration: DurationRepeating, DurationInMonths: 3,
++		MaxRedemptions: 5, RedeemBy: &redeemBy}, t0); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := f.s.RedeemCoupon(f.org.ID, f.sub.ID, "SAVE20", t0.Add(time.Minute)); err != nil {
++		t.Fatal(err)
++	}
++	st := f.s.Export()
++	back, err := FromState(st)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !reflect.DeepEqual(back.Export(), st) {
++		t.Fatal("the coupons did not survive a round trip")
++	}
++	if _, ok := back.Coupon(f.org.ID, "save20"); !ok {
++		t.Fatal("the code index was not rebuilt")
++	}
++	if _, err := back.CreateCoupon(Coupon{OrgID: f.org.ID, Code: "Save20", PercentOff: 1, Duration: DurationOnce}, t0); !errors.Is(err, ErrCouponCodeTaken) {
++		t.Fatalf("a restored code is not taken: %v", err)
++	}
++}
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..4e4add1 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -14,6 +14,7 @@ type State struct {
+ 	APIKeys          []APIKey          `json:"api_keys"`
+ 	Invites          []Invite          `json:"invites"`
+ 	Customers        []Customer        `json:"customers"`
++	Coupons          []Coupon          `json:"coupons"`
+ 	Plans            []Plan            `json:"plans"`
+ 	Subscriptions    []Subscription    `json:"subscriptions"`
+ 	Usage            []UsageRecord     `json:"usage"`
+@@ -47,6 +48,9 @@ func (s *Store) Export() State {
+ 	for _, c := range s.customers {
+ 		st.Customers = append(st.Customers, copyCustomer(c))
+ 	}
++	for _, c := range s.coupons {
++		st.Coupons = append(st.Coupons, copyCoupon(c))
++	}
+ 	for _, p := range s.plans {
+ 		st.Plans = append(st.Plans, p)
+ 	}
+@@ -80,6 +84,7 @@ func (s *Store) Export() State {
+ 	sort.Slice(st.APIKeys, func(i, j int) bool { return st.APIKeys[i].ID < st.APIKeys[j].ID })
+ 	sort.Slice(st.Invites, func(i, j int) bool { return st.Invites[i].ID < st.Invites[j].ID })
+ 	sort.Slice(st.Customers, func(i, j int) bool { return st.Customers[i].ID < st.Customers[j].ID })
++	sort.Slice(st.Coupons, func(i, j int) bool { return st.Coupons[i].ID < st.Coupons[j].ID })
+ 	sort.Slice(st.Plans, func(i, j int) bool { return st.Plans[i].ID < st.Plans[j].ID })
+ 	sort.Slice(st.Subscriptions, func(i, j int) bool { return st.Subscriptions[i].ID < st.Subscriptions[j].ID })
+ 	sort.Slice(st.Usage, func(i, j int) bool { return st.Usage[i].ID < st.Usage[j].ID })
+@@ -147,6 +152,16 @@ func FromState(st State) (*Store, error) {
+ 		s.customers[c.ID] = copyCustomer(c)
+ 		s.customersByEmail[normEmail(c.Email)] = c.ID
+ 	}
++	for _, c := range st.Coupons {
++		if err := dup("coupon", c.ID, seen); err != nil {
++			return nil, err
++		}
++		if _, ok := s.orgs[c.OrgID]; !ok {
++			return nil, fmt.Errorf("%w: coupon of unknown organization %q", ErrInvalid, c.OrgID)
++		}
++		s.coupons[c.ID] = copyCoupon(c)
++		s.couponsByKey[couponKey(c.OrgID, c.Code)] = c.ID
++	}
+ 	for _, p := range st.Plans {
+ 		if err := dup("plan", p.ID, seen); err != nil {
+ 			return nil, err
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..7c0d978 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -25,6 +25,17 @@ var (
+ 	ErrAlreadyMember = fmt.Errorf("%w: already a member", ErrConflict)
+ 	// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
++	// Coupons. ErrNoCoupon is a coupon not found; ErrCouponCodeTaken is a code another coupon of the organization has.
++	ErrNoCoupon        = fmt.Errorf("%w: no such coupon", ErrNotFound)
++	ErrCouponCodeTaken = fmt.Errorf("%w: a coupon with this code already exists", ErrConflict)
++	ErrCouponExpired   = errors.New("the coupon can no longer be applied")
++	ErrCouponExhausted = errors.New("the coupon has no redemptions left")
++	// ErrCurrencyMismatch is an amount-off coupon in another currency than the subscription's plan.
++	ErrCurrencyMismatch = errors.New("the coupon is in another currency than the plan")
++	// ErrCouponApplied is a subscription that already has a coupon.
++	ErrCouponApplied = fmt.Errorf("%w: the subscription already has a coupon", ErrConflict)
++	// ErrSubscriptionCanceled is a canceled subscription, which cannot take a coupon.
++	ErrSubscriptionCanceled = fmt.Errorf("%w: the subscription is canceled", ErrConflict)
+ )
+ 
+ // Store holds everything.
+@@ -43,6 +54,9 @@ type Store struct {
+ 	customers        map[string]Customer
+ 	customersByEmail map[string]string // lower-case email -> customer ID
+ 
++	coupons      map[string]Coupon
++	couponsByKey map[string]string // organization and lower-case code (couponKey) -> coupon ID
++
+ 	plans     map[string]Plan
+ 	subs      map[string]Subscription
+ 	usage     []UsageRecord
+@@ -61,6 +75,7 @@ func New() *Store {
+ 		orgs: map[string]Org{}, users: map[string]User{}, usersByEmail: map[string]string{}, members: map[memberKey]Member{},
+ 		apiKeys: map[string]APIKey{}, keysByToken: map[string]string{}, invites: map[string]Invite{},
+ 		customers: map[string]Customer{}, customersByEmail: map[string]string{},
++		coupons: map[string]Coupon{}, couponsByKey: map[string]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
+ 	}
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..44f7926 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -150,6 +150,38 @@ const (
+ 	Canceled SubStatus = "canceled"
+ )
+ 
++// CouponDuration says which of a subscription's invoices a coupon discounts.
++type CouponDuration string
++
++// Coupon durations.
++const (
++	// DurationOnce discounts only the first invoice created after the coupon was applied.
++	DurationOnce CouponDuration = "once"
++	// DurationRepeating discounts the invoices whose period starts less than DurationInMonths months after the redemption.
++	DurationRepeating CouponDuration = "repeating"
++	// DurationForever discounts every invoice created after the coupon was applied.
++	DurationForever CouponDuration = "forever"
++)
++
++// Coupon is a discount an organization offers under a code. Exactly one of PercentOff and AmountOff is set.
++type Coupon struct {
++	ID    string `json:"id"`
++	OrgID string `json:"org_id"`
++	// Code is what the customer types. It is unique in the organization, ignoring case.
++	Code       string `json:"code"`
++	PercentOff int    `json:"percent_off,omitempty"`
++	// AmountOff is in the currency's minor unit; Currency is set with it.
++	AmountOff        int64          `json:"amount_off,omitempty"`
++	Currency         money.Currency `json:"currency,omitempty"`
++	Duration         CouponDuration `json:"duration"`
++	DurationInMonths int            `json:"duration_in_months,omitempty"`
++	// MaxRedemptions is how many subscriptions may hold the coupon; 0 means no limit.
++	MaxRedemptions int `json:"max_redemptions,omitempty"`
++	// RedeemBy is the last time the coupon can be applied; nil means it never expires.
++	RedeemBy  *time.Time `json:"redeem_by,omitempty"`
++	CreatedAt time.Time  `json:"created_at"`
++}
++
+ // Subscription is a customer's subscription to a plan.
+ type Subscription struct {
+ 	ID              string    `json:"id"`
+@@ -159,6 +191,9 @@ type Subscription struct {
+ 	Quantity        int       `json:"quantity"`
+ 	Status          SubStatus `json:"status"`
+ 	DiscountPercent int       `json:"discount_percent"`
++	// Coupon is the code of the coupon applied to the subscription, "" when none.
++	Coupon           string     `json:"coupon"`
++	CouponRedeemedAt *time.Time `json:"coupon_redeemed_at,omitempty"`
+ 	// StartedAt is when the subscription began; its billing periods are counted from it.
+ 	StartedAt          time.Time  `json:"started_at"`
+ 	CurrentPeriodStart time.Time  `json:"current_period_start"`
+@@ -198,13 +233,18 @@ type Invoice struct {
+ 	Currency        money.Currency `json:"currency"`
+ 	Lines           []Line         `json:"lines"`
+ 	DiscountPercent int            `json:"discount_percent"`
+-	TaxRateBP       int            `json:"tax_rate_bp"`
+-	Status          InvoiceStatus  `json:"status"`
+-	PeriodStart     *time.Time     `json:"period_start,omitempty"`
+-	PeriodEnd       *time.Time     `json:"period_end,omitempty"`
+-	CreatedAt       time.Time      `json:"created_at"`
+-	PaidAt          *time.Time     `json:"paid_at,omitempty"`
+-	VoidedAt        *time.Time     `json:"voided_at,omitempty"`
++	// Coupon is the code of the coupon that discounted the invoice, "" when none. The coupon's discount is
++	// CouponPercentOff of the subtotal or CouponAmountOff off it, and replaces DiscountPercent.
++	Coupon           string        `json:"coupon"`
++	CouponPercentOff int           `json:"coupon_percent_off,omitempty"`
++	CouponAmountOff  int64         `json:"coupon_amount_off,omitempty"`
++	TaxRateBP        int           `json:"tax_rate_bp"`
++	Status           InvoiceStatus `json:"status"`
++	PeriodStart      *time.Time    `json:"period_start,omitempty"`
++	PeriodEnd        *time.Time    `json:"period_end,omitempty"`
++	CreatedAt        time.Time     `json:"created_at"`
++	PaidAt           *time.Time    `json:"paid_at,omitempty"`
++	VoidedAt         *time.Time    `json:"voided_at,omitempty"`
+ }
+ 
+ // PaymentStatus is a payment attempt's result.
+diff --git a/result/internal/subscriptions/coupons_test.go b/result/internal/subscriptions/coupons_test.go
+new file mode 100644
+index 0000000..fa2af00
+--- /dev/null
++++ b/result/internal/subscriptions/coupons_test.go
+@@ -0,0 +1,132 @@
++package subscriptions_test
++
++import (
++	"context"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/billing"
++	"example.com/tally/internal/money"
++	"example.com/tally/internal/store"
++	"example.com/tally/internal/subscriptions"
++)
++
++// couponSub starts a subscription to a 20.00 USD monthly plan (no payment method: its invoices stay open) with the given
++// discount percentage, and returns it with the environment.
++func couponSub(t *testing.T, discountPercent int) (*apitest.Env, store.Subscription) {
++	t.Helper()
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	p := e.CreatePlan(e.Acme, "Team", "USD", "20.00")
++	sub, err := e.Subs.Create(context.Background(), e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1, DiscountPercent: discountPercent})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return e, sub
++}
++
++func addCoupon(t *testing.T, e *apitest.Env, c store.Coupon) {
++	t.Helper()
++	c.OrgID = e.Acme.ID
++	if _, err := e.Store.CreateCoupon(c, e.Clock.Now()); err != nil {
++		t.Fatal(err)
++	}
++}
++
++// renewAt moves the clock to at and renews the subscription, which must be due.
++func renewAt(t *testing.T, e *apitest.Env, at time.Time) {
++	t.Helper()
++	e.Clock.Set(at)
++	if n, err := e.Subs.RenewDue(context.Background()); err != nil || n != 1 {
++		t.Fatalf("RenewDue at %v = %d, %v", at, n, err)
++	}
++}
++
++// discounts returns each invoice's discount (in creation order) and whether it names a coupon.
++func discounts(e *apitest.Env, sub store.Subscription) (amounts []int64, coupons []string) {
++	for _, inv := range e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}) {
++		amounts = append(amounts, billing.Compute(inv).Discount)
++		coupons = append(coupons, inv.Coupon)
++	}
++	return amounts, coupons
++}
++
++func TestForeverCouponDiscountsEveryLaterInvoice(t *testing.T) {
++	e, sub := couponSub(t, 0)
++	addCoupon(t, e, store.Coupon{Code: "FOREVER", PercentOff: 15, Duration: store.DurationForever})
++	if _, err := e.Subs.ApplyCoupon(context.Background(), e.Acme.ID, sub.ID, "forever"); err != nil {
++		t.Fatal(err)
++	}
++	renewAt(t, e, sub.CurrentPeriodEnd)
++	renewAt(t, e, sub.CurrentPeriodEnd.AddDate(0, 1, 0))
++	amounts, coupons := discounts(e, sub)
++	// the first invoice was created before the coupon was applied; 15% of 2000 is 300
++	if len(amounts) != 3 || amounts[0] != 0 || amounts[1] != 300 || amounts[2] != 300 {
++		t.Fatalf("discounts = %v", amounts)
++	}
++	if coupons[0] != "" || coupons[1] != "FOREVER" || coupons[2] != "FOREVER" {
++		t.Fatalf("coupons = %q", coupons)
++	}
++}
++
++func TestOnceCouponDiscountsOnlyTheFirstLaterInvoice(t *testing.T) {
++	e, sub := couponSub(t, 0)
++	addCoupon(t, e, store.Coupon{Code: "ONCE", AmountOff: 500, Currency: money.USD, Duration: store.DurationOnce})
++	if _, err := e.Subs.ApplyCoupon(context.Background(), e.Acme.ID, sub.ID, "ONCE"); err != nil {
++		t.Fatal(err)
++	}
++	renewAt(t, e, sub.CurrentPeriodEnd)
++	renewAt(t, e, sub.CurrentPeriodEnd.AddDate(0, 1, 0))
++	amounts, coupons := discounts(e, sub)
++	if len(amounts) != 3 || amounts[0] != 0 || amounts[1] != 500 || amounts[2] != 0 {
++		t.Fatalf("discounts = %v", amounts)
++	}
++	if coupons[1] != "ONCE" || coupons[2] != "" {
++		t.Fatalf("coupons = %q", coupons)
++	}
++}
++
++func TestRepeatingCouponStopsAfterItsMonths(t *testing.T) {
++	e, sub := couponSub(t, 0)
++	addCoupon(t, e, store.Coupon{Code: "TWOMONTHS", PercentOff: 50, Duration: store.DurationRepeating, DurationInMonths: 2})
++	if _, err := e.Subs.ApplyCoupon(context.Background(), e.Acme.ID, sub.ID, "TWOMONTHS"); err != nil {
++		t.Fatal(err)
++	}
++	// Renewals start one, two and three months after the redemption. The one starting two months after is not less than
++	// two months after, so only the first renewal is discounted.
++	start := e.Clock.Now()
++	renewAt(t, e, start.AddDate(0, 1, 0))
++	renewAt(t, e, start.AddDate(0, 2, 0))
++	renewAt(t, e, start.AddDate(0, 3, 0))
++	amounts, _ := discounts(e, sub)
++	if len(amounts) != 4 || amounts[0] != 0 || amounts[1] != 1000 || amounts[2] != 0 || amounts[3] != 0 {
++		t.Fatalf("discounts = %v", amounts)
++	}
++}
++
++func TestCouponDoesNotDiscountInvoicesCreatedBeforeIt(t *testing.T) {
++	e, sub := couponSub(t, 0)
++	addCoupon(t, e, store.Coupon{Code: "FOREVER", PercentOff: 10, Duration: store.DurationForever})
++	// applied at the same instant the first invoice was created: that invoice is not created after the coupon
++	if _, err := e.Subs.ApplyCoupon(context.Background(), e.Acme.ID, sub.ID, "FOREVER"); err != nil {
++		t.Fatal(err)
++	}
++	if amounts, _ := discounts(e, sub); len(amounts) != 1 || amounts[0] != 0 {
++		t.Fatalf("discounts = %v", amounts)
++	}
++}
++
++func TestCouponReplacesTheSubscriptionsDiscountPercent(t *testing.T) {
++	e, sub := couponSub(t, 10)
++	addCoupon(t, e, store.Coupon{Code: "FIVEOFF", AmountOff: 500, Currency: money.USD, Duration: store.DurationForever})
++	if _, err := e.Subs.ApplyCoupon(context.Background(), e.Acme.ID, sub.ID, "FIVEOFF"); err != nil {
++		t.Fatal(err)
++	}
++	renewAt(t, e, sub.CurrentPeriodEnd)
++	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})
++	last := invs[len(invs)-1]
++	if last.DiscountPercent != 0 || billing.Compute(last).Discount != 500 {
++		t.Fatalf("the invoice = %+v, want only the coupon's 5.00 off", last)
++	}
++}
+diff --git a/start/internal/subscriptions/subscriptions.go b/result/internal/subscriptions/subscriptions.go
+index 6d6d997..8294808 100644
+--- a/start/internal/subscriptions/subscriptions.go
++++ b/result/internal/subscriptions/subscriptions.go
+@@ -78,6 +78,16 @@ func (s *Service) Create(ctx context.Context, orgID string, in CreateInput) (sto
+ 	return sub, nil
+ }
+ 
++// ApplyCoupon applies the coupon with this code to a subscription now. The coupon discounts the invoices created after that.
++func (s *Service) ApplyCoupon(ctx context.Context, orgID, id, code string) (store.Subscription, error) {
++	sub, err := s.Store.RedeemCoupon(orgID, id, code, s.Clock.Now())
++	if err != nil {
++		return store.Subscription{}, err
++	}
++	s.publish(ctx, orgID, "subscription.updated", sub)
++	return sub, nil
++}
++
+ // UpdateInput changes a subscription; nil fields stay as they are.
+ type UpdateInput struct {
+ 	PlanID   *string
+@@ -220,9 +230,14 @@ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, pla
+ 			lines = append(lines, store.Line{Description: plan.Name + " usage, " + period, Quantity: used, UnitAmount: plan.UnitAmount})
+ 		}
+ 	}
+-	ps, pe := start, end
+-	inv, err := s.Store.CreateInvoice(store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
+-		Lines: lines, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe}, s.Clock.Now())
++	ps, pe, now := start, end, s.Clock.Now()
++	ni := store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
++		Lines: lines, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe}
++	if c, ok := s.couponFor(sub.OrgID, sub.ID, start, now); ok {
++		// While a coupon discounts the invoice, the subscription's discount percentage does not.
++		ni.Coupon, ni.CouponPercentOff, ni.CouponAmountOff, ni.DiscountPercent = c.Code, c.PercentOff, c.AmountOff, 0
++	}
++	inv, err := s.Store.CreateInvoice(ni, now)
+ 	if err != nil {
+ 		return false, err
+ 	}
+@@ -239,6 +254,37 @@ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, pla
+ 	}
+ }
+ 
++// couponFor returns the coupon of a subscription when it discounts an invoice created at now for the period starting at start.
++// A coupon discounts the invoices created after it was applied: once, only the first of them; repeating, those whose period
++// starts less than its duration in months after the redemption; forever, all of them.
++func (s *Service) couponFor(orgID, subID string, start, now time.Time) (store.Coupon, bool) {
++	sub, ok := s.Store.Subscription(orgID, subID)
++	if !ok || sub.Coupon == "" || sub.CouponRedeemedAt == nil {
++		return store.Coupon{}, false
++	}
++	redeemed := *sub.CouponRedeemedAt
++	c, ok := s.Store.Coupon(orgID, sub.Coupon)
++	if !ok || !now.After(redeemed) {
++		return store.Coupon{}, false
++	}
++	switch c.Duration {
++	case store.DurationForever:
++		return c, true
++	case store.DurationRepeating:
++		if start.Before(redeemed.AddDate(0, c.DurationInMonths, 0)) {
++			return c, true
++		}
++		return store.Coupon{}, false
++	default: // once
++		for _, inv := range s.Store.ListInvoices(orgID, store.InvoiceFilter{SubscriptionID: subID}) {
++			if inv.Coupon == c.Code {
++				return store.Coupon{}, false
++			}
++		}
++		return c, true
++	}
++}
++
+ func (s *Service) setStatus(ctx context.Context, sub store.Subscription, st store.SubStatus) (store.Subscription, error) {
+ 	sub, err := s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
+ 		x.Status = st

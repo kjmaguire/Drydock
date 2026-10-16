@@ -1,0 +1,543 @@
+diff --git a/start/cmd/tally/main.go b/result/cmd/tally/main.go
+index 5915fed..33f30d7 100644
+--- a/start/cmd/tally/main.go
++++ b/result/cmd/tally/main.go
+@@ -45,10 +45,11 @@ func main() {
+ 		os.Exit(1)
+ 	}
+ 
+-	hooks := webhooks.New(webhooks.Options{Store: st, Clock: clk})
++	outbox := &mail.Outbox{Log: log}
++	hooks := webhooks.New(webhooks.Options{Store: st, Clock: clk, Mail: outbox})
+ 	pay := &payments.Service{Store: st, Gateway: &payments.Fake{}, Clock: clk, Publisher: hooks}
+ 	subs := &subscriptions.Service{Store: st, Payments: pay, Clock: clk, Publisher: hooks}
+-	srv := api.New(st, api.Options{Clock: clk, Payments: pay, Subscriptions: subs, Webhooks: hooks, Mail: &mail.Outbox{Log: log}, Logger: log})
++	srv := api.New(st, api.Options{Clock: clk, Payments: pay, Subscriptions: subs, Webhooks: hooks, Mail: outbox, Logger: log})
+ 
+ 	runner := jobs.NewRunner(4, 100, log)
+ 	runner.Start()
+diff --git a/start/internal/apitest/apitest.go b/result/internal/apitest/apitest.go
+index bca06ea..7caf404 100644
+--- a/start/internal/apitest/apitest.go
++++ b/result/internal/apitest/apitest.go
+@@ -59,7 +59,7 @@ func New(t testing.TB) *Env {
+ 	e := &Env{T: t, Store: store.New(), Clock: clock.NewFake(Start), Gateway: &payments.Fake{}, Mail: &mail.Outbox{}, HTTP: &FakeHTTP{}, DNS: &FakeDNS{}}
+ 	e.DNS.Set("hooks.acme.example", "93.184.216.34")
+ 	e.DNS.Set("hooks.globex.example", "93.184.216.35")
+-	e.Webhooks = webhooks.New(webhooks.Options{Store: e.Store, Clock: e.Clock, Doer: e.HTTP, Resolver: e.DNS})
++	e.Webhooks = webhooks.New(webhooks.Options{Store: e.Store, Clock: e.Clock, Doer: e.HTTP, Resolver: e.DNS, Mail: e.Mail})
+ 	e.Payments = &payments.Service{Store: e.Store, Gateway: e.Gateway, Clock: e.Clock, Publisher: e.Webhooks}
+ 	e.Subs = &subscriptions.Service{Store: e.Store, Payments: e.Payments, Clock: e.Clock, Publisher: e.Webhooks}
+ 	e.Server = api.New(e.Store, api.Options{Clock: e.Clock, Payments: e.Payments, Subscriptions: e.Subs, Webhooks: e.Webhooks, Mail: e.Mail})
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..bf01f09 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -246,10 +246,12 @@ type WebhookEndpoint struct {
+ 	URL    string   `json:"url"`
+ 	Events []string `json:"events"` // event types, or "*" for all
+ 	// Secret signs the deliveries (webhooks.Sign).
+-	Secret         string    `json:"secret"`
+-	Enabled        bool      `json:"enabled"`
+-	DisabledReason string    `json:"disabled_reason,omitempty"`
+-	CreatedAt      time.Time `json:"created_at"`
++	Secret         string `json:"secret"`
++	Enabled        bool   `json:"enabled"`
++	DisabledReason string `json:"disabled_reason,omitempty"`
++	// FailureEmailAt is when the owners were last emailed that the endpoint keeps failing (at most one such email a day).
++	FailureEmailAt *time.Time `json:"failure_email_at,omitempty"`
++	CreatedAt      time.Time  `json:"created_at"`
+ }
+ 
+ // Event is something that happened in an organization, sent to its webhook endpoints.
+@@ -279,7 +281,7 @@ type Delivery struct {
+ 	EventID        string         `json:"event_id"`
+ 	Status         DeliveryStatus `json:"status"`
+ 	Attempts       int            `json:"attempts"`
+-	NextAttemptAt  *time.Time     `json:"next_attempt_at,omitempty"`
++	NextAttemptAt  *time.Time     `json:"next_attempt_at"` // null when no attempt is planned
+ 	LastAttemptAt  *time.Time     `json:"last_attempt_at,omitempty"`
+ 	ResponseStatus int            `json:"response_status,omitempty"`
+ 	Error          string         `json:"error,omitempty"`
+diff --git a/result/internal/webhooks/retry_test.go b/result/internal/webhooks/retry_test.go
+new file mode 100644
+index 0000000..fb9e145
+--- /dev/null
++++ b/result/internal/webhooks/retry_test.go
+@@ -0,0 +1,258 @@
++package webhooks_test
++
++import (
++	"context"
++	"errors"
++	"net/http"
++	"sync"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++// waits are the times between a delivery's attempts, after the first, second, ... failed attempt.
++var waits = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 8 * time.Hour, 24 * time.Hour}
++
++func endpoint(t testing.TB, e *apitest.Env, org apitest.Org, url string, events ...string) store.WebhookEndpoint {
++	t.Helper()
++	ep, err := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: org.ID, URL: url, Events: events, Secret: "whsec_t", Enabled: true}, e.Clock.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	return ep
++}
++
++func publish(t testing.TB, e *apitest.Env, typ string) {
++	t.Helper()
++	if err := e.Webhooks.Publish(context.Background(), e.Acme.ID, typ, map[string]string{"id": "cus_1"}); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func runDue(t testing.TB, e *apitest.Env) int {
++	t.Helper()
++	n, err := e.Webhooks.RunDue(context.Background())
++	if err != nil {
++		t.Fatal(err)
++	}
++	return n
++}
++
++// onlyDelivery returns the one delivery an endpoint has.
++func onlyDelivery(t testing.TB, e *apitest.Env, ep store.WebhookEndpoint) store.Delivery {
++	t.Helper()
++	ds := e.Store.Deliveries(e.Acme.ID, ep.ID)
++	if len(ds) != 1 {
++		t.Fatalf("deliveries to %s = %+v, want 1", ep.URL, ds)
++	}
++	return ds[0]
++}
++
++// drain runs RunDue every minute of simulated time for two days. Every retry falls on a whole minute, so every attempt is
++// made on time.
++func drain(e *apitest.Env) {
++	for i := 0; i < 2*24*60; i++ {
++		_, _ = e.Webhooks.RunDue(context.Background())
++		e.Clock.Advance(time.Minute)
++	}
++}
++
++// failureEmails counts the emails about an endpoint's failing.
++func failureEmails(e *apitest.Env, url string) int {
++	n := 0
++	for _, m := range e.Mail.Messages() {
++		if m.Subject == "Webhook endpoint failing: "+url {
++			n++
++		}
++	}
++	return n
++}
++
++func TestRetriesThenFailsForGood(t *testing.T) {
++	e := apitest.New(t)
++	e.AddMember(e.Acme, "admin@acme.example", store.RoleAdmin)
++	ep := endpoint(t, e, e.Acme, "https://hooks.acme.example/all", "*")
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return http.StatusInternalServerError, nil }
++	publish(t, e, "customer.created")
++
++	for attempt := 1; attempt <= 7; attempt++ {
++		if attempt > 1 {
++			// Not due a second early, due on time.
++			e.Clock.Advance(waits[attempt-2] - time.Second)
++			if n := runDue(t, e); n != 0 {
++				t.Fatalf("attempt %d ran early: RunDue = %d", attempt, n)
++			}
++			e.Clock.Advance(time.Second)
++		}
++		if n := runDue(t, e); n != 1 {
++			t.Fatalf("attempt %d: RunDue = %d, want 1", attempt, n)
++		}
++		now := e.Clock.Now()
++		d := onlyDelivery(t, e, ep)
++		if d.Attempts != attempt || d.LastAttemptAt == nil || !d.LastAttemptAt.Equal(now) || d.ResponseStatus != 500 || d.Error == "" {
++			t.Fatalf("after attempt %d: %+v", attempt, d)
++		}
++		if attempt < 7 {
++			if d.Status != store.DeliveryPending || d.NextAttemptAt == nil || !d.NextAttemptAt.Equal(now.Add(waits[attempt-1])) {
++				t.Fatalf("after attempt %d: %+v, want pending with the next attempt in %v", attempt, d, waits[attempt-1])
++			}
++			if n := failureEmails(e, ep.URL); n != 0 {
++				t.Fatalf("emailed after attempt %d", attempt)
++			}
++			continue
++		}
++		if d.Status != store.DeliveryFailed || d.NextAttemptAt != nil {
++			t.Fatalf("after the 7th attempt: %+v, want failed for good", d)
++		}
++	}
++
++	e.Clock.Advance(30 * 24 * time.Hour)
++	if n := runDue(t, e); n != 0 {
++		t.Fatalf("a delivery that failed for good was attempted again: %d", n)
++	}
++	if n := len(e.HTTP.Requests()); n != 7 {
++		t.Fatalf("requests = %d, want 7", n)
++	}
++	msgs := e.Mail.Messages()
++	if len(msgs) != 1 || msgs[0].To != "owner@acme.example" || msgs[0].Subject != "Webhook endpoint failing: "+ep.URL {
++		t.Fatalf("messages = %+v, want one to the owner only", msgs)
++	}
++	if ep2, _ := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID); !ep2.Enabled || ep2.FailureEmailAt == nil {
++		t.Fatalf("endpoint = %+v, want enabled and marked as emailed", ep2)
++	}
++}
++
++func TestSucceedsOnRetry(t *testing.T) {
++	e := apitest.New(t)
++	ep := endpoint(t, e, e.Acme, "https://hooks.acme.example/all", "*")
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return http.StatusServiceUnavailable, nil }
++	publish(t, e, "customer.created")
++	runDue(t, e)
++
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return http.StatusOK, nil }
++	e.Clock.Advance(time.Minute)
++	if n := runDue(t, e); n != 1 {
++		t.Fatalf("RunDue = %d, want 1", n)
++	}
++	d := onlyDelivery(t, e, ep)
++	if d.Status != store.DeliverySucceeded || d.Attempts != 2 || d.NextAttemptAt != nil || d.Error != "" || d.ResponseStatus != http.StatusOK {
++		t.Fatalf("delivery = %+v", d)
++	}
++	if n := runDue(t, e); n != 0 {
++		t.Fatalf("a delivered event was sent again: %d", n)
++	}
++
++	// The API shows next_attempt_at as null once no attempt is planned.
++	var list struct{ Items []map[string]any }
++	e.MustDo(http.StatusOK, "GET", "/v1/webhook-endpoints/"+ep.ID+"/deliveries", e.Acme.Key, nil, &list)
++	if len(list.Items) != 1 {
++		t.Fatalf("deliveries = %+v", list.Items)
++	}
++	if v, ok := list.Items[0]["next_attempt_at"]; !ok || v != nil {
++		t.Fatalf("next_attempt_at = %v (present %v), want null", v, ok)
++	}
++	if list.Items[0]["attempts"] != float64(2) || list.Items[0]["status"] != "succeeded" {
++		t.Fatalf("delivery JSON = %+v", list.Items[0])
++	}
++}
++
++func TestFailedAttemptsWithoutAnAnswer(t *testing.T) {
++	e := apitest.New(t)
++	ep := endpoint(t, e, e.Acme, "https://hooks.acme.example/all", "*")
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return 0, errors.New("connection reset by peer") }
++	publish(t, e, "customer.created")
++	runDue(t, e)
++	d := onlyDelivery(t, e, ep)
++	if d.Status != store.DeliveryPending || d.ResponseStatus != 0 || d.Error == "" {
++		t.Fatalf("after a request that got no answer: %+v", d)
++	}
++
++	// A redirect is not followed, so it fails.
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return http.StatusFound, nil }
++	e.Clock.Advance(time.Minute)
++	runDue(t, e)
++	d = onlyDelivery(t, e, ep)
++	if d.Status != store.DeliveryPending || d.Attempts != 2 || d.ResponseStatus != http.StatusFound || d.Error != "the endpoint answered 302" {
++		t.Fatalf("after a 302: %+v", d)
++	}
++}
++
++func TestGoneDisablesEndpoint(t *testing.T) {
++	e := apitest.New(t)
++	ep := endpoint(t, e, e.Acme, "https://hooks.acme.example/all", "*")
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return http.StatusGone, nil }
++	publish(t, e, "customer.created")
++	publish(t, e, "customer.updated")
++
++	// The first delivery is refused with 410 Gone and disables the endpoint, so the second is not sent.
++	if n := runDue(t, e); n != 2 {
++		t.Fatalf("RunDue = %d, want 2", n)
++	}
++	if n := len(e.HTTP.Requests()); n != 1 {
++		t.Fatalf("requests = %d, want 1", n)
++	}
++	got, _ := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID)
++	if got.Enabled || got.DisabledReason != "gone" {
++		t.Fatalf("endpoint = %+v, want disabled for gone", got)
++	}
++	for _, d := range e.Store.Deliveries(e.Acme.ID, ep.ID) {
++		if d.Status != store.DeliveryFailed || d.NextAttemptAt != nil {
++			t.Fatalf("delivery = %+v, want failed for good", d)
++		}
++	}
++	if ds := e.Store.Deliveries(e.Acme.ID, ep.ID); ds[0].Attempts != 1 || ds[0].ResponseStatus != http.StatusGone {
++		t.Fatalf("first delivery = %+v", ds[0])
++	}
++	e.Clock.Advance(48 * time.Hour)
++	if n := runDue(t, e); n != 0 {
++		t.Fatalf("RunDue = %d after the endpoint was disabled", n)
++	}
++	if n := len(e.Mail.Messages()); n != 0 {
++		t.Fatalf("410 emailed the owners: %+v", e.Mail.Messages())
++	}
++}
++
++func TestFailureEmailAtMostOncePerDay(t *testing.T) {
++	e := apitest.New(t)
++	all := endpoint(t, e, e.Acme, "https://hooks.acme.example/all", "*")
++	paid := endpoint(t, e, e.Acme, "https://hooks.acme.example/paid", "customer.created")
++	e.HTTP.Respond = func(apitest.Request) (int, error) { return http.StatusBadGateway, nil }
++
++	// Two events fail for good at the same time for each endpoint: each endpoint gets one email.
++	publish(t, e, "customer.created")
++	publish(t, e, "customer.created")
++	drain(e)
++	if n := failureEmails(e, all.URL); n != 1 {
++		t.Fatalf("emails about %s = %d, want 1", all.URL, n)
++	}
++	if n := failureEmails(e, paid.URL); n != 1 {
++		t.Fatalf("emails about %s = %d, want 1", paid.URL, n)
++	}
++
++	// A failure after the day is over is emailed again.
++	publish(t, e, "customer.created")
++	drain(e)
++	if n := failureEmails(e, all.URL); n != 2 {
++		t.Fatalf("emails about %s = %d, want 2", all.URL, n)
++	}
++}
++
++func TestRunDueSendsEachDeliveryOnce(t *testing.T) {
++	e := apitest.New(t)
++	endpoint(t, e, e.Acme, "https://hooks.acme.example/all", "*")
++	publish(t, e, "customer.created")
++	var wg sync.WaitGroup
++	for i := 0; i < 4; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			_, _ = e.Webhooks.RunDue(context.Background())
++		}()
++	}
++	wg.Wait()
++	if n := len(e.HTTP.Requests()); n != 1 {
++		t.Fatalf("requests = %d, want 1", n)
++	}
++}
+diff --git a/start/internal/webhooks/webhooks.go b/result/internal/webhooks/webhooks.go
+index 13c4370..17e208f 100644
+--- a/start/internal/webhooks/webhooks.go
++++ b/result/internal/webhooks/webhooks.go
+@@ -15,12 +15,23 @@ import (
+ 	"net/http"
+ 	"net/url"
+ 	"slices"
++	"sync"
+ 	"time"
+ 
+ 	"example.com/tally/internal/clock"
++	"example.com/tally/internal/mail"
+ 	"example.com/tally/internal/store"
+ )
+ 
++// retryDelays are the waits after the first, second, ... failed attempts of a delivery.
++var retryDelays = [...]time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 8 * time.Hour, 24 * time.Hour}
++
++// maxAttempts is how many attempts a delivery gets before it fails for good.
++const maxAttempts = len(retryDelays) + 1
++
++// failureEmailInterval is the least time between two emails to the owners about the same endpoint.
++const failureEmailInterval = 24 * time.Hour
++
+ // Doer sends HTTP requests (an *http.Client).
+ type Doer interface {
+ 	Do(*http.Request) (*http.Response, error)
+@@ -39,6 +50,8 @@ type Options struct {
+ 	Doer Doer
+ 	// Resolver checks endpoint hosts; nil means net.DefaultResolver.
+ 	Resolver Resolver
++	// Mail sends the emails about endpoints that keep failing; nil means a mail.Outbox (nothing is sent).
++	Mail mail.Sender
+ }
+ 
+ // Service manages endpoints' URLs and sends deliveries.
+@@ -47,11 +60,13 @@ type Service struct {
+ 	clock    clock.Clock
+ 	doer     Doer
+ 	resolver Resolver
++	mail     mail.Sender
++	runMu    sync.Mutex // one RunDue at a time, so that no delivery is sent twice
+ }
+ 
+ // New returns a Service.
+ func New(opt Options) *Service {
+-	s := &Service{store: opt.Store, clock: opt.Clock, doer: opt.Doer, resolver: opt.Resolver}
++	s := &Service{store: opt.Store, clock: opt.Clock, doer: opt.Doer, resolver: opt.Resolver, mail: opt.Mail}
+ 	if s.clock == nil {
+ 		s.clock = clock.Real{}
+ 	}
+@@ -61,6 +76,9 @@ func New(opt Options) *Service {
+ 	if s.resolver == nil {
+ 		s.resolver = net.DefaultResolver
+ 	}
++	if s.mail == nil {
++		s.mail = &mail.Outbox{}
++	}
+ 	return s
+ }
+ 
+@@ -141,18 +159,25 @@ func (s *Service) Publish(ctx context.Context, orgID, eventType string, data any
+ 	return nil
+ }
+ 
+-// RunDue attempts every delivery that is due and returns how many it attempted. Each delivery is attempted once: an answer
+-// with a 2xx status marks it succeeded, anything else failed.
++// RunDue attempts every delivery that is due at the clock's time and returns how many attempts it made. An answer with a
++// 2xx status marks a delivery succeeded. Any other failure leaves it pending for another attempt after retryDelays; after
++// the 7th failed attempt it has failed for good, and the owners are emailed. A 410 Gone fails it for good at once and
++// disables its endpoint.
+ func (s *Service) RunDue(ctx context.Context) (int, error) {
++	s.runMu.Lock()
++	defer s.runMu.Unlock()
+ 	n := 0
++	var errs []error
+ 	for _, d := range s.store.DueDeliveries(s.clock.Now()) {
+ 		if err := ctx.Err(); err != nil {
+-			return n, err
++			return n, errors.Join(append(errs, err)...)
++		}
++		if err := s.deliver(ctx, d); err != nil {
++			errs = append(errs, err)
+ 		}
+-		s.deliver(ctx, d)
+ 		n++
+ 	}
+-	return n, nil
++	return n, errors.Join(errs...)
+ }
+ 
+ // Body is what a delivery POSTs.
+@@ -163,32 +188,98 @@ type Body struct {
+ 	Data      json.RawMessage `json:"data"`
+ }
+ 
+-func (s *Service) deliver(ctx context.Context, d store.Delivery) {
++// deliver makes one attempt at a delivery and records its outcome. It returns an error only when the owners could not be
++// emailed.
++func (s *Service) deliver(ctx context.Context, d store.Delivery) error {
+ 	status, errText := 0, ""
+ 	ep, ok := s.store.WebhookEndpoint(d.OrgID, d.EndpointID)
+ 	e, eok := s.store.EventByID(d.EventID)
++	// hopeless is set when another attempt cannot help: the endpoint or the event is gone.
++	hopeless := false
+ 	switch {
+ 	case !ok || !ep.Enabled:
+-		errText = "the endpoint is disabled or was deleted"
++		errText, hopeless = "the endpoint is disabled or was deleted", true
+ 	case !eok:
+-		errText = "the event no longer exists"
++		errText, hopeless = "the event no longer exists", true
+ 	default:
+ 		status, errText = s.send(ctx, ep, e)
+ 	}
++	gone := status == http.StatusGone
+ 	now := s.clock.Now()
++	exhausted := false
+ 	_, _ = s.store.UpdateDelivery(d.ID, func(d *store.Delivery) error {
+ 		d.Attempts++
+ 		d.LastAttemptAt = &now
+ 		d.NextAttemptAt = nil
+ 		d.ResponseStatus = status
+ 		d.Error = errText
+-		if errText == "" {
++		switch {
++		case errText == "":
+ 			d.Status = store.DeliverySucceeded
+-		} else {
++		case hopeless || gone:
++			d.Status = store.DeliveryFailed
++		case d.Attempts >= maxAttempts:
+ 			d.Status = store.DeliveryFailed
++			exhausted = true
++		default:
++			d.Status = store.DeliveryPending
++			next := now.Add(retryDelays[d.Attempts-1])
++			d.NextAttemptAt = &next
++		}
++		return nil
++	})
++	if gone {
++		_, _ = s.store.UpdateWebhookEndpoint(d.OrgID, d.EndpointID, func(ep *store.WebhookEndpoint) error {
++			ep.Enabled, ep.DisabledReason = false, "gone"
++			return nil
++		})
++	}
++	if exhausted {
++		return s.notifyOwners(ctx, d.OrgID, ep, errText)
++	}
++	return nil
++}
++
++// notifyOwners emails every owner of the organization that the endpoint keeps failing. It sends nothing when the owners were
++// already emailed about the endpoint within failureEmailInterval.
++func (s *Service) notifyOwners(ctx context.Context, orgID string, ep store.WebhookEndpoint, lastErr string) error {
++	if !s.claimFailureEmail(orgID, ep.ID, s.clock.Now()) {
++		return nil
++	}
++	var errs []error
++	for _, m := range s.store.Members(orgID) {
++		if m.Role != store.RoleOwner {
++			continue
++		}
++		u, ok := s.store.User(m.UserID)
++		if !ok {
++			continue
++		}
++		errs = append(errs, s.mail.Send(ctx, mail.Message{
++			To:      u.Email,
++			Subject: "Webhook endpoint failing: " + ep.URL,
++			Body: fmt.Sprintf("Tally could not deliver an event to %s after %d attempts. The last attempt failed: %s\n\n"+
++				"The endpoint is still enabled, so later events are still sent to it. Check that it answers with a 2xx status.\n",
++				ep.URL, maxAttempts, lastErr),
++		}))
++	}
++	return errors.Join(errs...)
++}
++
++// claimFailureEmail records that the owners are being emailed about an endpoint, and reports whether they may be: not when
++// they were emailed about it less than failureEmailInterval ago.
++func (s *Service) claimFailureEmail(orgID, endpointID string, now time.Time) bool {
++	claimed := false
++	_, err := s.store.UpdateWebhookEndpoint(orgID, endpointID, func(ep *store.WebhookEndpoint) error {
++		if ep.FailureEmailAt != nil && now.Sub(*ep.FailureEmailAt) < failureEmailInterval {
++			return nil
+ 		}
++		at := now
++		ep.FailureEmailAt = &at
++		claimed = true
+ 		return nil
+ 	})
++	return err == nil && claimed
+ }
+ 
+ // send POSTs the event to the endpoint and returns the response status and, when it failed, why.
+diff --git a/start/internal/webhooks/webhooks_test.go b/result/internal/webhooks/webhooks_test.go
+index a9062c7..93fc7ba 100644
+--- a/start/internal/webhooks/webhooks_test.go
++++ b/result/internal/webhooks/webhooks_test.go
+@@ -6,6 +6,7 @@ import (
+ 	"errors"
+ 	"net/http"
+ 	"testing"
++	"time"
+ 
+ 	"example.com/tally/internal/apitest"
+ 	"example.com/tally/internal/store"
+@@ -83,7 +84,7 @@ func TestPublishAndDeliver(t *testing.T) {
+ 	for _, ep := range []store.WebhookEndpoint{all, paid} {
+ 		ds := e.Store.Deliveries(e.Acme.ID, ep.ID)
+ 		last := ds[len(ds)-1]
+-		if last.Status != store.DeliveryFailed || last.ResponseStatus != 500 || last.Error == "" {
++		if last.Status != store.DeliveryPending || last.NextAttemptAt == nil || !last.NextAttemptAt.Equal(now.Add(time.Minute)) || last.ResponseStatus != 500 || last.Error == "" {
+ 			t.Fatalf("delivery to %s = %+v", ep.URL, last)
+ 		}
+ 	}

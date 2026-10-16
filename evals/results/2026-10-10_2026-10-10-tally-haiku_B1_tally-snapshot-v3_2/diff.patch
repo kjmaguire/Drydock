@@ -1,0 +1,828 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..9854200 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -437,3 +437,25 @@ func TestOrgSettings(t *testing.T) {
+ 		t.Fatalf("a member changes the org: %s", r)
+ 	}
+ }
++
++func TestInvoiceNumbersInAnswers(t *testing.T) {
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	body := map[string]any{"customer_id": c.ID, "currency": "USD", "lines": []map[string]any{{"description": "Seats", "quantity": 1, "unit_amount": 500}}}
++	var first, second store.Invoice
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, body, &first)
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", e.Acme.Key, body, &second)
++	if first.Number != "INV-000001" || second.Number != "INV-000002" {
++		t.Fatalf("numbers = %q, %q", first.Number, second.Number)
++	}
++	var got store.Invoice
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+second.ID, e.Acme.Key, nil, &got)
++	if got.Number != "INV-000002" {
++		t.Fatalf("GET shows %q", got.Number)
++	}
++	var list struct{ Items []store.Invoice }
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices", e.Acme.Key, nil, &list)
++	if len(list.Items) != 2 || list.Items[0].Number != "INV-000001" {
++		t.Fatalf("list = %+v", list.Items)
++	}
++}
+diff --git a/start/internal/snapshot/snapshot.go b/result/internal/snapshot/snapshot.go
+index 54a6141..067decd 100644
+--- a/start/internal/snapshot/snapshot.go
++++ b/result/internal/snapshot/snapshot.go
+@@ -1,37 +1,43 @@
+ // Package snapshot saves the store to a JSON file and loads it back, so the server keeps its data across restarts. The
+-// file carries a version; files written by older versions of Tally are migrated when they are loaded.
++// file carries a version; files written by older versions of Tally are migrated when they are loaded, and Upgrade rewrites
++// them in place. Save replaces the file atomically, so a crash leaves either the old snapshot or the new one.
+ package snapshot
+ 
+ import (
++	"bytes"
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"io/fs"
+ 	"os"
++	"path/filepath"
+ 	"time"
+ 
+ 	"example.com/tally/internal/money"
+ 	"example.com/tally/internal/store"
+ )
+ 
+-// Version is the version Save writes.
+-const Version = 2
++// Version is the version Save writes. Version 3 numbers the invoices and keeps each organization's next invoice number.
++const Version = 3
+ 
+-// ErrUnsupportedVersion is returned for a file of a version Load cannot read.
++// ErrUnsupportedVersion is returned for a file of a version this package cannot read.
+ var ErrUnsupportedVersion = errors.New("unsupported snapshot version")
+ 
+-type fileV2 struct {
++// file is the layout of versions 2 and 3. Version 3 adds the invoice numbers and the next numbers, in the state.
++type file struct {
+ 	Version int         `json:"version"`
+ 	SavedAt time.Time   `json:"saved_at"`
+ 	State   store.State `json:"state"`
+ }
+ 
+-// Save writes everything in st to path.
++// Save writes everything in st to path. The file is written to a temporary file in the same folder, which replaces path
++// once it is complete.
+ func Save(st *store.Store, path string, now time.Time) error {
+-	b, err := json.MarshalIndent(fileV2{Version: Version, SavedAt: now.UTC(), State: st.Export()}, "", "  ")
++	b, err := encode(st.Export(), now)
+ 	if err != nil {
+ 		return err
+ 	}
+-	return os.WriteFile(path, append(b, '\n'), 0o600)
++	return writeFileAtomic(path, b)
+ }
+ 
+ // Load reads a snapshot written by Save, or by an older version of Tally, and returns a store holding it.
+@@ -40,28 +46,127 @@ func Load(path string) (*store.Store, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	st, _, err := decode(b)
++	if err != nil {
++		return nil, fmt.Errorf("snapshot %s: %w", path, err)
++	}
++	s, err := store.FromState(st)
++	if err != nil {
++		return nil, fmt.Errorf("snapshot %s: %w", path, err)
++	}
++	return s, nil
++}
++
++// Upgrade rewrites the snapshot at path as version 3. Before that, the original is copied byte for byte to
++// "<path>.v<old version>.bak", for example tally.json.v2.bak. A version 3 file is left alone, without a backup. A file of a
++// newer version fails with ErrUnsupportedVersion and is not touched.
++func Upgrade(path string) error {
++	b, err := os.ReadFile(path)
++	if err != nil {
++		return err
++	}
++	st, version, err := decode(b)
++	if err != nil {
++		return fmt.Errorf("snapshot %s: %w", path, err)
++	}
++	if version == Version {
++		return nil
++	}
++	// Number the invoices and check the state the way Load would before anything is written.
++	s, err := store.FromState(st)
++	if err != nil {
++		return fmt.Errorf("snapshot %s: %w", path, err)
++	}
++	if err := writeBackup(fmt.Sprintf("%s.v%d.bak", path, version), b); err != nil {
++		return err
++	}
++	out, err := encode(s.Export(), time.Now())
++	if err != nil {
++		return err
++	}
++	return writeFileAtomic(path, out)
++}
++
++// decode reads a snapshot of any version this package reads, and returns its state and version. The invoices of a version
++// 1 or 2 snapshot have no numbers; store.FromState gives them some.
++func decode(b []byte) (store.State, int, error) {
+ 	var head struct {
+ 		Version int `json:"version"`
+ 	}
+ 	if err := json.Unmarshal(b, &head); err != nil {
+-		return nil, fmt.Errorf("snapshot %s: %w", path, err)
++		return store.State{}, 0, err
+ 	}
+-	var st store.State
+ 	switch head.Version {
+ 	case 1:
+-		if st, err = migrateV1(b); err != nil {
+-			return nil, fmt.Errorf("snapshot %s: version 1: %w", path, err)
++		st, err := migrateV1(b)
++		if err != nil {
++			return store.State{}, 1, fmt.Errorf("version 1: %w", err)
+ 		}
+-	case 2:
+-		var f fileV2
++		return st, 1, nil
++	case 2, 3:
++		var f file
+ 		if err := json.Unmarshal(b, &f); err != nil {
+-			return nil, fmt.Errorf("snapshot %s: %w", path, err)
++			return store.State{}, head.Version, err
+ 		}
+-		st = f.State
+-	default:
+-		return nil, fmt.Errorf("snapshot %s: %w %d", path, ErrUnsupportedVersion, head.Version)
++		return f.State, head.Version, nil
++	}
++	return store.State{}, head.Version, fmt.Errorf("%w %d", ErrUnsupportedVersion, head.Version)
++}
++
++func encode(st store.State, now time.Time) ([]byte, error) {
++	b, err := json.MarshalIndent(file{Version: Version, SavedAt: now.UTC(), State: st}, "", "  ")
++	if err != nil {
++		return nil, err
++	}
++	return append(b, '\n'), nil
++}
++
++// writeFileAtomic replaces path with data. It writes a temporary file beside path, flushes it to disk and renames it over
++// path, so that path is always either the old file or the whole new one. The temporary file is removed on failure.
++func writeFileAtomic(path string, data []byte) (err error) {
++	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
++	if err != nil {
++		return err
++	}
++	defer func() {
++		if err != nil {
++			_ = f.Close()
++			_ = os.Remove(f.Name())
++		}
++	}()
++	if _, err := f.Write(data); err != nil {
++		return err
++	}
++	if err := f.Sync(); err != nil {
++		return err
++	}
++	if err := f.Close(); err != nil {
++		return err
++	}
++	if err := os.Rename(f.Name(), path); err != nil {
++		return err
++	}
++	// Make the rename itself durable. Not every platform can sync a directory, so the error is ignored.
++	if d, err := os.Open(filepath.Dir(path)); err == nil {
++		_ = d.Sync()
++		_ = d.Close()
++	}
++	return nil
++}
++
++// writeBackup writes the original bytes of an upgraded snapshot to path. A backup that already holds the same bytes, from an
++// upgrade that was interrupted, is kept; a different one is not overwritten.
++func writeBackup(path string, b []byte) error {
++	old, err := os.ReadFile(path)
++	switch {
++	case err == nil && bytes.Equal(old, b):
++		return nil
++	case err == nil:
++		return fmt.Errorf("backup %s already exists and differs from the snapshot; move it aside and retry", path)
++	case !errors.Is(err, fs.ErrNotExist):
++		return err
+ 	}
+-	return store.FromState(st)
++	return writeFileAtomic(path, b)
+ }
+ 
+ // Version 1 (Tally 0.x) kept the state at the top level. Organizations had no plan or time zone, customers had a
+diff --git a/start/internal/snapshot/snapshot_test.go b/result/internal/snapshot/snapshot_test.go
+index 5bc2a37..4d9dfb3 100644
+--- a/start/internal/snapshot/snapshot_test.go
++++ b/result/internal/snapshot/snapshot_test.go
+@@ -1,10 +1,13 @@
+ package snapshot
+ 
+ import (
++	"bytes"
++	"encoding/json"
+ 	"errors"
+ 	"os"
+ 	"path/filepath"
+ 	"reflect"
++	"strings"
+ 	"testing"
+ 	"time"
+ 
+@@ -59,7 +62,7 @@ func TestLoadVersion1(t *testing.T) {
+ 		t.Fatalf("key = %+v", k)
+ 	}
+ 	inv, ok := st.Invoice(o.ID, "in_000007")
+-	if !ok || inv.Lines[0].UnitAmount != 1999 || inv.Status != store.InvoicePaid {
++	if !ok || inv.Lines[0].UnitAmount != 1999 || inv.Status != store.InvoicePaid || inv.Number != "INV-000001" {
+ 		t.Fatalf("invoice = %+v", inv)
+ 	}
+ 	next, err := st.CreateCustomer(o.ID, "New", "new@example.com", time.Now())
+@@ -80,3 +83,237 @@ func TestLoadRefusesUnknownVersions(t *testing.T) {
+ 		t.Fatalf("missing file: %v", err)
+ 	}
+ }
++
++func TestSaveWritesVersion3WithInvoiceNumbers(t *testing.T) {
++	now := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
++	st := store.New()
++	o, _ := st.CreateOrg("A", store.OrgTeam, "UTC", 0, now)
++	c, _ := st.CreateCustomer(o.ID, "Jane", "jane@example.com", now)
++	line := []store.Line{{Description: "x", Quantity: 1, UnitAmount: 100}}
++	_, _ = st.CreateInvoice(store.Invoice{OrgID: o.ID, CustomerID: c.ID, Currency: money.USD, Lines: line}, now)
++	_, _ = st.CreateInvoice(store.Invoice{OrgID: o.ID, CustomerID: c.ID, Currency: money.USD, Lines: line}, now.Add(time.Minute))
++
++	path := filepath.Join(t.TempDir(), "tally.json")
++	if err := Save(st, path, now); err != nil {
++		t.Fatal(err)
++	}
++	b, _ := os.ReadFile(path)
++	var f struct {
++		Version int `json:"version"`
++		State   struct {
++			NextInvoiceNumbers map[string]int `json:"next_invoice_numbers"`
++		} `json:"state"`
++	}
++	if err := json.Unmarshal(b, &f); err != nil {
++		t.Fatal(err)
++	}
++	if f.Version != 3 || f.State.NextInvoiceNumbers[o.ID] != 3 || !strings.Contains(string(b), `"number": "INV-000002"`) {
++		t.Fatalf("version %d, next numbers %v", f.Version, f.State.NextInvoiceNumbers)
++	}
++}
++
++func TestSaveLeavesNoTemporaryFile(t *testing.T) {
++	now := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	if err := os.WriteFile(path, []byte("old contents that are not a snapshot"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if err := Save(store.New(), path, now); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := Load(path); err != nil {
++		t.Fatalf("the saved file does not load: %v", err)
++	}
++	assertFiles(t, dir, "tally.json")
++}
++
++func TestSaveFailureKeepsTheOldFileAndLeavesNoTemporaryFile(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	if err := os.Mkdir(path, 0o700); err != nil { // renaming a file over a directory fails
++		t.Fatal(err)
++	}
++	if err := Save(store.New(), path, time.Now()); err == nil {
++		t.Fatal("Save over a directory succeeded")
++	}
++	assertFiles(t, dir, "tally.json")
++}
++
++func TestUpgradeVersion2(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	orig := readTestdata(t, "v2.json")
++	writeFile(t, path, orig)
++
++	if err := Upgrade(path); err != nil {
++		t.Fatal(err)
++	}
++	if bak := readFile(t, path+".v2.bak"); !bytes.Equal(bak, orig) {
++		t.Fatal("the backup is not a copy of the original")
++	}
++	if v := version(t, path); v != 3 {
++		t.Fatalf("version after the upgrade = %d", v)
++	}
++	before, err := Load(filepath.Join("testdata", "v2.json"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	after, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !reflect.DeepEqual(after.Export(), before.Export()) {
++		t.Fatal("the upgrade changed the data")
++	}
++
++	if err := Upgrade(path); err != nil {
++		t.Fatalf("upgrading a version 3 file: %v", err)
++	}
++	assertFiles(t, dir, "tally.json", "tally.json.v2.bak")
++}
++
++func TestUpgradeVersion1(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	orig := readTestdata(t, "v1.json")
++	writeFile(t, path, orig)
++
++	if err := Upgrade(path); err != nil {
++		t.Fatal(err)
++	}
++	if bak := readFile(t, path+".v1.bak"); !bytes.Equal(bak, orig) {
++		t.Fatal("the backup is not a copy of the original")
++	}
++	if v := version(t, path); v != 3 {
++		t.Fatalf("version after the upgrade = %d", v)
++	}
++	st, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if inv, ok := st.Invoice("org_000001", "in_000007"); !ok || inv.Number != "INV-000001" {
++		t.Fatalf("invoice = %+v", inv)
++	}
++}
++
++func TestUpgradeLeavesVersion3Alone(t *testing.T) {
++	now := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	if err := Save(store.New(), path, now); err != nil {
++		t.Fatal(err)
++	}
++	orig := readFile(t, path)
++	if err := Upgrade(path); err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(readFile(t, path), orig) {
++		t.Fatal("a version 3 file was rewritten")
++	}
++	assertFiles(t, dir, "tally.json")
++}
++
++func TestUpgradeRefusesNewerVersions(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	orig := []byte(`{"version": 4, "state": {"seq": 1}}`)
++	writeFile(t, path, orig)
++	if err := Upgrade(path); !errors.Is(err, ErrUnsupportedVersion) {
++		t.Fatalf("err = %v", err)
++	}
++	if !bytes.Equal(readFile(t, path), orig) {
++		t.Fatal("a newer file was changed")
++	}
++	assertFiles(t, dir, "tally.json")
++}
++
++func TestUpgradeKeepsADifferentBackup(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	orig := readTestdata(t, "v2.json")
++	writeFile(t, path, orig)
++	writeFile(t, path+".v2.bak", []byte("an earlier backup"))
++	if err := Upgrade(path); err == nil {
++		t.Fatal("Upgrade overwrote a different backup")
++	}
++	if !bytes.Equal(readFile(t, path), orig) || string(readFile(t, path+".v2.bak")) != "an earlier backup" {
++		t.Fatal("files changed after a refused upgrade")
++	}
++}
++
++func TestLoadVersion2NumbersInvoicesInCreationOrder(t *testing.T) {
++	st, err := Load(filepath.Join("testdata", "v2.json"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Per organization, by created_at and then ID: in_000005 and in_000006 were created at the same time, in_000003 later.
++	want := []struct{ org, id, number string }{
++		{"org_000001", "in_000005", "INV-000001"},
++		{"org_000001", "in_000006", "INV-000002"},
++		{"org_000001", "in_000003", "INV-000003"},
++		{"org_000002", "in_000004", "INV-000001"},
++	}
++	for _, w := range want {
++		inv, ok := st.Invoice(w.org, w.id)
++		if !ok || inv.Number != w.number {
++			t.Fatalf("invoice %s = %+v, want number %s", w.id, inv, w.number)
++		}
++	}
++	next, err := st.CreateInvoice(store.Invoice{OrgID: "org_000001", CustomerID: "cus_000007", Currency: money.USD, Lines: []store.Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, time.Now())
++	if err != nil || next.Number != "INV-000004" {
++		t.Fatalf("next invoice = %+v, %v", next, err)
++	}
++	other, err := st.CreateInvoice(store.Invoice{OrgID: "org_000002", CustomerID: "cus_000008", Currency: money.USD, Lines: []store.Line{{Description: "x", Quantity: 1, UnitAmount: 1}}}, time.Now())
++	if err != nil || other.Number != "INV-000002" {
++		t.Fatalf("the other organization's next invoice = %+v, %v", other, err)
++	}
++}
++
++func readTestdata(t *testing.T, name string) []byte {
++	t.Helper()
++	return readFile(t, filepath.Join("testdata", name))
++}
++
++func readFile(t *testing.T, path string) []byte {
++	t.Helper()
++	b, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return b
++}
++
++func writeFile(t *testing.T, path string, b []byte) {
++	t.Helper()
++	if err := os.WriteFile(path, b, 0o600); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func version(t *testing.T, path string) int {
++	t.Helper()
++	var head struct {
++		Version int `json:"version"`
++	}
++	if err := json.Unmarshal(readFile(t, path), &head); err != nil {
++		t.Fatal(err)
++	}
++	return head.Version
++}
++
++// assertFiles checks that dir holds exactly the named files, so no temporary file was left behind.
++func assertFiles(t *testing.T, dir string, names ...string) {
++	t.Helper()
++	entries, err := os.ReadDir(dir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var got []string
++	for _, e := range entries {
++		got = append(got, e.Name())
++	}
++	if !reflect.DeepEqual(got, names) {
++		t.Fatalf("files in %s = %v, want %v", dir, got, names)
++	}
++}
+diff --git a/result/internal/snapshot/testdata/v2.json b/result/internal/snapshot/testdata/v2.json
+new file mode 100644
+index 0000000..2676b11
+--- /dev/null
++++ b/result/internal/snapshot/testdata/v2.json
+@@ -0,0 +1,29 @@
++{
++  "version": 2,
++  "saved_at": "2024-06-04T08:00:00Z",
++  "state": {
++    "seq": 8,
++    "orgs": [
++      {"id": "org_000001", "name": "Acme", "plan": "team", "time_zone": "UTC", "tax_rate_bp": 0, "created_at": "2024-05-01T09:00:00Z"},
++      {"id": "org_000002", "name": "Globex", "plan": "free", "time_zone": "UTC", "tax_rate_bp": 0, "created_at": "2024-05-01T09:00:00Z"}
++    ],
++    "customers": [
++      {"id": "cus_000007", "org_id": "org_000001", "name": "Jane", "email": "jane@acme.example", "created_at": "2024-05-02T10:00:00Z"},
++      {"id": "cus_000008", "org_id": "org_000002", "name": "Joe", "email": "joe@globex.example", "created_at": "2024-05-02T10:00:00Z"}
++    ],
++    "invoices": [
++      {"id": "in_000003", "org_id": "org_000001", "customer_id": "cus_000007", "currency": "USD",
++       "lines": [{"description": "Starter", "quantity": 1, "unit_amount": 1000}], "discount_percent": 0, "tax_rate_bp": 0,
++       "status": "open", "created_at": "2024-06-03T10:00:00Z"},
++      {"id": "in_000004", "org_id": "org_000002", "customer_id": "cus_000008", "currency": "USD",
++       "lines": [{"description": "Pro", "quantity": 2, "unit_amount": 500}], "discount_percent": 0, "tax_rate_bp": 0,
++       "status": "paid", "created_at": "2024-06-01T10:00:00Z", "paid_at": "2024-06-01T10:00:01Z"},
++      {"id": "in_000005", "org_id": "org_000001", "customer_id": "cus_000007", "currency": "USD",
++       "lines": [{"description": "Starter", "quantity": 1, "unit_amount": 1000}], "discount_percent": 0, "tax_rate_bp": 0,
++       "status": "paid", "created_at": "2024-06-01T10:00:00Z", "paid_at": "2024-06-01T10:00:01Z"},
++      {"id": "in_000006", "org_id": "org_000001", "customer_id": "cus_000007", "currency": "USD",
++       "lines": [{"description": "Add-on", "quantity": 1, "unit_amount": 250}], "discount_percent": 0, "tax_rate_bp": 0,
++       "status": "void", "created_at": "2024-06-01T10:00:00Z", "voided_at": "2024-06-02T10:00:00Z"}
++    ]
++  }
++}
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..b28f2c5 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -2,6 +2,7 @@ package store
+ 
+ import (
+ 	"encoding/json"
++	"fmt"
+ 	"sort"
+ 	"strings"
+ 	"time"
+@@ -268,6 +269,7 @@ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 		return Invoice{}, ErrCustomerOrgMismatch
+ 	}
+ 	inv.ID = s.newID("in")
++	inv.Number = s.takeInvoiceNumber(inv.OrgID)
+ 	inv.TaxRateBP = org.TaxRateBP
+ 	inv.Status = InvoiceOpen
+ 	inv.CreatedAt = now.UTC()
+@@ -277,6 +279,40 @@ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 	return copyInvoice(inv), nil
+ }
+ 
++// InvoiceNumber is the number of an organization's nth invoice, for example "INV-000042".
++func InvoiceNumber(n int) string { return fmt.Sprintf("INV-%06d", n) }
++
++// parseInvoiceNumber reads a number that InvoiceNumber wrote.
++func parseInvoiceNumber(s string) (int, bool) {
++	digits, ok := strings.CutPrefix(s, "INV-")
++	if !ok || digits == "" || len(digits) > 18 {
++		return 0, false
++	}
++	n := 0
++	for _, c := range digits {
++		if c < '0' || c > '9' {
++			return 0, false
++		}
++		n = n*10 + int(c-'0')
++	}
++	return n, n > 0
++}
++
++// nextInvoiceNumber is the number the organization's next invoice gets. The caller holds the lock.
++func (s *Store) nextInvoiceNumber(orgID string) int {
++	if n := s.invoiceNext[orgID]; n > 0 {
++		return n
++	}
++	return 1
++}
++
++// takeInvoiceNumber gives the organization's next invoice its number. The caller holds the lock.
++func (s *Store) takeInvoiceNumber(orgID string) string {
++	n := s.nextInvoiceNumber(orgID)
++	s.invoiceNext[orgID] = n + 1
++	return InvoiceNumber(n)
++}
++
+ // Invoice returns one of an organization's invoices.
+ func (s *Store) Invoice(orgID, id string) (Invoice, bool) {
+ 	s.mu.Lock()
+@@ -343,7 +379,7 @@ func (s *Store) UpdateInvoice(orgID, id string, f func(*Invoice) error) (Invoice
+ 	if err := f(&inv); err != nil {
+ 		return Invoice{}, err
+ 	}
+-	inv.ID, inv.OrgID, inv.CustomerID, inv.SubscriptionID, inv.Currency, inv.CreatedAt = old.ID, old.OrgID, old.CustomerID, old.SubscriptionID, old.Currency, old.CreatedAt
++	inv.ID, inv.Number, inv.OrgID, inv.CustomerID, inv.SubscriptionID, inv.Currency, inv.CreatedAt = old.ID, old.Number, old.OrgID, old.CustomerID, old.SubscriptionID, old.Currency, old.CreatedAt
+ 	s.invoices[id] = copyInvoice(inv)
+ 	return copyInvoice(inv), nil
+ }
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..b80563d 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -22,15 +22,19 @@ type State struct {
+ 	WebhookEndpoints []WebhookEndpoint `json:"webhook_endpoints"`
+ 	Events           []Event           `json:"events"`
+ 	Deliveries       []Delivery        `json:"deliveries"`
++	// NextInvoiceNumbers is each organization's next invoice number. A state without invoice numbers (from a version 1 or 2
++	// snapshot) has its invoices numbered by FromState.
++	NextInvoiceNumbers map[string]int `json:"next_invoice_numbers"`
+ }
+ 
+ // Export returns a copy of everything in the store.
+ func (s *Store) Export() State {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	st := State{Seq: s.seq}
++	st := State{Seq: s.seq, NextInvoiceNumbers: map[string]int{}}
+ 	for _, o := range s.orgs {
+ 		st.Orgs = append(st.Orgs, o)
++		st.NextInvoiceNumbers[o.ID] = s.nextInvoiceNumber(o.ID)
+ 	}
+ 	for _, u := range s.users {
+ 		st.Users = append(st.Users, u)
+@@ -166,6 +170,18 @@ func FromState(st State) (*Store, error) {
+ 		}
+ 		s.invoices[inv.ID] = copyInvoice(inv)
+ 	}
++	for orgID, n := range st.NextInvoiceNumbers {
++		if _, ok := s.orgs[orgID]; !ok {
++			return nil, fmt.Errorf("%w: invoice numbers of unknown organization %q", ErrInvalid, orgID)
++		}
++		if n < 1 {
++			return nil, invalid("organization %q has the next invoice number %d", orgID, n)
++		}
++		s.invoiceNext[orgID] = n
++	}
++	if err := s.numberInvoices(); err != nil {
++		return nil, err
++	}
+ 	for _, p := range st.Payments {
+ 		if err := dup("payment", p.ID, seen); err != nil {
+ 			return nil, err
+@@ -192,3 +208,41 @@ func FromState(st State) (*Store, error) {
+ 	}
+ 	return s, nil
+ }
++
++// numberInvoices checks the invoice numbers of a loaded state. A number is never handed out twice, so the next number of an
++// organization is always after its highest. Invoices without a number (from a version 1 or 2 snapshot) get the next numbers
++// of their organizations, in creation order.
++func (s *Store) numberInvoices() error {
++	type orgNumber struct {
++		org string
++		n   int
++	}
++	taken := map[orgNumber]bool{}
++	var unnumbered []Invoice
++	for _, inv := range s.invoices {
++		if inv.Number == "" {
++			unnumbered = append(unnumbered, inv)
++			continue
++		}
++		n, ok := parseInvoiceNumber(inv.Number)
++		k := orgNumber{inv.OrgID, n}
++		if !ok || taken[k] {
++			return invalid("invoice %q has the number %q, which is malformed or repeated", inv.ID, inv.Number)
++		}
++		taken[k] = true
++		if n >= s.invoiceNext[inv.OrgID] {
++			s.invoiceNext[inv.OrgID] = n + 1
++		}
++	}
++	sort.Slice(unnumbered, func(i, j int) bool {
++		if !unnumbered[i].CreatedAt.Equal(unnumbered[j].CreatedAt) {
++			return unnumbered[i].CreatedAt.Before(unnumbered[j].CreatedAt)
++		}
++		return unnumbered[i].ID < unnumbered[j].ID
++	})
++	for _, inv := range unnumbered {
++		inv.Number = s.takeInvoiceNumber(inv.OrgID)
++		s.invoices[inv.ID] = inv
++	}
++	return nil
++}
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..beea839 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -51,6 +51,9 @@ type Store struct {
+ 	endpoints map[string]WebhookEndpoint
+ 	events    map[string]Event
+ 	delivs    map[string]Delivery
++
++	// invoiceNext is the number each organization's next invoice gets; an organization without an entry has 1.
++	invoiceNext map[string]int
+ }
+ 
+ type memberKey struct{ org, user string }
+@@ -63,6 +66,7 @@ func New() *Store {
+ 		customers: map[string]Customer{}, customersByEmail: map[string]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
++		invoiceNext: map[string]int{},
+ 	}
+ }
+ 
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..d3398b6 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -255,3 +255,103 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestInvoiceNumbers(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	b := newOrg(t, s, "B")
++	ca, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	cb, _ := s.CreateCustomer(b.ID, "Joe", "joe@example.com", t0)
++	line := []Line{{Description: "x", Quantity: 1, UnitAmount: 100}}
++	mk := func(org, cus string) Invoice {
++		inv, err := s.CreateInvoice(Invoice{OrgID: org, CustomerID: cus, Currency: money.USD, Lines: line, Number: "INV-999999"}, t0)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return inv
++	}
++	first := mk(a.ID, ca.ID)
++	second := mk(a.ID, ca.ID)
++	other := mk(b.ID, cb.ID)
++	if first.Number != "INV-000001" || second.Number != "INV-000002" || other.Number != "INV-000001" {
++		t.Fatalf("numbers = %q, %q, %q", first.Number, second.Number, other.Number)
++	}
++	if _, err := s.CreateInvoice(Invoice{OrgID: a.ID, CustomerID: cb.ID, Currency: money.USD, Lines: line}, t0); !errors.Is(err, ErrCustomerOrgMismatch) {
++		t.Fatalf("err = %v", err)
++	}
++	third := mk(a.ID, ca.ID)
++	if third.Number != "INV-000003" {
++		t.Fatalf("a refused invoice used a number: %q", third.Number)
++	}
++	updated, err := s.UpdateInvoice(a.ID, first.ID, func(i *Invoice) error { i.Number = "INV-000042"; i.Status = InvoicePaid; return nil })
++	if err != nil || updated.Number != "INV-000001" {
++		t.Fatalf("UpdateInvoice changed the number: %+v, %v", updated, err)
++	}
++	if got := mk(a.ID, ca.ID); got.Number != "INV-000004" {
++		t.Fatalf("number after an update = %q", got.Number)
++	}
++}
++
++func TestFromStateNumbersInvoices(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	c, _ := s.CreateCustomer(a.ID, "Jane", "jane@example.com", t0)
++	line := []Line{{Description: "x", Quantity: 1, UnitAmount: 100}}
++	_, _ = s.CreateInvoice(Invoice{OrgID: a.ID, CustomerID: c.ID, Currency: money.USD, Lines: line}, t0)
++	st := s.Export()
++	if st.NextInvoiceNumbers[a.ID] != 2 {
++		t.Fatalf("next invoice number = %d", st.NextInvoiceNumbers[a.ID])
++	}
++
++	// A stored next number that is behind the invoices is moved past them, so no number is handed out twice.
++	st.NextInvoiceNumbers[a.ID] = 1
++	st.Invoices[0].Number = "INV-000005"
++	s2, err := FromState(st)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if inv, _ := s2.CreateInvoice(Invoice{OrgID: a.ID, CustomerID: c.ID, Currency: money.USD, Lines: line}, t0); inv.Number != "INV-000006" {
++		t.Fatalf("next number = %q", inv.Number)
++	}
++
++	// Numbers that are malformed or repeated within an organization are refused.
++	for _, num := range []string{"INV-0", "inv-000002", "INV-00000x", "INV-000000", "INV-+00002"} {
++		st := s.Export()
++		st.Invoices[0].Number = num
++		if _, err := FromState(st); !errors.Is(err, ErrInvalid) {
++			t.Fatalf("number %q was accepted: %v", num, err)
++		}
++	}
++	st = s.Export()
++	dup := st.Invoices[0]
++	dup.ID = "in_999999"
++	st.Invoices = append(st.Invoices, dup)
++	if _, err := FromState(st); !errors.Is(err, ErrInvalid) {
++		t.Fatalf("a repeated number was accepted: %v", err)
++	}
++	st = s.Export()
++	st.NextInvoiceNumbers[a.ID] = 0
++	if _, err := FromState(st); !errors.Is(err, ErrInvalid) {
++		t.Fatalf("next number 0 was accepted: %v", err)
++	}
++
++	// Invoices without numbers, as in a version 1 or 2 snapshot, are numbered in creation order.
++	st = s.Export()
++	st.NextInvoiceNumbers = nil
++	st.Invoices[0].Number = ""
++	later, _ := s.CreateInvoice(Invoice{OrgID: a.ID, CustomerID: c.ID, Currency: money.USD, Lines: line}, t0.Add(time.Hour))
++	st.Invoices = append(st.Invoices, copyInvoice(later))
++	st.Invoices[len(st.Invoices)-1].Number = ""
++	st.Invoices[len(st.Invoices)-1].CreatedAt = t0.Add(-time.Hour)
++	s3, err := FromState(st)
++	if err != nil {
++		t.Fatal(err)
++	}
++	early, _ := s3.Invoice(a.ID, later.ID)
++	if early.Number != "INV-000001" {
++		t.Fatalf("earlier invoice = %q", early.Number)
++	}
++	if inv := s3.ListInvoices(a.ID, InvoiceFilter{}); inv[0].Number != "INV-000001" || inv[1].Number != "INV-000002" {
++		t.Fatalf("numbers = %q, %q", inv[0].Number, inv[1].Number)
++	}
++}
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..d5857d0 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -189,9 +189,11 @@ const (
+ 	InvoiceVoid InvoiceStatus = "void"
+ )
+ 
+-// Invoice is a bill to a customer.
++// Invoice is a bill to a customer. Its Number ("INV-000001") is the organization's, given at creation in order and never
++// reused.
+ type Invoice struct {
+ 	ID              string         `json:"id"`
++	Number          string         `json:"number"`
+ 	OrgID           string         `json:"org_id"`
+ 	CustomerID      string         `json:"customer_id"`
+ 	SubscriptionID  string         `json:"subscription_id,omitempty"`

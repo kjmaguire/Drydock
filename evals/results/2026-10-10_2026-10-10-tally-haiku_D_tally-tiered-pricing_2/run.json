@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-tiered-pricing",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "6fe89c3e00a252db27a6822098cd3991bd432f56",
+  "startedAt": "2026-10-10T05:19:56.738291062Z",
+  "wallMs": 293337,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1235,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1827,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.013s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.002s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.003s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.003s\nok  \texample.com/tally/internal/snapshot\t0.015s\nok  \texample.com/tally/internal/store\t0.004s\nok  \texample.com/tally/internal/subscriptions\t0.005s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 3074
+  },
+  "costUsd": 0.08702637,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 72,
+    "output": 59586,
+    "cacheRead": 2174797,
+    "cacheWrite": 177391
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_e5386858c823",
+      "feedback": "internal/api/plans.go (tierIn.UpTo, parseTiers, createPlan): a non-whole or non-numeric up_to such as 10.5 or \"10\" fails the whole-body JSON decode and returns 400 invalid_json. The spec requires invalid tiers, including a non-whole up_to, to return 422 invalid_tiers. Accept up_to as a raw/untyped value, validate it in parseTiers (null = no limit, otherwise a positive whole number), and return invalid_tiers on failure. Add an API test for up_to: 10.5 expecting 422 invalid_tiers. Everything else checked out: TieredAmount matches the spec, the renewal line and no-usage handling are correct, UpdatePlan keeps tiers immutable, and respond.go maps ErrInvalidTiers before ErrInvalid."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_e5386858c823"
+    }
+  ],
+  "coreTaskId": "task_a82bcc42bd43"
+}

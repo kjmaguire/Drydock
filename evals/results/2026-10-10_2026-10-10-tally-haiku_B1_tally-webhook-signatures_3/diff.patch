@@ -1,0 +1,603 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..ed6dc36 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -437,3 +437,33 @@ func TestOrgSettings(t *testing.T) {
+ 		t.Fatalf("a member changes the org: %s", r)
+ 	}
+ }
++
++func TestRotateSecretAccess(t *testing.T) {
++	e := apitest.New(t)
++	var ep store.WebhookEndpoint
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", e.Acme.Key, map[string]any{"url": "https://hooks.acme.example/tally", "events": []string{"*"}}, &ep)
++	path := "/v1/webhook-endpoints/" + ep.ID + "/rotate-secret"
++	_, viewer := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++	if r := e.Do("POST", path, "", nil); r.Code != http.StatusUnauthorized {
++		t.Fatalf("no key: %s", r)
++	}
++	if r := e.Do("POST", path, viewer, nil); r.Code != http.StatusForbidden {
++		t.Fatalf("viewer: %s", r)
++	}
++	if r := e.Do("POST", "/v1/webhook-endpoints/we_missing/rotate-secret", e.Acme.Key, nil); r.Code != http.StatusNotFound {
++		t.Fatalf("unknown endpoint: %s", r)
++	}
++	if r := e.Do("POST", path, e.Globex.Key, nil); r.Code != http.StatusNotFound {
++		t.Fatalf("another organization's endpoint: %s", r)
++	}
++	var rotated store.WebhookEndpoint
++	e.MustDo(http.StatusOK, "POST", path, e.Acme.Key, nil, &rotated)
++	if rotated.Secret == ep.Secret || !strings.HasPrefix(rotated.Secret, "whsec_") {
++		t.Fatalf("rotated = %+v", rotated)
++	}
++	var got store.WebhookEndpoint
++	e.MustDo(http.StatusOK, "GET", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, nil, &got)
++	if got.Secret != rotated.Secret {
++		t.Fatalf("GET shows %q, want the rotated secret", got.Secret)
++	}
++}
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..8a4a906 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -129,6 +129,7 @@ func (s *Server) routes() {
+ 	m.HandleFunc("POST /v1/webhook-endpoints", s.authed(s.createEndpoint))
+ 	m.HandleFunc("GET /v1/webhook-endpoints/{id}", s.authed(s.getEndpoint))
+ 	m.HandleFunc("PATCH /v1/webhook-endpoints/{id}", s.authed(s.updateEndpoint))
++	m.HandleFunc("POST /v1/webhook-endpoints/{id}/rotate-secret", s.authed(s.rotateEndpointSecret))
+ 	m.HandleFunc("DELETE /v1/webhook-endpoints/{id}", s.authed(s.deleteEndpoint))
+ 	m.HandleFunc("GET /v1/webhook-endpoints/{id}/deliveries", s.authed(s.listDeliveries))
+ 	m.HandleFunc("GET /v1/events", s.authed(s.listEvents))
+diff --git a/start/internal/api/webhooks.go b/result/internal/api/webhooks.go
+index 91c6e0a..cdb3717 100644
+--- a/start/internal/api/webhooks.go
++++ b/result/internal/api/webhooks.go
+@@ -20,8 +20,18 @@ func (s *Server) hookError(w http.ResponseWriter, err error) {
+ 	}
+ }
+ 
++// hideSecret returns an endpoint as the API shows it: without the secret it replaced at its last rotation.
++func hideSecret(ep store.WebhookEndpoint) store.WebhookEndpoint {
++	ep.PreviousSecret = ""
++	return ep
++}
++
+ func (s *Server) listEndpoints(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	writeJSON(w, http.StatusOK, list{Items: s.store.WebhookEndpoints(p.OrgID)})
++	items := s.store.WebhookEndpoints(p.OrgID)
++	for i := range items {
++		items[i] = hideSecret(items[i])
++	}
++	writeJSON(w, http.StatusOK, list{Items: items})
+ }
+ 
+ // createEndpoint adds an endpoint: {"url": ..., "events": [...]}. The answer includes the signing secret.
+@@ -55,7 +65,17 @@ func (s *Server) getEndpoint(w http.ResponseWriter, r *http.Request, p auth.Prin
+ 		writeError(w, http.StatusNotFound, "not_found", "no such webhook endpoint")
+ 		return
+ 	}
+-	writeJSON(w, http.StatusOK, ep)
++	writeJSON(w, http.StatusOK, hideSecret(ep))
++}
++
++// rotateEndpointSecret gives an endpoint a new signing secret. The answer is the endpoint, with the new secret.
++func (s *Server) rotateEndpointSecret(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	ep, err := s.hooks.RotateSecret(p.OrgID, r.PathValue("id"))
++	if err != nil {
++		s.storeError(w, err)
++		return
++	}
++	writeJSON(w, http.StatusOK, hideSecret(ep))
+ }
+ 
+ func (s *Server) updateEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+@@ -98,7 +118,7 @@ func (s *Server) updateEndpoint(w http.ResponseWriter, r *http.Request, p auth.P
+ 		s.storeError(w, err)
+ 		return
+ 	}
+-	writeJSON(w, http.StatusOK, ep)
++	writeJSON(w, http.StatusOK, hideSecret(ep))
+ }
+ 
+ func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..51a5818 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -245,11 +245,14 @@ type WebhookEndpoint struct {
+ 	OrgID  string   `json:"org_id"`
+ 	URL    string   `json:"url"`
+ 	Events []string `json:"events"` // event types, or "*" for all
+-	// Secret signs the deliveries (webhooks.Sign).
+-	Secret         string    `json:"secret"`
+-	Enabled        bool      `json:"enabled"`
+-	DisabledReason string    `json:"disabled_reason,omitempty"`
+-	CreatedAt      time.Time `json:"created_at"`
++	// Secret signs the deliveries (webhooks.SignatureHeader).
++	Secret string `json:"secret"`
++	// PreviousSecret is the secret before the last rotation. It also signs the deliveries for 24 hours after SecretRotatedAt.
++	PreviousSecret  string     `json:"previous_secret,omitempty"`
++	SecretRotatedAt *time.Time `json:"secret_rotated_at,omitempty"`
++	Enabled         bool       `json:"enabled"`
++	DisabledReason  string     `json:"disabled_reason,omitempty"`
++	CreatedAt       time.Time  `json:"created_at"`
+ }
+ 
+ // Event is something that happened in an organization, sent to its webhook endpoints.
+diff --git a/start/internal/store/webhooks.go b/result/internal/store/webhooks.go
+index 35fa1ec..3a76a2c 100644
+--- a/start/internal/store/webhooks.go
++++ b/result/internal/store/webhooks.go
+@@ -86,6 +86,10 @@ func (s *Store) DeleteWebhookEndpoint(id string) error {
+ 
+ func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {
+ 	ep.Events = append([]string(nil), ep.Events...)
++	if ep.SecretRotatedAt != nil {
++		t := *ep.SecretRotatedAt
++		ep.SecretRotatedAt = &t
++	}
+ 	return ep
+ }
+ 
+diff --git a/start/internal/webhooks/webhooks.go b/result/internal/webhooks/webhooks.go
+index 13c4370..6f4a989 100644
+--- a/start/internal/webhooks/webhooks.go
++++ b/result/internal/webhooks/webhooks.go
+@@ -15,6 +15,8 @@ import (
+ 	"net/http"
+ 	"net/url"
+ 	"slices"
++	"strconv"
++	"strings"
+ 	"time"
+ 
+ 	"example.com/tally/internal/clock"
+@@ -71,10 +73,23 @@ var EventTypes = []string{
+ 	"invoice.created", "invoice.paid", "invoice.payment_failed", "invoice.voided",
+ }
+ 
++// SecretGracePeriod is how long an endpoint's previous secret keeps signing its deliveries after a rotation.
++const SecretGracePeriod = 24 * time.Hour
++
++// DefaultTolerance is the tolerance Verify allows between a delivery's timestamp and now when it is given none.
++const DefaultTolerance = 5 * time.Minute
++
+ // Errors.
+ var (
+ 	ErrInvalidURL    = errors.New("invalid webhook URL")
+ 	ErrInvalidEvents = errors.New("invalid event types")
++
++	// Errors of Verify, checked in this order.
++	ErrMalformedHeader    = errors.New("malformed signature header")
++	ErrNoTimestamp        = errors.New("signature header has no timestamp")
++	ErrTimestampTolerance = errors.New("signature timestamp is outside the tolerance")
++	ErrNoSignature        = errors.New("signature header has no v1 signature")
++	ErrSignatureMismatch  = errors.New("no signature matches")
+ )
+ 
+ // CheckURL checks a webhook URL before it is saved: an absolute http or https URL whose host resolves.
+@@ -110,6 +125,18 @@ func CheckEvents(types []string) error {
+ // NewSecret returns a new signing secret for an endpoint.
+ func NewSecret() string { return store.NewToken("whsec_") }
+ 
++// RotateSecret gives an endpoint a new signing secret and returns the endpoint. Its old secret keeps signing deliveries for
++// SecretGracePeriod, so receivers can switch over. Rotating again within that time drops the older of the two at once.
++func (s *Service) RotateSecret(orgID, id string) (store.WebhookEndpoint, error) {
++	now := s.clock.Now()
++	return s.store.UpdateWebhookEndpoint(orgID, id, func(ep *store.WebhookEndpoint) error {
++		ep.PreviousSecret = ep.Secret
++		ep.Secret = NewSecret()
++		ep.SecretRotatedAt = &now
++		return nil
++	})
++}
++
+ // Sign returns the signature of a delivery's body: the hex HMAC-SHA256 of the body, keyed with the endpoint's secret.
+ func Sign(secret string, body []byte) string {
+ 	m := hmac.New(sha256.New, []byte(secret))
+@@ -117,6 +144,84 @@ func Sign(secret string, body []byte) string {
+ 	return hex.EncodeToString(m.Sum(nil))
+ }
+ 
++// signAt returns the hex HMAC-SHA256 of "<t>.<body>", keyed with secret, where t is Unix seconds.
++func signAt(secret string, t int64, body []byte) string {
++	m := hmac.New(sha256.New, []byte(secret))
++	fmt.Fprintf(m, "%d.", t)
++	m.Write(body)
++	return hex.EncodeToString(m.Sum(nil))
++}
++
++// SignatureHeader returns the Tally-Signature header of a delivery sent at t: "t=<unix seconds>" followed by one
++// ",v1=<signature>" for each secret, in the order given (the current secret first).
++func SignatureHeader(secrets []string, t time.Time, body []byte) string {
++	ts := t.Unix()
++	var b strings.Builder
++	fmt.Fprintf(&b, "t=%d", ts)
++	for _, secret := range secrets {
++		fmt.Fprintf(&b, ",v1=%s", signAt(secret, ts, body))
++	}
++	return b.String()
++}
++
++// Verify checks a Tally-Signature header against the body it came with. It returns nil when the header's timestamp is
++// within tolerance of now (either way; zero means DefaultTolerance) and one of its v1 signatures is the signature of
++// payload under one of secrets. Empty secrets are ignored.
++func Verify(payload []byte, header string, secrets []string, tolerance time.Duration, now time.Time) error {
++	if strings.TrimSpace(header) == "" {
++		return fmt.Errorf("%w: the header is empty", ErrMalformedHeader)
++	}
++	var (
++		ts   int64
++		hasT bool
++		v1s  []string
++	)
++	for _, pair := range strings.Split(header, ",") {
++		key, value, ok := strings.Cut(pair, "=")
++		if !ok {
++			return fmt.Errorf("%w: %q is not key=value", ErrMalformedHeader, strings.TrimSpace(pair))
++		}
++		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
++		switch key {
++		case "t":
++			n, err := strconv.ParseInt(value, 10, 64)
++			if err != nil {
++				return fmt.Errorf("%w: the timestamp %q is not an integer", ErrMalformedHeader, value)
++			}
++			if !hasT {
++				ts, hasT = n, true
++			}
++		case "v1":
++			v1s = append(v1s, value)
++		}
++	}
++	if !hasT {
++		return ErrNoTimestamp
++	}
++	if tolerance <= 0 {
++		tolerance = DefaultTolerance
++	}
++	sent := time.Unix(ts, 0)
++	if sent.Before(now.Add(-tolerance)) || sent.After(now.Add(tolerance)) {
++		return fmt.Errorf("%w: the timestamp is %d and now is %d", ErrTimestampTolerance, ts, now.Unix())
++	}
++	if len(v1s) == 0 {
++		return ErrNoSignature
++	}
++	for _, secret := range secrets {
++		if secret == "" {
++			continue
++		}
++		want := []byte(signAt(secret, ts, payload))
++		for _, got := range v1s {
++			if hmac.Equal([]byte(got), want) {
++				return nil
++			}
++		}
++	}
++	return ErrSignatureMismatch
++}
++
+ // Publish records an event and queues a delivery of it to every enabled endpoint of the organization that subscribes to its
+ // type. The deliveries are sent by RunDue.
+ func (s *Service) Publish(ctx context.Context, orgID, eventType string, data any) error {
+@@ -191,6 +296,16 @@ func (s *Service) deliver(ctx context.Context, d store.Delivery) {
+ 	})
+ }
+ 
++// signingSecrets returns the secrets that sign a delivery sent at now: the current secret, and the previous one for
++// SecretGracePeriod after a rotation.
++func signingSecrets(ep store.WebhookEndpoint, now time.Time) []string {
++	secrets := []string{ep.Secret}
++	if ep.PreviousSecret != "" && ep.SecretRotatedAt != nil && now.Before(ep.SecretRotatedAt.Add(SecretGracePeriod)) {
++		secrets = append(secrets, ep.PreviousSecret)
++	}
++	return secrets
++}
++
+ // send POSTs the event to the endpoint and returns the response status and, when it failed, why.
+ func (s *Service) send(ctx context.Context, ep store.WebhookEndpoint, e store.Event) (int, string) {
+ 	body, err := json.Marshal(Body{ID: e.ID, Type: e.Type, CreatedAt: e.CreatedAt, Data: e.Data})
+@@ -207,7 +322,8 @@ func (s *Service) send(ctx context.Context, ep store.WebhookEndpoint, e store.Ev
+ 	req.Header.Set("User-Agent", "Tally-Webhooks/1.0")
+ 	req.Header.Set("Tally-Event-Id", e.ID)
+ 	req.Header.Set("Tally-Event-Type", e.Type)
+-	req.Header.Set("Tally-Signature", Sign(ep.Secret, body))
++	now := s.clock.Now()
++	req.Header.Set("Tally-Signature", SignatureHeader(signingSecrets(ep, now), now, body))
+ 	resp, err := s.doer.Do(req)
+ 	if err != nil {
+ 		return 0, err.Error()
+diff --git a/start/internal/webhooks/webhooks_test.go b/result/internal/webhooks/webhooks_test.go
+index a9062c7..81cefff 100644
+--- a/start/internal/webhooks/webhooks_test.go
++++ b/result/internal/webhooks/webhooks_test.go
+@@ -2,10 +2,16 @@ package webhooks_test
+ 
+ import (
+ 	"context"
++	"crypto/hmac"
++	"crypto/sha256"
++	"encoding/hex"
+ 	"encoding/json"
+ 	"errors"
++	"fmt"
+ 	"net/http"
++	"strings"
+ 	"testing"
++	"time"
+ 
+ 	"example.com/tally/internal/apitest"
+ 	"example.com/tally/internal/store"
+@@ -20,6 +26,102 @@ func TestSign(t *testing.T) {
+ 	}
+ }
+ 
++// sigOf is the reference computation of a v1 signature: HMAC-SHA256 of "<t>.<body>".
++func sigOf(secret string, unix int64, body []byte) string {
++	m := hmac.New(sha256.New, []byte(secret))
++	m.Write([]byte(fmt.Sprintf("%d.", unix)))
++	m.Write(body)
++	return hex.EncodeToString(m.Sum(nil))
++}
++
++func TestSignatureHeader(t *testing.T) {
++	body := []byte(`{"id":"evt_1"}`)
++	at := time.Unix(1700000000, 0)
++	got := webhooks.SignatureHeader([]string{"whsec_new", "whsec_old"}, at, body)
++	want := "t=1700000000,v1=" + sigOf("whsec_new", 1700000000, body) + ",v1=" + sigOf("whsec_old", 1700000000, body)
++	if got != want {
++		t.Fatalf("SignatureHeader =\n%s\nwant\n%s", got, want)
++	}
++	if got := webhooks.SignatureHeader([]string{"whsec_only"}, at, body); got != "t=1700000000,v1="+sigOf("whsec_only", 1700000000, body) {
++		t.Fatalf("one secret: %s", got)
++	}
++	// Sub-second parts of the time are not sent.
++	if got := webhooks.SignatureHeader([]string{"whsec_only"}, at.Add(900*time.Millisecond), body); !strings.HasPrefix(got, "t=1700000000,") {
++		t.Fatalf("sub-second: %s", got)
++	}
++}
++
++func TestVerify(t *testing.T) {
++	body := []byte(`{"id":"evt_1","type":"invoice.paid"}`)
++	base := time.Unix(1700000000, 0)
++	sig := sigOf("whsec_a", 1700000000, body)
++	header := "t=1700000000,v1=" + sig
++
++	ok := []struct {
++		name      string
++		header    string
++		now       time.Time
++		tolerance time.Duration
++	}{
++		{"exact time", header, base, 0},
++		{"five minutes late, default tolerance", header, base.Add(5 * time.Minute), 0},
++		{"five minutes early, default tolerance", header, base.Add(-5 * time.Minute), 0},
++		{"within a given tolerance", header, base.Add(59 * time.Second), time.Minute},
++		{"spaces around pairs", " t = 1700000000 ,  v1 = " + sig + " ", base, 0},
++		{"any order", "v1=" + sig + ",t=1700000000", base, 0},
++		{"unknown keys are ignored", "t=1700000000,v0=beef,v1=" + sig, base, 0},
++		{"a later v1 matches", "t=1700000000,v1=00,v1=" + sig, base, 0},
++	}
++	for _, c := range ok {
++		if err := webhooks.Verify(body, c.header, []string{"whsec_a"}, c.tolerance, c.now); err != nil {
++			t.Errorf("%s: %v", c.name, err)
++		}
++	}
++
++	// The secret that matches may be any of several.
++	if err := webhooks.Verify(body, header, []string{"whsec_x", "", "whsec_a"}, 0, base); err != nil {
++		t.Errorf("second secret: %v", err)
++	}
++
++	bad := []struct {
++		name      string
++		payload   []byte
++		header    string
++		secrets   []string
++		now       time.Time
++		tolerance time.Duration
++		want      error
++	}{
++		{"empty header", body, "", []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"blank header", body, "  ", []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"pair without =", body, "t=1700000000,v1", []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"empty pair", body, "t=1700000000,,v1=" + sig, []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"t is not an integer", body, "t=yesterday,v1=" + sig, []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"t is a decimal", body, "t=1700000000.5,v1=" + sig, []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"pairs without a comma", body, "t=1700000000 v1=" + sig, []string{"whsec_a"}, base, 0, webhooks.ErrMalformedHeader},
++		{"no t", body, "v1=" + sig, []string{"whsec_a"}, base, 0, webhooks.ErrNoTimestamp},
++		{"no t, no v1", body, "v0=beef", []string{"whsec_a"}, base, 0, webhooks.ErrNoTimestamp},
++		{"too old", body, header, []string{"whsec_a"}, base.Add(5*time.Minute + time.Second), 0, webhooks.ErrTimestampTolerance},
++		{"too new", body, header, []string{"whsec_a"}, base.Add(-5*time.Minute - time.Second), 0, webhooks.ErrTimestampTolerance},
++		{"outside a given tolerance", body, header, []string{"whsec_a"}, base.Add(time.Minute + time.Second), time.Minute, webhooks.ErrTimestampTolerance},
++		{"timestamp checked before signatures", body, "t=1", []string{"whsec_a"}, base, 0, webhooks.ErrTimestampTolerance},
++		{"no v1", body, "t=1700000000", []string{"whsec_a"}, base, 0, webhooks.ErrNoSignature},
++		{"v1 that is not the signature", body, "t=1700000000,v1=beef", []string{"whsec_a"}, base, 0, webhooks.ErrSignatureMismatch},
++		{"wrong secret", body, header, []string{"whsec_b"}, base, 0, webhooks.ErrSignatureMismatch},
++		{"no secrets", body, header, nil, base, 0, webhooks.ErrSignatureMismatch},
++		{"only an empty secret", body, "t=1700000000,v1=" + sigOf("", 1700000000, body), []string{""}, base, 0, webhooks.ErrSignatureMismatch},
++		{"tampered body", []byte(`{"id":"evt_2"}`), header, []string{"whsec_a"}, base, 0, webhooks.ErrSignatureMismatch},
++		{"timestamp changed", body, "t=1700000001,v1=" + sig, []string{"whsec_a"}, base.Add(time.Second), 0, webhooks.ErrSignatureMismatch},
++		{"the old scheme's signature of the body alone", body, "t=1700000000,v1=" + webhooks.Sign("whsec_a", body), []string{"whsec_a"}, base, 0, webhooks.ErrSignatureMismatch},
++	}
++	for _, c := range bad {
++		err := webhooks.Verify(c.payload, c.header, c.secrets, c.tolerance, c.now)
++		if !errors.Is(err, c.want) {
++			t.Errorf("%s: Verify = %v, want %v", c.name, err, c.want)
++		}
++	}
++}
++
+ func TestCheckURL(t *testing.T) {
+ 	e := apitest.New(t)
+ 	ctx := context.Background()
+@@ -63,9 +165,12 @@ func TestPublishAndDeliver(t *testing.T) {
+ 	if len(reqs) != 1 || reqs[0].URL != all.URL || reqs[0].Method != http.MethodPost {
+ 		t.Fatalf("requests = %+v", reqs)
+ 	}
+-	if got, want := reqs[0].Header.Get("Tally-Signature"), webhooks.Sign("whsec_a", reqs[0].Body); got != want {
++	if got, want := reqs[0].Header.Get("Tally-Signature"), webhooks.SignatureHeader([]string{"whsec_a"}, now, reqs[0].Body); got != want {
+ 		t.Fatalf("signature %q, want %q", got, want)
+ 	}
++	if err := webhooks.Verify(reqs[0].Body, reqs[0].Header.Get("Tally-Signature"), []string{"whsec_a"}, 0, e.Clock.Now()); err != nil {
++		t.Fatalf("the receiver cannot verify the delivery: %v", err)
++	}
+ 	var body webhooks.Body
+ 	if err := json.Unmarshal(reqs[0].Body, &body); err != nil || body.Type != "customer.created" || reqs[0].Header.Get("Tally-Event-Id") != body.ID {
+ 		t.Fatalf("body = %s (%v)", reqs[0].Body, err)
+@@ -91,3 +196,155 @@ func TestPublishAndDeliver(t *testing.T) {
+ 		t.Fatalf("a failed delivery was sent again: %d", n)
+ 	}
+ }
++
++// rotationEnv is an Acme endpoint that subscribes to every event, with its original secret.
++func rotationEnv(t *testing.T) (*apitest.Env, store.WebhookEndpoint) {
++	t.Helper()
++	e := apitest.New(t)
++	var ep store.WebhookEndpoint
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", e.Acme.Key, map[string]any{"url": "https://hooks.acme.example/tally", "events": []string{"*"}}, &ep)
++	return e, ep
++}
++
++// deliverOne publishes an event, attempts its delivery and returns the body and Tally-Signature the endpoint received.
++func deliverOne(t *testing.T, e *apitest.Env) ([]byte, string) {
++	t.Helper()
++	ctx := context.Background()
++	if err := e.Webhooks.Publish(ctx, e.Acme.ID, "customer.created", map[string]string{"id": "cus_1"}); err != nil {
++		t.Fatal(err)
++	}
++	if n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RunDue = %d, %v", n, err)
++	}
++	reqs := e.HTTP.Requests()
++	last := reqs[len(reqs)-1]
++	return last.Body, last.Header.Get("Tally-Signature")
++}
++
++func TestDeliveryTimestampIsTheAttemptTime(t *testing.T) {
++	e, _ := rotationEnv(t)
++	ctx := context.Background()
++	if err := e.Webhooks.Publish(ctx, e.Acme.ID, "customer.created", map[string]string{"id": "cus_1"}); err != nil {
++		t.Fatal(err)
++	}
++	e.Clock.Advance(7 * time.Minute) // the attempt is later than the event
++	if _, err := e.Webhooks.RunDue(ctx); err != nil {
++		t.Fatal(err)
++	}
++	reqs := e.HTTP.Requests()
++	want := fmt.Sprintf("t=%d,", e.Clock.Now().Unix())
++	if got := reqs[0].Header.Get("Tally-Signature"); !strings.HasPrefix(got, want) {
++		t.Fatalf("signature %q, want it to start with %q", got, want)
++	}
++}
++
++func TestSecretRotation(t *testing.T) {
++	e, ep := rotationEnv(t)
++	first := ep.Secret
++
++	// Before any rotation: one v1 entry, which the receiver checks with the endpoint's secret.
++	body, header := deliverOne(t, e)
++	if strings.Count(header, ",v1=") != 1 {
++		t.Fatalf("before rotation: %q", header)
++	}
++	if err := webhooks.Verify(body, header, []string{first}, 0, e.Clock.Now()); err != nil {
++		t.Fatal(err)
++	}
++
++	// Rotate: the answer is the endpoint with a new secret, and it does not show the previous one.
++	var rotated store.WebhookEndpoint
++	r := e.MustDo(http.StatusOK, "POST", "/v1/webhook-endpoints/"+ep.ID+"/rotate-secret", e.Acme.Key, nil, &rotated)
++	second := rotated.Secret
++	if second == first || !strings.HasPrefix(second, "whsec_") || len(second) != len("whsec_")+32 {
++		t.Fatalf("rotated secret = %q", second)
++	}
++	if _, err := hex.DecodeString(strings.TrimPrefix(second, "whsec_")); err != nil {
++		t.Fatalf("rotated secret is not hex: %v", err)
++	}
++	if rotated.ID != ep.ID || rotated.URL != ep.URL || rotated.SecretRotatedAt == nil || rotated.PreviousSecret != "" {
++		t.Fatalf("rotated endpoint = %+v", rotated)
++	}
++	if _, ok := r.Map(t)["previous_secret"]; ok {
++		t.Fatalf("the API showed the previous secret: %s", r)
++	}
++	if got := e.Do("GET", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, nil); strings.Contains(got.String(), first) {
++		t.Fatalf("the API showed the previous secret: %s", got)
++	}
++
++	// For 24 hours both secrets sign, the new one first.
++	rotatedAt := e.Clock.Now()
++	e.Clock.Set(rotatedAt.Add(webhooks.SecretGracePeriod - time.Second))
++	body, header = deliverOne(t, e)
++	ts := e.Clock.Now().Unix()
++	want := fmt.Sprintf("t=%d,v1=%s,v1=%s", ts, sigOf(second, ts, body), sigOf(first, ts, body))
++	if header != want {
++		t.Fatalf("during the grace period:\n%s\nwant\n%s", header, want)
++	}
++	if err := webhooks.Verify(body, header, []string{second}, 0, e.Clock.Now()); err != nil {
++		t.Fatal(err)
++	}
++	if err := webhooks.Verify(body, header, []string{first}, 0, e.Clock.Now()); err != nil {
++		t.Fatal(err)
++	}
++
++	// After 24 hours only the new secret signs.
++	e.Clock.Set(rotatedAt.Add(webhooks.SecretGracePeriod))
++	body, header = deliverOne(t, e)
++	ts = e.Clock.Now().Unix()
++	if want := fmt.Sprintf("t=%d,v1=%s", ts, sigOf(second, ts, body)); header != want {
++		t.Fatalf("after the grace period: %s, want %s", header, want)
++	}
++	if err := webhooks.Verify(body, header, []string{first}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {
++		t.Fatalf("old secret after the grace period: %v", err)
++	}
++}
++
++func TestRotateTwiceWithinGracePeriod(t *testing.T) {
++	e, ep := rotationEnv(t)
++	first := ep.Secret
++	var r1, r2 store.WebhookEndpoint
++	e.MustDo(http.StatusOK, "POST", "/v1/webhook-endpoints/"+ep.ID+"/rotate-secret", e.Acme.Key, nil, &r1)
++	second := r1.Secret
++	e.Clock.Advance(time.Hour)
++	e.MustDo(http.StatusOK, "POST", "/v1/webhook-endpoints/"+ep.ID+"/rotate-secret", e.Acme.Key, nil, &r2)
++	third := r2.Secret
++
++	// The first secret is dropped at once: only the current and the one before it sign.
++	body, header := deliverOne(t, e)
++	ts := e.Clock.Now().Unix()
++	if want := fmt.Sprintf("t=%d,v1=%s,v1=%s", ts, sigOf(third, ts, body), sigOf(second, ts, body)); header != want {
++		t.Fatalf("header = %s, want %s", header, want)
++	}
++	if err := webhooks.Verify(body, header, []string{first}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {
++		t.Fatalf("the dropped secret still verifies: %v", err)
++	}
++
++	// The grace period runs from the latest rotation: a day after the first one, the second one's is still running.
++	e.Clock.Advance(webhooks.SecretGracePeriod - time.Hour)
++	if _, header := deliverOne(t, e); strings.Count(header, ",v1=") != 2 {
++		t.Fatalf("a day after the first rotation, the second one's grace period should still be running: %s", header)
++	}
++}
++
++func TestRotationSurvivesSnapshot(t *testing.T) {
++	e, ep := rotationEnv(t)
++	first := ep.Secret
++	e.MustDo(http.StatusOK, "POST", "/v1/webhook-endpoints/"+ep.ID+"/rotate-secret", e.Acme.Key, nil, nil)
++
++	raw, err := json.Marshal(e.Store.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	var st store.State
++	if err := json.Unmarshal(raw, &st); err != nil {
++		t.Fatal(err)
++	}
++	restored, err := store.FromState(st)
++	if err != nil {
++		t.Fatal(err)
++	}
++	got, ok := restored.WebhookEndpoint(e.Acme.ID, ep.ID)
++	if !ok || got.PreviousSecret != first || got.SecretRotatedAt == nil || !got.SecretRotatedAt.Equal(e.Clock.Now()) {
++		t.Fatalf("restored endpoint = %+v", got)
++	}
++}

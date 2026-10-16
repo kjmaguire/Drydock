@@ -1,0 +1,29 @@
+# An everyday endpoint where the traps are tenant isolation, CSV escaping and spreadsheet formula injection.
+id: saasapi-csv-export
+title: Export customers as CSV
+suite: pilot
+fixture: testdata/fixtures/saasapi
+class: boilerplate
+risk: high
+size: small
+expected_roles: [backend, reviewer]
+prompt: |
+  Add an endpoint `GET /api/customers.csv` that exports the calling account's customers as CSV, for a "Download customers"
+  button in the dashboard.
+
+  - Same authentication as the other endpoints (`X-API-Key`; 401 without a valid key). Only the caller's account's customers,
+    never another account's.
+  - A header row `id,name,email,plan,created_at`, then one row per customer sorted by id. `created_at` in RFC 3339, in UTC.
+  - Valid RFC 4180 CSV: a field that contains a comma, a double quote or a line break is quoted and its quotes are doubled.
+    Lines end with CRLF.
+  - Response headers `Content-Type: text/csv; charset=utf-8` and `Content-Disposition: attachment; filename="customers.csv"`.
+  - Customer names and emails are typed by end users. To stop spreadsheet formula injection, a field that starts with `=`,
+    `+`, `-` or `@` is written with a single quote (`'`) in front of it.
+
+  Add tests. Keep the existing exported functions and their signatures.
+acceptance:
+  files: evals/testdata/hidden/saasapi-csv-export
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 300

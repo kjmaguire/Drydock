@@ -1,0 +1,33 @@
+# Codex CLI, driven over ACP through the pinned bridge. Cheap tier only on a Responses-API provider (decision D3).
+meta: {schema: 1, id: codex, display_name: Codex CLI, kind: agent_cli, license: Apache-2.0, tier: premium, run_modes: [native]}
+binaries: {native: [codex.exe, codex.cmd]}
+install:
+  - {shell: powershell, command: 'powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"'}
+  - {shell: cmd, command: 'npm install -g @openai/codex', requires: [{tool: node, min: "22"}]}
+detect: {version: {argv: [--version], regex: 'codex-cli (\d+\.\d+\.\d+)'}}
+versions: {min: "0.159.1", recommended: "0.163.0"}   # 0.159.1: the bridge's dependency floor
+auth:
+  login: {argv: [login], variants: [[--device-auth]], terminal: true}
+  probe: {argv: [login, status], parse: exit_code, ready_when: 'exit == 0', not_ready_when: 'exit == 1'}   # logged-out: "Not logged in", exit 1 (observed)
+transports:
+  primary: acp
+  acp:
+    argv: [npx, -y, "@agentclientprotocol/codex-acp@2.2.2"]
+    requires: [{tool: node, min: "22"}]
+  headless:                                       # fallback when Node is missing; not built by the registry yet
+    argv: [exec, --json, -C, "{{cwd}}", -s, workspace-write, "-"]
+    optional:
+      model: [-m, "{{model}}"]
+      effort: [-c, 'model_reasoning_effort="{{effort}}"']
+    prompt: stdin
+    parser: codex_threadevent
+    interrupt: unverified
+    unverified: true
+# Codex reads .codex/ (config.toml, hooks) from the project when the project is trusted (from its documentation; not run here).
+repo_config: [.codex/]
+usage: {normalizer: codex_turn_usage, quota: {source: side_channel, argv: [app-server, --listen, "stdio://"], method: account/rateLimits/read}}
+provider_config: {writer: codex_toml, file: .codex/config.toml, rule: wire_api_responses_only}
+mcp: {inject: acp_session_new, transports: [stdio, http]}
+capabilities_declared: {streaming: true, model_selection: true, effort_control: true, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: false, headless: true, permission_modes: true, image_input: true, tool_call_visibility: true}
+instructions: {primary: AGENTS.md}
+terms: {notice: codex-own-login-v1}

@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-webhook-retries",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "930f7074aaf780e31b43bd2a882db605cdcfdc63",
+  "startedAt": "2026-10-10T22:23:33.840329463Z",
+  "wallMs": 278655,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1239,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2636,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.022s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.007s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.012s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.016s\nok  \texample.com/tally/internal/payments\t0.009s\nok  \texample.com/tally/internal/reports\t0.006s\nok  \texample.com/tally/internal/snapshot\t0.021s\nok  \texample.com/tally/internal/store\t0.031s\nok  \texample.com/tally/internal/subscriptions\t0.034s\nok  \texample.com/tally/internal/webhooks\t0.027s\n"
+      }
+    ],
+    "durationMs": 3881
+  },
+  "costUsd": 0.06701546,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 66,
+    "output": 59295,
+    "cacheRead": 1062836,
+    "cacheWrite": 133665
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_2a8a80828462",
+      "feedback": "internal/webhooks/webhooks.go:206-207 and 164-170: deliveries that are not sent (endpoint disabled by the 410, or event missing) still get d.Attempts++ and last_attempt_at set, and RunDue counts them in n. The task says RunDue returns how many attempts it made and that the other pending deliveries of a gone endpoint are not sent, so attempts/last_attempt_at/n overstate what happened (TestGoneDisablesEndpoint asserts n == 2 with only 1 request). Fix: when !sent, fail the delivery without incrementing Attempts or setting LastAttemptAt/ResponseStatus, and only count sent deliveries in RunDue's n; update the test's expected count to 1 and assert the skipped deliveries have no new attempt recorded."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_2a8a80828462"
+    }
+  ],
+  "coreTaskId": "task_f407d726ffd4"
+}

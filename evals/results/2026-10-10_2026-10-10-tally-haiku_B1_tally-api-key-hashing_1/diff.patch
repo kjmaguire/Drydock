@@ -1,0 +1,654 @@
+diff --git a/start/README.md b/result/README.md
+index 7aa8d92..3f4d204 100644
+--- a/start/README.md
++++ b/result/README.md
+@@ -21,7 +21,7 @@ happened. Its own staff work in the organization as members with roles. Go stand
+ | `internal/auth` | Who a request is and what they may do. |
+ | `internal/api` | The JSON HTTP API, version 1. |
+ | `internal/apitest` | Builds a whole service with fakes (clock, gateway, outbox, webhook receivers, DNS) and two organizations, for tests. |
+-| `cmd/tally` | The server: `go run ./cmd/tally -addr :8080 -data tally.json` (prints a demo API key on first start). |
++| `cmd/tally` | The server: `go run ./cmd/tally -addr :8080 -data tally.json` (on first start it seeds a demo organization, whose API key is not printed). |
+ 
+ ## API conventions
+ 
+diff --git a/start/cmd/tally/main.go b/result/cmd/tally/main.go
+index 5915fed..9869a4e 100644
+--- a/start/cmd/tally/main.go
++++ b/result/cmd/tally/main.go
+@@ -87,7 +87,8 @@ func main() {
+ 	}
+ }
+ 
+-// seed adds a demo organization with an owner and prints the owner's API key.
++// seed adds a demo organization with an owner and an API key. The key's token is not printed: the store keeps only its hash,
++// and the token is shown nowhere but the answer that creates a key.
+ func seed(st *store.Store, now time.Time, log *slog.Logger) error {
+ 	o, err := st.CreateOrg("Demo Co", store.OrgTeam, "UTC", 0, now)
+ 	if err != nil {
+@@ -104,6 +105,6 @@ func seed(st *store.Store, now time.Time, log *slog.Logger) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	log.Info("demo organization created", "org", o.ID, "api_key", k.Token)
++	log.Info("demo organization created", "org", o.ID, "api_key_id", k.ID)
+ 	return nil
+ }
+diff --git a/result/internal/api/apikey_test.go b/result/internal/api/apikey_test.go
+new file mode 100644
+index 0000000..89c8192
+--- /dev/null
++++ b/result/internal/api/apikey_test.go
+@@ -0,0 +1,114 @@
++package api_test
++
++import (
++	"net/http"
++	"regexp"
++	"strings"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++)
++
++// The token is in the answer that creates a key and nowhere else: not in the list, and not after the key is used.
++func TestAPIKeyTokenShownOnlyOnCreate(t *testing.T) {
++	e := apitest.New(t)
++	var created map[string]any
++	e.MustDo(http.StatusCreated, "POST", "/v1/api-keys", e.Acme.Key, map[string]string{"name": "CI"}, &created)
++	token, _ := created["token"].(string)
++	if !regexp.MustCompile(`^tly_[A-Za-z0-9]{40}$`).MatchString(token) {
++		t.Fatalf("created token = %q", token)
++	}
++	if created["last4"] != token[len(token)-4:] {
++		t.Fatalf("created last4 = %v", created["last4"])
++	}
++
++	e.MustDo(http.StatusOK, "GET", "/v1/org", token, nil, nil)
++	r := e.MustDo(http.StatusOK, "GET", "/v1/api-keys", e.Acme.Key, nil, nil)
++	if strings.Contains(string(r.Body), token) || strings.Contains(string(r.Body), "token_hash") {
++		t.Fatalf("the key list shows the token or its hash: %s", r.Body)
++	}
++	var list struct {
++		Items []map[string]any `json:"items"`
++	}
++	r.JSON(t, &list)
++	for _, k := range list.Items {
++		if _, ok := k["token"]; ok {
++			t.Fatalf("a listed key has a token field: %v", k)
++		}
++		if _, ok := k["token_hash"]; ok {
++			t.Fatalf("a listed key has a token_hash field: %v", k)
++		}
++		for _, field := range []string{"id", "name", "user_id", "created_at", "last4"} {
++			if _, ok := k[field]; !ok {
++				t.Fatalf("a listed key has no %s: %v", field, k)
++			}
++		}
++	}
++	if len(list.Items) != 2 {
++		t.Fatalf("keys = %v", list.Items)
++	}
++	if got := list.Items[1]; got["id"] != created["id"] || got["last4"] != token[len(token)-4:] {
++		t.Fatalf("listed key = %v", got)
++	}
++}
++
++// Accepting an invite answers the new member's first key, with its token.
++func TestAcceptInviteAnswersTokenOnce(t *testing.T) {
++	e := apitest.New(t)
++	var inv struct {
++		Token string `json:"token"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "new@people.example", "role": "member"}, &inv)
++	var accepted struct {
++		APIKey map[string]any `json:"api_key"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites/accept", "", map[string]string{"token": inv.Token, "name": "New"}, &accepted)
++	token, _ := accepted.APIKey["token"].(string)
++	if !strings.HasPrefix(token, "tly_") || len(token) != len("tly_")+40 {
++		t.Fatalf("accepted token = %q", token)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/org", token, nil, nil)
++	r := e.MustDo(http.StatusOK, "GET", "/v1/api-keys", e.Acme.Key, nil, nil)
++	if strings.Contains(string(r.Body), token) {
++		t.Fatalf("the key list shows the token: %s", r.Body)
++	}
++}
++
++// A use less than a minute after the recorded one leaves last_used_at unchanged.
++func TestAPIKeyLastUsedAtThrottled(t *testing.T) {
++	e := apitest.New(t)
++	ownerKey, ok := e.Store.APIKeyByToken(e.Acme.Key)
++	if !ok {
++		t.Fatal("the owner's key is not found")
++	}
++	// lastUsed lists the keys (which is a use of the owner's key too) and returns the owner's last_used_at.
++	lastUsed := func() any {
++		t.Helper()
++		var list struct {
++			Items []map[string]any `json:"items"`
++		}
++		e.MustDo(http.StatusOK, "GET", "/v1/api-keys", e.Acme.Key, nil, &list)
++		for _, k := range list.Items {
++			if k["id"] == ownerKey.ID {
++				return k["last_used_at"]
++			}
++		}
++		t.Fatal("owner's key not listed")
++		return nil
++	}
++	first := lastUsed()
++	if first == nil {
++		t.Fatal("the first use was not recorded")
++	}
++	e.Clock.Advance(30 * time.Second)
++	e.MustDo(http.StatusOK, "GET", "/v1/org", e.Acme.Key, nil, nil)
++	if got := lastUsed(); got != first {
++		t.Fatalf("a use 30s later changed last_used_at: %v -> %v", first, got)
++	}
++	e.Clock.Advance(30 * time.Second)
++	e.MustDo(http.StatusOK, "GET", "/v1/org", e.Acme.Key, nil, nil)
++	if got := lastUsed(); got == first {
++		t.Fatal("a use 60s after the recorded one was not recorded")
++	}
++}
+diff --git a/result/internal/snapshot/apikey_test.go b/result/internal/snapshot/apikey_test.go
+new file mode 100644
+index 0000000..e9f6e43
+--- /dev/null
++++ b/result/internal/snapshot/apikey_test.go
+@@ -0,0 +1,98 @@
++package snapshot
++
++import (
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/store"
++)
++
++// A snapshot never holds a plain-text API key token, and the keys still work after a reload.
++func TestSaveWritesNoPlainTokens(t *testing.T) {
++	now := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
++	st := store.New()
++	o, _ := st.CreateOrg("A", store.OrgTeam, "UTC", 0, now)
++	u, _ := st.CreateUser("ann@example.com", "Ann", now)
++	_, _ = st.AddMember(o.ID, u.ID, store.RoleOwner, now)
++	k, _ := st.CreateAPIKey(o.ID, u.ID, "k", now)
++
++	path := filepath.Join(t.TempDir(), "tally.json")
++	if err := Save(st, path, now); err != nil {
++		t.Fatal(err)
++	}
++	assertNoToken(t, path, k.Token)
++	got, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if found, ok := got.APIKeyByToken(k.Token); !ok || found.ID != k.ID {
++		t.Fatal("the key does not work after a reload")
++	}
++}
++
++// A version 1 snapshot holds plain-text tokens. Loading it keeps the keys working, and the next save drops the tokens.
++func TestLoadVersion1ThenSaveDropsTokens(t *testing.T) {
++	const token = "tly_00000000000000000000000000000003"
++	st, err := Load(filepath.Join("testdata", "v1.json"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(t.TempDir(), "tally.json")
++	if err := Save(st, path, time.Now()); err != nil {
++		t.Fatal(err)
++	}
++	assertNoToken(t, path, token)
++	again, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := again.APIKeyByToken(token); !ok {
++		t.Fatal("the version 1 key does not work after it was re-saved")
++	}
++}
++
++// A version 2 snapshot written before keys were hashed holds the token in state.api_keys[].token.
++func TestLoadVersion2WithPlainTokens(t *testing.T) {
++	const token = "tly_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
++	dir := t.TempDir()
++	path := filepath.Join(dir, "tally.json")
++	legacy := `{
++  "version": 2,
++  "saved_at": "2026-02-01T12:00:00Z",
++  "state": {
++    "seq": 3,
++    "orgs": [{"id": "org_000001", "name": "Acme", "plan": "team", "time_zone": "UTC", "tax_rate_bp": 0, "created_at": "2026-02-01T12:00:00Z"}],
++    "users": [{"id": "usr_000002", "email": "owner@acme.example", "name": "Owner", "created_at": "2026-02-01T12:00:00Z"}],
++    "members": [{"org_id": "org_000001", "user_id": "usr_000002", "role": "owner", "created_at": "2026-02-01T12:00:00Z"}],
++    "api_keys": [{"id": "key_000003", "org_id": "org_000001", "user_id": "usr_000002", "name": "Owner key", "token": "` + token + `", "created_at": "2026-02-01T12:00:00Z"}]
++  }
++}`
++	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	st, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if k, ok := st.APIKeyByToken(token); !ok || k.ID != "key_000003" {
++		t.Fatal("the legacy key does not work")
++	}
++	if err := Save(st, path, time.Now()); err != nil {
++		t.Fatal(err)
++	}
++	assertNoToken(t, path, token)
++}
++
++func assertNoToken(t *testing.T, path, token string) {
++	t.Helper()
++	b, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if strings.Contains(string(b), token) {
++		t.Fatalf("%s holds a plain-text API key token", path)
++	}
++}
+diff --git a/result/internal/store/apikey_test.go b/result/internal/store/apikey_test.go
+new file mode 100644
+index 0000000..e7adbff
+--- /dev/null
++++ b/result/internal/store/apikey_test.go
+@@ -0,0 +1,152 @@
++package store
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"regexp"
++	"strings"
++	"testing"
++	"time"
++)
++
++var tokenFormat = regexp.MustCompile(`^tly_[A-Za-z0-9]{40}$`)
++
++func TestAPIKeyTokenFormat(t *testing.T) {
++	seen := map[string]bool{}
++	for i := 0; i < 500; i++ {
++		tok := newAPIKeyToken()
++		if !tokenFormat.MatchString(tok) {
++			t.Fatalf("token %q is not tly_ and 40 letters or digits", tok)
++		}
++		if seen[tok] {
++			t.Fatalf("token %q repeated", tok)
++		}
++		seen[tok] = true
++	}
++}
++
++// The full token is only in the answer that creates a key. Everything the store hands out, and everything it snapshots, has
++// the hash and the last four characters instead.
++func TestAPIKeyTokenIsNotKept(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	u, _ := s.CreateUser("ann@example.com", "Ann", t0)
++	_, _ = s.AddMember(o.ID, u.ID, RoleMember, t0)
++	k, err := s.CreateAPIKey(o.ID, u.ID, "CI", t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	sum := sha256.Sum256([]byte(k.Token))
++	wantHash := hex.EncodeToString(sum[:])
++
++	byToken, ok := s.APIKeyByToken(k.Token)
++	if !ok || byToken.ID != k.ID || byToken.Token != "" || byToken.TokenHash != "" || byToken.Last4 != k.Token[len(k.Token)-4:] {
++		t.Fatalf("APIKeyByToken = %+v %v", byToken, ok)
++	}
++	byID, _ := s.APIKey(o.ID, k.ID)
++	revoked, _ := s.RevokeAPIKey(o.ID, k.ID, t0.Add(time.Minute))
++	for name, got := range map[string]APIKey{"APIKey": byID, "RevokeAPIKey": revoked, "APIKeys": s.APIKeys(o.ID)[0]} {
++		if got.Token != "" || got.TokenHash != "" {
++			t.Fatalf("%s leaks the token or its hash: %+v", name, got)
++		}
++		if got.Last4 != k.Token[len(k.Token)-4:] {
++			t.Fatalf("%s last4 = %q", name, got.Last4)
++		}
++	}
++
++	list, _ := json.Marshal(s.APIKeys(o.ID))
++	if strings.Contains(string(list), k.Token) || strings.Contains(string(list), wantHash) || strings.Contains(string(list), "token_hash") {
++		t.Fatalf("the key list shows the token or its hash: %s", list)
++	}
++
++	snap, _ := json.Marshal(s.Export())
++	if strings.Contains(string(snap), k.Token) {
++		t.Fatal("the snapshot holds the plain-text token")
++	}
++	if !strings.Contains(string(snap), wantHash) {
++		t.Fatal("the snapshot does not hold the token's hash")
++	}
++}
++
++// The creating answer carries the token.
++func TestCreatedAPIKeyCarriesToken(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	u, _ := s.CreateUser("ann@example.com", "Ann", t0)
++	_, _ = s.AddMember(o.ID, u.ID, RoleMember, t0)
++	k, _ := s.CreateAPIKey(o.ID, u.ID, "CI", t0)
++	if !tokenFormat.MatchString(k.Token) {
++		t.Fatalf("created key token = %q", k.Token)
++	}
++	if got, ok := s.APIKeyByToken(k.Token); !ok || got.ID != k.ID {
++		t.Fatal("the created token does not authenticate")
++	}
++}
++
++func TestTouchAPIKeyWritesAtMostOncePerMinute(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	u, _ := s.CreateUser("ann@example.com", "Ann", t0)
++	_, _ = s.AddMember(o.ID, u.ID, RoleMember, t0)
++	k, _ := s.CreateAPIKey(o.ID, u.ID, "CI", t0)
++	lastUsed := func() time.Time {
++		t.Helper()
++		got, _ := s.APIKey(o.ID, k.ID)
++		if got.LastUsedAt == nil {
++			t.Fatal("no last use recorded")
++		}
++		return *got.LastUsedAt
++	}
++
++	s.TouchAPIKey(k.ID, t0)
++	if !lastUsed().Equal(t0) {
++		t.Fatalf("first use: last_used_at = %v", lastUsed())
++	}
++	s.TouchAPIKey(k.ID, t0.Add(59*time.Second))
++	if !lastUsed().Equal(t0) {
++		t.Fatalf("a use 59s later was recorded: %v", lastUsed())
++	}
++	s.TouchAPIKey(k.ID, t0.Add(60*time.Second))
++	if want := t0.Add(60 * time.Second); !lastUsed().Equal(want) {
++		t.Fatalf("a use 60s after the last recorded one: last_used_at = %v, want %v", lastUsed(), want)
++	}
++	s.TouchAPIKey(k.ID, t0.Add(61*time.Second))
++	if want := t0.Add(60 * time.Second); !lastUsed().Equal(want) {
++		t.Fatalf("a use 1s later was recorded: %v", lastUsed())
++	}
++}
++
++// Snapshots from before keys were hashed hold the token. Loading one keeps the key working, and the next export drops the token.
++func TestFromStateHashesLegacyTokens(t *testing.T) {
++	const legacy = "tly_00000000000000000000000000000003"
++	st := State{Seq: 3, Orgs: []Org{{ID: "org_000001", Name: "Acme", Plan: OrgTeam, TimeZone: "UTC"}},
++		Users:   []User{{ID: "usr_000002", Email: "owner@acme.example", Name: "Owner"}},
++		Members: []Member{{OrgID: "org_000001", UserID: "usr_000002", Role: RoleOwner}},
++		APIKeys: []APIKey{{ID: "key_000003", OrgID: "org_000001", UserID: "usr_000002", Name: "Owner key", Token: legacy}}}
++	s, err := FromState(st)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if k, ok := s.APIKeyByToken(legacy); !ok || k.ID != "key_000003" {
++		t.Fatalf("the legacy key does not work: %+v %v", k, ok)
++	}
++	exported := s.Export()
++	if len(exported.APIKeys) != 1 {
++		t.Fatalf("keys = %+v", exported.APIKeys)
++	}
++	if k := exported.APIKeys[0]; k.Token != "" || k.TokenHash == "" || k.Last4 != "0003" {
++		t.Fatalf("exported key = %+v", k)
++	}
++	b, _ := json.Marshal(exported)
++	if strings.Contains(string(b), legacy) {
++		t.Fatal("the export still holds the plain-text token")
++	}
++	s2, err := FromState(exported)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := s2.APIKeyByToken(legacy); !ok {
++		t.Fatal("the legacy key stops working after a second round trip")
++	}
++}
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..fb65540 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -129,10 +129,17 @@ func FromState(st State) (*Store, error) {
+ 		if err := dup("API key", k.ID, seen); err != nil {
+ 			return nil, err
+ 		}
+-		s.apiKeys[k.ID] = k
++		// Snapshots from before keys were hashed hold the token itself: keep its hash and last four characters, and drop the
++		// token, so that the next snapshot written has no plain-text token.
+ 		if k.Token != "" {
+-			s.keysByToken[k.Token] = k.ID
++			k.TokenHash, k.Last4 = hashToken(k.Token), tokenLast4(k.Token)
++			k.Token = ""
++		}
++		if k.TokenHash == "" {
++			return nil, fmt.Errorf("%w: API key %q has no token", ErrInvalid, k.ID)
+ 		}
++		s.apiKeys[k.ID] = k
++		s.keysByHash[k.TokenHash] = k.ID
+ 	}
+ 	for _, i := range st.Invites {
+ 		if err := dup("invite", i.ID, seen); err != nil {
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..33fcd5e 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -7,6 +7,7 @@ package store
+ 
+ import (
+ 	"crypto/rand"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"errors"
+ 	"fmt"
+@@ -37,7 +38,7 @@ type Store struct {
+ 	usersByEmail map[string]string // lower-case email -> user ID
+ 	members      map[memberKey]Member
+ 	apiKeys      map[string]APIKey
+-	keysByToken  map[string]string // token -> key ID
++	keysByHash   map[string]string // token hash -> key ID
+ 	invites      map[string]Invite
+ 
+ 	customers        map[string]Customer
+@@ -59,7 +60,7 @@ type memberKey struct{ org, user string }
+ func New() *Store {
+ 	return &Store{
+ 		orgs: map[string]Org{}, users: map[string]User{}, usersByEmail: map[string]string{}, members: map[memberKey]Member{},
+-		apiKeys: map[string]APIKey{}, keysByToken: map[string]string{}, invites: map[string]Invite{},
++		apiKeys: map[string]APIKey{}, keysByHash: map[string]string{}, invites: map[string]Invite{},
+ 		customers: map[string]Customer{}, customersByEmail: map[string]string{},
+ 		plans: map[string]Plan{}, subs: map[string]Subscription{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+ 		endpoints: map[string]WebhookEndpoint{}, events: map[string]Event{}, delivs: map[string]Delivery{},
+@@ -81,6 +82,56 @@ func NewToken(prefix string) string {
+ 	return prefix + hex.EncodeToString(b)
+ }
+ 
++// apiKeyAlphabet is what API key tokens are made of: letters and digits.
++const apiKeyAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
++
++// apiKeyTouchInterval is how long after a key's last recorded use a new use goes unrecorded.
++const apiKeyTouchInterval = time.Minute
++
++// newAPIKeyToken returns a new API key token: "tly_" and 40 random characters from apiKeyAlphabet.
++func newAPIKeyToken() string {
++	const n = 40
++	// 248 is the largest multiple of 62 that fits in a byte; bytes from 248 up are skipped so every character is equally likely.
++	out := make([]byte, 0, n)
++	buf := make([]byte, 64)
++	for len(out) < n {
++		if _, err := rand.Read(buf); err != nil {
++			panic(err) // crypto/rand does not fail on supported platforms
++		}
++		for _, b := range buf {
++			if b >= 248 {
++				continue
++			}
++			out = append(out, apiKeyAlphabet[int(b)%len(apiKeyAlphabet)])
++			if len(out) == n {
++				break
++			}
++		}
++	}
++	return "tly_" + string(out)
++}
++
++// hashToken is the hex SHA-256 of a token, which is what the store keeps of it.
++func hashToken(token string) string {
++	sum := sha256.Sum256([]byte(token))
++	return hex.EncodeToString(sum[:])
++}
++
++// tokenLast4 returns the token's last four characters.
++func tokenLast4(token string) string {
++	if len(token) < 4 {
++		return token
++	}
++	return token[len(token)-4:]
++}
++
++// publicAPIKey is k as the store hands it out: without the token or its hash.
++func publicAPIKey(k APIKey) APIKey {
++	k.Token = ""
++	k.TokenHash = ""
++	return k
++}
++
+ func normEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
+ 
+ func validEmail(email string) bool {
+@@ -275,7 +326,7 @@ func (s *Store) RemoveMember(orgID, userID string) error {
+ 
+ // ---- API keys
+ 
+-// CreateAPIKey gives a member a new API key.
++// CreateAPIKey gives a member a new API key. The returned key has its full Token, which the store does not keep.
+ func (s *Store) CreateAPIKey(orgID, userID, name string, now time.Time) (APIKey, error) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+@@ -290,24 +341,29 @@ func (s *Store) createAPIKey(orgID, userID, name string, now time.Time) (APIKey,
+ 	if name == "" {
+ 		name = "API key"
+ 	}
+-	k := APIKey{ID: s.newID("key"), OrgID: orgID, UserID: userID, Name: name, Token: NewToken("tly_"), CreatedAt: now.UTC()}
+-	s.apiKeys[k.ID] = k
+-	s.keysByToken[k.Token] = k.ID
++	token := newAPIKeyToken()
++	stored := APIKey{ID: s.newID("key"), OrgID: orgID, UserID: userID, Name: name, TokenHash: hashToken(token), Last4: tokenLast4(token), CreatedAt: now.UTC()}
++	s.apiKeys[stored.ID] = stored
++	s.keysByHash[stored.TokenHash] = stored.ID
++	k := publicAPIKey(stored)
++	k.Token = token
+ 	return k, nil
+ }
+ 
+-// APIKeyByToken finds the key a request presented. Revoked keys are returned too; the caller checks RevokedAt.
++// APIKeyByToken finds the key a request presented, by the hash of its token. Revoked keys are returned too; the caller checks
++// RevokedAt.
+ func (s *Store) APIKeyByToken(token string) (APIKey, bool) {
+ 	if token == "" {
+ 		return APIKey{}, false
+ 	}
++	h := hashToken(token)
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	id, ok := s.keysByToken[token]
++	id, ok := s.keysByHash[h]
+ 	if !ok {
+ 		return APIKey{}, false
+ 	}
+-	return s.apiKeys[id], true
++	return publicAPIKey(s.apiKeys[id]), true
+ }
+ 
+ // APIKey returns one of an organization's keys.
+@@ -318,7 +374,7 @@ func (s *Store) APIKey(orgID, id string) (APIKey, bool) {
+ 	if !ok || k.OrgID != orgID {
+ 		return APIKey{}, false
+ 	}
+-	return k, true
++	return publicAPIKey(k), true
+ }
+ 
+ // APIKeys returns an organization's keys, oldest first.
+@@ -328,7 +384,7 @@ func (s *Store) APIKeys(orgID string) []APIKey {
+ 	out := []APIKey{}
+ 	for _, k := range s.apiKeys {
+ 		if k.OrgID == orgID {
+-			out = append(out, k)
++			out = append(out, publicAPIKey(k))
+ 		}
+ 	}
+ 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+@@ -348,18 +404,20 @@ func (s *Store) RevokeAPIKey(orgID, id string, now time.Time) (APIKey, error) {
+ 		k.RevokedAt = &t
+ 		s.apiKeys[id] = k
+ 	}
+-	return k, nil
++	return publicAPIKey(k), nil
+ }
+ 
+-// TouchAPIKey records that a key was used.
++// TouchAPIKey records that a key was used. A use less than a minute after the recorded one leaves the key unchanged.
+ func (s *Store) TouchAPIKey(id string, now time.Time) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	if k, ok := s.apiKeys[id]; ok {
+-		t := now.UTC()
+-		k.LastUsedAt = &t
+-		s.apiKeys[id] = k
++	k, ok := s.apiKeys[id]
++	if !ok || (k.LastUsedAt != nil && now.Sub(*k.LastUsedAt) < apiKeyTouchInterval) {
++		return
+ 	}
++	t := now.UTC()
++	k.LastUsedAt = &t
++	s.apiKeys[id] = k
+ }
+ 
+ // ---- invites
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..eaf1da2 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -90,7 +90,7 @@ func TestAPIKeys(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if k.Name != "API key" || len(k.Token) != len("tly_")+32 {
++	if k.Name != "API key" || len(k.Token) != len("tly_")+40 {
+ 		t.Fatalf("key = %+v", k)
+ 	}
+ 	if got, ok := s.APIKeyByToken(k.Token); !ok || got.ID != k.ID {
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..42da30c 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -69,12 +69,17 @@ type Member struct {
+ }
+ 
+ // APIKey lets a member call the API. It acts as that member, with the member's current role.
++//
++// The full token is only ever returned by CreateAPIKey and AcceptInvite, in the answer that creates the key. The store keeps
++// its SHA-256 hash (TokenHash) and the token's last four characters, and the methods that hand out keys leave the hash out.
+ type APIKey struct {
+ 	ID         string     `json:"id"`
+ 	OrgID      string     `json:"org_id"`
+ 	UserID     string     `json:"user_id"`
+ 	Name       string     `json:"name"`
+-	Token      string     `json:"token"`
++	Token      string     `json:"token,omitempty"`      // the full token; set only in the answer that creates the key
++	TokenHash  string     `json:"token_hash,omitempty"` // hex SHA-256 of the token; kept in snapshots, never listed
++	Last4      string     `json:"last4"`
+ 	CreatedAt  time.Time  `json:"created_at"`
+ 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+ 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`

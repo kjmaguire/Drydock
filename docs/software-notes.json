@@ -1,0 +1,287 @@
+{
+  "used": {
+    "tool:gh": "2.102.0",
+    "tool:task": "3.54.0",
+    "tool:osv-scanner": "2.7.0",
+    "tool:opengrep": "1.31.0",
+    "tool:go-licenses": "2.0.1",
+    "tool:govulncheck": "1.9.0",
+    "tool:wrangler": "4.151.0",
+    "tool:docker": "29.8.2",
+    "tool:golangci-lint": "2.15.0",
+    "tool:actions-runner": "2.338.0",
+    "tool:llama.cpp": "b11672"
+  },
+  "notes": {
+    "go": {
+      "role": "The language the core is written in. go.mod requires at least this version, and the sandbox and CI build with exactly it."
+    },
+    "go-installed": {
+      "role": "What this sandbox builds and tests with (the toolchain go.mod asks for, downloaded automatically)."
+    },
+    "node": {
+      "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine)."
+    },
+    "npm": {
+      "role": "Installs the UI packages.",
+      "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3)."
+    },
+    "go:cel.dev/cel-go": {
+      "role": "Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language."
+    },
+    "go:github.com/anthropics/anthropic-sdk-go": {
+      "role": "Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. The agent CLIs make their own calls and do not use it."
+    },
+    "go:github.com/aymanbagabas/go-pty": {
+      "role": "The human's terminals in the bottom dock: ConPTY on Windows, a Unix pseudo-terminal elsewhere (internal/terminal)."
+    },
+    "go:github.com/charmbracelet/x/ansi": {
+      "role": "Meant for reading terminal escape codes in agent and terminal output.",
+      "note": "Declared in go.mod and pinned in internal/tools/deps.go, but no product package imports it yet."
+    },
+    "go:github.com/coder/acp-go-sdk": {
+      "role": "Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose.",
+      "note": "Pre-1.0; the protocol is still changing."
+    },
+    "go:github.com/google/jsonschema-go": {
+      "role": "Describes the workspace tools' inputs to MCP clients as JSON Schema."
+    },
+    "go:github.com/modelcontextprotocol/go-sdk": {
+      "role": "The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. Its auth package will carry the OAuth connect flow."
+    },
+    "go:github.com/openai/openai-go/v3": {
+      "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests."
+    },
+    "go:github.com/pressly/goose/v3": {
+      "role": "Runs the database migrations. (The agent called Goose is a different thing.)"
+    },
+    "go:github.com/wailsapp/wails/v3": {
+      "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
+      "hold": "Still a beta (the newest published, beta.30 since 2026-10-16). The risk was accepted in the brief; it is isolated in app/."
+    },
+    "go:github.com/zalando/go-keyring": {
+      "role": "Stores secrets in the Windows Credential Manager."
+    },
+    "go:github.com/zricethezav/gitleaks/v8": {
+      "role": "Scans diffs and outputs for secrets before they are kept or sent."
+    },
+    "go:golang.org/x/sys": {
+      "role": "Windows Job Objects (killing an agent's whole process tree) and other Windows calls."
+    },
+    "go:gopkg.in/yaml.v3": {
+      "role": "Reads YAML: agent manifests, the MCP catalog, expert packs, skills."
+    },
+    "go:modernc.org/sqlite": {
+      "role": "The database. A SQLite written in Go, so no C compiler is needed."
+    },
+    "go:mvdan.cc/sh/v3": {
+      "role": "Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only)."
+    },
+    "npm:marked": {
+      "role": "Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. Used as a lexer only: no HTML from it is ever rendered (decision P25).",
+      "note": "It reads text agents write, so the message-safety browser test (e2e/xss.spec.ts) covers it. Any upgrade has to keep that passing."
+    },
+    "npm:remix": {
+      "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."
+    },
+    "npm:@remix-run/ui": {
+      "role": "Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui.",
+      "hold": "Pinned exactly: Remix calls it unstable (0.x, breaking changes in minor releases). Re-read its changelog before every bump."
+    },
+    "npm:lucide": {
+      "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled.",
+      "hold": "1.58.0 was published on 2026-10-16, less than 14 days before this audit. A release is adopted at the next refresh after it has been out for 14 days (the cooldown Dependabot uses for this repository, .github/dependabot.yml), unless a fix is needed sooner."
+    },
+    "npm:@fontsource-variable/inter": {
+      "role": "Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1)."
+    },
+    "npm:@playwright/test": {
+      "role": "Runs the browser tests against the real Go core."
+    },
+    "npm:playwright": {
+      "role": "The browser automation remix test uses to run the component tests in Chromium (same version as @playwright/test)."
+    },
+    "npm:@types/node": {
+      "role": "Type definitions for the Node APIs the build scripts use.",
+      "note": "26.6.5 on the owner's instruction (2026-10-16): the types describe Node 26 while the tooling runs on Node 24. The shipped UI is browser code, so the Node types only reach the build and test scripts; tsc passes on 26.6.5. A tooling script that starts using an API only Node 26 has would compile here and fail on Node 24, so such a change is checked by running the scripts, which CI does."
+    },
+    "npm:typescript": {
+      "role": "Type-checks the UI before every build (TypeScript 7, the native compiler)."
+    },
+    "npm:vite": {
+      "role": "Builds the UI bundle and serves it while developing."
+    },
+    "npm:@pitlane/vite-plugin-remix": {
+      "role": "Pitlane's Remix 3 Vite plugin in SPA mode (server: false): component hot module replacement while developing (an edited component swaps in place and keeps its state). Development only; the production build is the same static dist/. Its chunk import map is off because it is an inline script the CSP forbids.",
+      "hold": "Pinned exactly: 0.x and first published 2026-10-07; breaking changes can come in minor releases. Read its changelog before every bump."
+    },
+    "cli:claude": {
+      "role": "Claude Code: the agent that runs Claude workers and reviewers.",
+      "note": "Recommended and verified: 2.1.296 (the contract suite, decision P33: 16 passed, 0 failed, on Linux). You install the CLI yourself."
+    },
+    "cli:codex": {
+      "role": "Codex: runs OpenAI's models as an agent.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
+    },
+    "cli:gemini": {
+      "role": "Gemini CLI: runs Google's models as an agent.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    "cli:goose": {
+      "role": "Goose: the open-source agent (reached through its ACP bridge).",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
+      "hold": "1.55.0 was published on 2026-10-16, minutes before this audit. Decision P33 wants the contract suite to pass on a version before it is recommended, so the recommended 1.54.0 stays until the suite has run on 1.55.0 (the contract workflow runs on every push that touches internal/agents, and nightly)."
+    },
+    "cli:opencode": {
+      "role": "OpenCode: an open-source agent that can use many providers.",
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move."
+    },
+    "cli:cline": {
+      "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
+      "note": "Pinned at 3.0.70 (min and recommended), the newest release on 2026-10-09: version and ACP initialize checked live on Linux; no prompt turn was run (no sign-in here). You install it yourself with npm i -g cline (Node 22+; its launcher is a Node script). Decisions P29.",
+      "hold": "3.0.72 is out; 3.0.71 stays the pin. Decision P33: a CLI version is adopted only after the contract suite passes on it, and the suite (nightly, and on every push that touches internal/agents) needs the sign-in secret that is not yet in the repository's environment `contract` (open item 8 of docs/decisions.md section 4)."
+    },
+    "bridge:@agentclientprotocol/claude-agent-acp": {
+      "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
+      "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1).",
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. The bridge is off in the manifest (D1), so the pin is a record, not a running dependency. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move."
+    },
+    "bridge:@agentclientprotocol/codex-acp": {
+      "role": "The ACP bridge Drydock starts with npx for Codex.",
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
+    },
+    "action:actions/checkout": {
+      "role": "Fetches the repository in CI.",
+      "note": "Major tag v7. Every job of every workflow uses it with persist-credentials: false (a test, internal/ciconfig, keeps it so), on GitHub-hosted runners only."
+    },
+    "action:actions/setup-go": {
+      "role": "Installs Go in CI.",
+      "note": "Major tag v7; installs the Go version go.mod names."
+    },
+    "action:actions/setup-node": {
+      "role": "Installs Node in CI.",
+      "note": "Major tag v7; installs Node 24."
+    },
+    "action:Vampire/setup-wsl": {
+      "role": "Installs an Ubuntu 24.04 WSL 2 distro on the GitHub-hosted Windows runner for CI's wsl job, which proves the WSL run mode against it with a stand-in claude (decision P41).",
+      "note": "Major tag v7 (v7.0.0, Node 24), the newest; only the wsl job uses it, and that job always runs on a GitHub-hosted runner so no distro is installed on a self-hosted one."
+    },
+    "action:actions/upload-artifact": {
+      "role": "Keeps test output from CI runs.",
+      "note": "Major tag v7; keeps the end-to-end evidence of a failed run, the verification results and the contract report."
+    },
+    "action:github/codeql-action/init": {
+      "role": "Starts CodeQL code scanning for Go and JavaScript/TypeScript in the security workflow (.github/workflows/security.yml).",
+      "note": "Major tag v4; the results go to the repository's Security tab. Added with the security workflow (audit 2026-10-16, L52)."
+    },
+    "action:github/codeql-action/analyze": {
+      "role": "Runs the CodeQL analysis and uploads its results (security workflow).",
+      "note": "Major tag v4, the same repository as init (the two always move together)."
+    },
+    "tool:gh": {
+      "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
+      "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
+    },
+    "tool:task": {
+      "role": "Runs Taskfile targets (build, test, lint); optional, not bundled."
+    },
+    "tool:osv-scanner": {
+      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline). Installed on request by the Security page's Install button from google/osv-scanner's GitHub releases, checked against GitHub's SHA-256 digest (decision P66), or by you.",
+      "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
+    },
+    "tool:opengrep": {
+      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary. Installed on request by the Security page's Install button from opengrep/opengrep's GitHub releases (the Windows archive from 2.0, the exe before), checked against GitHub's SHA-256 digest (decision P66), or by you; you choose a rules folder.",
+      "note": "Drydock ships and downloads no rules: the opengrep-rules repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and benchmarking, so the person points the scan at rules they are licensed to use. Newest release read from GitHub (releases/latest)."
+    },
+    "tool:go-licenses": {
+      "role": "The documented cross-check for THIRD_PARTY_NOTICES.md (brief section 21); nothing in the repository runs it.",
+      "note": "THIRD_PARTY_NOTICES.md is generated by cmd/drydock-notices from docs/software-versions.json, ui/package-lock.json and the Go module cache, and a test keeps it equal to them (audit 2026-10-16, L57). go-licenses report can be run by a person to compare."
+    },
+    "tool:govulncheck": {
+      "role": "Go's own vulnerability scanner; run by the audit tool (cmd/drydock-audit) and by the security workflow (.github/workflows/security.yml) with go run at a pinned release.",
+      "note": "Pinned to v1.9.0 in both places (the audit's govulncheckModule constant and the workflow; a test keeps them equal), so the code that checks the code is the release Go's checksum database vouches for, not whatever is newest (audit 2026-10-16, L51/L52). Moving it means changing both and this entry."
+    },
+    "tool:wrangler": {
+      "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
+      "hold": "4.151.1 is out; the documented version is what the Cloudflare documentation of this repository was written against. Drydock does not run wrangler, so nothing breaks while it is behind; it moves when those documents are next reviewed."
+    },
+    "go:golang.org/x/oauth2": {
+      "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens)."
+    },
+    "ci-go:1.27.2": {
+      "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."
+    },
+    "npm:monaco-editor": {
+      "role": "The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported).",
+      "note": "Its package.json pins dompurify 3.4.15, which has two low advisories about IN_PLACE mode; Monaco never uses that mode, and ui/package.json overrides the npm copy to 3.4.16."
+    },
+    "npm:@xterm/xterm": {
+      "role": "Draws the human's terminals in the bottom dock (lazy-loaded)."
+    },
+    "npm:@xterm/addon-fit": {
+      "role": "Sizes a terminal to its panel."
+    },
+    "npm:dompurify": {
+      "role": "Pulled in by monaco-editor; pinned by an override to the release that fixes the IN_PLACE advisories."
+    },
+    "npm:esbuild": {
+      "role": "Pulled in by vite and remix test (TypeScript transforms in the test runner); not part of the shipped bundle.",
+      "note": "Pinned by an override to 0.28.2, the release that fixes the Windows dev-server file-read advisory (GHSA-g7r4-m6w7-qqqr) that 0.27.x has."
+    },
+    "tool:docker": {
+      "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
+      "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified.",
+      "hold": "29.9.1 is out; 29.8.2 stays documented: it is the engine the sandbox was measured with (decision P30), and nothing has run it on 29.9.1. Measured today with CI's ubuntu-latest image too, which carries Docker 28.0.4 (sandbox job of ci, 2026-10-16); the development sandbox has the 29.8.2 client and no daemon. It moves when a sandbox run on 29.9.1 happens, on the owner's PC with Docker Desktop updated."
+    },
+    "tool:golangci-lint": {
+      "role": "The Go linter the CI lint job runs (go install ...@v2.15.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
+    },
+    "tool:llama.cpp": {
+      "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
+      "note": "Not pinned: Drydock installs the newest release that carries the backend's archive with a SHA-256 digest, when a person presses Install or Update (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The TurboQuant fork a person may opt into (AtomicBot-ai/atomic-llama-cpp-turboquant) is not tracked here: it is not Drydock's default and trails upstream."
+    },
+    "tool:actions-runner": {
+      "role": "The CI runners (decision P56) run GitHub's own runner for a person's private repositories: unpacked on the PC for Windows jobs, built into a container image (FROM ubuntu:24.04, the current Ubuntu LTS) for Linux jobs.",
+      "note": "Not pinned: Drydock downloads the newest stable release when a runner starts and runs it only after checking its SHA-256 against the one the release notes publish (GitHub stops serving runners that fall far behind). The version shown is the newest at the last audit. CI downloads, checks and starts it on every push (TestRealRunnerRelease); nothing is registered there."
+    },
+    "go:github.com/tree-sitter/go-tree-sitter": {
+      "role": "The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build needs MinGW gcc. MIT.",
+      "note": "v0.25.0 is the newest release. A build without CGO leaves it out and has no repo map."
+    },
+    "go:github.com/tree-sitter/tree-sitter-go": {
+      "role": "Go grammar of the repo map, with its own queries/tags.scm (copied into internal/repomap/queries). MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-typescript": {
+      "role": "TypeScript and TSX grammars of the repo map, with their queries/tags.scm (combined with JavaScript's, as the grammar does) and Drydock's own extra queries. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-javascript": {
+      "role": "JavaScript (and JSX) grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-python": {
+      "role": "Python grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-c-sharp": {
+      "role": "C# grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-java": {
+      "role": "Java grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/tree-sitter/tree-sitter-rust": {
+      "role": "Rust grammar of the repo map, with its queries/tags.scm. MIT."
+    },
+    "go:github.com/mattn/go-pointer": {
+      "role": "Used by go-tree-sitter to hand Go values to C callbacks (the repo map). MIT.",
+      "note": "Indirect: go-tree-sitter's go.mod pins it."
+    },
+    "go:modernc.org/libc": {
+      "role": "The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app.",
+      "hold": "1.79.0 was published on 2026-10-15, less than 14 days before this audit. A release is adopted at the next refresh after it has been out for 14 days (the cooldown Dependabot uses for this repository, .github/dependabot.yml), unless a fix is needed sooner. It is also the module that has to agree with the SQLite driver's generated code, so it moves together with modernc.org/sqlite and the storage tests are the check."
+    },
+    "go:google.golang.org/genproto": {
+      "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use).",
+      "hold": "Only the module at the root is behind, as a pseudo-version (no release exists); it moves with the libraries that require it, not on its own (decision P23)."
+    }
+  }
+}

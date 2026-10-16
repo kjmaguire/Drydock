@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Metered plans accept `tiers_mode` and `tiers` on POST /v1/plans, validated and stored, and shown in plan responses with amounts in minor units. Invalid or misplaced tiers return 422 `invalid_tiers`.\n- `billing.TieredAmount` computes graduated and volume charges as specified, and a renewal of a tiered plan bills the ended period's usage as one invoice line (no usage, no invoice).\n- Checked by new tests for TieredAmount, validation, and renewal billing, plus a passing `go build ./...`, `go test ./...`, and `go vet ./...`.",
+    "data": {},
+    "created": 1791669701637
+  },
+  {
+    "id": 2,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.5s",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/build_0ebcb540adb7.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1498,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669703265
+  },
+  {
+    "id": 3,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 860ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/test_a2ba30c01b88.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 858,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669704127
+  },
+  {
+    "id": 4,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 910ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/lint_515875d37083.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 914,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669705046
+  },
+  {
+    "id": 5,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/secrets_d5c1148ddc05.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 52,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669705107
+  },
+  {
+    "id": 6,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "11 file(s), +301 -15",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/evidence/task.diff",
+    "data": {
+      "Files": 11,
+      "Insertions": 301,
+      "Deletions": 15,
+      "base": "e6f2f05f9d3919ec4994fe07f2f4a891b80c1c47",
+      "commit": "421c9ceaefaf8de6e37b308845373a087eadd54e"
+    },
+    "created": 1791669705297
+  },
+  {
+    "id": 7,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 421c9ceaef",
+    "ref": "421c9ceaefaf8de6e37b308845373a087eadd54e",
+    "data": {},
+    "created": 1791669705297
+  },
+  {
+    "id": 8,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- metered plans accept `tiers_mode` and `tiers`, validated and stored, shown with minor-unit amounts. Invalid or misplaced tiers return 422 `invalid_tiers`. `billing.TieredAmount` and renewal billing were already in place and are unchanged here. The checks below pass.",
+    "data": {},
+    "created": 1791669784273
+  },
+  {
+    "id": 9,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 700ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/build_f96e5c9a519b.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 697,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669785017
+  },
+  {
+    "id": 10,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 680ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/test_c8d805a0dd5d.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 675,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669785695
+  },
+  {
+    "id": 11,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 570ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/lint_2779f9231c68.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 571,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669786269
+  },
+  {
+    "id": 12,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/checks/secrets_f641840cd418.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 29,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669786307
+  },
+  {
+    "id": 13,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "11 file(s), +325 -15",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-tiered-pricing-D-1/data/runs/run_0d02b8a67e5e/evidence/task.diff",
+    "data": {
+      "Files": 11,
+      "Insertions": 325,
+      "Deletions": 15,
+      "base": "e6f2f05f9d3919ec4994fe07f2f4a891b80c1c47",
+      "commit": "7c574ba7b93744f68ed496e9fd36ccbffba3f8da"
+    },
+    "created": 1791669786534
+  },
+  {
+    "id": 14,
+    "taskId": "task_3a0f06dba81c",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 7c574ba7b9",
+    "ref": "7c574ba7b93744f68ed496e9fd36ccbffba3f8da",
+    "data": {},
+    "created": 1791669786534
+  }
+]

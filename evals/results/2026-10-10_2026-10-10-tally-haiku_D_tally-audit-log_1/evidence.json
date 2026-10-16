@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Each 2xx request of the 21 listed kinds appends one audit entry (actor, target, request_id, `at`, and `changes` for updates); failed requests and other requests append nothing; no key token, webhook secret or invite token is ever stored.\n- `GET /v1/audit-events` returns the org's entries newest first, filters by `action`, `target_id` and `actor_id`, pages with `limit`/`cursor`, and answers owners and admins only (others get `403 {\"error\":\"forbidden\"}`).\n- New tests cover the recorded kinds, the failure and secret cases, the listing, and the snapshot round trip. `go build ./...`, `go test ./.\n...[truncated]",
+    "data": {},
+    "created": 1791608163823
+  },
+  {
+    "id": 2,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 690ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-audit-log-D-1/data/runs/run_c6905de22a1d/checks/build-1791608163890255930.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 692,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608164582
+  },
+  {
+    "id": 3,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 700ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-audit-log-D-1/data/runs/run_c6905de22a1d/checks/test-1791608164585970547.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 703,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608165291
+  },
+  {
+    "id": 4,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 550ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-audit-log-D-1/data/runs/run_c6905de22a1d/checks/lint-1791608165294958125.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 545,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608165841
+  },
+  {
+    "id": 5,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/drydock-trial-3526455425/tally-audit-log-D-1/data/runs/run_c6905de22a1d/checks/secrets-1791608165872966665.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 29,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608165873
+  },
+  {
+    "id": 6,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "13 file(s), +590 -6",
+    "ref": "/tmp/drydock-trial-3526455425/tally-audit-log-D-1/data/runs/run_c6905de22a1d/evidence/task.diff",
+    "data": {
+      "Files": 13,
+      "Insertions": 590,
+      "Deletions": 6,
+      "base": "9c09b93c00796ea1d5c18f670c86f3bd5178d8a6",
+      "commit": "9ecfb9568c8d1b14836d1f5af23d9a5c2b7f0d20"
+    },
+    "created": 1791608166026
+  },
+  {
+    "id": 7,
+    "taskId": "task_78d39133fc3e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 9ecfb9568c",
+    "ref": "9ecfb9568c8d1b14836d1f5af23d9a5c2b7f0d20",
+    "data": {},
+    "created": 1791608166063
+  }
+]

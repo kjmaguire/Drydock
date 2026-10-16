@@ -1,0 +1,352 @@
+diff --git a/start/internal/api/api.go b/result/internal/api/api.go
+index 0fb8ce1..4176678 100644
+--- a/start/internal/api/api.go
++++ b/result/internal/api/api.go
+@@ -2,9 +2,12 @@
+ package api
+ 
+ import (
++	"encoding/base64"
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
++	"strconv"
++	"strings"
+ 	"time"
+ 
+ 	"example.com/saasapi/internal/billing"
+@@ -101,12 +104,82 @@ func view(inv store.Invoice) invoiceView {
+ 	return invoiceView{Invoice: inv, Totals: billing.Compute(inv)}
+ }
+ 
++const (
++	defaultPageLimit = 20
++	maxPageLimit     = 100
++)
++
++// listInvoices returns one page of the account's invoices, oldest first. next_cursor is empty on the last page.
+ func (s *Server) listInvoices(w http.ResponseWriter, r *http.Request, acct store.Account) {
++	q := r.URL.Query()
++	limit, ok := pageLimit(q["limit"])
++	if !ok {
++		writeError(w, http.StatusBadRequest, "invalid_limit")
++		return
++	}
++	after, ok := pageAfter(q["cursor"])
++	if !ok {
++		writeError(w, http.StatusBadRequest, "invalid_cursor")
++		return
++	}
++	// One extra invoice tells whether there is a next page.
++	invs := s.store.InvoicePage(acct.ID, after, limit+1)
++	next := ""
++	if len(invs) > limit {
++		invs = invs[:limit]
++		last := invs[len(invs)-1]
++		next = encodeCursor(store.Position{CreatedAt: last.CreatedAt, ID: last.ID})
++	}
+ 	items := []invoiceView{}
+-	for _, inv := range s.store.Invoices(acct.ID) {
++	for _, inv := range invs {
+ 		items = append(items, view(inv))
+ 	}
+-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
++	writeJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
++}
++
++// pageLimit reads the limit parameter: absent means the default, otherwise a whole number from 1 to 100.
++func pageLimit(vals []string) (int, bool) {
++	if len(vals) == 0 {
++		return defaultPageLimit, true
++	}
++	if len(vals) > 1 || vals[0] == "" {
++		return 0, false
++	}
++	for _, c := range vals[0] {
++		if c < '0' || c > '9' {
++			return 0, false
++		}
++	}
++	n, err := strconv.Atoi(vals[0])
++	if err != nil || n < 1 || n > maxPageLimit {
++		return 0, false
++	}
++	return n, true
++}
++
++// pageAfter reads the cursor parameter: absent means the first page, otherwise the position to start after.
++func pageAfter(vals []string) (*store.Position, bool) {
++	if len(vals) == 0 {
++		return nil, true
++	}
++	if len(vals) > 1 {
++		return nil, false
++	}
++	raw, err := base64.RawURLEncoding.DecodeString(vals[0])
++	if err != nil {
++		return nil, false
++	}
++	nanos, id, found := strings.Cut(string(raw), "|")
++	n, err := strconv.ParseInt(nanos, 10, 64)
++	if !found || err != nil || id == "" {
++		return nil, false
++	}
++	return &store.Position{CreatedAt: time.Unix(0, n), ID: id}, true
++}
++
++// encodeCursor returns the opaque cursor for a position: its creation time in nanoseconds and its ID, base64url-encoded.
++func encodeCursor(p store.Position) string {
++	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(p.CreatedAt.UnixNano(), 10) + "|" + p.ID))
+ }
+ 
+ func (s *Server) createInvoice(w http.ResponseWriter, r *http.Request, acct store.Account) {
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index bdb8a35..44484bb 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -1,6 +1,7 @@
+ package api_test
+ 
+ import (
++	"encoding/base64"
+ 	"encoding/json"
+ 	"net/http"
+ 	"net/http/httptest"
+@@ -99,3 +100,190 @@ func TestAnInvoiceHasItsTotals(t *testing.T) {
+ 		t.Fatalf("cross-account invoice: %d", r.Code)
+ 	}
+ }
++
++// pageBody is the part of a GET /api/invoices response the tests read.
++type pageBody struct {
++	Items []struct {
++		ID string `json:"id"`
++	} `json:"items"`
++	NextCursor string `json:"next_cursor"`
++}
++
++// seedInvoices gives acc_acme a customer and n invoices, one per second from start, and returns their IDs in order.
++func seedInvoices(t *testing.T, st *store.Store, start time.Time, n int) []string {
++	t.Helper()
++	c, err := st.CreateCustomer("acc_acme", "Jane", "jane@example.com", store.PlanPro, start)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var ids []string
++	for i := 0; i < n; i++ {
++		inv, err := st.CreateInvoice(store.Invoice{AccountID: "acc_acme", CustomerID: c.ID, Lines: []store.LineItem{{Description: "Seats", Quantity: 1, UnitCents: 100}}}, start.Add(time.Duration(i)*time.Second))
++		if err != nil {
++			t.Fatal(err)
++		}
++		ids = append(ids, inv.ID)
++	}
++	return ids
++}
++
++// getPage fetches one page of acc_acme's invoices and returns its IDs and next cursor.
++func getPage(t *testing.T, h http.Handler, query string) ([]string, string) {
++	t.Helper()
++	r := do(t, h, "GET", "/api/invoices?"+query, "key-acme", "")
++	if r.Code != http.StatusOK {
++		t.Fatalf("list %q: %d %s", query, r.Code, r.Body)
++	}
++	var p pageBody
++	if err := json.Unmarshal(r.Body.Bytes(), &p); err != nil {
++		t.Fatal(err)
++	}
++	var ids []string
++	for _, it := range p.Items {
++		ids = append(ids, it.ID)
++	}
++	return ids, p.NextCursor
++}
++
++// walkPages follows next_cursor from start (empty for the first page) until the last page and returns every ID seen,
++// in order. query holds the other parameters.
++func walkPages(t *testing.T, h http.Handler, query, start string) []string {
++	t.Helper()
++	var all []string
++	for cursor := start; ; {
++		q := query
++		if cursor != "" {
++			q += "&cursor=" + cursor
++		}
++		ids, next := getPage(t, h, q)
++		all = append(all, ids...)
++		if next == "" {
++			return all
++		}
++		if len(all) > 1000 {
++			t.Fatal("paging does not end")
++		}
++		cursor = next
++	}
++}
++
++func TestInvoicesArePagedInCreationOrder(t *testing.T) {
++	srv, st := newServer(t)
++	want := seedInvoices(t, st, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 25)
++	if got := walkPages(t, srv, "limit=7", ""); !equalIDs(got, want) {
++		t.Fatalf("walk with limit 7:\n got %v\nwant %v", got, want)
++	}
++	if got := walkPages(t, srv, "", ""); !equalIDs(got, want) {
++		t.Fatalf("walk with the default limit:\n got %v\nwant %v", got, want)
++	}
++}
++
++func TestThePageSizeDefaultsToTwentyAndNextCursorIsEmptyOnTheLastPage(t *testing.T) {
++	srv, st := newServer(t)
++	seedInvoices(t, st, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 25)
++	ids, next := getPage(t, srv, "")
++	if len(ids) != 20 || next == "" {
++		t.Fatalf("first page: %d items, next %q", len(ids), next)
++	}
++	ids, next = getPage(t, srv, "cursor="+next)
++	if len(ids) != 5 || next != "" {
++		t.Fatalf("last page: %d items, next %q", len(ids), next)
++	}
++}
++
++func TestAnAccountWithNoInvoicesGetsAnEmptyPage(t *testing.T) {
++	srv, _ := newServer(t)
++	r := do(t, srv, "GET", "/api/invoices", "key-globex", "")
++	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"items":[]`) || !strings.Contains(r.Body.String(), `"next_cursor":""`) {
++		t.Fatalf("empty list: %d %s", r.Code, r.Body)
++	}
++}
++
++func TestExactlyOnePageHasNoNextCursor(t *testing.T) {
++	srv, st := newServer(t)
++	want := seedInvoices(t, st, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 20)
++	ids, next := getPage(t, srv, "")
++	if !equalIDs(ids, want) || next != "" {
++		t.Fatalf("got %d items, next %q", len(ids), next)
++	}
++}
++
++func TestLimitBoundsAreAcceptedAndEverythingElseIsInvalid(t *testing.T) {
++	srv, st := newServer(t)
++	seedInvoices(t, st, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 3)
++	for _, q := range []string{"limit=1", "limit=100"} {
++		if ids := walkPages(t, srv, q, ""); len(ids) != 3 {
++			t.Fatalf("%s: %d items", q, len(ids))
++		}
++	}
++	for _, q := range []string{"limit=0", "limit=101", "limit=-1", "limit=+5", "limit=1.5", "limit=abc", "limit=", "limit=10&limit=20", "limit=99999999999999999999999"} {
++		r := do(t, srv, "GET", "/api/invoices?"+q, "key-acme", "")
++		if r.Code != http.StatusBadRequest || !strings.Contains(r.Body.String(), `"error":"invalid_limit"`) {
++			t.Fatalf("%s: %d %s", q, r.Code, r.Body)
++		}
++	}
++}
++
++func TestAnUnreadableCursorIsInvalid(t *testing.T) {
++	srv, st := newServer(t)
++	seedInvoices(t, st, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 3)
++	garbage := base64.RawURLEncoding.EncodeToString([]byte("nonsense"))
++	notANumber := base64.RawURLEncoding.EncodeToString([]byte("soon|inv_00001"))
++	noID := base64.RawURLEncoding.EncodeToString([]byte("1767323045000000000|"))
++	for _, c := range []string{"!!!", garbage, notANumber, noID, ""} {
++		r := do(t, srv, "GET", "/api/invoices?cursor="+c, "key-acme", "")
++		if r.Code != http.StatusBadRequest || !strings.Contains(r.Body.String(), `"error":"invalid_cursor"`) {
++			t.Fatalf("cursor %q: %d %s", c, r.Code, r.Body)
++		}
++	}
++}
++
++func TestPagingNeitherSkipsNorRepeatsInvoicesCreatedBetweenPages(t *testing.T) {
++	srv, st := newServer(t)
++	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	before := seedInvoices(t, st, start, 5)
++	first, cursor := getPage(t, srv, "limit=2")
++
++	// Created between the page requests: one sharing the newest timestamp, then three later ones.
++	same := seedInvoices(t, st, start.Add(4*time.Second), 1)
++	later := seedInvoices(t, st, start.Add(10*time.Second), 3)
++	want := append(append(append([]string{}, before...), same...), later...)
++
++	rest := walkPages(t, srv, "limit=2", cursor)
++	if got := append(first, rest...); !equalIDs(got, want) {
++		t.Fatalf("paging around new invoices:\n got %v\nwant %v", got, want)
++	}
++}
++
++func TestInvoicesAreOrderedByCreationTimeNotByID(t *testing.T) {
++	srv, st := newServer(t)
++	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
++	c, err := st.CreateCustomer("acc_acme", "Jane", "jane@example.com", store.PlanPro, start)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var newestFirst []string
++	for i := 2; i >= 0; i-- {
++		inv, err := st.CreateInvoice(store.Invoice{AccountID: "acc_acme", CustomerID: c.ID, Lines: []store.LineItem{{Description: "Seats", Quantity: 1, UnitCents: 100}}}, start.Add(time.Duration(i)*time.Second))
++		if err != nil {
++			t.Fatal(err)
++		}
++		newestFirst = append([]string{inv.ID}, newestFirst...)
++	}
++	// IDs were issued in the order the invoices were created, but times run backwards, so the oldest by time is last issued.
++	if got := walkPages(t, srv, "limit=1", ""); !equalIDs(got, newestFirst) {
++		t.Fatalf("got %v, want %v", got, newestFirst)
++	}
++}
++
++func equalIDs(a, b []string) bool {
++	if len(a) != len(b) {
++		return false
++	}
++	for i := range a {
++		if a[i] != b[i] {
++			return false
++		}
++	}
++	return true
++}
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 9663f54..d89461b 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -222,3 +222,42 @@ func (s *Store) Invoices(accountID string) []Invoice {
+ 	})
+ 	return out
+ }
++
++// Position is a place in an account's invoice list: an invoice's creation time and ID.
++type Position struct {
++	CreatedAt time.Time
++	ID        string
++}
++
++// InvoicePage returns up to limit of an account's invoices in the same order as Invoices. With after set, the page
++// starts just past that position, so invoices created later sort after it and are never skipped or repeated.
++func (s *Store) InvoicePage(accountID string, after *Position, limit int) []Invoice {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	out := []Invoice{}
++	for _, inv := range s.invoices {
++		if inv.AccountID != accountID {
++			continue
++		}
++		if after != nil && !before(after.CreatedAt, after.ID, inv.CreatedAt, inv.ID) {
++			continue
++		}
++		out = append(out, inv)
++	}
++	sort.Slice(out, func(i, j int) bool {
++		return before(out[i].CreatedAt, out[i].ID, out[j].CreatedAt, out[j].ID)
++	})
++	if len(out) > limit {
++		out = out[:limit]
++	}
++	return out
++}
++
++// before reports whether the position (atA, idA) comes before (atB, idB) in creation order. It compares wall-clock
++// nanoseconds, so a time read from a cursor orders the same as the stored time it came from.
++func before(atA time.Time, idA string, atB time.Time, idB string) bool {
++	if a, b := atA.UnixNano(), atB.UnixNano(); a != b {
++		return a < b
++	}
++	return idA < idB
++}

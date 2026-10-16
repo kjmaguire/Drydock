@@ -1,0 +1,32 @@
+# A data migration across three file versions, numbering rules, and crash-safe writes.
+id: tally-snapshot-v3
+title: "Invoice numbers and safe snapshots"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  Accountants need invoice numbers, and snapshots are fragile: a crash while saving leaves a half-written file, and nothing
+  stops an older server from reading a newer file. Implement:
+
+  - Every invoice gets "number": "INV-" and a per-organization sequence written with at least 6 digits ("INV-000001",
+    "INV-000002", ...), given when the invoice is created, in creation order, never reused. Every invoice answer shows it.
+  - Snapshot version 3 keeps the numbers and each organization's next number. Load reads versions 1, 2 and 3: invoices from
+    an older file are numbered per organization in creation order (created_at, then ID), and new invoices continue after the
+    highest number. Save always writes version 3.
+  - Save is atomic: it writes a temporary file in the same folder and renames it over the old one, so the file at the path is
+    always either the old snapshot or the whole new one. No temporary file is left behind.
+  - snapshot.Upgrade(path string) error rewrites a file of an older version as version 3, after copying the original byte for
+    byte to "<path>.v<old version>.bak" (for example tally.json.v2.bak). A version 3 file is left alone, without a backup.
+  - Load of a file of a version newer than 3 fails with an error matching ErrUnsupportedVersion, and Upgrade fails the same
+    way and leaves such a file untouched.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-snapshot-v3
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

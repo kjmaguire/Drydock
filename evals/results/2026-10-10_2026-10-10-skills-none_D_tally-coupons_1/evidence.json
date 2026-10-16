@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/coupons`, `GET /v1/coupons`, `GET /v1/coupons/{code}` and `POST /v1/subscriptions/{id}/coupon` behave as the spec describes, including every error code.\n- Invoices apply coupon discounts per duration rules, compute tax after the discount, and expose `coupon` and `discount`. Existing `discount_percent` behaviour is unchanged when no coupon applies.\n- Checked by new tests covering validation, redemption, and invoice rules, plus `go build ./...`, `go test ./...` and `go vet ./...` passing.",
+    "data": {},
+    "created": 1791668959717
+  },
+  {
+    "id": 2,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.09s",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/build_107d313a054b.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1089,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668960945
+  },
+  {
+    "id": 3,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.54s",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/test_8977e3982dcf.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1535,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668962482
+  },
+  {
+    "id": 4,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 810ms",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/lint_3f902a6fe817.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 810,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668963299
+  },
+  {
+    "id": 5,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/secrets_37b1083c91dc.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 25,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668963327
+  },
+  {
+    "id": 6,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "13 file(s), +785 -7",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/evidence/task.diff",
+    "data": {
+      "Files": 13,
+      "Insertions": 785,
+      "Deletions": 7,
+      "base": "fe471b62d41432495cddf27d76263d4ca8007c8c",
+      "commit": "52091cf393b6c5bc6f84a98e21c9d98d4c56e5e6"
+    },
+    "created": 1791668963512
+  },
+  {
+    "id": 7,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 52091cf393",
+    "ref": "52091cf393b6c5bc6f84a98e21c9d98d4c56e5e6",
+    "data": {},
+    "created": 1791668963512
+  },
+  {
+    "id": 8,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- The fix**",
+    "data": {},
+    "created": 1791669051665
+  },
+  {
+    "id": 9,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 730ms",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/build_682b2f4a9753.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 729,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669052437
+  },
+  {
+    "id": 10,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.07s",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/test_979246fe99ec.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1068,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669053508
+  },
+  {
+    "id": 11,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 860ms",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/lint_c34e7d9022a9.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 858,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669054368
+  },
+  {
+    "id": 12,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 40ms",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/checks/secrets_17c58c0b8bf5.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 37,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669054407
+  },
+  {
+    "id": 13,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "13 file(s), +800 -7",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-coupons-D-1/data/runs/run_d106504c2bce/evidence/task.diff",
+    "data": {
+      "Files": 13,
+      "Insertions": 800,
+      "Deletions": 7,
+      "base": "fe471b62d41432495cddf27d76263d4ca8007c8c",
+      "commit": "fd89480b4692751a8e3775ca39a5fadbaad5bb71"
+    },
+    "created": 1791669054553
+  },
+  {
+    "id": 14,
+    "taskId": "task_e3cfcb69494f",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit fd89480b46",
+    "ref": "fd89480b4692751a8e3775ca39a5fadbaad5bb71",
+    "data": {},
+    "created": 1791669054553
+  }
+]

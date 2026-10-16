@@ -1,0 +1,1052 @@
+diff --git a/start/README.md b/result/README.md
+index 7aa8d92..0db61f0 100644
+--- a/start/README.md
++++ b/result/README.md
+@@ -33,6 +33,9 @@ happened. Its own staff work in the organization as members with roles. Go stand
+   through them. `next_cursor` is absent on the last page.
+ - Times are RFC 3339 in UTC. Amounts are integers in the currency's minor unit; fields ending in `_formatted` are for people.
+ - Every response carries an `X-Request-Id` (the caller's, when it sent a sensible one).
++- Every successful change to customers, plans, subscriptions, invoices, API keys, members, invites, webhook endpoints or the
++  organization is recorded in the audit log, which `GET /v1/audit-events` lists newest first for owners and admins
++  (filters `?action=`, `?target_id=`, `?actor_id=`). Failed requests are not recorded.
+ 
+ ## Working on Tally
+ 
+diff --git a/result/internal/api/audit.go b/result/internal/api/audit.go
+new file mode 100644
+index 0000000..f246c9b
+--- /dev/null
++++ b/result/internal/api/audit.go
+@@ -0,0 +1,88 @@
++package api
++
++import (
++	"encoding/json"
++	"net/http"
++	"reflect"
++	"slices"
++	"time"
++
++	"example.com/tally/internal/auth"
++	"example.com/tally/internal/store"
++)
++
++// auditView is an audit entry as the API shows it.
++type auditView struct {
++	ID        string                        `json:"id"`
++	Action    string                        `json:"action"`
++	Actor     store.AuditActor              `json:"actor"`
++	Target    store.AuditTarget             `json:"target"`
++	RequestID string                        `json:"request_id"`
++	At        time.Time                     `json:"at"`
++	Changes   *map[string]store.AuditChange `json:"changes,omitempty"`
++}
++
++func auditKey(e store.AuditEntry) cursor { return cursor{T: e.At, ID: e.ID} }
++
++// audit records a request that succeeded: the API key that made it, what it changed and the request's ID. Call it only on
++// the success path. changes is nil except for updates, where it is auditDiff.
++func (s *Server) audit(r *http.Request, p auth.Principal, action, targetType, targetID string, changes *map[string]store.AuditChange) {
++	s.store.AddAuditEntry(p.OrgID, store.AuditEntry{
++		Action:    action,
++		Actor:     store.AuditActor{Type: "api_key", ID: p.KeyID, UserID: p.UserID},
++		Target:    store.AuditTarget{Type: targetType, ID: targetID},
++		RequestID: RequestID(r.Context()),
++		At:        s.clock.Now().UTC(),
++		Changes:   changes,
++	})
++}
++
++// auditDiff returns the fields whose JSON values differ between before and after, keyed by JSON field name, with both
++// values. The fields named in skip are left out, so that secrets never reach the log.
++func auditDiff(before, after any, skip ...string) *map[string]store.AuditChange {
++	b, a := jsonFields(before), jsonFields(after)
++	names := map[string]bool{}
++	for name := range b {
++		names[name] = true
++	}
++	for name := range a {
++		names[name] = true
++	}
++	changes := map[string]store.AuditChange{}
++	for name := range names {
++		if slices.Contains(skip, name) || reflect.DeepEqual(b[name], a[name]) {
++			continue
++		}
++		changes[name] = store.AuditChange{From: b[name], To: a[name]}
++	}
++	return &changes
++}
++
++// jsonFields returns v as the JSON object the API would send for it.
++func jsonFields(v any) map[string]any {
++	var m map[string]any
++	b, _ := json.Marshal(v)
++	_ = json.Unmarshal(b, &m)
++	return m
++}
++
++// listAuditEvents lists the organization's audit log, newest first, optionally only the entries with ?action=, ?target_id=
++// or ?actor_id= (an API key ID or a user ID). Only owners and admins may read it.
++func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	if !auth.CanManageTeam(p.Role) {
++		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
++		return
++	}
++	pg, ok := parsePage(w, r)
++	if !ok {
++		return
++	}
++	q := r.URL.Query()
++	es := s.store.AuditEntries(p.OrgID, store.AuditFilter{Action: q.Get("action"), TargetID: q.Get("target_id"), ActorID: q.Get("actor_id")})
++	items, next := pageOfNewest(es, auditKey, pg)
++	views := make([]auditView, 0, len(items))
++	for _, e := range items {
++		views = append(views, auditView{ID: e.ID, Action: e.Action, Actor: e.Actor, Target: e.Target, RequestID: e.RequestID, At: e.At, Changes: e.Changes})
++	}
++	writeJSON(w, http.StatusOK, list{Items: views, NextCursor: next})
++}
+diff --git a/result/internal/api/audit_test.go b/result/internal/api/audit_test.go
+new file mode 100644
+index 0000000..7b0baf5
+--- /dev/null
++++ b/result/internal/api/audit_test.go
+@@ -0,0 +1,357 @@
++package api_test
++
++import (
++	"fmt"
++	"net/http"
++	"net/url"
++	"strings"
++	"testing"
++	"time"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++// auditEvent is an entry of the audit log as the API answers it.
++type auditEvent struct {
++	ID     string `json:"id"`
++	Action string `json:"action"`
++	Actor  struct {
++		Type   string `json:"type"`
++		ID     string `json:"id"`
++		UserID string `json:"user_id"`
++	} `json:"actor"`
++	Target struct {
++		Type string `json:"type"`
++		ID   string `json:"id"`
++	} `json:"target"`
++	RequestID string                     `json:"request_id"`
++	At        time.Time                  `json:"at"`
++	Changes   *map[string]map[string]any `json:"changes"`
++}
++
++type auditPage struct {
++	Items      []auditEvent `json:"items"`
++	NextCursor string       `json:"next_cursor"`
++}
++
++// auditLog reads the audit log of the caller's organization; query is "" or starts with "?".
++func auditLog(t *testing.T, e *apitest.Env, key, query string) auditPage {
++	t.Helper()
++	var page auditPage
++	e.MustDo(http.StatusOK, "GET", "/v1/audit-events"+query, key, nil, &page)
++	return page
++}
++
++// keyID is the ID of the API key the caller presents.
++func keyID(t *testing.T, e *apitest.Env, key string) string {
++	t.Helper()
++	var me struct {
++		APIKeyID string `json:"api_key_id"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/me", key, nil, &me)
++	return me.APIKeyID
++}
++
++// newest returns the newest entry of the action, failing the test when there is none.
++func newest(t *testing.T, page auditPage, action string) auditEvent {
++	t.Helper()
++	for _, ev := range page.Items {
++		if ev.Action == action {
++			return ev
++		}
++	}
++	t.Fatalf("no %s entry in %+v", action, page.Items)
++	return auditEvent{}
++}
++
++func createInvoice(t *testing.T, e *apitest.Env, key, customerID string) string {
++	t.Helper()
++	var inv struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invoices", key, map[string]any{
++		"customer_id": customerID, "currency": "USD", "lines": []map[string]any{{"description": "Setup", "quantity": 1, "unit_amount": 500}},
++	}, &inv)
++	return inv.ID
++}
++
++func TestAuditRecordsEveryKindOfChange(t *testing.T) {
++	e := apitest.New(t)
++	k := e.Acme.Key
++	self := keyID(t, e, k)
++	e.Clock.Advance(time.Minute)
++
++	e.MustDo(http.StatusOK, "PATCH", "/v1/org", k, map[string]any{"name": "Acme Inc"}, nil)
++	plan := e.CreatePlan(e.Acme, "Pro", "USD", "10.00")
++	e.MustDo(http.StatusOK, "PATCH", "/v1/plans/"+plan.ID, k, map[string]any{"name": "Pro Plus"}, nil)
++	jane := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	e.MustDo(http.StatusOK, "PATCH", "/v1/customers/"+jane.ID, k, map[string]any{"name": "Jane Doe"}, nil)
++	ann := e.CreateCustomer(e.Acme, "Ann", "ann@example.com")
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/customers/"+ann.ID, k, nil, nil)
++
++	var sub struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/subscriptions", k, map[string]any{"customer_id": jane.ID, "plan_id": plan.ID}, &sub)
++	e.MustDo(http.StatusOK, "PATCH", "/v1/subscriptions/"+sub.ID, k, map[string]any{"quantity": 3}, nil)
++	e.MustDo(http.StatusOK, "POST", "/v1/subscriptions/"+sub.ID+"/cancel", k, map[string]any{"at_period_end": true}, nil)
++
++	paid := createInvoice(t, e, k, jane.ID)
++	e.MustDo(http.StatusOK, "POST", "/v1/invoices/"+paid+"/pay", k, map[string]string{"payment_method": "pm_card_visa"}, nil)
++	voided := createInvoice(t, e, k, jane.ID)
++	e.MustDo(http.StatusOK, "POST", "/v1/invoices/"+voided+"/void", k, nil, nil)
++
++	var ck struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/api-keys", k, map[string]string{"name": "CI"}, &ck)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/api-keys/"+ck.ID, k, nil, nil)
++
++	var inv struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", k, map[string]string{"email": "new@acme.example", "role": "member"}, &inv)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/invites/"+inv.ID, k, nil, nil)
++
++	ben, _ := e.AddMember(e.Acme, "ben@acme.example", store.RoleMember)
++	e.MustDo(http.StatusOK, "PATCH", "/v1/members/"+ben.ID, k, map[string]string{"role": "billing"}, nil)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/members/"+ben.ID, k, nil, nil)
++
++	var ep struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", k, map[string]any{"url": "https://hooks.acme.example/tally", "events": []string{"customer.created"}}, &ep)
++	e.MustDo(http.StatusOK, "PATCH", "/v1/webhook-endpoints/"+ep.ID, k, map[string]any{"enabled": false}, nil)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/webhook-endpoints/"+ep.ID, k, nil, nil)
++
++	page := auditLog(t, e, k, "?limit=100")
++	seen := map[string]bool{}
++	for _, ev := range page.Items {
++		seen[ev.Action] = true
++	}
++	for _, action := range []string{
++		"customer.created", "customer.updated", "customer.deleted", "plan.created", "plan.updated",
++		"subscription.created", "subscription.updated", "subscription.canceled", "invoice.created", "invoice.paid",
++		"invoice.voided", "api_key.created", "api_key.revoked", "member.role_changed", "member.removed", "invite.created",
++		"invite.revoked", "webhook_endpoint.created", "webhook_endpoint.updated", "webhook_endpoint.deleted", "org.updated",
++	} {
++		if !seen[action] {
++			t.Errorf("no %s entry", action)
++		}
++		delete(seen, action)
++	}
++	if len(seen) != 0 {
++		t.Errorf("unexpected actions %v", seen)
++	}
++
++	// Who and when: the calling key, the member it acts for, the request, the service's clock.
++	ev := newest(t, page, "org.updated")
++	if ev.Actor.Type != "api_key" || ev.Actor.ID != self || ev.Actor.UserID != e.Acme.Owner.ID {
++		t.Errorf("actor = %+v", ev.Actor)
++	}
++	if ev.Target.Type != "org" || ev.Target.ID != e.Acme.ID {
++		t.Errorf("target = %+v", ev.Target)
++	}
++	if !ev.At.Equal(e.Clock.Now()) || !strings.HasPrefix(ev.RequestID, "req_") {
++		t.Errorf("at = %v, request_id = %q", ev.At, ev.RequestID)
++	}
++
++	// Changes hold exactly the fields that changed, with their old and new values.
++	if ch := *ev.Changes; len(ch) != 1 || ch["name"]["from"] != "Acme" || ch["name"]["to"] != "Acme Inc" {
++		t.Errorf("org changes = %v", ch)
++	}
++	if ch := *newest(t, page, "plan.updated").Changes; len(ch) != 1 || ch["name"]["from"] != "Pro" || ch["name"]["to"] != "Pro Plus" {
++		t.Errorf("plan changes = %v", ch)
++	}
++	if ch := *newest(t, page, "customer.updated").Changes; len(ch) != 1 || ch["name"]["from"] != "Jane" || ch["name"]["to"] != "Jane Doe" {
++		t.Errorf("customer changes = %v", ch)
++	}
++	if ch := *newest(t, page, "subscription.updated").Changes; len(ch) != 1 || ch["quantity"]["from"] != float64(1) || ch["quantity"]["to"] != float64(3) {
++		t.Errorf("subscription changes = %v", ch)
++	}
++	if ev := newest(t, page, "member.role_changed"); ev.Target.ID != ben.ID || len(*ev.Changes) != 1 || (*ev.Changes)["role"]["from"] != "member" || (*ev.Changes)["role"]["to"] != "billing" {
++		t.Errorf("role change = %+v", ev)
++	}
++	if ch := *newest(t, page, "webhook_endpoint.updated").Changes; len(ch) != 1 || ch["enabled"]["from"] != true || ch["enabled"]["to"] != false {
++		t.Errorf("endpoint changes = %v", ch)
++	}
++
++	// Creations, deletions and actions have no changes field at all.
++	if ev := newest(t, page, "plan.created"); ev.Changes != nil {
++		t.Errorf("plan.created has changes %v", *ev.Changes)
++	}
++	if ev := newest(t, page, "member.removed"); ev.Changes != nil {
++		t.Errorf("member.removed has changes %v", *ev.Changes)
++	}
++}
++
++func TestAuditUpdateWithoutChangesHasEmptyChanges(t *testing.T) {
++	e := apitest.New(t)
++	jane := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	e.MustDo(http.StatusOK, "PATCH", "/v1/customers/"+jane.ID, e.Acme.Key, map[string]any{"name": "Jane"}, nil)
++	ev := newest(t, auditLog(t, e, e.Acme.Key, ""), "customer.updated")
++	if ev.Changes == nil || len(*ev.Changes) != 0 {
++		t.Fatalf("a no-op update should have an empty changes object, got %v", ev.Changes)
++	}
++}
++
++func TestAuditRecordsNothingForFailedRequests(t *testing.T) {
++	e := apitest.New(t)
++	jane := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	_, viewer := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++	memberUser, memberKey := e.AddMember(e.Acme, "member@acme.example", store.RoleMember)
++	var globexEP struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", e.Globex.Key, map[string]any{"url": "https://hooks.globex.example/tally", "events": []string{"*"}}, &globexEP)
++
++	before := len(auditLog(t, e, e.Acme.Key, "").Items)
++	failing := map[string]*apitest.Response{
++		"duplicate customer":        e.Do("POST", "/v1/customers", e.Acme.Key, map[string]string{"name": "Jane 2", "email": "JANE@example.com"}),
++		"invalid JSON":              e.Do("PATCH", "/v1/customers/"+jane.ID, e.Acme.Key, "{not json"),
++		"viewer writes":             e.Do("PATCH", "/v1/customers/"+jane.ID, viewer, map[string]string{"name": "X"}),
++		"member changes role":       e.Do("PATCH", "/v1/members/"+memberUser.ID, memberKey, map[string]string{"role": "admin"}),
++		"another org's customer":    e.Do("PATCH", "/v1/customers/"+jane.ID, e.Globex.Key, map[string]string{"name": "X"}),
++		"invalid plan price":        e.Do("POST", "/v1/plans", e.Acme.Key, map[string]any{"name": "Bad", "currency": "USD", "price": "ten", "interval": "month"}),
++		"another org's endpoint":    e.Do("DELETE", "/v1/webhook-endpoints/"+globexEP.ID, e.Acme.Key, nil),
++		"invoice without any lines": e.Do("POST", "/v1/invoices", e.Acme.Key, map[string]any{"customer_id": jane.ID, "currency": "USD", "lines": []any{}}),
++	}
++	for name, r := range failing {
++		if r.Code < 400 {
++			t.Errorf("%s: want an error, got %s", name, r)
++		}
++	}
++	if after := len(auditLog(t, e, e.Acme.Key, "").Items); after != before {
++		t.Fatalf("failed requests recorded %d entries", after-before)
++	}
++	// The other organization's endpoint is still there, and the failed delete did not touch it.
++	e.MustDo(http.StatusOK, "GET", "/v1/webhook-endpoints/"+globexEP.ID, e.Globex.Key, nil, nil)
++}
++
++func TestAuditNeverHoldsSecrets(t *testing.T) {
++	e := apitest.New(t)
++	k := e.Acme.Key
++	var key struct {
++		Token string `json:"token"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/api-keys", k, map[string]string{"name": "CI"}, &key)
++	var ep struct {
++		ID     string `json:"id"`
++		Secret string `json:"secret"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", k, map[string]any{"url": "https://hooks.acme.example/a", "events": []string{"*"}}, &ep)
++	e.MustDo(http.StatusOK, "PATCH", "/v1/webhook-endpoints/"+ep.ID, k, map[string]any{"url": "https://hooks.acme.example/b"}, nil)
++	var inv struct {
++		Token string `json:"token"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", k, map[string]string{"email": "new@acme.example", "role": "member"}, &inv)
++
++	body := string(e.Do("GET", "/v1/audit-events?limit=100", k, nil).Body)
++	for _, secret := range []string{key.Token, ep.Secret, inv.Token} {
++		if secret == "" || strings.Contains(body, secret) {
++			t.Fatalf("the audit log holds a secret (%q)", secret)
++		}
++	}
++	if !strings.Contains(body, "webhook_endpoint.updated") {
++		t.Fatal("the update was not recorded")
++	}
++}
++
++func TestAuditReadableByOwnersAndAdminsOnly(t *testing.T) {
++	e := apitest.New(t)
++	_, admin := e.AddMember(e.Acme, "admin@acme.example", store.RoleAdmin)
++	_, billing := e.AddMember(e.Acme, "billing@acme.example", store.RoleBilling)
++	_, member := e.AddMember(e.Acme, "member@acme.example", store.RoleMember)
++	_, viewer := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++
++	for name, key := range map[string]string{"owner": e.Acme.Key, "admin": admin} {
++		if r := e.Do("GET", "/v1/audit-events", key, nil); r.Code != http.StatusOK {
++			t.Errorf("%s: %s", name, r)
++		}
++	}
++	for name, key := range map[string]string{"billing": billing, "member": member, "viewer": viewer} {
++		r := e.Do("GET", "/v1/audit-events", key, nil)
++		if r.Code != http.StatusForbidden || string(r.Body) != "{\"error\":\"forbidden\"}\n" {
++			t.Errorf("%s: %s", name, r)
++		}
++	}
++}
++
++func TestAuditFiltersAndPaging(t *testing.T) {
++	e := apitest.New(t)
++	k := e.Acme.Key
++	var ids []string
++	for i := 0; i < 5; i++ {
++		e.Clock.Advance(time.Minute)
++		ids = append(ids, e.CreateCustomer(e.Acme, fmt.Sprintf("Customer %d", i), fmt.Sprintf("c%d@example.com", i)).ID)
++	}
++	e.Clock.Advance(time.Minute)
++	e.MustDo(http.StatusOK, "PATCH", "/v1/customers/"+ids[0], k, map[string]string{"name": "Renamed"}, nil)
++	e.Clock.Advance(time.Minute)
++	e.CreateCustomer(e.Globex, "Globex customer", "g@example.com")
++
++	// Newest first, in pages of two, and every entry exactly once.
++	first := auditLog(t, e, k, "?limit=2")
++	if len(first.Items) != 2 || first.Items[0].Action != "customer.updated" || first.Items[1].Target.ID != ids[4] || first.NextCursor == "" {
++		t.Fatalf("first page = %+v", first)
++	}
++	var all []auditEvent
++	query := "?limit=2"
++	for {
++		p := auditLog(t, e, k, query)
++		all = append(all, p.Items...)
++		if p.NextCursor == "" {
++			break
++		}
++		query = "?limit=2&cursor=" + url.QueryEscape(p.NextCursor)
++	}
++	if len(all) != 6 {
++		t.Fatalf("paging gave %d entries, want 6", len(all))
++	}
++	seen := map[string]bool{}
++	for _, ev := range all {
++		if seen[ev.ID] {
++			t.Fatalf("entry %s twice", ev.ID)
++		}
++		seen[ev.ID] = true
++	}
++
++	if got := auditLog(t, e, k, "?action=customer.created").Items; len(got) != 5 {
++		t.Errorf("action filter gave %d", len(got))
++	}
++	if got := auditLog(t, e, k, "?target_id="+ids[0]).Items; len(got) != 2 {
++		t.Errorf("target filter gave %d", len(got))
++	}
++	if got := auditLog(t, e, k, "?actor_id="+keyID(t, e, k)).Items; len(got) != 6 {
++		t.Errorf("actor filter by key gave %d", len(got))
++	}
++	if got := auditLog(t, e, k, "?actor_id="+e.Acme.Owner.ID).Items; len(got) != 6 {
++		t.Errorf("actor filter by user gave %d", len(got))
++	}
++	if got := auditLog(t, e, k, "?actor_id=key_nobody").Items; len(got) != 0 {
++		t.Errorf("unknown actor gave %d", len(got))
++	}
++	// Another organization's changes are not in this log.
++	if got := auditLog(t, e, e.Globex.Key, "").Items; len(got) != 1 || got[0].Target.Type != "customer" {
++		t.Errorf("globex log = %+v", got)
++	}
++	if r := e.Do("GET", "/v1/audit-events?limit=0", k, nil); r.Code != http.StatusBadRequest {
++		t.Errorf("bad limit: %s", r)
++	}
++}
++
++func TestAuditRecordsWebhookDeletionOfOwnEndpointOnly(t *testing.T) {
++	e := apitest.New(t)
++	var ep struct {
++		ID string `json:"id"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/webhook-endpoints", e.Acme.Key, map[string]any{"url": "https://hooks.acme.example/x", "events": []string{"*"}}, &ep)
++	if r := e.Do("DELETE", "/v1/webhook-endpoints/"+ep.ID, e.Globex.Key, nil); r.Code != http.StatusNotFound {
++		t.Fatalf("another org's endpoint: %s", r)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/webhook-endpoints/"+ep.ID, e.Acme.Key, nil, nil)
++	if ev := newest(t, auditLog(t, e, e.Acme.Key, ""), "webhook_endpoint.deleted"); ev.Target.ID != ep.ID {
++		t.Fatalf("entry = %+v", ev)
++	}
++}
+diff --git a/start/internal/api/customers.go b/result/internal/api/customers.go
+index fec0df7..d615722 100644
+--- a/start/internal/api/customers.go
++++ b/result/internal/api/customers.go
+@@ -62,6 +62,7 @@ func (s *Server) createCustomer(w http.ResponseWriter, r *http.Request, p auth.P
+ 		}
+ 	}
+ 	s.publish(r.Context(), p.OrgID, "customer.created", c)
++	s.audit(r, p, "customer.created", "customer", c.ID, nil)
+ 	writeJSON(w, http.StatusCreated, c)
+ }
+ 
+@@ -84,7 +85,9 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request, p auth.P
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
++	var before store.Customer
+ 	c, err := s.store.UpdateCustomer(p.OrgID, r.PathValue("id"), func(c *store.Customer) error {
++		before = *c
+ 		if in.Name != nil {
+ 			c.Name = *in.Name
+ 		}
+@@ -104,6 +107,7 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request, p auth.P
+ 		return
+ 	}
+ 	s.publish(r.Context(), p.OrgID, "customer.updated", c)
++	s.audit(r, p, "customer.updated", "customer", c.ID, auditDiff(before, c))
+ 	writeJSON(w, http.StatusOK, c)
+ }
+ 
+@@ -114,6 +118,7 @@ func (s *Server) deleteCustomer(w http.ResponseWriter, r *http.Request, p auth.P
+ 		return
+ 	}
+ 	s.publish(r.Context(), p.OrgID, "customer.deleted", map[string]string{"id": id})
++	s.audit(r, p, "customer.deleted", "customer", id, nil)
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+ 
+diff --git a/start/internal/api/invoices.go b/result/internal/api/invoices.go
+index 843d000..2758721 100644
+--- a/start/internal/api/invoices.go
++++ b/result/internal/api/invoices.go
+@@ -118,6 +118,7 @@ func (s *Server) createInvoice(w http.ResponseWriter, r *http.Request, p auth.Pr
+ 		return
+ 	}
+ 	s.publish(r.Context(), p.OrgID, "invoice.created", map[string]any{"invoice_id": inv.ID})
++	s.audit(r, p, "invoice.created", "invoice", inv.ID, nil)
+ 	writeJSON(w, http.StatusCreated, s.viewInvoice(inv))
+ }
+ 
+@@ -161,6 +162,7 @@ func (s *Server) payInvoice(w http.ResponseWriter, r *http.Request, p auth.Princ
+ 		s.payError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "invoice.paid", "invoice", inv.ID, nil)
+ 	writeJSON(w, http.StatusOK, map[string]any{"invoice": s.viewInvoice(inv), "payment": pay})
+ }
+ 
+@@ -199,6 +201,7 @@ func (s *Server) voidInvoice(w http.ResponseWriter, r *http.Request, p auth.Prin
+ 		return
+ 	}
+ 	s.publish(r.Context(), p.OrgID, "invoice.voided", map[string]any{"invoice_id": inv.ID})
++	s.audit(r, p, "invoice.voided", "invoice", inv.ID, nil)
+ 	writeJSON(w, http.StatusOK, s.viewInvoice(inv))
+ }
+ 
+diff --git a/start/internal/api/plans.go b/result/internal/api/plans.go
+index 3121ef5..f8b4f36 100644
+--- a/start/internal/api/plans.go
++++ b/result/internal/api/plans.go
+@@ -57,6 +57,7 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request, p auth.Princ
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "plan.created", "plan", pl.ID, nil)
+ 	writeJSON(w, http.StatusCreated, viewPlan(pl))
+ }
+ 
+@@ -77,7 +78,9 @@ func (s *Server) updatePlan(w http.ResponseWriter, r *http.Request, p auth.Princ
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
++	var before store.Plan
+ 	pl, err := s.store.UpdatePlan(p.OrgID, r.PathValue("id"), func(pl *store.Plan) error {
++		before = *pl
+ 		if in.Name != nil {
+ 			pl.Name = *in.Name
+ 		}
+@@ -90,5 +93,6 @@ func (s *Server) updatePlan(w http.ResponseWriter, r *http.Request, p auth.Princ
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "plan.updated", "plan", pl.ID, auditDiff(before, pl))
+ 	writeJSON(w, http.StatusOK, viewPlan(pl))
+ }
+diff --git a/start/internal/api/respond.go b/result/internal/api/respond.go
+index f27c62b..e800968 100644
+--- a/start/internal/api/respond.go
++++ b/result/internal/api/respond.go
+@@ -109,11 +109,21 @@ func encodeCursor(c cursor) string {
+ 
+ // pageOf returns one page of items, which are sorted by key (creation time, then ID), and the cursor of the next page.
+ func pageOf[T any](items []T, key func(T) cursor, p page) ([]T, string) {
++	return pageIn(items, key, p, func(k, after cursor) bool { return after.less(k) })
++}
++
++// pageOfNewest is pageOf for items sorted newest first.
++func pageOfNewest[T any](items []T, key func(T) cursor, p page) ([]T, string) {
++	return pageIn(items, key, p, func(k, after cursor) bool { return k.less(after) })
++}
++
++// pageIn is the paging of pageOf and pageOfNewest: past reports whether an item with key k comes after the cursor.
++func pageIn[T any](items []T, key func(T) cursor, p page, past func(k, after cursor) bool) ([]T, string) {
+ 	start := 0
+ 	if p.after != nil {
+ 		start = len(items)
+ 		for i, it := range items {
+-			if p.after.less(key(it)) {
++			if past(key(it), *p.after) {
+ 				start = i
+ 				break
+ 			}
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..44ee84a 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -135,6 +135,7 @@ func (s *Server) routes() {
+ 	m.HandleFunc("GET /v1/events/{id}", s.authed(s.getEvent))
+ 
+ 	m.HandleFunc("GET /v1/reports/revenue", s.authed(s.revenueReport))
++	m.HandleFunc("GET /v1/audit-events", s.authed(s.listAuditEvents))
+ }
+ 
+ // handler is an endpoint that runs for a known member.
+diff --git a/start/internal/api/subscriptions.go b/result/internal/api/subscriptions.go
+index 168c46c..ee37539 100644
+--- a/start/internal/api/subscriptions.go
++++ b/result/internal/api/subscriptions.go
+@@ -52,6 +52,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request, p au
+ 	if err != nil {
+ 		s.log.Error("first invoice", "subscription", sub.ID, "err", err)
+ 	}
++	s.audit(r, p, "subscription.created", "subscription", sub.ID, nil)
+ 	writeJSON(w, http.StatusCreated, sub)
+ }
+ 
+@@ -72,11 +73,12 @@ func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, p au
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
+-	sub, err := s.subs.Update(r.Context(), p.OrgID, r.PathValue("id"), subscriptions.UpdateInput{PlanID: in.PlanID, Quantity: in.Quantity})
++	before, sub, err := s.subs.UpdateWithPrevious(r.Context(), p.OrgID, r.PathValue("id"), subscriptions.UpdateInput{PlanID: in.PlanID, Quantity: in.Quantity})
+ 	if err != nil {
+ 		s.subError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "subscription.updated", "subscription", sub.ID, auditDiff(before, sub))
+ 	writeJSON(w, http.StatusOK, sub)
+ }
+ 
+@@ -92,6 +94,7 @@ func (s *Server) cancelSubscription(w http.ResponseWriter, r *http.Request, p au
+ 		s.subError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "subscription.canceled", "subscription", sub.ID, nil)
+ 	writeJSON(w, http.StatusOK, sub)
+ }
+ 
+diff --git a/start/internal/api/team.go b/result/internal/api/team.go
+index 1a95c1a..7d84b57 100644
+--- a/start/internal/api/team.go
++++ b/result/internal/api/team.go
+@@ -41,7 +41,9 @@ func (s *Server) updateOrg(w http.ResponseWriter, r *http.Request, p auth.Princi
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
++	var before store.Org
+ 	o, err := s.store.UpdateOrg(p.OrgID, func(o *store.Org) error {
++		before = *o
+ 		if in.Name != nil {
+ 			o.Name = *in.Name
+ 		}
+@@ -60,6 +62,7 @@ func (s *Server) updateOrg(w http.ResponseWriter, r *http.Request, p auth.Princi
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "org.updated", "org", o.ID, auditDiff(before, o))
+ 	writeJSON(w, http.StatusOK, o)
+ }
+ 
+@@ -96,11 +99,12 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
+-	m, err := s.store.SetMemberRole(p.OrgID, r.PathValue("user_id"), in.Role)
++	before, m, err := s.store.ChangeMemberRole(p.OrgID, r.PathValue("user_id"), in.Role)
+ 	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "member.role_changed", "member", m.UserID, auditDiff(before, m))
+ 	writeJSON(w, http.StatusOK, s.memberView(m))
+ }
+ 
+@@ -109,10 +113,12 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 		writeError(w, http.StatusForbidden, "forbidden", "only owners and admins manage members")
+ 		return
+ 	}
+-	if err := s.store.RemoveMember(p.OrgID, r.PathValue("user_id")); err != nil {
++	userID := r.PathValue("user_id")
++	if err := s.store.RemoveMember(p.OrgID, userID); err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "member.removed", "member", userID, nil)
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+ 
+@@ -140,6 +146,7 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	if err := s.sendInvite(r.Context(), inv); err != nil {
+ 		s.log.Error("send invite", "invite", inv.ID, "err", err)
+ 	}
++	s.audit(r, p, "invite.created", "invite", inv.ID, nil)
+ 	writeJSON(w, http.StatusCreated, inv)
+ }
+ 
+@@ -159,10 +166,12 @@ func (s *Server) revokeInvite(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 		writeError(w, http.StatusForbidden, "forbidden", "only owners and admins manage invites")
+ 		return
+ 	}
+-	if _, err := s.store.RevokeInvite(p.OrgID, r.PathValue("id"), s.clock.Now()); err != nil {
++	inv, err := s.store.RevokeInvite(p.OrgID, r.PathValue("id"), s.clock.Now())
++	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "invite.revoked", "invite", inv.ID, nil)
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+ 
+@@ -203,13 +212,16 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "api_key.created", "api_key", k.ID, nil)
+ 	writeJSON(w, http.StatusCreated, k)
+ }
+ 
+ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	if _, err := s.store.RevokeAPIKey(p.OrgID, r.PathValue("id"), s.clock.Now()); err != nil {
++	k, err := s.store.RevokeAPIKey(p.OrgID, r.PathValue("id"), s.clock.Now())
++	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "api_key.revoked", "api_key", k.ID, nil)
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+diff --git a/start/internal/api/webhooks.go b/result/internal/api/webhooks.go
+index 91c6e0a..b0c3f86 100644
+--- a/start/internal/api/webhooks.go
++++ b/result/internal/api/webhooks.go
+@@ -46,6 +46,7 @@ func (s *Server) createEndpoint(w http.ResponseWriter, r *http.Request, p auth.P
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "webhook_endpoint.created", "webhook_endpoint", ep.ID, nil)
+ 	writeJSON(w, http.StatusCreated, ep)
+ }
+ 
+@@ -79,7 +80,9 @@ func (s *Server) updateEndpoint(w http.ResponseWriter, r *http.Request, p auth.P
+ 			return
+ 		}
+ 	}
++	var before store.WebhookEndpoint
+ 	ep, err := s.store.UpdateWebhookEndpoint(p.OrgID, r.PathValue("id"), func(ep *store.WebhookEndpoint) error {
++		before = *ep
+ 		if in.URL != nil {
+ 			ep.URL = *in.URL
+ 		}
+@@ -98,14 +101,23 @@ func (s *Server) updateEndpoint(w http.ResponseWriter, r *http.Request, p auth.P
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	// The secret never changes here, and it is left out of the log in any case.
++	s.audit(r, p, "webhook_endpoint.updated", "webhook_endpoint", ep.ID, auditDiff(before, ep, "secret"))
+ 	writeJSON(w, http.StatusOK, ep)
+ }
+ 
+ func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	if err := s.store.DeleteWebhookEndpoint(r.PathValue("id")); err != nil {
++	// DeleteWebhookEndpoint does not check the organization, so check it here: another organization's endpoint is not found.
++	id := r.PathValue("id")
++	if _, ok := s.store.WebhookEndpoint(p.OrgID, id); !ok {
++		writeError(w, http.StatusNotFound, "not_found", "no such webhook endpoint")
++		return
++	}
++	if err := s.store.DeleteWebhookEndpoint(id); err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
++	s.audit(r, p, "webhook_endpoint.deleted", "webhook_endpoint", id, nil)
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+ 
+diff --git a/result/internal/store/audit.go b/result/internal/store/audit.go
+new file mode 100644
+index 0000000..7a4dc4e
+--- /dev/null
++++ b/result/internal/store/audit.go
+@@ -0,0 +1,77 @@
++package store
++
++import (
++	"fmt"
++	"sort"
++	"time"
++)
++
++// AuditActor is who made a change: an API key, and the member it acts for.
++type AuditActor struct {
++	Type   string `json:"type"` // "api_key"
++	ID     string `json:"id"`
++	UserID string `json:"user_id"`
++}
++
++// AuditTarget is the object a change was made to.
++type AuditTarget struct {
++	Type string `json:"type"`
++	ID   string `json:"id"`
++}
++
++// AuditChange is one field's value before and after a change.
++type AuditChange struct {
++	From any `json:"from"`
++	To   any `json:"to"`
++}
++
++// AuditEntry records one successful change made through the API. Entries are never changed or deleted.
++type AuditEntry struct {
++	ID        string      `json:"id"`
++	OrgID     string      `json:"org_id"`
++	Action    string      `json:"action"`
++	Actor     AuditActor  `json:"actor"`
++	Target    AuditTarget `json:"target"`
++	RequestID string      `json:"request_id"`
++	At        time.Time   `json:"at"`
++	// Changes is set on entries of updates, where it is present even when empty; nil leaves it out.
++	Changes *map[string]AuditChange `json:"changes,omitempty"`
++}
++
++// AuditFilter narrows AuditEntries. An empty field matches everything. ActorID matches a key ID or a user ID.
++type AuditFilter struct {
++	Action   string
++	TargetID string
++	ActorID  string
++}
++
++// AddAuditEntry appends an entry to the log of orgID and returns it with its ID.
++func (s *Store) AddAuditEntry(orgID string, e AuditEntry) AuditEntry {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	e.ID = fmt.Sprintf("aud_%06d", len(s.audit)+1) // entries are never deleted, so the count is the last number
++	e.OrgID = orgID
++	s.audit = append(s.audit, e)
++	return e
++}
++
++// AuditEntries returns an organization's audit entries that match f, newest first.
++func (s *Store) AuditEntries(orgID string, f AuditFilter) []AuditEntry {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	out := []AuditEntry{}
++	for _, e := range s.audit {
++		if e.OrgID != orgID || (f.Action != "" && e.Action != f.Action) || (f.TargetID != "" && e.Target.ID != f.TargetID) ||
++			(f.ActorID != "" && e.Actor.ID != f.ActorID && e.Actor.UserID != f.ActorID) {
++			continue
++		}
++		out = append(out, e)
++	}
++	sort.Slice(out, func(i, j int) bool {
++		if !out[i].At.Equal(out[j].At) {
++			return out[i].At.After(out[j].At)
++		}
++		return out[i].ID > out[j].ID
++	})
++	return out
++}
+diff --git a/result/internal/store/audit_test.go b/result/internal/store/audit_test.go
+new file mode 100644
+index 0000000..415204a
+--- /dev/null
++++ b/result/internal/store/audit_test.go
+@@ -0,0 +1,62 @@
++package store
++
++import (
++	"encoding/json"
++	"testing"
++	"time"
++)
++
++func TestAuditLogSurvivesExport(t *testing.T) {
++	now := time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
++	st := New()
++	o, err := st.CreateOrg("Acme", OrgTeam, "UTC", 0, now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	actor := AuditActor{Type: "api_key", ID: "key_000001", UserID: "usr_000002"}
++	renamed := map[string]AuditChange{"name": {From: "Acme", To: "Acme Inc"}}
++	st.AddAuditEntry(o.ID, AuditEntry{Action: "org.updated", Actor: actor, Target: AuditTarget{Type: "org", ID: o.ID}, RequestID: "req_1", At: now, Changes: &renamed})
++	st.AddAuditEntry(o.ID, AuditEntry{Action: "org.updated", Actor: actor, Target: AuditTarget{Type: "org", ID: o.ID}, RequestID: "req_2", At: now.Add(time.Minute), Changes: &map[string]AuditChange{}})
++
++	// Through JSON, as the snapshot file does it.
++	b, err := json.Marshal(st.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	var state State
++	if err := json.Unmarshal(b, &state); err != nil {
++		t.Fatal(err)
++	}
++	loaded, err := FromState(state)
++	if err != nil {
++		t.Fatal(err)
++	}
++	got := loaded.AuditEntries(o.ID, AuditFilter{})
++	if len(got) != 2 || got[0].RequestID != "req_2" || got[1].RequestID != "req_1" {
++		t.Fatalf("entries = %+v", got)
++	}
++	if got[0].Changes == nil || len(*got[0].Changes) != 0 {
++		t.Errorf("the empty changes of an update were lost: %v", got[0].Changes)
++	}
++	if c := (*got[1].Changes)["name"]; c.From != "Acme" || c.To != "Acme Inc" {
++		t.Errorf("changes = %+v", c)
++	}
++	// IDs continue from the loaded log.
++	if e := loaded.AddAuditEntry(o.ID, AuditEntry{Action: "org.updated", At: now}); e.ID != "aud_000003" {
++		t.Errorf("next ID = %s", e.ID)
++	}
++}
++
++func TestAuditEntriesAreScopedToTheirOrganization(t *testing.T) {
++	now := time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
++	st := New()
++	a, _ := st.CreateOrg("Acme", OrgTeam, "UTC", 0, now)
++	g, _ := st.CreateOrg("Globex", OrgTeam, "UTC", 0, now)
++	st.AddAuditEntry(a.ID, AuditEntry{Action: "plan.created", Target: AuditTarget{Type: "plan", ID: "plan_1"}, At: now})
++	if got := st.AuditEntries(g.ID, AuditFilter{}); len(got) != 0 {
++		t.Fatalf("another organization sees %+v", got)
++	}
++	if got := st.AuditEntries(a.ID, AuditFilter{Action: "plan.updated"}); len(got) != 0 {
++		t.Fatalf("action filter matched %+v", got)
++	}
++}
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..a0ef7bb 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -22,6 +22,7 @@ type State struct {
+ 	WebhookEndpoints []WebhookEndpoint `json:"webhook_endpoints"`
+ 	Events           []Event           `json:"events"`
+ 	Deliveries       []Delivery        `json:"deliveries"`
++	Audit            []AuditEntry      `json:"audit"`
+ }
+ 
+ // Export returns a copy of everything in the store.
+@@ -69,6 +70,7 @@ func (s *Store) Export() State {
+ 	for _, d := range s.delivs {
+ 		st.Deliveries = append(st.Deliveries, copyDelivery(d))
+ 	}
++	st.Audit = append([]AuditEntry(nil), s.audit...)
+ 	sort.Slice(st.Orgs, func(i, j int) bool { return st.Orgs[i].ID < st.Orgs[j].ID })
+ 	sort.Slice(st.Users, func(i, j int) bool { return st.Users[i].ID < st.Users[j].ID })
+ 	sort.Slice(st.Members, func(i, j int) bool {
+@@ -190,5 +192,11 @@ func FromState(st State) (*Store, error) {
+ 		}
+ 		s.delivs[d.ID] = copyDelivery(d)
+ 	}
++	for _, e := range st.Audit {
++		if err := dup("audit entry", e.ID, seen); err != nil {
++			return nil, err
++		}
++		s.audit = append(s.audit, e)
++	}
+ 	return s, nil
+ }
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..f2ab99a 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -51,6 +51,7 @@ type Store struct {
+ 	endpoints map[string]WebhookEndpoint
+ 	events    map[string]Event
+ 	delivs    map[string]Delivery
++	audit     []AuditEntry // in the order they were added, which is also the order of their IDs
+ }
+ 
+ type memberKey struct{ org, user string }
+@@ -246,19 +247,26 @@ func (s *Store) Members(orgID string) []Member {
+ 
+ // SetMemberRole changes a member's role.
+ func (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {
++	_, after, err := s.ChangeMemberRole(orgID, userID, role)
++	return after, err
++}
++
++// ChangeMemberRole changes a member's role and returns the membership as it was before and after the change.
++func (s *Store) ChangeMemberRole(orgID, userID string, role Role) (before, after Member, err error) {
+ 	if !role.Valid() {
+-		return Member{}, invalid("unknown role %q", role)
++		return Member{}, Member{}, invalid("unknown role %q", role)
+ 	}
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	k := memberKey{orgID, userID}
+-	m, ok := s.members[k]
++	before, ok := s.members[k]
+ 	if !ok {
+-		return Member{}, ErrNotFound
++		return Member{}, Member{}, ErrNotFound
+ 	}
+-	m.Role = role
+-	s.members[k] = m
+-	return m, nil
++	after = before
++	after.Role = role
++	s.members[k] = after
++	return before, after, nil
+ }
+ 
+ // RemoveMember removes a user from an organization. Their API keys for it stop working, as they are no longer a member.
+diff --git a/start/internal/subscriptions/subscriptions.go b/result/internal/subscriptions/subscriptions.go
+index 6d6d997..37653ce 100644
+--- a/start/internal/subscriptions/subscriptions.go
++++ b/result/internal/subscriptions/subscriptions.go
+@@ -86,19 +86,26 @@ type UpdateInput struct {
+ 
+ // Update changes a subscription's plan or quantity. The change applies at once and is billed from the next period on.
+ func (s *Service) Update(ctx context.Context, orgID, id string, in UpdateInput) (store.Subscription, error) {
++	_, sub, err := s.UpdateWithPrevious(ctx, orgID, id, in)
++	return sub, err
++}
++
++// UpdateWithPrevious is Update, and also returns the subscription as it was before the change, read in the same step.
++func (s *Service) UpdateWithPrevious(ctx context.Context, orgID, id string, in UpdateInput) (before, after store.Subscription, err error) {
+ 	if in.PlanID != nil {
+ 		p, ok := s.Store.Plan(orgID, *in.PlanID)
+ 		if !ok {
+-			return store.Subscription{}, store.ErrNotFound
++			return store.Subscription{}, store.Subscription{}, store.ErrNotFound
+ 		}
+ 		if !p.Active {
+-			return store.Subscription{}, ErrPlanInactive
++			return store.Subscription{}, store.Subscription{}, ErrPlanInactive
+ 		}
+ 	}
+-	sub, err := s.Store.UpdateSubscription(orgID, id, func(sub *store.Subscription) error {
++	after, err = s.Store.UpdateSubscription(orgID, id, func(sub *store.Subscription) error {
+ 		if sub.Status == store.Canceled {
+ 			return ErrCanceled
+ 		}
++		before = *sub
+ 		if in.PlanID != nil {
+ 			sub.PlanID = *in.PlanID
+ 		}
+@@ -108,10 +115,10 @@ func (s *Service) Update(ctx context.Context, orgID, id string, in UpdateInput)
+ 		return nil
+ 	})
+ 	if err != nil {
+-		return store.Subscription{}, err
++		return store.Subscription{}, store.Subscription{}, err
+ 	}
+-	s.publish(ctx, orgID, "subscription.updated", sub)
+-	return sub, nil
++	s.publish(ctx, orgID, "subscription.updated", after)
++	return before, after, nil
+ }
+ 
+ // Cancel cancels a subscription now, or at the end of its current period when atPeriodEnd is set. Canceling a canceled

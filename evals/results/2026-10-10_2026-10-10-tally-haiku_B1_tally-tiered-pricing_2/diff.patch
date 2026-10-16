@@ -1,0 +1,651 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..6f9ea6d 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -437,3 +437,47 @@ func TestOrgSettings(t *testing.T) {
+ 		t.Fatalf("a member changes the org: %s", r)
+ 	}
+ }
++
++func TestTieredPlans(t *testing.T) {
++	e := apitest.New(t)
++	var p store.Plan
++	e.MustDo(http.StatusCreated, "POST", "/v1/plans", e.Acme.Key, map[string]any{"name": "API", "currency": "USD", "interval": "month", "usage_type": "metered",
++		"tiers_mode": "graduated", "tiers": []map[string]any{
++			{"up_to": 1000, "unit_amount": "0.10"},
++			{"up_to": 10000, "unit_amount": "0.05", "flat_amount": "5.00"},
++			{"up_to": nil, "unit_amount": "0.01"},
++		}}, &p)
++	if p.TiersMode != store.Graduated || len(p.Tiers) != 3 || p.Tiers[0].UpTo == nil || *p.Tiers[0].UpTo != 1000 || p.Tiers[0].UnitAmount != 10 ||
++		p.Tiers[1].FlatAmount != 500 || p.Tiers[2].UpTo != nil || p.Tiers[2].UnitAmount != 1 || p.Tiers[2].FlatAmount != 0 || p.UnitAmount != 0 {
++		t.Fatalf("plan = %+v", p)
++	}
++	raw := e.Do("GET", "/v1/plans/"+p.ID, e.Acme.Key, nil)
++	if !strings.Contains(raw.String(), `"tiers_mode":"graduated"`) || !strings.Contains(raw.String(), `"up_to":null`) {
++		t.Fatalf("plan answer = %s", raw)
++	}
++
++	licensed := map[string]any{"name": "X", "currency": "USD", "interval": "month", "tiers_mode": "volume", "tiers": []map[string]any{{"unit_amount": "1"}}}
++	for name, bad := range map[string]map[string]any{
++		"licensed":         licensed,
++		"no tiers":         {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume"},
++		"no mode":          {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers": []map[string]any{{"unit_amount": "1"}}},
++		"unknown mode":     {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "flat", "tiers": []map[string]any{{"unit_amount": "1"}}},
++		"zero up_to":       {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{{"up_to": 0, "unit_amount": "1"}, {"unit_amount": "1"}}},
++		"fractional up_to": {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{{"up_to": 10.5, "unit_amount": "1"}, {"unit_amount": "1"}}},
++		"unsorted":         {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{{"up_to": 10, "unit_amount": "1"}, {"up_to": 5, "unit_amount": "1"}, {"unit_amount": "1"}}},
++		"last has up_to":   {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{{"up_to": 10, "unit_amount": "1"}}},
++		"negative amount":  {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{{"up_to": 10, "unit_amount": "-1"}, {"unit_amount": "1"}}},
++		"bad flat":         {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{{"unit_amount": "1", "flat_amount": "x"}}},
++		"empty tiers":      {"name": "X", "currency": "USD", "interval": "month", "usage_type": "metered", "tiers_mode": "volume", "tiers": []map[string]any{}},
++	} {
++		if r := e.Do("POST", "/v1/plans", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid_tiers" {
++			t.Errorf("%s: %s", name, r)
++		}
++	}
++
++	var metered store.Plan
++	e.MustDo(http.StatusCreated, "POST", "/v1/plans", e.Acme.Key, map[string]any{"name": "Calls", "currency": "USD", "price": "0.02", "interval": "month", "usage_type": "metered"}, &metered)
++	if metered.UnitAmount != 2 || metered.TiersMode != "" || metered.Tiers != nil {
++		t.Fatalf("a metered plan without tiers = %+v", metered)
++	}
++}
+diff --git a/start/internal/api/plans.go b/result/internal/api/plans.go
+index 3121ef5..311b5d3 100644
+--- a/start/internal/api/plans.go
++++ b/result/internal/api/plans.go
+@@ -1,9 +1,11 @@
+ package api
+ 
+ import (
++	"encoding/json"
+ 	"errors"
+ 	"fmt"
+ 	"net/http"
++	"strconv"
+ 
+ 	"example.com/tally/internal/auth"
+ 	"example.com/tally/internal/money"
+@@ -29,7 +31,42 @@ func (s *Server) listPlans(w http.ResponseWriter, r *http.Request, p auth.Princi
+ 	writeJSON(w, http.StatusOK, list{Items: items})
+ }
+ 
+-// createPlan takes the price in major units, as a string ("12.50"), the way people type it.
++// tierIn is a tier as the API takes it: amounts in major units, as strings ("12.50"); flat_amount may be left out.
++type tierIn struct {
++	UpTo       *json.Number `json:"up_to"`
++	UnitAmount string       `json:"unit_amount"`
++	FlatAmount string       `json:"flat_amount"`
++}
++
++// parseTiers reads tiers in major units. Any amount that is not a plain non-negative amount, or an up_to that is not a whole
++// number, is an invalid tier.
++func parseTiers(in []tierIn, c money.Currency) ([]store.Tier, error) {
++	tiers := []store.Tier{}
++	for _, t := range in {
++		var tier store.Tier
++		if t.UpTo != nil {
++			n, err := strconv.ParseInt(t.UpTo.String(), 10, 64)
++			if err != nil {
++				return nil, fmt.Errorf("%w: up_to %q is not a whole number", store.ErrInvalidTiers, t.UpTo.String())
++			}
++			tier.UpTo = &n
++		}
++		var err error
++		if tier.UnitAmount, err = money.ParseMajor(t.UnitAmount, c); err != nil {
++			return nil, fmt.Errorf("%w: unit_amount: %v", store.ErrInvalidTiers, err)
++		}
++		if t.FlatAmount != "" {
++			if tier.FlatAmount, err = money.ParseMajor(t.FlatAmount, c); err != nil {
++				return nil, fmt.Errorf("%w: flat_amount: %v", store.ErrInvalidTiers, err)
++			}
++		}
++		tiers = append(tiers, tier)
++	}
++	return tiers, nil
++}
++
++// createPlan takes the price in major units, as a string ("12.50"), the way people type it. A tiered plan takes tiers
++// instead, and no price.
+ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+ 	var in struct {
+ 		Name      string          `json:"name"`
+@@ -38,26 +75,42 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request, p auth.Princ
+ 		Interval  store.Interval  `json:"interval"`
+ 		UsageType store.UsageType `json:"usage_type"`
+ 		TrialDays int             `json:"trial_days"`
++		TiersMode store.TiersMode `json:"tiers_mode"`
++		Tiers     []tierIn        `json:"tiers"`
+ 	}
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
+-	amount, err := money.ParseMajor(in.Price, in.Currency)
+-	if err != nil {
+-		if errors.Is(err, money.ErrInvalidAmount) {
+-			writeError(w, http.StatusUnprocessableEntity, "invalid_amount", err.Error())
++	pl := store.Plan{OrgID: p.OrgID, Name: in.Name, Currency: in.Currency, Interval: in.Interval, UsageType: in.UsageType, TrialDays: in.TrialDays}
++	if in.TiersMode != "" || len(in.Tiers) > 0 {
++		tiers, err := parseTiers(in.Tiers, in.Currency)
++		if err != nil {
++			writeError(w, http.StatusUnprocessableEntity, "invalid_tiers", err.Error())
+ 			return
+ 		}
+-		s.storeError(w, err)
++		pl.TiersMode, pl.Tiers = in.TiersMode, tiers
++	} else {
++		amount, err := money.ParseMajor(in.Price, in.Currency)
++		if err != nil {
++			if errors.Is(err, money.ErrInvalidAmount) {
++				writeError(w, http.StatusUnprocessableEntity, "invalid_amount", err.Error())
++				return
++			}
++			s.storeError(w, err)
++			return
++		}
++		pl.UnitAmount = amount
++	}
++	created, err := s.store.CreatePlan(pl, s.clock.Now())
++	if errors.Is(err, store.ErrInvalidTiers) {
++		writeError(w, http.StatusUnprocessableEntity, "invalid_tiers", err.Error())
+ 		return
+ 	}
+-	pl, err := s.store.CreatePlan(store.Plan{OrgID: p.OrgID, Name: in.Name, Currency: in.Currency, UnitAmount: amount, Interval: in.Interval,
+-		UsageType: in.UsageType, TrialDays: in.TrialDays}, s.clock.Now())
+ 	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
+-	writeJSON(w, http.StatusCreated, viewPlan(pl))
++	writeJSON(w, http.StatusCreated, viewPlan(created))
+ }
+ 
+ func (s *Server) getPlan(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+diff --git a/start/internal/billing/billing.go b/result/internal/billing/billing.go
+index be8baaf..dd3c50a 100644
+--- a/start/internal/billing/billing.go
++++ b/result/internal/billing/billing.go
+@@ -30,6 +30,42 @@ func Compute(inv store.Invoice) Totals {
+ 	return Totals{Subtotal: subtotal, Discount: discount, Tax: tax, Total: taxable + tax}
+ }
+ 
++// TieredAmount is what quantity units of usage cost on a tiered plan, in minor units. Graduated: each unit is priced at the
++// unit amount of the tier it falls in, and every tier that at least one unit falls in adds its flat amount. Volume: every
++// unit is priced at the unit amount of the one tier the quantity falls in, which adds its flat amount. A tier's UpTo is
++// inclusive, and a quantity of 0 costs 0. An unknown mode costs 0; checkPlan refuses such plans.
++func TieredAmount(tiers []store.Tier, mode store.TiersMode, quantity int64) int64 {
++	if quantity <= 0 {
++		return 0
++	}
++	switch mode {
++	case store.Graduated:
++		var total, from int64 // units before the current tier
++		for _, t := range tiers {
++			if quantity <= from {
++				break
++			}
++			top := quantity
++			if t.UpTo != nil && *t.UpTo < top {
++				top = *t.UpTo
++			}
++			total += (top-from)*t.UnitAmount + t.FlatAmount
++			if t.UpTo == nil {
++				break
++			}
++			from = *t.UpTo
++		}
++		return total
++	case store.Volume:
++		for _, t := range tiers {
++			if t.UpTo == nil || quantity <= *t.UpTo {
++				return quantity*t.UnitAmount + t.FlatAmount
++			}
++		}
++	}
++	return 0
++}
++
+ // AddInterval returns t moved forward by one billing interval: a month or a year.
+ func AddInterval(t time.Time, iv store.Interval) time.Time {
+ 	if iv == store.Yearly {
+diff --git a/start/internal/billing/billing_test.go b/result/internal/billing/billing_test.go
+index 42acf0d..2aa2502 100644
+--- a/start/internal/billing/billing_test.go
++++ b/result/internal/billing/billing_test.go
+@@ -37,3 +37,50 @@ func TestAddInterval(t *testing.T) {
+ 		t.Errorf("yearly: %v", got)
+ 	}
+ }
++
++func TestTieredAmount(t *testing.T) {
++	// 0-10 units at 100 each; 11-20 at 80 each plus 50 flat; above 20 at 60 each plus 200 flat.
++	upTo := func(n int64) *int64 { return &n }
++	tiers := []store.Tier{
++		{UpTo: upTo(10), UnitAmount: 100},
++		{UpTo: upTo(20), UnitAmount: 80, FlatAmount: 50},
++		{UnitAmount: 60, FlatAmount: 200},
++	}
++	for _, c := range []struct {
++		mode store.TiersMode
++		q    int64
++		want int64
++	}{
++		{store.Graduated, 0, 0},
++		{store.Graduated, 1, 100},
++		{store.Graduated, 10, 1000}, // the flat amount of tier 2 is not charged: no unit falls in it
++		{store.Graduated, 11, 1000 + 80 + 50},
++		{store.Graduated, 20, 1000 + 800 + 50},
++		{store.Graduated, 21, 1000 + 800 + 50 + 60 + 200},
++		{store.Graduated, 25, 1000 + 800 + 50 + 5*60 + 200},
++		{store.Volume, 0, 0},
++		{store.Volume, 1, 100},
++		{store.Volume, 10, 1000}, // up_to is inclusive: 10 is still tier 1
++		{store.Volume, 11, 11*80 + 50},
++		{store.Volume, 20, 20*80 + 50},
++		{store.Volume, 21, 21*60 + 200},
++		{store.Volume, 1000, 1000*60 + 200},
++	} {
++		if got := TieredAmount(tiers, c.mode, c.q); got != c.want {
++			t.Errorf("TieredAmount(%s, %d) = %d, want %d", c.mode, c.q, got, c.want)
++		}
++	}
++}
++
++func TestTieredAmountSingleTier(t *testing.T) {
++	flat := []store.Tier{{UnitAmount: 7, FlatAmount: 100}}
++	if got := TieredAmount(flat, store.Graduated, 3); got != 3*7+100 {
++		t.Errorf("graduated = %d", got)
++	}
++	if got := TieredAmount(flat, store.Volume, 3); got != 3*7+100 {
++		t.Errorf("volume = %d", got)
++	}
++	if got := TieredAmount(nil, store.Graduated, 3); got != 0 {
++		t.Errorf("no tiers = %d", got)
++	}
++}
+diff --git a/start/internal/store/billing.go b/result/internal/store/billing.go
+index 0332c41..b4defe5 100644
+--- a/start/internal/store/billing.go
++++ b/result/internal/store/billing.go
+@@ -2,6 +2,7 @@ package store
+ 
+ import (
+ 	"encoding/json"
++	"fmt"
+ 	"sort"
+ 	"strings"
+ 	"time"
+@@ -26,7 +27,7 @@ func (s *Store) CreatePlan(p Plan, now time.Time) (Plan, error) {
+ 	}
+ 	p.ID = s.newID("plan")
+ 	p.CreatedAt = now.UTC()
+-	s.plans[p.ID] = p
++	s.plans[p.ID] = copyPlan(p)
+ 	return p, nil
+ }
+ 
+@@ -44,10 +45,56 @@ func checkPlan(p Plan) error {
+ 		return invalid("a plan is licensed or metered")
+ 	case p.TrialDays < 0 || p.TrialDays > 365:
+ 		return invalid("a trial lasts 0 to 365 days")
++	case p.TiersMode != "" || len(p.Tiers) > 0:
++		return checkTiers(p)
+ 	}
+ 	return nil
+ }
+ 
++// checkTiers checks a tiered plan's mode and tiers. Only a metered plan can be tiered.
++func checkTiers(p Plan) error {
++	switch {
++	case p.UsageType != Metered:
++		return invalidTiers("only a metered plan can have tiers")
++	case p.TiersMode != Graduated && p.TiersMode != Volume:
++		return invalidTiers("tiers_mode is graduated or volume")
++	case len(p.Tiers) == 0:
++		return invalidTiers("a tiered plan needs at least one tier")
++	}
++	for i, t := range p.Tiers {
++		last := i == len(p.Tiers)-1
++		switch {
++		case t.UnitAmount < 0 || t.FlatAmount < 0:
++			return invalidTiers("a tier's amounts cannot be negative")
++		case last && t.UpTo != nil:
++			return invalidTiers("the last tier has no up_to")
++		case !last && t.UpTo == nil:
++			return invalidTiers("only the last tier has no up_to")
++		case !last && *t.UpTo <= 0:
++			return invalidTiers("up_to is a positive whole number")
++		case !last && i > 0 && *t.UpTo <= *p.Tiers[i-1].UpTo:
++			return invalidTiers("tiers are sorted by up_to, strictly ascending")
++		}
++	}
++	return nil
++}
++
++func invalidTiers(format string, args ...any) error {
++	return fmt.Errorf("%w: %s", ErrInvalidTiers, fmt.Sprintf(format, args...))
++}
++
++// copyPlan is a deep copy, so callers cannot change stored tiers.
++func copyPlan(p Plan) Plan {
++	p.Tiers = append([]Tier(nil), p.Tiers...)
++	for i := range p.Tiers {
++		if up := p.Tiers[i].UpTo; up != nil {
++			v := *up
++			p.Tiers[i].UpTo = &v
++		}
++	}
++	return p
++}
++
+ // Plan returns one of an organization's plans.
+ func (s *Store) Plan(orgID, id string) (Plan, bool) {
+ 	s.mu.Lock()
+@@ -56,7 +103,7 @@ func (s *Store) Plan(orgID, id string) (Plan, bool) {
+ 	if !ok || p.OrgID != orgID {
+ 		return Plan{}, false
+ 	}
+-	return p, true
++	return copyPlan(p), true
+ }
+ 
+ // Plans returns an organization's plans, oldest first.
+@@ -66,15 +113,15 @@ func (s *Store) Plans(orgID string) []Plan {
+ 	out := []Plan{}
+ 	for _, p := range s.plans {
+ 		if p.OrgID == orgID {
+-			out = append(out, p)
++			out = append(out, copyPlan(p))
+ 		}
+ 	}
+ 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+ 	return out
+ }
+ 
+-// UpdatePlan changes a plan with f. Its currency, price, interval and usage type cannot change once created: subscriptions
+-// depend on them.
++// UpdatePlan changes a plan with f. Its currency, price, interval, usage type and tiers cannot change once created:
++// subscriptions depend on them.
+ func (s *Store) UpdatePlan(orgID, id string, f func(*Plan) error) (Plan, error) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+@@ -82,18 +129,19 @@ func (s *Store) UpdatePlan(orgID, id string, f func(*Plan) error) (Plan, error)
+ 	if !ok || old.OrgID != orgID {
+ 		return Plan{}, ErrNotFound
+ 	}
+-	p := old
++	p := copyPlan(old)
+ 	if err := f(&p); err != nil {
+ 		return Plan{}, err
+ 	}
+ 	p.ID, p.OrgID, p.CreatedAt = old.ID, old.OrgID, old.CreatedAt
+ 	p.Currency, p.UnitAmount, p.Interval, p.UsageType = old.Currency, old.UnitAmount, old.Interval, old.UsageType
++	p.TiersMode, p.Tiers = old.TiersMode, old.Tiers
+ 	p.Name = strings.TrimSpace(p.Name)
+ 	if err := checkPlan(p); err != nil {
+ 		return Plan{}, err
+ 	}
+-	s.plans[id] = p
+-	return p, nil
++	s.plans[id] = copyPlan(p)
++	return copyPlan(p), nil
+ }
+ 
+ // ---- subscriptions
+diff --git a/start/internal/store/state.go b/result/internal/store/state.go
+index b1610e6..bb97ae5 100644
+--- a/start/internal/store/state.go
++++ b/result/internal/store/state.go
+@@ -48,7 +48,7 @@ func (s *Store) Export() State {
+ 		st.Customers = append(st.Customers, copyCustomer(c))
+ 	}
+ 	for _, p := range s.plans {
+-		st.Plans = append(st.Plans, p)
++		st.Plans = append(st.Plans, copyPlan(p))
+ 	}
+ 	for _, sub := range s.subs {
+ 		st.Subscriptions = append(st.Subscriptions, copySub(sub))
+@@ -151,7 +151,7 @@ func FromState(st State) (*Store, error) {
+ 		if err := dup("plan", p.ID, seen); err != nil {
+ 			return nil, err
+ 		}
+-		s.plans[p.ID] = p
++		s.plans[p.ID] = copyPlan(p)
+ 	}
+ 	for _, sub := range st.Subscriptions {
+ 		if err := dup("subscription", sub.ID, seen); err != nil {
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..a0caf15 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -23,6 +23,8 @@ var (
+ 	ErrConflict      = errors.New("conflict")
+ 	ErrEmailTaken    = fmt.Errorf("%w: email address already in use", ErrConflict)
+ 	ErrAlreadyMember = fmt.Errorf("%w: already a member", ErrConflict)
++	// ErrInvalidTiers is returned for a tiered plan whose tiers or mode are invalid. It is also ErrInvalid.
++	ErrInvalidTiers = fmt.Errorf("%w: tiers", ErrInvalid)
+ 	// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
+ )
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..5a97c2e 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -255,3 +255,67 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestTieredPlans(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	upTo := func(n int64) *int64 { return &n }
++	tiers := []Tier{{UpTo: upTo(10), UnitAmount: 100}, {UnitAmount: 50, FlatAmount: 300}}
++	p, err := s.CreatePlan(Plan{OrgID: a.ID, Name: "Usage", Currency: money.USD, Interval: Monthly, UsageType: Metered, TiersMode: Graduated, Tiers: tiers}, t0)
++	if err != nil || p.UnitAmount != 0 || p.TiersMode != Graduated || len(p.Tiers) != 2 {
++		t.Fatalf("CreatePlan = %+v, %v", p, err)
++	}
++	tiers[0].UnitAmount = 1 // the caller's slice is not the plan's
++	if got, _ := s.Plan(a.ID, p.ID); got.Tiers[0].UnitAmount != 100 {
++		t.Fatalf("stored tiers changed with the caller's slice: %+v", got.Tiers)
++	}
++	got, _ := s.Plan(a.ID, p.ID)
++	*got.Tiers[0].UpTo = 99 // nor with a plan returned by Plan
++	if again, _ := s.Plan(a.ID, p.ID); *again.Tiers[0].UpTo != 10 {
++		t.Fatalf("stored up_to changed: %+v", again.Tiers)
++	}
++
++	bad := map[string]Plan{
++		"licensed":           {UsageType: Licensed, TiersMode: Graduated, Tiers: tiers},
++		"no mode":            {UsageType: Metered, Tiers: tiers},
++		"unknown mode":       {UsageType: Metered, TiersMode: "flat", Tiers: tiers},
++		"mode without tier":  {UsageType: Metered, TiersMode: Volume},
++		"tiers without mode": {UsageType: Metered, Tiers: tiers},
++		"last tier limited":  {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UpTo: upTo(10)}}},
++		"unlimited middle":   {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UnitAmount: 1}, {UnitAmount: 2}}},
++		"not ascending":      {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UpTo: upTo(10)}, {UpTo: upTo(5)}, {}}},
++		"repeated up_to":     {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UpTo: upTo(10)}, {UpTo: upTo(10)}, {}}},
++		"zero up_to":         {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UpTo: upTo(0)}, {}}},
++		"negative unit":      {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UpTo: upTo(10), UnitAmount: -1}, {}}},
++		"negative flat":      {UsageType: Metered, TiersMode: Volume, Tiers: []Tier{{UpTo: upTo(10)}, {FlatAmount: -1}}},
++	}
++	for name, in := range bad {
++		in.OrgID, in.Name, in.Currency, in.Interval = a.ID, "Bad", money.USD, Monthly
++		if _, err := s.CreatePlan(in, t0); !errors.Is(err, ErrInvalidTiers) || !errors.Is(err, ErrInvalid) {
++			t.Errorf("%s: CreatePlan err = %v, want ErrInvalidTiers", name, err)
++		}
++	}
++
++	if up, err := s.UpdatePlan(a.ID, p.ID, func(p *Plan) error { p.Tiers, p.TiersMode = nil, Volume; return nil }); err != nil ||
++		up.TiersMode != Graduated || len(up.Tiers) != 2 {
++		t.Fatalf("UpdatePlan = %+v, %v (the tiers must not change)", up, err)
++	}
++}
++
++func TestTieredPlanSurvivesExportAndFromState(t *testing.T) {
++	s := New()
++	a := newOrg(t, s, "A")
++	upTo := int64(10)
++	p, err := s.CreatePlan(Plan{OrgID: a.ID, Name: "Usage", Currency: money.USD, Interval: Monthly, UsageType: Metered, TiersMode: Volume,
++		Tiers: []Tier{{UpTo: &upTo, UnitAmount: 100, FlatAmount: 5}, {UnitAmount: 50}}}, t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	s2, err := FromState(s.Export())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got, ok := s2.Plan(a.ID, p.ID); !ok || !reflect.DeepEqual(got, p) {
++		t.Fatalf("after FromState: %+v, want %+v", got, p)
++	}
++}
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..b16d265 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -125,18 +125,40 @@ const (
+ 	Metered UsageType = "metered"
+ )
+ 
++// TiersMode says how a tiered plan prices usage.
++type TiersMode string
++
++// Tier modes.
++const (
++	// Graduated prices each unit at the unit amount of the tier it falls in.
++	Graduated TiersMode = "graduated"
++	// Volume prices every unit at the unit amount of the one tier the total usage falls in.
++	Volume TiersMode = "volume"
++)
++
++// Tier is one band of a metered plan's usage. Its amounts are in minor units.
++type Tier struct {
++	// UpTo is the last quantity in the tier, inclusive. Nil means no upper limit, which only the last tier has.
++	UpTo       *int64 `json:"up_to"`
++	UnitAmount int64  `json:"unit_amount"`
++	FlatAmount int64  `json:"flat_amount"`
++}
++
+ // Plan is something an organization sells to its customers.
+ type Plan struct {
+ 	ID         string         `json:"id"`
+ 	OrgID      string         `json:"org_id"`
+ 	Name       string         `json:"name"`
+ 	Currency   money.Currency `json:"currency"`
+-	UnitAmount int64          `json:"unit_amount"` // minor units
++	UnitAmount int64          `json:"unit_amount"` // minor units; a tiered plan does not use it
+ 	Interval   Interval       `json:"interval"`
+ 	UsageType  UsageType      `json:"usage_type"`
+ 	TrialDays  int            `json:"trial_days"`
+-	Active     bool           `json:"active"`
+-	CreatedAt  time.Time      `json:"created_at"`
++	// TiersMode and Tiers are set on a tiered metered plan, which prices usage with its tiers instead of UnitAmount.
++	TiersMode TiersMode `json:"tiers_mode,omitempty"`
++	Tiers     []Tier    `json:"tiers,omitempty"`
++	Active    bool      `json:"active"`
++	CreatedAt time.Time `json:"created_at"`
+ }
+ 
+ // SubStatus is a subscription's state.
+diff --git a/start/internal/subscriptions/subscriptions.go b/result/internal/subscriptions/subscriptions.go
+index 6d6d997..ebdc08f 100644
+--- a/start/internal/subscriptions/subscriptions.go
++++ b/result/internal/subscriptions/subscriptions.go
+@@ -206,7 +206,8 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 
+ // invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.
+ // It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no
+-// payment method stays open and counts as paid here (it is paid by hand).
++// payment method stays open and counts as paid here (it is paid by hand). A tiered plan's period is one line priced by its
++// tiers, and a period with no usage on a tiered plan is not invoiced at all.
+ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {
+ 	var lines []store.Line
+ 	period := start.Format("Jan 2, 2006") + " to " + end.Format("Jan 2, 2006")
+@@ -216,7 +217,14 @@ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, pla
+ 			lines = append(lines, store.Line{Description: plan.Name + ", " + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})
+ 		}
+ 	case store.Metered:
+-		if used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end); used > 0 {
++		used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end)
++		switch {
++		case len(plan.Tiers) > 0 && used == 0:
++			return true, nil
++		case len(plan.Tiers) > 0:
++			amount := billing.TieredAmount(plan.Tiers, plan.TiersMode, used)
++			lines = append(lines, store.Line{Description: plan.Name + " usage, " + period, Quantity: 1, UnitAmount: amount})
++		case used > 0:
+ 			lines = append(lines, store.Line{Description: plan.Name + " usage, " + period, Quantity: used, UnitAmount: plan.UnitAmount})
+ 		}
+ 	}
+diff --git a/start/internal/subscriptions/subscriptions_test.go b/result/internal/subscriptions/subscriptions_test.go
+index a713e2d..1146595 100644
+--- a/start/internal/subscriptions/subscriptions_test.go
++++ b/result/internal/subscriptions/subscriptions_test.go
+@@ -2,6 +2,7 @@ package subscriptions_test
+ 
+ import (
+ 	"context"
++	"strings"
+ 	"testing"
+ 	"time"
+ 
+@@ -134,3 +135,59 @@ func TestMeteredBillsUsageInArrears(t *testing.T) {
+ 		t.Fatalf("invoices = %+v (usage at the period's end belongs to the next period)", invs)
+ 	}
+ }
++
++func TestTieredUsageBilledAtRenewal(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = "pm_card_visa"; return nil })
++	upTo := func(n int64) *int64 { return &n }
++	p, err := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "API calls", Currency: money.USD, Interval: store.Monthly, UsageType: store.Metered,
++		TiersMode: store.Graduated, Tiers: []store.Tier{{UpTo: upTo(10), UnitAmount: 100}, {UnitAmount: 50, FlatAmount: 300}}}, e.Clock.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	start, end := sub.CurrentPeriodStart, sub.CurrentPeriodEnd
++	for _, u := range []struct {
++		q  int64
++		at time.Time
++	}{{20, start}, {5, start.Add(48 * time.Hour)}} {
++		if _, err := e.Store.AddUsage(e.Acme.ID, sub.ID, u.q, u.at, e.Clock.Now()); err != nil {
++			t.Fatal(err)
++		}
++	}
++
++	e.Clock.Set(end)
++	if _, err := e.Subs.RenewDue(ctx); err != nil {
++		t.Fatal(err)
++	}
++	// 25 units: the first 10 at 100 each; the other 15 at 50 each plus the tier's flat 300.
++	const want = 10*100 + 15*50 + 300
++	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})
++	if len(invs) != 1 || len(invs[0].Lines) != 1 {
++		t.Fatalf("invoices = %+v", invs)
++	}
++	l := invs[0].Lines[0]
++	if l.Quantity != 1 || l.UnitAmount != want || !strings.HasPrefix(l.Description, "API calls") || invs[0].Status != store.InvoicePaid {
++		t.Fatalf("line = %+v, status %s", l, invs[0].Status)
++	}
++	if cs := e.Gateway.Charges(); len(cs) != 1 || cs[0].Amount != want {
++		t.Fatalf("charges = %+v", cs)
++	}
++
++	// A period with no usage is not invoiced, and the subscription stays active.
++	e.Clock.Set(sub.CurrentPeriodEnd.AddDate(0, 1, 0))
++	if n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RenewDue = %d, %v", n, err)
++	}
++	if invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 1 {
++		t.Fatalf("a period without usage was invoiced: %+v", invs)
++	}
++	if got, _ := e.Store.Subscription(e.Acme.ID, sub.ID); got.Status != store.Active {
++		t.Fatalf("status = %s", got.Status)
++	}
++}

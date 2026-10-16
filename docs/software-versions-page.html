@@ -1,0 +1,229 @@
+<style>
+  .sv { display: grid; gap: var(--cds-gap-lg); max-width: 78rem; margin-inline: auto; font-family: var(--font-anthropic-sans); }
+  .sv h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
+  .sv h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .sv p { margin: 0; }
+  .sv-muted { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .sv-take { font-size: var(--cds-font-size-body); max-width: 60rem; line-height: 1.45; }
+  .sv-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: var(--cds-gap-md); }
+  .sv-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-xs); align-content: start; min-height: 6.5rem; }
+  .sv-tile .n { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 2.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+  .sv-tile .l { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .sv-tile.ok .n { color: var(--color-ok); } .sv-tile.warn .n { color: var(--color-warn); } .sv-tile.bad .n { color: var(--color-bad); }
+  .sv-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-md); min-width: 0; }
+  .sv-tools { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); align-items: center; }
+  .sv-tools input, .sv-tools select { font: inherit; font-size: var(--cds-font-size-body); padding: 0.3rem 0.5rem; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); min-width: 0; }
+  .sv-tools input[type=search] { flex: 1 1 14rem; }
+  .sv-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; }
+  .sv-seg button { font: inherit; font-size: var(--cds-font-size-body); border: 0; background: transparent; color: var(--color-fg-muted); padding: 0.3rem 0.7rem; cursor: pointer; }
+  .sv-seg button[aria-pressed=true] { background: var(--color-bg); color: var(--color-fg); box-shadow: inset 0 -2px 0 var(--color-fg); }
+  .sv-box { max-height: 34rem; overflow: auto; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); }
+  .sv-table { border-collapse: collapse; width: 100%; font-size: var(--cds-font-size-body); }
+  .sv-table th, .sv-table td { text-align: left; vertical-align: top; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--color-border-line); }
+  .sv-table th { position: sticky; top: 0; background: var(--color-panel); font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); white-space: nowrap; z-index: 1; }
+  .sv-table th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .sv-table td { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .sv-table td:nth-child(1) { font-weight: var(--cds-font-weight-medium); min-width: 11rem; }
+  .sv-table .role, .sv-table .remark { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); max-width: 26rem; }
+  .sv-chip { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid currentColor; font-size: var(--cds-font-size-caption); text-transform: capitalize; white-space: nowrap; }
+  .sv-chip.current { color: var(--color-ok); } .sv-chip.patch, .sv-chip.minor { color: var(--color-warn); } .sv-chip.major { color: var(--color-bad); } .sv-chip.prerelease, .sv-chip.unknown { color: var(--color-fg-muted); }
+  .sv-empty { color: var(--color-fg-muted); font-size: var(--cds-font-size-body); }
+  @media (max-width: 40rem) { .sv-hide-narrow { display: none; } }
+</style>
+<div class="sv">
+  <header style="display:grid;gap:var(--cds-gap-sm)">
+    <h1>Drydock software versions</h1>
+    <p class="sv-take">
+      Of the <span data-source="counts" data-field="n" data-where="layer=chosen&amp;status=current">—</span> pieces of software Drydock uses directly,
+      <span data-source="counts" data-field="n" data-where="layer=chosen&amp;status=major">—</span> are a major version behind,
+      <span data-source="counts" data-field="n" data-where="layer=chosen&amp;status=minor">—</span> a minor version and
+      <span data-source="counts" data-field="n" data-where="layer=chosen&amp;status=patch">—</span> a patch behind; the rest are current.
+      <span data-source="advisories" data-field="n" data-row="0">—</span> known security advisories affect what is installed.
+    </p>
+    <p class="sv-muted">Measured <span data-source="meta" data-field="generated" data-row="0">—</span> at commit <span data-source="meta" data-field="commit" data-row="0">—</span>. Versions come from go.mod, the UI lock file, the CI workflows and the agent manifests; the newest releases come from the Go module proxy, npm and git tags.</p>
+  </header>
+
+  <section class="sv-tiles" aria-label="Summary of what we chose">
+    <div class="sv-tile ok"><span class="n" data-source="counts" data-field="n" data-where="layer=chosen&amp;status=current">—</span><span class="l">current</span></div>
+    <div class="sv-tile warn"><span class="n" data-source="counts" data-field="n" data-where="layer=chosen&amp;status=patch">—</span><span class="l">a patch behind</span></div>
+    <div class="sv-tile warn"><span class="n" data-source="counts" data-field="n" data-where="layer=chosen&amp;status=minor">—</span><span class="l">a minor version behind</span></div>
+    <div class="sv-tile bad"><span class="n" data-source="counts" data-field="n" data-where="layer=chosen&amp;status=major">—</span><span class="l">a major version behind</span></div>
+    <div class="sv-tile bad"><span class="n" data-source="advisories" data-field="n" data-row="0">—</span><span class="l">security advisories</span></div>
+  </section>
+
+  <section class="sv-card" id="sv-vulns" aria-labelledby="sv-vulns-h">
+    <h2 id="sv-vulns-h">Security advisories</h2>
+    <p class="sv-muted"><span data-source="meta" data-field="govulncheck" data-row="0">—</span>. <span data-source="meta" data-field="npmAudit" data-row="0">—</span>. Go is checked with govulncheck, the UI packages with npm audit.</p>
+    <p class="sv-empty" id="sv-vulns-empty" hidden>No known vulnerabilities were found.</p>
+    <div class="sv-box" id="sv-vulns-box" hidden>
+      <table class="sv-table" id="sv-vulns-table" data-source="vulns" data-row-key="id">
+        <thead><tr>
+          <th data-field="id">Advisory</th><th data-field="package">Package</th><th data-field="severity">Severity</th><th data-field="called">Code reaches it</th><th data-field="summary">What it is</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sv-card" aria-labelledby="sv-all-h">
+    <h2 id="sv-all-h">Everything, with what it is for</h2>
+    <div class="sv-tools">
+      <div class="sv-seg" role="group" aria-label="Which pieces">
+        <button type="button" id="sv-layer-chosen" aria-pressed="true">What we chose</button>
+        <button type="button" id="sv-layer-pulled" aria-pressed="false">Compiled in via other libraries</button>
+        <button type="button" id="sv-layer-graph" aria-pressed="false" title="Listed in go.mod's module graph, but no package of it is compiled into the app or its tests">Only in the module graph</button>
+      </div>
+      <select id="sv-status" aria-label="Filter by how far behind">
+        <option value="">Any gap</option><option value="behind">Anything behind</option><option value="major">Major behind</option><option value="minor">Minor behind</option><option value="patch">Patch behind</option><option value="current">Current</option><option value="other">Not measured</option>
+      </select>
+      <select id="sv-group" aria-label="Filter by part of the app"><option value="">All parts</option></select>
+      <input type="search" id="sv-q" placeholder="Search name, purpose or notes" aria-label="Search">
+    </div>
+    <p class="sv-muted" id="sv-shown" aria-live="polite"></p>
+    <div class="sv-box">
+      <table class="sv-table" id="sv-main" data-source="items" data-row-key="id">
+        <thead><tr>
+          <th data-field="name"><button type="button" data-sort="name">Name</button></th>
+          <th data-field="role" class="sv-hide-narrow"><button type="button" data-sort="role">What it is for</button></th>
+          <th data-field="used"><button type="button" data-sort="used">In use</button></th>
+          <th data-field="latest"><button type="button" data-sort="latest">Newest</button></th>
+          <th data-field="status"><button type="button" data-sort="status">Gap</button></th>
+          <th data-field="remark" class="sv-hide-narrow"><button type="button" data-sort="remark">Notes</button></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sv-card" aria-labelledby="sv-drift-h">
+    <h2 id="sv-drift-h">Documentation that disagrees with the code</h2>
+    <p class="sv-muted">Versions named in docs/decisions.md that differ from what the code pins.</p>
+    <p class="sv-empty" id="sv-drift-empty" hidden>The documentation and the code name the same versions.</p>
+    <div class="sv-box" id="sv-drift-box" hidden>
+      <table class="sv-table" id="sv-drift-table" data-source="drift" data-row-key="name">
+        <thead><tr><th data-field="name">Software</th><th data-field="docs">Documentation says</th><th data-field="code">Code pins</th><th data-field="ref">Where</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+<script>
+  dash.calc('counts', {
+    inputs: ['items'],
+    title: 'Pieces by how far behind',
+    description: 'Counts the items by layer (chosen or pulled in) and by how far behind the newest release they are.',
+    fn: (items) => {
+      const n = {};
+      for (const r of items) {
+        const s = r.status === 'unknown' || r.status === 'prerelease' ? 'other' : r.status;
+        const k = r.layer + '|' + s;
+        n[k] = (n[k] || 0) + 1;
+      }
+      const out = [];
+      for (const layer of ['chosen', 'pulled']) for (const status of ['current', 'patch', 'minor', 'major', 'other']) out.push({ layer, status, n: n[layer + '|' + status] || 0 });
+      return out;
+    },
+  });
+  dash.calc('advisories', {
+    inputs: ['vulns'],
+    title: 'Security advisories',
+    description: 'How many advisories affect what is installed, and how many of them sit in code that is called.',
+    fn: (vulns) => { const real = vulns.filter((v) => v.none !== 'yes'); return [{ n: real.length, called: real.filter((v) => v.called === 'yes').length }]; },
+  });
+
+  const ST = { major: 0, minor: 1, patch: 2, prerelease: 3, unknown: 3, current: 4 };
+  const state = { layer: 'chosen', status: '', group: '', q: '', sort: 'status', dir: 1 };
+  const $ = (id) => document.getElementById(id);
+  const cell = (text, cls) => { const td = document.createElement('td'); td.textContent = text == null ? '' : String(text); if (cls) td.className = cls; return td; };
+  const gap = (s) => { const td = document.createElement('td'); const c = document.createElement('span'); c.className = 'sv-chip ' + s; c.textContent = s; td.appendChild(c); return td; };
+  const ok = (id) => dash.data(id).status === 'ok';
+
+  function fillRows(tbody, rows, cols) {
+    tbody.replaceChildren(...rows.map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.id !== undefined ? r.id : r.name;
+      for (const c of cols) tr.appendChild(c === 'status' ? gap(r.status) : cell(r[c], c === 'role' ? 'role sv-hide-narrow' : c === 'remark' ? 'remark sv-hide-narrow' : ''));
+      return tr;
+    }));
+  }
+
+  function renderMain() {
+    const d = dash.data('items');
+    if (d.status !== 'ok') return;
+    const q = state.q.trim().toLowerCase();
+    let rows = d.data.filter((r) => r.layer === state.layer);
+    if (state.group) rows = rows.filter((r) => r.group === state.group);
+    if (state.status === 'behind') rows = rows.filter((r) => ['major', 'minor', 'patch'].includes(r.status));
+    else if (state.status === 'other') rows = rows.filter((r) => r.status === 'unknown' || r.status === 'prerelease');
+    else if (state.status) rows = rows.filter((r) => r.status === state.status);
+    if (q) rows = rows.filter((r) => (r.name + ' ' + r.role + ' ' + r.remark).toLowerCase().includes(q));
+    const key = state.sort;
+    rows = rows.slice().sort((a, b) => {
+      let c = key === 'status' ? (ST[a.status] ?? 3) - (ST[b.status] ?? 3) : String(a[key] ?? '').localeCompare(String(b[key] ?? ''), 'en', { numeric: true });
+      if (c === 0) c = a.name.localeCompare(b.name);
+      return c * state.dir;
+    });
+    fillRows($('sv-main').tBodies[0], rows, ['name', 'role', 'used', 'latest', 'status', 'remark']);
+    $('sv-shown').textContent = rows.length + (rows.length === 1 ? ' piece shown' : ' pieces shown');
+    for (const b of document.querySelectorAll('#sv-main th button')) b.closest('th').setAttribute('aria-sort', b.dataset.sort === key ? (state.dir > 0 ? 'ascending' : 'descending') : 'none');
+  }
+
+  function renderGroups() {
+    const d = dash.data('items');
+    if (d.status !== 'ok') return;
+    const sel = $('sv-group');
+    const groups = [...new Set(d.data.filter((r) => r.layer === state.layer).map((r) => r.group))].sort();
+    sel.replaceChildren(new Option('All parts', ''), ...groups.map((g) => new Option(g, g)));
+    sel.value = groups.includes(state.group) ? state.group : '';
+    state.group = sel.value;
+  }
+
+  function renderSmall(id, tableId, boxId, emptyId, cols) {
+    const d = dash.data(id);
+    if (d.status !== 'ok') return;
+    const rows = d.data.filter((r) => r.none !== 'yes'); // an empty dataset carries one placeholder row (the type refuses a file with no rows)
+    $(boxId).hidden = rows.length === 0;
+    $(emptyId).hidden = rows.length !== 0;
+    fillRows($(tableId).tBodies[0], rows, cols);
+  }
+
+  let lastLayer = null;
+  dash.onData(() => {
+    if (lastLayer !== state.layer) { renderGroups(); lastLayer = state.layer; }
+    renderMain();
+    renderSmall('vulns', 'sv-vulns-table', 'sv-vulns-box', 'sv-vulns-empty', ['id', 'package', 'severity', 'called', 'summary']);
+    renderSmall('drift', 'sv-drift-table', 'sv-drift-box', 'sv-drift-empty', ['name', 'docs', 'code', 'ref']);
+    for (const el of document.querySelectorAll('#dash-root [data-source]')) {
+      if (el.tagName === 'TABLE' || !el.hasAttribute('data-field')) continue;
+      const src = el.getAttribute('data-source'), field = el.getAttribute('data-field');
+      const d = dash.data(src);
+      if (d.status !== 'ok') continue;
+      const w = el.getAttribute('data-where'), row = el.getAttribute('data-row');
+      let r;
+      if (w) { const p = new URLSearchParams(w); r = d.data.find((x) => [...p].every(([k, v]) => String(x[k]) === v)); }
+      else if (row !== null) r = d.data[Number(row)];
+      if (r && r[field] !== undefined) el.textContent = String(r[field]);
+    }
+  });
+
+  const redo = () => { renderMain(); };
+  $('sv-layer-chosen').addEventListener('click', () => setLayer('chosen'));
+  $('sv-layer-pulled').addEventListener('click', () => setLayer('pulled'));
+  $('sv-layer-graph').addEventListener('click', () => setLayer('graph'));
+  function setLayer(l) {
+    state.layer = l;
+    $('sv-layer-chosen').setAttribute('aria-pressed', String(l === 'chosen'));
+    $('sv-layer-pulled').setAttribute('aria-pressed', String(l === 'pulled'));
+    $('sv-layer-graph').setAttribute('aria-pressed', String(l === 'graph'));
+    renderGroups(); lastLayer = l; redo();
+  }
+  $('sv-status').addEventListener('change', (e) => { state.status = e.target.value; redo(); });
+  $('sv-group').addEventListener('change', (e) => { state.group = e.target.value; redo(); });
+  $('sv-q').addEventListener('input', (e) => { state.q = e.target.value; redo(); });
+  for (const b of document.querySelectorAll('#sv-main th button')) {
+    b.addEventListener('click', () => {
+      if (state.sort === b.dataset.sort) state.dir = -state.dir; else { state.sort = b.dataset.sort; state.dir = 1; }
+      redo();
+    });
+  }
+</script>

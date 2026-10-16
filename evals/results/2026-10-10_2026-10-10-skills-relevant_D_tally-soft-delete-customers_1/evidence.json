@@ -1,0 +1,237 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Customer deletion is now a soft delete with every rule in the task: 204 on delete, 409 `has_active_subscriptions`, deleted customers hidden from every customer endpoint, invoice and subscription creation return 404, email freed, invoices show `\"deleted\": true`, restore within 30 days (409 `email_taken` on conflict), and `store.PurgeDeletedCustomers(now)`.\n- New tests cover each of these behaviours. `go build ./...`, `go test ./...` and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791669633154
+  },
+  {
+    "id": 2,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 920ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/build_df4ff46c9b4e.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 916,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669634164
+  },
+  {
+    "id": 3,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.07s",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/test_6e5fac2f6731.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1072,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669635243
+  },
+  {
+    "id": 4,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 970ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/lint_86e841801dbb.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 974,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669636224
+  },
+  {
+    "id": 5,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 60ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/secrets_9e9372e8b2fc.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 61,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669636287
+  },
+  {
+    "id": 6,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "12 file(s), +342 -22",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/evidence/task.diff",
+    "data": {
+      "Files": 12,
+      "Insertions": 342,
+      "Deletions": 22,
+      "base": "0f0bb6e2218a64037810c3b33e64b65dc454007c",
+      "commit": "55ff46fca3c64577684e22d53f7e184c28912790"
+    },
+    "created": 1791669636511
+  },
+  {
+    "id": 7,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 55ff46fca3",
+    "ref": "55ff46fca3c64577684e22d53f7e184c28912790",
+    "data": {},
+    "created": 1791669636512
+  },
+  {
+    "id": 8,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 750ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/build_4364b13d3dae.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 745,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669759478
+  },
+  {
+    "id": 9,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 490ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/test_04b8e1e4117c.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 485,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669759965
+  },
+  {
+    "id": 10,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 550ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/lint_b314dc7ebb6a.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 551,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669760518
+  },
+  {
+    "id": 11,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/checks/secrets_e7092f58bba7.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669760541
+  },
+  {
+    "id": 12,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "12 file(s), +419 -29",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-soft-delete-customers-D-1/data/runs/run_1450371504b3/evidence/task.diff",
+    "data": {
+      "Files": 12,
+      "Insertions": 419,
+      "Deletions": 29,
+      "base": "0f0bb6e2218a64037810c3b33e64b65dc454007c",
+      "commit": "f468cf3a22a9c568ca4c9c58a78bfcf452fabffd"
+    },
+    "created": 1791669760691
+  },
+  {
+    "id": 13,
+    "taskId": "task_a6733a068218",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f468cf3a22",
+    "ref": "f468cf3a22a9c568ca4c9c58a78bfcf452fabffd",
+    "data": {},
+    "created": 1791669760691
+  }
+]

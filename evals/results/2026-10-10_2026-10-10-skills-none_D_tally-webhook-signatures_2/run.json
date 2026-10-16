@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-webhook-signatures",
+  "taskClass": "security review",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "37b7aae708cbe8ad736388dcd1bb061ba49ef48f",
+  "startedAt": "2026-10-10T22:29:08.272314067Z",
+  "wallMs": 286437,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 834,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1449,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.012s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.002s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.009s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.008s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.007s\nok  \texample.com/tally/internal/snapshot\t0.020s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.005s\nok  \texample.com/tally/internal/webhooks\t0.006s\n"
+      }
+    ],
+    "durationMs": 2294
+  },
+  "costUsd": 0.06837619,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 80,
+    "output": 55239,
+    "cacheRead": 1306249,
+    "cacheWrite": 138431
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_fa2c1f080a0a",
+      "feedback": "internal/store/types.go:251-252: PreviousSecret and SecretRotatedAt are tagged json:\"-\", but internal/snapshot/snapshot.go:30 persists the store as JSON through State (internal/store/state.go:22, Export at :63-65, FromState at :175-180). After a restart, endpoints rotated within the last 24 hours lose their previous secret and rotation time, so deliveries stop carrying the previous secret's v1 entry, breaking the 24-hour requirement. Do not just change the tag: the endpoint API serializes the same struct, so a json tag would leak the previous secret. Persist the rotation state through a separate field in State (filled in Export, restored in FromState) and keep it out of the API JSON. Add a test that round-trips the store through Export/FromState and checks SigningSecrets still returns the previous secret inside the 24-hour window and drops it after."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_fa2c1f080a0a"
+    }
+  ],
+  "coreTaskId": "task_02700da9fbe2"
+}

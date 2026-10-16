@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "eaf7543a4941aa9d2af885d2bddcba93b78cc30e",
+  "startedAt": "2026-10-10T22:15:15.442910059Z",
+  "wallMs": 354388,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1284,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 11542,
+        "output": "ok  \texample.com/tally/cmd/tally\t0.009s\nok  \texample.com/tally/internal/api\t0.009s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\n--- FAIL: TestHiddenSecondShutdownAndStopReturnAtOnce (10.00s)\n    zz_hidden_graceful_shutdown_test.go:383: a second Shutdown while the first was waiting did not return within 10s\nFAIL\nFAIL\texample.com/tally/internal/jobs\t10.596s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.011s\nok  \texample.com/tally/internal/payments\t0.014s\nok  \texample.com/tally/internal/reports\t0.006s\nok  \texample.com/tally/internal/snapshot\t0.007s\nok  \texample.com/tally/internal/store\t0.004s\nok  \texample.com/tally/internal/subscriptions\t0.005s\nok  \texample.com/tally/internal/webhooks\t0.005s\nFAIL\n"
+      }
+    ],
+    "durationMs": 12835
+  },
+  "costUsd": 0.09189709000000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 80,
+    "output": 65513,
+    "cacheRead": 1890179,
+    "cacheWrite": 201154
+  },
+  "sessions": 8,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_33b2e4548ba1",
+      "feedback": "cmd/tally/main.go (the loop after runner.Shutdown, ~line 89): Pending() jobs are only logged as 'job not run' and then discarded. The task says Pending() is what the caller saves ('The caller saves them') and the title is 'Shut the job runner down without losing work'. Persist the pending work before the process exits, for example by writing the pending job names to a file in the data directory or by saving them alongside the snapshot. Job.Run is a func and cannot be serialized, so if the intended approach differs, state it explicitly. Otherwise the jobs are lost on every SIGTERM that interrupts work. The rest of the change (Shutdown semantics, ErrStopped, panic recovery, Pending ordering, tests) matches the spec."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_33b2e4548ba1",
+      "feedback": "internal/jobs/jobs.go, Shutdown, the `if r.stopping` branch: a second Shutdown call (and Stop after Shutdown) blocks on \u003c-r.stopped or ctx.Done() until the first call finishes. The task requires it to return at once (nil once the first call has finished), so Stop() after a slow Shutdown can block up to 30s, and a second call with an expired ctx returns ctx.Err(). Make the second call return nil without waiting. Add a test that calls Shutdown a second time while a job is still running and asserts the call returns immediately."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_33b2e4548ba1",
+      "feedback": "1) internal/jobs/jobs.go, Shutdown: when r.stopping is already set it returns nil at once while workers may still run jobs, which breaks 'when it returns, none of the runner's goroutines is left' and 'nil once the first call has finished'. TestShutdownAgainReturnsWhileJobRuns asserts that behavior. Make later calls wait for the first call to finish, then return nil (or state explicitly which reading of 'returns at once' is intended and reconcile the invariant). 2) cmd/tally/main.go, the loop over `saved` discards the Enqueue error with `_ =`. Pending can hold up to queue capacity (100) plus up to 4 interrupted jobs, so reloading can silently drop jobs with no log. Log the error on ErrQueueFull, or size the queue so every saved job fits, so no work is lost on restart."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_33b2e4548ba1"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_53a56f4e9633"
+}

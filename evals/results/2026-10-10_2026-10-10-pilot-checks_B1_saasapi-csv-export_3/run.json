@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-pilot-checks",
+  "commit": "895299ed5eba",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "saasapi-csv-export",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "45084a88fcceed0af1a1d9738883ecb3a56a7e72",
+  "startedAt": "2026-10-10T02:03:10.354397215Z",
+  "wallMs": 61990,
+  "ceilingUsd": 2,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 286,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 498,
+        "output": "?   \texample.com/saasapi/cmd/server\t[no test files]\nok  \texample.com/saasapi/internal/api\t0.005s\nok  \texample.com/saasapi/internal/billing\t0.003s\n?   \texample.com/saasapi/internal/store\t[no test files]\n"
+      }
+    ],
+    "durationMs": 786
+  },
+  "costUsd": 0.0162058,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 16,
+    "output": 13179,
+    "cacheRead": 277830,
+    "cacheWrite": 34182
+  },
+  "sessions": 1,
+  "modelTurns": 13,
+  "toolUses": {
+    "Bash": 6,
+    "Edit": 6
+  }
+}

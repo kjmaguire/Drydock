@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Webhook create and URL-update requests return 422 `{\"error\":\"invalid_url\"}` unless the URL is https, has a host and no userinfo, and every resolved address (or the literal IP) is public. Port numbers stay allowed.\n- Before each delivery attempt, the host is re-resolved with the webhooks Service's Resolver. If any address is not public, nothing is sent, the attempt fails with an error containing \"not public\", and the endpoint is left unchanged.\n- New tests cover the validation rules and the delivery re-check. `go build ./...`, `go test ./...` and `go vet ./...` pass, and no existing exported \n...[truncated]",
+    "data": {},
+    "created": 1791608448058
+  },
+  {
+    "id": 2,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.03s",
+    "ref": "/tmp/drydock-trial-462432314/tally-webhook-ssrf-D-1/data/runs/run_83df2777f2be/checks/build-1791608448134213892.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1028,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608449163
+  },
+  {
+    "id": 3,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 700ms",
+    "ref": "/tmp/drydock-trial-462432314/tally-webhook-ssrf-D-1/data/runs/run_83df2777f2be/checks/test-1791608449168266288.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 700,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608449869
+  },
+  {
+    "id": 4,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 550ms",
+    "ref": "/tmp/drydock-trial-462432314/tally-webhook-ssrf-D-1/data/runs/run_83df2777f2be/checks/lint-1791608449871496898.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 546,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608450418
+  },
+  {
+    "id": 5,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-462432314/tally-webhook-ssrf-D-1/data/runs/run_83df2777f2be/checks/secrets-1791608450441354286.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608450442
+  },
+  {
+    "id": 6,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +145 -8",
+    "ref": "/tmp/drydock-trial-462432314/tally-webhook-ssrf-D-1/data/runs/run_83df2777f2be/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 145,
+      "Deletions": 8,
+      "base": "0655857071f4563cf5c11dc14998e0c0ff50f9d4",
+      "commit": "9735b9c06522bd0758162ed8c4c7e5258bd47358"
+    },
+    "created": 1791608450604
+  },
+  {
+    "id": 7,
+    "taskId": "task_61e2853ae2ff",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 9735b9c065",
+    "ref": "9735b9c06522bd0758162ed8c4c7e5258bd47358",
+    "data": {},
+    "created": 1791608450605
+  }
+]

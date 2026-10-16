@@ -1,0 +1,32 @@
+# A security fix that must also migrate stored data and change a write pattern.
+id: tally-api-key-hashing
+title: "Store API keys hashed"
+suite: tally
+fixture: testdata/fixtures/tally
+class: security review
+risk: high
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  API keys are stored, saved in snapshots and listed in plain text: anyone who can read a snapshot, or any member calling
+  GET /v1/api-keys, can take every key of the organization. Fix it:
+
+  - New tokens are "tly_" followed by 40 random characters from [A-Za-z0-9] (crypto/rand).
+  - The full token appears exactly once, in the answer that creates it: POST /v1/api-keys (field "token") and
+    POST /v1/invites/accept ("api_key"."token"). It appears nowhere else: not in GET /v1/api-keys, not in snapshots, not in
+    logs.
+  - Store only the token's SHA-256 hash (hex) and its last four characters. GET /v1/api-keys shows each key's id, name,
+    user_id, created_at, last_used_at, revoked_at and "last4", and neither the token nor its hash.
+  - A request authenticates by hashing the token it presents. As today, revoked keys and keys of removed members get 401.
+  - Snapshots written before this change hold plain-text tokens (state.api_keys[].token). Loading one keeps those keys working,
+    and the next snapshot written must not contain any plain-text token.
+  - last_used_at is written at most once a minute per key: a request less than 60 seconds after the recorded last use leaves it
+    unchanged.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-api-key-hashing
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

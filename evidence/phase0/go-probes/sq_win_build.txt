@@ -1,0 +1,1 @@
+sqlite windows/amd64 CGO_ENABLED=0 cold build: 17.947541468s size 10169856

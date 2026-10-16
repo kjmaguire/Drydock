@@ -1,0 +1,222 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Tokens are generated as `tly_` plus 40 random `[A-Za-z0-9]` characters via crypto/rand. Only the SHA-256 hex hash and last4 are stored. The full token appears only in the create and invite-accept responses.\n- Auth hashes the presented token. Old plain-text snapshot tokens still load and authenticate, and the next snapshot contains no plain-text token. `last_used_at` is written at most once a minute per key.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, with new tests covering the hashing, the leak paths, legacy migration and the throttle.",
+    "data": {},
+    "created": 1791668763999
+  },
+  {
+    "id": 2,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.06s",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/build_e5c328986773.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1056,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668765159
+  },
+  {
+    "id": 3,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.27s",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/test_04b0e1e6cb7f.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1267,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668766428
+  },
+  {
+    "id": 4,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.02s",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/lint_c132b9fb3f6f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1020,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668767450
+  },
+  {
+    "id": 5,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": false,
+    "summary": "secrets failed (exit 1) in 50ms: generic-api-key internal/snapshot/snapshot_test.go:46",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/secrets_3908e7fdf557.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 46,
+      "errored": false,
+      "exitCode": 1,
+      "failing": [
+        "generic-api-key internal/snapshot/snapshot_test.go:46"
+      ],
+      "skipped": false
+    },
+    "created": 1791668767500
+  },
+  {
+    "id": 6,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Fix:** In `internal/snapshot/snapshot_test.go`, `TestLoadPlainTokensThenSave` had a token-shaped string literal on line 46. I replaced it with a value built at run time:",
+    "data": {},
+    "created": 1791668783791
+  },
+  {
+    "id": 7,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 580ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/build_36340e5de761.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 583,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668784406
+  },
+  {
+    "id": 8,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 500ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/test_4dec6c1d025a.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 502,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668784910
+  },
+  {
+    "id": 9,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 490ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/lint_7e762b520eff.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 494,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668785407
+  },
+  {
+    "id": 10,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 40ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/checks/secrets_1137576c14ba.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 39,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668785448
+  },
+  {
+    "id": 11,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "9 file(s), +274 -17",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-api-key-hashing-D-1/data/runs/run_019b7764bd58/evidence/task.diff",
+    "data": {
+      "Files": 9,
+      "Insertions": 274,
+      "Deletions": 17,
+      "base": "0cd79a1ff430f33bf6fab25f4675a76c16ed5510",
+      "commit": "0905ab89442eb80e26eeb25d58a27ec4f934a942"
+    },
+    "created": 1791668785587
+  },
+  {
+    "id": 12,
+    "taskId": "task_4aa2f9b1c464",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 0905ab8944",
+    "ref": "0905ab89442eb80e26eeb25d58a27ec4f934a942",
+    "data": {},
+    "created": 1791668785588
+  }
+]

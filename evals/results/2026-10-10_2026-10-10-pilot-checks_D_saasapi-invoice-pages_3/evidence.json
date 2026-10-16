@@ -1,0 +1,237 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /api/invoices` accepts `limit` (default 20, whole number 1–100) and `cursor`, and returns `{\"items\": [...], \"next_cursor\": \"...\"}` in creation order (created, then id). Invalid limit gives 400 `invalid_limit`; an unreadable cursor gives 400 `invalid_cursor`.\n- Paging is stable under concurrent inserts: no invoice is skipped or repeated across pages. `next_cursor` is set only when more items exist.\n- Checked by new tests covering page sizes, the last page, bad limit and cursor values, and insertion between page requests. `go build ./...`, `go test ./...` and `go vet ./...` pass, and ex\n...[truncated]",
+    "data": {},
+    "created": 1791598171464
+  },
+  {
+    "id": 2,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 420ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/build-1791598171498155479.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 417,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598171916
+  },
+  {
+    "id": 3,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 140ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/test-1791598171917831979.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 136,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598172054
+  },
+  {
+    "id": 4,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 130ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/lint-1791598172056546353.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 126,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598172183
+  },
+  {
+    "id": 5,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/secrets-1791598172200604560.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 15,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598172201
+  },
+  {
+    "id": 6,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +221 -8",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 221,
+      "Deletions": 8,
+      "base": "9d1290b0cbb7ed493d0cc3aba5f54ad3e60a38f6",
+      "commit": "c9a2b32ab6bb27545b87a9e876c343e742e9d65e"
+    },
+    "created": 1791598172333
+  },
+  {
+    "id": 7,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit c9a2b32ab6",
+    "ref": "c9a2b32ab6bb27545b87a9e876c343e742e9d65e",
+    "data": {},
+    "created": 1791598172333
+  },
+  {
+    "id": 8,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 580ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/build-1791598240665349121.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 579,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598241244
+  },
+  {
+    "id": 9,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 490ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/test-1791598241246556491.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 493,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598241740
+  },
+  {
+    "id": 10,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 230ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/lint-1791598241743454165.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 228,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598241971
+  },
+  {
+    "id": 11,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/secrets-1791598241990833012.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791598241991
+  },
+  {
+    "id": 12,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +229 -8",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 229,
+      "Deletions": 8,
+      "base": "9d1290b0cbb7ed493d0cc3aba5f54ad3e60a38f6",
+      "commit": "4491da6aaa4397acb7470f5b5cbd3d9805875736"
+    },
+    "created": 1791598242159
+  },
+  {
+    "id": 13,
+    "taskId": "task_1efe4a0d7cb4",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 4491da6aaa",
+    "ref": "4491da6aaa4397acb7470f5b5cbd3d9805875736",
+    "data": {},
+    "created": 1791598242160
+  }
+]

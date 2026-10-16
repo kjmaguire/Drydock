@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Each (subscription, period start) gets at most one renewal invoice and at most one charge, including with overlapping or repeated `RenewDue` calls and with the gateway down. A gateway failure still moves the period on, leaves the invoice open and keeps the status.\n- `RenewDue` tries every due subscription and returns the joined errors only after the loop.\n- New tests cover these cases. `go build ./...`, `go test ./...` and `go vet ./...` pass, and existing exported names and signatures are unchanged.",
+    "data": {},
+    "created": 1791609674411
+  },
+  {
+    "id": 2,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 600ms",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-2/data/runs/run_8def92fc3403/checks/build-1791609674483596382.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 599,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609675083
+  },
+  {
+    "id": 3,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 480ms",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-2/data/runs/run_8def92fc3403/checks/test-1791609675084876757.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 480,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609675565
+  },
+  {
+    "id": 4,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 350ms",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-2/data/runs/run_8def92fc3403/checks/lint-1791609675567239241.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 354,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609675921
+  },
+  {
+    "id": 5,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-2/data/runs/run_8def92fc3403/checks/secrets-1791609675940025552.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 15,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609675940
+  },
+  {
+    "id": 6,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +238 -31",
+    "ref": "/tmp/drydock-trial-150905805/tally-renewal-dedupe-D-2/data/runs/run_8def92fc3403/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 238,
+      "Deletions": 31,
+      "base": "d3db45cc222761fd33e4a8cf5e79496a6b9be22a",
+      "commit": "e29b04d95b8be9a64ddc09d515cdb582b4361f4b"
+    },
+    "created": 1791609676069
+  },
+  {
+    "id": 7,
+    "taskId": "task_e2634f728312",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit e29b04d95b",
+    "ref": "e29b04d95b8be9a64ddc09d515cdb582b4361f4b",
+    "data": {},
+    "created": 1791609676070
+  }
+]

@@ -1,0 +1,24 @@
+# Template for a user-authored CLI that meets the headless contract (docs/connections.md section 9). Copy it, give it an id and a
+# binary, and describe its JSON lines in `dialect`. Custom manifests cannot name Go parsers, cannot define an ACP transport and
+# always require the acknowledgement below: they run arbitrary code.
+meta: {schema: 1, id: custom, display_name: Custom CLI (template), kind: agent_cli, custom: true, run_modes: [native]}
+binaries: {native: [my-cli.exe]}
+detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
+gate: {id: custom-runs-arbitrary-code-v1, required: true, text: "This Connection runs a program you chose with the permissions of your user account. Only enable CLIs you trust."}
+transports:
+  primary: headless
+  headless:
+    argv: [run, --json, --cwd, "{{cwd}}"]
+    prompt: {via: stdin}
+    exit_codes: {0: success, 1: failure}
+    dialect:
+      format: jsonl
+      type_field: type
+      map:
+        assistant_text: {type: message, text: $.text}
+        tool_call: {type: tool, name: $.tool, args: $.input}
+        tool_result: {type: tool_result, id: $.id, ok: $.ok}
+        usage: {type: usage, input: $.in, output: $.out}
+        result: {type: done, status: $.status}
+capabilities_declared: {model_selection: unknown, effort_control: unknown, session_resume: unknown, interrupt: unknown}
+terms: {notice: custom-runs-arbitrary-code-v1}

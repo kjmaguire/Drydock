@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- \n- Every invoice answer (list, get, pay, void, create) renders an invoice with no lines and `description: \"\"`. The 500 came from `describe()` indexing `lines[0]` on an empty slice. `TestInvoicesWithoutLines` reproduces it: it failed with 500 on the unfixed code and passes now.\n- A licensed plan priced at 0 gets one line on its first and every renewal invoice (`\"\u003cplan name\u003e, \u003cperiod\u003e\"`, the subscription's quantity, unit amount 0). That invoice is marked paid with no charge. A metered renewal with no usage creates no invoice, and the subscription stays active. `TestFreePlanIsInvoicedAndPaidAtO\n...[truncated]",
+    "data": {},
+    "created": 1791670109229
+  },
+  {
+    "id": 2,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.81s",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-1/data/runs/run_3e0cc7fb2469/checks/build_97a21476bb78.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1812,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670111227
+  },
+  {
+    "id": 3,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 3.01s",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-1/data/runs/run_3e0cc7fb2469/checks/test_59f0999dddd4.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 3008,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670114247
+  },
+  {
+    "id": 4,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 2s",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-1/data/runs/run_3e0cc7fb2469/checks/lint_eace50033244.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1999,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670116257
+  },
+  {
+    "id": 5,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 80ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-1/data/runs/run_3e0cc7fb2469/checks/secrets_d7b2028a53c9.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 79,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670116346
+  },
+  {
+    "id": 6,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +116 -7",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-1/data/runs/run_3e0cc7fb2469/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 116,
+      "Deletions": 7,
+      "base": "0ef67c031726f2b339e3f94057aefda6e1759052",
+      "commit": "efea16e1b7ff28e32464f0338c2e94a0b5ed3a7f"
+    },
+    "created": 1791670117259
+  },
+  {
+    "id": 7,
+    "taskId": "task_a8432b07d4d6",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit efea16e1b7",
+    "ref": "efea16e1b7ff28e32464f0338c2e94a0b5ed3a7f",
+    "data": {},
+    "created": 1791670117260
+  }
+]

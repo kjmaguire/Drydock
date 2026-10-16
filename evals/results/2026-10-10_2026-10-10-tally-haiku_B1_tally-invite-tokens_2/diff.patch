@@ -1,0 +1,673 @@
+diff --git a/start/internal/api/api_test.go b/result/internal/api/api_test.go
+index 27a057f..12199af 100644
+--- a/start/internal/api/api_test.go
++++ b/result/internal/api/api_test.go
+@@ -437,3 +437,92 @@ func TestOrgSettings(t *testing.T) {
+ 		t.Fatalf("a member changes the org: %s", r)
+ 	}
+ }
++
++// inviteToken returns the token in the link of the newest invitation email.
++func inviteToken(t *testing.T, e *apitest.Env) string {
++	t.Helper()
++	msgs := e.Mail.Messages()
++	m := regexp.MustCompile(`token=([^\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)
++	if m == nil {
++		t.Fatalf("no link in %q", msgs[len(msgs)-1].Body)
++	}
++	token, _ := url.QueryUnescape(m[1])
++	return token
++}
++
++func TestInviteTokens(t *testing.T) {
++	e := apitest.New(t)
++	_, viewerKey := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++
++	created := e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "New@People.example", "role": "member"}, nil)
++	token := inviteToken(t, e)
++	if len(token) != 43 {
++		t.Fatalf("token %q is %d characters, want 43", token, len(token))
++	}
++	if strings.Contains(string(created.Body), token) {
++		t.Fatalf("the create answer contains the token: %s", created.Body)
++	}
++	var inv map[string]any
++	created.JSON(t, &inv)
++	if _, ok := inv["token"]; ok {
++		t.Fatalf("the invite has a token field: %v", inv)
++	}
++	if _, ok := inv["expires_at"]; !ok {
++		t.Fatalf("the invite has no expires_at: %v", inv)
++	}
++
++	// Neither the owner nor a viewer can read the token back from the list.
++	for _, key := range []string{e.Acme.Key, viewerKey} {
++		r := e.MustDo(http.StatusOK, "GET", "/v1/invites", key, nil, nil)
++		if strings.Contains(string(r.Body), token) || strings.Contains(string(r.Body), "token") {
++			t.Fatalf("the list contains a token: %s", r.Body)
++		}
++	}
++
++	// Inviting the same address again (ignoring case) replaces the invite: only the newest token works.
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "new@PEOPLE.example", "role": "viewer"}, nil)
++	fresh := inviteToken(t, e)
++	var pending struct {
++		Items []struct{ Email, Role string }
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invites", e.Acme.Key, nil, &pending)
++	if len(pending.Items) != 1 || pending.Items[0].Role != "viewer" {
++		t.Fatalf("pending after the second invite = %+v", pending.Items)
++	}
++	if r := e.Do("POST", "/v1/invites/accept", "", map[string]string{"token": token, "name": "New"}); r.Code != http.StatusNotFound || r.Map(t)["error"] != "invite_not_found" {
++		t.Fatalf("the replaced token: %s", r)
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites/accept", "", map[string]string{"token": fresh, "name": "New Person"}, nil)
++	if r := e.Do("POST", "/v1/invites/accept", "", map[string]string{"token": fresh, "name": "New Person"}); r.Code != http.StatusGone || r.Map(t)["error"] != "invite_used" {
++		t.Fatalf("accepting twice: %s", r)
++	}
++
++	// An invite is good for seven days after it was created.
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "late@people.example", "role": "member"}, nil)
++	late := inviteToken(t, e)
++	e.Clock.Advance(7 * 24 * time.Hour)
++	if r := e.Do("POST", "/v1/invites/accept", "", map[string]string{"token": late, "name": "Late"}); r.Code != http.StatusCreated {
++		t.Fatalf("accepting at seven days: %s", r)
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "later@people.example", "role": "member"}, nil)
++	stale := inviteToken(t, e)
++	e.Clock.Advance(7*24*time.Hour + time.Second)
++	e.MustDo(http.StatusOK, "GET", "/v1/invites", e.Acme.Key, nil, &pending)
++	for _, it := range pending.Items {
++		if it.Email == "later@people.example" {
++			t.Fatalf("an expired invite is listed as pending: %+v", pending.Items)
++		}
++	}
++	if r := e.Do("POST", "/v1/invites/accept", "", map[string]string{"token": stale, "name": "Later"}); r.Code != http.StatusGone || r.Map(t)["error"] != "invite_expired" {
++		t.Fatalf("an expired invite: %s", r)
++	}
++
++	// A revoked invite's token is not found.
++	var revoked store.Invite
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "gone@people.example", "role": "member"}, &revoked)
++	gone := inviteToken(t, e)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/invites/"+revoked.ID, e.Acme.Key, nil, nil)
++	if r := e.Do("POST", "/v1/invites/accept", "", map[string]string{"token": gone, "name": "Gone"}); r.Code != http.StatusNotFound || r.Map(t)["error"] != "invite_not_found" {
++		t.Fatalf("a revoked invite: %s", r)
++	}
++}
+diff --git a/start/internal/api/team.go b/result/internal/api/team.go
+index 1a95c1a..7740f65 100644
+--- a/start/internal/api/team.go
++++ b/result/internal/api/team.go
+@@ -6,6 +6,7 @@ import (
+ 	"fmt"
+ 	"net/http"
+ 	"net/url"
++	"time"
+ 
+ 	"example.com/tally/internal/auth"
+ 	"example.com/tally/internal/mail"
+@@ -116,8 +117,30 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	w.WriteHeader(http.StatusNoContent)
+ }
+ 
++// inviteView is an invite as the API shows it. It leaves out the token's hash, and the token itself is never stored.
++type inviteView struct {
++	ID         string     `json:"id"`
++	OrgID      string     `json:"org_id"`
++	Email      string     `json:"email"`
++	Role       store.Role `json:"role"`
++	InvitedBy  string     `json:"invited_by"`
++	CreatedAt  time.Time  `json:"created_at"`
++	ExpiresAt  time.Time  `json:"expires_at"`
++	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
++	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
++}
++
++func viewInvite(inv store.Invite) inviteView {
++	return inviteView{ID: inv.ID, OrgID: inv.OrgID, Email: inv.Email, Role: inv.Role, InvitedBy: inv.InvitedBy,
++		CreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt, AcceptedAt: inv.AcceptedAt, RevokedAt: inv.RevokedAt}
++}
++
+ func (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	writeJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})
++	items := []inviteView{}
++	for _, inv := range s.store.PendingInvites(p.OrgID, s.clock.Now()) {
++		items = append(items, viewInvite(inv))
++	}
++	writeJSON(w, http.StatusOK, list{Items: items})
+ }
+ 
+ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+@@ -132,21 +155,21 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
+-	inv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())
++	inv, token, err := s.store.IssueInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())
+ 	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
+-	if err := s.sendInvite(r.Context(), inv); err != nil {
++	if err := s.sendInvite(r.Context(), inv, token); err != nil {
+ 		s.log.Error("send invite", "invite", inv.ID, "err", err)
+ 	}
+-	writeJSON(w, http.StatusCreated, inv)
++	writeJSON(w, http.StatusCreated, viewInvite(inv))
+ }
+ 
+-// sendInvite emails the invite's link to the invited address.
+-func (s *Server) sendInvite(ctx context.Context, inv store.Invite) error {
++// sendInvite emails the invite's link, with its token, to the invited address. The token is in no other answer.
++func (s *Server) sendInvite(ctx context.Context, inv store.Invite, token string) error {
+ 	o, _ := s.store.Org(inv.OrgID)
+-	link := s.baseURL + "/invites/accept?token=" + url.QueryEscape(inv.Token)
++	link := s.baseURL + "/invites/accept?token=" + url.QueryEscape(token)
+ 	return s.mail.Send(ctx, mail.Message{
+ 		To:      inv.Email,
+ 		Subject: fmt.Sprintf("You are invited to join %s on Tally", o.Name),
+@@ -177,11 +200,16 @@ func (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 	u, m, k, err := s.store.AcceptInvite(in.Token, in.Name, s.clock.Now())
+ 	if err != nil {
+-		if errors.Is(err, store.ErrNotFound) {
++		switch {
++		case errors.Is(err, store.ErrNotFound):
+ 			writeError(w, http.StatusNotFound, "invite_not_found", "no such invite")
+-			return
++		case errors.Is(err, store.ErrInviteUsed):
++			writeError(w, http.StatusGone, "invite_used", "this invite was already accepted")
++		case errors.Is(err, store.ErrInviteExpired):
++			writeError(w, http.StatusGone, "invite_expired", "this invite has expired")
++		default:
++			s.storeError(w, err)
+ 		}
+-		s.storeError(w, err)
+ 		return
+ 	}
+ 	writeJSON(w, http.StatusCreated, map[string]any{"user": u, "member": s.memberView(m), "api_key": k})
+diff --git a/start/internal/snapshot/snapshot.go b/result/internal/snapshot/snapshot.go
+index 54a6141..8c354b5 100644
+--- a/start/internal/snapshot/snapshot.go
++++ b/result/internal/snapshot/snapshot.go
+@@ -14,12 +14,12 @@ import (
+ )
+ 
+ // Version is the version Save writes.
+-const Version = 2
++const Version = 3
+ 
+ // ErrUnsupportedVersion is returned for a file of a version Load cannot read.
+ var ErrUnsupportedVersion = errors.New("unsupported snapshot version")
+ 
+-type fileV2 struct {
++type fileV3 struct {
+ 	Version int         `json:"version"`
+ 	SavedAt time.Time   `json:"saved_at"`
+ 	State   store.State `json:"state"`
+@@ -27,7 +27,7 @@ type fileV2 struct {
+ 
+ // Save writes everything in st to path.
+ func Save(st *store.Store, path string, now time.Time) error {
+-	b, err := json.MarshalIndent(fileV2{Version: Version, SavedAt: now.UTC(), State: st.Export()}, "", "  ")
++	b, err := json.MarshalIndent(fileV3{Version: Version, SavedAt: now.UTC(), State: st.Export()}, "", "  ")
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -53,7 +53,11 @@ func Load(path string) (*store.Store, error) {
+ 			return nil, fmt.Errorf("snapshot %s: version 1: %w", path, err)
+ 		}
+ 	case 2:
+-		var f fileV2
++		if st, err = migrateV2(b); err != nil {
++			return nil, fmt.Errorf("snapshot %s: version 2: %w", path, err)
++		}
++	case 3:
++		var f fileV3
+ 		if err := json.Unmarshal(b, &f); err != nil {
+ 			return nil, fmt.Errorf("snapshot %s: %w", path, err)
+ 		}
+@@ -104,6 +108,42 @@ type planV1 struct {
+ 	CreatedAt  time.Time      `json:"created_at"`
+ }
+ 
++// Version 2 kept each invite's token in the file. Version 3 keeps only its hash, so Load hashes the token and drops it, and
++// gives the invite the expiry it has under the rules of version 3.
++type fileV2 struct {
++	Version int       `json:"version"`
++	SavedAt time.Time `json:"saved_at"`
++	State   struct {
++		store.State
++		Invites []inviteV2 `json:"invites"`
++	} `json:"state"`
++}
++
++type inviteV2 struct {
++	store.Invite
++	Token string `json:"token"`
++}
++
++func migrateV2(b []byte) (store.State, error) {
++	var f fileV2
++	if err := json.Unmarshal(b, &f); err != nil {
++		return store.State{}, err
++	}
++	st := f.State.State
++	st.Invites = nil
++	for _, i := range f.State.Invites {
++		inv := i.Invite
++		if i.Token != "" {
++			inv.TokenHash = store.HashToken(i.Token)
++		}
++		if inv.ExpiresAt.IsZero() {
++			inv.ExpiresAt = inv.CreatedAt.Add(store.InviteTTL)
++		}
++		st.Invites = append(st.Invites, inv)
++	}
++	return st, nil
++}
++
+ func migrateV1(b []byte) (store.State, error) {
+ 	var f fileV1
+ 	if err := json.Unmarshal(b, &f); err != nil {
+diff --git a/start/internal/snapshot/snapshot_test.go b/result/internal/snapshot/snapshot_test.go
+index 5bc2a37..f2559e0 100644
+--- a/start/internal/snapshot/snapshot_test.go
++++ b/result/internal/snapshot/snapshot_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"os"
+ 	"path/filepath"
+ 	"reflect"
++	"strings"
+ 	"testing"
+ 	"time"
+ 
+@@ -80,3 +81,64 @@ func TestLoadRefusesUnknownVersions(t *testing.T) {
+ 		t.Fatalf("missing file: %v", err)
+ 	}
+ }
++
++func TestInviteTokensAreNotSaved(t *testing.T) {
++	now := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
++	st := store.New()
++	o, _ := st.CreateOrg("A", store.OrgTeam, "UTC", 0, now)
++	_, token, err := st.IssueInvite(o.ID, "new@people.example", store.RoleMember, "", now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(t.TempDir(), "tally.json")
++	if err := Save(st, path, now); err != nil {
++		t.Fatal(err)
++	}
++	raw, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if strings.Contains(string(raw), token) {
++		t.Fatal("the snapshot contains the invite's token")
++	}
++	got, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, _, _, err := got.AcceptInvite(token, "New Person", now); err != nil {
++		t.Fatalf("an invite does not work after a reload: %v", err)
++	}
++}
++
++func TestLoadVersion2HashesInviteTokens(t *testing.T) {
++	// A version 2 file, as Tally wrote it before invites were hashed: one invite still in time, one from before.
++	legacy := `{"version": 2, "saved_at": "2026-02-02T12:00:00Z", "state": {"seq": 3,
++		"orgs": [{"id": "org_000001", "name": "Acme", "plan": "team", "time_zone": "UTC", "tax_rate_bp": 0, "created_at": "2026-02-01T12:00:00Z"}],
++		"invites": [
++			{"id": "inv_000002", "org_id": "org_000001", "email": "new@people.example", "role": "member", "token": "invite_fresh", "invited_by": "", "created_at": "2026-02-01T12:00:00Z"},
++			{"id": "inv_000003", "org_id": "org_000001", "email": "old@people.example", "role": "member", "token": "invite_old", "invited_by": "", "created_at": "2026-01-01T12:00:00Z"}
++		]}}`
++	path := filepath.Join(t.TempDir(), "v2.json")
++	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	st, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	now := time.Date(2026, 2, 2, 12, 0, 0, 0, time.UTC)
++	if _, _, _, err := st.AcceptInvite("invite_fresh", "New", now); err != nil {
++		t.Fatalf("a version 2 invite does not work: %v", err)
++	}
++	if _, _, _, err := st.AcceptInvite("invite_old", "Old", now); !errors.Is(err, store.ErrInviteExpired) {
++		t.Fatalf("an old version 2 invite = %v, want ErrInviteExpired", err)
++	}
++	out := filepath.Join(t.TempDir(), "v3.json")
++	if err := Save(st, out, now); err != nil {
++		t.Fatal(err)
++	}
++	raw, _ := os.ReadFile(out)
++	if strings.Contains(string(raw), "invite_fresh") || strings.Contains(string(raw), "invite_old") {
++		t.Fatal("saving a migrated snapshot writes the old tokens")
++	}
++}
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..c7d8556 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -7,6 +7,8 @@ package store
+ 
+ import (
+ 	"crypto/rand"
++	"crypto/sha256"
++	"encoding/base64"
+ 	"encoding/hex"
+ 	"errors"
+ 	"fmt"
+@@ -23,6 +25,10 @@ var (
+ 	ErrConflict      = errors.New("conflict")
+ 	ErrEmailTaken    = fmt.Errorf("%w: email address already in use", ErrConflict)
+ 	ErrAlreadyMember = fmt.Errorf("%w: already a member", ErrConflict)
++	// ErrInviteUsed is returned when an invite is accepted again.
++	ErrInviteUsed = errors.New("invite already accepted")
++	// ErrInviteExpired is returned when an invite is accepted after its time to accept it ran out.
++	ErrInviteExpired = errors.New("invite expired")
+ 	// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
+ )
+@@ -81,6 +87,24 @@ func NewToken(prefix string) string {
+ 	return prefix + hex.EncodeToString(b)
+ }
+ 
++// InviteTTL is how long after its creation an invite can still be accepted.
++const InviteTTL = 7 * 24 * time.Hour
++
++// NewInviteToken returns an invite's token: 32 random bytes from crypto/rand, in unpadded base64url (43 characters).
++func NewInviteToken() string {
++	b := make([]byte, 32)
++	if _, err := rand.Read(b); err != nil {
++		panic(err) // crypto/rand does not fail on supported platforms
++	}
++	return base64.RawURLEncoding.EncodeToString(b)
++}
++
++// HashToken is what an invite stores in place of its token: the SHA-256 of the token, in hex.
++func HashToken(token string) string {
++	sum := sha256.Sum256([]byte(token))
++	return hex.EncodeToString(sum[:])
++}
++
+ func normEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
+ 
+ func validEmail(email string) bool {
+@@ -364,28 +388,45 @@ func (s *Store) TouchAPIKey(id string, now time.Time) {
+ 
+ // ---- invites
+ 
+-// CreateInvite invites an email address to join an organization with a role.
++// CreateInvite invites an email address to join an organization with a role. The token is not returned: use IssueInvite to
++// get it for the invitation email.
+ func (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {
++	inv, _, err := s.IssueInvite(orgID, email, role, invitedBy, now)
++	return inv, err
++}
++
++// IssueInvite is CreateInvite that also returns the invite's token, which the caller must send to the invited address and
++// nowhere else. An open invite for the same address (ignoring case) is revoked: only the newest token works.
++func (s *Store) IssueInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, string, error) {
+ 	email = strings.TrimSpace(email)
+ 	if !validEmail(email) {
+-		return Invite{}, invalid("an invite needs a valid email address")
++		return Invite{}, "", invalid("an invite needs a valid email address")
+ 	}
+ 	if !role.Valid() || role == RoleOwner {
+-		return Invite{}, invalid("an invite's role is admin, billing, member or viewer")
++		return Invite{}, "", invalid("an invite's role is admin, billing, member or viewer")
+ 	}
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	if _, ok := s.orgs[orgID]; !ok {
+-		return Invite{}, ErrNotFound
++		return Invite{}, "", ErrNotFound
+ 	}
+ 	if uid, ok := s.usersByEmail[normEmail(email)]; ok {
+ 		if _, member := s.members[memberKey{orgID, uid}]; member {
+-			return Invite{}, ErrAlreadyMember
++			return Invite{}, "", ErrAlreadyMember
++		}
++	}
++	t := now.UTC()
++	for id, old := range s.invites {
++		if old.OrgID == orgID && old.AcceptedAt == nil && old.RevokedAt == nil && normEmail(old.Email) == normEmail(email) {
++			old.RevokedAt = &t
++			s.invites[id] = old
+ 		}
+ 	}
+-	inv := Invite{ID: s.newID("inv"), OrgID: orgID, Email: email, Role: role, Token: NewToken("invite_"), InvitedBy: invitedBy, CreatedAt: now.UTC()}
++	token := NewInviteToken()
++	inv := Invite{ID: s.newID("inv"), OrgID: orgID, Email: email, Role: role, TokenHash: HashToken(token), InvitedBy: invitedBy,
++		CreatedAt: t, ExpiresAt: t.Add(InviteTTL)}
+ 	s.invites[inv.ID] = inv
+-	return inv, nil
++	return inv, token, nil
+ }
+ 
+ // Invite returns one of an organization's invites.
+@@ -399,7 +440,8 @@ func (s *Store) Invite(orgID, id string) (Invite, bool) {
+ 	return inv, true
+ }
+ 
+-// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.
++// Invites returns an organization's invites that were neither accepted nor revoked, oldest first. Some may have expired:
++// PendingInvites leaves those out.
+ func (s *Store) Invites(orgID string) []Invite {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+@@ -413,6 +455,18 @@ func (s *Store) Invites(orgID string) []Invite {
+ 	return out
+ }
+ 
++// PendingInvites returns an organization's invites that can still be accepted at now: neither accepted, revoked nor
++// expired. Oldest first.
++func (s *Store) PendingInvites(orgID string, now time.Time) []Invite {
++	out := []Invite{}
++	for _, inv := range s.Invites(orgID) {
++		if !now.After(inv.ExpiresAt) {
++			out = append(out, inv)
++		}
++	}
++	return out
++}
++
+ // RevokeInvite withdraws an invite.
+ func (s *Store) RevokeInvite(orgID, id string, now time.Time) (Invite, error) {
+ 	s.mu.Lock()
+@@ -430,21 +484,31 @@ func (s *Store) RevokeInvite(orgID, id string, now time.Time) (Invite, error) {
+ }
+ 
+ // AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),
+-// makes them a member with the invite's role and gives them a first API key.
++// makes them a member with the invite's role and gives them a first API key. An unknown or revoked token is ErrNotFound,
++// a token used before is ErrInviteUsed and one used after its time ran out is ErrInviteExpired.
+ func (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	var inv Invite
+ 	found := false
+-	for _, i := range s.invites {
+-		if i.Token == token && token != "" {
+-			inv, found = i, true
+-			break
++	if token != "" {
++		hash := HashToken(token)
++		for _, i := range s.invites {
++			if i.TokenHash == hash {
++				inv, found = i, true
++				break
++			}
+ 		}
+ 	}
+ 	if !found || inv.RevokedAt != nil {
+ 		return User{}, Member{}, APIKey{}, ErrNotFound
+ 	}
++	if inv.AcceptedAt != nil {
++		return User{}, Member{}, APIKey{}, ErrInviteUsed
++	}
++	if now.After(inv.ExpiresAt) {
++		return User{}, Member{}, APIKey{}, ErrInviteExpired
++	}
+ 	var u User
+ 	if id, ok := s.usersByEmail[normEmail(inv.Email)]; ok {
+ 		u = s.users[id]
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..3a98e97 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -1,8 +1,11 @@
+ package store
+ 
+ import (
++	"encoding/base64"
++	"encoding/json"
+ 	"errors"
+ 	"reflect"
++	"strings"
+ 	"testing"
+ 	"time"
+ 
+@@ -255,3 +258,114 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestInviteTokenIsHashedAndNotStored(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	inv, token, err := s.IssueInvite(o.ID, " New@People.example ", RoleMember, "usr_000001", t0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	raw, err := base64.RawURLEncoding.DecodeString(token)
++	if err != nil || len(raw) != 32 || len(token) != 43 {
++		t.Fatalf("token %q is not 32 random bytes in unpadded base64url", token)
++	}
++	if inv.TokenHash != HashToken(token) || inv.TokenHash == token {
++		t.Fatalf("invite stores %q, want only the hash of the token", inv.TokenHash)
++	}
++	if !inv.ExpiresAt.Equal(t0.Add(InviteTTL)) {
++		t.Fatalf("expires at %v, want seven days after creation", inv.ExpiresAt)
++	}
++	_, other, err := s.IssueInvite(o.ID, "other@people.example", RoleMember, "usr_000001", t0)
++	if err != nil || other == token {
++		t.Fatalf("two invites got the same token (%v)", err)
++	}
++	for name, v := range map[string]any{"invite": inv, "invites": s.Invites(o.ID), "export": s.Export()} {
++		b, err := json.Marshal(v)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if strings.Contains(string(b), token) {
++			t.Fatalf("%s contains the token", name)
++		}
++	}
++	if _, _, _, err := s.AcceptInvite(token, "New Person", t0); err != nil {
++		t.Fatalf("accepting with the token: %v", err)
++	}
++}
++
++func TestAcceptInviteRules(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	for _, tok := range []string{"", "invite_nope"} {
++		if _, _, _, err := s.AcceptInvite(tok, "X", t0); !errors.Is(err, ErrNotFound) {
++			t.Errorf("AcceptInvite(%q) = %v, want ErrNotFound", tok, err)
++		}
++	}
++
++	// Exactly seven days after creation is still in time; a moment later it is too late.
++	_, onTime, _ := s.IssueInvite(o.ID, "b@people.example", RoleMember, "", t0)
++	if _, _, _, err := s.AcceptInvite(onTime, "B", t0.Add(InviteTTL)); err != nil {
++		t.Fatalf("accepting at seven days: %v", err)
++	}
++	if _, _, _, err := s.AcceptInvite(onTime, "B", t0); !errors.Is(err, ErrInviteUsed) {
++		t.Fatalf("accepting twice = %v, want ErrInviteUsed", err)
++	}
++
++	_, late, _ := s.IssueInvite(o.ID, "c@people.example", RoleMember, "", t0)
++	if _, _, _, err := s.AcceptInvite(late, "C", t0.Add(InviteTTL+time.Second)); !errors.Is(err, ErrInviteExpired) {
++		t.Fatalf("accepting after seven days = %v, want ErrInviteExpired", err)
++	}
++	if _, _, _, err := s.AcceptInvite(late, "C", t0.Add(2*InviteTTL)); !errors.Is(err, ErrInviteExpired) {
++		t.Fatalf("an expired invite works again: %v", err)
++	}
++
++	inv, revoked, _ := s.IssueInvite(o.ID, "d@people.example", RoleMember, "", t0)
++	if _, err := s.RevokeInvite(o.ID, inv.ID, t0); err != nil {
++		t.Fatal(err)
++	}
++	if _, _, _, err := s.AcceptInvite(revoked, "D", t0); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("a revoked invite = %v, want ErrNotFound", err)
++	}
++}
++
++func TestReinviteRevokesOpenInvite(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	_, old, _ := s.IssueInvite(o.ID, "Ann@People.example", RoleMember, "", t0)
++	_, bob, _ := s.IssueInvite(o.ID, "bob@people.example", RoleMember, "", t0)
++	later := t0.Add(time.Hour)
++	_, fresh, err := s.IssueInvite(o.ID, "ann@PEOPLE.example", RoleViewer, "", later)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, _, _, err := s.AcceptInvite(old, "Ann", later); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("the replaced token = %v, want ErrNotFound", err)
++	}
++	if _, _, _, err := s.AcceptInvite(bob, "Bob", later); err != nil {
++		t.Fatalf("another address's invite: %v", err)
++	}
++	if _, _, _, err := s.AcceptInvite(fresh, "Ann", later); err != nil {
++		t.Fatalf("the newest token: %v", err)
++	}
++}
++
++func TestPendingInvites(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	_, acceptedToken, _ := s.IssueInvite(o.ID, "a@people.example", RoleMember, "", t0)
++	revoked, _, _ := s.IssueInvite(o.ID, "b@people.example", RoleMember, "", t0)
++	_, _, _ = s.IssueInvite(o.ID, "c@people.example", RoleMember, "", t0) // expires before now
++	_, _, _ = s.IssueInvite(o.ID, "d@people.example", RoleMember, "", t0.Add(InviteTTL))
++	now := t0.Add(InviteTTL + time.Hour)
++	if _, _, _, err := s.AcceptInvite(acceptedToken, "A", t0); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := s.RevokeInvite(o.ID, revoked.ID, now); err != nil {
++		t.Fatal(err)
++	}
++	pending := s.PendingInvites(o.ID, now)
++	if len(pending) != 1 || pending[0].Email != "d@people.example" {
++		t.Fatalf("pending = %+v, want only the fresh invite", pending)
++	}
++}
+diff --git a/start/internal/store/types.go b/result/internal/store/types.go
+index 7ed511c..da0e4b9 100644
+--- a/start/internal/store/types.go
++++ b/result/internal/store/types.go
+@@ -80,15 +80,17 @@ type APIKey struct {
+ 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+ }
+ 
+-// Invite asks someone to join an organization. Its token is sent to the invited address.
++// Invite asks someone to join an organization. Its token is sent to the invited address and never stored: only the token's
++// hash (HashToken) is kept, so the token cannot be read back from the store or from an API answer.
+ type Invite struct {
+ 	ID         string     `json:"id"`
+ 	OrgID      string     `json:"org_id"`
+ 	Email      string     `json:"email"`
+ 	Role       Role       `json:"role"`
+-	Token      string     `json:"token"`
++	TokenHash  string     `json:"token_hash"`
+ 	InvitedBy  string     `json:"invited_by"`
+ 	CreatedAt  time.Time  `json:"created_at"`
++	ExpiresAt  time.Time  `json:"expires_at"`
+ 	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
+ 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+ }

@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every route that takes an ID, in the path or the body, answers another organization's object with the same 404 `not_found` body as an unknown ID, and never reads, changes or deletes it. The fixed cases are invoice lines, webhook endpoint delete, and invoice or subscription create with a foreign `customer_id`.\n- Email lookup is per organization. Two orgs can each hold a customer with the same email, and each finds only its own.\n- `go build ./...`, `go vet ./...` and `go test ./...` pass, and the new tests fail on the original code.",
+    "data": {},
+    "created": 1791669957868
+  },
+  {
+    "id": 2,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 820ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-1/data/runs/run_07e67647f70a/checks/build_c2976397acac.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 817,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669958723
+  },
+  {
+    "id": 3,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1s",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-1/data/runs/run_07e67647f70a/checks/test_7ef9155258ac.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1000,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669959725
+  },
+  {
+    "id": 4,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 690ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-1/data/runs/run_07e67647f70a/checks/lint_7207c1b72faf.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 686,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669960414
+  },
+  {
+    "id": 5,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 70ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-1/data/runs/run_07e67647f70a/checks/secrets_31ebe9b603dd.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 65,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669960481
+  },
+  {
+    "id": 6,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "10 file(s), +398 -29",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-tenant-isolation-D-1/data/runs/run_07e67647f70a/evidence/task.diff",
+    "data": {
+      "Files": 10,
+      "Insertions": 398,
+      "Deletions": 29,
+      "base": "ef9123604dbe7149cadd6e78db470e7194eab29b",
+      "commit": "ab79b9c026429650b333ca3c0a1fdf2d4556f825"
+    },
+    "created": 1791669960731
+  },
+  {
+    "id": 7,
+    "taskId": "task_36fb465cb4f7",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit ab79b9c026",
+    "ref": "ab79b9c026429650b333ca3c0a1fdf2d4556f825",
+    "data": {},
+    "created": 1791669960732
+  }
+]

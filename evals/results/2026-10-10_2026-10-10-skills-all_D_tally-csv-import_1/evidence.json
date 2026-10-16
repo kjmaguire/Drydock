@@ -1,0 +1,359 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV body and returns 201, 200 (dry run), 400, 413 or 422 exactly as specified, creating nothing unless every record passes.\n- Each record is validated like `POST /v1/customers`, including the email-taken and duplicate-email rules, and `customer.created` fires per created customer.\n- Table-driven tests cover the header, CSV parsing, row validation, row limit, dry run and creation paths, and `go build`, `go test` and `go vet` pass.",
+    "data": {},
+    "created": 1791668819492
+  },
+  {
+    "id": 2,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 490ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/build_79ba4910af40.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 486,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668820032
+  },
+  {
+    "id": 3,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 440ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/test_84a0bf97d847.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 437,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668820472
+  },
+  {
+    "id": 4,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 380ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/lint_ab4968e3d659.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 378,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668820852
+  },
+  {
+    "id": 5,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/secrets_edcd4a3dabe8.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668820876
+  },
+  {
+    "id": 6,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +353 -0",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 353,
+      "Deletions": 0,
+      "base": "30fa82f574cfaab5eac51974a0474272ead41d94",
+      "commit": "815d755411d8897a4126d896b2ad000edca737a7"
+    },
+    "created": 1791668821020
+  },
+  {
+    "id": 7,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 815d755411",
+    "ref": "815d755411d8897a4126d896b2ad000edca737a7",
+    "data": {},
+    "created": 1791668821021
+  },
+  {
+    "id": 8,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- BOM test.** In `internal/api/api_test.go`, the body literal now uses `\\xef\\xbb\\xbf` instead of `\\\\xef\\\\xbb\\\\xbf`, so the body really starts with a byte order mark. The header still resolves to `name` and `email`, and the test's created-customer assertions pass.\n- Comma-only lines.** `blankRecord` in `internal/api/customers.go` now treats a record as blank only when it is a single empty (or spaces-only) field. A line such as `,,,` is a record with empty fields, so it reports `missing_name`. I updated the `bad` fixture to expect `{\"row\":10,\"error\":\"missing_name\"}` in place of the old blank-ski\n...[truncated]",
+    "data": {},
+    "created": 1791668896439
+  },
+  {
+    "id": 9,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 700ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/build_73ab58e48b0e.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 701,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668897182
+  },
+  {
+    "id": 10,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 960ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/test_dd0141c270e8.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 958,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668898146
+  },
+  {
+    "id": 11,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 560ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/lint_71335fb3666d.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 562,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668898711
+  },
+  {
+    "id": 12,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/secrets_d1f612b97928.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 17,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668898732
+  },
+  {
+    "id": 13,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +349 -0",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 349,
+      "Deletions": 0,
+      "base": "30fa82f574cfaab5eac51974a0474272ead41d94",
+      "commit": "3cb31cf11cbb53073acd28bf13aff7cc1b91c67e"
+    },
+    "created": 1791668898869
+  },
+  {
+    "id": 14,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 3cb31cf11c",
+    "ref": "3cb31cf11cbb53073acd28bf13aff7cc1b91c67e",
+    "data": {},
+    "created": 1791668898869
+  },
+  {
+    "id": 15,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.71s",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/build_a1754e7965b1.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1714,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668968071
+  },
+  {
+    "id": 16,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.39s",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/test_27adc7d5300c.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1393,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668969475
+  },
+  {
+    "id": 17,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 920ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/lint_91d4576d7ab2.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 920,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668970399
+  },
+  {
+    "id": 18,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/checks/secrets_94a1cb9ace25.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 45,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791668970448
+  },
+  {
+    "id": 19,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +377 -0",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-csv-import-D-1/data/runs/run_a85c4d5dbbf8/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 377,
+      "Deletions": 0,
+      "base": "30fa82f574cfaab5eac51974a0474272ead41d94",
+      "commit": "afc7b1f08aef8a1187566e2507ce82e9bd38dc4d"
+    },
+    "created": 1791668970835
+  },
+  {
+    "id": 20,
+    "taskId": "task_d2cf1aa1117d",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit afc7b1f08a",
+    "ref": "afc7b1f08aef8a1187566e2507ce82e9bd38dc4d",
+    "data": {},
+    "created": 1791668970836
+  }
+]
