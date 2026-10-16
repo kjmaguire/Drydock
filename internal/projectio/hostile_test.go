@@ -147,7 +147,8 @@ func TestAnArchiveCannotPointStoredReferencesAtFilesOutsideItsRunFolders(t *test
 	for _, e := range got {
 		switch e.summary {
 		case "good":
-			if e.ref != filepath.Join(inside, "evidence", "diff.patch") {
+			// the token is replaced by the data folder and the rest keeps its slashes: on Windows the two are spelled alike once cleaned
+			if filepath.Clean(e.ref) != filepath.Join(inside, "evidence", "diff.patch") {
 				t.Errorf("the reference to the restored file was changed: %q", e.ref)
 			}
 		case "pr":
@@ -167,7 +168,7 @@ func TestAnArchiveCannotPointStoredReferencesAtFilesOutsideItsRunFolders(t *test
 	var evilRef, evilSafe, fineRef, fineSafe string
 	db.Reader().QueryRow(`SELECT partial_ref, safe_point_ref FROM node_executions WHERE node_id='evil'`).Scan(&evilRef, &evilSafe)
 	db.Reader().QueryRow(`SELECT partial_ref, safe_point_ref FROM node_executions WHERE node_id='fine'`).Scan(&fineRef, &fineSafe)
-	if evilRef != "" || evilSafe != "" || fineSafe != "" || fineRef != filepath.Join(inside, "stream.jsonl") {
+	if evilRef != "" || evilSafe != "" || fineSafe != "" || filepath.Clean(fineRef) != filepath.Join(inside, "stream.jsonl") {
 		t.Errorf("node references: evil=%q,%q fine=%q,%q", evilRef, evilSafe, fineRef, fineSafe)
 	}
 }

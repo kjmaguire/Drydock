@@ -247,7 +247,9 @@ func TestACallInAWorktreeIsPinnedToItsRegisteredGitDirectory(t *testing.T) {
 	if err != nil || len(pin) != 2 || !strings.HasPrefix(pin[0], "GIT_DIR=") || !strings.HasPrefix(pin[1], "GIT_WORK_TREE=") {
 		t.Fatalf("pin of a worktree: %v %v", pin, err)
 	}
-	if got := strings.TrimPrefix(pin[0], "GIT_DIR="); filepath.Dir(got) != filepath.Join(r.Root, ".git", "worktrees") {
+	// compared as the package compares paths: a Windows temp folder is spelled with a short name (RUNNER~1) by the test and with
+	// the long one by git
+	if got := strings.TrimPrefix(pin[0], "GIT_DIR="); canonical(filepath.Dir(got)) != canonical(filepath.Join(r.Root, ".git", "worktrees")) {
 		t.Fatalf("GIT_DIR %q is not a private directory of the repository", got)
 	}
 	// a folder inside the worktree belongs to the same worktree

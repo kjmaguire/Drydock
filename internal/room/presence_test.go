@@ -372,8 +372,18 @@ func TestLifecycleFilterNamesEveryTypeDeriveHandles(t *testing.T) {
 	for _, ty := range LifecycleFilter.Types {
 		have[ty] = true
 	}
-	fn := string(src)[strings.Index(string(src), "func Derive("):]
-	fn = fn[:strings.Index(fn, "\n}\n")]
+	// a checkout on Windows may have turned the line ends into CRLF
+	text := strings.ReplaceAll(string(src), "\r\n", "\n")
+	start := strings.Index(text, "func Derive(")
+	if start < 0 {
+		t.Fatal("presence.go has no func Derive( any more: the test must follow it")
+	}
+	fn := text[start:]
+	end := strings.Index(fn, "\n}\n")
+	if end < 0 {
+		t.Fatal("the end of Derive was not found in presence.go")
+	}
+	fn = fn[:end]
 	found := 0
 	for _, m := range regexp.MustCompile(`(?m)^\tcase ((?:"[a-z_.]+"(?:, )?)+):`).FindAllStringSubmatch(fn, -1) {
 		for _, q := range regexp.MustCompile(`"([a-z_.]+)"`).FindAllStringSubmatch(m[1], -1) {
