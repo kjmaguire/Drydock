@@ -144,6 +144,10 @@ export const controller = createController(routes, {
       const { ConnectionsScreen } = await import('../screens/connections/connections-screen.tsx');
       return render(<ConnectionsScreen />);
     },
+    async github({ render }) {
+      const { GitHubScreen } = await import('../screens/github/github-screen.tsx');
+      return render(<GitHubScreen />);
+    },
     async securityScan({ render }) {
       const { WorkspaceSecurityScreen } = await import('../screens/security/workspace-security-screen.tsx');
       return render(<WorkspaceSecurityScreen />);

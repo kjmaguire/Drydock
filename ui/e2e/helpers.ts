@@ -39,7 +39,8 @@ export const sidebar = (page: Page): Locator => page.getByRole('navigation', { n
 
 /**
  * Which hub holds a link that is not in the top bar itself (Crew HQ, decision P64): the sub-pages of a tab are pills under
- * it, and every settings page is in the Settings rail behind the gear.
+ * it (a project's settings and its Integrations are the last pills of Overview), and every workspace or app settings page is in
+ * the Settings rail behind the gear.
  */
 const HUB_OF: Record<string, string> = {
   'nav-plan': 'nav-tasks',
@@ -49,17 +50,18 @@ const HUB_OF: Record<string, string> = {
   'nav-budgets': 'nav-overview',
   'nav-evals': 'nav-overview',
   'nav-security': 'nav-overview',
+  'nav-project': 'nav-overview',
+  'nav-project-integrations': 'nav-overview',
   'nav-requirements': 'nav-knowledge',
   'nav-packs': 'nav-knowledge',
   'nav-skills': 'nav-knowledge',
   'nav-memory': 'nav-knowledge',
   'nav-repo-map': 'nav-knowledge',
   'nav-library-skills': 'nav-library',
-  'nav-project': 'nav-settings',
-  'nav-project-integrations': 'nav-settings',
   'nav-integrations': 'nav-settings',
   'nav-mcp': 'nav-settings',
   'nav-connections': 'nav-settings',
+  'nav-github': 'nav-settings',
   'nav-providers': 'nav-settings',
   'nav-routing': 'nav-settings',
   'nav-license': 'nav-settings',

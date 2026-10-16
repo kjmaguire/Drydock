@@ -415,3 +415,17 @@ Open, owner action:
   model. A not-recommended variant still cannot be downloaded (the UI is the only gate; the core refuses by disk only): a model
   llama-server could not load would only cost disk. "Close suggestions" / "Close results" takes the list and its open
   repository off the page so the section shrinks back; Show suggestions returns. Browser tests and the e2e spec cover the three.
+- **P68. Settings are the app's; a project's settings live in the project; GitHub has one page (2026-10-16, on the owner's
+  request).** The owner found the gear's rail cramped by the "This project" and "Workspace" groups and asked to keep Settings
+  for the app only, with the project's settings under the project, and asked whether GitHub deserved a section of its own
+  (yes). The Settings rail holds two groups: Workspace (Integrations, Connections, GitHub, Providers, Routing) and App (Settings
+  and About, License, Backups, Export and import, Support bundle). Project settings and the project's Integrations are the last
+  two pills of the project's Overview hub, set apart after a gap and a hairline (Project settings carries a small gear), so a
+  person finds them where the project is and the Overview tab is current on them; a sixth top-bar tab would break the five-tab
+  contract of P64 and a project rail would bring the crowding back. GitHub gets a page under Settings (`/github`): the gh
+  sign-in state with Check again, what Drydock does with GitHub in plain words (pushes and pull requests through the person's
+  own gh sign-in, CI and reviews read back, merge only after approval with branch protection respected, never a stored token),
+  the GitHub connection and MCP server as the same panel the Integrations tile opens (one implementation, `VendorDetail`),
+  and the repositories with CI runners, which are still managed on Connections. The GitHub tile stays on Integrations and
+  points to the page. Test ids, URLs, Delete project and the palette entries are unchanged; the e2e helper knows the new
+  places; the layout audit covers `/github`.

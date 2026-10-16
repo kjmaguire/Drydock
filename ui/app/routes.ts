@@ -44,6 +44,8 @@ export const routes = route({
   librarySkills: get('/library/skills'),
   integrations: get('/integrations'),
   connections: get('/connections'),
+  // everything Drydock does with GitHub, on one settings page: your gh sign-in, the connection, the MCP server, the CI runners
+  github: get('/github'),
   // scan any folder on this computer, or one of the projects (decision P61)
   securityScan: get('/security-scan'),
   providers: get('/providers'),

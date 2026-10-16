@@ -10,7 +10,7 @@
 // the project's agents and the calls waiting for approval are on the project's Integrations page
 // (project-integrations-screen.tsx, /project/integrations). /mcp is an alias of this page.
 
-import { css, on, ref, type Handle } from 'remix/component';
+import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import { Blocks, Check, Cpu, ExternalLink, KeyRound, LogIn, Minus, Server, ShieldAlert, ShieldCheck, Stethoscope, Trash2, Wrench, X } from 'lucide';
 import type {
   IntegrationAuthMethod,
@@ -59,6 +59,7 @@ const cardCss = css({ display: 'grid', gap: t.s3, minWidth: '0', '& p': { margin
 const inset = css({ padding: t.s4, border: `1px solid ${t.border}`, borderRadius: t.rMd, background: t.bgApp, minWidth: '0' });
 // the selected tile's panel, right under its grid: one card, its parts separated by the same gap as Home's sections
 const detailCss = css({ display: 'grid', gap: t.s5, minWidth: '0', borderColor: t.borderStrong });
+const footerCss = css({ margin: '0', fontSize: t.textSm });
 const reportList = css({ display: 'grid', gap: '4px', margin: '0', paddingLeft: t.s5, fontSize: t.textMd });
 const callList = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textSm, '& li': { display: 'flex', gap: t.s2, alignItems: 'baseline' } });
 const stats = css({
@@ -693,9 +694,10 @@ function VendorSkills(handle: Handle<{ v: Vendor; registries: SkillRegistry[] | 
 /**
  * The panel of the selected vendor, right under the grid that holds its tile: one card with app sync (an integration kind: the
  * service's own card, whose header names the vendor), agent tools (its connector cards) and its skill registries. A vendor without
- * app sync gets a header of its own, so every panel starts the way its tile does: the logo, the name, what it is.
+ * app sync gets a header of its own, so every panel starts the way its tile does: the logo, the name, what it is. `footer` is a
+ * closing line (the GitHub tile points to the GitHub settings page). The GitHub page reuses the panel through VendorDetail.
  */
-function VendorPanel(
+export function VendorPanel(
   handle: Handle<{
     v: Vendor;
     info?: IntegrationKindInfo;
@@ -705,10 +707,11 @@ function VendorPanel(
     registriesError?: Error;
     onSyncChanged: () => void;
     onAgentsChanged: () => void;
+    footer?: RemixNode;
   }>,
 ) {
   return () => {
-    const { v, info, conn, registries, registriesLoading, registriesError, onSyncChanged, onAgentsChanged } = handle.props;
+    const { v, info, conn, registries, registriesLoading, registriesError, onSyncChanged, onAgentsChanged, footer } = handle.props;
     return (
       <div mix={[card, detailCss]} data-testid="integration-panel" data-kind={v.key} role="region" aria-label={v.label}>
         {v.kind ? (
@@ -738,6 +741,45 @@ function VendorPanel(
           </Section>
         ) : null}
         {v.skillRegistries.length > 0 ? <VendorSkills v={v} registries={registries} loading={registriesLoading} error={registriesError} /> : null}
+        {footer ? <p mix={[muted, footerCss]}>{footer}</p> : null}
+      </div>
+    );
+  };
+}
+
+/**
+ * One vendor's panel on its own, reading what it needs itself (the connections, the kinds, the gallery and, when the vendor
+ * publishes skill registries, those): the GitHub settings page shows GitHub's panel this way, the same component the
+ * Integrations tile opens, so connecting, testing and disconnecting have one implementation.
+ */
+export function VendorDetail(handle: Handle<{ vendor: string }>) {
+  const s = services(handle);
+  const q = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
+  const kinds = query(handle, { load: () => s.client.integrationKinds() });
+  const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
+  const regs = query(handle, {
+    load: () => s.client.skillRegistries(),
+    enabled: () => (gallery.data ?? []).some((c) => c.integration === handle.props.vendor && (c.skillRegistries ?? []).length > 0),
+  });
+  return () => {
+    const { vendor } = handle.props;
+    const v = vendors(KINDS, gallery.data ?? []).find((x) => x.key === vendor);
+    return (
+      <div mix={sectionsCss} data-testid="vendor-detail" data-kind={vendor}>
+        <ErrorNote error={q.error ?? kinds.error ?? gallery.error} what="Integrations" />
+        {(q.loading && !q.data) || (gallery.loading && !gallery.data) ? <Loading /> : null}
+        {v && q.data && gallery.data ? (
+          <VendorPanel
+            v={v}
+            info={(kinds.data ?? []).find((k) => k.kind === vendor)}
+            conn={v.kind ? tileState(q.data, v.key) : undefined}
+            registries={regs.data}
+            registriesLoading={regs.loading}
+            registriesError={regs.error}
+            onSyncChanged={q.reload}
+            onAgentsChanged={gallery.reload}
+          />
+        ) : null}
       </div>
     );
   };
@@ -790,6 +832,13 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
           registriesError={regs.error}
           onSyncChanged={q.reload}
           onAgentsChanged={gallery.reload}
+          footer={
+            current.key === 'github' ? (
+              <>
+                Everything Drydock does with GitHub, with your gh sign-in and the CI runners, is on the <a href={routes.github.href()} data-testid="github-page-link">GitHub</a> settings page.
+              </>
+            ) : undefined
+          }
         />
       ) : null;
     return (

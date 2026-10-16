@@ -48,6 +48,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.library.href(), 'Library: agents and MCP servers', ['templates', 'prebuilt']],
   [routes.integrations.href(), 'Integrations', ['mcp', 'connectors', 'agent tools', 'servers']],
   [routes.connections.href(), 'Connections'],
+  [routes.github.href(), 'GitHub', ['gh', 'sign-in', 'pull requests', 'runners', 'repository']],
   [routes.providers.href(), 'Providers'],
   [routes.routing.href(), 'Model routing'],
   [routes.backups.href(), 'Backups'],

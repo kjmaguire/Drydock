@@ -1,9 +1,11 @@
 // What a hub shows under the top bar (Crew HQ, decision P64): a row of pills for a hub's sub-pages (Overview, Tasks,
-// Knowledge, Library), the Settings rail (every settings page, grouped: this project, the workspace, the app), and the
-// Rooms rail (the project's channels, task rooms and direct messages). Every page the old sidebar linked is reached from
-// one of these, with the same test id.
+// Knowledge, Library), the Settings rail (the workspace's and the app's settings pages, grouped), and the Rooms rail (the
+// project's channels, task rooms and direct messages). Every page the old sidebar linked is reached from one of these, with
+// the same test id. A project's own settings (Project settings, its Integrations) are pills of its Overview, set apart at the
+// end of the row: they are the project's, so they are found inside the project, not behind the gear.
 
 import { css, type Handle, type RemixNode } from 'remix/component';
+import { Settings2 } from 'lucide';
 import type { Room } from '../api/types.ts';
 import { roomLabel } from '../lib/format.ts';
 import { hubOf, type Route } from '../lib/route.ts';
@@ -26,6 +28,7 @@ const subCss = css({
 const pillCss = css({
   display: 'inline-flex',
   alignItems: 'center',
+  gap: '6px',
   height: '30px',
   padding: `0 ${t.s3}`,
   borderRadius: t.rFull,
@@ -39,6 +42,9 @@ const pillCss = css({
   '&[aria-current="page"]': { background: t.bgSurface, color: t.text, borderColor: t.border, boxShadow: t.shadowSm },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
+// the project's own settings sit at the end of the Overview's row, after a gap and a hairline
+const spacerCss = css({ flex: '1', minWidth: t.s3 });
+const dividerCss = css({ flex: 'none', width: '1px', height: '18px', margin: `0 ${t.s2}`, background: t.border });
 
 interface Pill {
   label: string;
@@ -46,6 +52,9 @@ interface Pill {
   testId: string;
   /** The route names this pill is current on. */
   on: Route['name'][];
+  /** Set apart at the end of the row: the pages that configure the hub's subject rather than show it. */
+  trailing?: boolean;
+  icon?: typeof Settings2;
 }
 
 const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
@@ -55,6 +64,9 @@ const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
     { label: 'Budgets', href: routes.budgets.href(), testId: 'nav-budgets', on: ['budgets'] },
     { label: 'Evals report', href: routes.evals.href(), testId: 'nav-evals', on: ['evals'] },
     { label: 'Security', href: routes.security.href(), testId: 'nav-security', on: ['security'] },
+    // the project's own settings: moved here from the Settings rail, so they are found inside the project
+    { label: 'Project settings', href: routes.project.href(), testId: 'nav-project', on: ['project'], trailing: true, icon: Settings2 },
+    { label: 'Integrations', href: routes.projectIntegrations.href(), testId: 'nav-project-integrations', on: ['project-integrations'], trailing: true },
   ],
   tasks: [
     { label: 'Board', href: routes.tasks.href(), testId: 'nav-tasks-board', on: ['tasks', 'task', 'task-new', 'run'] },
@@ -76,19 +88,29 @@ const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
   ],
 };
 
-/** The pills of the route's hub, or nothing when the hub has one page. */
+/** The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. */
 export function SubNav(handle: Handle<{ route: Route }>) {
   return () => {
     const { route } = handle.props;
     const pills = PILLS[hubOf(route)];
     if (!pills) return null;
+    const first = pills.findIndex((p) => p.trailing);
+    const pill = (p: Pill) => (
+      <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
+        {p.icon ? <Icon icon={p.icon} size={14} /> : null}
+        {p.label}
+      </a>
+    );
     return (
       <nav aria-label="Section" mix={subCss}>
-        {pills.map((p) => (
-          <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
-            {p.label}
-          </a>
-        ))}
+        {(first < 0 ? pills : pills.slice(0, first)).map(pill)}
+        {first >= 0 ? (
+          <>
+            <span mix={spacerCss} aria-hidden="true" />
+            <span mix={dividerCss} aria-hidden="true" />
+            {pills.slice(first).map(pill)}
+          </>
+        ) : null}
       </nav>
     );
   };
@@ -108,7 +130,9 @@ const railCss = css({
   borderRight: `1px solid ${t.border}`,
   background: t.bgSidebar,
 });
-const groupHead = css({ margin: `${t.s3} ${t.s2} ${t.s1}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '650', letterSpacing: '0.06em', textTransform: 'uppercase', '&:first-child': { marginTop: '0' } });
+// the Settings rail's labels are short: it is narrower than the Rooms rail, so the page beside it keeps its room
+const settingsRailCss = css({ width: '232px', gap: '0' });
+const groupHead = css({ margin: `${t.s5} ${t.s2} ${t.s1}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '650', letterSpacing: '0.06em', textTransform: 'uppercase', '&:first-child': { marginTop: '0' } });
 const listCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
 const itemCss = css({
   display: 'flex',
@@ -155,25 +179,20 @@ function RailLink(handle: Handle<{ href: string; current: boolean; testId: strin
   };
 }
 
-/** The Settings rail: this project's pages (when one is open), the workspace's and the app's. */
+/**
+ * The Settings rail: the workspace's pages and the app's. Nothing of one project is here: Project settings and a project's
+ * Integrations are pills of the project's Overview.
+ */
 export function SettingsRail(handle: Handle<{ route: Route }>) {
-  const s = services(handle);
-  watch(handle, s.workspace);
   return () => {
     const { route } = handle.props;
     const at = (...names: Route['name'][]) => names.includes(route.name);
-    const project = s.workspace.project;
     return (
-      <nav aria-label="Settings" mix={railCss}>
-        {project ? (
-          <Group title={`This project · ${project.name}`}>
-            <RailLink href={routes.project.href()} current={at('project')} testId="nav-project" label="Project settings" />
-            <RailLink href={routes.projectIntegrations.href()} current={at('project-integrations')} testId="nav-project-integrations" label="Integrations" />
-          </Group>
-        ) : null}
+      <nav aria-label="Settings" mix={[railCss, settingsRailCss]}>
         <Group title="Workspace">
           <RailLink href={routes.integrations.href()} current={at('integrations', 'mcp')} testId="nav-integrations" label="Integrations" />
           <RailLink href={routes.connections.href()} current={at('connections')} testId="nav-connections" label="Connections" />
+          <RailLink href={routes.github.href()} current={at('github')} testId="nav-github" label="GitHub" />
           <RailLink href={routes.providers.href()} current={at('providers')} testId="nav-providers" label="Providers" />
           <RailLink href={routes.routing.href()} current={at('routing')} testId="nav-routing" label="Routing" />
         </Group>

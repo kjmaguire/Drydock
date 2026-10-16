@@ -43,6 +43,7 @@ export type WorkspaceRouteName =
   | 'library-skills'
   | 'integrations'
   | 'connections'
+  | 'github'
   | 'security-scan'
   | 'providers'
   | 'routing'
@@ -59,6 +60,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'library-skills',
   'integrations',
   'connections',
+  'github',
   'security-scan',
   'providers',
   'routing',
@@ -138,7 +140,8 @@ export function hashToPath(hash: string): string | undefined {
 
 /**
  * The hub a screen belongs to (Crew HQ, decision P64): one of the five tabs of a project, the gear (settings), or a
- * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills.
+ * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills. The gear
+ * holds the workspace's and the app's pages only; Project settings and the project's Integrations are pills of its Overview.
  */
 export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'chats' | 'library' | 'scan' | 'project-new' | 'none';
 
@@ -166,11 +169,13 @@ const HUB_OF: Record<Route['name'], Hub> = {
   skills: 'knowledge',
   memory: 'knowledge',
   'repo-map': 'knowledge',
-  project: 'settings',
-  'project-integrations': 'settings',
+  // a project's settings and integrations are the project's own (its Overview hub), not the app's
+  project: 'overview',
+  'project-integrations': 'overview',
   integrations: 'settings',
   mcp: 'settings',
   connections: 'settings',
+  github: 'settings',
   providers: 'settings',
   routing: 'settings',
   license: 'settings',

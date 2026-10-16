@@ -183,6 +183,8 @@ describe('Integrations', () => {
     const card = await open(r, 'github');
     await waitFor(() => expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
     expect(card.querySelector('input[type="password"]')).toBeNull();
+    // the tile stays here, and points to the GitHub settings page that gathers everything about GitHub
+    expect(r.$('[data-testid="integration-panel"][data-kind="github"] [data-testid="github-page-link"]')!.getAttribute('href')).toBe('/github');
     await r.act(() => byText(card, 'button', 'Use the GitHub CLI sign-in').click());
     await waitFor(() => expect(calls[0]![0]).toEqual({ kind: 'github', id: undefined }), r);
   });

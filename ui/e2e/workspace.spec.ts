@@ -61,15 +61,21 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   expect(existsSync(join(repo, '.git'))).toBe(true);
 });
 
-test("workspace pages name no project; a project's own Integrations page is in its Settings rail; the agent CLIs and the MCP gateway are on Connections", async ({ page }) => {
+test("workspace pages name no project; a project's own settings are pills of its Overview, not behind the gear; the agent CLIs and the MCP gateway are on Connections", async ({ page }) => {
   await createProject(page, 'ws-split');
   await createAgent(page, 'Split agent', 'backend');
 
-  // the project's Integrations page is in the Settings rail, and the project's bar stays
+  // the project's Integrations page is a pill of the project's Overview (with Project settings beside it), the Overview tab is
+  // current, the project's bar stays, and no Settings rail is on the page
   await projectNav(page, 'nav-project-integrations');
   await expect(page).toHaveURL(/\/project\/integrations$/);
   await expect(page.getByTestId('project-integrations')).toContainText('ws-split');
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByTestId('nav-project-integrations')).toHaveAttribute('aria-current', 'page');
+  const section = page.getByRole('navigation', { name: 'Section' });
+  await expect(section.getByTestId('nav-project-integrations')).toHaveAttribute('aria-current', 'page');
+  await expect(section.getByTestId('nav-project')).toHaveText('Project settings');
+  await expect(sidebar(page).getByTestId('nav-overview')).toHaveAttribute('aria-current', 'page');
+  await expect(sidebar(page).getByTestId('nav-settings')).not.toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0);
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(page.getByTestId('project-mcp')).toBeVisible();
   await expect(page.getByTestId('add-from-library')).toBeVisible();
@@ -84,6 +90,15 @@ test("workspace pages name no project; a project's own Integrations page is in i
     await expect(main).not.toContainText('Split agent');
   }
   await expect(page.getByTestId('cli-gateway')).toHaveCount(0);
+
+  // behind the gear: the workspace's pages (with GitHub) and the app's, nothing of this project
+  await workspaceNav(page, 'nav-settings');
+  const rail = page.getByRole('navigation', { name: 'Settings' });
+  await expect(rail.getByRole('heading')).toHaveText(['Workspace', 'App']);
+  await expect(rail.getByTestId('nav-project')).toHaveCount(0);
+  await expect(rail.getByTestId('nav-project-integrations')).toHaveCount(0);
+  await expect(rail.getByTestId('nav-github')).toHaveText('GitHub');
+  await expect(rail).not.toContainText('ws-split');
 
   // Connections: the agent CLIs' tiles, then the MCP gateway that says which of them receive MCP servers
   await workspaceNav(page, 'nav-connections');

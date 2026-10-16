@@ -61,8 +61,11 @@ describe('the top bar', () => {
       [{ name: 'team' }, 'nav-team'],
       [{ name: 'agent', id: 'agt1' }, 'nav-team'],
       [{ name: 'activity' }, 'nav-overview'],
-      [{ name: 'project-integrations' }, 'nav-settings'],
+      // a project's settings are the project's own: Overview is current, not the gear
+      [{ name: 'project' }, 'nav-overview'],
+      [{ name: 'project-integrations' }, 'nav-overview'],
       [{ name: 'connections' }, 'nav-settings'],
+      [{ name: 'github' }, 'nav-settings'],
     ] as const) {
       const r = mount(<TopBar route={route} />, svc());
       await waitFor(() => expect(r.$(`[data-testid="${tab}"]`)!.getAttribute('aria-current')).toBe('page'), r);
@@ -120,7 +123,7 @@ describe('the hubs', () => {
     expect(k.$('[data-testid="nav-repo-map"]')!.textContent).toBe('Repo map');
     cleanup();
     const o = mount(<SubNav route={{ name: 'budgets' }} />);
-    expect(Array.from(o.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-overview-home', 'nav-activity', 'nav-budgets', 'nav-evals', 'nav-security']);
+    expect(Array.from(o.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-overview-home', 'nav-activity', 'nav-budgets', 'nav-evals', 'nav-security', 'nav-project', 'nav-project-integrations']);
     cleanup();
     const l = mount(<SubNav route={{ name: 'library-skills' }} />);
     expect(Array.from(l.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-library-home', 'nav-library-skills']);
@@ -133,14 +136,41 @@ describe('the hubs', () => {
     expect(mount(<SubNav route={{ name: 'room', id: 'r1' }} />).$('nav')).toBeNull();
   });
 
-  it("the Settings rail lists this project's pages first (when one is open), then the workspace's, then the app's, marking the current one", async () => {
-    const r = mount(<SettingsRail route={{ name: 'project-integrations' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-project-integrations"]')).not.toBeNull(), r);
+  it("a project's own settings are the last pills of its Overview, set apart after a gap: Project settings (with a gear) and Integrations", () => {
+    const r = mount(<SubNav route={{ name: 'project' }} />);
+    const nav = r.$('nav[aria-label="Section"]')!;
+    const ps = r.$('[data-testid="nav-project"]')!;
+    expect(ps.getAttribute('href')).toBe('/project');
+    expect(ps.textContent).toBe('Project settings');
+    expect(ps.querySelector('svg')).not.toBeNull();
+    expect(ps.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-overview-home"]')!.getAttribute('aria-current')).toBeNull();
+    const pi = r.$('[data-testid="nav-project-integrations"]')!;
+    expect(pi.getAttribute('href')).toBe('/project/integrations');
+    expect(pi.textContent).toBe('Integrations');
+    // the gap and the hairline sit between Security and Project settings, and are decoration
+    const kids = Array.from(nav.children);
+    const sec = kids.indexOf(r.$('[data-testid="nav-security"]')!);
+    expect(kids.slice(sec + 1, sec + 3).every((k) => k.tagName === 'SPAN' && k.getAttribute('aria-hidden') === 'true')).toBe(true);
+    expect(kids[sec + 3]).toBe(ps);
+    cleanup();
+    const i = mount(<SubNav route={{ name: 'project-integrations' }} />);
+    expect(i.$('[data-testid="nav-project-integrations"]')!.getAttribute('aria-current')).toBe('page');
+    expect(i.$$('[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it("the Settings rail lists the workspace's pages (with GitHub) and the app's, marking the current one, and nothing of one project", async () => {
+    const r = mount(<SettingsRail route={{ name: 'github' }} />, svc());
+    await waitFor(() => expect(r.$('[data-testid="nav-github"]')).not.toBeNull(), r);
     const links = Array.from(r.$$('nav[aria-label="Settings"] a')).map((a) => a.getAttribute('data-testid'));
-    expect(links).toEqual(['nav-project', 'nav-project-integrations', 'nav-integrations', 'nav-connections', 'nav-providers', 'nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support']);
-    expect(r.$('[data-testid="nav-project-integrations"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-project-integrations"]')!.getAttribute('href')).toBe('/project/integrations');
-    expect(r.$('[data-testid="nav-project-integrations"]')!.textContent).toBe('Integrations');
+    expect(links).toEqual(['nav-integrations', 'nav-connections', 'nav-github', 'nav-providers', 'nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support']);
+    expect(r.$('[data-testid="nav-github"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-github"]')!.getAttribute('href')).toBe('/github');
+    expect(r.$('[data-testid="nav-github"]')!.textContent).toBe('GitHub');
+    // the project's pages moved to the project's Overview: no "This project" group, even with a project open
+    expect(r.$('[data-testid="nav-project"]')).toBeNull();
+    expect(r.$('[data-testid="nav-project-integrations"]')).toBeNull();
+    expect(Array.from(r.$$('h2')).map((h) => h.textContent)).toEqual(['Workspace', 'App']);
     // the MCP servers page was merged into Integrations (decision P47): /mcp marks Integrations current, and has no link of its own
     cleanup();
     const m = mount(<SettingsRail route={{ name: 'mcp' }} />, svc({ projectList: async () => [] }));

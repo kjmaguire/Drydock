@@ -65,6 +65,18 @@ describe('routes', () => {
     expect(isWorkspacePage(parseRoute('/integrations'))).toBe(true);
   });
 
+  it("puts a project's settings and Integrations in its Overview hub, and the GitHub page behind the gear", () => {
+    expect(hubOf({ name: 'project' })).toBe('overview');
+    expect(hubOf({ name: 'project-integrations' })).toBe('overview');
+    expect(routes.github.href()).toBe('/github');
+    expect(parseRoute('/github')).toEqual({ name: 'github' });
+    expect(parseRoute('/github/x')).toEqual({ name: 'not-found' });
+    expect(hubOf({ name: 'github' })).toBe('settings');
+    // the page is the workspace's: it opens without a project, like Connections
+    expect(isWorkspaceRoute({ name: 'github' })).toBe(true);
+    expect(isWorkspacePage(parseRoute('/github'))).toBe(true);
+  });
+
   it('has a workspace Security scan of any folder, beside the project\'s own Security page (decision P61)', () => {
     expect(routes.securityScan.href()).toBe('/security-scan');
     expect(parseRoute('/security-scan')).toEqual({ name: 'security-scan' });

@@ -47,6 +47,13 @@ describe('command palette items', () => {
     expect(filterItems(items, 'approvals').map((i) => i.label)).toContain('Project integrations');
   });
 
+  it('offers the GitHub settings page, found by "gh" and by what it holds', () => {
+    const items = buildItems(rooms, tasks, agents);
+    expect(items.find((i) => i.label === 'GitHub')!.href).toBe('/github');
+    expect(filterItems(items, 'gh')[0]!.label).toBe('GitHub');
+    expect(filterItems(items, 'runners').map((i) => i.label)).toContain('GitHub');
+  });
+
   it('matches letters in order as a last resort and drops non-matches', () => {
     const it0 = { id: 'x', group: 'Navigate' as const, label: 'Settings and About' };
     expect(score(it0, 'stab')).toBeGreaterThan(0);
