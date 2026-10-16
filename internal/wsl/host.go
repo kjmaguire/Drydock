@@ -73,7 +73,7 @@ func (h *Host) pm() proc.Manager {
 // BaseEnv is the environment wsl.exe gets when nothing of Windows should reach the distro: the base allowlist of env, with
 // WSL_UTF8=1 (wsl.exe's own messages in UTF-8 where it supports it; DecodeOutput reads both) and an empty WSLENV.
 func BaseEnv(env []string) []string {
-	out := proc.ScrubEnv(env, proc.BaseEnvNames, nil)
+	out := proc.WithSafeExeSearch(proc.ScrubEnv(env, proc.BaseEnvNames, nil))
 	return append(out, "WSL_UTF8=1", "WSLENV=")
 }
 

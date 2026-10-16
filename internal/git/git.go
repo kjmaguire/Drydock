@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // Errors.
@@ -115,6 +117,13 @@ func (r *Repo) drydockEnv() []string {
 // command builds the git process for args in dir: this machine's git with the hardening (and, for a distro path reached
 // from Windows, the safe.directory that path needs), or the runner's.
 func (r *Repo) command(ctx context.Context, dir string, extraEnv []string, args []string) (*exec.Cmd, error) {
+	// a call in a task's worktree names its repository instead of letting git discover it from files the agent can write
+	// (pin.go); a pinned call's own variables come last so nothing in extraEnv can redirect it
+	pin, err := r.pinFor(dir)
+	if err != nil {
+		return nil, err
+	}
+	extraEnv = append(slices.Clone(extraEnv), pin...)
 	if r.runner != nil {
 		path, argv, penv, err := r.runner.Command(dir, append(r.drydockEnv(), extraEnv...), hardening(args))
 		if err != nil {
@@ -214,7 +223,7 @@ func InitIn(ctx context.Context, dir, branch string, runner Runner) (*Repo, erro
 	if err := r.startGuard(ctx); err != nil {
 		return nil, err
 	}
-	if _, err := r.git(ctx, dir, nil, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, dir, nil); err != nil {
 		return nil, err
 	}
 	if _, err := r.gitCommit(ctx, dir, "Initial commit"); err != nil {
@@ -276,7 +285,8 @@ func (r *Repo) ListFiles(ctx context.Context, dir string) ([]string, error) {
 }
 
 func (r *Repo) env() []string {
-	return append(gitEnv(os.Environ()), r.drydockEnv()...)
+	// git for Windows starts sh, ssh and the like by name from the folder it runs in, which for a task's worktree is the agent's
+	return proc.WithSafeExeSearch(append(gitEnv(os.Environ()), r.drydockEnv()...))
 }
 
 // keptGitEnv are the GIT_* variables of the app's own environment that git calls keep: how the user reaches their remotes,
@@ -301,32 +311,28 @@ func gitEnv(env []string) []string {
 	return out
 }
 
-var (
-	noHooksOnce sync.Once
-	noHooks     string
-)
-
-// noHooksDir is an empty directory of Drydock's own that every git call uses as core.hooksPath, so no hook of the repository
-// (planted or the user's own) runs inside Drydock's git calls (docs/security.md s3; safe points and commits never run user
-// hooks, brief s13). If it cannot be created, a path that does not exist serves the same purpose.
-func noHooksDir() string {
-	noHooksOnce.Do(func() {
-		d, err := os.MkdirTemp("", "drydock-no-hooks-")
-		if err != nil {
-			d = filepath.Join(os.TempDir(), fmt.Sprintf("drydock-no-hooks-%d-%d", os.Getpid(), time.Now().UnixNano()))
-		}
-		noHooks = filepath.ToSlash(d)
-	})
-	return noHooks
-}
+// noHooksDir is the empty directory every git call uses as core.hooksPath (proc.NoHooksDir).
+func noHooksDir() string { return proc.NoHooksDir() }
 
 // hardening is the configuration every git call Drydock makes runs with: no hooks, no fsmonitor program, and (for diff) no
-// external diff or textconv driver. core.longpaths avoids Windows MAX_PATH failures in deep node_modules-style trees;
-// quotepath off keeps names readable.
+// external diff or textconv driver. Submodules and embedded repositories are never asked whether they are modified: that is a
+// git run inside the nested repository, with the configuration (clean filters, for one) that repository carries, which a task's
+// agent can write (pin.go). The command-line flag beats a `.gitmodules` setting; the -c settings cover the commands that have
+// no flag (commit, merge). core.longpaths avoids Windows MAX_PATH failures in deep node_modules-style trees; quotepath off keeps
+// names readable.
 func hardening(args []string) []string {
-	full := []string{"-c", "core.hooksPath=" + noHooksDir(), "-c", "core.fsmonitor=false", "-c", "core.longpaths=true", "-c", "core.quotepath=false"}
-	if len(args) > 0 && (args[0] == "diff" || args[0] == "show" || args[0] == "log") {
+	full := []string{"-c", "core.hooksPath=" + noHooksDir(), "-c", "core.fsmonitor=false", "-c", "core.longpaths=true", "-c", "core.quotepath=false",
+		"-c", "diff.ignoreSubmodules=all", "-c", "status.submoduleSummary=false", "-c", "submodule.recurse=false"}
+	if len(args) == 0 {
+		return full
+	}
+	switch args[0] {
+	case "diff":
+		return append(append(full, "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all"), args[1:]...)
+	case "show", "log":
 		return append(append(full, args[0], "--no-ext-diff", "--no-textconv"), args[1:]...)
+	case "status":
+		return append(append(full, "status", "--ignore-submodules=all"), args[1:]...)
 	}
 	return append(full, args...)
 }
@@ -375,6 +381,23 @@ func (r *Repo) gitCommit(ctx context.Context, dir, msg string) (string, error) {
 	}
 	out, err := r.git(ctx, dir, nil, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
+}
+
+// PathState says, for rel (a path relative to dir, a folder of the main working tree), the commit that last changed it on the
+// current branch ("" when none did) and whether it is tracked with no change, staged or not. Both come back empty/false when git
+// cannot say. It runs through the same hardened, guarded calls as the rest of the package.
+func (r *Repo) PathState(ctx context.Context, dir, rel string) (commit string, clean bool) {
+	out, err := r.git(ctx, dir, nil, "log", "-1", "--format=%H", "--", rel)
+	if c := strings.TrimSpace(out); err != nil || c == "" {
+		return "", false
+	} else {
+		commit = c
+	}
+	st, err := r.git(ctx, dir, nil, "status", "--porcelain", "--", rel)
+	if err != nil {
+		return commit, false
+	}
+	return commit, strings.TrimSpace(st) == ""
 }
 
 // Version returns the git version string ("git version 2.43.0").
@@ -490,6 +513,9 @@ func (r *Repo) Status(ctx context.Context, w Worktree) (Status, error) {
 		}
 		switch {
 		case x == '?' && y == '?':
+			if strings.HasSuffix(p, "/") {
+				continue // an embedded repository: git lists it as one directory; Drydock neither stages nor inspects it (pin.go)
+			}
 			s.Untracked = append(s.Untracked, p)
 		case x == 'U' || y == 'U' || (x == 'A' && y == 'A') || (x == 'D' && y == 'D'):
 			s.Conflicts = append(s.Conflicts, p)
@@ -549,7 +575,7 @@ func (r *Repo) Diff(ctx context.Context, w Worktree, base string) (string, error
 	}
 	defer cleanup()
 	env := []string{"GIT_INDEX_FILE=" + idx}
-	if _, err := r.git(ctx, w.Path, env, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, w.Path, env); err != nil {
 		return "", err
 	}
 	return r.git(ctx, w.Path, env, "diff", "--cached", "--no-color", "--find-renames", base)
@@ -570,7 +596,7 @@ func (r *Repo) DiffStat(ctx context.Context, w Worktree, base string) (DiffStat,
 	}
 	defer cleanup()
 	env := []string{"GIT_INDEX_FILE=" + idx}
-	if _, err := r.git(ctx, w.Path, env, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, w.Path, env); err != nil {
 		return DiffStat{}, err
 	}
 	out, err := r.git(ctx, w.Path, env, "diff", "--cached", "--numstat", base)
@@ -602,7 +628,7 @@ func (r *Repo) DiffHash(ctx context.Context, w Worktree) (string, error) {
 	}
 	defer cleanup()
 	env := []string{"GIT_INDEX_FILE=" + idx}
-	if _, err := r.git(ctx, w.Path, env, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, w.Path, env); err != nil {
 		return "", err
 	}
 	tree, err := r.git(ctx, w.Path, env, "write-tree")
@@ -641,7 +667,7 @@ func (r *Repo) tempIndex(ctx context.Context, w Worktree) (string, func(), error
 
 // Commit stages everything and commits. It returns the commit id (or the current HEAD if there was nothing to commit).
 func (r *Repo) Commit(ctx context.Context, w Worktree, msg string) (string, error) {
-	if _, err := r.git(ctx, w.Path, nil, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, w.Path, nil); err != nil {
 		return "", err
 	}
 	st, err := r.Status(ctx, w)
@@ -743,26 +769,38 @@ func (r *Repo) Rebase(ctx context.Context, w Worktree, onto string) error {
 	return nil
 }
 
-// DeleteWorktree removes a worktree. It refuses a dirty worktree unless force is true; force requires the caller to
-// hold an approval (the caller's responsibility; this package only enforces the default).
+// DeleteWorktree removes a worktree. It refuses a dirty worktree unless force is true, and a worktree that holds a nested
+// repository (its history would go with the folder), as git does; force requires the caller to hold an approval (the caller's
+// responsibility; this package only enforces the default).
 func (r *Repo) DeleteWorktree(ctx context.Context, w Worktree, force bool) error {
 	if _, err := os.Stat(w.Path); os.IsNotExist(err) {
 		_, _ = r.git(ctx, r.Root, nil, "worktree", "prune")
 		return nil
 	}
-	st, err := r.Status(ctx, w)
-	if err != nil {
+	if !force {
+		st, err := r.Status(ctx, w)
+		if err != nil {
+			return err
+		}
+		if st.Dirty() {
+			return fmt.Errorf("%w: %d changed file(s)", ErrDirtyWorktree, len(st.Files()))
+		}
+		nested, err := r.nestedRepos(ctx, w.Path, nil)
+		if err != nil {
+			return err
+		}
+		if len(nested) > 0 {
+			return fmt.Errorf("%w: it holds a nested repository (%s)", ErrDirtyWorktree, nested[0])
+		}
+	}
+	// Always --force: git's own check for an unclean worktree runs a status that starts from the worktree's .git file, which the
+	// agent can rewrite (pin.go). The checks above ask the same through a call that is pinned to the worktree's registered git
+	// directory; what git would add (a worktree with submodules) is covered by the nested-repository check. Git still validates
+	// the .git file, so it is put back first.
+	if err := r.restoreGitFile(w); err != nil {
 		return err
 	}
-	if st.Dirty() && !force {
-		return fmt.Errorf("%w: %d changed file(s)", ErrDirtyWorktree, len(st.Files()))
-	}
-	args := []string{"worktree", "remove"}
-	if force {
-		args = append(args, "--force")
-	}
-	args = append(args, w.Path)
-	_, err = r.git(ctx, r.Root, nil, args...)
+	_, err := r.git(ctx, r.Root, nil, "worktree", "remove", "--force", w.Path)
 	return err
 }
 
@@ -798,7 +836,7 @@ func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, 
 	}
 	defer cleanup()
 	env := []string{"GIT_INDEX_FILE=" + idx}
-	if _, err := r.git(ctx, w.Path, env, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, w.Path, env); err != nil {
 		return "", err
 	}
 	tree, err := r.git(ctx, w.Path, env, "write-tree")
@@ -948,7 +986,7 @@ func (r *Repo) ChangedPaths(ctx context.Context, w Worktree, base string) ([]str
 	}
 	defer cleanup()
 	env := []string{"GIT_INDEX_FILE=" + idx}
-	if _, err := r.git(ctx, w.Path, env, "add", "-A"); err != nil {
+	if err := r.addAll(ctx, w.Path, env); err != nil {
 		return nil, err
 	}
 	out, err := r.git(ctx, w.Path, env, "diff", "--cached", "--name-only", "--no-renames", base)

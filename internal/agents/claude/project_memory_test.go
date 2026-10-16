@@ -89,3 +89,39 @@ func TestStartAddsTheProjectMemoryOnlyWhenTheCLISkipsIt(t *testing.T) {
 		t.Fatalf("the CLI loads the project memory itself here, it must not be added: %q", got)
 	}
 }
+
+func TestProjectMemoryReadsNothingThroughALinkThatLeavesTheFolder(t *testing.T) {
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "credentials.json"), "OUTSIDE-CREDENTIALS")
+	write(t, filepath.Join(outside, "rule.md"), "OUTSIDE-RULE")
+	dir := t.TempDir()
+	link := func(target, name string) {
+		t.Helper()
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			t.Skipf("no symbolic links here: %v", err)
+		}
+	}
+	write(t, filepath.Join(dir, "AGENTS.md"), "INSIDE-RULES\n@STEAL.md\n")
+	link(filepath.Join(outside, "credentials.json"), "STEAL.md")        // @-imported, absolute
+	link(filepath.Join(outside, "credentials.json"), "CLAUDE.local.md") // a memory file that is itself the link
+	if err := os.MkdirAll(filepath.Join(dir, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link(outside, filepath.Join(".claude", "rules")) // the rules folder is a link to somewhere else
+	got := projectMemory(dir)
+	if strings.Contains(got, "OUTSIDE") {
+		t.Fatalf("a link out of the working folder was read:\n%s", got)
+	}
+	if !strings.Contains(got, "INSIDE-RULES") && !strings.Contains(got, "## CLAUDE.md") {
+		t.Logf("memory text:\n%s", got)
+	}
+	// a link that stays inside is the usual way to keep one file under two names
+	dir2 := t.TempDir()
+	write(t, filepath.Join(dir2, "AGENTS.md"), "SHARED-RULES")
+	if err := os.Symlink("AGENTS.md", filepath.Join(dir2, "CLAUDE.md")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if got := projectMemory(dir2); !strings.Contains(got, "SHARED-RULES") {
+		t.Fatalf("CLAUDE.md linked to AGENTS.md inside the folder was not read:\n%s", got)
+	}
+}

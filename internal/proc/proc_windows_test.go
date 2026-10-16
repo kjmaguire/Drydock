@@ -6,6 +6,9 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -89,4 +92,46 @@ func readChildPIDs(t *testing.T, r io.Reader, n int) []int {
 		}
 	}
 	return pids
+}
+
+// An npm launcher on Windows (claude.cmd and the like) is a batch file that runs a bare `node`; cmd.exe looks in the current
+// directory first, which for an agent is its worktree (audit 2026-10-16, H2).
+func TestABareCommandInTheWorkingDirectoryIsNotRun(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "planted-ran")
+	if err := os.WriteFile(filepath.Join(dir, "node.cmd"), []byte("@echo ran> \""+marker+"\"\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	shim := filepath.Join(t.TempDir(), "shim.cmd")
+	if err := os.WriteFile(shim, []byte("@echo off\r\nnode --version\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// the plant is live: with the setting off, cmd.exe finds node.cmd in the current directory before PATH
+	var env []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); !strings.EqualFold(k, NoCwdSearchVar) {
+			env = append(env, kv)
+		}
+	}
+	c := exec.Command(os.Getenv("COMSPEC"), "/c", shim)
+	c.Dir, c.Env = dir, env
+	_ = c.Run()
+	if _, err := os.Stat(marker); err != nil {
+		t.Skip("cmd.exe did not run the planted node.cmd without the setting either; nothing to prove on this machine")
+	}
+	_ = os.Remove(marker)
+
+	p, err := New().Start(context.Background(), Spec{Path: shim, Dir: dir, Label: "test:shim"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = p.Stdin().Close()
+	go io.Copy(io.Discard, p.Stdout())
+	go io.Copy(io.Discard, p.Stderr())
+	if _, ok := WaitTimeout(p, 30*time.Second); !ok {
+		t.Fatal("the shim did not finish")
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a node.cmd in the working directory ran instead of the real node")
+	}
 }

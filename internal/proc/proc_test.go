@@ -25,6 +25,8 @@ func TestHelperProcess(t *testing.T) {
 			fmt.Println("echo:" + sc.Text())
 		}
 		os.Exit(3)
+	case "env": // print the one variable the test asks about
+		fmt.Println("value:" + os.Getenv(os.Getenv("DRYDOCK_PROC_ASK")))
 	case "sleep":
 		time.Sleep(60 * time.Second)
 	case "spawn": // start two grandchildren that sleep, print their pids, then sleep
@@ -102,4 +104,41 @@ func TestStartMissingExecutable(t *testing.T) {
 	if _, err := New().Start(context.Background(), Spec{Path: "definitely-not-a-real-binary-xyz"}); err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestEveryStartedProcessSearchesNoCurrentDirectoryForBareNames(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  []string
+	}{
+		{"an environment the caller built", append(os.Environ(), "DRYDOCK_PROC_ASK="+NoCwdSearchVar)},
+		{"one that tries to switch it off", append(os.Environ(), "DRYDOCK_PROC_ASK="+NoCwdSearchVar, NoCwdSearchVar+"=0")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := helperSpec("env")
+			spec.Env = append(spec.Env, tc.env[len(os.Environ()):]...)
+			p, err := New().Start(context.Background(), spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			line, _ := bufio.NewReader(p.Stdout()).ReadString('\n')
+			if got := strings.TrimSpace(line); got != "value:1" {
+				t.Fatalf("the child saw %q", got)
+			}
+			WaitTimeout(p, 10*time.Second)
+		})
+	}
+	// and with no environment at all, the child inherits the app's, with the setting added
+	t.Setenv("DRYDOCK_PROC_HELPER", "env")
+	t.Setenv("DRYDOCK_PROC_ASK", NoCwdSearchVar)
+	self, _ := os.Executable()
+	p, err := New().Start(context.Background(), Spec{Path: self, Args: []string{"-test.run=TestHelperProcess"}, Label: "test:inherit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _ := bufio.NewReader(p.Stdout()).ReadString('\n')
+	if got := strings.TrimSpace(line); got != "value:1" {
+		t.Fatalf("an inheriting child saw %q", got)
+	}
+	WaitTimeout(p, 10*time.Second)
 }

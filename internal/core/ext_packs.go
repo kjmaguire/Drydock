@@ -180,7 +180,7 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 		return nil, nil, err
 	}
 	k.Requirements = &requirements.Service{DB: c.DB, Bus: c.Bus, Scanner: c.Scanner}
-	k.Skills = &skills.Service{DB: c.DB, Bus: c.Bus, Scanner: c.Scanner, Fetcher: skills.NewGitHubFetcher()}
+	k.Skills = &skills.Service{DB: c.DB, Bus: c.Bus, Scanner: c.Scanner, Fetcher: skills.NewGitHubFetcher(), Repo: c.repo}
 	// Repository skills are offered, never accepted automatically, unless the human turns that off with the setting
 	// skills.manual_accept_repo = 0 (decision P11: an agent-authored skill merged through an approved diff would otherwise become
 	// standing instructions without a separate decision).

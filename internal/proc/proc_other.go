@@ -39,9 +39,7 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 	}
 	cmd := exec.Command(path, spec.Args...)
 	cmd.Dir = spec.Dir
-	if spec.Env != nil {
-		cmd.Env = spec.Env
-	}
+	cmd.Env = WithSafeExeSearch(spec.Env)
 	inR, inW, err := os.Pipe()
 	if err != nil {
 		return nil, err

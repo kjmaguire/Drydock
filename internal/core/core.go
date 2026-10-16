@@ -243,7 +243,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		},
 		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
 	}}
-	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding}
+	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions,
 		RunMode: c.agentRunMode}
 	c.Deps = pipeline.Deps{

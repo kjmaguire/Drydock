@@ -10,12 +10,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/memory"
+	"github.com/kjmaguire/drydock/internal/safefs"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -59,7 +58,19 @@ type Engine struct {
 	// such as .claude/rules/<name>.md to a worktree.
 	Sections SectionsFunc
 	Files    FilesFunc
+	// Redact (optional) removes secrets from text the engine stores in the database (the proposal made when a person edits a
+	// generated file). nil leaves the text as it is.
+	Redact func(string) string
 }
+
+const (
+	// maxInstructionFile bounds what is read of an existing instruction file: a generated one is compared with its header
+	// whole, so it must hold the largest file the engine writes.
+	maxInstructionFile = 1 << 20
+	// maxImportedBytes bounds one repository-authored instruction file folded into the generated AGENTS.md; the rest is cut
+	// with a note, so a hostile or accidental megabyte of text cannot fill every later prompt.
+	maxImportedBytes = 64 << 10
+)
 
 const headerPrefix = "<!-- drydock:generated sha256="
 
@@ -107,7 +118,9 @@ func (e *Engine) generate(ctx context.Context, projectID, worktree string, exist
 		sb.WriteString("\n## Standing instructions\n\n" + standing + "\n")
 		m.Add("standing instructions", true, len(standing), "project setting", 10)
 	}
-	// user-authored instruction files already in the repo are kept, as an imported section
+	// user-authored instruction files already in the repo are kept, as an imported section (a file that says the same as one
+	// already imported, say CLAUDE.md linked to AGENTS.md, is imported once)
+	imported := map[string]string{}
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md", ".goosehints"} {
 		body, ok := existing[name]
 		if !ok || strings.HasPrefix(strings.TrimSpace(body), headerPrefix) || strings.TrimSpace(body) == "" {
@@ -116,8 +129,18 @@ func (e *Engine) generate(ctx context.Context, projectID, worktree string, exist
 		if t := strings.TrimSpace(body); t == "@AGENTS.md" {
 			continue
 		}
-		sb.WriteString("\n## From the repository's own " + name + "\n\n" + strings.TrimSpace(body) + "\n")
-		m.Add("repo:"+name, true, len(body), "existing instruction file imported (not overwritten in git)", 20)
+		text := strings.TrimSpace(body)
+		if h := hash(text); imported[h] != "" {
+			m.Add("repo:"+name, false, 0, "the same text as "+imported[h]+", already imported", 20)
+			continue
+		} else {
+			imported[h] = name
+		}
+		if len(text) > maxImportedBytes {
+			text = strings.ToValidUTF8(text[:maxImportedBytes], "") + "\n[cut: the file is longer than 64 KB]"
+		}
+		sb.WriteString("\n## From the repository's own " + name + "\n\n" + text + "\n")
+		m.Add("repo:"+name, true, len(text), "existing instruction file imported (not overwritten in git)", 20)
 	}
 	entries, err := e.Memory.List(ctx, projectID, memory.Accepted, "")
 	if err != nil {
@@ -275,7 +298,8 @@ func (e *Engine) Write(ctx context.Context, projectID, worktree string) (WriteRe
 	var res WriteResult
 	existing := map[string]string{}
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md", ".goosehints"} {
-		if b, err := os.ReadFile(filepath.Join(worktree, name)); err == nil {
+		// the worktree is the agent's to write: a link there that leads out of it reads nothing
+		if b, err := safefs.ReadFile(worktree, name, maxInstructionFile); err == nil {
 			existing[name] = string(b)
 		}
 	}
@@ -284,19 +308,23 @@ func (e *Engine) Write(ctx context.Context, projectID, worktree string) (WriteRe
 		return res, m, err
 	}
 	for _, name := range files.Names() {
-		path := filepath.Join(worktree, name)
 		if cur, ok := existing[name]; ok {
 			if h, body, stamped := bodyOf(cur); stamped {
 				if hash(body)[:16] != h {
 					res.Edited = append(res.Edited, name)
-					_, _ = e.Memory.Add(ctx, memory.Entry{ProjectID: projectID, Kind: memory.Preference, Title: "Human edit to " + name, Body: strings.TrimSpace(body), Source: "edit:" + name}, false)
+					edit := memory.Entry{ProjectID: projectID, Kind: memory.Preference, Title: "Human edit to " + name, Body: strings.TrimSpace(body), Source: "edit:" + name}
+					if e.Redact != nil {
+						edit.Title, edit.Body = e.Redact(edit.Title), e.Redact(edit.Body)
+					}
+					_, _ = e.Memory.Add(ctx, edit, false)
 					continue
 				}
 			} else {
 				res.Imported = append(res.Imported, name)
 			}
 		}
-		if err := os.WriteFile(path, []byte(files[name]), 0o644); err != nil {
+		// a link at the file's name is replaced by the file, never written through
+		if err := safefs.WriteFile(worktree, name, []byte(files[name]), 0o644); err != nil {
 			return res, m, err
 		}
 		res.Written = append(res.Written, name)

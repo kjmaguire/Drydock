@@ -80,9 +80,7 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 	}
 	cmd := exec.Command(path, spec.Args...)
 	cmd.Dir = spec.Dir
-	if spec.Env != nil {
-		cmd.Env = spec.Env
-	}
+	cmd.Env = WithSafeExeSearch(spec.Env)
 	// CREATE_SUSPENDED so the process is in its job before it can spawn anything; CREATE_NEW_PROCESS_GROUP so a
 	// console Ctrl-Break can target it if a console ever exists.
 	cmd.SysProcAttr = &syscall.SysProcAttr{

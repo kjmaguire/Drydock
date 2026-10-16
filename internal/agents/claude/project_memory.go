@@ -1,10 +1,11 @@
 package claude
 
 import (
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/safefs"
 )
 
 // Claude Code started with --setting-sources user (Adapter.UserSettingsOnly, decision P16: a repository's own settings could
@@ -66,15 +67,16 @@ func (r *memReader) file(path string, depth int) string {
 	if r.seen[clean] || r.total >= maxMemoryTotal || !r.inside(clean) {
 		return ""
 	}
-	st, err := os.Stat(clean)
-	if err != nil || !st.Mode().IsRegular() {
-		return ""
-	}
-	r.seen[clean] = true
-	b, err := os.ReadFile(clean)
+	rel, err := filepath.Rel(r.root, clean)
 	if err != nil {
 		return ""
 	}
+	// the folder is the agent's to write: a link in it that leads out of it (CLAUDE.md -> the user's credentials) reads nothing
+	b, err := safefs.ReadFile(r.root, rel, maxMemoryFile+1)
+	if err != nil {
+		return ""
+	}
+	r.seen[clean] = true
 	text := string(b)
 	if len(text) > maxMemoryFile {
 		text = text[:maxMemoryFile] + "\n[cut: the file is longer than 64 KB]"

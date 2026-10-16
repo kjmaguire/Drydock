@@ -3,9 +3,12 @@ package context
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/safefs"
 )
 
 // Hooks let other subsystems (attached expert packs, skills) contribute to a worktree's generated files without this
@@ -44,6 +47,9 @@ type SectionsFunc func(ctx context.Context, projectID, worktree string) ([]Secti
 
 // FilesFunc returns the extra files for a worktree.
 type FilesFunc func(ctx context.Context, projectID, worktree string) ([]ExtraFile, error)
+
+// maxExtraFile bounds how much of an existing file is read to see whether it is one of ours (the marker is in the first lines).
+const maxExtraFile = 1 << 20
 
 // extraDirs are the directories whose stale generated files are removed when the set of extra files changes.
 var extraDirs = []string{".claude/rules", ".claude/drydock-skills", ".agents/skills"}
@@ -93,7 +99,6 @@ func (e *Engine) writeExtras(ctx context.Context, projectID, worktree string, m 
 			}
 			continue
 		}
-		full := filepath.Join(worktree, filepath.FromSlash(rel))
 		if pathHasLink(worktree, rel) {
 			skipped = append(skipped, rel)
 			m.Add(f.Source, false, 0, "refused: a symbolic link on the path "+rel, 5)
@@ -102,7 +107,7 @@ func (e *Engine) writeExtras(ctx context.Context, projectID, worktree string, m 
 			}
 			continue
 		}
-		if cur, rerr := os.ReadFile(full); rerr == nil && !hasMarker(string(cur)) {
+		if cur, rerr := safefs.ReadFile(worktree, rel, maxExtraFile); rerr == nil && !hasMarker(string(cur)) {
 			skipped = append(skipped, rel)
 			m.Add(f.Source, false, 0, "left alone: "+rel+" is the repository's own file", 5)
 			if f.Done != nil {
@@ -111,10 +116,10 @@ func (e *Engine) writeExtras(ctx context.Context, projectID, worktree string, m 
 			continue
 		}
 		want[rel] = true
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		if err := safefs.MkdirAll(worktree, path.Dir(rel), 0o755); err != nil {
 			return written, skipped, err
 		}
-		if err := os.WriteFile(full, []byte(f.Content), 0o644); err != nil {
+		if err := safefs.WriteFile(worktree, rel, []byte(f.Content), 0o644); err != nil {
 			return written, skipped, err
 		}
 		written = append(written, rel)
@@ -138,8 +143,8 @@ func (e *Engine) writeExtras(ctx context.Context, projectID, worktree string, m 
 			if want[rel] {
 				return nil
 			}
-			if b, rerr := os.ReadFile(p); rerr == nil && hasMarker(string(b)) {
-				_ = os.Remove(p)
+			if b, rerr := safefs.ReadFile(worktree, rel, maxExtraFile); rerr == nil && hasMarker(string(b)) {
+				_ = safefs.Remove(worktree, rel)
 			}
 			return nil
 		})

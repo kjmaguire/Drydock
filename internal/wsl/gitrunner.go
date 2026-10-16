@@ -70,3 +70,8 @@ func (g GitRunner) HostPath(p string) string {
 	}
 	return p
 }
+
+// LinuxPath is p, a path of this machine, as git inside the distro names it.
+func (g GitRunner) LinuxPath(p string) (string, error) {
+	return g.Paths.ToLinux(p)
+}

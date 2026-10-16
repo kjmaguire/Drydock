@@ -7,13 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/packs"
 	"github.com/kjmaguire/drydock/internal/security"
@@ -82,6 +82,9 @@ type Service struct {
 	// the project's own, and a change reaches it through the human's merge). A project that does not want an agent-authored
 	// skill to become active through a merged diff sets this.
 	ManualAcceptRepoSkills bool
+	// Repo returns the project's repository through Drydock's git chokepoint (hardened calls, a guarded configuration). Nil: the
+	// repository is opened here and its configuration is trusted as it is, which is what a test wants and a running app does not.
+	Repo func(ctx context.Context, projectID string) (*git.Repo, error)
 }
 
 func (s *Service) now() time.Time {
@@ -369,6 +372,7 @@ func (s *Service) ScanRepo(ctx context.Context, projectID string) (ScanResult, e
 		return res, nil // no repository attached yet: there is nothing to scan (and a relative path would read the app's own folder)
 	}
 	root := filepath.Join(repo, filepath.FromSlash(SkillsDir))
+	state := s.gitState(ctx, projectID, repo)
 	seen := map[string]bool{}
 	st, err := os.Lstat(root)
 	if err == nil && st.Mode()&os.ModeSymlink != 0 {
@@ -406,7 +410,7 @@ func (s *Service) ScanRepo(ctx context.Context, projectID string) (ScanResult, e
 				break
 			}
 			res.Found++
-			k, err := s.scanOne(ctx, projectID, repo, rel, file, want, hasScripts)
+			k, err := s.scanOne(ctx, projectID, state, rel, file, want, hasScripts)
 			if err != nil {
 				res.Errors = append(res.Errors, name+": "+err.Error())
 				res.Found--
@@ -455,7 +459,7 @@ func (s *Service) ScanRepo(ctx context.Context, projectID string) (ScanResult, e
 	return res, nil
 }
 
-func (s *Service) scanOne(ctx context.Context, projectID, repo, rel, file, want string, hasScripts bool) (Skill, error) {
+func (s *Service) scanOne(ctx context.Context, projectID string, state func(rel string) (string, bool), rel, file, want string, hasScripts bool) (Skill, error) {
 	fi, err := os.Lstat(file)
 	if err != nil {
 		return Skill{}, errors.New("no SKILL.md")
@@ -478,7 +482,7 @@ func (s *Service) scanOne(ctx context.Context, projectID, repo, rel, file, want 
 	if err != nil {
 		return Skill{}, err
 	}
-	commit, clean := gitState(ctx, repo, rel)
+	commit, clean := state(rel)
 	rec := record{ps: ps, origin: OriginRepo, source: rel, pinned: commit, hash: packs.HashHex(string(raw)), scripts: hasScripts, verdict: verdict, license: ps.License}
 	switch {
 	case verdict.Blocked:
@@ -502,27 +506,21 @@ func (s *Service) scanOne(ctx context.Context, projectID, repo, rel, file, want 
 	return k, nil
 }
 
-// gitState returns the commit that last touched rel and whether rel is tracked and unmodified. Both are empty/false when git
-// is unavailable, the path is untracked or the repository has no commits. Hooks and fsmonitor are disabled.
-func gitState(ctx context.Context, repo, rel string) (commit string, clean bool) {
-	run := func(args ...string) (string, error) {
-		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		defer cancel()
-		full := append([]string{"-c", "core.fsmonitor=false", "-c", "core.quotepath=false", "-C", repo}, args...)
-		cmd := exec.CommandContext(cctx, "git", full...)
-		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
-		out, err := cmd.Output()
-		return strings.TrimSpace(string(out)), err
+// gitState returns the function that says, for a path under repo, the commit that last touched it and whether it is tracked and
+// unmodified. It asks the project's repository through the git chokepoint; when git is unavailable, the path is untracked or the
+// repository has no commits, it says ("", false).
+func (s *Service) gitState(ctx context.Context, projectID, repo string) func(rel string) (string, bool) {
+	var r *git.Repo
+	var err error
+	if s.Repo != nil {
+		r, err = s.Repo(ctx, projectID)
+	} else {
+		r, err = git.Open(ctx, repo)
 	}
-	c, err := run("log", "-1", "--format=%H", "--", rel)
-	if err != nil || c == "" {
-		return "", false
+	if err != nil || r == nil {
+		return func(string) (string, bool) { return "", false }
 	}
-	st, err := run("status", "--porcelain", "--", rel)
-	if err != nil {
-		return c, false
-	}
-	return c, st == ""
+	return func(rel string) (string, bool) { return r.PathState(ctx, repo, rel) }
 }
 
 // ---- decisions (human only) ----

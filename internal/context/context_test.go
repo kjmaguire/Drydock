@@ -224,3 +224,81 @@ func TestAcceptedMemoryIsCappedNewestFirst(t *testing.T) {
 		t.Fatalf("AGENTS.md does not say where the rest is:\n%s", agents)
 	}
 }
+
+func TestAWorktreeLinkOutOfTheFolderIsNeitherReadNorWrittenThrough(t *testing.T) {
+	ctx := context.Background()
+	e, _ := newEngine(t)
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "database")
+	os.WriteFile(victim, []byte("USER-DATA-NOT-INSTRUCTIONS"), 0o644)
+	dir := t.TempDir()
+	if err := os.Symlink(victim, filepath.Join(dir, "AGENTS.md")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if err := os.Symlink(victim, filepath.Join(dir, "GEMINI.md")); err != nil {
+		t.Fatal(err)
+	}
+	res, _, err := e.Write(ctx, "p1", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "USER-DATA-NOT-INSTRUCTIONS" {
+		t.Fatalf("the file behind the link was overwritten: %q", b)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if strings.Contains(string(got), "USER-DATA") || !strings.HasPrefix(string(got), headerPrefix) {
+		t.Fatalf("the generated file must be a plain file with only generated text:\n%s", got)
+	}
+	if len(res.Imported) != 0 {
+		t.Fatalf("a file behind a link out of the folder was imported: %+v", res)
+	}
+}
+
+func TestImportedInstructionTextIsCappedAndSaidOnce(t *testing.T) {
+	ctx := context.Background()
+	e, _ := newEngine(t)
+	dir := t.TempDir()
+	big := strings.Repeat("Rule line that repeats.\n", 10000) // ~240 KB
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(big), 0o644)
+	if err := os.Symlink("AGENTS.md", filepath.Join(dir, "GEMINI.md")); err != nil {
+		os.WriteFile(filepath.Join(dir, "GEMINI.md"), []byte(big), 0o644) // no links here: the same text twice
+	}
+	files, m, err := e.Generate(ctx, "p1", map[string]string{"AGENTS.md": big, "GEMINI.md": big})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := files["AGENTS.md"]
+	if len(body) > maxImportedBytes+8<<10 {
+		t.Fatalf("an imported file of %d bytes is not capped: AGENTS.md is %d bytes", len(big), len(body))
+	}
+	if !strings.Contains(body, "[cut: the file is longer than 64 KB]") || strings.Count(body, "From the repository's own") != 1 {
+		t.Fatalf("one capped import expected:\n%.400s", body)
+	}
+	var said bool
+	for _, it := range m.Items {
+		said = said || (it.Source == "repo:GEMINI.md" && !it.Included && strings.Contains(it.Reason, "already imported"))
+	}
+	if !said {
+		t.Fatalf("the duplicate is not in the manifest: %+v", m.Items)
+	}
+}
+
+func TestAHumanEditProposalHasItsSecretsRedacted(t *testing.T) {
+	ctx := context.Background()
+	e, ms := newEngine(t)
+	e.Redact = func(s string) string { return strings.ReplaceAll(s, "sk-LIVE-SECRET", "[redacted]") }
+	dir := t.TempDir()
+	if _, _, err := e.Write(ctx, "p1", dir); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "AGENTS.md")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, append(b, []byte("\nUse key sk-LIVE-SECRET for the staging API.\n")...), 0o644)
+	if _, _, err := e.Write(ctx, "p1", dir); err != nil {
+		t.Fatal(err)
+	}
+	props, _ := ms.List(ctx, "p1", memory.Proposed, "")
+	if len(props) != 1 || strings.Contains(props[0].Body, "sk-LIVE-SECRET") || !strings.Contains(props[0].Body, "[redacted]") {
+		t.Fatalf("the proposal kept the secret: %+v", props)
+	}
+}

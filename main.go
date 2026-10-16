@@ -9,10 +9,13 @@ import (
 
 	"github.com/kjmaguire/drydock/app"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/ui"
 )
 
 func main() {
+	// a bare program name must never be found in the working directory (audit 2026-10-16, H2)
+	proc.HardenProcess()
 	// an agent CLI starts `drydock.exe mcp-shim` as its MCP server (docs/mcp.md transport A); it must not open the app
 	if code, ok := mcp.MaybeRunShim(os.Args); ok {
 		os.Exit(code)

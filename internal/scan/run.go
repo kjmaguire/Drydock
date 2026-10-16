@@ -50,10 +50,15 @@ func (o *Options) redact(s string) string {
 }
 
 func (o *Options) env() []string {
+	var env []string
 	if o.Env != nil {
-		return o.Env()
+		env = o.Env()
+	} else {
+		env = proc.ToolEnv(os.Environ(), nil)
 	}
-	return proc.ToolEnv(os.Environ(), nil)
+	// a tool that asks git for the project's files (Opengrep's `git ls-files`) must not run what a changed repository
+	// configuration names
+	return append(env[:len(env):len(env)], proc.GitConfigEnv()...)
 }
 
 func (o *Options) timeout() time.Duration {

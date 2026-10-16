@@ -124,3 +124,27 @@ func TestCheckRulesWantsAFolderWithRuleFiles(t *testing.T) {
 		t.Fatal(ok, note)
 	}
 }
+
+func TestEveryToolRunsWithGitHardenedAgainstTheProjectsConfiguration(t *testing.T) {
+	o := &Options{Env: func() []string { return []string{"PATH=/bin", "HOME=/h"} }}
+	env := o.env()
+	has := func(kv string) bool {
+		for _, e := range env {
+			if e == kv {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("PATH=/bin") || !has("GIT_CONFIG_COUNT=3") || !has("GIT_CONFIG_KEY_1=core.fsmonitor") || !has("GIT_CONFIG_VALUE_1=false") {
+		t.Fatalf("tool environment: %v", env)
+	}
+	// the caller's slice is not written to
+	base := make([]string, 2, 10)
+	base[0], base[1] = "PATH=/bin", "HOME=/h"
+	o = &Options{Env: func() []string { return base }}
+	_ = o.env()
+	if len(base) != 2 || cap(base) != 10 || base[:3][2] != "" {
+		t.Fatalf("the caller's environment was extended in place: %v", base[:3])
+	}
+}

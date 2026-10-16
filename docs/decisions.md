@@ -489,3 +489,14 @@ Open, owner action:
   `data-value` (Playwright); a new screen that renders a native `<select>` is a review failure. **Not verified:** the look
   on Windows/WebView2 (Linux host only); the diagnosis of the far-right list rests on how WebView2 places native popups,
   and the fix removes every native option popup.
+
+**P73. The 2026-10-16 audit: every finding fixed, in the order of its severity (2026-10-16).** A read-only audit of the whole
+  repository (ten slices, one Critical, twelve High, twenty-eight Medium, fifty-seven Low) was followed by fixes for all of
+  them, each with a test that fails without the fix. The pieces that change how Drydock behaves are listed here; the
+  per-finding record is in the commit messages. **Git (C1, M5):** a call in a task's worktree is pinned to the git directory the
+  repository registered for it (`GIT_DIR`, `GIT_WORK_TREE`), a folder git does not know as a worktree is refused, nested
+  repositories (submodules, embedded repositories) are opaque: not staged, not asked whether they are modified, not counted as
+  work, and a worktree that holds one is not removed without force (`internal/git/pin.go`, docs/security.md s3 item 2a). The
+  skills scan asks git through the project's guarded `Repo`; the security scan's tools get git settings in their environment
+  (`proc.GitConfigEnv`). **Not verified:** the same fixes against a repository inside a WSL distro (the `GIT_DIR` values go
+  through the runner's path translation, covered by its existing tests, but no distro ran here) and on Windows git.

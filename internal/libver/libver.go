@@ -16,7 +16,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -26,6 +25,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/kjmaguire/drydock/internal/safefs"
 )
 
 // Ecosystems.
@@ -231,19 +232,10 @@ func anyExact(ls []Lib) bool {
 	return false
 }
 
-// readFile reads a repository-relative regular file up to maxRead bytes. A symbolic link is not followed.
+// readFile reads a repository-relative regular file up to maxRead bytes. A path that leaves the repository through a symbolic
+// link or junction (the worktree is the agent's to write) is not read.
 func readFile(root, rel string) ([]byte, bool) {
-	p := filepath.Join(root, filepath.FromSlash(rel))
-	fi, err := os.Lstat(p)
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxRead {
-		return nil, false
-	}
-	f, err := os.Open(p)
-	if err != nil {
-		return nil, false
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxRead+1))
+	b, err := safefs.ReadFile(root, rel, maxRead+1)
 	if err != nil || len(b) > maxRead {
 		return nil, false
 	}
