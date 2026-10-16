@@ -15,9 +15,9 @@ import (
 // This is the certificate pinning that Go's documentation describes for InsecureSkipVerify together with VerifyPeerCertificate:
 // the standard chain check is switched off and replaced by a stricter one, in this file and nowhere else. The file is the only
 // place in the product that does this, and CodeQL's query for it (go/disabled-certificate-check) cannot see the replacement, so
-// the file is left out of code scanning by name in .github/codeql/codeql-config.yml (a test keeps that list to what was reviewed).
-// VerifyPeerCertificate runs on every full handshake, and this client keeps no session cache, so no connection is resumed
-// without it.
+// the query is switched off in .github/codeql/codeql-config.yml and a test (internal/ciconfig) fails if any other non-test Go file
+// names InsecureSkipVerify. VerifyPeerCertificate runs on every full handshake, and this client keeps no session cache, so no
+// connection is resumed without it.
 func pinnedTLSConfig(want []byte) *tls.Config {
 	return &tls.Config{
 		MinVersion:         tls.VersionTLS12,

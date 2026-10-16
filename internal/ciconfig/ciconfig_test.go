@@ -174,30 +174,41 @@ func TestTheSecurityChecksAndPolicyArePresent(t *testing.T) {
 	}
 }
 
-// Code scanning leaves out the paths in .github/codeql/codeql-config.yml and nothing else, and the list is what was reviewed: a
-// stand-in for an authorization server that no build contains, and the one file that pins a certificate. A path added to the list
-// changes this test, so it is seen in the diff. The pin is safe to leave out only while it is the only place that skips the
-// standard certificate check, so any other non-test Go file that names InsecureSkipVerify fails here.
-func TestCodeScanningSkipsOnlyWhatWasReviewedAndOnlyThePinSkipsCertificateChecks(t *testing.T) {
+// CodeQL's configuration switches off two queries and nothing else, and each exclusion rests on a fact about the code that this test
+// keeps true: the only file that skips the standard certificate check is the one that pins a certificate, and the only redirects the
+// product's Go code issues are those of the authorization server stand-ins the tests use. A third query on the list, a path filter
+// (it hides nothing for Go), or a use outside those files fails here, so the exclusion cannot quietly cover more than was reviewed.
+func TestCodeScanningSwitchesOffOnlyTwoQueriesAndTheCodeKeepsTheirReasons(t *testing.T) {
 	root := repoRoot(t)
 	const pin = "internal/providers/pinned_tls.go"
+	redirecting := []string{"internal/integrations/itfixture/oauth.go", "internal/mcp/oauthfake/oauthfake.go"}
 	b, err := os.ReadFile(filepath.Join(root, ".github", "codeql", "codeql-config.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var cfg struct {
-		PathsIgnore []string `yaml:"paths-ignore"`
+		PathsIgnore  []string `yaml:"paths-ignore"`
+		QueryFilters []struct {
+			Exclude map[string]string `yaml:"exclude"`
+			Include map[string]string `yaml:"include"`
+		} `yaml:"query-filters"`
 	}
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		t.Fatalf("the CodeQL configuration does not parse: %v", err)
 	}
-	if want := []string{"internal/integrations/itfixture", pin}; !slices.Equal(cfg.PathsIgnore, want) {
-		t.Fatalf("code scanning skips %v; what was reviewed is %v (add to both, with the reason, only after a review)", cfg.PathsIgnore, want)
+	if len(cfg.PathsIgnore) != 0 {
+		t.Errorf("paths-ignore %v: for Go, CodeQL reports alerts in ignored paths anyway, so the filter only misleads", cfg.PathsIgnore)
 	}
-	for _, p := range cfg.PathsIgnore {
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p))); err != nil {
-			t.Errorf("%s is skipped by code scanning but is not there (renamed? the entry must follow it): %v", p, err)
+	var excluded []string
+	for _, f := range cfg.QueryFilters {
+		if f.Include != nil || len(f.Exclude) != 1 || f.Exclude["id"] == "" {
+			t.Errorf("a query filter that is not the exclusion of one query by its id: %+v", f)
+			continue
 		}
+		excluded = append(excluded, f.Exclude["id"])
+	}
+	if want := []string{"go/disabled-certificate-check", "go/unvalidated-url-redirection"}; !slices.Equal(excluded, want) {
+		t.Fatalf("code scanning switches off %v; what was reviewed is %v (add to both, with the reason and the check on the code below, only after a review)", excluded, want)
 	}
 	sec, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "security.yml"))
 	if err != nil {
@@ -206,7 +217,9 @@ func TestCodeScanningSkipsOnlyWhatWasReviewedAndOnlyThePinSkipsCertificateChecks
 	if !strings.Contains(string(sec), "config-file: ./.github/codeql/codeql-config.yml") {
 		t.Error("security.yml does not hand the CodeQL configuration to the scan")
 	}
+	redirect := regexp.MustCompile(`http\.Redirect\(|http\.RedirectHandler\(|Header\(\)\.(Set|Add)\(\s*"Location"`)
 	skipping := 0
+	redirects := map[string]bool{}
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -225,12 +238,20 @@ func TestCodeScanningSkipsOnlyWhatWasReviewedAndOnlyThePinSkipsCertificateChecks
 		if err != nil {
 			return err
 		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
 		if strings.Contains(string(src), "InsecureSkipVerify") {
-			rel, _ := filepath.Rel(root, p)
-			if filepath.ToSlash(rel) != pin {
-				t.Errorf("%s names InsecureSkipVerify: certificate checks are skipped in %s alone (and it is left out of code scanning); pin a certificate there or verify the chain", rel, pin)
+			if rel != pin {
+				t.Errorf("%s names InsecureSkipVerify: certificate checks are skipped in %s alone (the query that would flag it is switched off); pin a certificate there or verify the chain", rel, pin)
 			} else if skipsTheChain.Match(src) && replacesTheChain.Match(src) {
 				skipping++ // the chain check is switched off, and a check of the certificate itself stands in its place
+			}
+		}
+		if redirect.Match(src) {
+			if !slices.Contains(redirecting, rel) {
+				t.Errorf("%s issues a redirect: the query that would flag a redirect to a request's own address is switched off, and the product has none; only the authorization server stand-ins (%v) redirect", rel, redirecting)
+			} else {
+				redirects[rel] = true
 			}
 		}
 		return nil
@@ -240,5 +261,10 @@ func TestCodeScanningSkipsOnlyWhatWasReviewedAndOnlyThePinSkipsCertificateChecks
 	}
 	if skipping != 1 {
 		t.Errorf("%s no longer switches the chain check off with a VerifyPeerCertificate in its place, or the walk did not reach it: the exclusion no longer matches the code", pin)
+	}
+	for _, f := range redirecting {
+		if !redirects[f] {
+			t.Errorf("%s no longer issues the redirect that the exclusion of go/unvalidated-url-redirection is for", f)
+		}
 	}
 }
