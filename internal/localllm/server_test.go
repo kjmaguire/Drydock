@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,6 +87,47 @@ func TestTheServerIsStartedWithTheModelAndStopped(t *testing.T) {
 		t.Fatal("the server still answers after Stop")
 	}
 	if strings.Join(states, ",") != "starting,starting,running,stopped" {
+		t.Fatalf("states %v", states)
+	}
+}
+
+// A Stop while the model still loads ends in "stopped", never in "failed": the Start that was waiting answers that it was
+// stopped and leaves the state alone, however the process's exit and the stop are ordered.
+func TestAStopDuringTheLoadLeavesTheServerStopped(t *testing.T) {
+	var mu sync.Mutex
+	var states []string
+	srv := &localllm.Server{PM: proc.New(), OnChange: func(st localllm.ServerState) {
+		mu.Lock()
+		states = append(states, st.State)
+		mu.Unlock()
+	}}
+	started := make(chan error, 1)
+	go func() {
+		started <- srv.Start(context.Background(), localllm.Launch{Program: os.Args[0], Args: llamatest.Args("--load-ms=60000"), Model: tinyModel(t), Port: freePort(t), Timeout: 30 * time.Second})
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for srv.State().PID == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the server did not start")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	srv.Stop()
+	select {
+	case err := <-started:
+		if err == nil || !strings.Contains(err.Error(), "stopped") {
+			t.Fatalf("Start answered %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Start did not return after Stop")
+	}
+	time.Sleep(100 * time.Millisecond) // the exit goroutine, had it a say, would have had it by now
+	if st := srv.State(); st.State != "stopped" || st.Error != "" {
+		t.Fatalf("%+v", st)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Contains(strings.Join(states, ","), "failed") || states[len(states)-1] != "stopped" {
 		t.Fatalf("states %v", states)
 	}
 }

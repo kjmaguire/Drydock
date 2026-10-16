@@ -82,8 +82,10 @@ func TestModelFilesAreDownloadedCheckedAndResumed(t *testing.T) {
 		t.Fatalf("%+v %v", vs, err)
 	}
 	dir := t.TempDir()
-	// a part of the first file is already there: the rest is fetched with a Range request
+	// a part of the first file is already there: the rest is fetched with a Range request; the second file's part is whole
+	// (Drydock closed between the last byte and the check): it is checked and kept without asking the Hub for more
 	_ = os.WriteFile(filepath.Join(dir, "tiny-Q4_0-00001-of-00002.gguf.part"), a[:5000], 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "tiny-Q4_0-00002-of-00002.gguf.part"), b, 0o644)
 	var last localllm.DownloadProgress
 	if err := hub.Download(ctx, "acme/tiny-GGUF", vs[0], dir, func(p localllm.DownloadProgress) { last = p }); err != nil {
 		t.Fatal(err)
@@ -97,12 +99,21 @@ func TestModelFilesAreDownloadedCheckedAndResumed(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
-	if fx.Requests.Load() != 2 {
+	if fx.Requests.Load() != 1 {
 		t.Fatalf("%d requests", fx.Requests.Load())
 	}
 	// again: nothing is fetched
-	if err := hub.Download(ctx, "acme/tiny-GGUF", vs[0], dir, nil); err != nil || fx.Requests.Load() != 2 {
+	if err := hub.Download(ctx, "acme/tiny-GGUF", vs[0], dir, nil); err != nil || fx.Requests.Load() != 1 {
 		t.Fatal(err, fx.Requests.Load())
+	}
+	// a whole-sized part with the wrong bytes is thrown away and the file fetched again, not asked for from its end
+	dir3 := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir3, "tiny-Q4_0-00001-of-00002.gguf.part"), bytesOf(20000, 1), 0o644)
+	if err := hub.Download(ctx, "acme/tiny-GGUF", vs[0], dir3, nil); err != nil || fx.Requests.Load() != 3 {
+		t.Fatal(err, fx.Requests.Load())
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir3, "tiny-Q4_0-00001-of-00002.gguf")); string(got) != string(a) {
+		t.Fatal("the wrong part was kept")
 	}
 	// a file whose bytes changed on the Hub side does not match: deleted and refused
 	bad := vs[0]
@@ -114,6 +125,36 @@ func TestModelFilesAreDownloadedCheckedAndResumed(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir2); len(entries) != 0 {
 		t.Fatalf("left behind: %v", entries)
+	}
+}
+
+// Two files of the same quantization in different folders (a repository that keeps its split quants in folders) are two
+// variants with two names, since the name is half the model id and the folder a download goes to.
+func TestVariantsOfTheSameQuantizationInFoldersStayApart(t *testing.T) {
+	fx := llamatest.NewHub(t)
+	fx.AddModel("acme/folders-GGUF", 10, nil, map[string][]byte{
+		"Model-Q8_0.gguf":                              bytesOf(300, 1),
+		"Q8_0/Model-Q8_0-00001-of-00002.gguf":          bytesOf(200, 2),
+		"Q8_0/Model-Q8_0-00002-of-00002.gguf":          bytesOf(200, 3),
+		"Model-Q4_K_M.gguf":                            bytesOf(100, 4),
+		"BF16/Model-BF16.gguf":                         bytesOf(600, 5),
+		"other/Model-BF16.gguf":                        bytesOf(650, 6),
+		"nested/deeper/Model-BF16-00001-of-00001.gguf": bytesOf(660, 7),
+	})
+	hub := &localllm.Hub{BaseURL: fx.URL}
+	vs, err := hub.Variants(context.Background(), "acme/folders-GGUF")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, v := range vs {
+		names = append(names, v.Name)
+		if _, _, ok := localllm.SplitModelID(localllm.ModelID("acme/folders-GGUF", v.Name)); !ok {
+			t.Fatalf("%q is not usable in a model id", v.Name)
+		}
+	}
+	if strings.Join(names, " ") != "Q4_K_M Model-Q8_0 Q8_0-Model-Q8_0 BF16-Model-BF16 other-Model-BF16 nested-deeper-Model-BF16" {
+		t.Fatalf("%v", names)
 	}
 }
 

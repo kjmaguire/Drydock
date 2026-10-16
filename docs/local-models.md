@@ -38,10 +38,14 @@ content: the server runs on `127.0.0.1` and never calls out. Drydock sends no to
 | Backend | For | Official archive |
 |---|---|---|
 | Vulkan (suggested when no NVIDIA driver is found) | any recent GPU through its Vulkan driver (AMD, Intel, NVIDIA) | `llama-<tag>-bin-win-vulkan-x64.zip` |
-| CUDA (suggested when `nvidia-smi` is installed) | NVIDIA GPUs with a driver from 2025 or newer (CUDA 13.4) | `llama-<tag>-bin-win-cuda-13.4-x64.zip` + `cudart-llama-bin-win-cuda-13.4-x64.zip` |
-| CUDA 12.4 | NVIDIA GPUs with an older driver | `...-cuda-12.4-x64.zip` + its cudart |
-| ROCm | recent AMD GPUs through HIP | `llama-<tag>-bin-win-rocm-10.0-x64.zip` |
+| CUDA (suggested when `nvidia-smi` is installed) | NVIDIA GPUs with a driver from 2025 or newer (CUDA 13) | `llama-<tag>-bin-win-cuda-13.*-x64.zip` (the newest CUDA 13 toolkit the release carries; 13.4 on 2026-10-15) + the `cudart-llama-bin-win-cuda-<same version>-x64.zip` beside it |
+| CUDA 12 | NVIDIA GPUs with an older driver | `llama-<tag>-bin-win-cuda-12.*-x64.zip` + its cudart |
+| ROCm | recent AMD GPUs through HIP | `llama-<tag>-bin-win-rocm-*-x64.zip` (10.0 on 2026-10-15) |
 | CPU only | no GPU | `llama-<tag>-bin-win-cpu-x64.zip` |
+
+The toolkit version in the CUDA and ROCm names is matched as a pattern, not pinned: when upstream moves from CUDA 13.4 to
+13.5 the next weekly build still installs. A new CUDA major (14) would need a Drydock release, since the drivers it needs
+are a decision, not a version bump.
 
 After an install Drydock runs `llama-server --list-devices` once and shows what the build found ("CUDA0: NVIDIA GeForce RTX
 4060 Ti (15944 MiB, 14143 MiB free)"); a build that finds no device runs on the CPU.

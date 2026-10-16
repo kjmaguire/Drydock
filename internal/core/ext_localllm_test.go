@@ -208,6 +208,49 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 	}
 }
 
+// A build whose --list-devices fails is asked once per build, like one that answers: the failure is shown on the page and
+// the next reads of the page do not run the program again. The installed build's cache types are the ones the settings
+// accept, whatever source is chosen for the next install.
+func TestAFailedDeviceProbeIsKeptAndTheInstalledBuildDecidesTheCacheTypes(t *testing.T) {
+	rig := newLocalRig(t)
+	record := filepath.Join(t.TempDir(), "args.txt")
+	rig.standin = []string{"--devices=fail", "--record=" + record}
+	a := localCore(t, rig)
+	var v core.LocalView
+	localCall(a, "local.install", map[string]any{"backend": "cpu"})
+	a.waitFor("the install to finish", func() bool {
+		v = localCall(a, "local.get", nil)
+		return v.Runtime.Job != nil && v.Runtime.Job.State != "running"
+	})
+	if v.Runtime.Devices.Probed || !strings.Contains(v.Runtime.Devices.Error, "told not to list devices") {
+		t.Fatalf("devices: %+v", v.Runtime.Devices)
+	}
+	if _, err := os.Stat(record); err != nil {
+		t.Fatal("the program was not run for its devices")
+	}
+	_ = os.Remove(record)
+	for range 3 {
+		v = localCall(a, "local.get", nil)
+	}
+	if _, err := os.Stat(record); err == nil {
+		t.Fatal("a failed device probe was run again")
+	}
+	if !strings.Contains(v.Runtime.Devices.Error, "told not to list devices") {
+		t.Fatalf("the failure was lost: %+v", v.Runtime.Devices)
+	}
+	// the fork is chosen for the next install (which does not happen): the official build on this PC still decides
+	v = localCall(a, "local.settings.set", map[string]any{"source": "turboquant"})
+	if v.Settings.Source != "turboquant" || v.Runtime.Source != "official" {
+		t.Fatalf("%+v %+v", v.Settings, v.Runtime)
+	}
+	if err := a.callErr("local.settings.set", map[string]any{"cacheType": "turbo4"}); err == nil || !strings.Contains(err.Error(), "official") {
+		t.Fatalf("turbo4 on the official build: %v", err)
+	}
+	if v = localCall(a, "local.settings.set", map[string]any{"cacheType": "f16"}); v.Settings.CacheType != "f16" {
+		t.Fatalf("%+v", v.Settings)
+	}
+}
+
 // A build that cannot load the model is reported as failed with the program's last line; a second start on the same
 // settings restarts the server, and the server left running is stopped with the core.
 func TestAServerThatFailsIsReportedAndARestartReplacesIt(t *testing.T) {

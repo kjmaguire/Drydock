@@ -11,7 +11,9 @@ package localllm
 
 import (
 	"fmt"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -74,10 +76,55 @@ type Source struct {
 	CacheTypes []string `json:"cacheTypes"`
 	// Prerelease says whether a release marked pre-release counts (the official weekly builds are marked so).
 	Prerelease bool `json:"-"`
-	// assets names the archive of a backend for a release tag ("" when the source has no build for it); cudart names the
-	// CUDA runtime archive a CUDA build needs beside it ("" when none).
+	// assets names the archive of a backend for a release tag as a pattern in path.Match syntax ("" when the source has no
+	// build for the backend): a `*` stands where the source writes a toolkit version (CUDA 13.4 today, 13.5 tomorrow), so
+	// a toolkit bump upstream does not strand the backend. Where several assets of a release match, the newest toolkit (the
+	// highest version in the name) is taken.
 	assets func(tag string, b Backend) string
-	cudart func(tag string, b Backend) string
+	// cudart names the CUDA runtime archive the archive needs beside it, from the archive's own name ("" when none).
+	cudart func(archive string) string
+}
+
+// toolkitVersion is the toolkit version in an archive's name ("cuda-13.4" is 13, 4), nil when it carries none.
+var toolkitVersionR = regexp.MustCompile(`-(?:cuda|rocm)-(\d+(?:\.\d+)*)`)
+
+func toolkitVersion(name string) []int {
+	m := toolkitVersionR.FindStringSubmatch(name)
+	if m == nil {
+		return nil
+	}
+	var v []int
+	for _, p := range strings.Split(m[1], ".") {
+		n, _ := strconv.Atoi(p)
+		v = append(v, n)
+	}
+	return v
+}
+
+// newerToolkit reports whether a's toolkit version is above b's (a name without one is the oldest).
+func newerToolkit(a, b []int) bool {
+	for i := 0; i < len(a) || i < len(b); i++ {
+		var x, y int
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+
+// officialCudart is the CUDA runtime archive beside an official CUDA archive: the same toolkit version.
+func officialCudart(archive string) string {
+	m := toolkitVersionR.FindStringSubmatch(archive)
+	if m == nil || !strings.Contains(archive, "-cuda-") {
+		return ""
+	}
+	return "cudart-llama-bin-win-cuda-" + m[1] + "-x64.zip"
 }
 
 // DownloadPrefix is the only place this source's archives are fetched from.
@@ -119,24 +166,16 @@ var Sources = []Source{
 				return fmt.Sprintf("llama-%s-bin-win-cpu-x64.zip", tag)
 			case Vulkan:
 				return fmt.Sprintf("llama-%s-bin-win-vulkan-x64.zip", tag)
-			case CUDA:
-				return fmt.Sprintf("llama-%s-bin-win-cuda-13.4-x64.zip", tag)
+			case CUDA: // CUDA 13 and later (the toolkit's minor changes with the driver generation upstream builds for)
+				return fmt.Sprintf("llama-%s-bin-win-cuda-1[3-9].*-x64.zip", tag)
 			case CUDALegacy:
-				return fmt.Sprintf("llama-%s-bin-win-cuda-12.4-x64.zip", tag)
+				return fmt.Sprintf("llama-%s-bin-win-cuda-12.*-x64.zip", tag)
 			case ROCm:
-				return fmt.Sprintf("llama-%s-bin-win-rocm-10.0-x64.zip", tag)
+				return fmt.Sprintf("llama-%s-bin-win-rocm-*-x64.zip", tag)
 			}
 			return ""
 		},
-		cudart: func(_ string, b Backend) string {
-			switch b {
-			case CUDA:
-				return "cudart-llama-bin-win-cuda-13.4-x64.zip"
-			case CUDALegacy:
-				return "cudart-llama-bin-win-cuda-12.4-x64.zip"
-			}
-			return ""
-		},
+		cudart: officialCudart,
 	},
 	{
 		ID: SourceTurboQuant, Name: "TurboQuant fork (AtomicBot-ai/atomic-llama-cpp-turboquant)", Repo: "AtomicBot-ai/atomic-llama-cpp-turboquant",
@@ -151,15 +190,15 @@ var Sources = []Source{
 			case Vulkan:
 				return "llama-turboquant-windows-x64-vulkan.zip"
 			case CUDA:
-				return "llama-turboquant-windows-x64-cuda-13.3.zip"
+				return "llama-turboquant-windows-x64-cuda-1[3-9].*.zip"
 			case CUDALegacy:
-				return "llama-turboquant-windows-x64-cuda-12.4.zip"
+				return "llama-turboquant-windows-x64-cuda-12.*.zip"
 			case ROCm:
-				return "llama-turboquant-windows-x64-rocm.zip"
+				return "llama-turboquant-windows-x64-rocm*.zip"
 			}
 			return ""
 		},
-		cudart: func(string, Backend) string { return "" },
+		cudart: func(string) string { return "" },
 	},
 }
 

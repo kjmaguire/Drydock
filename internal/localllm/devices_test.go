@@ -64,6 +64,9 @@ func TestTheFitRule(t *testing.T) {
 		{20 << 30, localllm.Devices{Probed: true}, ram, "cpu", true},
 		{200 << 30, localllm.Devices{}, localllm.Memory{}, "unknown", true},
 		{10 << 30, localllm.Devices{}, ram, "cpu", true},
+		// a GPU but no RAM reading: what does not fit the GPU may still run partly offloaded, so it is unknown, not too big
+		{10 << 30, gpu, localllm.Memory{}, "gpu", true},
+		{20 << 30, gpu, localllm.Memory{}, "unknown", true},
 	} {
 		f := localllm.FitOf(c.size, c.d, c.m)
 		if f.Target != c.want || f.Fits != c.fits {

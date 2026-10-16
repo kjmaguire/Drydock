@@ -283,7 +283,10 @@ describe('Models on this PC', () => {
     const downloads: [string, string][] = [];
     const variants: Record<string, Variant[]> = {
       'ggml-org/gpt-oss-20b-GGUF': [{ name: 'MXFP4', files: [], sizeBytes: 12 * GiB, fit: { target: 'gpu', fits: true, availableBytes: 14 * GiB }, notes: ['the only quantization the model ships in'] }],
-      'acme/tiny-GGUF': [{ name: 'Q4_0', files: [], sizeBytes: 2 * MiB, fit: { target: 'gpu', fits: true, availableBytes: 14 * GiB } }],
+      'acme/tiny-GGUF': [
+        { name: 'Q4_0', files: [], sizeBytes: 2 * MiB, fit: { target: 'gpu', fits: true, availableBytes: 14 * GiB } },
+        { name: 'F16', files: [], sizeBytes: 80 * GiB, fit: { target: 'none', fits: false, availableBytes: 15 * GiB } },
+      ],
     };
     const { r } = show({
       localGet: async () => installed(),
@@ -316,12 +319,25 @@ describe('Models on this PC', () => {
     await waitFor(() => expect(asked).toEqual(['tiny']), r);
     const tiny = await waitFor(() => need(r, '[data-testid="local-repo"][data-id="acme/tiny-GGUF"]'), r);
     expect(r.$$('[data-testid="local-repo"]').length).toBe(1);
+    expect(need(r, '[data-testid="local-repos"]').getAttribute('aria-label')).toBe('Search results');
     await r.act(() => tiny.click());
     const q4 = await waitFor(() => need(r, '[data-testid="local-variant"][data-name="Q4_0"]'), r);
-    expect(r.$$('[data-testid="local-variant"]').length).toBe(1);
+    expect(r.$$('[data-testid="local-variant"]').length).toBe(2);
+    // a variant too big for this PC cannot be downloaded (decided by the fit the core sent, not by the badge's words)
+    const f16 = need(r, '[data-testid="local-variant"][data-name="F16"]');
+    expect(f16.textContent).toContain('Too big for this PC');
+    expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(false);
     await r.act(() => (q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).click());
     await waitFor(() => expect(downloads).toEqual([['acme/tiny-GGUF', 'Q4_0']]), r);
     await waitFor(() => need(r, '[data-testid="local-download-row"][data-id="acme/tiny-GGUF:Q4_0"]'), r);
+
+    // the suggestions come back in place of the search results
+    const again = await enabled<HTMLButtonElement>(r, '[data-testid="local-suggested"]');
+    await r.act(() => again.click());
+    await waitFor(() => expect(r.$$('[data-testid="local-repo"]').length).toBe(2), r);
+    expect(need(r, '[data-testid="local-repos"]').getAttribute('aria-label')).toBe('Suggested models');
+    expect(q(r, '[data-testid="local-repo"][data-id="acme/tiny-GGUF"]')).toBe(null);
   });
 
   it('each setting change sends just that field; a cache or context change while the server runs asks for a restart', async () => {

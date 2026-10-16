@@ -135,7 +135,7 @@ func init() {
 			"local.model.download.cancel": bind(func(ctx context.Context, p struct {
 				ID string `json:"id"`
 			}) (any, error) {
-				return l.cancelDownload(ctx, p.ID)
+				return l.cancelDownload(ctx, p.ID, c.Human())
 			}),
 			"local.model.remove": bind(func(ctx context.Context, p struct {
 				ID string `json:"id"`
@@ -173,7 +173,8 @@ type localExt struct {
 	jobCancel context.CancelFunc
 	downloads map[string]*localDownload
 	devices   localllm.Devices
-	devFor    string // the server program the devices were read for
+	devFor    string     // the server program the devices were read for ("" until a build was asked)
+	devMu     sync.Mutex // one device probe at a time
 	starting  bool
 }
 
@@ -250,7 +251,14 @@ func (l *localExt) setSettings(ctx context.Context, e LocalSettingsEdit, by stri
 		s.Backend = *e.Backend
 	}
 	if e.CacheType != nil {
+		// the cache type must be one the build on this PC accepts (the page offers that build's types); before an install
+		// it is checked against the source chosen for it
 		src, _ := localllm.SourceByID(s.Source)
+		if in, ok := l.m.Runtime.Installed(); ok {
+			if is, ok := localllm.SourceByID(in.Source); ok {
+				src = is
+			}
+		}
 		if !src.CacheType(*e.CacheType) {
 			return LocalView{}, fmt.Errorf("%q is not a KV cache type of %s (one of %s)", *e.CacheType, src.Name, strings.Join(src.CacheTypes, ", "))
 		}
@@ -319,10 +327,14 @@ func (l *localExt) view(ctx context.Context) LocalView {
 	return v
 }
 
-// devicesOf asks the installed build for its devices once per build (the answer is kept until the build changes).
+// devicesOf asks the installed build for its devices once per build: the answer, a failure too (a build whose
+// --list-devices does not work would otherwise be run again on every read of the page), is kept until the build changes.
+// Readers that arrive while a probe runs wait for it rather than starting their own.
 func (l *localExt) devicesOf(ctx context.Context, in localllm.Installed) localllm.Devices {
+	l.devMu.Lock()
+	defer l.devMu.Unlock()
 	l.mu.Lock()
-	if l.devFor == in.Server && l.devices.Probed {
+	if l.devFor == in.Server {
 		d := l.devices
 		l.mu.Unlock()
 		return d
@@ -374,11 +386,19 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 		return LocalView{}, errors.New("an install is already running")
 	}
 	jctx, cancel := context.WithCancel(context.Background())
-	l.job = &LocalJob{Kind: "install", Target: src.Name + " for " + localllm.Describe(s.Backend).Label, State: "running", Phase: "looking up the newest build", Started: time.Now().UTC()}
+	job := &LocalJob{Kind: "install", Target: src.Name + " for " + localllm.Describe(s.Backend).Label, State: "running", Phase: "looking up the newest build", Started: time.Now().UTC()}
+	l.job = job
 	l.jobCancel = cancel
 	l.mu.Unlock()
 	if err := l.save(ctx, s); err != nil {
+		// nothing will run: the job must not stay "running" and block every later install
 		cancel()
+		l.mu.Lock()
+		if l.job == job {
+			job.State, job.Error, job.Ended = "failed", "could not save the settings: "+err.Error(), time.Now().UTC()
+			l.jobCancel = nil
+		}
+		l.mu.Unlock()
 		return LocalView{}, err
 	}
 	l.changed("install", map[string]any{"state": "running"})
@@ -498,6 +518,7 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 	for i := range vs {
 		if vs[i].Name == variant {
 			v = &vs[i]
+			break
 		}
 	}
 	if v == nil {
@@ -521,13 +542,16 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 	return l.view(ctx), nil
 }
 
+// runDownload is the download's goroutine. Its row (l.downloads[id]) may be gone before it ends: removeModel takes the row
+// out when it cancels the download, so every look-up here may find nothing, and then there is nothing to report.
 func (l *localExt) runDownload(ctx context.Context, repo string, v localllm.Variant, id string) {
 	dir := l.m.Store.VariantDir(repo, v.Name)
 	last := time.Time{}
 	err := l.m.Hub.Download(ctx, repo, v, dir, func(p localllm.DownloadProgress) {
 		l.mu.Lock()
-		d := l.downloads[id]
-		d.job.File, d.job.Done, d.job.Total = p.File, int64(p.Done), int64(p.Total)
+		if d, ok := l.downloads[id]; ok {
+			d.job.File, d.job.Done, d.job.Total = p.File, int64(p.Done), int64(p.Total)
+		}
 		l.mu.Unlock()
 		if time.Since(last) > 700*time.Millisecond {
 			last = time.Now()
@@ -538,7 +562,11 @@ func (l *localExt) runDownload(ctx context.Context, repo string, v localllm.Vari
 		_, err = l.m.Store.Put(repo, v)
 	}
 	l.mu.Lock()
-	d := l.downloads[id]
+	d, ok := l.downloads[id]
+	if !ok {
+		l.mu.Unlock()
+		return
+	}
 	d.job.Ended = time.Now().UTC()
 	switch {
 	case err == nil:
@@ -554,7 +582,12 @@ func (l *localExt) runDownload(ctx context.Context, repo string, v localllm.Vari
 	l.changed("download", map[string]any{"id": id, "state": st})
 }
 
-func (l *localExt) cancelDownload(ctx context.Context, id string) (LocalView, error) {
+// cancelDownload stops a running download, or clears a finished one from the page. A person's call: an agent must not end
+// a download the person started.
+func (l *localExt) cancelDownload(ctx context.Context, id string, by string) (LocalView, error) {
+	if !isPerson(by) {
+		return LocalView{}, errors.New("only a person may cancel a model download")
+	}
 	l.mu.Lock()
 	d, ok := l.downloads[id]
 	if ok && d.job.State == "running" {
@@ -609,6 +642,9 @@ func (l *localExt) startServer(ctx context.Context, modelID string, by string) (
 }
 
 func (l *localExt) serve(ctx context.Context, modelID string) error {
+	// the load outlives the request that asked for it: a page reload or a closed window while a large model loads must not
+	// kill the server (installs and downloads are detached the same way), and the provider row is written after the load
+	ctx = context.WithoutCancel(ctx)
 	in, ok := l.m.Runtime.Installed()
 	if !ok {
 		return errors.New("no llama.cpp build is installed: install one first")

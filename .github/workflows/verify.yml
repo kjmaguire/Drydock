@@ -51,8 +51,23 @@ jobs:
           if (-not $dir) { "no results folder"; exit 0 }
           $report = Get-Content (Join-Path $dir.FullName 'drydock-verify-report.json') -Raw | ConvertFrom-Json
           foreach ($s in $report.steps | Where-Object { $_.status -eq 'fail' }) {
-            Write-Host "::group::$($s.id): $($s.reason)"
-            Get-Content (Join-Path $dir.FullName $s.log) -Tail 400
+            $log = @(Get-Content (Join-Path $dir.FullName $s.log))
+            # each failed test's own lines (=== RUN to its --- FAIL), which the tail below misses when it ran early
+            $names = [regex]::Matches($s.reason, 'Test[A-Za-z0-9_]+') | ForEach-Object { $_.Value } | Select-Object -Unique
+            foreach ($n in $names) {
+              $start = -1
+              for ($i = 0; $i -lt $log.Count; $i++) {
+                if ($log[$i] -match "^=== RUN\s+$([regex]::Escape($n))\s*$") { $start = $i }
+                elseif ($start -ge 0 -and $log[$i] -match "^--- (FAIL|PASS|SKIP): $([regex]::Escape($n)) ") {
+                  Write-Host "::group::$($s.id): $n"
+                  $log[[Math]::Max($start, $i - 400)..$i] | ForEach-Object { Write-Host $_ }
+                  Write-Host "::endgroup::"
+                  $start = -1
+                }
+              }
+            }
+            Write-Host "::group::$($s.id): $($s.reason) (last 400 lines)"
+            $log | Select-Object -Last 400
             Write-Host "::endgroup::"
           }
       - name: Keep the results

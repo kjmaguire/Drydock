@@ -211,7 +211,10 @@ export function LocalModels(handle: Handle) {
   };
   const suggest = async () => {
     const r = await act.run("suggested", () => s.client.localModelsSuggested());
-    if (r) suggested = r;
+    if (r) {
+      suggested = r;
+      results = undefined; // the suggestions replace an earlier search, as a search replaces them
+    }
     redraw();
   };
 
@@ -730,8 +733,7 @@ export function LocalModels(handle: Handle) {
                                     variant="primary"
                                     data-testid="local-download"
                                     disabled={
-                                      busy ||
-                                      fit?.text === "Too big for this PC"
+                                      busy || va.fit?.target === "none"
                                     }
                                     mix={on(
                                       "click",

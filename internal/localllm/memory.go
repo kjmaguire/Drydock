@@ -21,8 +21,9 @@ type Fit struct {
 const RAMBudgetFraction = 0.75
 
 // FitOf applies the rule. A model that fits in the free memory of one GPU runs there; one that fits three quarters of the
-// free RAM runs on the CPU (partly offloaded when there is a GPU); the rest does not fit. With no device probed and no RAM
-// reading the answer is unknown, and unknown counts as fitting (the person decides).
+// free RAM runs on the CPU (partly offloaded when there is a GPU); the rest does not fit. Without a RAM reading a model
+// that does not fit the GPU is unknown rather than too big (it may run partly offloaded), and unknown counts as fitting
+// (the person decides).
 func FitOf(size uint64, d Devices, m Memory) Fit {
 	var vram uint64
 	for _, dev := range d.Devices {
@@ -35,7 +36,7 @@ func FitOf(size uint64, d Devices, m Memory) Fit {
 	switch {
 	case vram > 0 && size <= vram:
 		f.Target, f.Fits = "gpu", true
-	case !m.Known && vram == 0:
+	case !m.Known:
 		f.Target, f.Fits = "unknown", true
 	case m.Known && size <= ram:
 		f.Target, f.Fits = "cpu", true

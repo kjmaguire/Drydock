@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
@@ -38,9 +39,10 @@ type rawRelease struct {
 
 // pickRelease finds the newest release in the listing that carries the backend's archive (and its CUDA runtime where one is
 // needed) with a SHA-256 digest: an archive Drydock cannot check is never offered. Drafts are skipped; pre-releases count
-// only for a source whose builds are marked so.
+// only for a source whose builds are marked so. Where a release carries the archive for several toolkit versions, the
+// newest toolkit is taken, and its runtime archive must be the same version.
 func pickRelease(src Source, b Backend, list []rawRelease) (Release, error) {
-	want := src.assets("", b)
+	want := src.assets("<tag>", b)
 	if want == "" {
 		return Release{}, fmt.Errorf("%s has no Windows build for %s", src.Name, Describe(b).Label)
 	}
@@ -51,23 +53,35 @@ func pickRelease(src Source, b Backend, list []rawRelease) (Release, error) {
 		}
 		tried++
 		rel := Release{Source: src.ID, Tag: r.TagName, Backend: b, Notes: firstLine(r.Body)}
-		ok := false
+		pattern := src.assets(r.TagName, b)
+		checked := map[string]runners.Asset{} // every asset of the release Drydock could verify
+		var best *runners.Asset
+		var bestVersion []int
 		for _, a := range r.Assets {
 			sum, good := digest(a.Digest)
 			if !good || !strings.HasPrefix(a.URL, src.DownloadPrefix()) {
 				continue
 			}
 			asset := runners.Asset{Name: a.Name, URL: a.URL, SHA256: sum, Size: a.Size}
-			switch a.Name {
-			case src.assets(r.TagName, b):
-				rel.Archive, ok = asset, true
-			case src.cudart(r.TagName, b):
+			checked[a.Name] = asset
+			if ok, _ := path.Match(pattern, a.Name); !ok {
+				continue
+			}
+			if v := toolkitVersion(a.Name); best == nil || newerToolkit(v, bestVersion) {
 				c := asset
-				rel.Cudart = &c
+				best, bestVersion = &c, v
 			}
 		}
-		if !ok || (src.cudart(r.TagName, b) != "" && rel.Cudart == nil) {
+		if best == nil {
 			continue
+		}
+		rel.Archive = *best
+		if name := src.cudart(best.Name); name != "" {
+			c, ok := checked[name]
+			if !ok {
+				continue
+			}
+			rel.Cudart = &c
 		}
 		return rel, nil
 	}

@@ -236,8 +236,41 @@ func (h *Hub) Variants(ctx context.Context, repo string) ([]Variant, error) {
 		}
 		out = append(out, *v)
 	}
+	uniqueNames(out)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Size < out[j].Size })
 	return out, nil
+}
+
+// uniqueNames keeps every variant's name distinct, since the name is the model id's second half and the folder a download
+// goes to: two files of the same quantization in different folders (a repository keeping its split quants in folders of
+// their own) are named by their file stem, and when those agree too by their folder and stem ("Q8_0-Model-Q8_0").
+func uniqueNames(vs []Variant) {
+	count := func() map[string]int {
+		c := map[string]int{}
+		for _, v := range vs {
+			c[v.Name]++
+		}
+		return c
+	}
+	stem := func(v Variant) string {
+		base := path.Base(v.Files[0].Path)
+		if m := shard.FindStringSubmatch(base); m != nil {
+			return m[1]
+		}
+		return strings.TrimSuffix(base, ".gguf")
+	}
+	c := count()
+	for i := range vs {
+		if c[vs[i].Name] > 1 {
+			vs[i].Name = stem(vs[i])
+		}
+	}
+	c = count()
+	for i := range vs {
+		if dir := path.Dir(vs[i].Files[0].Path); c[vs[i].Name] > 1 && dir != "." {
+			vs[i].Name = strings.ReplaceAll(dir, "/", "-") + "-" + stem(vs[i])
+		}
+	}
 }
 
 // DownloadProgress is told how far a model download is.
@@ -307,7 +340,17 @@ func (h *Hub) downloadFile(ctx context.Context, u string, f File, dst string, pr
 	var have int64
 	if st, err := os.Stat(part); err == nil {
 		have = st.Size()
-		if uint64(have) > f.Size {
+		switch {
+		case uint64(have) > f.Size:
+			have = 0
+			_ = os.Remove(part)
+		case uint64(have) == f.Size:
+			// every byte arrived before Drydock last closed, the check or the rename did not: finish those here, since
+			// asking the Hub for the bytes from the end is answered 416 forever
+			if sum, err := fileSHA256(part); err == nil && sum == f.SHA256 {
+				progress(f.Size)
+				return os.Rename(part, dst)
+			}
 			have = 0
 			_ = os.Remove(part)
 		}

@@ -201,6 +201,20 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 		}
 	}()
 	s.set(func(st *ServerState) { st.PID = p.PID() })
+	// one client for the whole wait: a new transport per poll would leave an idle connection behind each
+	hc := s.HTTP
+	if hc == nil {
+		tr := &http.Transport{Proxy: nil}
+		defer tr.CloseIdleConnections()
+		hc = &http.Client{Timeout: 2 * time.Second, Transport: tr}
+	}
+	// a Stop (or a newer Start) during the wait moves the generation on and owns the state from then on
+	current := func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.gen == gen
+	}
+	errStopped := errors.New("the server was stopped before llama-server was ready")
 	wctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	tick := time.NewTicker(500 * time.Millisecond)
@@ -208,6 +222,9 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 	for {
 		select {
 		case ei := <-exited:
+			if !current() {
+				return errStopped
+			}
 			err := fmt.Errorf("llama-server ended with code %d: %s", ei.Code, s.tail())
 			s.set(func(st *ServerState) { st.State, st.Error = "failed", err.Error() })
 			return err
@@ -215,25 +232,35 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 			_ = p.Kill(true)
 			err := fmt.Errorf("llama-server was not ready after %s: %s", timeout, s.tail())
 			if ctx.Err() != nil {
-				err = errors.New("stopped before llama-server was ready")
+				err = errStopped
 			}
 			<-done
+			if !current() {
+				return errStopped
+			}
 			s.set(func(st *ServerState) { st.State, st.Error = "failed", err.Error() })
 			return err
 		case <-tick.C:
-			if s.healthy(wctx, base) {
-				s.set(func(st *ServerState) { st.State, st.Error = "running", "" })
+			if !current() {
+				return errStopped
+			}
+			if s.healthy(wctx, hc, base) {
+				var stopped bool
+				s.set(func(st *ServerState) {
+					if stopped = s.gen != gen; !stopped {
+						st.State, st.Error = "running", ""
+					}
+				})
+				if stopped {
+					return errStopped
+				}
 				return nil
 			}
 		}
 	}
 }
 
-func (s *Server) healthy(ctx context.Context, base string) bool {
-	hc := s.HTTP
-	if hc == nil {
-		hc = &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{Proxy: nil}}
-	}
+func (s *Server) healthy(ctx context.Context, hc *http.Client, base string) bool {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", nil)
 	if err != nil {
 		return false
