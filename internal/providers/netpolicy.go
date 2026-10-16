@@ -142,7 +142,9 @@ func NewHTTPClient(p Provider, resolve Resolver, timeout time.Duration) (*http.C
 			MinVersion: tls.VersionTLS12,
 			// The chain is not verified against system roots (a self-signed certificate on a LAN host has none); the leaf the
 			// server sends must be the one whose SHA-256 the person pinned, and VerifyPeerCertificate runs on every full
-			// handshake (this client keeps no session cache, so none is resumed without it).
+			// handshake (this client keeps no session cache, so none is resumed without it). This is the certificate pinning Go's
+			// documentation describes for InsecureSkipVerify with VerifyPeerCertificate, so the alert is suppressed in source:
+			// codeql[go/disabled-certificate-check]
 			InsecureSkipVerify: true, //nolint:gosec // pinned by SHA-256 in VerifyPeerCertificate
 			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 				if len(rawCerts) == 0 {
