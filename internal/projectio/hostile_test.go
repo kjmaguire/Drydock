@@ -244,12 +244,33 @@ func TestACompressionBombAndAnOversizedDatabaseAreRefusedBeforeAnythingIsUnpacke
 
 // An import holds the database's one writer for a bounded time (audit 2026-10-16, L20): an archive that takes longer to write
 // than the budget is refused and rolled back whole, with the raw run files it had restored, instead of freezing every other
-// write in the app.
+// write in the app. The write is made slow at its first row, so the budget runs out while the transaction is open however fast the
+// machine and however coarse its clock (a budget of one nanosecond was not always over by the time a fast import was done).
 func TestAnImportThatTakesTooLongToWriteIsRolledBackWhole(t *testing.T) {
-	src, _ := newSource(t)
+	src, srcData := newSource(t)
+	// a raw run file, which an import restores before it writes the rows and must take away again when the write is refused
+	runDir := filepath.Join(srcData, "runs", "run_aaaaaaaaaaaa")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "stream.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	archive := exportAlpha(t, src, true)
 	defer func(old time.Duration) { importWriteBudget = old }(importWriteBudget)
-	importWriteBudget = time.Nanosecond
+	importWriteBudget = 100 * time.Millisecond
+	first := Tables[0]
+	waited := false
+	Tables[0].Import = func(r Row, im *ImportEnv) {
+		if first.Import != nil {
+			first.Import(r, im)
+		}
+		if !waited {
+			waited = true
+			time.Sleep(3 * importWriteBudget) // the budget passes with the transaction open
+		}
+	}
+	defer func() { Tables[0] = first }()
 
 	db := newDB(t)
 	dataDir := filepath.Join(t.TempDir(), "newdata")
@@ -268,8 +289,15 @@ func TestAnImportThatTakesTooLongToWriteIsRolledBackWhole(t *testing.T) {
 	}
 	// with the real budget the same archive imports
 	importWriteBudget = 3 * time.Minute
+	Tables[0] = first
+	if !waited {
+		t.Fatal("the slow row was never reached: the test did not make the write slow")
+	}
 	if _, err := Import(context.Background(), Target{DB: db, DataDir: dataDir, Human: "human:newuser"},
 		ImportOptions{Archive: archive, RepoPath: "/repos/relinked", Branch: "trunk", Now: 1770000000000}); err != nil {
 		t.Fatalf("the same archive with the real budget: %v", err)
+	}
+	if ents, _ := os.ReadDir(filepath.Join(dataDir, "runs")); len(ents) != 1 {
+		t.Errorf("the archive's raw run file was not restored by the import that was allowed (so the refusal had none to take away): %v", ents)
 	}
 }
