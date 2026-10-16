@@ -9,6 +9,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, Octagon, RefreshCw, ShieldOff } from 'lucide';
 import type { PendingRequest } from '../../api/types.ts';
+import { visible } from '../../lib/visible.ts';
 import { Button } from '../../ui/button.tsx';
 import { formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -98,21 +99,21 @@ export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boole
         {missing.length > 0 ? (
           <ul class="checks" aria-label="Required checks that did not report">
             {missing.map((n) => (
-              <li key={n}>{n}</li>
+              <li key={n}>{visible(n)}</li>
             ))}
           </ul>
         ) : null}
         {running.length > 0 ? (
           <ul class="checks" aria-label="Checks still running">
             {running.map((n) => (
-              <li key={n}>{n}</li>
+              <li key={n}>{visible(n)}</li>
             ))}
           </ul>
         ) : null}
         {notes.length > 0 ? (
           <ul class="notes" data-testid="ci-gate-notes">
             {notes.map((n) => (
-              <li key={n}>{n}</li>
+              <li key={n}>{visible(n)}</li>
             ))}
           </ul>
         ) : null}
@@ -140,7 +141,7 @@ export function MergeGatePanel(handle: Handle<{ payload: MergeGatePayload; busy:
     const { payload: p, busy, readOnly, onRespond } = handle.props;
     return (
       <div mix={gateCss} data-testid="merge-gate" data-state={p.state}>
-        <p class="what">{MERGE_HINT[p.state] ?? p.reason}</p>
+        <p class="what">{MERGE_HINT[p.state] ?? visible(p.reason)}</p>
         <GitHubLink url={p.url} pr={p.pr} />
         <p>Drydock never asks GitHub to bypass branch protection. Fix the cause on GitHub, then check again.</p>
         <div mix={formActions}>

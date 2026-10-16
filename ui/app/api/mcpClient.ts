@@ -146,8 +146,12 @@ export interface McpApproval {
   tool: string;
   agentId: string;
   taskId?: string;
-  /** The exact arguments of the call, as JSON text. Outside text: shown inert. */
+  /** The arguments of the call, as JSON text with the short fields (where it goes) first. Outside text: shown inert. */
   args: string;
+  /** The paths and addresses the call names, each whole. */
+  targets?: string[];
+  /** A long value in `args` is cut; approving still covers all of it. */
+  shortened?: boolean;
   created: number;
   expiresAt: number;
   projectId: string;

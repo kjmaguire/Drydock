@@ -272,4 +272,29 @@ describe('Chat properties (decision P60)', () => {
     await waitFor(() => expect(decided).toEqual([['apr_1', true]]), r);
     await waitFor(() => expect(r.container.querySelectorAll('[data-testid="chat-mcp-approval"]')).toHaveLength(0), r);
   });
+
+  // audit 2026-10-16, H8
+  it('shows where the call goes, that part of it is cut, and writes out characters that are not drawn', async () => {
+    const pending: McpApproval[] = [
+      {
+        id: 'apr_1',
+        server: 'tst',
+        tool: 'post_note',
+        agentId: 'chat_a',
+        args: '{"path":"/tmp/a\u202Eb","text":"x...[7000 bytes not shown]...y"}',
+        targets: ['/tmp/a\u202Eb'],
+        shortened: true,
+        created: 1,
+        expiresAt: Date.now() + 60_000,
+        projectId: '',
+      },
+    ];
+    const c = chat({ projectId: '', mcpServers: [{ serverId: 'tst', tools: ['post_note'] }] });
+    const { r } = setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [], hasMore: false }), mcpApprovalList: async () => pending }, { id: 'chat_a' });
+    const ask = await waitFor(() => must$(r, '[data-testid="chat-mcp-approval"]'), r);
+    expect(must(ask.querySelector('[data-testid="chat-mcp-approval-targets"]'), 'targets').textContent).toBe('/tmp/a\\u{202e}b');
+    expect(must(ask.querySelector('[data-testid="chat-mcp-approval-shortened"]'), 'shortened').textContent).toContain('Part of this input is not shown');
+    expect(ask.querySelector('[data-testid="chat-mcp-approval-hidden"]')).not.toBeNull();
+    expect(ask.textContent).not.toContain('\u202E');
+  });
 });

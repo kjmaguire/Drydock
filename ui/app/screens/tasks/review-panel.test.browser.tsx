@@ -35,6 +35,22 @@ describe('Review panel', () => {
     expect(r.$('[role="status"]')!.textContent).toContain('Answer sent');
   });
 
+  // audit 2026-10-16, H8: the review card lists file names and a branch an agent chose
+  it('writes out characters that are not drawn in the branch, the file names and the title', () => {
+    const d = detail({
+      pending: [
+        { id: 'req-43', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge: T\u202E', payload: { files: ['src/app\u202Egpj.exe', 'ok.go'], branch: 'drydock/t\u200B1', base: 'ma\u2066in' } } },
+      ],
+    });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc());
+    const card = r.$('[data-testid="pending-request"]')!;
+    expect(card.textContent).toContain('src/app\\u{202e}gpj.exe');
+    expect(card.textContent).toContain('drydock/t\\u{200b}1');
+    expect(card.textContent).toContain('ma\\u{2066}in');
+    expect(card.querySelector('h3')!.textContent).toBe('Review and merge: T\\u{202e}');
+    expect(card.textContent).not.toMatch(/[\u202E\u200B\u2066]/);
+  });
+
   it('Request changes needs feedback and sends decision rejected with it', async () => {
     const runRespond = recorder(() => undefined);
     const r = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc({ runRespond }));
@@ -270,7 +286,7 @@ describe('Permission request', () => {
     }
   });
 
-  it('shows a JSON input indented and as text, and a shortened one as stored', () => {
+  it('shows a JSON input indented and as text', () => {
     const r = mount(
       <ReviewPanel detail={permission({ ...bash, tool: 'WebFetch', input: '{"prompt":"<b>x</b>","url":"https://example.com"}', kind: 'agent_tool' })} onChanged={() => undefined} />,
       svc(),
@@ -279,8 +295,45 @@ describe('Permission request', () => {
     expect(pre.textContent).toBe('{\n  "prompt": "<b>x</b>",\n  "url": "https://example.com"\n}');
     expect(pre.querySelector('b')).toBe(null);
     cleanup();
-    const cut = mount(<ReviewPanel detail={permission({ ...bash, tool: 'Write', input: '{"content":"abc...[900 more bytes]' })} onChanged={() => undefined} />, svc());
-    expect(cut.$('[data-testid="permission-prompt-input"]')!.textContent).toBe('{"content":"abc...[900 more bytes]');
+  });
+
+  // audit 2026-10-16, H8: the destination was sorted behind the body and cut off with it
+  it('shows where a call goes before its body, says when part of the input is cut, and writes out characters that are not drawn', () => {
+    const write = {
+      ...bash,
+      tool: 'Write',
+      kind: 'fs_outside_worktree',
+      targets: ['C:\\Users\\kyle\\.ssh\\authorized_keys'],
+      shortened: true,
+      input: '{"file_path":"C:\\\\Users\\\\kyle\\\\.ssh\\\\authorized_keys","content":"ssh-ed25519 AAAA...[48213 bytes not shown]...kyle@pc"}',
+    };
+    const r = mount(<ReviewPanel detail={permission(write)} onChanged={() => undefined} />, svc());
+    expect(r.$('[data-testid="permission-prompt-targets"]')!.textContent).toBe('C:\\Users\\kyle\\.ssh\\authorized_keys');
+    const note = r.$('[data-testid="permission-prompt-shortened"]')!;
+    expect(note.textContent).toContain('Part of this input is not shown');
+    expect(note.textContent).toContain('including the part you cannot see');
+    const text = r.$('[data-testid="permission-prompt-input"]')!.textContent!;
+    expect(text.indexOf('file_path')).toBeLessThan(text.indexOf('content'));
+    expect(text).toContain('[48213 bytes not shown]');
+    expect(r.$('[data-testid="permission-prompt-hidden"]')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Allow once', 'Refuse']); // the choice stays with the person
+    cleanup();
+
+    // a right-to-left override and a zero-width space in the path and in the body are written out, and said so
+    const tricky = mount(
+      <ReviewPanel
+        detail={permission({ ...bash, tool: 'Edit', targets: ['src/app\u202Egpj.exe'], input: '{"file_path":"src/app\u202Egpj.exe","new_string":"a\u200Bb"}' })}
+        onChanged={() => undefined}
+      />,
+      svc(),
+    );
+    expect(tricky.$('[data-testid="permission-prompt-targets"]')!.textContent).toBe('src/app\\u{202e}gpj.exe');
+    const shown = tricky.$('[data-testid="permission-prompt-input"]')!.textContent!;
+    expect(shown).toContain('src/app\\u{202e}gpj.exe');
+    expect(shown).toContain('a\\u{200b}b');
+    expect(shown).not.toContain('\u202E');
+    expect(tricky.$('[data-testid="permission-prompt-hidden"]')!.textContent).toContain('not drawn');
+    expect(tricky.$('[data-testid="permission-prompt-shortened"]')).toBeNull();
   });
 
   it('read-only allows refusing, not allowing', async () => {

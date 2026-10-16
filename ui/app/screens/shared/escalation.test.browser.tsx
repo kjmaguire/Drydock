@@ -38,6 +38,24 @@ const detailWith = (payload: unknown, nodeId = 'limit'): TaskDetail =>
     run: { id: 'run-3', workflow: 'iterate-until-verified', status: 'WAITING_HUMAN', topology: 'x', created: 0, updated: 0, version: 1 },
   });
 
+// audit 2026-10-16, H8: agent and tool text on a decision card is shown with the characters that are not drawn written out
+describe('text from an agent on a decision card', () => {
+  it('writes out right-to-left overrides and zero-width characters in the evidence, the handoff and the lead message', () => {
+    const l = renderPlain(
+      <LimitPanel payload={limit({ evidence: 'rm -rf build\u202E/ ', origin: 'rev\u200Biew', lead: { agent: 'a', name: 'Lead', message: 'ok\u2066 go', target: 'src\u202Efdp.exe' } })} busy={false} readOnly={false} onRespond={async () => undefined} />,
+    );
+    expect(l.container.querySelector('[data-testid="limit-evidence"]')!.textContent).toBe('rm -rf build\\u{202e}/ ');
+    expect(l.container.textContent).toContain('rev\\u{200b}iew');
+    expect(l.container.querySelector('[data-testid="lead-recommendation"]')!.textContent).toContain('ok\\u{2066} go');
+    expect(l.container.querySelector('[data-testid="lead-recommendation"]')!.textContent).toContain('src\\u{202e}fdp.exe');
+    expect(l.container.textContent).not.toMatch(/[\u202E\u200B\u2066]/);
+    cleanup();
+    const w = renderPlain(<WatchdogPanel payload={pause({ evidence: 'go\u202Etest', handoff: 'left\u200Doff' })} busy={false} readOnly={false} onRespond={async () => undefined} />);
+    expect(w.container.querySelector('[data-testid="watchdog-evidence"]')!.textContent).toBe('go\\u{202e}test');
+    expect(w.container.textContent).toContain('left\\u{200d}off');
+  });
+});
+
 describe('the limit question', () => {
   it('is recognized by its phase; a watchdog pause by its signal and stage', () => {
     const req = (payload: unknown) => ({ id: 'r', nodeId: 'n', step: 1, spec: { kind: 'question', title: 't', payload } });

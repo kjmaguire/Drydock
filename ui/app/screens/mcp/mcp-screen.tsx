@@ -9,6 +9,7 @@ import { BadgeCheck, FolderPlus, Globe, Plug, Power, ShieldAlert } from 'lucide'
 import type { McpApproval, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
@@ -18,6 +19,7 @@ import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, listCard, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ShownNotes, Targets } from '../shared/approval-text.tsx';
 import { whereOf } from './server-input.ts';
 
 /** The brand a server shows, from the catalog entry it was connected from or its own id; '' when it has none. */
@@ -135,7 +137,7 @@ export function Approvals(handle: Handle<{ projectId: string; agents: readonly A
                 <Icon icon={ShieldAlert} size={16} />
               </span>
               <h3>
-                <code>{a.server}</code> / <code>{a.tool}</code>
+                <code>{visible(a.server)}</code> / <code>{visible(a.tool)}</code>
               </h3>
               <span mix={faint}>
                 {name(a.agentId)}, asked {formatDateTime(a.created)}
@@ -144,8 +146,10 @@ export function Approvals(handle: Handle<{ projectId: string; agents: readonly A
             <p mix={[muted]} style={{ margin: '0' }}>
               Arguments the agent sent (text from an agent, shown as is):
             </p>
+            <Targets targets={a.targets} testId="mcp-approval-targets" />
+            <ShownNotes shortened={a.shortened} texts={[a.args, a.server, a.tool, ...(a.targets ?? [])]} testId="mcp-approval" />
             <pre mix={argsCss} tabIndex={0}>
-              {a.args}
+              {visible(a.args)}
             </pre>
             <div mix={actionsRow}>
               <Button

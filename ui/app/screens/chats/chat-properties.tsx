@@ -8,6 +8,7 @@ import type { Chat, ChatMcpGrant, ChatSkillRef, ChatUpdate } from '../../api/cha
 import type { LibrarySkill } from '../../api/extTypes.ts';
 import type { McpApproval, McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, Connection } from '../../api/types.ts';
+import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, type AnyHandle } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -17,6 +18,7 @@ import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { chatChoices, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
+import { ShownNotes, Targets } from '../shared/approval-text.tsx';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 
 const groupCss = css({
@@ -301,8 +303,10 @@ export function ChatApprovals(handle: Handle<{ chat: Chat }>) {
     return (
       <div style={{ display: 'grid', gap: '6px', padding: '8px 20px 0' }} data-testid="chat-mcp-approvals">
         {items.map((a) => (
-          <Notice key={a.id} tone="warn" role="alert" testId="chat-mcp-approval" title={`The agent wants to call ${a.server}: ${a.tool}`}>
-            <code style={{ display: 'block', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{a.args}</code>
+          <Notice key={a.id} tone="warn" role="alert" testId="chat-mcp-approval" title={`The agent wants to call ${visible(a.server)}: ${visible(a.tool)}`}>
+            <Targets targets={a.targets} testId="chat-mcp-approval-targets" />
+            <ShownNotes shortened={a.shortened} texts={[a.args, a.server, a.tool, ...(a.targets ?? [])]} testId="chat-mcp-approval" />
+            <code style={{ display: 'block', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{visible(a.args)}</code>
             <span style={{ display: 'inline-flex', gap: '6px', marginTop: '6px' }}>
               <Button size="sm" variant="primary" disabled={!!act.busy} mix={[on('click', () => void decide(a.id, true))]}>
                 Approve this call

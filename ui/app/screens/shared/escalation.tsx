@@ -9,6 +9,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { Crown, Octagon, Play } from 'lucide';
 import type { PendingRequest } from '../../api/types.ts';
+import { visible } from '../../lib/visible.ts';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Field, formActions } from '../../ui/form.tsx';
@@ -110,14 +111,14 @@ export function LeadRecommendation(handle: Handle<{ lead: LeadView | string }>) 
       <div mix={leadCss} role="note" aria-label="The team lead's recommendation" data-testid="lead-recommendation">
         <div class="head">
           <Icon icon={Crown} size={14} />
-          <strong>{v.name || 'The team lead'}</strong>
+          <strong>{visible(v.name) || 'The team lead'}</strong>
           {v.action ? <Badge tone="accent">{`recommends: ${v.action}`}</Badge> : <span>says</span>}
-          {v.target ? <span>for {v.target}</span> : null}
+          {v.target ? <span>for {visible(v.target)}</span> : null}
           {v.exhausted ? <Badge tone="warn" title="The lead already stepped in as often as it may on this task">out of interventions</Badge> : null}
           {v.invalid ? <Badge tone="err" title="The lead's answer could not be applied as given">not applicable</Badge> : null}
         </div>
-        {v.message ? <p class="msg">{v.message}</p> : null}
-        {v.reason ? <p class="why">Why: {v.reason}</p> : null}
+        {v.message ? <p class="msg">{visible(v.message)}</p> : null}
+        {v.reason ? <p class="why">Why: {visible(v.reason)}</p> : null}
       </div>
     );
   };
@@ -140,11 +141,11 @@ export function LimitPanel(handle: Handle<{ payload: LimitPayload; busy: boolean
             </span>
             {p.origin ? (
               <span>
-                at <code>{p.origin}</code>
+                at <code>{visible(p.origin)}</code>
               </span>
             ) : null}
           </div>
-          {p.evidence ? <pre data-testid="limit-evidence">{p.evidence}</pre> : null}
+          {p.evidence ? <pre data-testid="limit-evidence">{visible(p.evidence)}</pre> : null}
         </div>
         {p.lead ? <LeadRecommendation lead={p.lead} /> : null}
         <Field label="Guidance for the team (optional)" hint="Goes to the agent's next turn with a fresh loop budget.">
@@ -178,11 +179,11 @@ export function WatchdogPanel(handle: Handle<{ payload: WatchdogPausePayload; bu
             </span>
             <span>stage {p.stage}</span>
           </div>
-          {p.evidence ? <pre data-testid="watchdog-evidence">{p.evidence}</pre> : null}
+          {p.evidence ? <pre data-testid="watchdog-evidence">{visible(p.evidence)}</pre> : null}
           {p.handoff ? (
             <details>
               <summary>Where the agent left off</summary>
-              <pre>{p.handoff}</pre>
+              <pre>{visible(p.handoff)}</pre>
             </details>
           ) : null}
         </div>

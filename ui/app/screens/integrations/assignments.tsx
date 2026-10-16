@@ -8,6 +8,7 @@ import { css, on, type Handle } from 'remix/component';
 import { BadgeCheck, Check, ExternalLink, FileText, FolderPlus, ListChecks, Pencil, Plus, RefreshCw, Send, Trash2, Unplug, Workflow } from 'lucide';
 import type { ExternalItem, ExternalItemDetail, IntegrationAssignment, IntegrationChoice, IntegrationKindInfo, IntegrationRule, IntegrationView, NotionPageText, Outbox } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -19,6 +20,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ShownNotes } from '../shared/approval-text.tsx';
 import { kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, syncText, syncTone } from './integrations.ts';
 
 /** Opens a task (the page passes navigate; tests record the address). */
@@ -273,14 +275,15 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projectId: string }>) 
           <div key={o.id} mix={rowCard} data-testid="outbox" data-status={o.status} data-outbox={o.id}>
             <div mix={head}>
               <Badge tone={outboxTone(o.status)}>{o.status}</Badge>
-              <strong>{o.op}</strong> on <code>{o.target}</code>
+              <strong>{visible(o.op)}</strong> on <code>{visible(o.target)}</code>
               <span mix={faint}>
                 proposed by {o.createdBy}; approval <code data-testid="approval-id">{o.approvalId}</code>; hash {o.payloadHash.slice(0, 10)}
               </span>
             </div>
             <p mix={faint}>Exactly what would be sent:</p>
+            <ShownNotes texts={[o.preview, o.target, o.op]} testId="outbox" />
             <pre mix={preCss} tabIndex={0}>
-              {o.preview}
+              {visible(o.preview)}
             </pre>
             {o.error ? <p mix={errLine}>{o.error}</p> : null}
             {o.receipt ? <p mix={faint}>Receipt: {o.receipt}</p> : null}

@@ -8,9 +8,11 @@ import { css, on, type Handle } from 'remix/component';
 import { Check, X } from 'lucide';
 import type { PendingRequest } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { visible } from '../../lib/visible.ts';
 import { Button } from '../../ui/button.tsx';
 import { formActions } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ShownNotes, Targets } from './approval-text.tsx';
 
 export const PERMISSION_GATE = 'permission_prompt';
 
@@ -19,8 +21,12 @@ export interface PermissionPayload {
   gate: 'permission_prompt';
   /** The CLI's tool name: Bash, Edit, WebFetch, mcp__server__tool. */
   tool: string;
-  /** The command of a shell tool, else the JSON input; secrets redacted, a long input shortened. */
+  /** The command of a shell tool, else the JSON input with its short fields (where it goes) first; secrets redacted. */
   input: string;
+  /** The paths and addresses the call names, each whole and in the order the call gave them. */
+  targets: string[];
+  /** A long value in the input is cut in `input`: Allow once still covers all of it, including what is not shown. */
+  shortened: boolean;
   /** The approval kind the analyzer named (shell_destructive, fs_outside_worktree, agent_tool, ...). */
   kind: string;
   reason: string;
@@ -37,6 +43,8 @@ export function permissionPayload(p: PendingRequest): PermissionPayload | undefi
     gate: PERMISSION_GATE,
     tool: str(v.tool) || 'unknown tool',
     input: str(v.input),
+    targets: Array.isArray(v.targets) ? v.targets.filter((x): x is string => typeof x === 'string' && x !== '') : [],
+    shortened: v.shortened === true,
     kind: str(v.kind),
     reason: str(v.reason),
     agentId: str(v.agentId) || undefined,
@@ -97,8 +105,10 @@ export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayloa
           The worker asks to use <code>{p.tool}</code>, which its rules do not allow. Its turn waits for your answer. Allowing covers exactly this
           call, once.
         </p>
+        <Targets targets={p.targets} testId="permission-prompt-targets" />
+        <ShownNotes shortened={p.shortened} texts={[p.input, ...p.targets]} testId="permission-prompt" />
         <pre aria-label={`${p.tool} input`} data-testid="permission-prompt-input">
-          {displayInput(p)}
+          {visible(displayInput(p))}
         </pre>
         <dl>
           {p.kind ? (

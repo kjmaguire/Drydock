@@ -10,6 +10,7 @@ import { css, on, type Handle } from 'remix/component';
 import { FileDiff, GitBranch, Hand } from 'lucide';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
 import type { PendingRequest, TaskDetail } from '../../api/types.ts';
+import { visible } from '../../lib/visible.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -126,7 +127,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     const busy = sending || ro.readOnly;
     return (
       <div mix={cardCss} data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
-        <h3>{p.spec.title}</h3>
+        <h3>{visible(p.spec.title)}</h3>
         <div class="meta">
           <span>
             Request kind: <code>{p.spec.kind}</code>
@@ -134,11 +135,11 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
           {info.branch ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <Icon icon={GitBranch} size={13} />
-              Branch <code>{info.branch}</code>
+              Branch <code>{visible(info.branch)}</code>
               {info.base ? (
                 <>
                   {' '}
-                  into <code>{info.base}</code>
+                  into <code>{visible(info.base)}</code>
                 </>
               ) : null}
             </span>
@@ -155,7 +156,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
             <ul>
               {info.files.map((f) => (
                 <li key={f}>
-                  <code>{f}</code>
+                  <code>{visible(f)}</code>
                 </li>
               ))}
             </ul>

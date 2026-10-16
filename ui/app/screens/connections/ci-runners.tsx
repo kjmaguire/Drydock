@@ -317,7 +317,7 @@ export function CiRunners(handle: Handle) {
             {kind === 'windows' ? (
               <Checkbox
                 label="Jobs on this runner run on this PC as me, with my files and my network. I accept this for this repository."
-                description="Windows has no container for each job like Linux has. Use it for repositories whose workflows you trust."
+                description="Windows has no container for each job like Linux has. Use it for repositories whose workflows you trust. A workflow an agent adds to a task branch runs here too once the branch is pushed; Drydock asks you before it pushes a branch that changes workflows, and shows which."
                 checked={accept}
                 disabled={busy}
                 onChange={(c) => {
