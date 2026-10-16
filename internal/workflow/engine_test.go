@@ -3,6 +3,7 @@ package workflow_test
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1117,5 +1118,199 @@ func TestReadRefReadsOnlyExternalizedOutputs(t *testing.T) {
 	}
 	if v, err := wf.ReadRef(val("plain")); err != nil || string(v) != `"plain"` {
 		t.Fatalf("a plain value: %s %v", v, err)
+	}
+}
+
+// A step that is answered with something none of its edges takes does not end the run as if it had finished (audit 2026-10-16,
+// L14): the answer is refused, the request stays open, and the right answer still works. A rejection may end a run that has no
+// edge for it, and a step with no edges at all is the end of the workflow whatever it was answered with.
+func TestAnAnswerNoEdgeTakesIsRefusedAndTheRequestStaysOpen(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	g := wf.NewGraph("noroute").
+		Add(wf.AgentTask("A", eff(dir, "A", "")), wf.Request("R", wf.RequestSpec{Kind: "review", Title: "spec"}), wf.AgentTask("ok", eff(dir, "ok", "")), wf.AgentTask("redo", eff(dir, "redo", ""))).
+		Edge("A", "R").EdgeWhen("R", "ok", "approved").EdgeWhen("R", "redo", "rejected").Start("A")
+	e.eng.Register(g)
+	run, _ := e.eng.Start(context.Background(), "noroute", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run, wf.StatusWaitingHuman)
+	pend, _ := e.eng.Pending(context.Background(), run)
+	time.Sleep(50 * time.Millisecond)
+
+	err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: "answered"})
+	if !errors.Is(err, wf.ErrNoRoute) || !strings.Contains(err.Error(), "approved") || !strings.Contains(err.Error(), "rejected") {
+		t.Fatalf("an answer no edge takes: %v", err)
+	}
+	info, _ := e.eng.Status(context.Background(), run)
+	if info.Status != wf.StatusWaitingHuman {
+		t.Fatalf("the run went on: %s", info.Status)
+	}
+	if open, _ := e.eng.Approvals(context.Background(), "REQUESTED"); len(open) != 1 {
+		t.Fatalf("the request was closed: %v", open)
+	}
+	if err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: "approved"}); err != nil {
+		t.Fatalf("the right answer after the wrong one: %v", err)
+	}
+	waitStatus(t, e.eng, run, wf.StatusCompleted)
+	if got := effects(dir); got["ok"] != 1 || got["redo"] != 0 {
+		t.Fatalf("effects %v", got)
+	}
+
+	// only an approval has an edge: a rejection ends the run (a plan turned down has nothing to go on to)
+	g2 := wf.NewGraph("rejend").
+		Add(wf.AgentTask("A", eff(dir, "A2", "")), wf.Request("R", wf.RequestSpec{Kind: "review", Title: "plan"}), wf.AgentTask("ok", eff(dir, "ok2", ""))).
+		Edge("A", "R").EdgeWhen("R", "ok", "approved").Start("A")
+	e.eng.Register(g2)
+	run2, _ := e.eng.Start(context.Background(), "rejend", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run2, wf.StatusWaitingHuman)
+	pend2, _ := e.eng.Pending(context.Background(), run2)
+	time.Sleep(50 * time.Millisecond)
+	if err := e.eng.Resume(context.Background(), run2, wf.Response{RequestID: pend2[0].ID, Decision: "rejected"}); err != nil {
+		t.Fatalf("a rejection with no edge of its own: %v", err)
+	}
+	waitStatus(t, e.eng, run2, wf.StatusCompleted)
+	if got := effects(dir); got["ok2"] != 0 {
+		t.Fatalf("a rejection went on: %v", got)
+	}
+
+	// a request that ends the workflow has no edges: any answer ends it
+	g3 := wf.NewGraph("sinkreq").
+		Add(wf.AgentTask("A", eff(dir, "A3", "")), wf.Request("R", wf.RequestSpec{Kind: "question", Title: "last word"})).
+		Edge("A", "R").Start("A")
+	e.eng.Register(g3)
+	run3, _ := e.eng.Start(context.Background(), "sinkreq", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run3, wf.StatusWaitingHuman)
+	pend3, _ := e.eng.Pending(context.Background(), run3)
+	time.Sleep(50 * time.Millisecond)
+	if err := e.eng.Resume(context.Background(), run3, wf.Response{RequestID: pend3[0].ID, Decision: "answered"}); err != nil {
+		t.Fatalf("an answer at the end of the workflow: %v", err)
+	}
+	waitStatus(t, e.eng, run3, wf.StatusCompleted)
+}
+
+// A run cancelled while an answer is being recorded stays cancelled, and the answer is not recorded for a run that will never
+// read it (L14). The cancellation is made by a trigger that fires in the answer's own transaction, between the early look at
+// the run's status and the write that would have set it RUNNING.
+func TestAnAnswerDoesNotReviveARunCancelledWhileItWasRecorded(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	g := wf.NewGraph("revive").
+		Add(wf.AgentTask("A", eff(dir, "A", "")), wf.Request("R", wf.RequestSpec{Kind: "review", Title: "spec"}), wf.AgentTask("ok", eff(dir, "ok", ""))).
+		Edge("A", "R").EdgeWhen("R", "ok", "approved").Start("A")
+	e.eng.Register(g)
+	run, _ := e.eng.Start(context.Background(), "revive", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run, wf.StatusWaitingHuman)
+	pend, _ := e.eng.Pending(context.Background(), run)
+	time.Sleep(50 * time.Millisecond)
+	if err := e.db.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`CREATE TRIGGER cancel_on_answer AFTER UPDATE ON approvals BEGIN UPDATE workflow_runs SET status='CANCELLED' WHERE id=NEW.run_id; END`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := e.eng.Resume(context.Background(), run, wf.Response{RequestID: pend[0].ID, Decision: "approved"})
+	if !errors.Is(err, wf.ErrRunTerminal) {
+		t.Fatalf("an answer for a run that was cancelled meanwhile: %v", err)
+	}
+	if open, _ := e.eng.Approvals(context.Background(), "REQUESTED"); len(open) != 1 {
+		t.Fatalf("the answer was recorded for a run that cannot read it: %v", open)
+	}
+	if got := effects(dir); got["ok"] != 0 {
+		t.Fatalf("the step after the answer ran: %v", got)
+	}
+}
+
+// A run that was suspended and is cancelled before it is resumed is not brought back (L14).
+func TestASuspendedRunThatWasCancelledIsNotResumed(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	started, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	g := wf.NewGraph("susp").Add(
+		wf.Check("A", func(ctx context.Context, in wf.NodeInput) (wf.NodeOutput, error) {
+			once.Do(func() { close(started) })
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return wf.NodeOutput{}, ctx.Err()
+			}
+			effect(dir, "A")
+			return wf.NodeOutput{Value: val("A")}, nil
+		}),
+		wf.Check("B", eff(dir, "B", ""))).Edge("A", "B").Start("A")
+	e.eng.Register(g)
+	run, err := e.eng.Start(context.Background(), "susp", nil, wf.StartOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if parked, err := e.eng.Suspend(context.Background(), run, "the licence expired"); err != nil || !parked {
+		t.Fatalf("suspend: %v %v", parked, err)
+	}
+	// the run is cancelled after it was read for resuming and before it is brought back: the lease is taken in between, and a
+	// trigger on that write cancels the run
+	if err := e.db.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		for _, ddl := range []string{
+			`CREATE TRIGGER cancel_on_lease AFTER INSERT ON run_leases BEGIN UPDATE workflow_runs SET status='CANCELLED' WHERE id=NEW.run_id AND status='PAUSED'; END`,
+			`CREATE TRIGGER cancel_on_relet AFTER UPDATE ON run_leases BEGIN UPDATE workflow_runs SET status='CANCELLED' WHERE id=NEW.run_id AND status='PAUSED'; END`,
+		} {
+			if _, err := tx.Exec(ddl); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	n, err := e.eng.ResumeSuspended(context.Background())
+	if err != nil || n != 0 {
+		t.Fatalf("a cancelled run was resumed: %d %v", n, err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	info, _ := e.eng.Status(context.Background(), run)
+	if info.Status != wf.StatusCancelled {
+		t.Fatalf("the run is %s", info.Status)
+	}
+	if got := effects(dir); got["B"] != 0 {
+		t.Fatalf("the cancelled run went on: %v", got)
+	}
+}
+
+// A run that failed is marked failed even when the write fails the first times (L14): a failed write left the run RUNNING with
+// nobody driving it, and its next owner ran the failing step again. A trigger refuses the status write while a marker row exists;
+// the marker goes away after a moment, and the step must still have run exactly once.
+func TestAFailedRunIsMarkedFailedEvenWhenTheFirstWritesFail(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	if err := e.db.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		for _, ddl := range []string{
+			`CREATE TABLE hold_failed(x INTEGER)`,
+			`INSERT INTO hold_failed VALUES(1)`,
+			`CREATE TRIGGER refuse_failed BEFORE UPDATE ON workflow_runs WHEN NEW.status='FAILED' AND EXISTS(SELECT 1 FROM hold_failed) BEGIN SELECT RAISE(ABORT, 'database is busy'); END`,
+		} {
+			if _, err := tx.Exec(ddl); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.eng.Register(wf.NewGraph("failretry").Add(wf.AgentTask("x", func(context.Context, wf.NodeInput) (wf.NodeOutput, error) {
+		effect(dir, "x")
+		return wf.NodeOutput{}, errors.New("boom")
+	})).Start("x"))
+	run, _ := e.eng.Start(context.Background(), "failretry", nil, wf.StartOptions{})
+	time.Sleep(120 * time.Millisecond) // the first write (and the one 50 ms later) is refused
+	if err := e.db.WriteTx(context.Background(), func(tx *sql.Tx) error { _, err := tx.Exec(`DELETE FROM hold_failed`); return err }); err != nil {
+		t.Fatal(err)
+	}
+	info := waitStatus(t, e.eng, run, wf.StatusFailed)
+	if !strings.Contains(info.FailedReason, "boom") {
+		t.Fatalf("reason %q", info.FailedReason)
+	}
+	time.Sleep(2 * leaseTTL) // a run left RUNNING would be taken over and its step run again by now
+	if got := effects(dir); got["x"] != 1 {
+		t.Fatalf("the failing step ran %d times", got["x"])
 	}
 }

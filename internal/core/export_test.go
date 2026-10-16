@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/license"
+	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/sandbox"
 	"github.com/kjmaguire/drydock/internal/scan"
@@ -112,4 +113,9 @@ func (c *Core) TestRouteNode(ctx context.Context, in workflow.NodeInput) (pipeli
 func (c *Core) TestSandboxDefinition(ctx context.Context, projectID string) (sandbox.Config, error) {
 	cfg, _, err := c.trustedSandboxDefinition(ctx, projectID)
 	return cfg, err
+}
+
+// TestMCPApprove asks the MCP servers' approval service about a call, as the gateway does.
+func (c *Core) TestMCPApprove(ctx context.Context, req mcp.ApprovalRequest) (bool, error) {
+	return c.mcpServerSvc().Approve(ctx, req)
 }

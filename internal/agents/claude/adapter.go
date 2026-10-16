@@ -349,7 +349,7 @@ func (a *Adapter) Start(ctx context.Context, pm proc.Manager, spec agents.RunSpe
 // reach (the WSL run mode's Linux processes): Stop calls it before killing the tree, and the session runs it once more when
 // the process has exited, before Wait answers. cleanup runs after that (temporary files).
 func newSession(p proc.Proc, spec agents.RunSpec, sweep func(), cleanup func()) *session {
-	s := &session{proc: p, parser: NewParser(), out: make(chan workflow.Chunk, 256), acks: map[string]chan bool{}, exited: make(chan struct{}), sweep: sweep}
+	s := &session{proc: p, parser: NewParser(), out: make(chan workflow.Chunk, 256), acks: map[string]chan bool{}, exited: make(chan struct{}), stopped: make(chan struct{}), readDone: make(chan struct{}), sweep: sweep}
 	if spec.MCPConfigPath != "" {
 		s.parser.RequireGateway(GatewayServer)
 	}
@@ -407,6 +407,11 @@ type session struct {
 	exited chan struct{}
 	ei     proc.ExitInfo
 	sweep  func() // the WSL run mode: kill the run's processes inside the distro (nil natively)
+	// stopped is closed when Stop is done: nobody is going to read Output() after that, and the stdout reader must not wait for
+	// one (audit 2026-10-16, L26)
+	stopped  chan struct{}
+	stopOnce sync.Once
+	readDone chan struct{} // closed when the stdout reader has ended
 }
 
 type tail struct {
@@ -426,6 +431,7 @@ func (t *tail) Write(p []byte) (int, error) {
 func (t *tail) String() string { t.mu.Lock(); defer t.mu.Unlock(); return string(t.b) }
 
 func (s *session) readStdout() {
+	defer close(s.readDone)
 	defer close(s.out)
 	sc := bufio.NewScanner(s.proc.Stdout())
 	sc.Buffer(make([]byte, 1<<20), 64<<20) // init events are large
@@ -440,12 +446,30 @@ func (s *session) readStdout() {
 			s.amu.Unlock()
 		}
 		for _, c := range chunks {
-			s.out <- c
+			if !s.emit(c) {
+				return
+			}
 		}
 	}
 	// stdout ended: the process exited or closed its output
 	if err := sc.Err(); err != nil {
-		s.out <- workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: "stdout: " + err.Error(), Fatal: true})
+		s.emit(workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: "stdout: " + err.Error(), Fatal: true}))
+	}
+}
+
+// emit hands a chunk to whoever reads Output(). It waits for room while a reader may still come, and gives up (false) once the
+// session was stopped: a reader that left with a full buffer used to hold this goroutine, and the process behind it, for good.
+func (s *session) emit(c workflow.Chunk) bool {
+	select {
+	case s.out <- c:
+		return true
+	default:
+	}
+	select {
+	case s.out <- c:
+		return true
+	case <-s.stopped:
+		return false
 	}
 }
 
@@ -502,6 +526,7 @@ func (s *session) Interrupt(ctx context.Context) error {
 }
 
 func (s *session) Stop(ctx context.Context) error {
+	defer s.stopOnce.Do(func() { close(s.stopped) })
 	_ = s.proc.Stdin().Close()
 	select {
 	case <-s.exited:

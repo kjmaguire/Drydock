@@ -258,7 +258,7 @@ The inbox is the single list of things that wait on a human. It is a projection 
 
 | Item kind | Source | Appears | Actions |
 |---|---|---|---|
-| Approval (tool permission from ACP/headless permission prompt tool; dirty-worktree deletion; destructive command) | `approvals` (`kind=approval`) | 1A (agent permission requests), 1B (worktree) | Approve, Reject; shows exact action and hash. `EXPIRED` items show greyed with reason. |
+| Approval (tool permission from the Claude permission prompt tool, ACP requests are refused rather than asked (audit 2026-10-16, L29); dirty-worktree deletion; destructive command) | `approvals` (`kind=approval`) | 1A (agent permission requests), 1B (worktree) | Approve, Reject; shows exact action and hash. `EXPIRED` items show greyed with reason. |
 | Question | `approvals` (`kind=question`) / `QUESTION` card | 1A | Answer inline. |
 | Review (spec gate, diff review) | `approvals` (`kind=review`) / workflow `request` node | 1C-1D | Open Review screen; Accept/Reject/Request Changes. |
 | Task `WAITING_HUMAN` | `tasks` | 1B | Open task; clears only by human action (brief 12). |

@@ -176,3 +176,18 @@ func (g *Graph) outEdges(from NodeID) []Edge {
 	}
 	return out
 }
+
+// routesOf lists the routes the out-edges of a node are labelled with (the answers a request step goes on for), then "rejected",
+// which a step may always be answered with: it ends the run when no edge takes it.
+func (g *Graph) routesOf(from NodeID) []string {
+	seen := map[string]bool{"rejected": true}
+	out := []string{}
+	for _, e := range g.outEdges(from) {
+		if e.When != "" && !seen[e.When] {
+			seen[e.When] = true
+			out = append(out, e.When)
+		}
+	}
+	sort.Strings(out)
+	return append(out, "rejected")
+}

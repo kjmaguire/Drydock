@@ -1157,7 +1157,9 @@ func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool
 		}
 		select {
 		case <-ctx.Done():
-			_ = ap.Cancel(ctx, id, "system")
+			// the call is gone, so its question must go too; with the cancelled context the write failed at once and the question
+			// stayed in Needs you until it expired (audit 2026-10-16, L29)
+			_ = ap.Cancel(context.WithoutCancel(ctx), id, "system")
 			return false, ctx.Err()
 		case <-tick.C:
 		}

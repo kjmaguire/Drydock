@@ -91,7 +91,25 @@ func New(o Options) (*Store, error) {
 	if err := os.MkdirAll(o.Dir, 0o755); err != nil {
 		return nil, err
 	}
-	return &Store{o: o}, nil
+	s := &Store{o: o}
+	s.recoverInterrupted()
+	return s, nil
+}
+
+// interruptedRefresh is what a pack says when the last run of the app ended in the middle of refreshing it.
+const interruptedRefresh = "the app was closed while this pack was being refreshed; the version before it is still in use"
+
+// recoverInterrupted marks the packs a crash or a close left "refreshing" as failed: a refresh lives in one process, and this
+// one has only just started, so a pack that says it is refreshing is not (audit 2026-10-16, L30). It used to stay that way for
+// good, and the scheduler never looked at it again. A failed pack is tried again after the failure delay.
+func (s *Store) recoverInterrupted() {
+	err := s.o.DB.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE packs SET status='failed', last_error=? WHERE status='refreshing'`, interruptedRefresh)
+		return err
+	})
+	if err != nil {
+		s.o.Logf("packs: reset the packs left refreshing: %v", err)
+	}
 }
 
 func (s *Store) now() time.Time { return s.o.Now().UTC() }

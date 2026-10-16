@@ -316,7 +316,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 			if len(r.out.Value) > 0 {
 				st.Shared["out/"+string(r.node)] = e.externalize(info.ID, r.node, step, r.out.Value)
 			}
-			if err := route(g, &st, r.node, r.out); err != nil {
+			if _, err := route(g, &st, r.node, r.out); err != nil {
 				e.fail(ctx, info, err.Error())
 				return
 			}
@@ -410,14 +410,15 @@ func (e *Engine) ready(g *Graph, st RunState) []NodeID {
 	return out
 }
 
-// route delivers a finished node's output to its out-edges (pure over state).
-func route(g *Graph, st *RunState, from NodeID, out NodeOutput) error {
+// route delivers a finished node's output to its out-edges (pure over state) and says how many edges took it.
+func route(g *Graph, st *RunState, from NodeID, out NodeOutput) (int, error) {
 	if out.ResetLoops {
 		st.LoopCounts = map[string]int{}
 	}
 	if out.Halt {
-		return nil
+		return 0, nil
 	}
+	taken := 0
 	for _, ed := range g.outEdges(from) {
 		if ed.When != "" && ed.When != out.Route {
 			continue
@@ -431,7 +432,7 @@ func route(g *Graph, st *RunState, from NodeID, out NodeOutput) error {
 			key := EdgeKey(ed.From, ed.To)
 			if st.LoopCounts[key] >= ed.MaxIter {
 				if ed.OnExhausted == "" {
-					return fmt.Errorf("%w: %s", ErrLoopExhausted, key)
+					return taken, fmt.Errorf("%w: %s", ErrLoopExhausted, key)
 				}
 				target = ed.OnExhausted
 			} else {
@@ -443,8 +444,9 @@ func route(g *Graph, st *RunState, from NodeID, out NodeOutput) error {
 		if len(g.Nodes[target].FanIn) > 0 {
 			st.Barriers[target] = appendUnique(st.Barriers[target], from)
 		}
+		taken++
 	}
-	return nil
+	return taken, nil
 }
 
 func appendUnique(s []NodeID, v NodeID) []NodeID {
@@ -480,9 +482,24 @@ func (e *Engine) finish(ctx context.Context, info RunInfo, g *Graph, st *RunStat
 }
 
 func (e *Engine) fail(ctx context.Context, info RunInfo, reason string) {
-	_ = e.st.setStatus(context.Background(), info.ID, StatusFailed, reason)
-	e.emit(context.Background(), "workflow.failed", info, map[string]any{"reason": reason})
+	// the write is tried again: a failed write leaves the run RUNNING with nobody driving it, and its next owner would meet the
+	// same failure again (audit 2026-10-16, L14). A run that ended meanwhile (ErrRunTerminal) is not written again.
+	var err error
+	for attempt, wait := 0, 50*time.Millisecond; attempt < failAttempts; attempt, wait = attempt+1, wait*4 {
+		if err = e.st.setStatus(context.Background(), info.ID, StatusFailed, reason); err == nil || errors.Is(err, ErrRunTerminal) {
+			break
+		}
+		time.Sleep(wait)
+	}
+	data := map[string]any{"reason": reason}
+	if err != nil && !errors.Is(err, ErrRunTerminal) {
+		data["unrecorded"] = true // the run could not be marked failed; recovery meets it again
+	}
+	e.emit(context.Background(), "workflow.failed", info, data)
 }
+
+// failAttempts is how many times a failed run's status is written before giving up.
+const failAttempts = 4
 
 // externalize moves large values to disk and returns a small {"$ref": path} object.
 func (e *Engine) externalize(run RunID, node NodeID, step int, v json.RawMessage) json.RawMessage {
@@ -1008,8 +1025,15 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 		}
 	} else {
 		st.Shared["out/"+string(pr.NodeID)] = body
-		if err := route(g, &st, pr.NodeID, out); err != nil {
+		taken, err := route(g, &st, pr.NodeID, out)
+		if err != nil {
 			return err
+		}
+		// An answer no edge of the node takes would end the run as if it had finished, and the work it was about would be left
+		// where it was. Only a rejection may end a run that way (a plan or a spec turned down has nothing to go on to); any other
+		// answer is refused and the request stays open (audit 2026-10-16, L14).
+		if taken == 0 && decision != "rejected" && len(g.outEdges(pr.NodeID)) > 0 {
+			return fmt.Errorf("%w: %q (this step goes on for: %s)", ErrNoRoute, decision, strings.Join(g.routesOf(pr.NodeID), ", "))
 		}
 	}
 	st.Status = StatusRunning
@@ -1034,9 +1058,17 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 		if err := insertCheckpoint(ctx, tx, newCP, newState); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RUNNING', latest_checkpoint_id=?, updated_at=?, version=version+1 WHERE id=?`,
+		// a run cancelled or ended while the answer was being recorded stays ended: the whole answer is rolled back with it, and the
+		// request is not left answered for a run that will never read it (audit 2026-10-16, L14)
+		res, err = tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RUNNING', latest_checkpoint_id=?, updated_at=?, version=version+1 WHERE id=? AND status NOT IN `+terminalStatuses,
 			string(newCP.ID), storage.Now(), string(run))
-		return err
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrRunTerminal
+		}
+		return nil
 	})
 	if err != nil {
 		return err

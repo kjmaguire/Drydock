@@ -212,6 +212,7 @@ var (
 	ErrTopologyMismatch = errors.New("workflow: graph topology differs from the checkpoint")
 	ErrUnknownWorkflow  = errors.New("workflow: unknown workflow")
 	ErrLoopExhausted    = errors.New("workflow: loop iteration limit reached")
+	ErrNoRoute          = errors.New("workflow: the workflow does not go on from this step with that answer")
 	ErrRunTerminal      = errors.New("workflow: run is in a terminal state")
 	ErrEngineClosed     = errors.New("workflow: the engine is closed")
 )

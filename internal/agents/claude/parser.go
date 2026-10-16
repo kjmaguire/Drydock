@@ -189,7 +189,7 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 	}
 	var ev rawEvent
 	if err := json.Unmarshal(line, &ev); err != nil {
-		return nil, nil
+		return p.unreadable(line), nil
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -214,7 +214,10 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 				Thinking string `json:"thinking"`
 			} `json:"delta"`
 		}
-		if json.Unmarshal(ev.Event, &se) == nil && se.Type == "content_block_delta" {
+		if err := json.Unmarshal(ev.Event, &se); err != nil {
+			return p.driftShape("stream_event"), nil
+		}
+		if se.Type == "content_block_delta" {
 			switch se.Delta.Type {
 			case "text_delta":
 				p.partialSeen = true
@@ -226,7 +229,7 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 	case "assistant":
 		var m message
 		if json.Unmarshal(ev.Message, &m) != nil {
-			return nil, nil
+			return p.driftShape("assistant"), nil
 		}
 		if m.Usage != nil {
 			p.lastContext = m.Usage.InputTokens + m.Usage.CacheReadInputTokens + m.Usage.CacheCreationInputTokens
@@ -251,7 +254,7 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 	case "user":
 		var m message
 		if json.Unmarshal(ev.Message, &m) != nil {
-			return nil, nil
+			return p.driftShape("user"), nil
 		}
 		for _, b := range blocks(m.Content) {
 			if b.Type != "tool_result" {
@@ -278,18 +281,62 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 		if ignoredEvents[ev.Type] || ev.Type == "" {
 			break
 		}
-		if p.unknown == nil {
-			p.unknown = map[string]int{}
-		}
-		p.unknown[ev.Type]++
-		if p.unknown[ev.Type] == 1 {
-			// once per type and session, as a warning the run log and the chat show: the turn goes on
-			chunks = append(chunks, workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: "adapter drift: Claude Code sent an event of type " +
-				strconv.Quote(ev.Type) + " that Drydock does not read. If turns stop finishing or lose their results, this CLI version changed its output; check the Connections page and the contract suite.",
-				Code: workflow.CodeAdapterDrift, Detail: ev.Type}))
-		}
+		// once per type and session, as a warning the run log and the chat show: the turn goes on
+		chunks = append(chunks, p.driftUnknown(ev.Type)...)
 	}
 	return chunks, ack
+}
+
+// note counts an event of a kind the parser could not use and reports whether it is the first of its kind in the session. Called
+// with p.mu held.
+func (p *Parser) note(kind string) bool {
+	if p.unknown == nil {
+		p.unknown = map[string]int{}
+	}
+	p.unknown[kind]++
+	return p.unknown[kind] == 1
+}
+
+// drift counts an event the parser could not use and returns the warning for its kind the first time the session sends one (the
+// run log and the chat show it, the turn goes on). say is what Claude Code sent, in words. Called with p.mu held.
+func (p *Parser) drift(kind, say string) []workflow.Chunk {
+	if !p.note(kind) {
+		return nil
+	}
+	return []workflow.Chunk{workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: "adapter drift: Claude Code sent " + say +
+		". If turns stop finishing or lose their results, this CLI version changed its output; check the Connections page and the contract suite.",
+		Code: workflow.CodeAdapterDrift, Detail: kind})}
+}
+
+// driftUnknown is drift for an event type the parser does not know; driftShape for a type it knows, in a shape it cannot read.
+func (p *Parser) driftUnknown(typ string) []workflow.Chunk {
+	return p.drift(typ, "an event of type "+strconv.Quote(typ)+" that Drydock does not read")
+}
+
+func (p *Parser) driftShape(typ string) []workflow.Chunk {
+	return p.drift(typ+" (unreadable)", "an event of type "+strconv.Quote(typ)+" in a shape Drydock cannot read")
+}
+
+// unreadable answers a line that starts like an event but cannot be read into one: a type the parser knows in a shape it does not
+// (a CLI release that changed a field's type), or text that is not JSON. It used to be dropped without a word (audit 2026-10-16,
+// L27). A result that cannot be read leaves the turn's outcome and cost unknown, so it ends the turn with an error; any other
+// event is drift: counted, warned about once, and the turn goes on.
+func (p *Parser) unreadable(line []byte) []workflow.Chunk {
+	var head struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(line, &head)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch head.Type {
+	case "result":
+		p.note("result (unreadable)")
+		return []workflow.Chunk{workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Fatal: true, Code: workflow.CodeAdapterDrift, Detail: "result (unreadable)",
+			Message: "Claude Code's result for the turn could not be read, so what the turn did and what it cost are unknown; the turn was stopped. This CLI version may have changed its output: check the Connections page and the contract suite."})}
+	case "":
+		return p.drift("(unreadable line)", "a line that starts like an event but is not one Drydock can read")
+	}
+	return p.driftShape(head.Type)
 }
 
 // turnCost is this result's own cost: the running total less what earlier results reported. A total that went down cannot

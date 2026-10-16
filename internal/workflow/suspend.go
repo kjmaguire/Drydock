@@ -109,11 +109,19 @@ func (e *Engine) resumeSuspended(ctx context.Context, id RunID, d *driver) bool 
 		_ = e.st.setStatus(ctx, id, StatusFailed, "resume after suspension: topology mismatch or missing checkpoint")
 		return false
 	}
+	// only a run that is still paused comes back: one cancelled or ended since it was read is not brought to life again (audit
+	// 2026-10-16, L14)
+	var resumed bool
 	err = e.st.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RECOVERING', failed_reason='', updated_at=?, version=version+1 WHERE id=?`, storage.Now(), string(id))
-		return err
+		res, err := tx.ExecContext(ctx, `UPDATE workflow_runs SET status='RECOVERING', failed_reason='', updated_at=?, version=version+1 WHERE id=? AND status='PAUSED'`, storage.Now(), string(id))
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		resumed = n > 0
+		return nil
 	})
-	if err != nil {
+	if err != nil || !resumed {
 		e.st.releaseLease(ctx, id, e.cfg.Owner)
 		return false
 	}

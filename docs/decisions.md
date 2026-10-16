@@ -620,3 +620,15 @@ Open, owner action:
   `Config.OpenURL` (Wails `Browser.OpenURL` in the desktop app, which hands anything to the system's handler and so must never
   see a program path, a file or a protocol such as `ms-msdt:`), for a person only (M23 core side). **Not verified:** the Windows
   shell's `OpenURL`; nothing else in this batch is Windows-only.
+  **Status writes, the Claude stream and small leaks (L14, L26, L27, L29, L30):** an answer to a request that none of the step's
+  edges takes is refused with the answers it does take (`workflow.ErrNoRoute`; a rejection still ends a run that has no edge for
+  it), a run cancelled while its answer was being recorded is not brought back to RUNNING and the answer is not recorded, a paused
+  run is resumed only while it is still paused, and a failed run's status is written with retries. An event of a known type in a
+  shape the Claude parser cannot read is counted as drift and warned about once, a line that starts like an event but is not JSON
+  likewise, and an unreadable `result` ends the turn with an error (`Parser.unreadable`). The Claude session's stdout reader gives
+  up delivering once the session is stopped, so a reader that left with a full buffer no longer holds it and its process for good.
+  An MCP write approval whose call ended is cancelled with a context that outlives the call (it stayed open for 30 minutes), and
+  the docs now say what is true of ACP permission requests: no handler asks a person, every one is refused, so an ACP agent that
+  asks before each tool call can do nothing that needs asking (the approval path in security.md s6 is a design, not built). A pack
+  the last run left "refreshing" is failed when the store opens, so it is tried again. **Not verified:** the ACP approval path is
+  not built.

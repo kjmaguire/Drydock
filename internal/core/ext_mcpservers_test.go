@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
@@ -627,5 +629,35 @@ func TestAPlainEnvironmentVariableCannotHoldASecret(t *testing.T) {
 		if err := a.callErr("mcplib.save", in); err == nil || strings.Contains(err.Error(), token) || strings.Contains(err.Error(), "TOKEN") {
 			t.Errorf("a pasted NAME=value as a variable name: %v", err)
 		}
+	}
+}
+
+// A call that goes away while it waits for a person takes its question with it (audit 2026-10-16, L29): the approval was cancelled
+// with the cancelled context, which failed at once, so the question stayed in Needs you until it expired.
+func TestAMcpWriteCallThatEndsTakesItsQuestionWithIt(t *testing.T) {
+	a := openMCPApp(t, &claude.Adapter{Exe: os.Args[0]})
+	p, _ := a.setup("gocalc")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		ok, err := a.c.TestMCPApprove(ctx, mcp.ApprovalRequest{Run: mcp.RunInfo{ProjectID: p.ID, RunID: "arun_aaaaaaaaaaaa", AgentID: "agt_aaaaaaaaaaaa"},
+			CallID: "call-1", Server: "tst", Tool: "write_file", ArgsHash: strings.Repeat("ab", 32), Args: []byte(`{"path":"x"}`)})
+		if ok {
+			err = errors.New("the call was approved")
+		}
+		done <- err
+	}()
+	a.waitFor("the question is open", func() bool { return len(a.pendingMCP(p.ID)) == 1 })
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the waiting call ended with %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the waiting call did not end")
+	}
+	if left := a.pendingMCP(p.ID); len(left) != 0 {
+		t.Fatalf("the question of a call that is gone is still open: %+v", left)
 	}
 }

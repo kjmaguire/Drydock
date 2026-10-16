@@ -453,3 +453,52 @@ func TestStartRunsScheduledRefreshWhileOpen(t *testing.T) {
 	}
 	t.Fatal("the scheduler did not refresh the due pack")
 }
+
+// A pack the last run of the app left "refreshing" (a crash, a power cut) is failed when the store opens, so the scheduler looks at
+// it again and the page stops saying it is being refreshed (audit 2026-10-16, L30). Before this it stayed that way for good.
+func TestAPackLeftRefreshingByACrashIsFailedWhenTheStoreOpens(t *testing.T) {
+	e := newEnv(t)
+	dir := filepath.Join(e.dir, "docs")
+	writeFiles(t, dir, map[string]string{"a.md": "# A\n\nstale marker text\n"})
+	e.install(localManifest("cr", dir, "refresh: {mode: scheduled, interval: 2d}\n"))
+	ctx := context.Background()
+	if res, errs := e.s.RunDue(ctx); len(errs) != 0 || res["cr"].Version == "" {
+		t.Fatalf("the first refresh: %+v %v", res, errs)
+	}
+	*e.now = e.now.Add(49 * time.Hour) // due again
+	// the app died in the middle of the next refresh: nothing ever wrote the end
+	if _, err := e.db.Writer().Exec(`UPDATE packs SET status='refreshing' WHERE id='cr'`); err != nil {
+		t.Fatal(err)
+	}
+	if due, _ := e.s.Due(ctx, e.clock()); len(due) != 0 {
+		t.Fatalf("a pack that says it is refreshing is not due (this process cannot tell): %v", due)
+	}
+	// the next run of the app
+	s2, err := New(Options{DB: e.db, Bus: e.bus, Dir: filepath.Join(e.dir, "packs"), Scanner: sharedScanner(t), Now: e.clock, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packs, err := s2.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *Pack
+	for i := range packs {
+		if packs[i].ID == "cr" {
+			got = &packs[i]
+		}
+	}
+	if got == nil || got.Status != "failed" || !strings.Contains(got.LastError, "closed while this pack was being refreshed") {
+		t.Fatalf("after the restart: %+v", got)
+	}
+	if due, _ := s2.Due(ctx, e.clock()); len(due) != 1 || due[0] != "cr" {
+		t.Fatalf("the pack is looked at again: %v", due)
+	}
+	// and it can be refreshed again, which ends in a good state
+	if res, errs := s2.RunDue(ctx); len(errs) != 0 || res["cr"].Version == "" {
+		t.Fatalf("the refresh after the restart: %+v %v", res, errs)
+	}
+	if packs, _ = s2.List(ctx); packs[0].Status == "refreshing" || packs[0].Status == "failed" {
+		t.Fatalf("after the refresh: %+v", packs[0])
+	}
+}

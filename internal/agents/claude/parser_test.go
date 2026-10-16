@@ -129,10 +129,65 @@ func TestControlAck(t *testing.T) {
 
 func TestUnknownAndMalformedLinesAreTolerated(t *testing.T) {
 	p := NewParser()
-	for _, l := range []string{``, `not json`, `{"type":"assistant","message":"oops"}`, `[1,2]`, `{"type":"tool_progress","x":1}`, `{"type":"autocompact_state"}`} {
+	for _, l := range []string{``, `not json`, `[1,2]`, `{"type":"tool_progress","x":1}`, `{"type":"autocompact_state"}`} {
 		if cs, ack := p.Parse([]byte(l)); len(cs) != 0 || ack != nil {
 			t.Fatalf("line %q produced output", l)
 		}
+	}
+}
+
+// An event of a type the parser knows, in a shape it cannot read, is drift like an unknown type (audit 2026-10-16, L27): counted,
+// the first of each kind in a session is a warning, and the turn goes on. It used to be dropped without a word.
+func TestAnEventOfAKnownTypeInAShapeNobodyReadsIsDrift(t *testing.T) {
+	p := NewParser()
+	for _, tc := range []struct{ line, kind string }{
+		{`{"type":"assistant","message":"oops"}`, "assistant (unreadable)"},
+		{`{"type":"user","message":5}`, "user (unreadable)"},
+		{`{"type":"stream_event","event":"x"}`, "stream_event (unreadable)"},
+		{`{"type":"system","subtype":"init","tools":"none"}`, "system (unreadable)"},
+		{`{"type":"assistant","message":{"content":[`, "(unreadable line)"},
+	} {
+		cs, ack := p.Parse([]byte(tc.line))
+		if ack != nil || len(cs) != 1 || cs[0].Kind != workflow.ChunkError {
+			t.Fatalf("%s: %v", tc.line, kinds(cs))
+		}
+		var e workflow.ErrorChunk
+		if cs[0].Decode(&e) != nil || e.Fatal || e.Code != workflow.CodeAdapterDrift || e.Detail != tc.kind || !strings.Contains(e.Message, "adapter drift") {
+			t.Fatalf("%s: warning %+v", tc.line, e)
+		}
+		if again, _ := p.Parse([]byte(tc.line)); len(again) != 0 {
+			t.Fatalf("%s: the second one warned again: %v", tc.line, kinds(again))
+		}
+		if got := p.UnknownEvents()[tc.kind]; got != 2 {
+			t.Fatalf("%s: counted %d", tc.kind, got)
+		}
+	}
+}
+
+// A result that cannot be read leaves the turn's outcome and its cost unknown: it ends the turn with an error, where it used to
+// vanish and leave the turn waiting for an end that never came (L27).
+func TestAResultThatCannotBeReadEndsTheTurnWithAnError(t *testing.T) {
+	p := NewParser()
+	for _, l := range []string{
+		`{"type":"result","subtype":"success","total_cost_usd":"1.5"}`,
+		`{"type":"result","subtype":"success","usage":{"input_tokens":"many"}}`,
+		`{"type":"result","subtype":"success","is_error":"no"}`,
+	} {
+		cs, _ := p.Parse([]byte(l))
+		if len(cs) != 1 || cs[0].Kind != workflow.ChunkError {
+			t.Fatalf("%s: %v", l, kinds(cs))
+		}
+		var e workflow.ErrorChunk
+		if cs[0].Decode(&e) != nil || !e.Fatal || !strings.Contains(e.Message, "result") || e.Code != workflow.CodeAdapterDrift {
+			t.Fatalf("%s: %+v", l, e)
+		}
+	}
+	if got := p.UnknownEvents()["result (unreadable)"]; got != 3 {
+		t.Fatalf("counted %d", got)
+	}
+	// a result that reads is unchanged
+	if cs, _ := NewParser().Parse([]byte(`{"type":"result","subtype":"success","total_cost_usd":0.01}`)); len(cs) == 0 || cs[len(cs)-1].Kind != workflow.ChunkDone {
+		t.Fatalf("a good result: %v", kinds(cs))
 	}
 }
 
