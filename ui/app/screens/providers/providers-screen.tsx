@@ -1,6 +1,7 @@
 // Providers (a workspace screen): the model endpoints Drydock may call directly. The overview is a grid of tiles (the shared
 // kit in ui/tiles.tsx, as on Integrations): one per provider with its brand's logo (or its kind's icon), what it is and its
-// state, and an "Add a provider" tile. The selected provider opens below the grid: its health, data class, key state (never
+// state, and an "Add a provider" tile. Above the grid sits "Models on this PC" (local-models.tsx, decision P65): llama.cpp on this
+// computer, whose server joins the grid as a provider. The selected provider opens below the grid: its health, data class, key state (never
 // the key), a probe and its catalog, then its full detail for settings, prices and quotas. The add tile opens the form.
 
 import { css, on, type Handle } from 'remix/component';
@@ -16,6 +17,7 @@ import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { card, Page, Section, spacer, stack } from '../../ui/layout.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t, tone } from '../../ui/tokens.ts';
+import { LocalModels } from './local-models.tsx';
 import { ProviderDetailPanel } from './provider-detail.tsx';
 import { ProviderForm } from './provider-form.tsx';
 import { HealthBadge, ModelTable, ProbeView } from './provider-parts.tsx';
@@ -306,6 +308,7 @@ export function ProvidersScreen(handle: Handle<{ initial?: string }>) {
           Model providers Drydock may call directly. API keys are stored in the Windows Credential Manager and are never shown again after you save them. Plain http is
           accepted only for hosts on your own machine or private network. Choose a tile to see a provider in full.
         </p>
+        <LocalModels />
         <ErrorNote error={q.error} what="Could not list providers" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (

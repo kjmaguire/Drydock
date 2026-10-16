@@ -61,11 +61,15 @@ type Server struct {
 
 const keepLines = 200
 
-// State is the current state.
+// State is the current state ("stopped" before the first start).
 func (s *Server) State() ServerState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.st
+	st := s.st
+	if st.State == "" {
+		st.State = "stopped"
+	}
+	return st
 }
 
 // Log is the server's last lines.

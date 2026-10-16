@@ -148,3 +148,13 @@ func TestNewestBuildTagPicksTheHighestBuild(t *testing.T) {
 		t.Fatalf("a version tag is not a build: %q", got)
 	}
 }
+
+func TestClassifyComparesBuildTagsByNumber(t *testing.T) {
+	for _, c := range []struct{ used, latest, want string }{
+		{"b11669", "b11671", "patch"}, {"b11671", "b11671", "current"}, {"b11671", "b11669", "unknown"}, {"b11671", "v0.7.0", "unknown"},
+	} {
+		if got := classify(c.used, c.latest); got != c.want {
+			t.Errorf("classify(%s, %s) = %s, want %s", c.used, c.latest, got, c.want)
+		}
+	}
+}

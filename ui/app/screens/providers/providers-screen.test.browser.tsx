@@ -63,8 +63,11 @@ const exactly = (root: ParentNode, s: string) => Array.from(root.querySelectorAl
 // a labelled test double of the core's provider.detail: the provider as listed, no models, no quota
 const detailOf = (list: () => Provider[]) => async (id: string) => ({ provider: list().find((p) => p.id === id) ?? provider({ id }), models: [], quota: [] });
 
+// a labelled test double of the core's local.get on a PC where local models are not supported: the section shows the reason only
+const localNotSupported = async () => ({ supported: false, reason: 'Local models run on Windows only.' }) as never;
+
 function mountWith(client: Partial<Client>, initial?: string) {
-  return mount(<ProvidersScreen initial={initial} />, testServices(client));
+  return mount(<ProvidersScreen initial={initial} />, testServices({ localGet: localNotSupported, ...client }));
 }
 const tiles = (r: { $$: (sel: string) => NodeListOf<Element> }) => Array.from(r.$$('[data-testid="provider-tile"]')) as HTMLButtonElement[];
 const addTile = (r: { $: (sel: string) => Element | null }) => need(r, '[data-testid="provider-add-tile"]') as HTMLButtonElement;
@@ -268,7 +271,7 @@ describe('ProvidersScreen', () => {
   });
 
   it('read-only turns off adding, with the reason, but the fields stay usable', async () => {
-    const s = testServices({ providerList: async () => [], licenseStatus: async () => expiredLicense, projectList: async () => [], appInfo: async () => ({}) as never });
+    const s = testServices({ providerList: async () => [], localGet: localNotSupported, licenseStatus: async () => expiredLicense, projectList: async () => [], appInfo: async () => ({}) as never });
     s.workspace.start();
     const r = mount(<ProvidersScreen />, s);
     await waitFor(() => need(r, '[data-testid="readonly-note"]'), r);

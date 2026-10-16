@@ -139,6 +139,15 @@ func classify(used, latest string) string {
 	if latest == "" {
 		return "unknown"
 	}
+	if ub, lb, ok := buildNumbers(used, latest); ok { // bNNNN builds (llama.cpp): behind by builds counts as a patch
+		switch {
+		case lb > ub:
+			return "patch"
+		case lb == ub:
+			return "current"
+		}
+		return "unknown"
+	}
 	um, un, up, upre, ok1 := parseSemver(used)
 	lm, ln, lp, _, ok2 := parseSemver(latest)
 	if !ok1 || !ok2 {
@@ -158,6 +167,17 @@ func classify(used, latest string) string {
 		return "prerelease"
 	}
 	return "current"
+}
+
+// buildNumbers reads two bNNNN build tags.
+func buildNumbers(a, b string) (int, int, bool) {
+	m1, m2 := buildTagR.FindStringSubmatch("refs/tags/"+a), buildTagR.FindStringSubmatch("refs/tags/"+b)
+	if m1 == nil || m2 == nil {
+		return 0, 0, false
+	}
+	n1, _ := strconv.Atoi(m1[2])
+	n2, _ := strconv.Atoi(m2[2])
+	return n1, n2, true
 }
 
 func day(t string) string {

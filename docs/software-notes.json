@@ -9,7 +9,7 @@
     "tool:docker": "29.8.2",
     "tool:golangci-lint": "2.14.0",
     "tool:actions-runner": "2.338.0",
-    "tool:llama.cpp": "b11669"
+    "tool:llama.cpp": "b11671"
   },
   "notes": {
     "go": {

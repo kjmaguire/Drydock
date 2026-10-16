@@ -39,6 +39,9 @@ func tinyModel(t *testing.T) localllm.Model {
 func TestTheServerIsStartedWithTheModelAndStopped(t *testing.T) {
 	var states []string
 	srv := &localllm.Server{PM: proc.New(), OnChange: func(st localllm.ServerState) { states = append(states, st.State) }}
+	if st := srv.State(); st.State != "stopped" {
+		t.Fatalf("before the first start: %+v", st)
+	}
 	port := freePort(t)
 	record := filepath.Join(t.TempDir(), "args.txt")
 	l := localllm.Launch{Program: os.Args[0], Args: llamatest.Args("--load-ms=700", "--record="+record), Model: tinyModel(t), Port: port, CacheType: "q8_0", ContextSize: 16384, LogDir: t.TempDir(), Timeout: 30 * time.Second}
