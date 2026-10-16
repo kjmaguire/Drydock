@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 560ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/build_4f12d84e9e4b.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/build_4f12d84e9e4b.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 710ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/test_1c9696134f6c.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/test_1c9696134f6c.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 730ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/lint_a4954bcd893f.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/lint_a4954bcd893f.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 40ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/secrets_2538403e7635.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/checks/secrets_2538403e7635.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "12 file(s), +375 -20",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-soft-delete-customers-D-1/data/runs/run_2c0ffd2a53eb/evidence/task.diff",
     "data": {
       "Files": 12,
       "Insertions": 375,

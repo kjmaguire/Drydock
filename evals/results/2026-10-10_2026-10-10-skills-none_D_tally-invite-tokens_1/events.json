@@ -382,7 +382,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_19d98ddcb702",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871",
+      "cwd": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -1143,7 +1143,7 @@
         "id": "toolu_01QQjimAmUsCLf8a5vhamfcs",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "offset": 1,
           "limit": 120
         }
@@ -1166,7 +1166,7 @@
           "id": "toolu_01QQjimAmUsCLf8a5vhamfcs",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "offset": 1,
             "limit": 120
           }
@@ -1189,7 +1189,7 @@
         "id": "toolu_01QQjimAmUsCLf8a5vhamfcs",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "offset": 1,
           "limit": 120
         },
@@ -1213,7 +1213,7 @@
           "id": "toolu_01QQjimAmUsCLf8a5vhamfcs",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "offset": 1,
             "limit": 120
           },
@@ -1250,7 +1250,7 @@
         "id": "toolu_019aThbrQqG4ru12dmkBnCBZ",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "offset": 360,
           "limit": 115
         }
@@ -1273,7 +1273,7 @@
           "id": "toolu_019aThbrQqG4ru12dmkBnCBZ",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "offset": 360,
             "limit": 115
           }
@@ -1296,7 +1296,7 @@
         "id": "toolu_019aThbrQqG4ru12dmkBnCBZ",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "offset": 360,
           "limit": 115
         },
@@ -1320,7 +1320,7 @@
           "id": "toolu_019aThbrQqG4ru12dmkBnCBZ",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "offset": 360,
             "limit": 115
           },
@@ -1344,7 +1344,7 @@
         "id": "toolu_01PN9nURQu3xpWinVeQKZQzn",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
         }
       },
       "kind": "tool_call"
@@ -1365,7 +1365,7 @@
           "id": "toolu_01PN9nURQu3xpWinVeQKZQzn",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
           }
         }
       },
@@ -1399,7 +1399,7 @@
         "id": "toolu_01PN9nURQu3xpWinVeQKZQzn",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
         },
         "output": "1\tpackage api\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"errors\"\n6\t\t\"fmt\"\n7\t\t\"net/http\"\n8\t\t\"net/url\"\n9\t\n10\t\t\"example.com/tally/internal/auth\"\n11\t\t\"example.com/tally/internal/mail\"\n12\t\t\"example.com/tally/internal/store\"\n13\t)\n14\t\n15\tfunc (s *Server) getMe(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n16\t\tu, _ := s.store.User(p.UserID)\n17\t\to, _ := s.store.Org(p.OrgID)\n18\t\twriteJSON(w, http.StatusOK, map[string]any{\"user\": u, \"org\": o, \"role\": p.Role, \"api_key_id\": p.KeyID})\n19\t}\n20\t\n21\tfunc (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n22\t\to, ok := s.store.Org(p.OrgID)\n23\t\tif !ok {\n24\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n25\t\t\treturn\n26\t\t}\n27\t\twriteJSON(w, http.StatusOK, o)\n28\t}\n29\t\n30\tfunc (s *Server) updateOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n31\t\tif !auth.CanManageTeam(p.Role) {\n32\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins change the organization\")\n33\t\t\treturn\n34\t\t}\n35\t\tvar in struct {\n36\t\t\tName      *string        `json:\"name\"`\n37\t\t\tTimeZone  *string        `json:\"time_zone\"`\n38\t\t\tTaxRateBP *int           `json:\"tax_rate_bp\"`\n39\t\t\tPlan      *store.OrgPlan `json:\"plan\"`\n40\t\t}\n41\t\tif !decode(w, r, \u0026in) {\n42\t\t\treturn\n43\t\t}\n44\t\to, err := s.store.UpdateOrg(p.OrgID, func(o *store.Org) error {\n45\t\t\tif in.Name != nil {\n46\t\t\t\to.Name = *in.Name\n47\t\t\t}\n48\t\t\tif in.TimeZone != nil {\n49\t\t\t\to.TimeZone = *in.TimeZone\n50\t\t\t}\n51\t\t\tif in.TaxRateBP != nil {\n52\t\t\t\to.TaxRateBP = *in.TaxRateBP\n53\t\t\t}\n54\t\t\tif in.Plan != nil {\n55\t\t\t\to.Plan = *in.Plan\n56\t\t\t}\n57\t\t\treturn nil\n58\t\t})\n59\t\tif err != nil {\n60\t\t\ts.storeError(w, err)\n61\t\t\treturn\n62\t\t}\n63\t\twriteJSON(w, http.StatusOK, o)\n64\t}\n65\t\n66\t// memberView is a member with the user's details.\n67\ttype memberView struct {\n68\t\tUserID   string     `json:\"user_id\"`\n69\t\tEmail    string     `json:\"email\"`\n70\t\tName     string     `json:\"name\"`\n71\t\tRole     store.Role `json:\"role\"`\n72\t\tJoinedAt string     `json:\"joined_at\"`\n73\t}\n74\t\n75\tfunc (s *Server) memberView(m store.Member) memberView {\n76\t\tu, _ := s.store.User(m.UserID)\n77\t\treturn memberView{UserID: m.UserID, Email: u.Email, Name: u.Name, Role: m.Role, JoinedAt: m.CreatedAt.Format(\"2006-01-02T15:04:05Z07:00\")}\n78\t}\n79\t\n80\tfunc (s *Server) listMembers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n81\t\titems := []memberView{}\n82\t\tfor _, m := range s.store.Members(p.OrgID) {\n83\t\t\titems = append(items, s.memberView(m))\n84\t\t}\n85\t\twriteJSON(w, http.StatusOK, list{Items: items})\n86\t}\n87\t\n88\tfunc (s *Server) updateMember(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n89\t\tif !auth.CanManageTeam(p.Role) {\n90\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins manage members\")\n91\t\t\treturn\n92\t\t}\n93\t\tvar in struct {\n94\t\t\tRole store.Role `json:\"role\"`\n95\t\t}\n96\t\tif !decode(w, r, \u0026in) {\n97\t\t\treturn\n98\t\t}\n99\t\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n100\t\tif err != nil {\n101\t\t\ts.storeError(w, err)\n102\t\t\treturn\n103\t\t}\n104\t\twriteJSON(w, http.StatusOK, s.memberView(m))\n105\t}\n106\t\n107\tfunc (s *Server) removeMember(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n108\t\tif !auth.CanManageTeam(p.Role) {\n109\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins manage members\")\n110\t\t\treturn\n111\t\t}\n112\t\tif err := s.store.RemoveMember(p.OrgID, r.PathValue(\"user_id\")); err != nil {\n113\t\t\ts.storeError(w, err)\n114\t\t\treturn\n115\t\t}\n116\t\tw.WriteHeader(http.StatusNoContent)\n117\t}\n118\t\n119\tfunc (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n120\t\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})\n121\t}\n122\t\n123\tfunc (s *Server) createInvite(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n124\t\tif !auth.CanManageTeam(p.Role) {\n125\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins invite members\")\n126\t\t\treturn\n127\t\t}\n128\t\tvar in struct {\n129\t\t\tEmail string     `json:\"email\"`\n130\t\t\tRole  store.Role `json:\"role\"`\n131\t\t}\n132\t\tif !decode(w, r, \u0026in) {\n133\t\t\treturn\n134\t\t}\n135\t\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n136\t\tif err != nil {\n137\t\t\ts.storeError(w, err)\n138\t\t\treturn\n139\t\t}\n140\t\tif err := s.sendInvite(r.Context(), inv); err != nil {\n141\t\t\ts.log.Error(\"send invite\", \"invite\", inv.ID, \"err\", err)\n142\t\t}\n143\t\twriteJSON(w, http.StatusCreated, inv)\n144\t}\n145\t\n146\t// sendInvite emails the invite's link to the invited address.\n147\tfunc (s *Server) sendInvite(ctx context.Context, inv store.Invite) error {\n148\t\to, _ := s.store.Org(inv.OrgID)\n149\t\tlink := s.baseURL + \"/invites/accept?token=\" + url.QueryEscape(inv.Token)\n150\t\treturn s.mail.Send(ctx, mail.Message{\n151\t\t\tTo:      inv.Email,\n152\t\t\tSubject: fmt.Sprintf(\"You are invited to join %s on Tally\", o.Name),\n153\t\t\tBody:    fmt.Sprintf(\"You have been invited to join %s on Tally as %s.\\n\\nAccept the invitation: %s\\n\", o.Name, inv.Role, link),\n154\t\t})\n155\t}\n156\t\n157\tfunc (s *Server) revokeInvite(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n158\t\tif !auth.CanManageTeam(p.Role) {\n159\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins manage invites\")\n160\t\t\treturn\n161\t\t}\n162\t\tif _, err := s.store.RevokeInvite(p.OrgID, r.PathValue(\"id\"), s.clock.Now()); err != nil {\n163\t\t\ts.storeError(w, err)\n164\t\t\treturn\n165\t\t}\n166\t\tw.WriteHeader(http.StatusNoContent)\n167\t}\n168\t\n169\t// acceptInvite needs no API key: the invite's token is the credential. It answers the new member and their first API key.\n170\tfunc (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {\n171\t\tvar in struct {\n172\t\t\tToken string `json:\"token\"`\n173\t\t\tName  string `json:\"name\"`\n174\t\t}\n175\t\tif !decode(w, r, \u0026in) {\n176\t\t\treturn\n177\t\t}\n178\t\tu, m, k, err := s.store.AcceptInvite(in.Token, in.Name, s.clock.Now())\n179\t\tif err != nil {\n180\t\t\tif errors.Is(err, store.ErrNotFound) {\n181\t\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n182\t\t\t\treturn\n183\t\t\t}\n184\t\t\ts.storeError(w, err)\n185\t\t\treturn\n186\t\t}\n187\t\twriteJSON(w, http.StatusCreated, map[string]any{\"user\": u, \"member\": s.memberView(m), \"api_key\": k})\n188\t}\n189\t\n190\tfunc (s *Server) listAPIKeys(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n191\t\twriteJSON(w, http.StatusOK, list{Items: s.store.APIKeys(p.OrgID)})\n192\t}\n193\t\n194\tfunc (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n195\t\tvar in struct {\n196\t\t\tName string `json:\"name\"`\n197\t\t}\n198\t\tif !decode(w, r, \u0026in) {\n199\t\t\treturn\n200\t\t}\n201\t\tk, err := s.store.CreateAPIKey(p.OrgID, p.UserID, in.Name, s.clock.Now())\n202\t\tif err != nil {\n203\t\t\ts.storeError(w, err)\n204\t\t\treturn\n205\t\t}\n206\t\twriteJSON(w, http.StatusCreated, k)\n207\t}\n208\t\n209\tfunc (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n210\t\tif _, err := s.store.RevokeAPIKey(p.OrgID, r.PathValue(\"id\"), s.clock.Now()); err != nil {\n211\t\t\ts.storeError(w, err)\n212\t\t\treturn\n213\t\t}\n214\t\tw.WriteHeader(http.StatusNoContent)\n215\t}\n216\t"
       },
@@ -1421,7 +1421,7 @@
           "id": "toolu_01PN9nURQu3xpWinVeQKZQzn",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go"
           },
           "output": "1\tpackage api\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"errors\"\n6\t\t\"fmt\"\n7\t\t\"net/http\"\n8\t\t\"net/url\"\n9\t\n10\t\t\"example.com/tally/internal/auth\"\n11\t\t\"example.com/tally/internal/mail\"\n12\t\t\"example.com/tally/internal/store\"\n13\t)\n14\t\n15\tfunc (s *Server) getMe(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n16\t\tu, _ := s.store.User(p.UserID)\n17\t\to, _ := s.store.Org(p.OrgID)\n18\t\twriteJSON(w, http.StatusOK, map[string]any{\"user\": u, \"org\": o, \"role\": p.Role, \"api_key_id\": p.KeyID})\n19\t}\n20\t\n21\tfunc (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n22\t\to, ok := s.store.Org(p.OrgID)\n23\t\tif !ok {\n24\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n25\t\t\treturn\n26\t\t}\n27\t\twriteJSON(w, http.StatusOK, o)\n28\t}\n29\t\n30\tfunc (s *Server) updateOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n31\t\tif !auth.CanManageTeam(p.Role) {\n32\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins change the organization\")\n33\t\t\treturn\n34\t\t}\n35\t\tvar in struct {\n36\t\t\tName      *string        `json:\"name\"`\n37\t\t\tTimeZone  *string        `json:\"time_zone\"`\n38\t\t\tTaxRateBP *int           `json:\"tax_rate_bp\"`\n39\t\t\tPlan      *store.OrgPlan `json:\"plan\"`\n40\t\t}\n41\t\tif !decode(w, r, \u0026in) {\n42\t\t\treturn\n43\t\t}\n44\t\to, err := s.store.UpdateOrg(p.OrgID, func(o *store.Org) error {\n45\t\t\tif in.Name != nil {\n46\t\t\t\to.Name = *in.Name\n47\t\t\t}\n48\t\t\tif in.TimeZone != nil {\n49\t\t\t\to.TimeZone = *in.TimeZone\n50\t\t\t}\n51\t\t\tif in.TaxRateBP != nil {\n52\t\t\t\to.TaxRateBP = *in.TaxRateBP\n53\t\t\t}\n54\t\t\tif in.Plan != nil {\n55\t\t\t\to.Plan = *in.Plan\n56\t\t\t}\n57\t\t\treturn nil\n58\t\t})\n59\t\tif err != nil {\n60\t\t\ts.storeError(w, err)\n61\t\t\treturn\n62\t\t}\n63\t\twriteJSON(w, http.StatusOK, o)\n64\t}\n65\t\n66\t// memberView is a member with the user's details.\n67\ttype memberView struct {\n68\t\tUserID   string     `json:\"user_id\"`\n69\t\tEmail    string     `json:\"email\"`\n70\t\tName     string     `json:\"name\"`\n71\t\tRole     store.Role `json:\"role\"`\n72\t\tJoinedAt string     `json:\"joined_at\"`\n73\t}\n74\t\n75\tfunc (s *Server) memberView(m store.Member) memberView {\n76\t\tu, _ := s.store.User(m.UserID)\n77\t\treturn memberView{UserID: m.UserID, Email: u.Email, Name: u.Name, Role: m.Role, JoinedAt: m.CreatedAt.Format(\"2006-01-02T15:04:05Z07:00\")}\n78\t}\n79\t\n80\tfunc (s *Server) listMembers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n81\t\titems := []memberView{}\n82\t\tfor _, m := range s.store.Members(p.OrgID) {\n83\t\t\titems = append(items, s.memberView(m))\n84\t\t}\n85\t\twriteJSON(w, http.StatusOK, list{Items: items})\n86\t}\n87\t\n88\tfunc (s *Server) updateMember(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n89\t\tif !auth.CanManageTeam(p.Role) {\n90\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins manage members\")\n91\t\t\treturn\n92\t\t}\n93\t\tvar in struct {\n94\t\t\tRole store.Role `json:\"role\"`\n95\t\t}\n96\t\tif !decode(w, r, \u0026in) {\n97\t\t\treturn\n98\t\t}\n99\t\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n100\t\tif err != nil {\n101\t\t\ts.storeError(w, err)\n102\t\t\treturn\n103\t\t}\n104\t\twriteJSON(w, http.StatusOK, s.memberView(m))\n105\t}\n106\t\n107\tfunc (s *Server) removeMember(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n108\t\tif !auth.CanManageTeam(p.Role) {\n109\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins manage members\")\n110\t\t\treturn\n111\t\t}\n112\t\tif err := s.store.RemoveMember(p.OrgID, r.PathValue(\"user_id\")); err != nil {\n113\t\t\ts.storeError(w, err)\n114\t\t\treturn\n115\t\t}\n116\t\tw.WriteHeader(http.StatusNoContent)\n117\t}\n118\t\n119\tfunc (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n120\t\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})\n121\t}\n122\t\n123\tfunc (s *Server) createInvite(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n124\t\tif !auth.CanManageTeam(p.Role) {\n125\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins invite members\")\n126\t\t\treturn\n127\t\t}\n128\t\tvar in struct {\n129\t\t\tEmail string     `json:\"email\"`\n130\t\t\tRole  store.Role `json:\"role\"`\n131\t\t}\n132\t\tif !decode(w, r, \u0026in) {\n133\t\t\treturn\n134\t\t}\n135\t\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n136\t\tif err != nil {\n137\t\t\ts.storeError(w, err)\n138\t\t\treturn\n139\t\t}\n140\t\tif err := s.sendInvite(r.Context(), inv); err != nil {\n141\t\t\ts.log.Error(\"send invite\", \"invite\", inv.ID, \"err\", err)\n142\t\t}\n143\t\twriteJSON(w, http.StatusCreated, inv)\n144\t}\n145\t\n146\t// sendInvite emails the invite's link to the invited address.\n147\tfunc (s *Server) sendInvite(ctx context.Context, inv store.Invite) error {\n148\t\to, _ := s.store.Org(inv.OrgID)\n149\t\tlink := s.baseURL + \"/invites/accept?token=\" + url.QueryEscape(inv.Token)\n150\t\treturn s.mail.Send(ctx, mail.Message{\n151\t\t\tTo:      inv.Email,\n152\t\t\tSubject: fmt.Sprintf(\"You are invited to join %s on Tally\", o.Name),\n153\t\t\tBody:    fmt.Sprintf(\"You have been invited to join %s on Tally as %s.\\n\\nAccept the invitation: %s\\n\", o.Name, inv.Role, link),\n154\t\t})\n155\t}\n156\t\n157\tfunc (s *Server) revokeInvite(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n158\t\tif !auth.CanManageTeam(p.Role) {\n159\t\t\twriteError(w, http.StatusForbidden, \"forbidden\", \"only owners and admins manage invites\")\n160\t\t\treturn\n161\t\t}\n162\t\tif _, err := s.store.RevokeInvite(p.OrgID, r.PathValue(\"id\"), s.clock.Now()); err != nil {\n163\t\t\ts.storeError(w, err)\n164\t\t\treturn\n165\t\t}\n166\t\tw.WriteHeader(http.StatusNoContent)\n167\t}\n168\t\n169\t// acceptInvite needs no API key: the invite's token is the credential. It answers the new member and their first API key.\n170\tfunc (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {\n171\t\tvar in struct {\n172\t\t\tToken string `json:\"token\"`\n173\t\t\tName  string `json:\"name\"`\n174\t\t}\n175\t\tif !decode(w, r, \u0026in) {\n176\t\t\treturn\n177\t\t}\n178\t\tu, m, k, err := s.store.AcceptInvite(in.Token, in.Name, s.clock.Now())\n179\t\tif err != nil {\n180\t\t\tif errors.Is(err, store.ErrNotFound) {\n181\t\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n182\t\t\t\treturn\n183\t\t\t}\n184\t\t\ts.storeError(w, err)\n185\t\t\treturn\n186\t\t}\n187\t\twriteJSON(w, http.StatusCreated, map[string]any{\"user\": u, \"member\": s.memberView(m), \"api_key\": k})\n188\t}\n189\t\n190\tfunc (s *Server) listAPIKeys(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n191\t\twriteJSON(w, http.StatusOK, list{Items: s.store.APIKeys(p.OrgID)})\n192\t}\n193\t\n194\tfunc (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n195\t\tvar in struct {\n196\t\t\tName string `json:\"name\"`\n197\t\t}\n198\t\tif !decode(w, r, \u0026in) {\n199\t\t\treturn\n200\t\t}\n201\t\tk, err := s.store.CreateAPIKey(p.OrgID, p.UserID, in.Name, s.clock.Now())\n202\t\tif err != nil {\n203\t\t\ts.storeError(w, err)\n204\t\t\treturn\n205\t\t}\n206\t\twriteJSON(w, http.StatusCreated, k)\n207\t}\n208\t\n209\tfunc (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n210\t\tif _, err := s.store.RevokeAPIKey(p.OrgID, r.PathValue(\"id\"), s.clock.Now()); err != nil {\n211\t\t\ts.storeError(w, err)\n212\t\t\treturn\n213\t\t}\n214\t\tw.WriteHeader(http.StatusNoContent)\n215\t}\n216\t"
         }
@@ -1443,7 +1443,7 @@
         "id": "toolu_01VrW6fVgi84tvje1ZcgRXQx",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
           "offset": 75,
           "limit": 30
         }
@@ -1466,7 +1466,7 @@
           "id": "toolu_01VrW6fVgi84tvje1ZcgRXQx",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
             "offset": 75,
             "limit": 30
           }
@@ -1489,7 +1489,7 @@
         "id": "toolu_01VrW6fVgi84tvje1ZcgRXQx",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
           "offset": 75,
           "limit": 30
         },
@@ -1513,7 +1513,7 @@
           "id": "toolu_01VrW6fVgi84tvje1ZcgRXQx",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
             "offset": 75,
             "limit": 30
           },
@@ -5643,7 +5643,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
           "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}",
           "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address. Only the token's SHA-256\n// hash is stored (TokenHash, kept in snapshots apart from the invite); Token is set only on the invite CreateInvite\n// returns, so the caller can email it.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"-\"`\n\tTokenHash  string     `json:\"-\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}"
         }
@@ -5667,7 +5667,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
             "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}",
             "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address. Only the token's SHA-256\n// hash is stored (TokenHash, kept in snapshots apart from the invite); Token is set only on the invite CreateInvite\n// returns, so the caller can email it.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"-\"`\n\tTokenHash  string     `json:\"-\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}"
           }
@@ -5704,11 +5704,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
           "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}",
           "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address. Only the token's SHA-256\n// hash is stored (TokenHash, kept in snapshots apart from the invite); Token is set only on the invite CreateInvite\n// returns, so the caller can email it.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"-\"`\n\tTokenHash  string     `json:\"-\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5729,11 +5729,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go",
             "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}",
             "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address. Only the token's SHA-256\n// hash is stored (TokenHash, kept in snapshots apart from the invite); Token is set only on the invite CreateInvite\n// returns, so the caller can email it.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"-\"`\n\tTokenHash  string     `json:\"-\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/types.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5960,7 +5960,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
           "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n\t// ErrInviteUsed is returned when an invite's token is used after the invite was accepted.\n\tErrInviteUsed = errors.New(\"invite already accepted\")\n\t// ErrInviteExpired is returned when an invite's token is used more than InviteLifetime after the invite was created.\n\tErrInviteExpired = errors.New(\"invite expired\")\n)\n\n// InviteLifetime is how long an invite's token works.\nconst InviteLifetime = 7 * 24 * time.Hour"
         }
@@ -5984,7 +5984,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
             "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n\t// ErrInviteUsed is returned when an invite's token is used after the invite was accepted.\n\tErrInviteUsed = errors.New(\"invite already accepted\")\n\t// ErrInviteExpired is returned when an invite's token is used more than InviteLifetime after the invite was created.\n\tErrInviteExpired = errors.New(\"invite expired\")\n)\n\n// InviteLifetime is how long an invite's token works.\nconst InviteLifetime = 7 * 24 * time.Hour"
           }
@@ -6008,11 +6008,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
           "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n\t// ErrInviteUsed is returned when an invite's token is used after the invite was accepted.\n\tErrInviteUsed = errors.New(\"invite already accepted\")\n\t// ErrInviteExpired is returned when an invite's token is used more than InviteLifetime after the invite was created.\n\tErrInviteExpired = errors.New(\"invite expired\")\n)\n\n// InviteLifetime is how long an invite's token works.\nconst InviteLifetime = 7 * 24 * time.Hour"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6033,11 +6033,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
             "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\t// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.\n\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n\t// ErrInviteUsed is returned when an invite's token is used after the invite was accepted.\n\tErrInviteUsed = errors.New(\"invite already accepted\")\n\t// ErrInviteExpired is returned when an invite's token is used more than InviteLifetime after the invite was created.\n\tErrInviteExpired = errors.New(\"invite expired\")\n)\n\n// InviteLifetime is how long an invite's token works.\nconst InviteLifetime = 7 * 24 * time.Hour"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6109,7 +6109,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
           "new_string": "// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\tsum := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(sum[:])\n}\n\n// CreateInvite invites an email address to join an organization with a role. Earlier invites to the same address\n// (ignoring case) that were neither accepted nor revoked are revoked, so only the newest token works. The returned\n// invite carries the token; the store keeps only its hash.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tt := now.UTC()\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: t, ExpiresAt: t.Add(InviteLifetime)}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}"
         }
@@ -6133,7 +6133,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
             "new_string": "// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\tsum := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(sum[:])\n}\n\n// CreateInvite invites an email address to join an organization with a role. Earlier invites to the same address\n// (ignoring case) that were neither accepted nor revoked are revoked, so only the newest token works. The returned\n// invite carries the token; the store keeps only its hash.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tt := now.UTC()\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: t, ExpiresAt: t.Add(InviteLifetime)}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}"
           }
@@ -6157,11 +6157,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
           "new_string": "// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\tsum := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(sum[:])\n}\n\n// CreateInvite invites an email address to join an organization with a role. Earlier invites to the same address\n// (ignoring case) that were neither accepted nor revoked are revoked, so only the newest token works. The returned\n// invite carries the token; the store keeps only its hash.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tt := now.UTC()\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: t, ExpiresAt: t.Add(InviteLifetime)}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6182,11 +6182,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
             "new_string": "// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\tsum := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(sum[:])\n}\n\n// CreateInvite invites an email address to join an organization with a role. Earlier invites to the same address\n// (ignoring case) that were neither accepted nor revoked are revoked, so only the newest token works. The returned\n// invite carries the token; the store keeps only its hash.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {\n\temail = strings.TrimSpace(email)\n\tif !validEmail(email) {\n\t\treturn Invite{}, invalid(\"an invite needs a valid email address\")\n\t}\n\tif !role.Valid() || role == RoleOwner {\n\t\treturn Invite{}, invalid(\"an invite's role is admin, billing, member or viewer\")\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tt := now.UTC()\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: t, ExpiresAt: t.Add(InviteLifetime)}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6397,7 +6397,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
           "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that are neither accepted, revoked nor expired at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool {\n\t\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt)\n\t})\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
         }
@@ -6421,7 +6421,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
             "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that are neither accepted, revoked nor expired at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool {\n\t\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt)\n\t})\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
           }
@@ -6445,11 +6445,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
           "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that are neither accepted, revoked nor expired at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool {\n\t\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt)\n\t})\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6470,11 +6470,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
             "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that are neither accepted, revoked nor expired at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool {\n\t\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt)\n\t})\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6508,7 +6508,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
           "new_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key. A token that is unknown or revoked is\n// ErrNotFound, one that was already used is ErrInviteUsed, and one older than InviteLifetime is ErrInviteExpired.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\thash := hashInviteToken(token)\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.TokenHash == hash {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
         }
@@ -6532,7 +6532,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
             "new_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key. A token that is unknown or revoked is\n// ErrNotFound, one that was already used is ErrInviteUsed, and one older than InviteLifetime is ErrInviteExpired.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\thash := hashInviteToken(token)\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.TokenHash == hash {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
           }
@@ -6569,11 +6569,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
           "old_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
           "new_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key. A token that is unknown or revoked is\n// ErrNotFound, one that was already used is ErrInviteUsed, and one older than InviteLifetime is ErrInviteExpired.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\thash := hashInviteToken(token)\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.TokenHash == hash {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6594,11 +6594,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go",
             "old_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
             "new_string": "// AcceptInvite accepts the invite with this token: it finds or creates the user for the invited address (named name),\n// makes them a member with the invite's role and gives them a first API key. A token that is unknown or revoked is\n// ErrNotFound, one that was already used is ErrInviteUsed, and one older than InviteLifetime is ErrInviteExpired.\nfunc (s *Store) AcceptInvite(token, name string, now time.Time) (User, Member, APIKey, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\thash := hashInviteToken(token)\n\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.TokenHash == hash {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6901,7 +6901,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tInvites          []Invite          `json:\"invites\"`\n\tCustomers        []Customer        `json:\"customers\"`",
           "new_string": "\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`"
         }
@@ -6925,7 +6925,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tInvites          []Invite          `json:\"invites\"`\n\tCustomers        []Customer        `json:\"customers\"`",
             "new_string": "\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`"
           }
@@ -6949,11 +6949,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tInvites          []Invite          `json:\"invites\"`\n\tCustomers        []Customer        `json:\"customers\"`",
           "new_string": "\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6974,11 +6974,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tInvites          []Invite          `json:\"invites\"`\n\tCustomers        []Customer        `json:\"customers\"`",
             "new_string": "\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7012,7 +7012,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t}",
           "new_string": "\tst.InviteTokenHashes = map[string]string{}\n\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t\tst.InviteTokenHashes[i.ID] = i.TokenHash\n\t}"
         }
@@ -7036,7 +7036,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t}",
             "new_string": "\tst.InviteTokenHashes = map[string]string{}\n\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t\tst.InviteTokenHashes[i.ID] = i.TokenHash\n\t}"
           }
@@ -7060,11 +7060,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t}",
           "new_string": "\tst.InviteTokenHashes = map[string]string{}\n\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t\tst.InviteTokenHashes[i.ID] = i.TokenHash\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7085,11 +7085,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t}",
             "new_string": "\tst.InviteTokenHashes = map[string]string{}\n\tfor _, i := range s.invites {\n\t\tst.Invites = append(st.Invites, i)\n\t\tst.InviteTokenHashes[i.ID] = i.TokenHash\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7161,7 +7161,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
           "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ti.TokenHash = st.InviteTokenHashes[i.ID]\n\t\ts.invites[i.ID] = i"
         }
@@ -7185,7 +7185,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
             "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ti.TokenHash = st.InviteTokenHashes[i.ID]\n\t\ts.invites[i.ID] = i"
           }
@@ -7209,11 +7209,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
           "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ti.TokenHash = st.InviteTokenHashes[i.ID]\n\t\ts.invites[i.ID] = i"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7234,11 +7234,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
             "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ti.TokenHash = st.InviteTokenHashes[i.ID]\n\t\ts.invites[i.ID] = i"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7503,7 +7503,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
           "old_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})",
           "new_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.PendingInvites(p.OrgID, s.clock.Now())})"
         }
@@ -7527,7 +7527,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
             "old_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})",
             "new_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.PendingInvites(p.OrgID, s.clock.Now())})"
           }
@@ -7551,11 +7551,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
           "old_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})",
           "new_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.PendingInvites(p.OrgID, s.clock.Now())})"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -7576,11 +7576,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
             "old_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})",
             "new_string": "\twriteJSON(w, http.StatusOK, list{Items: s.store.PendingInvites(p.OrgID, s.clock.Now())})"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -7614,7 +7614,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
           "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}",
           "new_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteUsed) {\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite was already accepted\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteExpired) {\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired\")\n\t\t\treturn\n\t\t}"
         }
@@ -7638,7 +7638,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
             "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}",
             "new_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteUsed) {\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite was already accepted\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteExpired) {\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired\")\n\t\t\treturn\n\t\t}"
           }
@@ -7662,11 +7662,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
           "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}",
           "new_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteUsed) {\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite was already accepted\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteExpired) {\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired\")\n\t\t\treturn\n\t\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -7687,11 +7687,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go",
             "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}",
             "new_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteUsed) {\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite was already accepted\")\n\t\t\treturn\n\t\t}\n\t\tif errors.Is(err, store.ErrInviteExpired) {\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired\")\n\t\t\treturn\n\t\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -8212,7 +8212,7 @@
         "id": "toolu_011Jqbf1RGAwPMF9KyjjsN1p",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "offset": 7,
           "limit": 20
         }
@@ -8235,7 +8235,7 @@
           "id": "toolu_011Jqbf1RGAwPMF9KyjjsN1p",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "offset": 7,
             "limit": 20
           }
@@ -8258,7 +8258,7 @@
         "id": "toolu_011Jqbf1RGAwPMF9KyjjsN1p",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "offset": 7,
           "limit": 20
         },
@@ -8282,7 +8282,7 @@
           "id": "toolu_011Jqbf1RGAwPMF9KyjjsN1p",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "offset": 7,
             "limit": 20
           },
@@ -8358,7 +8358,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tSeq              int               `json:\"seq\"`\n\tOrgs             []Org             `json:\"orgs\"`\n\tUsers            []User            `json:\"users\"`\n\tMembers          []Member          `json:\"members\"`\n\tAPIKeys          []APIKey          `json:\"api_keys\"`\n\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`\n\tPlans            []Plan            `json:\"plans\"`\n\tSubscriptions    []Subscription    `json:\"subscriptions\"`\n\tUsage            []UsageRecord     `json:\"usage\"`\n\tInvoices         []Invoice         `json:\"invoices\"`\n\tPayments         []Payment         `json:\"payments\"`\n\tWebhookEndpoints []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents           []Event           `json:\"events\"`\n\tDeliveries       []Delivery        `json:\"deliveries\"`",
           "new_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`"
         }
@@ -8382,7 +8382,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tSeq              int               `json:\"seq\"`\n\tOrgs             []Org             `json:\"orgs\"`\n\tUsers            []User            `json:\"users\"`\n\tMembers          []Member          `json:\"members\"`\n\tAPIKeys          []APIKey          `json:\"api_keys\"`\n\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`\n\tPlans            []Plan            `json:\"plans\"`\n\tSubscriptions    []Subscription    `json:\"subscriptions\"`\n\tUsage            []UsageRecord     `json:\"usage\"`\n\tInvoices         []Invoice         `json:\"invoices\"`\n\tPayments         []Payment         `json:\"payments\"`\n\tWebhookEndpoints []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents           []Event           `json:\"events\"`\n\tDeliveries       []Delivery        `json:\"deliveries\"`",
             "new_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`"
           }
@@ -8406,11 +8406,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tSeq              int               `json:\"seq\"`\n\tOrgs             []Org             `json:\"orgs\"`\n\tUsers            []User            `json:\"users\"`\n\tMembers          []Member          `json:\"members\"`\n\tAPIKeys          []APIKey          `json:\"api_keys\"`\n\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`\n\tPlans            []Plan            `json:\"plans\"`\n\tSubscriptions    []Subscription    `json:\"subscriptions\"`\n\tUsage            []UsageRecord     `json:\"usage\"`\n\tInvoices         []Invoice         `json:\"invoices\"`\n\tPayments         []Payment         `json:\"payments\"`\n\tWebhookEndpoints []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents           []Event           `json:\"events\"`\n\tDeliveries       []Delivery        `json:\"deliveries\"`",
           "new_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -8431,11 +8431,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tSeq              int               `json:\"seq\"`\n\tOrgs             []Org             `json:\"orgs\"`\n\tUsers            []User            `json:\"users\"`\n\tMembers          []Member          `json:\"members\"`\n\tAPIKeys          []APIKey          `json:\"api_keys\"`\n\tInvites          []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers        []Customer        `json:\"customers\"`\n\tPlans            []Plan            `json:\"plans\"`\n\tSubscriptions    []Subscription    `json:\"subscriptions\"`\n\tUsage            []UsageRecord     `json:\"usage\"`\n\tInvoices         []Invoice         `json:\"invoices\"`\n\tPayments         []Payment         `json:\"payments\"`\n\tWebhookEndpoints []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents           []Event           `json:\"events\"`\n\tDeliveries       []Delivery        `json:\"deliveries\"`",
             "new_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
         }
       },
       "node": "work",
@@ -8526,7 +8526,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`",
           "new_string": "\tSeq               int               `json:\"seq\"`\n\tOrgs              []Org             `json:\"orgs\"`\n\tUsers             []User            `json:\"users\"`\n\tMembers           []Member          `json:\"members\"`\n\tAPIKeys           []APIKey          `json:\"api_keys\"`\n\tInvites           []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer        `json:\"customers\"`\n\tPlans             []Plan            `json:\"plans\"`\n\tSubscriptions     []Subscription    `json:\"subscriptions\"`\n\tUsage             []UsageRecord     `json:\"usage\"`\n\tInvoices          []Invoice         `json:\"invoices\"`\n\tPayments          []Payment         `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents            []Event           `json:\"events\"`\n\tDeliveries        []Delivery        `json:\"deliveries\"`"
         }
@@ -8550,7 +8550,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`",
             "new_string": "\tSeq               int               `json:\"seq\"`\n\tOrgs              []Org             `json:\"orgs\"`\n\tUsers             []User            `json:\"users\"`\n\tMembers           []Member          `json:\"members\"`\n\tAPIKeys           []APIKey          `json:\"api_keys\"`\n\tInvites           []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer        `json:\"customers\"`\n\tPlans             []Plan            `json:\"plans\"`\n\tSubscriptions     []Subscription    `json:\"subscriptions\"`\n\tUsage             []UsageRecord     `json:\"usage\"`\n\tInvoices          []Invoice         `json:\"invoices\"`\n\tPayments          []Payment         `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents            []Event           `json:\"events\"`\n\tDeliveries        []Delivery        `json:\"deliveries\"`"
           }
@@ -8574,11 +8574,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
           "old_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`",
           "new_string": "\tSeq               int               `json:\"seq\"`\n\tOrgs              []Org             `json:\"orgs\"`\n\tUsers             []User            `json:\"users\"`\n\tMembers           []Member          `json:\"members\"`\n\tAPIKeys           []APIKey          `json:\"api_keys\"`\n\tInvites           []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer        `json:\"customers\"`\n\tPlans             []Plan            `json:\"plans\"`\n\tSubscriptions     []Subscription    `json:\"subscriptions\"`\n\tUsage             []UsageRecord     `json:\"usage\"`\n\tInvoices          []Invoice         `json:\"invoices\"`\n\tPayments          []Payment         `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents            []Event           `json:\"events\"`\n\tDeliveries        []Delivery        `json:\"deliveries\"`"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -8599,11 +8599,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go",
             "old_string": "\tSeq               int                 `json:\"seq\"`\n\tOrgs              []Org               `json:\"orgs\"`\n\tUsers             []User              `json:\"users\"`\n\tMembers           []Member            `json:\"members\"`\n\tAPIKeys           []APIKey            `json:\"api_keys\"`\n\tInvites           []Invite            `json:\"invites\"`\n\tInviteTokenHashes map[string]string   `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer          `json:\"customers\"`\n\tPlans             []Plan              `json:\"plans\"`\n\tSubscriptions     []Subscription      `json:\"subscriptions\"`\n\tUsage             []UsageRecord       `json:\"usage\"`\n\tInvoices          []Invoice           `json:\"invoices\"`\n\tPayments          []Payment           `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint   `json:\"webhook_endpoints\"`\n\tEvents            []Event             `json:\"events\"`\n\tDeliveries        []Delivery          `json:\"deliveries\"`",
             "new_string": "\tSeq               int               `json:\"seq\"`\n\tOrgs              []Org             `json:\"orgs\"`\n\tUsers             []User            `json:\"users\"`\n\tMembers           []Member          `json:\"members\"`\n\tAPIKeys           []APIKey          `json:\"api_keys\"`\n\tInvites           []Invite          `json:\"invites\"`\n\tInviteTokenHashes map[string]string `json:\"invite_token_hashes\"` // invite ID -\u003e SHA-256 of its token\n\tCustomers         []Customer        `json:\"customers\"`\n\tPlans             []Plan            `json:\"plans\"`\n\tSubscriptions     []Subscription    `json:\"subscriptions\"`\n\tUsage             []UsageRecord     `json:\"usage\"`\n\tInvoices          []Invoice         `json:\"invoices\"`\n\tPayments          []Payment         `json:\"payments\"`\n\tWebhookEndpoints  []WebhookEndpoint `json:\"webhook_endpoints\"`\n\tEvents            []Event           `json:\"events\"`\n\tDeliveries        []Delivery        `json:\"deliveries\"`"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/state.go has been updated successfully."
         }
       },
       "node": "work",
@@ -9550,7 +9550,7 @@
         "id": "toolu_01AH6haqtA6zMkPzrCC6oSj2",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
           "content": "package store\n\nimport (\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"New@People.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\traw, err := base64.RawURLEncoding.DecodeString(inv.Token)\n\tif err != nil || len(inv.Token) != 43 || len(raw) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 random bytes in unpadded base64url\", inv.Token)\n\t}\n\tsum := sha256.Sum256([]byte(inv.Token))\n\tif inv.TokenHash != hex.EncodeToString(sum[:]) {\n\t\tt.Fatalf(\"token hash = %q\", inv.TokenHash)\n\t}\n\tif !inv.ExpiresAt.Equal(t0.Add(InviteLifetime)) {\n\t\tt.Fatalf(\"expires at %v\", inv.ExpiresAt)\n\t}\n\n\t// The token is returned once, by CreateInvite; the store and its snapshot keep only the hash.\n\tif got, _ := s.Invite(o.ID, inv.ID); got.Token != \"\" {\n\t\tt.Fatal(\"the stored invite holds its token\")\n\t}\n\tfor _, pending := range s.Invites(o.ID) {\n\t\tif pending.Token != \"\" {\n\t\t\tt.Fatal(\"the listed invite holds its token\")\n\t\t}\n\t}\n\tb, err := json.Marshal(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), inv.Token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestAcceptInvite(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tfirst, err := s.CreateInvite(o.ID, \"new@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\t// Inviting the same address again (ignoring case) revokes the first invite: only the newest token works.\n\tsecond, err := s.CreateInvite(o.ID, \"NEW@people.example\", RoleViewer, \"usr_1\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(first.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token: %v\", err)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 1 || pending[0].ID != second.ID {\n\t\tt.Fatalf(\"pending = %+v\", pending)\n\t}\n\n\t// A snapshot keeps the hash, so the token still works after a restore.\n\trestored, err := FromState(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(\"invite_wrong\", \"X\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a wrong token: %v\", err)\n\t}\n\tu, m, k, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {\n\t\tt.Fatalf(\"accepted as %+v, %+v\", u, m)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"a used token: %v\", err)\n\t}\n\tif pending := restored.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 0 {\n\t\tt.Fatalf(\"an accepted invite is pending: %+v\", pending)\n\t}\n}\n\nfunc TestInviteExpiry(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"late@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Seven days after creation the invite still works; a second later it has expired.\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime)); len(pending) != 1 {\n\t\tt.Fatalf(\"at seven days: pending = %+v\", pending)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime+time.Second)); len(pending) != 0 {\n\t\tt.Fatalf(\"after seven days: pending = %+v\", pending)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Late\", t0.Add(InviteLifetime+time.Second)); !errors.Is(err, ErrInviteExpired) {\n\t\tt.Fatalf(\"an expired token: %v\", err)\n\t}\n}\n\nfunc TestRevokedInviteToken(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"gone@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.RevokeInvite(o.ID, inv.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Gone\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a revoked token: %v\", err)\n\t}\n}\n"
         }
       },
@@ -9572,7 +9572,7 @@
           "id": "toolu_01AH6haqtA6zMkPzrCC6oSj2",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
             "content": "package store\n\nimport (\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"New@People.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\traw, err := base64.RawURLEncoding.DecodeString(inv.Token)\n\tif err != nil || len(inv.Token) != 43 || len(raw) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 random bytes in unpadded base64url\", inv.Token)\n\t}\n\tsum := sha256.Sum256([]byte(inv.Token))\n\tif inv.TokenHash != hex.EncodeToString(sum[:]) {\n\t\tt.Fatalf(\"token hash = %q\", inv.TokenHash)\n\t}\n\tif !inv.ExpiresAt.Equal(t0.Add(InviteLifetime)) {\n\t\tt.Fatalf(\"expires at %v\", inv.ExpiresAt)\n\t}\n\n\t// The token is returned once, by CreateInvite; the store and its snapshot keep only the hash.\n\tif got, _ := s.Invite(o.ID, inv.ID); got.Token != \"\" {\n\t\tt.Fatal(\"the stored invite holds its token\")\n\t}\n\tfor _, pending := range s.Invites(o.ID) {\n\t\tif pending.Token != \"\" {\n\t\t\tt.Fatal(\"the listed invite holds its token\")\n\t\t}\n\t}\n\tb, err := json.Marshal(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), inv.Token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestAcceptInvite(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tfirst, err := s.CreateInvite(o.ID, \"new@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\t// Inviting the same address again (ignoring case) revokes the first invite: only the newest token works.\n\tsecond, err := s.CreateInvite(o.ID, \"NEW@people.example\", RoleViewer, \"usr_1\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(first.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token: %v\", err)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 1 || pending[0].ID != second.ID {\n\t\tt.Fatalf(\"pending = %+v\", pending)\n\t}\n\n\t// A snapshot keeps the hash, so the token still works after a restore.\n\trestored, err := FromState(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(\"invite_wrong\", \"X\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a wrong token: %v\", err)\n\t}\n\tu, m, k, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {\n\t\tt.Fatalf(\"accepted as %+v, %+v\", u, m)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"a used token: %v\", err)\n\t}\n\tif pending := restored.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 0 {\n\t\tt.Fatalf(\"an accepted invite is pending: %+v\", pending)\n\t}\n}\n\nfunc TestInviteExpiry(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"late@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Seven days after creation the invite still works; a second later it has expired.\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime)); len(pending) != 1 {\n\t\tt.Fatalf(\"at seven days: pending = %+v\", pending)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime+time.Second)); len(pending) != 0 {\n\t\tt.Fatalf(\"after seven days: pending = %+v\", pending)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Late\", t0.Add(InviteLifetime+time.Second)); !errors.Is(err, ErrInviteExpired) {\n\t\tt.Fatalf(\"an expired token: %v\", err)\n\t}\n}\n\nfunc TestRevokedInviteToken(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"gone@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.RevokeInvite(o.ID, inv.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Gone\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a revoked token: %v\", err)\n\t}\n}\n"
           }
         }
@@ -9594,10 +9594,10 @@
         "id": "toolu_01AH6haqtA6zMkPzrCC6oSj2",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
           "content": "package store\n\nimport (\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"New@People.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\traw, err := base64.RawURLEncoding.DecodeString(inv.Token)\n\tif err != nil || len(inv.Token) != 43 || len(raw) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 random bytes in unpadded base64url\", inv.Token)\n\t}\n\tsum := sha256.Sum256([]byte(inv.Token))\n\tif inv.TokenHash != hex.EncodeToString(sum[:]) {\n\t\tt.Fatalf(\"token hash = %q\", inv.TokenHash)\n\t}\n\tif !inv.ExpiresAt.Equal(t0.Add(InviteLifetime)) {\n\t\tt.Fatalf(\"expires at %v\", inv.ExpiresAt)\n\t}\n\n\t// The token is returned once, by CreateInvite; the store and its snapshot keep only the hash.\n\tif got, _ := s.Invite(o.ID, inv.ID); got.Token != \"\" {\n\t\tt.Fatal(\"the stored invite holds its token\")\n\t}\n\tfor _, pending := range s.Invites(o.ID) {\n\t\tif pending.Token != \"\" {\n\t\t\tt.Fatal(\"the listed invite holds its token\")\n\t\t}\n\t}\n\tb, err := json.Marshal(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), inv.Token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestAcceptInvite(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tfirst, err := s.CreateInvite(o.ID, \"new@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\t// Inviting the same address again (ignoring case) revokes the first invite: only the newest token works.\n\tsecond, err := s.CreateInvite(o.ID, \"NEW@people.example\", RoleViewer, \"usr_1\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(first.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token: %v\", err)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 1 || pending[0].ID != second.ID {\n\t\tt.Fatalf(\"pending = %+v\", pending)\n\t}\n\n\t// A snapshot keeps the hash, so the token still works after a restore.\n\trestored, err := FromState(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(\"invite_wrong\", \"X\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a wrong token: %v\", err)\n\t}\n\tu, m, k, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {\n\t\tt.Fatalf(\"accepted as %+v, %+v\", u, m)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"a used token: %v\", err)\n\t}\n\tif pending := restored.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 0 {\n\t\tt.Fatalf(\"an accepted invite is pending: %+v\", pending)\n\t}\n}\n\nfunc TestInviteExpiry(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"late@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Seven days after creation the invite still works; a second later it has expired.\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime)); len(pending) != 1 {\n\t\tt.Fatalf(\"at seven days: pending = %+v\", pending)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime+time.Second)); len(pending) != 0 {\n\t\tt.Fatalf(\"after seven days: pending = %+v\", pending)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Late\", t0.Add(InviteLifetime+time.Second)); !errors.Is(err, ErrInviteExpired) {\n\t\tt.Fatalf(\"an expired token: %v\", err)\n\t}\n}\n\nfunc TestRevokedInviteToken(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"gone@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.RevokeInvite(o.ID, inv.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Gone\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a revoked token: %v\", err)\n\t}\n}\n"
         },
-        "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go (file state is current in your context — no need to Read it back)"
+        "output": "File created successfully at: <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -9617,10 +9617,10 @@
           "id": "toolu_01AH6haqtA6zMkPzrCC6oSj2",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
             "content": "package store\n\nimport (\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"New@People.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\traw, err := base64.RawURLEncoding.DecodeString(inv.Token)\n\tif err != nil || len(inv.Token) != 43 || len(raw) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 random bytes in unpadded base64url\", inv.Token)\n\t}\n\tsum := sha256.Sum256([]byte(inv.Token))\n\tif inv.TokenHash != hex.EncodeToString(sum[:]) {\n\t\tt.Fatalf(\"token hash = %q\", inv.TokenHash)\n\t}\n\tif !inv.ExpiresAt.Equal(t0.Add(InviteLifetime)) {\n\t\tt.Fatalf(\"expires at %v\", inv.ExpiresAt)\n\t}\n\n\t// The token is returned once, by CreateInvite; the store and its snapshot keep only the hash.\n\tif got, _ := s.Invite(o.ID, inv.ID); got.Token != \"\" {\n\t\tt.Fatal(\"the stored invite holds its token\")\n\t}\n\tfor _, pending := range s.Invites(o.ID) {\n\t\tif pending.Token != \"\" {\n\t\t\tt.Fatal(\"the listed invite holds its token\")\n\t\t}\n\t}\n\tb, err := json.Marshal(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), inv.Token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestAcceptInvite(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tfirst, err := s.CreateInvite(o.ID, \"new@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\t// Inviting the same address again (ignoring case) revokes the first invite: only the newest token works.\n\tsecond, err := s.CreateInvite(o.ID, \"NEW@people.example\", RoleViewer, \"usr_1\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(first.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token: %v\", err)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 1 || pending[0].ID != second.ID {\n\t\tt.Fatalf(\"pending = %+v\", pending)\n\t}\n\n\t// A snapshot keeps the hash, so the token still works after a restore.\n\trestored, err := FromState(s.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(\"invite_wrong\", \"X\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a wrong token: %v\", err)\n\t}\n\tu, m, k, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour))\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {\n\t\tt.Fatalf(\"accepted as %+v, %+v\", u, m)\n\t}\n\tif _, _, _, err := restored.AcceptInvite(second.Token, \"New Person\", t0.Add(time.Hour)); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"a used token: %v\", err)\n\t}\n\tif pending := restored.PendingInvites(o.ID, t0.Add(time.Hour)); len(pending) != 0 {\n\t\tt.Fatalf(\"an accepted invite is pending: %+v\", pending)\n\t}\n}\n\nfunc TestInviteExpiry(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"late@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Seven days after creation the invite still works; a second later it has expired.\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime)); len(pending) != 1 {\n\t\tt.Fatalf(\"at seven days: pending = %+v\", pending)\n\t}\n\tif pending := s.PendingInvites(o.ID, t0.Add(InviteLifetime+time.Second)); len(pending) != 0 {\n\t\tt.Fatalf(\"after seven days: pending = %+v\", pending)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Late\", t0.Add(InviteLifetime+time.Second)); !errors.Is(err, ErrInviteExpired) {\n\t\tt.Fatalf(\"an expired token: %v\", err)\n\t}\n}\n\nfunc TestRevokedInviteToken(t *testing.T) {\n\ts := New()\n\to := newOrg(t, s, \"Acme\")\n\tinv, err := s.CreateInvite(o.ID, \"gone@people.example\", RoleMember, \"usr_1\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.RevokeInvite(o.ID, inv.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"Gone\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"a revoked token: %v\", err)\n\t}\n}\n"
           },
-          "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go (file state is current in your context — no need to Read it back)"
+          "output": "File created successfully at: <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -10012,7 +10012,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
           "old_string": "\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {",
           "new_string": "\tif u.Email != \"NEW@people.example\" || m.Role != RoleViewer || k.Token == \"\" {"
         }
@@ -10036,7 +10036,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
             "old_string": "\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {",
             "new_string": "\tif u.Email != \"NEW@people.example\" || m.Role != RoleViewer || k.Token == \"\" {"
           }
@@ -10060,11 +10060,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
           "old_string": "\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {",
           "new_string": "\tif u.Email != \"NEW@people.example\" || m.Role != RoleViewer || k.Token == \"\" {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -10085,11 +10085,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go",
             "old_string": "\tif u.Email != \"NEW@people.example\" \u0026\u0026 u.Email != \"new@people.example\" || m.Role != RoleViewer || k.Token == \"\" {",
             "new_string": "\tif u.Email != \"NEW@people.example\" || m.Role != RoleViewer || k.Token == \"\" {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/store/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -10424,7 +10424,7 @@
         "id": "toolu_01WpUmGh6gLKcpiiYkmSsi9V",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
           "content": "package api_test\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/url\"\n\t\"regexp\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\n// inviteToken sends an invite as the owner and returns the token from the email, failing the test if the answer or\n// the email holds the token anywhere else.\nfunc inviteToken(t *testing.T, e *apitest.Env, email, role string) string {\n\tt.Helper()\n\tr := e.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role}, nil)\n\tmsgs := e.Mail.Messages()\n\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\tif m == nil {\n\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t}\n\ttoken, _ := url.QueryUnescape(m[1])\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite answer holds the token: %s\", r.Body)\n\t}\n\treturn token\n}\n\nfunc TestInviteTokenSecrecy(t *testing.T) {\n\te := apitest.New(t)\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@acme.example\", store.RoleViewer)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\n\t// Even a viewer, who may read invites, does not see the token; the listing shows when each invite expires.\n\tr := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", viewerKey, nil, nil)\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite list holds the token: %s\", r.Body)\n\t}\n\tvar list struct {\n\t\tItems []map[string]any `json:\"items\"`\n\t}\n\tr.JSON(t, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0][\"expires_at\"] == nil {\n\t\tt.Fatalf(\"pending invites = %s\", r.Body)\n\t}\n\n\tb, err := json.Marshal(e.Store.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestInviteAccept(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"New Person\"})\n\t}\n\n\tif r := accept(\"invite_nope\"); r.Code != http.StatusNotFound || r.Map(t)[\"error\"] != \"invite_not_found\" {\n\t\tt.Fatalf(\"unknown token: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusCreated {\n\t\tt.Fatalf(\"accept: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_used\" {\n\t\tt.Fatalf(\"a used token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteExpired(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"late@people.example\", \"member\")\n\te.Clock.Advance(7*24*time.Hour + time.Second)\n\n\tr := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Late Person\"})\n\tif r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_expired\" {\n\t\tt.Fatalf(\"an expired token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), \"late@people.example\") {\n\t\tt.Fatalf(\"an expired invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteReissued(t *testing.T) {\n\te := apitest.New(t)\n\told := inviteToken(t, e, \"new@people.example\", \"member\")\n\tfresh := inviteToken(t, e, \"NEW@people.example\", \"viewer\")\n\n\tif r := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": old, \"name\": \"New Person\"}); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"the replaced token: %s\", r)\n\t}\n\tvar accepted struct {\n\t\tMember struct {\n\t\t\tRole string `json:\"role\"`\n\t\t} `json:\"member\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": fresh, \"name\": \"New Person\"}, \u0026accepted)\n\tif accepted.Member.Role != \"viewer\" {\n\t\tt.Fatalf(\"accepted as %+v\", accepted)\n\t}\n}\n\nfunc TestInviteListSkipsRevoked(t *testing.T) {\n\te := apitest.New(t)\n\tinviteToken(t, e, \"x@people.example\", \"member\")\n\tvar inv store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": \"y@people.example\", \"role\": \"member\"}, \u0026inv)\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+inv.ID, e.Acme.Key, nil, nil)\n\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].Email != \"x@people.example\" {\n\t\tt.Fatalf(\"pending invites = %+v\", list.Items)\n\t}\n}\n"
         }
       },
@@ -10446,7 +10446,7 @@
           "id": "toolu_01WpUmGh6gLKcpiiYkmSsi9V",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
             "content": "package api_test\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/url\"\n\t\"regexp\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\n// inviteToken sends an invite as the owner and returns the token from the email, failing the test if the answer or\n// the email holds the token anywhere else.\nfunc inviteToken(t *testing.T, e *apitest.Env, email, role string) string {\n\tt.Helper()\n\tr := e.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role}, nil)\n\tmsgs := e.Mail.Messages()\n\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\tif m == nil {\n\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t}\n\ttoken, _ := url.QueryUnescape(m[1])\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite answer holds the token: %s\", r.Body)\n\t}\n\treturn token\n}\n\nfunc TestInviteTokenSecrecy(t *testing.T) {\n\te := apitest.New(t)\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@acme.example\", store.RoleViewer)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\n\t// Even a viewer, who may read invites, does not see the token; the listing shows when each invite expires.\n\tr := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", viewerKey, nil, nil)\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite list holds the token: %s\", r.Body)\n\t}\n\tvar list struct {\n\t\tItems []map[string]any `json:\"items\"`\n\t}\n\tr.JSON(t, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0][\"expires_at\"] == nil {\n\t\tt.Fatalf(\"pending invites = %s\", r.Body)\n\t}\n\n\tb, err := json.Marshal(e.Store.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestInviteAccept(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"New Person\"})\n\t}\n\n\tif r := accept(\"invite_nope\"); r.Code != http.StatusNotFound || r.Map(t)[\"error\"] != \"invite_not_found\" {\n\t\tt.Fatalf(\"unknown token: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusCreated {\n\t\tt.Fatalf(\"accept: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_used\" {\n\t\tt.Fatalf(\"a used token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteExpired(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"late@people.example\", \"member\")\n\te.Clock.Advance(7*24*time.Hour + time.Second)\n\n\tr := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Late Person\"})\n\tif r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_expired\" {\n\t\tt.Fatalf(\"an expired token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), \"late@people.example\") {\n\t\tt.Fatalf(\"an expired invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteReissued(t *testing.T) {\n\te := apitest.New(t)\n\told := inviteToken(t, e, \"new@people.example\", \"member\")\n\tfresh := inviteToken(t, e, \"NEW@people.example\", \"viewer\")\n\n\tif r := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": old, \"name\": \"New Person\"}); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"the replaced token: %s\", r)\n\t}\n\tvar accepted struct {\n\t\tMember struct {\n\t\t\tRole string `json:\"role\"`\n\t\t} `json:\"member\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": fresh, \"name\": \"New Person\"}, \u0026accepted)\n\tif accepted.Member.Role != \"viewer\" {\n\t\tt.Fatalf(\"accepted as %+v\", accepted)\n\t}\n}\n\nfunc TestInviteListSkipsRevoked(t *testing.T) {\n\te := apitest.New(t)\n\tinviteToken(t, e, \"x@people.example\", \"member\")\n\tvar inv store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": \"y@people.example\", \"role\": \"member\"}, \u0026inv)\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+inv.ID, e.Acme.Key, nil, nil)\n\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].Email != \"x@people.example\" {\n\t\tt.Fatalf(\"pending invites = %+v\", list.Items)\n\t}\n}\n"
           }
         }
@@ -10468,10 +10468,10 @@
         "id": "toolu_01WpUmGh6gLKcpiiYkmSsi9V",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
           "content": "package api_test\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/url\"\n\t\"regexp\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\n// inviteToken sends an invite as the owner and returns the token from the email, failing the test if the answer or\n// the email holds the token anywhere else.\nfunc inviteToken(t *testing.T, e *apitest.Env, email, role string) string {\n\tt.Helper()\n\tr := e.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role}, nil)\n\tmsgs := e.Mail.Messages()\n\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\tif m == nil {\n\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t}\n\ttoken, _ := url.QueryUnescape(m[1])\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite answer holds the token: %s\", r.Body)\n\t}\n\treturn token\n}\n\nfunc TestInviteTokenSecrecy(t *testing.T) {\n\te := apitest.New(t)\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@acme.example\", store.RoleViewer)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\n\t// Even a viewer, who may read invites, does not see the token; the listing shows when each invite expires.\n\tr := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", viewerKey, nil, nil)\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite list holds the token: %s\", r.Body)\n\t}\n\tvar list struct {\n\t\tItems []map[string]any `json:\"items\"`\n\t}\n\tr.JSON(t, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0][\"expires_at\"] == nil {\n\t\tt.Fatalf(\"pending invites = %s\", r.Body)\n\t}\n\n\tb, err := json.Marshal(e.Store.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestInviteAccept(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"New Person\"})\n\t}\n\n\tif r := accept(\"invite_nope\"); r.Code != http.StatusNotFound || r.Map(t)[\"error\"] != \"invite_not_found\" {\n\t\tt.Fatalf(\"unknown token: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusCreated {\n\t\tt.Fatalf(\"accept: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_used\" {\n\t\tt.Fatalf(\"a used token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteExpired(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"late@people.example\", \"member\")\n\te.Clock.Advance(7*24*time.Hour + time.Second)\n\n\tr := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Late Person\"})\n\tif r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_expired\" {\n\t\tt.Fatalf(\"an expired token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), \"late@people.example\") {\n\t\tt.Fatalf(\"an expired invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteReissued(t *testing.T) {\n\te := apitest.New(t)\n\told := inviteToken(t, e, \"new@people.example\", \"member\")\n\tfresh := inviteToken(t, e, \"NEW@people.example\", \"viewer\")\n\n\tif r := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": old, \"name\": \"New Person\"}); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"the replaced token: %s\", r)\n\t}\n\tvar accepted struct {\n\t\tMember struct {\n\t\t\tRole string `json:\"role\"`\n\t\t} `json:\"member\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": fresh, \"name\": \"New Person\"}, \u0026accepted)\n\tif accepted.Member.Role != \"viewer\" {\n\t\tt.Fatalf(\"accepted as %+v\", accepted)\n\t}\n}\n\nfunc TestInviteListSkipsRevoked(t *testing.T) {\n\te := apitest.New(t)\n\tinviteToken(t, e, \"x@people.example\", \"member\")\n\tvar inv store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": \"y@people.example\", \"role\": \"member\"}, \u0026inv)\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+inv.ID, e.Acme.Key, nil, nil)\n\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].Email != \"x@people.example\" {\n\t\tt.Fatalf(\"pending invites = %+v\", list.Items)\n\t}\n}\n"
         },
-        "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go (file state is current in your context — no need to Read it back)"
+        "output": "File created successfully at: <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -10491,10 +10491,10 @@
           "id": "toolu_01WpUmGh6gLKcpiiYkmSsi9V",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
             "content": "package api_test\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/url\"\n\t\"regexp\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\n// inviteToken sends an invite as the owner and returns the token from the email, failing the test if the answer or\n// the email holds the token anywhere else.\nfunc inviteToken(t *testing.T, e *apitest.Env, email, role string) string {\n\tt.Helper()\n\tr := e.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role}, nil)\n\tmsgs := e.Mail.Messages()\n\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\tif m == nil {\n\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t}\n\ttoken, _ := url.QueryUnescape(m[1])\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite answer holds the token: %s\", r.Body)\n\t}\n\treturn token\n}\n\nfunc TestInviteTokenSecrecy(t *testing.T) {\n\te := apitest.New(t)\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@acme.example\", store.RoleViewer)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\n\t// Even a viewer, who may read invites, does not see the token; the listing shows when each invite expires.\n\tr := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", viewerKey, nil, nil)\n\tif strings.Contains(string(r.Body), token) {\n\t\tt.Fatalf(\"the invite list holds the token: %s\", r.Body)\n\t}\n\tvar list struct {\n\t\tItems []map[string]any `json:\"items\"`\n\t}\n\tr.JSON(t, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0][\"expires_at\"] == nil {\n\t\tt.Fatalf(\"pending invites = %s\", r.Body)\n\t}\n\n\tb, err := json.Marshal(e.Store.Export())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif strings.Contains(string(b), token) {\n\t\tt.Fatal(\"the snapshot holds the token\")\n\t}\n}\n\nfunc TestInviteAccept(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"new@people.example\", \"member\")\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"New Person\"})\n\t}\n\n\tif r := accept(\"invite_nope\"); r.Code != http.StatusNotFound || r.Map(t)[\"error\"] != \"invite_not_found\" {\n\t\tt.Fatalf(\"unknown token: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusCreated {\n\t\tt.Fatalf(\"accept: %s\", r)\n\t}\n\tif r := accept(token); r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_used\" {\n\t\tt.Fatalf(\"a used token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteExpired(t *testing.T) {\n\te := apitest.New(t)\n\ttoken := inviteToken(t, e, \"late@people.example\", \"member\")\n\te.Clock.Advance(7*24*time.Hour + time.Second)\n\n\tr := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Late Person\"})\n\tif r.Code != http.StatusGone || r.Map(t)[\"error\"] != \"invite_expired\" {\n\t\tt.Fatalf(\"an expired token: %s\", r)\n\t}\n\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), \"late@people.example\") {\n\t\tt.Fatalf(\"an expired invite is listed: %s\", r.Body)\n\t}\n}\n\nfunc TestInviteReissued(t *testing.T) {\n\te := apitest.New(t)\n\told := inviteToken(t, e, \"new@people.example\", \"member\")\n\tfresh := inviteToken(t, e, \"NEW@people.example\", \"viewer\")\n\n\tif r := e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": old, \"name\": \"New Person\"}); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"the replaced token: %s\", r)\n\t}\n\tvar accepted struct {\n\t\tMember struct {\n\t\t\tRole string `json:\"role\"`\n\t\t} `json:\"member\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": fresh, \"name\": \"New Person\"}, \u0026accepted)\n\tif accepted.Member.Role != \"viewer\" {\n\t\tt.Fatalf(\"accepted as %+v\", accepted)\n\t}\n}\n\nfunc TestInviteListSkipsRevoked(t *testing.T) {\n\te := apitest.New(t)\n\tinviteToken(t, e, \"x@people.example\", \"member\")\n\tvar inv store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": \"y@people.example\", \"role\": \"member\"}, \u0026inv)\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+inv.ID, e.Acme.Key, nil, nil)\n\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].Email != \"x@people.example\" {\n\t\tt.Fatalf(\"pending invites = %+v\", list.Items)\n\t}\n}\n"
           },
-          "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go (file state is current in your context — no need to Read it back)"
+          "output": "File created successfully at: <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -10870,7 +10870,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
           "old_string": "\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}",
           "new_string": "\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 0 {\n\t\tt.Fatalf(\"an accepted invite is listed: %+v\", list.Items)\n\t}"
         }
@@ -10894,7 +10894,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
             "old_string": "\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}",
             "new_string": "\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 0 {\n\t\tt.Fatalf(\"an accepted invite is listed: %+v\", list.Items)\n\t}"
           }
@@ -10918,11 +10918,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+          "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
           "old_string": "\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}",
           "new_string": "\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 0 {\n\t\tt.Fatalf(\"an accepted invite is listed: %+v\", list.Items)\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -10943,11 +10943,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
+            "file_path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go",
             "old_string": "\tif r := e.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, nil); strings.Contains(string(r.Body), `\"items\":null`) == false \u0026\u0026 strings.Contains(string(r.Body), \"new@people.example\") {\n\t\tt.Fatalf(\"an accepted invite is listed: %s\", r.Body)\n\t}",
             "new_string": "\tvar list struct{ Items []store.Invite }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 0 {\n\t\tt.Fatalf(\"an accepted invite is listed: %+v\", list.Items)\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871/internal/api/invite_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -18278,7 +18278,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_024c358136bf",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871",
+      "cwd": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -20921,7 +20921,7 @@
     "projectId": "prj_b269cc8b06f1",
     "taskId": "task_538b4ebf2871",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871"
+      "path": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-1/data/worktrees/prj_b269cc8b06f1/task_538b4ebf2871"
     }
   },
   {

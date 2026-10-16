@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 730ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/build_3a68f5b66790.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/build_3a68f5b66790.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 1.41s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/test_01ecd005d7fb.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/test_01ecd005d7fb.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 1.17s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/lint_b4c49b1b145e.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/lint_b4c49b1b145e.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 120ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/secrets_e92cfb3a200e.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/secrets_e92cfb3a200e.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +418 -82",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 418,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 670ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/build_3d8d0c561674.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/build_3d8d0c561674.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 730ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/test_5b97fc099331.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/test_5b97fc099331.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 620ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/lint_817517245fa6.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/lint_817517245fa6.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 50ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/secrets_103cf1f11875.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/secrets_103cf1f11875.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +446 -84",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 446,

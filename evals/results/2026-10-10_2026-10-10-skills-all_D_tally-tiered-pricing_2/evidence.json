@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 450ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/build_b45f209a0b4a.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/build_b45f209a0b4a.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 500ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/test_7ce623f95a7f.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/test_7ce623f95a7f.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 590ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/lint_d8fed73dae7a.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/lint_d8fed73dae7a.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/secrets_9e03232723c5.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/checks/secrets_9e03232723c5.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "11 file(s), +309 -13",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-tiered-pricing-D-2/data/runs/run_06049b8e73bf/evidence/task.diff",
     "data": {
       "Files": 11,
       "Insertions": 309,

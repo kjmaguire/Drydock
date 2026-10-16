@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 580ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/build_3427ddad6529.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/build_3427ddad6529.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 460ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/test_e8eddaf76c46.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/test_e8eddaf76c46.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/lint_750dcdbf41c1.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/lint_750dcdbf41c1.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/secrets_1edf09aebc32.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/secrets_1edf09aebc32.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "14 file(s), +743 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/evidence/task.diff",
     "data": {
       "Files": 14,
       "Insertions": 743,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 670ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/build_fcb81e794168.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/build_fcb81e794168.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 610ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/test_f0aa00c045ee.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/test_f0aa00c045ee.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 840ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/lint_bc181da8d681.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/lint_bc181da8d681.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 50ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/secrets_37d9cc8e63b0.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/checks/secrets_37d9cc8e63b0.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "14 file(s), +782 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-coupons-D-2/data/runs/run_16606e9c42cc/evidence/task.diff",
     "data": {
       "Files": 14,
       "Insertions": 782,

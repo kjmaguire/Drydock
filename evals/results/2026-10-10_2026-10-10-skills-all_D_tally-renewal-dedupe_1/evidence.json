@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 670ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/build_d882ba718bfa.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/build_d882ba718bfa.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 1.05s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/test_de8ee1c60fcf.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/test_de8ee1c60fcf.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 930ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/lint_23bbbda3ce07.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/lint_23bbbda3ce07.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/secrets_e517a76f993b.log",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/checks/secrets_e517a76f993b.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +269 -49",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-renewal-dedupe-D-1/data/runs/run_acdee2ef6683/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 269,

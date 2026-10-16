@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 800ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_4215d87f49ae.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_4215d87f49ae.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 790ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_497f85d90f5b.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_497f85d90f5b.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 530ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_0e98c5e33561.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_0e98c5e33561.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_4bf54994bca7.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_4bf54994bca7.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +446 -81",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 446,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 650ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_e056940a4858.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_e056940a4858.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 930ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_dd31691800b5.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_dd31691800b5.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 560ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_5ad5d82bdb2d.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_5ad5d82bdb2d.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 40ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_39fc9ffeef92.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_39fc9ffeef92.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "7 file(s), +540 -90",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
     "data": {
       "Files": 7,
       "Insertions": 540,
@@ -250,7 +250,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 510ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_2b8cbc02398a.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/build_2b8cbc02398a.log",
     "data": {
       "argv": [
         "go",
@@ -272,7 +272,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 500ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_f0f4384c6081.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/test_f0f4384c6081.log",
     "data": {
       "argv": [
         "go",
@@ -294,7 +294,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 390ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_2853496ab6ea.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/lint_2853496ab6ea.log",
     "data": {
       "argv": [
         "go",
@@ -316,7 +316,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_fd6f8b8ab272.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/checks/secrets_fd6f8b8ab272.log",
     "data": {
       "argv": [
         "drydock",
@@ -336,7 +336,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "7 file(s), +553 -80",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-1/data/runs/run_6d55bb5579ab/evidence/task.diff",
     "data": {
       "Files": 7,
       "Insertions": 553,

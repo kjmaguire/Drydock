@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 1.18s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/build_1814284d0afb.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/build_1814284d0afb.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 850ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/test_c84804ef34c1.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/test_c84804ef34c1.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 940ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/lint_d524c553c9cf.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/lint_d524c553c9cf.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/secrets_4d263747e1f3.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/checks/secrets_4d263747e1f3.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "14 file(s), +890 -17",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-coupons-D-1/data/runs/run_e4e0d17f98af/evidence/task.diff",
     "data": {
       "Files": 14,
       "Insertions": 890,

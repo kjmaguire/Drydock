@@ -6,6 +6,9 @@
 //	go run ./cmd/drydock-audit            # network lookups, writes docs/software-versions.json
 //	go run ./cmd/drydock-audit -vuln=false # skip the vulnerability scans (faster)
 //
+// The report is written even when a lookup failed (it lists them under lookupsFailed and a package with no answer is "unknown",
+// never "current"), and the exit status is 2 then, so an incomplete measurement is not mistaken for a complete one.
+//
 // The page published as the "Software versions" Artifact is generated from that JSON file (docs/software-versions.md).
 package main
 
@@ -13,12 +16,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -103,17 +108,42 @@ func fail(what string) {
 	failMu.Unlock()
 }
 
+// run returns what the program wrote to its standard output. A program that cannot be started, or that ends with a failure code,
+// is an error even when it wrote something first: half an answer is not an answer, and it used to be taken for one, so a
+// scanner that died part-way reported what it had found so far as everything (audit 2026-10-16, L51).
 func run(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
+	return runAllowing(ctx, dir, env, nil, name, args...)
+}
+
+// runAllowing is run for a program that reports what it found with its exit code: the codes in ok are not errors (npm outdated
+// and npm audit exit 1 when there is something to report, and still print their answer).
+func runAllowing(ctx context.Context, dir string, env []string, ok []int, name string, args ...string) (string, error) {
+	out, code, err := runCode(ctx, dir, env, name, args...)
+	if err != nil && slices.Contains(ok, code) {
+		return out, nil
+	}
+	return out, err
+}
+
+// runCode runs a program and returns what it wrote to its standard output and its exit code, which is -1 when it did not get as
+// far as exiting (it could not be started, or was killed). The error is non-nil for every failure, a failure code included; its
+// text carries what the program wrote to its standard error.
+func runCode(ctx context.Context, dir string, env []string, name string, args ...string) (string, int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
-	if err != nil && out.Len() == 0 {
-		return "", fmt.Errorf("%s %s: %v: %s", name, strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+	if err == nil {
+		return out.String(), 0, nil
 	}
-	return out.String(), nil // npm outdated exits 1 when something is outdated; the output is what we want
+	code := -1
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		code = ee.ExitCode()
+	}
+	return out.String(), code, fmt.Errorf("%s %s: %v: %s", name, strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 }
 
 var versionR = regexp.MustCompile(`^(?:go)?v?(\d+)\.(\d+)(?:\.(\d+))?(.*)$`)
@@ -273,6 +303,14 @@ func main() {
 		}
 	}
 	fmt.Printf("%d items (%d only in the module graph, not counted): %v; %d vulnerabilities; %d lookups failed\n", len(items), rep.Counts["graphOnly"], rep.Summary, len(rep.Vulns), len(failed))
+	if len(failed) > 0 {
+		// the report is written, and says which lookups failed; the exit status says the measurement is incomplete, so a script or
+		// a person who only looks at "did it run" is not told all is well (audit 2026-10-16, L51)
+		for _, f := range failed {
+			fmt.Fprintln(os.Stderr, "lookup failed:", f)
+		}
+		os.Exit(2)
+	}
 }
 
 func repoRoot() (string, error) {

@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 630ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/build_7cd528da8808.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/build_7cd528da8808.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 530ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/test_a428ae1095af.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/test_a428ae1095af.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 510ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/lint_ca0d6bcc06e0.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/lint_ca0d6bcc06e0.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/secrets_067a28d3b8eb.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/checks/secrets_067a28d3b8eb.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "4 file(s), +331 -0",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-csv-import-D-2/data/runs/run_11ced1a4efb9/evidence/task.diff",
     "data": {
       "Files": 4,
       "Insertions": 331,

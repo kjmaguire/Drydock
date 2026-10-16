@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 470ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/build-1791598487717661053.log",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/build-1791598487717661053.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 160ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/test-1791598488188898858.log",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/test-1791598488188898858.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 140ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/lint-1791598488352093193.log",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/lint-1791598488352093193.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/secrets-1791598488510442457.log",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/checks/secrets-1791598488510442457.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +251 -6",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/evidence/task.diff",
+    "ref": "<scratchpad>/trial-work/saasapi-rate-limit-D-3/data/runs/run_49047ce31360/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 251,

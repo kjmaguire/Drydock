@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 840ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/build_1a57abf85c0f.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/build_1a57abf85c0f.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 670ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/test_218370fe3897.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/test_218370fe3897.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 580ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/lint_cc569c65379f.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/lint_cc569c65379f.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/secrets_888332b37211.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/checks/secrets_888332b37211.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +405 -15",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-graceful-shutdown-D-2/data/runs/run_4be2f2aa9be1/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 405,

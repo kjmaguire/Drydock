@@ -574,7 +574,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_fffa2e4454f1",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b",
+      "cwd": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -5582,7 +5582,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
           "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`",
           "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address; the store keeps only the\n// token's SHA-256 hash. Token is set only on the copy CreateInvite returns, so the caller can send it.\ntype Invite struct {\n\tID          string     `json:\"id\"`\n\tOrgID       string     `json:\"org_id\"`\n\tEmail       string     `json:\"email\"`\n\tRole        Role       `json:\"role\"`\n\tTokenHash   string     `json:\"token_hash\"`\n\tToken       string     `json:\"-\"`\n\tLegacyToken string     `json:\"token,omitempty\"` // read from snapshots before token hashes; FromState moves it to TokenHash\n\tInvitedBy   string     `json:\"invited_by\"`"
         }
@@ -5606,7 +5606,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
             "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`",
             "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address; the store keeps only the\n// token's SHA-256 hash. Token is set only on the copy CreateInvite returns, so the caller can send it.\ntype Invite struct {\n\tID          string     `json:\"id\"`\n\tOrgID       string     `json:\"org_id\"`\n\tEmail       string     `json:\"email\"`\n\tRole        Role       `json:\"role\"`\n\tTokenHash   string     `json:\"token_hash\"`\n\tToken       string     `json:\"-\"`\n\tLegacyToken string     `json:\"token,omitempty\"` // read from snapshots before token hashes; FromState moves it to TokenHash\n\tInvitedBy   string     `json:\"invited_by\"`"
           }
@@ -5630,11 +5630,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
           "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`",
           "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address; the store keeps only the\n// token's SHA-256 hash. Token is set only on the copy CreateInvite returns, so the caller can send it.\ntype Invite struct {\n\tID          string     `json:\"id\"`\n\tOrgID       string     `json:\"org_id\"`\n\tEmail       string     `json:\"email\"`\n\tRole        Role       `json:\"role\"`\n\tTokenHash   string     `json:\"token_hash\"`\n\tToken       string     `json:\"-\"`\n\tLegacyToken string     `json:\"token,omitempty\"` // read from snapshots before token hashes; FromState moves it to TokenHash\n\tInvitedBy   string     `json:\"invited_by\"`"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5655,11 +5655,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go",
             "old_string": "// Invite asks someone to join an organization. Its token is sent to the invited address.\ntype Invite struct {\n\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       Role       `json:\"role\"`\n\tToken      string     `json:\"token\"`\n\tInvitedBy  string     `json:\"invited_by\"`",
             "new_string": "// Invite asks someone to join an organization. Its token is sent to the invited address; the store keeps only the\n// token's SHA-256 hash. Token is set only on the copy CreateInvite returns, so the caller can send it.\ntype Invite struct {\n\tID          string     `json:\"id\"`\n\tOrgID       string     `json:\"org_id\"`\n\tEmail       string     `json:\"email\"`\n\tRole        Role       `json:\"role\"`\n\tTokenHash   string     `json:\"token_hash\"`\n\tToken       string     `json:\"-\"`\n\tLegacyToken string     `json:\"token,omitempty\"` // read from snapshots before token hashes; FromState moves it to TokenHash\n\tInvitedBy   string     `json:\"invited_by\"`"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/types.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5943,7 +5943,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
           "new_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\t// A new invite replaces any earlier invite to the same address that is still open.\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\tt := now.UTC()\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}\n\n// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\th := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(h[:])\n}\n\n// InviteLifetime is how long an invite can be accepted after it was created.\nconst InviteLifetime = 7 * 24 * time.Hour\n\n// ExpiresAt is when the invite stops being acceptable.\nfunc (inv Invite) ExpiresAt() time.Time { return inv.CreatedAt.Add(InviteLifetime) }\n\n// pending reports whether the invite can still be accepted at now.\nfunc (inv Invite) pending(now time.Time) bool {\n\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt())\n}"
         }
@@ -5967,7 +5967,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
             "new_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\t// A new invite replaces any earlier invite to the same address that is still open.\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\tt := now.UTC()\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}\n\n// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\th := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(h[:])\n}\n\n// InviteLifetime is how long an invite can be accepted after it was created.\nconst InviteLifetime = 7 * 24 * time.Hour\n\n// ExpiresAt is when the invite stops being acceptable.\nfunc (inv Invite) ExpiresAt() time.Time { return inv.CreatedAt.Add(InviteLifetime) }\n\n// pending reports whether the invite can still be accepted at now.\nfunc (inv Invite) pending(now time.Time) bool {\n\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt())\n}"
           }
@@ -5991,11 +5991,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
           "new_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\t// A new invite replaces any earlier invite to the same address that is still open.\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\tt := now.UTC()\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}\n\n// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\th := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(h[:])\n}\n\n// InviteLifetime is how long an invite can be accepted after it was created.\nconst InviteLifetime = 7 * 24 * time.Hour\n\n// ExpiresAt is when the invite stops being acceptable.\nfunc (inv Invite) ExpiresAt() time.Time { return inv.CreatedAt.Add(InviteLifetime) }\n\n// pending reports whether the invite can still be accepted at now.\nfunc (inv Invite) pending(now time.Time) bool {\n\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt())\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6016,11 +6016,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, Token: NewToken(\"invite_\"), InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\treturn inv, nil\n}",
             "new_string": "\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn Invite{}, ErrNotFound\n\t}\n\tif uid, ok := s.usersByEmail[normEmail(email)]; ok {\n\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\t// A new invite replaces any earlier invite to the same address that is still open.\n\tfor id, old := range s.invites {\n\t\tif old.OrgID == orgID \u0026\u0026 normEmail(old.Email) == normEmail(email) \u0026\u0026 old.AcceptedAt == nil \u0026\u0026 old.RevokedAt == nil {\n\t\t\tt := now.UTC()\n\t\t\told.RevokedAt = \u0026t\n\t\t\ts.invites[id] = old\n\t\t}\n\t}\n\ttoken, hash := newInviteToken()\n\tinv := Invite{ID: s.newID(\"inv\"), OrgID: orgID, Email: email, Role: role, TokenHash: hash, InvitedBy: invitedBy, CreatedAt: now.UTC()}\n\ts.invites[inv.ID] = inv\n\tinv.Token = token\n\treturn inv, nil\n}\n\n// newInviteToken returns a new invite token (32 random bytes, unpadded base64url) and its SHA-256 hash in hex.\nfunc newInviteToken() (token, hash string) {\n\tb := make([]byte, 32)\n\tif _, err := rand.Read(b); err != nil {\n\t\tpanic(err) // crypto/rand does not fail on supported platforms\n\t}\n\ttoken = base64.RawURLEncoding.EncodeToString(b)\n\treturn token, hashInviteToken(token)\n}\n\nfunc hashInviteToken(token string) string {\n\th := sha256.Sum256([]byte(token))\n\treturn hex.EncodeToString(h[:])\n}\n\n// InviteLifetime is how long an invite can be accepted after it was created.\nconst InviteLifetime = 7 * 24 * time.Hour\n\n// ExpiresAt is when the invite stops being acceptable.\nfunc (inv Invite) ExpiresAt() time.Time { return inv.CreatedAt.Add(InviteLifetime) }\n\n// pending reports whether the invite can still be accepted at now.\nfunc (inv Invite) pending(now time.Time) bool {\n\treturn inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 !now.After(inv.ExpiresAt())\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6247,7 +6247,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
           "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first. It includes invites\n// that have expired; PendingInvites leaves those out.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that can still be accepted at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.pending(now) })\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
         }
@@ -6271,7 +6271,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
             "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first. It includes invites\n// that have expired; PendingInvites leaves those out.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that can still be accepted at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.pending(now) })\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
           }
@@ -6295,11 +6295,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
           "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first. It includes invites\n// that have expired; PendingInvites leaves those out.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that can still be accepted at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.pending(now) })\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6320,11 +6320,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first.\nfunc (s *Store) Invites(orgID string) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}",
             "new_string": "// Invites returns an organization's invites that were neither accepted nor revoked, oldest first. It includes invites\n// that have expired; PendingInvites leaves those out.\nfunc (s *Store) Invites(orgID string) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil })\n}\n\n// PendingInvites returns an organization's invites that can still be accepted at now, oldest first.\nfunc (s *Store) PendingInvites(orgID string, now time.Time) []Invite {\n\treturn s.invitesWhere(orgID, func(inv Invite) bool { return inv.pending(now) })\n}\n\nfunc (s *Store) invitesWhere(orgID string, keep func(Invite) bool) []Invite {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tout := []Invite{}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 keep(inv) {\n\t\t\tout = append(out, inv)\n\t\t}\n\t}\n\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n\treturn out\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6576,7 +6576,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
           "new_string": "\tvar inv Invite\n\tfound := false\n\tif token != \"\" {\n\t\thash := hashInviteToken(token)\n\t\tfor _, i := range s.invites {\n\t\t\tif i.TokenHash == hash {\n\t\t\t\tinv, found = i, true\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt()) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
         }
@@ -6600,7 +6600,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
             "new_string": "\tvar inv Invite\n\tfound := false\n\tif token != \"\" {\n\t\thash := hashInviteToken(token)\n\t\tfor _, i := range s.invites {\n\t\t\tif i.TokenHash == hash {\n\t\t\t\tinv, found = i, true\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt()) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
           }
@@ -6624,11 +6624,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
           "new_string": "\tvar inv Invite\n\tfound := false\n\tif token != \"\" {\n\t\thash := hashInviteToken(token)\n\t\tfor _, i := range s.invites {\n\t\t\tif i.TokenHash == hash {\n\t\t\t\tinv, found = i, true\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt()) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6649,11 +6649,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "\tvar inv Invite\n\tfound := false\n\tfor _, i := range s.invites {\n\t\tif i.Token == token \u0026\u0026 token != \"\" {\n\t\t\tinv, found = i, true\n\t\t\tbreak\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}",
             "new_string": "\tvar inv Invite\n\tfound := false\n\tif token != \"\" {\n\t\thash := hashInviteToken(token)\n\t\tfor _, i := range s.invites {\n\t\t\tif i.TokenHash == hash {\n\t\t\t\tinv, found = i, true\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}\n\tif !found || inv.RevokedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrNotFound\n\t}\n\tif inv.AcceptedAt != nil {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteUsed\n\t}\n\tif now.After(inv.ExpiresAt()) {\n\t\treturn User{}, Member{}, APIKey{}, ErrInviteExpired\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7023,7 +7023,7 @@
         "id": "toolu_016RqkZBRLuYUsPtfiwf1BTq",
         "name": "Bash",
         "args": {
-          "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
+          "command": "cd <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
           "description": "Confirm the working directory"
         }
       },
@@ -7045,7 +7045,7 @@
           "id": "toolu_016RqkZBRLuYUsPtfiwf1BTq",
           "name": "Bash",
           "args": {
-            "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
+            "command": "cd <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
             "description": "Confirm the working directory"
           }
         }
@@ -7067,10 +7067,10 @@
         "id": "toolu_016RqkZBRLuYUsPtfiwf1BTq",
         "name": "Bash",
         "args": {
-          "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
+          "command": "cd <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
           "description": "Confirm the working directory"
         },
-        "output": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b"
+        "output": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b"
       },
       "kind": "tool_result"
     }
@@ -7090,10 +7090,10 @@
           "id": "toolu_016RqkZBRLuYUsPtfiwf1BTq",
           "name": "Bash",
           "args": {
-            "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
+            "command": "cd <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b 2\u003e/dev/null; pwd",
             "description": "Confirm the working directory"
           },
-          "output": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b"
+          "output": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b"
         }
       },
       "node": "work",
@@ -7127,7 +7127,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)",
           "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\tErrInviteUsed    = errors.New(\"invite already accepted\")\n\tErrInviteExpired = errors.New(\"invite expired\")"
         }
@@ -7151,7 +7151,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)",
             "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\tErrInviteUsed    = errors.New(\"invite already accepted\")\n\tErrInviteExpired = errors.New(\"invite expired\")"
           }
@@ -7175,11 +7175,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
           "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)",
           "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\tErrInviteUsed    = errors.New(\"invite already accepted\")\n\tErrInviteExpired = errors.New(\"invite expired\")"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7200,11 +7200,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go",
             "old_string": "import (\n\t\"crypto/rand\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)",
             "new_string": "import (\n\t\"crypto/rand\"\n\t\"crypto/sha256\"\n\t\"encoding/base64\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Errors. Callers check them with errors.Is; most are wrapped with a detail.\nvar (\n\tErrNotFound      = errors.New(\"not found\")\n\tErrInvalid       = errors.New(\"invalid\")\n\tErrConflict      = errors.New(\"conflict\")\n\tErrEmailTaken    = fmt.Errorf(\"%w: email address already in use\", ErrConflict)\n\tErrAlreadyMember = fmt.Errorf(\"%w: already a member\", ErrConflict)\n\tErrInviteUsed    = errors.New(\"invite already accepted\")\n\tErrInviteExpired = errors.New(\"invite expired\")"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7472,7 +7472,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
           "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
           "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tif i.LegacyToken != \"\" { // a snapshot from before invite tokens were hashed\n\t\t\ti.TokenHash, i.LegacyToken = hashInviteToken(i.LegacyToken), \"\"\n\t\t}\n\t\ts.invites[i.ID] = i"
         }
@@ -7496,7 +7496,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
             "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
             "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tif i.LegacyToken != \"\" { // a snapshot from before invite tokens were hashed\n\t\t\ti.TokenHash, i.LegacyToken = hashInviteToken(i.LegacyToken), \"\"\n\t\t}\n\t\ts.invites[i.ID] = i"
           }
@@ -7520,11 +7520,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
           "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
           "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tif i.LegacyToken != \"\" { // a snapshot from before invite tokens were hashed\n\t\t\ti.TokenHash, i.LegacyToken = hashInviteToken(i.LegacyToken), \"\"\n\t\t}\n\t\ts.invites[i.ID] = i"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7545,11 +7545,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go",
             "old_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\ts.invites[i.ID] = i",
             "new_string": "\t\tif err := dup(\"invite\", i.ID, seen); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tif i.LegacyToken != \"\" { // a snapshot from before invite tokens were hashed\n\t\t\ti.TokenHash, i.LegacyToken = hashInviteToken(i.LegacyToken), \"\"\n\t\t}\n\t\ts.invites[i.ID] = i"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/state.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7925,7 +7925,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "func (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})\n}",
           "new_string": "// inviteView is an invite as the API shows it. It never carries the token or its hash.\ntype inviteView struct {\n\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`\n}\n\nfunc inviteViewOf(inv store.Invite) inviteView {\n\treturn inviteView{ID: inv.ID, OrgID: inv.OrgID, Email: inv.Email, Role: inv.Role, InvitedBy: inv.InvitedBy,\n\t\tCreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt(), AcceptedAt: inv.AcceptedAt, RevokedAt: inv.RevokedAt}\n}\n\nfunc (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\titems := []inviteView{}\n\tfor _, inv := range s.store.PendingInvites(p.OrgID, s.clock.Now()) {\n\t\titems = append(items, inviteViewOf(inv))\n\t}\n\twriteJSON(w, http.StatusOK, list{Items: items})\n}"
         }
@@ -7949,7 +7949,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "func (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})\n}",
             "new_string": "// inviteView is an invite as the API shows it. It never carries the token or its hash.\ntype inviteView struct {\n\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`\n}\n\nfunc inviteViewOf(inv store.Invite) inviteView {\n\treturn inviteView{ID: inv.ID, OrgID: inv.OrgID, Email: inv.Email, Role: inv.Role, InvitedBy: inv.InvitedBy,\n\t\tCreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt(), AcceptedAt: inv.AcceptedAt, RevokedAt: inv.RevokedAt}\n}\n\nfunc (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\titems := []inviteView{}\n\tfor _, inv := range s.store.PendingInvites(p.OrgID, s.clock.Now()) {\n\t\titems = append(items, inviteViewOf(inv))\n\t}\n\twriteJSON(w, http.StatusOK, list{Items: items})\n}"
           }
@@ -7973,11 +7973,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "func (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})\n}",
           "new_string": "// inviteView is an invite as the API shows it. It never carries the token or its hash.\ntype inviteView struct {\n\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`\n}\n\nfunc inviteViewOf(inv store.Invite) inviteView {\n\treturn inviteView{ID: inv.ID, OrgID: inv.OrgID, Email: inv.Email, Role: inv.Role, InvitedBy: inv.InvitedBy,\n\t\tCreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt(), AcceptedAt: inv.AcceptedAt, RevokedAt: inv.RevokedAt}\n}\n\nfunc (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\titems := []inviteView{}\n\tfor _, inv := range s.store.PendingInvites(p.OrgID, s.clock.Now()) {\n\t\titems = append(items, inviteViewOf(inv))\n\t}\n\twriteJSON(w, http.StatusOK, list{Items: items})\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7998,11 +7998,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "func (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\twriteJSON(w, http.StatusOK, list{Items: s.store.Invites(p.OrgID)})\n}",
             "new_string": "// inviteView is an invite as the API shows it. It never carries the token or its hash.\ntype inviteView struct {\n\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`\n}\n\nfunc inviteViewOf(inv store.Invite) inviteView {\n\treturn inviteView{ID: inv.ID, OrgID: inv.OrgID, Email: inv.Email, Role: inv.Role, InvitedBy: inv.InvitedBy,\n\t\tCreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt(), AcceptedAt: inv.AcceptedAt, RevokedAt: inv.RevokedAt}\n}\n\nfunc (s *Server) listInvites(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\titems := []inviteView{}\n\tfor _, inv := range s.store.PendingInvites(p.OrgID, s.clock.Now()) {\n\t\titems = append(items, inviteViewOf(inv))\n\t}\n\twriteJSON(w, http.StatusOK, list{Items: items})\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
         }
       },
       "node": "work",
@@ -8340,7 +8340,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`",
           "new_string": "\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       store.Role `json:\"role\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`"
         }
@@ -8364,7 +8364,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`",
             "new_string": "\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       store.Role `json:\"role\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`"
           }
@@ -8388,11 +8388,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`",
           "new_string": "\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       store.Role `json:\"role\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -8413,11 +8413,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\tID         string      `json:\"id\"`\n\tOrgID      string      `json:\"org_id\"`\n\tEmail      string      `json:\"email\"`\n\tRole       store.Role  `json:\"role\"`\n\tInvitedBy  string      `json:\"invited_by\"`\n\tCreatedAt  time.Time   `json:\"created_at\"`\n\tExpiresAt  time.Time   `json:\"expires_at\"`\n\tAcceptedAt *time.Time  `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time  `json:\"revoked_at,omitempty\"`",
             "new_string": "\tID         string     `json:\"id\"`\n\tOrgID      string     `json:\"org_id\"`\n\tEmail      string     `json:\"email\"`\n\tRole       store.Role `json:\"role\"`\n\tInvitedBy  string     `json:\"invited_by\"`\n\tCreatedAt  time.Time  `json:\"created_at\"`\n\tExpiresAt  time.Time  `json:\"expires_at\"`\n\tAcceptedAt *time.Time `json:\"accepted_at,omitempty\"`\n\tRevokedAt  *time.Time `json:\"revoked_at,omitempty\"`"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
         }
       },
       "node": "work",
@@ -8590,7 +8590,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\twriteJSON(w, http.StatusCreated, inv)\n}",
           "new_string": "\twriteJSON(w, http.StatusCreated, inviteViewOf(inv))\n}"
         }
@@ -8614,7 +8614,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\twriteJSON(w, http.StatusCreated, inv)\n}",
             "new_string": "\twriteJSON(w, http.StatusCreated, inviteViewOf(inv))\n}"
           }
@@ -8716,11 +8716,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\twriteJSON(w, http.StatusCreated, inv)\n}",
           "new_string": "\twriteJSON(w, http.StatusCreated, inviteViewOf(inv))\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -8741,11 +8741,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\twriteJSON(w, http.StatusCreated, inv)\n}",
             "new_string": "\twriteJSON(w, http.StatusCreated, inviteViewOf(inv))\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
         }
       },
       "node": "work",
@@ -8779,7 +8779,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)",
           "new_string": "\t\tswitch {\n\t\tcase errors.Is(err, store.ErrNotFound):\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteUsed):\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite has already been accepted\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteExpired):\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired; ask for a new one\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
         }
@@ -8803,7 +8803,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)",
             "new_string": "\t\tswitch {\n\t\tcase errors.Is(err, store.ErrNotFound):\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteUsed):\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite has already been accepted\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteExpired):\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired; ask for a new one\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
           }
@@ -8827,11 +8827,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)",
           "new_string": "\t\tswitch {\n\t\tcase errors.Is(err, store.ErrNotFound):\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteUsed):\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite has already been accepted\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteExpired):\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired; ask for a new one\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -8852,11 +8852,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\t\tif errors.Is(err, store.ErrNotFound) {\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)",
             "new_string": "\t\tswitch {\n\t\tcase errors.Is(err, store.ErrNotFound):\n\t\t\twriteError(w, http.StatusNotFound, \"invite_not_found\", \"no such invite\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteUsed):\n\t\t\twriteError(w, http.StatusGone, \"invite_used\", \"this invite has already been accepted\")\n\t\t\treturn\n\t\tcase errors.Is(err, store.ErrInviteExpired):\n\t\t\twriteError(w, http.StatusGone, \"invite_expired\", \"this invite has expired; ask for a new one\")\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
         }
       },
       "node": "work",
@@ -8890,7 +8890,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\t\"net/http\"\n\t\"net/url\"\n\n\t\"example.com/tally/internal/auth\"",
           "new_string": "\t\"net/http\"\n\t\"net/url\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\""
         }
@@ -8914,7 +8914,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\t\"net/http\"\n\t\"net/url\"\n\n\t\"example.com/tally/internal/auth\"",
             "new_string": "\t\"net/http\"\n\t\"net/url\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\""
           }
@@ -8938,11 +8938,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
           "old_string": "\t\"net/http\"\n\t\"net/url\"\n\n\t\"example.com/tally/internal/auth\"",
           "new_string": "\t\"net/http\"\n\t\"net/url\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -8963,11 +8963,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go",
             "old_string": "\t\"net/http\"\n\t\"net/url\"\n\n\t\"example.com/tally/internal/auth\"",
             "new_string": "\t\"net/http\"\n\t\"net/url\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/team.go has been updated successfully."
         }
       },
       "node": "work",
@@ -10640,7 +10640,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
           "old_string": "func TestAPIKeys(t *testing.T) {",
           "new_string": "func TestInviteTokens(t *testing.T) {\n\te := apitest.New(t)\n\ttype invited struct {\n\t\tID        string    `json:\"id\"`\n\t\tExpiresAt time.Time `json:\"expires_at\"`\n\t}\n\t// invite creates an invite as Acme's owner and returns it with the token from the email sent to the address.\n\tinvite := func(email, role string) (invited, string, *apitest.Response) {\n\t\tt.Helper()\n\t\tbefore := len(e.Mail.Messages())\n\t\tr := e.Do(\"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role})\n\t\tif r.Code != http.StatusCreated {\n\t\t\tt.Fatalf(\"invite %s: %s\", email, r)\n\t\t}\n\t\tvar inv invited\n\t\tr.JSON(\u0026inv)\n\t\tmsgs := e.Mail.Messages()\n\t\tif len(msgs) != before+1 {\n\t\t\tt.Fatalf(\"invite %s sent %d emails\", email, len(msgs)-before)\n\t\t}\n\t\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\t\tif m == nil {\n\t\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t\t}\n\t\ttoken, _ := url.QueryUnescape(m[1])\n\t\treturn inv, token, r\n\t}\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Someone\"})\n\t}\n\texpectError := func(r *apitest.Response, status int, code string) {\n\t\tt.Helper()\n\t\tif r.Code != status || !strings.Contains(string(r.Body), `\"error\":\"`+code+`\"`) {\n\t\t\tt.Fatalf(\"want %d %s: %s\", status, code, r)\n\t\t}\n\t}\n\n\t// A token is 32 random bytes in unpadded base64url, and no API answer or snapshot shows it.\n\tfirst, token1, r := invite(\"Pat@People.example\", \"member\")\n\tif len(token1) != 43 {\n\t\tt.Fatalf(\"token %q has %d characters\", token1, len(token1))\n\t}\n\tif b, err := base64.RawURLEncoding.DecodeString(token1); err != nil || len(b) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 bytes of unpadded base64url: %v\", token1, err)\n\t}\n\tif strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"the create response shows the token: %s\", r)\n\t}\n\tif want := apitest.Start.Add(7 * 24 * time.Hour); !first.ExpiresAt.Equal(want) {\n\t\tt.Fatalf(\"expires_at = %s, want %s\", first.ExpiresAt, want)\n\t}\n\tsnapshot, _ := json.Marshal(e.Store.Export())\n\tif strings.Contains(string(snapshot), token1) {\n\t\tt.Fatal(\"a snapshot holds the token\")\n\t}\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@people.example\", store.RoleViewer)\n\tr = e.Do(\"GET\", \"/v1/invites\", viewerKey, nil)\n\tif r.Code != http.StatusOK || strings.Contains(string(r.Body), \"token\") || strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"a viewer reads the invites: %s\", r)\n\t}\n\n\t// Inviting the same address again, in any case, revokes the earlier invite: only the newest token works.\n\t_, token2, _ := invite(\"pat@people.example\", \"admin\")\n\texpectError(accept(token1), http.StatusNotFound, \"invite_not_found\")\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token2, \"name\": \"Pat\"}, nil)\n\texpectError(accept(token2), http.StatusGone, \"invite_used\")\n\n\t// A revoked invite is not found.\n\trevoked, token3, _ := invite(\"revoked@people.example\", \"member\")\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+revoked.ID, e.Acme.Key, nil, nil)\n\texpectError(accept(token3), http.StatusNotFound, \"invite_not_found\")\n\n\t// An invite can be accepted up to exactly 7 days after it was created, and not after.\n\t_, token4, _ := invite(\"edge@people.example\", \"member\")\n\te.Clock.Set(apitest.Start.Add(7 * 24 * time.Hour))\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token4, \"name\": \"Edge\"}, nil)\n\tlate, token5, _ := invite(\"late@people.example\", \"member\")\n\te.Clock.Set(late.ExpiresAt.Add(time.Second))\n\texpectError(accept(token5), http.StatusGone, \"invite_expired\")\n\n\t// The listing shows only invites that can still be accepted.\n\tfresh, _, _ := invite(\"fresh@people.example\", \"viewer\")\n\tvar pending struct {\n\t\tItems []invited `json:\"items\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026pending)\n\tif len(pending.Items) != 1 || pending.Items[0].ID != fresh.ID || !pending.Items[0].ExpiresAt.Equal(fresh.ExpiresAt) {\n\t\tt.Fatalf(\"pending invites = %+v, want only %s\", pending.Items, fresh.ID)\n\t}\n}\n\nfunc TestAPIKeys(t *testing.T) {"
         }
@@ -10664,7 +10664,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
             "old_string": "func TestAPIKeys(t *testing.T) {",
             "new_string": "func TestInviteTokens(t *testing.T) {\n\te := apitest.New(t)\n\ttype invited struct {\n\t\tID        string    `json:\"id\"`\n\t\tExpiresAt time.Time `json:\"expires_at\"`\n\t}\n\t// invite creates an invite as Acme's owner and returns it with the token from the email sent to the address.\n\tinvite := func(email, role string) (invited, string, *apitest.Response) {\n\t\tt.Helper()\n\t\tbefore := len(e.Mail.Messages())\n\t\tr := e.Do(\"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role})\n\t\tif r.Code != http.StatusCreated {\n\t\t\tt.Fatalf(\"invite %s: %s\", email, r)\n\t\t}\n\t\tvar inv invited\n\t\tr.JSON(\u0026inv)\n\t\tmsgs := e.Mail.Messages()\n\t\tif len(msgs) != before+1 {\n\t\t\tt.Fatalf(\"invite %s sent %d emails\", email, len(msgs)-before)\n\t\t}\n\t\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\t\tif m == nil {\n\t\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t\t}\n\t\ttoken, _ := url.QueryUnescape(m[1])\n\t\treturn inv, token, r\n\t}\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Someone\"})\n\t}\n\texpectError := func(r *apitest.Response, status int, code string) {\n\t\tt.Helper()\n\t\tif r.Code != status || !strings.Contains(string(r.Body), `\"error\":\"`+code+`\"`) {\n\t\t\tt.Fatalf(\"want %d %s: %s\", status, code, r)\n\t\t}\n\t}\n\n\t// A token is 32 random bytes in unpadded base64url, and no API answer or snapshot shows it.\n\tfirst, token1, r := invite(\"Pat@People.example\", \"member\")\n\tif len(token1) != 43 {\n\t\tt.Fatalf(\"token %q has %d characters\", token1, len(token1))\n\t}\n\tif b, err := base64.RawURLEncoding.DecodeString(token1); err != nil || len(b) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 bytes of unpadded base64url: %v\", token1, err)\n\t}\n\tif strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"the create response shows the token: %s\", r)\n\t}\n\tif want := apitest.Start.Add(7 * 24 * time.Hour); !first.ExpiresAt.Equal(want) {\n\t\tt.Fatalf(\"expires_at = %s, want %s\", first.ExpiresAt, want)\n\t}\n\tsnapshot, _ := json.Marshal(e.Store.Export())\n\tif strings.Contains(string(snapshot), token1) {\n\t\tt.Fatal(\"a snapshot holds the token\")\n\t}\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@people.example\", store.RoleViewer)\n\tr = e.Do(\"GET\", \"/v1/invites\", viewerKey, nil)\n\tif r.Code != http.StatusOK || strings.Contains(string(r.Body), \"token\") || strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"a viewer reads the invites: %s\", r)\n\t}\n\n\t// Inviting the same address again, in any case, revokes the earlier invite: only the newest token works.\n\t_, token2, _ := invite(\"pat@people.example\", \"admin\")\n\texpectError(accept(token1), http.StatusNotFound, \"invite_not_found\")\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token2, \"name\": \"Pat\"}, nil)\n\texpectError(accept(token2), http.StatusGone, \"invite_used\")\n\n\t// A revoked invite is not found.\n\trevoked, token3, _ := invite(\"revoked@people.example\", \"member\")\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+revoked.ID, e.Acme.Key, nil, nil)\n\texpectError(accept(token3), http.StatusNotFound, \"invite_not_found\")\n\n\t// An invite can be accepted up to exactly 7 days after it was created, and not after.\n\t_, token4, _ := invite(\"edge@people.example\", \"member\")\n\te.Clock.Set(apitest.Start.Add(7 * 24 * time.Hour))\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token4, \"name\": \"Edge\"}, nil)\n\tlate, token5, _ := invite(\"late@people.example\", \"member\")\n\te.Clock.Set(late.ExpiresAt.Add(time.Second))\n\texpectError(accept(token5), http.StatusGone, \"invite_expired\")\n\n\t// The listing shows only invites that can still be accepted.\n\tfresh, _, _ := invite(\"fresh@people.example\", \"viewer\")\n\tvar pending struct {\n\t\tItems []invited `json:\"items\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026pending)\n\tif len(pending.Items) != 1 || pending.Items[0].ID != fresh.ID || !pending.Items[0].ExpiresAt.Equal(fresh.ExpiresAt) {\n\t\tt.Fatalf(\"pending invites = %+v, want only %s\", pending.Items, fresh.ID)\n\t}\n}\n\nfunc TestAPIKeys(t *testing.T) {"
           }
@@ -10688,11 +10688,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
           "old_string": "func TestAPIKeys(t *testing.T) {",
           "new_string": "func TestInviteTokens(t *testing.T) {\n\te := apitest.New(t)\n\ttype invited struct {\n\t\tID        string    `json:\"id\"`\n\t\tExpiresAt time.Time `json:\"expires_at\"`\n\t}\n\t// invite creates an invite as Acme's owner and returns it with the token from the email sent to the address.\n\tinvite := func(email, role string) (invited, string, *apitest.Response) {\n\t\tt.Helper()\n\t\tbefore := len(e.Mail.Messages())\n\t\tr := e.Do(\"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role})\n\t\tif r.Code != http.StatusCreated {\n\t\t\tt.Fatalf(\"invite %s: %s\", email, r)\n\t\t}\n\t\tvar inv invited\n\t\tr.JSON(\u0026inv)\n\t\tmsgs := e.Mail.Messages()\n\t\tif len(msgs) != before+1 {\n\t\t\tt.Fatalf(\"invite %s sent %d emails\", email, len(msgs)-before)\n\t\t}\n\t\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\t\tif m == nil {\n\t\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t\t}\n\t\ttoken, _ := url.QueryUnescape(m[1])\n\t\treturn inv, token, r\n\t}\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Someone\"})\n\t}\n\texpectError := func(r *apitest.Response, status int, code string) {\n\t\tt.Helper()\n\t\tif r.Code != status || !strings.Contains(string(r.Body), `\"error\":\"`+code+`\"`) {\n\t\t\tt.Fatalf(\"want %d %s: %s\", status, code, r)\n\t\t}\n\t}\n\n\t// A token is 32 random bytes in unpadded base64url, and no API answer or snapshot shows it.\n\tfirst, token1, r := invite(\"Pat@People.example\", \"member\")\n\tif len(token1) != 43 {\n\t\tt.Fatalf(\"token %q has %d characters\", token1, len(token1))\n\t}\n\tif b, err := base64.RawURLEncoding.DecodeString(token1); err != nil || len(b) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 bytes of unpadded base64url: %v\", token1, err)\n\t}\n\tif strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"the create response shows the token: %s\", r)\n\t}\n\tif want := apitest.Start.Add(7 * 24 * time.Hour); !first.ExpiresAt.Equal(want) {\n\t\tt.Fatalf(\"expires_at = %s, want %s\", first.ExpiresAt, want)\n\t}\n\tsnapshot, _ := json.Marshal(e.Store.Export())\n\tif strings.Contains(string(snapshot), token1) {\n\t\tt.Fatal(\"a snapshot holds the token\")\n\t}\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@people.example\", store.RoleViewer)\n\tr = e.Do(\"GET\", \"/v1/invites\", viewerKey, nil)\n\tif r.Code != http.StatusOK || strings.Contains(string(r.Body), \"token\") || strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"a viewer reads the invites: %s\", r)\n\t}\n\n\t// Inviting the same address again, in any case, revokes the earlier invite: only the newest token works.\n\t_, token2, _ := invite(\"pat@people.example\", \"admin\")\n\texpectError(accept(token1), http.StatusNotFound, \"invite_not_found\")\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token2, \"name\": \"Pat\"}, nil)\n\texpectError(accept(token2), http.StatusGone, \"invite_used\")\n\n\t// A revoked invite is not found.\n\trevoked, token3, _ := invite(\"revoked@people.example\", \"member\")\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+revoked.ID, e.Acme.Key, nil, nil)\n\texpectError(accept(token3), http.StatusNotFound, \"invite_not_found\")\n\n\t// An invite can be accepted up to exactly 7 days after it was created, and not after.\n\t_, token4, _ := invite(\"edge@people.example\", \"member\")\n\te.Clock.Set(apitest.Start.Add(7 * 24 * time.Hour))\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token4, \"name\": \"Edge\"}, nil)\n\tlate, token5, _ := invite(\"late@people.example\", \"member\")\n\te.Clock.Set(late.ExpiresAt.Add(time.Second))\n\texpectError(accept(token5), http.StatusGone, \"invite_expired\")\n\n\t// The listing shows only invites that can still be accepted.\n\tfresh, _, _ := invite(\"fresh@people.example\", \"viewer\")\n\tvar pending struct {\n\t\tItems []invited `json:\"items\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026pending)\n\tif len(pending.Items) != 1 || pending.Items[0].ID != fresh.ID || !pending.Items[0].ExpiresAt.Equal(fresh.ExpiresAt) {\n\t\tt.Fatalf(\"pending invites = %+v, want only %s\", pending.Items, fresh.ID)\n\t}\n}\n\nfunc TestAPIKeys(t *testing.T) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -10713,11 +10713,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
             "old_string": "func TestAPIKeys(t *testing.T) {",
             "new_string": "func TestInviteTokens(t *testing.T) {\n\te := apitest.New(t)\n\ttype invited struct {\n\t\tID        string    `json:\"id\"`\n\t\tExpiresAt time.Time `json:\"expires_at\"`\n\t}\n\t// invite creates an invite as Acme's owner and returns it with the token from the email sent to the address.\n\tinvite := func(email, role string) (invited, string, *apitest.Response) {\n\t\tt.Helper()\n\t\tbefore := len(e.Mail.Messages())\n\t\tr := e.Do(\"POST\", \"/v1/invites\", e.Acme.Key, map[string]string{\"email\": email, \"role\": role})\n\t\tif r.Code != http.StatusCreated {\n\t\t\tt.Fatalf(\"invite %s: %s\", email, r)\n\t\t}\n\t\tvar inv invited\n\t\tr.JSON(\u0026inv)\n\t\tmsgs := e.Mail.Messages()\n\t\tif len(msgs) != before+1 {\n\t\t\tt.Fatalf(\"invite %s sent %d emails\", email, len(msgs)-before)\n\t\t}\n\t\tm := regexp.MustCompile(`token=([^\\s]+)`).FindStringSubmatch(msgs[len(msgs)-1].Body)\n\t\tif m == nil {\n\t\t\tt.Fatalf(\"no link in %q\", msgs[len(msgs)-1].Body)\n\t\t}\n\t\ttoken, _ := url.QueryUnescape(m[1])\n\t\treturn inv, token, r\n\t}\n\taccept := func(token string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token, \"name\": \"Someone\"})\n\t}\n\texpectError := func(r *apitest.Response, status int, code string) {\n\t\tt.Helper()\n\t\tif r.Code != status || !strings.Contains(string(r.Body), `\"error\":\"`+code+`\"`) {\n\t\t\tt.Fatalf(\"want %d %s: %s\", status, code, r)\n\t\t}\n\t}\n\n\t// A token is 32 random bytes in unpadded base64url, and no API answer or snapshot shows it.\n\tfirst, token1, r := invite(\"Pat@People.example\", \"member\")\n\tif len(token1) != 43 {\n\t\tt.Fatalf(\"token %q has %d characters\", token1, len(token1))\n\t}\n\tif b, err := base64.RawURLEncoding.DecodeString(token1); err != nil || len(b) != 32 {\n\t\tt.Fatalf(\"token %q is not 32 bytes of unpadded base64url: %v\", token1, err)\n\t}\n\tif strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"the create response shows the token: %s\", r)\n\t}\n\tif want := apitest.Start.Add(7 * 24 * time.Hour); !first.ExpiresAt.Equal(want) {\n\t\tt.Fatalf(\"expires_at = %s, want %s\", first.ExpiresAt, want)\n\t}\n\tsnapshot, _ := json.Marshal(e.Store.Export())\n\tif strings.Contains(string(snapshot), token1) {\n\t\tt.Fatal(\"a snapshot holds the token\")\n\t}\n\t_, viewerKey := e.AddMember(e.Acme, \"viewer@people.example\", store.RoleViewer)\n\tr = e.Do(\"GET\", \"/v1/invites\", viewerKey, nil)\n\tif r.Code != http.StatusOK || strings.Contains(string(r.Body), \"token\") || strings.Contains(string(r.Body), token1) {\n\t\tt.Fatalf(\"a viewer reads the invites: %s\", r)\n\t}\n\n\t// Inviting the same address again, in any case, revokes the earlier invite: only the newest token works.\n\t_, token2, _ := invite(\"pat@people.example\", \"admin\")\n\texpectError(accept(token1), http.StatusNotFound, \"invite_not_found\")\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token2, \"name\": \"Pat\"}, nil)\n\texpectError(accept(token2), http.StatusGone, \"invite_used\")\n\n\t// A revoked invite is not found.\n\trevoked, token3, _ := invite(\"revoked@people.example\", \"member\")\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+revoked.ID, e.Acme.Key, nil, nil)\n\texpectError(accept(token3), http.StatusNotFound, \"invite_not_found\")\n\n\t// An invite can be accepted up to exactly 7 days after it was created, and not after.\n\t_, token4, _ := invite(\"edge@people.example\", \"member\")\n\te.Clock.Set(apitest.Start.Add(7 * 24 * time.Hour))\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": token4, \"name\": \"Edge\"}, nil)\n\tlate, token5, _ := invite(\"late@people.example\", \"member\")\n\te.Clock.Set(late.ExpiresAt.Add(time.Second))\n\texpectError(accept(token5), http.StatusGone, \"invite_expired\")\n\n\t// The listing shows only invites that can still be accepted.\n\tfresh, _, _ := invite(\"fresh@people.example\", \"viewer\")\n\tvar pending struct {\n\t\tItems []invited `json:\"items\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invites\", e.Acme.Key, nil, \u0026pending)\n\tif len(pending.Items) != 1 || pending.Items[0].ID != fresh.ID || !pending.Items[0].ExpiresAt.Equal(fresh.ExpiresAt) {\n\t\tt.Fatalf(\"pending invites = %+v, want only %s\", pending.Items, fresh.ID)\n\t}\n}\n\nfunc TestAPIKeys(t *testing.T) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -10982,7 +10982,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
           "old_string": "import (\n\t\"context\"\n\t\"encoding/csv\"\n\t\"net/http\"",
           "new_string": "import (\n\t\"context\"\n\t\"encoding/base64\"\n\t\"encoding/csv\"\n\t\"encoding/json\"\n\t\"net/http\""
         }
@@ -11006,7 +11006,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
             "old_string": "import (\n\t\"context\"\n\t\"encoding/csv\"\n\t\"net/http\"",
             "new_string": "import (\n\t\"context\"\n\t\"encoding/base64\"\n\t\"encoding/csv\"\n\t\"encoding/json\"\n\t\"net/http\""
           }
@@ -11030,11 +11030,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
           "old_string": "import (\n\t\"context\"\n\t\"encoding/csv\"\n\t\"net/http\"",
           "new_string": "import (\n\t\"context\"\n\t\"encoding/base64\"\n\t\"encoding/csv\"\n\t\"encoding/json\"\n\t\"net/http\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -11055,11 +11055,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
             "old_string": "import (\n\t\"context\"\n\t\"encoding/csv\"\n\t\"net/http\"",
             "new_string": "import (\n\t\"context\"\n\t\"encoding/base64\"\n\t\"encoding/csv\"\n\t\"encoding/json\"\n\t\"net/http\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -11982,7 +11982,7 @@
         "id": "toolu_01DqLGNkFnz6TfpAYZKc8hWy",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
           "offset": 270
         }
       },
@@ -12004,7 +12004,7 @@
           "id": "toolu_01DqLGNkFnz6TfpAYZKc8hWy",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
             "offset": 270
           }
         }
@@ -12026,7 +12026,7 @@
         "id": "toolu_01DqLGNkFnz6TfpAYZKc8hWy",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
           "offset": 270
         },
         "output": "\u003csystem-reminder\u003eWarning: the file exists but is shorter than the provided offset (270). The file has 258 lines.\u003c/system-reminder\u003e"
@@ -12049,7 +12049,7 @@
           "id": "toolu_01DqLGNkFnz6TfpAYZKc8hWy",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
             "offset": 270
           },
           "output": "\u003csystem-reminder\u003eWarning: the file exists but is shorter than the provided offset (270). The file has 258 lines.\u003c/system-reminder\u003e"
@@ -12086,7 +12086,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
           "old_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}",
           "new_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\ta := newOrg(t, s, \"A\")\n\tu, _ := s.CreateUser(\"ann@example.com\", \"Ann\", t0)\n\t_, _ = s.AddMember(a.ID, u.ID, RoleOwner, t0)\n\tinv, err := s.CreateInvite(a.ID, \"New@Example.com\", RoleMember, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif inv.Token == \"\" {\n\t\tt.Fatal(\"the returned invite has no token\")\n\t}\n\tif stored, _ := s.Invite(a.ID, inv.ID); stored.Token != \"\" || stored.TokenHash != hashInviteToken(inv.Token) {\n\t\tt.Fatalf(\"the store kept more than the token's hash: %+v\", stored)\n\t}\n\n\t// A new invite to the same address, in another case, revokes the old one.\n\tnext, err := s.CreateInvite(a.ID, \"new@example.com\", RoleViewer, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"New\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token was accepted: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); err != nil {\n\t\tt.Fatalf(\"the newest token: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"an accepted token was accepted again: %v\", err)\n\t}\n\n\t// Snapshots from before tokens were hashed hold the plain token; FromState hashes it.\n\tst := s.Export()\n\tst.Invites = []Invite{{ID: \"inv_legacy\", OrgID: a.ID, Email: \"old@example.com\", Role: RoleMember, LegacyToken: \"invite_plain\", CreatedAt: t0}}\n\ts2, err := FromState(st)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got, _ := s2.Invite(a.ID, \"inv_legacy\"); got.LegacyToken != \"\" || got.TokenHash != hashInviteToken(\"invite_plain\") {\n\t\tt.Fatalf(\"the legacy invite = %+v\", got)\n\t}\n\tif _, _, _, err := s2.AcceptInvite(\"invite_plain\", \"Old\", t0); err != nil {\n\t\tt.Fatalf(\"a legacy token after FromState: %v\", err)\n\t}\n}"
         }
@@ -12110,7 +12110,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
             "old_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}",
             "new_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\ta := newOrg(t, s, \"A\")\n\tu, _ := s.CreateUser(\"ann@example.com\", \"Ann\", t0)\n\t_, _ = s.AddMember(a.ID, u.ID, RoleOwner, t0)\n\tinv, err := s.CreateInvite(a.ID, \"New@Example.com\", RoleMember, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif inv.Token == \"\" {\n\t\tt.Fatal(\"the returned invite has no token\")\n\t}\n\tif stored, _ := s.Invite(a.ID, inv.ID); stored.Token != \"\" || stored.TokenHash != hashInviteToken(inv.Token) {\n\t\tt.Fatalf(\"the store kept more than the token's hash: %+v\", stored)\n\t}\n\n\t// A new invite to the same address, in another case, revokes the old one.\n\tnext, err := s.CreateInvite(a.ID, \"new@example.com\", RoleViewer, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"New\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token was accepted: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); err != nil {\n\t\tt.Fatalf(\"the newest token: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"an accepted token was accepted again: %v\", err)\n\t}\n\n\t// Snapshots from before tokens were hashed hold the plain token; FromState hashes it.\n\tst := s.Export()\n\tst.Invites = []Invite{{ID: \"inv_legacy\", OrgID: a.ID, Email: \"old@example.com\", Role: RoleMember, LegacyToken: \"invite_plain\", CreatedAt: t0}}\n\ts2, err := FromState(st)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got, _ := s2.Invite(a.ID, \"inv_legacy\"); got.LegacyToken != \"\" || got.TokenHash != hashInviteToken(\"invite_plain\") {\n\t\tt.Fatalf(\"the legacy invite = %+v\", got)\n\t}\n\tif _, _, _, err := s2.AcceptInvite(\"invite_plain\", \"Old\", t0); err != nil {\n\t\tt.Fatalf(\"a legacy token after FromState: %v\", err)\n\t}\n}"
           }
@@ -12134,11 +12134,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
           "old_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}",
           "new_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\ta := newOrg(t, s, \"A\")\n\tu, _ := s.CreateUser(\"ann@example.com\", \"Ann\", t0)\n\t_, _ = s.AddMember(a.ID, u.ID, RoleOwner, t0)\n\tinv, err := s.CreateInvite(a.ID, \"New@Example.com\", RoleMember, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif inv.Token == \"\" {\n\t\tt.Fatal(\"the returned invite has no token\")\n\t}\n\tif stored, _ := s.Invite(a.ID, inv.ID); stored.Token != \"\" || stored.TokenHash != hashInviteToken(inv.Token) {\n\t\tt.Fatalf(\"the store kept more than the token's hash: %+v\", stored)\n\t}\n\n\t// A new invite to the same address, in another case, revokes the old one.\n\tnext, err := s.CreateInvite(a.ID, \"new@example.com\", RoleViewer, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"New\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token was accepted: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); err != nil {\n\t\tt.Fatalf(\"the newest token: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"an accepted token was accepted again: %v\", err)\n\t}\n\n\t// Snapshots from before tokens were hashed hold the plain token; FromState hashes it.\n\tst := s.Export()\n\tst.Invites = []Invite{{ID: \"inv_legacy\", OrgID: a.ID, Email: \"old@example.com\", Role: RoleMember, LegacyToken: \"invite_plain\", CreatedAt: t0}}\n\ts2, err := FromState(st)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got, _ := s2.Invite(a.ID, \"inv_legacy\"); got.LegacyToken != \"\" || got.TokenHash != hashInviteToken(\"invite_plain\") {\n\t\tt.Fatalf(\"the legacy invite = %+v\", got)\n\t}\n\tif _, _, _, err := s2.AcceptInvite(\"invite_plain\", \"Old\", t0); err != nil {\n\t\tt.Fatalf(\"a legacy token after FromState: %v\", err)\n\t}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -12159,11 +12159,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go",
             "old_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}",
             "new_string": "\t\tt.Fatalf(\"a repeated ID was accepted: %v\", err)\n\t}\n}\n\nfunc TestInviteTokens(t *testing.T) {\n\ts := New()\n\ta := newOrg(t, s, \"A\")\n\tu, _ := s.CreateUser(\"ann@example.com\", \"Ann\", t0)\n\t_, _ = s.AddMember(a.ID, u.ID, RoleOwner, t0)\n\tinv, err := s.CreateInvite(a.ID, \"New@Example.com\", RoleMember, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif inv.Token == \"\" {\n\t\tt.Fatal(\"the returned invite has no token\")\n\t}\n\tif stored, _ := s.Invite(a.ID, inv.ID); stored.Token != \"\" || stored.TokenHash != hashInviteToken(inv.Token) {\n\t\tt.Fatalf(\"the store kept more than the token's hash: %+v\", stored)\n\t}\n\n\t// A new invite to the same address, in another case, revokes the old one.\n\tnext, err := s.CreateInvite(a.ID, \"new@example.com\", RoleViewer, u.ID, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(inv.Token, \"New\", t0); !errors.Is(err, ErrNotFound) {\n\t\tt.Fatalf(\"the replaced token was accepted: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); err != nil {\n\t\tt.Fatalf(\"the newest token: %v\", err)\n\t}\n\tif _, _, _, err := s.AcceptInvite(next.Token, \"New\", t0); !errors.Is(err, ErrInviteUsed) {\n\t\tt.Fatalf(\"an accepted token was accepted again: %v\", err)\n\t}\n\n\t// Snapshots from before tokens were hashed hold the plain token; FromState hashes it.\n\tst := s.Export()\n\tst.Invites = []Invite{{ID: \"inv_legacy\", OrgID: a.ID, Email: \"old@example.com\", Role: RoleMember, LegacyToken: \"invite_plain\", CreatedAt: t0}}\n\ts2, err := FromState(st)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got, _ := s2.Invite(a.ID, \"inv_legacy\"); got.LegacyToken != \"\" || got.TokenHash != hashInviteToken(\"invite_plain\") {\n\t\tt.Fatalf(\"the legacy invite = %+v\", got)\n\t}\n\tif _, _, _, err := s2.AcceptInvite(\"invite_plain\", \"Old\", t0); err != nil {\n\t\tt.Fatalf(\"a legacy token after FromState: %v\", err)\n\t}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/store/store_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -13089,7 +13089,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
           "old_string": "\t\tr.JSON(\u0026inv)",
           "new_string": "\t\tr.JSON(t, \u0026inv)"
         }
@@ -13113,7 +13113,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
             "old_string": "\t\tr.JSON(\u0026inv)",
             "new_string": "\t\tr.JSON(t, \u0026inv)"
           }
@@ -13137,11 +13137,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
           "old_string": "\t\tr.JSON(\u0026inv)",
           "new_string": "\t\tr.JSON(t, \u0026inv)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -13162,11 +13162,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go",
             "old_string": "\t\tr.JSON(\u0026inv)",
             "new_string": "\t\tr.JSON(t, \u0026inv)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -18952,7 +18952,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_4111ad0428aa",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b",
+      "cwd": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -21887,7 +21887,7 @@
     "projectId": "prj_e10b59173195",
     "taskId": "task_a7da62c1813b",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b"
+      "path": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/worktrees/prj_e10b59173195/task_a7da62c1813b"
     }
   },
   {

@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 590ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/build_cbe54c03ef9e.log",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/build_cbe54c03ef9e.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 480ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/test_97d3ecdd6767.log",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/test_97d3ecdd6767.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 610ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/lint_d4e282246f9d.log",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/lint_d4e282246f9d.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/secrets_92590f7ba00d.log",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/checks/secrets_92590f7ba00d.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "4 file(s), +142 -15",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-currency-minor-units-D-2/data/runs/run_a54ced664b83/evidence/task.diff",
     "data": {
       "Files": 4,
       "Insertions": 142,

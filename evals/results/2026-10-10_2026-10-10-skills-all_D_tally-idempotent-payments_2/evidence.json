@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 460ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/build_d846b3c46d22.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/build_d846b3c46d22.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 410ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/test_6c9fd529ec5d.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/test_6c9fd529ec5d.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 430ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/lint_ca01bcd7d45a.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/lint_ca01bcd7d45a.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/secrets_5635df7c23f9.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/checks/secrets_5635df7c23f9.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +475 -3",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-idempotent-payments-D-2/data/runs/run_0cb96c3a34aa/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 475,

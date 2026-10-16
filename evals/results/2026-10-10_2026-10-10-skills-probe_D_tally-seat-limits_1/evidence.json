@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 780ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/build_1e5f93326e10.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/build_1e5f93326e10.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 600ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/test_b2b54aae57f3.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/test_b2b54aae57f3.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 620ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/lint_1f261d899f0d.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/lint_1f261d899f0d.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/secrets_fee6510d450b.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/secrets_fee6510d450b.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "5 file(s), +445 -6",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/evidence/task.diff",
     "data": {
       "Files": 5,
       "Insertions": 445,

@@ -382,7 +382,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_b1c6b43286f3",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09",
+      "cwd": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -968,7 +968,7 @@
         "id": "toolu_01X7q1enYwmvXVchRjdnbfL4",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
         }
       },
       "kind": "tool_call"
@@ -989,7 +989,7 @@
           "id": "toolu_01X7q1enYwmvXVchRjdnbfL4",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
           }
         }
       },
@@ -1010,7 +1010,7 @@
         "id": "toolu_01X7q1enYwmvXVchRjdnbfL4",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
         },
         "output": "1\tpackage api\n2\t\n3\timport (\n4\t\t\"errors\"\n5\t\t\"fmt\"\n6\t\t\"net/http\"\n7\t\t\"strings\"\n8\t\n9\t\t\"example.com/tally/internal/auth\"\n10\t\t\"example.com/tally/internal/billing\"\n11\t\t\"example.com/tally/internal/money\"\n12\t\t\"example.com/tally/internal/payments\"\n13\t\t\"example.com/tally/internal/store\"\n14\t)\n15\t\n16\t// invoiceView is an invoice as the API shows it: with its totals, a one-line description and its customer.\n17\ttype invoiceView struct {\n18\t\tstore.Invoice\n19\t\tbilling.Totals\n20\t\tTotalFormatted string       `json:\"total_formatted\"`\n21\t\tDescription    string       `json:\"description\"`\n22\t\tCustomer       *customerRef `json:\"customer\"`\n23\t}\n24\t\n25\t// customerRef is the customer shown on an invoice; null when the customer was deleted.\n26\ttype customerRef struct {\n27\t\tID    string `json:\"id\"`\n28\t\tName  string `json:\"name\"`\n29\t\tEmail string `json:\"email\"`\n30\t}\n31\t\n32\tfunc newInvoiceView(inv store.Invoice, c *store.Customer) invoiceView {\n33\t\tt := billing.Compute(inv)\n34\t\tv := invoiceView{Invoice: inv, Totals: t, TotalFormatted: money.Format(t.Total, inv.Currency), Description: describe(inv.Lines)}\n35\t\tif c != nil {\n36\t\t\tv.Customer = \u0026customerRef{ID: c.ID, Name: c.Name, Email: c.Email}\n37\t\t}\n38\t\treturn v\n39\t}\n40\t\n41\t// describe is the invoice's first line, and how many more there are.\n42\tfunc describe(lines []store.Line) string {\n43\t\td := lines[0].Description\n44\t\tif len(lines) \u003e 1 {\n45\t\t\td += fmt.Sprintf(\" and %d more\", len(lines)-1)\n46\t\t}\n47\t\treturn d\n48\t}\n49\t\n50\tfunc (s *Server) viewInvoice(inv store.Invoice) invoiceView {\n51\t\tif c, ok := s.store.Customer(inv.OrgID, inv.CustomerID); ok {\n52\t\t\treturn newInvoiceView(inv, \u0026c)\n53\t\t}\n54\t\treturn newInvoiceView(inv, nil)\n55\t}\n56\t\n57\tfunc findCustomer(cs []store.Customer, id string) *store.Customer {\n58\t\tfor i := range cs {\n59\t\t\tif cs[i].ID == id {\n60\t\t\t\treturn \u0026cs[i]\n61\t\t\t}\n62\t\t}\n63\t\treturn nil\n64\t}\n65\t\n66\tfunc invoiceViewKey(v invoiceView) cursor { return cursor{T: v.CreatedAt, ID: v.ID} }\n67\t\n68\t// listInvoices lists the organization's invoices, oldest first, optionally only those of ?customer_id=, ?subscription_id=\n69\t// or with ?status=.\n70\tfunc (s *Server) listInvoices(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n71\t\tpg, ok := parsePage(w, r)\n72\t\tif !ok {\n73\t\t\treturn\n74\t\t}\n75\t\tq := r.URL.Query()\n76\t\tstatus := store.InvoiceStatus(q.Get(\"status\"))\n77\t\tif status != \"\" \u0026\u0026 status != store.InvoiceOpen \u0026\u0026 status != store.InvoicePaid \u0026\u0026 status != store.InvoiceVoid {\n78\t\t\twriteError(w, http.StatusBadRequest, \"invalid_status\", \"status is open, paid or void\")\n79\t\t\treturn\n80\t\t}\n81\t\tinvs := s.store.ListInvoices(p.OrgID, store.InvoiceFilter{CustomerID: q.Get(\"customer_id\"), SubscriptionID: q.Get(\"subscription_id\"), Status: status})\n82\t\tcustomers := s.store.Customers(p.OrgID)\n83\t\tviews := make([]invoiceView, 0, len(invs))\n84\t\tfor _, inv := range invs {\n85\t\t\tviews = append(views, newInvoiceView(inv, findCustomer(customers, inv.CustomerID)))\n86\t\t}\n87\t\titems, next := pageOf(views, invoiceViewKey, pg)\n88\t\twriteJSON(w, http.StatusOK, list{Items: items, NextCursor: next})\n89\t}\n90\t\n91\tfunc (s *Server) createInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n92\t\tvar in struct {\n93\t\t\tCustomerID      string         `json:\"customer_id\"`\n94\t\t\tCurrency        money.Currency `json:\"currency\"`\n95\t\t\tLines           []store.Line   `json:\"lines\"`\n96\t\t\tDiscountPercent int            `json:\"discount_percent\"`\n97\t\t}\n98\t\tif !decode(w, r, \u0026in) {\n99\t\t\treturn\n100\t\t}\n101\t\tif len(in.Lines) == 0 {\n102\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid\", \"an invoice needs at least one line\")\n103\t\t\treturn\n104\t\t}\n105\t\tfor _, l := range in.Lines {\n106\t\t\tif strings.TrimSpace(l.Description) == \"\" || l.Quantity \u003c= 0 || l.UnitAmount \u003c 0 {\n107\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid\", \"each line needs a description, a positive quantity and a unit amount that is not negative\")\n108\t\t\t\treturn\n109\t\t\t}\n110\t\t}\n111\t\tinv, err := s.store.CreateInvoice(store.Invoice{OrgID: p.OrgID, CustomerID: in.CustomerID, Currency: in.Currency, Lines: in.Lines, DiscountPercent: in.DiscountPercent}, s.clock.Now())\n112\t\tif err != nil {\n113\t\t\tif errors.Is(err, store.ErrCustomerOrgMismatch) {\n114\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"customer_org_mismatch\", fmt.Sprintf(\"customer %s belongs to another organization\", in.CustomerID))\n115\t\t\t\treturn\n116\t\t\t}\n117\t\t\ts.storeError(w, err)\n118\t\t\treturn\n119\t\t}\n120\t\ts.publish(r.Context(), p.OrgID, \"invoice.created\", map[string]any{\"invoice_id\": inv.ID})\n121\t\twriteJSON(w, http.StatusCreated, s.viewInvoice(inv))\n122\t}\n123\t\n124\tfunc (s *Server) getInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n125\t\tinv, ok := s.store.Invoice(p.OrgID, r.PathValue(\"id\"))\n126\t\tif !ok {\n127\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such invoice\")\n128\t\t\treturn\n129\t\t}\n130\t\twriteJSON(w, http.StatusOK, s.viewInvoice(inv))\n131\t}\n132\t\n133\t// getInvoiceLines answers an invoice's lines with each line's amount, for the dashboard's invoice table.\n134\tfunc (s *Server) getInvoiceLines(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n135\t\tinv, ok := s.store.InvoiceByID(r.PathValue(\"id\"))\n136\t\tif !ok {\n137\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such invoice\")\n138\t\t\treturn\n139\t\t}\n140\t\ttype lineView struct {\n141\t\t\tstore.Line\n142\t\t\tAmount int64 `json:\"amount\"`\n143\t\t}\n144\t\titems := []lineView{}\n145\t\tfor _, l := range inv.Lines {\n146\t\t\titems = append(items, lineView{Line: l, Amount: l.Amount()})\n147\t\t}\n148\t\twriteJSON(w, http.StatusOK, list{Items: items})\n149\t}\n150\t\n151\t// payInvoice charges an invoice: {\"payment_method\": \"pm_...\"}, or the customer's default payment method when it is absent.\n152\tfunc (s *Server) payInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n153\t\tvar in struct {\n154\t\t\tPaymentMethod string `json:\"payment_method\"`\n155\t\t}\n156\t\tif r.ContentLength != 0 \u0026\u0026 !decode(w, r, \u0026in) {\n157\t\t\treturn\n158\t\t}\n159\t\tinv, pay, err := s.pay.Pay(r.Context(), p.OrgID, r.PathValue(\"id\"), in.PaymentMethod)\n160\t\tif err != nil {\n161\t\t\ts.payError(w, err)\n162\t\t\treturn\n163\t\t}\n164\t\twriteJSON(w, http.StatusOK, map[string]any{\"invoice\": s.viewInvoice(inv), \"payment\": pay})\n165\t}\n166\t\n167\tfunc (s *Server) payError(w http.ResponseWriter, err error) {\n168\t\tvar decline *payments.DeclineError\n169\t\tswitch {\n170\t\tcase errors.As(err, \u0026decline):\n171\t\t\twriteJSON(w, http.StatusPaymentRequired, map[string]string{\"error\": \"payment_declined\", \"decline_code\": decline.Code, \"message\": err.Error()})\n172\t\tcase errors.Is(err, payments.ErrAlreadyPaid):\n173\t\t\twriteError(w, http.StatusConflict, \"already_paid\", err.Error())\n174\t\tcase errors.Is(err, payments.ErrInvoiceVoid):\n175\t\t\twriteError(w, http.StatusConflict, \"invoice_void\", err.Error())\n176\t\tcase errors.Is(err, payments.ErrNoPaymentMethod):\n177\t\t\twriteError(w, http.StatusUnprocessableEntity, \"no_payment_method\", err.Error())\n178\t\tcase errors.Is(err, payments.ErrUnavailable):\n179\t\t\twriteError(w, http.StatusServiceUnavailable, \"gateway_unavailable\", \"the payment gateway is unavailable; nothing was charged, try again\")\n180\t\tdefault:\n181\t\t\ts.storeError(w, err)\n182\t\t}\n183\t}\n184\t\n185\tfunc (s *Server) voidInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n186\t\tnow := s.clock.Now()\n187\t\tinv, err := s.store.UpdateInvoice(p.OrgID, r.PathValue(\"id\"), func(inv *store.Invoice) error {\n188\t\t\tswitch inv.Status {\n189\t\t\tcase store.InvoicePaid:\n190\t\t\t\treturn payments.ErrAlreadyPaid\n191\t\t\tcase store.InvoiceVoid:\n192\t\t\t\treturn payments.ErrInvoiceVoid\n193\t\t\t}\n194\t\t\tinv.Status, inv.VoidedAt = store.InvoiceVoid, \u0026now\n195\t\t\treturn nil\n196\t\t})\n197\t\tif err != nil {\n198\t\t\ts.payError(w, err)\n199\t\t\treturn\n200\t\t}\n201\t\ts.publish(r.Context(), p.OrgID, \"invoice.voided\", map[string]any{\"invoice_id\": inv.ID})\n202\t\twriteJSON(w, http.StatusOK, s.viewInvoice(inv))\n203\t}\n204\t\n205\tfunc (s *Server) listPayments(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n206\t\twriteJSON(w, http.StatusOK, list{Items: s.store.Payments(p.OrgID, r.URL.Query().Get(\"invoice_id\"))})\n207\t}\n208\t"
       },
@@ -1032,7 +1032,7 @@
           "id": "toolu_01X7q1enYwmvXVchRjdnbfL4",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go"
           },
           "output": "1\tpackage api\n2\t\n3\timport (\n4\t\t\"errors\"\n5\t\t\"fmt\"\n6\t\t\"net/http\"\n7\t\t\"strings\"\n8\t\n9\t\t\"example.com/tally/internal/auth\"\n10\t\t\"example.com/tally/internal/billing\"\n11\t\t\"example.com/tally/internal/money\"\n12\t\t\"example.com/tally/internal/payments\"\n13\t\t\"example.com/tally/internal/store\"\n14\t)\n15\t\n16\t// invoiceView is an invoice as the API shows it: with its totals, a one-line description and its customer.\n17\ttype invoiceView struct {\n18\t\tstore.Invoice\n19\t\tbilling.Totals\n20\t\tTotalFormatted string       `json:\"total_formatted\"`\n21\t\tDescription    string       `json:\"description\"`\n22\t\tCustomer       *customerRef `json:\"customer\"`\n23\t}\n24\t\n25\t// customerRef is the customer shown on an invoice; null when the customer was deleted.\n26\ttype customerRef struct {\n27\t\tID    string `json:\"id\"`\n28\t\tName  string `json:\"name\"`\n29\t\tEmail string `json:\"email\"`\n30\t}\n31\t\n32\tfunc newInvoiceView(inv store.Invoice, c *store.Customer) invoiceView {\n33\t\tt := billing.Compute(inv)\n34\t\tv := invoiceView{Invoice: inv, Totals: t, TotalFormatted: money.Format(t.Total, inv.Currency), Description: describe(inv.Lines)}\n35\t\tif c != nil {\n36\t\t\tv.Customer = \u0026customerRef{ID: c.ID, Name: c.Name, Email: c.Email}\n37\t\t}\n38\t\treturn v\n39\t}\n40\t\n41\t// describe is the invoice's first line, and how many more there are.\n42\tfunc describe(lines []store.Line) string {\n43\t\td := lines[0].Description\n44\t\tif len(lines) \u003e 1 {\n45\t\t\td += fmt.Sprintf(\" and %d more\", len(lines)-1)\n46\t\t}\n47\t\treturn d\n48\t}\n49\t\n50\tfunc (s *Server) viewInvoice(inv store.Invoice) invoiceView {\n51\t\tif c, ok := s.store.Customer(inv.OrgID, inv.CustomerID); ok {\n52\t\t\treturn newInvoiceView(inv, \u0026c)\n53\t\t}\n54\t\treturn newInvoiceView(inv, nil)\n55\t}\n56\t\n57\tfunc findCustomer(cs []store.Customer, id string) *store.Customer {\n58\t\tfor i := range cs {\n59\t\t\tif cs[i].ID == id {\n60\t\t\t\treturn \u0026cs[i]\n61\t\t\t}\n62\t\t}\n63\t\treturn nil\n64\t}\n65\t\n66\tfunc invoiceViewKey(v invoiceView) cursor { return cursor{T: v.CreatedAt, ID: v.ID} }\n67\t\n68\t// listInvoices lists the organization's invoices, oldest first, optionally only those of ?customer_id=, ?subscription_id=\n69\t// or with ?status=.\n70\tfunc (s *Server) listInvoices(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n71\t\tpg, ok := parsePage(w, r)\n72\t\tif !ok {\n73\t\t\treturn\n74\t\t}\n75\t\tq := r.URL.Query()\n76\t\tstatus := store.InvoiceStatus(q.Get(\"status\"))\n77\t\tif status != \"\" \u0026\u0026 status != store.InvoiceOpen \u0026\u0026 status != store.InvoicePaid \u0026\u0026 status != store.InvoiceVoid {\n78\t\t\twriteError(w, http.StatusBadRequest, \"invalid_status\", \"status is open, paid or void\")\n79\t\t\treturn\n80\t\t}\n81\t\tinvs := s.store.ListInvoices(p.OrgID, store.InvoiceFilter{CustomerID: q.Get(\"customer_id\"), SubscriptionID: q.Get(\"subscription_id\"), Status: status})\n82\t\tcustomers := s.store.Customers(p.OrgID)\n83\t\tviews := make([]invoiceView, 0, len(invs))\n84\t\tfor _, inv := range invs {\n85\t\t\tviews = append(views, newInvoiceView(inv, findCustomer(customers, inv.CustomerID)))\n86\t\t}\n87\t\titems, next := pageOf(views, invoiceViewKey, pg)\n88\t\twriteJSON(w, http.StatusOK, list{Items: items, NextCursor: next})\n89\t}\n90\t\n91\tfunc (s *Server) createInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n92\t\tvar in struct {\n93\t\t\tCustomerID      string         `json:\"customer_id\"`\n94\t\t\tCurrency        money.Currency `json:\"currency\"`\n95\t\t\tLines           []store.Line   `json:\"lines\"`\n96\t\t\tDiscountPercent int            `json:\"discount_percent\"`\n97\t\t}\n98\t\tif !decode(w, r, \u0026in) {\n99\t\t\treturn\n100\t\t}\n101\t\tif len(in.Lines) == 0 {\n102\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid\", \"an invoice needs at least one line\")\n103\t\t\treturn\n104\t\t}\n105\t\tfor _, l := range in.Lines {\n106\t\t\tif strings.TrimSpace(l.Description) == \"\" || l.Quantity \u003c= 0 || l.UnitAmount \u003c 0 {\n107\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid\", \"each line needs a description, a positive quantity and a unit amount that is not negative\")\n108\t\t\t\treturn\n109\t\t\t}\n110\t\t}\n111\t\tinv, err := s.store.CreateInvoice(store.Invoice{OrgID: p.OrgID, CustomerID: in.CustomerID, Currency: in.Currency, Lines: in.Lines, DiscountPercent: in.DiscountPercent}, s.clock.Now())\n112\t\tif err != nil {\n113\t\t\tif errors.Is(err, store.ErrCustomerOrgMismatch) {\n114\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"customer_org_mismatch\", fmt.Sprintf(\"customer %s belongs to another organization\", in.CustomerID))\n115\t\t\t\treturn\n116\t\t\t}\n117\t\t\ts.storeError(w, err)\n118\t\t\treturn\n119\t\t}\n120\t\ts.publish(r.Context(), p.OrgID, \"invoice.created\", map[string]any{\"invoice_id\": inv.ID})\n121\t\twriteJSON(w, http.StatusCreated, s.viewInvoice(inv))\n122\t}\n123\t\n124\tfunc (s *Server) getInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n125\t\tinv, ok := s.store.Invoice(p.OrgID, r.PathValue(\"id\"))\n126\t\tif !ok {\n127\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such invoice\")\n128\t\t\treturn\n129\t\t}\n130\t\twriteJSON(w, http.StatusOK, s.viewInvoice(inv))\n131\t}\n132\t\n133\t// getInvoiceLines answers an invoice's lines with each line's amount, for the dashboard's invoice table.\n134\tfunc (s *Server) getInvoiceLines(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n135\t\tinv, ok := s.store.InvoiceByID(r.PathValue(\"id\"))\n136\t\tif !ok {\n137\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such invoice\")\n138\t\t\treturn\n139\t\t}\n140\t\ttype lineView struct {\n141\t\t\tstore.Line\n142\t\t\tAmount int64 `json:\"amount\"`\n143\t\t}\n144\t\titems := []lineView{}\n145\t\tfor _, l := range inv.Lines {\n146\t\t\titems = append(items, lineView{Line: l, Amount: l.Amount()})\n147\t\t}\n148\t\twriteJSON(w, http.StatusOK, list{Items: items})\n149\t}\n150\t\n151\t// payInvoice charges an invoice: {\"payment_method\": \"pm_...\"}, or the customer's default payment method when it is absent.\n152\tfunc (s *Server) payInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n153\t\tvar in struct {\n154\t\t\tPaymentMethod string `json:\"payment_method\"`\n155\t\t}\n156\t\tif r.ContentLength != 0 \u0026\u0026 !decode(w, r, \u0026in) {\n157\t\t\treturn\n158\t\t}\n159\t\tinv, pay, err := s.pay.Pay(r.Context(), p.OrgID, r.PathValue(\"id\"), in.PaymentMethod)\n160\t\tif err != nil {\n161\t\t\ts.payError(w, err)\n162\t\t\treturn\n163\t\t}\n164\t\twriteJSON(w, http.StatusOK, map[string]any{\"invoice\": s.viewInvoice(inv), \"payment\": pay})\n165\t}\n166\t\n167\tfunc (s *Server) payError(w http.ResponseWriter, err error) {\n168\t\tvar decline *payments.DeclineError\n169\t\tswitch {\n170\t\tcase errors.As(err, \u0026decline):\n171\t\t\twriteJSON(w, http.StatusPaymentRequired, map[string]string{\"error\": \"payment_declined\", \"decline_code\": decline.Code, \"message\": err.Error()})\n172\t\tcase errors.Is(err, payments.ErrAlreadyPaid):\n173\t\t\twriteError(w, http.StatusConflict, \"already_paid\", err.Error())\n174\t\tcase errors.Is(err, payments.ErrInvoiceVoid):\n175\t\t\twriteError(w, http.StatusConflict, \"invoice_void\", err.Error())\n176\t\tcase errors.Is(err, payments.ErrNoPaymentMethod):\n177\t\t\twriteError(w, http.StatusUnprocessableEntity, \"no_payment_method\", err.Error())\n178\t\tcase errors.Is(err, payments.ErrUnavailable):\n179\t\t\twriteError(w, http.StatusServiceUnavailable, \"gateway_unavailable\", \"the payment gateway is unavailable; nothing was charged, try again\")\n180\t\tdefault:\n181\t\t\ts.storeError(w, err)\n182\t\t}\n183\t}\n184\t\n185\tfunc (s *Server) voidInvoice(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n186\t\tnow := s.clock.Now()\n187\t\tinv, err := s.store.UpdateInvoice(p.OrgID, r.PathValue(\"id\"), func(inv *store.Invoice) error {\n188\t\t\tswitch inv.Status {\n189\t\t\tcase store.InvoicePaid:\n190\t\t\t\treturn payments.ErrAlreadyPaid\n191\t\t\tcase store.InvoiceVoid:\n192\t\t\t\treturn payments.ErrInvoiceVoid\n193\t\t\t}\n194\t\t\tinv.Status, inv.VoidedAt = store.InvoiceVoid, \u0026now\n195\t\t\treturn nil\n196\t\t})\n197\t\tif err != nil {\n198\t\t\ts.payError(w, err)\n199\t\t\treturn\n200\t\t}\n201\t\ts.publish(r.Context(), p.OrgID, \"invoice.voided\", map[string]any{\"invoice_id\": inv.ID})\n202\t\twriteJSON(w, http.StatusOK, s.viewInvoice(inv))\n203\t}\n204\t\n205\tfunc (s *Server) listPayments(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n206\t\twriteJSON(w, http.StatusOK, list{Items: s.store.Payments(p.OrgID, r.URL.Query().Get(\"invoice_id\"))})\n207\t}\n208\t"
         }
@@ -1067,7 +1067,7 @@
         "id": "toolu_016SJt364LwG9UrmtggL857K",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
         }
       },
       "kind": "tool_call"
@@ -1088,7 +1088,7 @@
           "id": "toolu_016SJt364LwG9UrmtggL857K",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
           }
         }
       },
@@ -1109,7 +1109,7 @@
         "id": "toolu_016SJt364LwG9UrmtggL857K",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
         },
         "output": "1\t// Package billing is invoice arithmetic and billing periods. It holds no state.\n2\tpackage billing\n3\t\n4\timport (\n5\t\t\"time\"\n6\t\n7\t\t\"example.com/tally/internal/money\"\n8\t\t\"example.com/tally/internal/store\"\n9\t)\n10\t\n11\t// Totals are the amounts shown on an invoice, in the invoice currency's minor unit.\n12\ttype Totals struct {\n13\t\tSubtotal int64 `json:\"subtotal\"`\n14\t\tDiscount int64 `json:\"discount\"`\n15\t\tTax      int64 `json:\"tax\"`\n16\t\tTotal    int64 `json:\"total\"`\n17\t}\n18\t\n19\t// Compute returns an invoice's totals: the sum of its lines, the discount (DiscountPercent of the subtotal), and tax at the\n20\t// invoice's rate on the subtotal after the discount. The discount and the tax are each rounded half away from zero to a\n21\t// whole minor unit.\n22\tfunc Compute(inv store.Invoice) Totals {\n23\t\tvar subtotal int64\n24\t\tfor _, l := range inv.Lines {\n25\t\t\tsubtotal += l.Amount()\n26\t\t}\n27\t\tdiscount := money.Percent(subtotal, inv.DiscountPercent)\n28\t\ttaxable := subtotal - discount\n29\t\ttax := money.BasisPoints(taxable, inv.TaxRateBP)\n30\t\treturn Totals{Subtotal: subtotal, Discount: discount, Tax: tax, Total: taxable + tax}\n31\t}\n32\t\n33\t// AddInterval returns t moved forward by one billing interval: a month or a year.\n34\tfunc AddInterval(t time.Time, iv store.Interval) time.Time {\n35\t\tif iv == store.Yearly {\n36\t\t\treturn t.AddDate(1, 0, 0)\n37\t\t}\n38\t\treturn t.AddDate(0, 1, 0)\n39\t}\n40\t"
       },
@@ -1131,7 +1131,7 @@
           "id": "toolu_016SJt364LwG9UrmtggL857K",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/billing/billing.go"
           },
           "output": "1\t// Package billing is invoice arithmetic and billing periods. It holds no state.\n2\tpackage billing\n3\t\n4\timport (\n5\t\t\"time\"\n6\t\n7\t\t\"example.com/tally/internal/money\"\n8\t\t\"example.com/tally/internal/store\"\n9\t)\n10\t\n11\t// Totals are the amounts shown on an invoice, in the invoice currency's minor unit.\n12\ttype Totals struct {\n13\t\tSubtotal int64 `json:\"subtotal\"`\n14\t\tDiscount int64 `json:\"discount\"`\n15\t\tTax      int64 `json:\"tax\"`\n16\t\tTotal    int64 `json:\"total\"`\n17\t}\n18\t\n19\t// Compute returns an invoice's totals: the sum of its lines, the discount (DiscountPercent of the subtotal), and tax at the\n20\t// invoice's rate on the subtotal after the discount. The discount and the tax are each rounded half away from zero to a\n21\t// whole minor unit.\n22\tfunc Compute(inv store.Invoice) Totals {\n23\t\tvar subtotal int64\n24\t\tfor _, l := range inv.Lines {\n25\t\t\tsubtotal += l.Amount()\n26\t\t}\n27\t\tdiscount := money.Percent(subtotal, inv.DiscountPercent)\n28\t\ttaxable := subtotal - discount\n29\t\ttax := money.BasisPoints(taxable, inv.TaxRateBP)\n30\t\treturn Totals{Subtotal: subtotal, Discount: discount, Tax: tax, Total: taxable + tax}\n31\t}\n32\t\n33\t// AddInterval returns t moved forward by one billing interval: a month or a year.\n34\tfunc AddInterval(t time.Time, iv store.Interval) time.Time {\n35\t\tif iv == store.Yearly {\n36\t\t\treturn t.AddDate(1, 0, 0)\n37\t\t}\n38\t\treturn t.AddDate(0, 1, 0)\n39\t}\n40\t"
         }
@@ -1153,7 +1153,7 @@
         "id": "toolu_01YGB2FiwBUce2nGx1F7gRQ2",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
         }
       },
       "kind": "tool_call"
@@ -1174,7 +1174,7 @@
           "id": "toolu_01YGB2FiwBUce2nGx1F7gRQ2",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
           }
         }
       },
@@ -1195,7 +1195,7 @@
         "id": "toolu_01YGB2FiwBUce2nGx1F7gRQ2",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
         },
         "output": "1\tpackage store\n2\t\n3\timport (\n4\t\t\"encoding/json\"\n5\t\t\"sort\"\n6\t\t\"strings\"\n7\t\t\"time\"\n8\t)\n9\t\n10\t// ---- plans\n11\t\n12\t// CreatePlan adds a plan. UsageType defaults to Licensed; a new plan is active.\n13\tfunc (s *Store) CreatePlan(p Plan, now time.Time) (Plan, error) {\n14\t\tp.Name = strings.TrimSpace(p.Name)\n15\t\tif p.UsageType == \"\" {\n16\t\t\tp.UsageType = Licensed\n17\t\t}\n18\t\tp.Active = true\n19\t\tif err := checkPlan(p); err != nil {\n20\t\t\treturn Plan{}, err\n21\t\t}\n22\t\ts.mu.Lock()\n23\t\tdefer s.mu.Unlock()\n24\t\tif _, ok := s.orgs[p.OrgID]; !ok {\n25\t\t\treturn Plan{}, ErrNotFound\n26\t\t}\n27\t\tp.ID = s.newID(\"plan\")\n28\t\tp.CreatedAt = now.UTC()\n29\t\ts.plans[p.ID] = p\n30\t\treturn p, nil\n31\t}\n32\t\n33\tfunc checkPlan(p Plan) error {\n34\t\tswitch {\n35\t\tcase p.Name == \"\":\n36\t\t\treturn invalid(\"a plan needs a name\")\n37\t\tcase !p.Currency.Valid():\n38\t\t\treturn invalid(\"unknown currency %q\", p.Currency)\n39\t\tcase p.UnitAmount \u003c 0:\n40\t\t\treturn invalid(\"a plan's price cannot be negative\")\n41\t\tcase p.Interval != Monthly \u0026\u0026 p.Interval != Yearly:\n42\t\t\treturn invalid(\"a plan bills every month or every year\")\n43\t\tcase p.UsageType != Licensed \u0026\u0026 p.UsageType != Metered:\n44\t\t\treturn invalid(\"a plan is licensed or metered\")\n45\t\tcase p.TrialDays \u003c 0 || p.TrialDays \u003e 365:\n46\t\t\treturn invalid(\"a trial lasts 0 to 365 days\")\n47\t\t}\n48\t\treturn nil\n49\t}\n50\t\n51\t// Plan returns one of an organization's plans.\n52\tfunc (s *Store) Plan(orgID, id string) (Plan, bool) {\n53\t\ts.mu.Lock()\n54\t\tdefer s.mu.Unlock()\n55\t\tp, ok := s.plans[id]\n56\t\tif !ok || p.OrgID != orgID {\n57\t\t\treturn Plan{}, false\n58\t\t}\n59\t\treturn p, true\n60\t}\n61\t\n62\t// Plans returns an organization's plans, oldest first.\n63\tfunc (s *Store) Plans(orgID string) []Plan {\n64\t\ts.mu.Lock()\n65\t\tdefer s.mu.Unlock()\n66\t\tout := []Plan{}\n67\t\tfor _, p := range s.plans {\n68\t\t\tif p.OrgID == orgID {\n69\t\t\t\tout = append(out, p)\n70\t\t\t}\n71\t\t}\n72\t\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n73\t\treturn out\n74\t}\n75\t\n76\t// UpdatePlan changes a plan with f. Its currency, price, interval and usage type cannot change once created: subscriptions\n77\t// depend on them.\n78\tfunc (s *Store) UpdatePlan(orgID, id string, f func(*Plan) error) (Plan, error) {\n79\t\ts.mu.Lock()\n80\t\tdefer s.mu.Unlock()\n81\t\told, ok := s.plans[id]\n82\t\tif !ok || old.OrgID != orgID {\n83\t\t\treturn Plan{}, ErrNotFound\n84\t\t}\n85\t\tp := old\n86\t\tif err := f(\u0026p); err != nil {\n87\t\t\treturn Plan{}, err\n88\t\t}\n89\t\tp.ID, p.OrgID, p.CreatedAt = old.ID, old.OrgID, old.CreatedAt\n90\t\tp.Currency, p.UnitAmount, p.Interval, p.UsageType = old.Currency, old.UnitAmount, old.Interval, old.UsageType\n91\t\tp.Name = strings.TrimSpace(p.Name)\n92\t\tif err := checkPlan(p); err != nil {\n93\t\t\treturn Plan{}, err\n94\t\t}\n95\t\ts.plans[id] = p\n96\t\treturn p, nil\n97\t}\n98\t\n99\t// ---- subscriptions\n100\t\n101\t// CreateSubscription stores a new subscription. The caller sets its status and periods.\n102\tfunc (s *Store) CreateSubscription(sub Subscription, now time.Time) (Subscription, error) {\n103\t\tif sub.Quantity \u003c= 0 {\n104\t\t\treturn Subscription{}, invalid(\"the quantity must be at least 1\")\n105\t\t}\n106\t\tif sub.DiscountPercent \u003c 0 || sub.DiscountPercent \u003e 100 {\n107\t\t\treturn Subscription{}, invalid(\"the discount is 0 to 100 percent\")\n108\t\t}\n109\t\ts.mu.Lock()\n110\t\tdefer s.mu.Unlock()\n111\t\tif _, ok := s.customers[sub.CustomerID]; !ok {\n112\t\t\treturn Subscription{}, ErrNotFound\n113\t\t}\n114\t\tif p, ok := s.plans[sub.PlanID]; !ok || p.OrgID != sub.OrgID {\n115\t\t\treturn Subscription{}, ErrNotFound\n116\t\t}\n117\t\tsub.ID = s.newID(\"sub\")\n118\t\tsub.CreatedAt = now.UTC()\n119\t\ts.subs[sub.ID] = sub\n120\t\treturn copySub(sub), nil\n121\t}\n122\t\n123\t// Subscription returns one of an organization's subscriptions.\n124\tfunc (s *Store) Subscription(orgID, id string) (Subscription, bool) {\n125\t\ts.mu.Lock()\n126\t\tdefer s.mu.Unlock()\n127\t\tsub, ok := s.subs[id]\n128\t\tif !ok || sub.OrgID != orgID {\n129\t\t\treturn Subscription{}, false\n130\t\t}\n131\t\treturn copySub(sub), true\n132\t}\n133\t\n134\t// SubscriptionFilter narrows Subscriptions.\n135\ttype SubscriptionFilter struct {\n136\t\tCustomerID string\n137\t\tStatus     SubStatus\n138\t}\n139\t\n140\t// Subscriptions returns an organization's subscriptions that match f, oldest first.\n141\tfunc (s *Store) Subscriptions(orgID string, f SubscriptionFilter) []Subscription {\n142\t\ts.mu.Lock()\n143\t\tdefer s.mu.Unlock()\n144\t\tout := []Subscription{}\n145\t\tfor _, sub := range s.subs {\n146\t\t\tif sub.OrgID != orgID || (f.CustomerID != \"\" \u0026\u0026 sub.CustomerID != f.CustomerID) || (f.Status != \"\" \u0026\u0026 sub.Status != f.Status) {\n147\t\t\t\tcontinue\n148\t\t\t}\n149\t\t\tout = append(out, copySub(sub))\n150\t\t}\n151\t\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n152\t\treturn out\n153\t}\n154\t\n155\t// UpdateSubscription changes a subscription with f, which may refuse with an error.\n156\tfunc (s *Store) UpdateSubscription(orgID, id string, f func(*Subscription) error) (Subscription, error) {\n157\t\ts.mu.Lock()\n158\t\tdefer s.mu.Unlock()\n159\t\told, ok := s.subs[id]\n160\t\tif !ok || old.OrgID != orgID {\n161\t\t\treturn Subscription{}, ErrNotFound\n162\t\t}\n163\t\tsub := copySub(old)\n164\t\tif err := f(\u0026sub); err != nil {\n165\t\t\treturn Subscription{}, err\n166\t\t}\n167\t\tsub.ID, sub.OrgID, sub.CustomerID, sub.CreatedAt = old.ID, old.OrgID, old.CustomerID, old.CreatedAt\n168\t\tif sub.Quantity \u003c= 0 {\n169\t\t\treturn Subscription{}, invalid(\"the quantity must be at least 1\")\n170\t\t}\n171\t\tif p, ok := s.plans[sub.PlanID]; !ok || p.OrgID != orgID {\n172\t\t\treturn Subscription{}, ErrNotFound\n173\t\t}\n174\t\ts.subs[id] = sub\n175\t\treturn copySub(sub), nil\n176\t}\n177\t\n178\t// DueSubscriptions returns the subscriptions of every organization whose current period has ended by now and that are not\n179\t// canceled, the longest overdue first.\n180\tfunc (s *Store) DueSubscriptions(now time.Time) []Subscription {\n181\t\ts.mu.Lock()\n182\t\tdefer s.mu.Unlock()\n183\t\tout := []Subscription{}\n184\t\tfor _, sub := range s.subs {\n185\t\t\tif sub.Status != Canceled \u0026\u0026 !sub.CurrentPeriodEnd.After(now) {\n186\t\t\t\tout = append(out, copySub(sub))\n187\t\t\t}\n188\t\t}\n189\t\tsort.Slice(out, func(i, j int) bool {\n190\t\t\tif !out[i].CurrentPeriodEnd.Equal(out[j].CurrentPeriodEnd) {\n191\t\t\t\treturn out[i].CurrentPeriodEnd.Before(out[j].CurrentPeriodEnd)\n192\t\t\t}\n193\t\t\treturn out[i].ID \u003c out[j].ID\n194\t\t})\n195\t\treturn out\n196\t}\n197\t\n198\tfunc copySub(sub Subscription) Subscription {\n199\t\tif sub.TrialEnd != nil {\n200\t\t\tt := *sub.TrialEnd\n201\t\t\tsub.TrialEnd = \u0026t\n202\t\t}\n203\t\tif sub.CanceledAt != nil {\n204\t\t\tt := *sub.CanceledAt\n205\t\t\tsub.CanceledAt = \u0026t\n206\t\t}\n207\t\treturn sub\n208\t}\n209\t\n210\t// AddUsage records usage of a subscription to a metered plan at time at.\n211\tfunc (s *Store) AddUsage(orgID, subID string, quantity int64, at, now time.Time) (UsageRecord, error) {\n212\t\tif quantity \u003c= 0 {\n213\t\t\treturn UsageRecord{}, invalid(\"usage must be a positive quantity\")\n214\t\t}\n215\t\ts.mu.Lock()\n216\t\tdefer s.mu.Unlock()\n217\t\tsub, ok := s.subs[subID]\n218\t\tif !ok || sub.OrgID != orgID {\n219\t\t\treturn UsageRecord{}, ErrNotFound\n220\t\t}\n221\t\tif p := s.plans[sub.PlanID]; p.UsageType != Metered {\n222\t\t\treturn UsageRecord{}, invalid(\"the subscription's plan is not metered\")\n223\t\t}\n224\t\tu := UsageRecord{ID: s.newID(\"use\"), OrgID: orgID, SubscriptionID: subID, Quantity: quantity, At: at.UTC(), CreatedAt: now.UTC()}\n225\t\ts.usage = append(s.usage, u)\n226\t\treturn u, nil\n227\t}\n228\t\n229\t// UsageTotal adds up a subscription's usage at times in [from, to).\n230\tfunc (s *Store) UsageTotal(orgID, subID string, from, to time.Time) int64 {\n231\t\ts.mu.Lock()\n232\t\tdefer s.mu.Unlock()\n233\t\tvar n int64\n234\t\tfor _, u := range s.usage {\n235\t\t\tif u.OrgID == orgID \u0026\u0026 u.SubscriptionID == subID \u0026\u0026 !u.At.Before(from) \u0026\u0026 u.At.Before(to) {\n236\t\t\t\tn += u.Quantity\n237\t\t\t}\n238\t\t}\n239\t\treturn n\n240\t}\n241\t\n242\t// ---- invoices\n243\t\n244\t// CreateInvoice stores an invoice for one of the organization's customers, with the organization's tax rate. It is open.\n245\tfunc (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {\n246\t\tif !inv.Currency.Valid() {\n247\t\t\treturn Invoice{}, invalid(\"unknown currency %q\", inv.Currency)\n248\t\t}\n249\t\tif inv.DiscountPercent \u003c 0 || inv.DiscountPercent \u003e 100 {\n250\t\t\treturn Invoice{}, invalid(\"the discount is 0 to 100 percent\")\n251\t\t}\n252\t\tfor _, l := range inv.Lines {\n253\t\t\tif l.Quantity \u003c= 0 {\n254\t\t\t\treturn Invoice{}, invalid(\"a line needs a positive quantity\")\n255\t\t\t}\n256\t\t}\n257\t\ts.mu.Lock()\n258\t\tdefer s.mu.Unlock()\n259\t\torg, ok := s.orgs[inv.OrgID]\n260\t\tif !ok {\n261\t\t\treturn Invoice{}, ErrNotFound\n262\t\t}\n263\t\tc, ok := s.customers[inv.CustomerID]\n264\t\tif !ok {\n265\t\t\treturn Invoice{}, ErrNotFound\n266\t\t}\n267\t\tif c.OrgID != inv.OrgID {\n268\t\t\treturn Invoice{}, ErrCustomerOrgMismatch\n269\t\t}\n270\t\tinv.ID = s.newID(\"in\")\n271\t\tinv.TaxRateBP = org.TaxRateBP\n272\t\tinv.Status = InvoiceOpen\n273\t\tinv.CreatedAt = now.UTC()\n274\t\tinv.PaidAt, inv.VoidedAt = nil, nil\n275\t\tinv = copyInvoice(inv)\n276\t\ts.invoices[inv.ID] = inv\n277\t\treturn copyInvoice(inv), nil\n278\t}\n279\t\n280\t// Invoice returns one of an organization's invoices.\n281\tfunc (s *Store) Invoice(orgID, id string) (Invoice, bool) {\n282\t\ts.mu.Lock()\n283\t\tdefer s.mu.Unlock()\n284\t\tinv, ok := s.invoices[id]\n285\t\tif !ok || inv.OrgID != orgID {\n286\t\t\treturn Invoice{}, false\n287\t\t}\n288\t\treturn copyInvoice(inv), true\n289\t}\n290\t\n291\t// InvoiceByID returns an invoice of any organization (background jobs and the admin tool).\n292\tfunc (s *Store) InvoiceByID(id string) (Invoice, bool) {\n293\t\ts.mu.Lock()\n294\t\tdefer s.mu.Unlock()\n295\t\tinv, ok := s.invoices[id]\n296\t\treturn copyInvoice(inv), ok\n297\t}\n298\t\n299\t// InvoiceFilter narrows ListInvoices.\n300\ttype InvoiceFilter struct {\n301\t\tCustomerID     string\n302\t\tSubscriptionID string\n303\t\tStatus         InvoiceStatus\n304\t}\n305\t\n306\t// ListInvoices returns an organization's invoices that match f, oldest first (ties by ID).\n307\tfunc (s *Store) ListInvoices(orgID string, f InvoiceFilter) []Invoice {\n308\t\ts.mu.Lock()\n309\t\tall := make([]Invoice, 0, len(s.invoices))\n310\t\tfor _, inv := range s.invoices {\n311\t\t\tall = append(all, inv)\n312\t\t}\n313\t\ts.mu.Unlock()\n314\t\tout := []Invoice{}\n315\t\tfor _, inv := range all {\n316\t\t\tc := cloneInvoice(inv)\n317\t\t\tif c.OrgID != orgID {\n318\t\t\t\tcontinue\n319\t\t\t}\n320\t\t\tif (f.CustomerID != \"\" \u0026\u0026 c.CustomerID != f.CustomerID) || (f.SubscriptionID != \"\" \u0026\u0026 c.SubscriptionID != f.SubscriptionID) || (f.Status != \"\" \u0026\u0026 c.Status != f.Status) {\n321\t\t\t\tcontinue\n322\t\t\t}\n323\t\t\tout = append(out, c)\n324\t\t}\n325\t\tsort.Slice(out, func(i, j int) bool {\n326\t\t\tif !out[i].CreatedAt.Equal(out[j].CreatedAt) {\n327\t\t\t\treturn out[i].CreatedAt.Before(out[j].CreatedAt)\n328\t\t\t}\n329\t\t\treturn out[i].ID \u003c out[j].ID\n330\t\t})\n331\t\treturn out\n332\t}\n333\t\n334\t// UpdateInvoice changes an invoice with f, which may refuse with an error. Only its status, timestamps and lines change.\n335\tfunc (s *Store) UpdateInvoice(orgID, id string, f func(*Invoice) error) (Invoice, error) {\n336\t\ts.mu.Lock()\n337\t\tdefer s.mu.Unlock()\n338\t\told, ok := s.invoices[id]\n339\t\tif !ok || old.OrgID != orgID {\n340\t\t\treturn Invoice{}, ErrNotFound\n341\t\t}\n342\t\tinv := copyInvoice(old)\n343\t\tif err := f(\u0026inv); err != nil {\n344\t\t\treturn Invoice{}, err\n345\t\t}\n346\t\tinv.ID, inv.OrgID, inv.CustomerID, inv.SubscriptionID, inv.Currency, inv.CreatedAt = old.ID, old.OrgID, old.CustomerID, old.SubscriptionID, old.Currency, old.CreatedAt\n347\t\ts.invoices[id] = copyInvoice(inv)\n348\t\treturn copyInvoice(inv), nil\n349\t}\n350\t\n351\t// copyInvoice is a deep copy, so callers cannot change stored lines.\n352\tfunc copyInvoice(inv Invoice) Invoice {\n353\t\tinv.Lines = append([]Line(nil), inv.Lines...)\n354\t\tfor _, p := range []**time.Time{\u0026inv.PeriodStart, \u0026inv.PeriodEnd, \u0026inv.PaidAt, \u0026inv.VoidedAt} {\n355\t\t\tif *p != nil {\n356\t\t\t\tt := **p\n357\t\t\t\t*p = \u0026t\n358\t\t\t}\n359\t\t}\n360\t\treturn inv\n361\t}\n362\t\n363\t// cloneInvoice is a deep copy through JSON, which cannot miss a field added later.\n364\tfunc cloneInvoice(inv Invoice) Invoice {\n365\t\tb, err := json.Marshal(inv)\n366\t\tif err != nil {\n367\t\t\treturn copyInvoice(inv)\n368\t\t}\n369\t\tvar out Invoice\n370\t\tif err := json.Unmarshal(b, \u0026out); err != nil {\n371\t\t\treturn copyInvoice(inv)\n372\t\t}\n373\t\treturn out\n374\t}\n375\t\n376\t// ---- payments\n377\t\n378\t// CreatePayment records a payment attempt for one of the organization's invoices.\n379\tfunc (s *Store) CreatePayment(p Payment, now time.Time) (Payment, error) {\n380\t\ts.mu.Lock()\n381\t\tdefer s.mu.Unlock()\n382\t\tinv, ok := s.invoices[p.InvoiceID]\n383\t\tif !ok || inv.OrgID != p.OrgID {\n384\t\t\treturn Payment{}, ErrNotFound\n385\t\t}\n386\t\tif p.Status != PaymentSucceeded \u0026\u0026 p.Status != PaymentFailed {\n387\t\t\treturn Payment{}, invalid(\"a payment succeeded or failed\")\n388\t\t}\n389\t\tp.ID = s.newID(\"pay\")\n390\t\tp.CreatedAt = now.UTC()\n391\t\ts.payments[p.ID] = p\n392\t\treturn p, nil\n393\t}\n394\t\n395\t// Payments returns an organization's payments, oldest first, only those of one invoice when invoiceID is set.\n396\tfunc (s *Store) Payments(orgID, invoiceID string) []Payment {\n397\t\ts.mu.Lock()\n398\t\tdefer s.mu.Unlock()\n399\t\tout := []Payment{}\n400\t\tfor _, p := range s.payments {\n401\t\t\tif p.OrgID == orgID \u0026\u0026 (invoiceID == \"\" || p.InvoiceID == invoiceID) {\n402\t\t\t\tout = append(out, p)\n403\t\t\t}\n404\t\t}\n405\t\tsort.Slice(out, func(i, j int) bool {\n406\t\t\tif !out[i].CreatedAt.Equal(out[j].CreatedAt) {\n407\t\t\t\treturn out[i].CreatedAt.Before(out[j].CreatedAt)\n408\t\t\t}\n409\t\t\treturn out[i].ID \u003c out[j].ID\n410\t\t})\n411\t\treturn out\n412\t}\n413\t"
       },
@@ -1217,7 +1217,7 @@
           "id": "toolu_01YGB2FiwBUce2nGx1F7gRQ2",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/store/billing.go"
           },
           "output": "1\tpackage store\n2\t\n3\timport (\n4\t\t\"encoding/json\"\n5\t\t\"sort\"\n6\t\t\"strings\"\n7\t\t\"time\"\n8\t)\n9\t\n10\t// ---- plans\n11\t\n12\t// CreatePlan adds a plan. UsageType defaults to Licensed; a new plan is active.\n13\tfunc (s *Store) CreatePlan(p Plan, now time.Time) (Plan, error) {\n14\t\tp.Name = strings.TrimSpace(p.Name)\n15\t\tif p.UsageType == \"\" {\n16\t\t\tp.UsageType = Licensed\n17\t\t}\n18\t\tp.Active = true\n19\t\tif err := checkPlan(p); err != nil {\n20\t\t\treturn Plan{}, err\n21\t\t}\n22\t\ts.mu.Lock()\n23\t\tdefer s.mu.Unlock()\n24\t\tif _, ok := s.orgs[p.OrgID]; !ok {\n25\t\t\treturn Plan{}, ErrNotFound\n26\t\t}\n27\t\tp.ID = s.newID(\"plan\")\n28\t\tp.CreatedAt = now.UTC()\n29\t\ts.plans[p.ID] = p\n30\t\treturn p, nil\n31\t}\n32\t\n33\tfunc checkPlan(p Plan) error {\n34\t\tswitch {\n35\t\tcase p.Name == \"\":\n36\t\t\treturn invalid(\"a plan needs a name\")\n37\t\tcase !p.Currency.Valid():\n38\t\t\treturn invalid(\"unknown currency %q\", p.Currency)\n39\t\tcase p.UnitAmount \u003c 0:\n40\t\t\treturn invalid(\"a plan's price cannot be negative\")\n41\t\tcase p.Interval != Monthly \u0026\u0026 p.Interval != Yearly:\n42\t\t\treturn invalid(\"a plan bills every month or every year\")\n43\t\tcase p.UsageType != Licensed \u0026\u0026 p.UsageType != Metered:\n44\t\t\treturn invalid(\"a plan is licensed or metered\")\n45\t\tcase p.TrialDays \u003c 0 || p.TrialDays \u003e 365:\n46\t\t\treturn invalid(\"a trial lasts 0 to 365 days\")\n47\t\t}\n48\t\treturn nil\n49\t}\n50\t\n51\t// Plan returns one of an organization's plans.\n52\tfunc (s *Store) Plan(orgID, id string) (Plan, bool) {\n53\t\ts.mu.Lock()\n54\t\tdefer s.mu.Unlock()\n55\t\tp, ok := s.plans[id]\n56\t\tif !ok || p.OrgID != orgID {\n57\t\t\treturn Plan{}, false\n58\t\t}\n59\t\treturn p, true\n60\t}\n61\t\n62\t// Plans returns an organization's plans, oldest first.\n63\tfunc (s *Store) Plans(orgID string) []Plan {\n64\t\ts.mu.Lock()\n65\t\tdefer s.mu.Unlock()\n66\t\tout := []Plan{}\n67\t\tfor _, p := range s.plans {\n68\t\t\tif p.OrgID == orgID {\n69\t\t\t\tout = append(out, p)\n70\t\t\t}\n71\t\t}\n72\t\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n73\t\treturn out\n74\t}\n75\t\n76\t// UpdatePlan changes a plan with f. Its currency, price, interval and usage type cannot change once created: subscriptions\n77\t// depend on them.\n78\tfunc (s *Store) UpdatePlan(orgID, id string, f func(*Plan) error) (Plan, error) {\n79\t\ts.mu.Lock()\n80\t\tdefer s.mu.Unlock()\n81\t\told, ok := s.plans[id]\n82\t\tif !ok || old.OrgID != orgID {\n83\t\t\treturn Plan{}, ErrNotFound\n84\t\t}\n85\t\tp := old\n86\t\tif err := f(\u0026p); err != nil {\n87\t\t\treturn Plan{}, err\n88\t\t}\n89\t\tp.ID, p.OrgID, p.CreatedAt = old.ID, old.OrgID, old.CreatedAt\n90\t\tp.Currency, p.UnitAmount, p.Interval, p.UsageType = old.Currency, old.UnitAmount, old.Interval, old.UsageType\n91\t\tp.Name = strings.TrimSpace(p.Name)\n92\t\tif err := checkPlan(p); err != nil {\n93\t\t\treturn Plan{}, err\n94\t\t}\n95\t\ts.plans[id] = p\n96\t\treturn p, nil\n97\t}\n98\t\n99\t// ---- subscriptions\n100\t\n101\t// CreateSubscription stores a new subscription. The caller sets its status and periods.\n102\tfunc (s *Store) CreateSubscription(sub Subscription, now time.Time) (Subscription, error) {\n103\t\tif sub.Quantity \u003c= 0 {\n104\t\t\treturn Subscription{}, invalid(\"the quantity must be at least 1\")\n105\t\t}\n106\t\tif sub.DiscountPercent \u003c 0 || sub.DiscountPercent \u003e 100 {\n107\t\t\treturn Subscription{}, invalid(\"the discount is 0 to 100 percent\")\n108\t\t}\n109\t\ts.mu.Lock()\n110\t\tdefer s.mu.Unlock()\n111\t\tif _, ok := s.customers[sub.CustomerID]; !ok {\n112\t\t\treturn Subscription{}, ErrNotFound\n113\t\t}\n114\t\tif p, ok := s.plans[sub.PlanID]; !ok || p.OrgID != sub.OrgID {\n115\t\t\treturn Subscription{}, ErrNotFound\n116\t\t}\n117\t\tsub.ID = s.newID(\"sub\")\n118\t\tsub.CreatedAt = now.UTC()\n119\t\ts.subs[sub.ID] = sub\n120\t\treturn copySub(sub), nil\n121\t}\n122\t\n123\t// Subscription returns one of an organization's subscriptions.\n124\tfunc (s *Store) Subscription(orgID, id string) (Subscription, bool) {\n125\t\ts.mu.Lock()\n126\t\tdefer s.mu.Unlock()\n127\t\tsub, ok := s.subs[id]\n128\t\tif !ok || sub.OrgID != orgID {\n129\t\t\treturn Subscription{}, false\n130\t\t}\n131\t\treturn copySub(sub), true\n132\t}\n133\t\n134\t// SubscriptionFilter narrows Subscriptions.\n135\ttype SubscriptionFilter struct {\n136\t\tCustomerID string\n137\t\tStatus     SubStatus\n138\t}\n139\t\n140\t// Subscriptions returns an organization's subscriptions that match f, oldest first.\n141\tfunc (s *Store) Subscriptions(orgID string, f SubscriptionFilter) []Subscription {\n142\t\ts.mu.Lock()\n143\t\tdefer s.mu.Unlock()\n144\t\tout := []Subscription{}\n145\t\tfor _, sub := range s.subs {\n146\t\t\tif sub.OrgID != orgID || (f.CustomerID != \"\" \u0026\u0026 sub.CustomerID != f.CustomerID) || (f.Status != \"\" \u0026\u0026 sub.Status != f.Status) {\n147\t\t\t\tcontinue\n148\t\t\t}\n149\t\t\tout = append(out, copySub(sub))\n150\t\t}\n151\t\tsort.Slice(out, func(i, j int) bool { return out[i].ID \u003c out[j].ID })\n152\t\treturn out\n153\t}\n154\t\n155\t// UpdateSubscription changes a subscription with f, which may refuse with an error.\n156\tfunc (s *Store) UpdateSubscription(orgID, id string, f func(*Subscription) error) (Subscription, error) {\n157\t\ts.mu.Lock()\n158\t\tdefer s.mu.Unlock()\n159\t\told, ok := s.subs[id]\n160\t\tif !ok || old.OrgID != orgID {\n161\t\t\treturn Subscription{}, ErrNotFound\n162\t\t}\n163\t\tsub := copySub(old)\n164\t\tif err := f(\u0026sub); err != nil {\n165\t\t\treturn Subscription{}, err\n166\t\t}\n167\t\tsub.ID, sub.OrgID, sub.CustomerID, sub.CreatedAt = old.ID, old.OrgID, old.CustomerID, old.CreatedAt\n168\t\tif sub.Quantity \u003c= 0 {\n169\t\t\treturn Subscription{}, invalid(\"the quantity must be at least 1\")\n170\t\t}\n171\t\tif p, ok := s.plans[sub.PlanID]; !ok || p.OrgID != orgID {\n172\t\t\treturn Subscription{}, ErrNotFound\n173\t\t}\n174\t\ts.subs[id] = sub\n175\t\treturn copySub(sub), nil\n176\t}\n177\t\n178\t// DueSubscriptions returns the subscriptions of every organization whose current period has ended by now and that are not\n179\t// canceled, the longest overdue first.\n180\tfunc (s *Store) DueSubscriptions(now time.Time) []Subscription {\n181\t\ts.mu.Lock()\n182\t\tdefer s.mu.Unlock()\n183\t\tout := []Subscription{}\n184\t\tfor _, sub := range s.subs {\n185\t\t\tif sub.Status != Canceled \u0026\u0026 !sub.CurrentPeriodEnd.After(now) {\n186\t\t\t\tout = append(out, copySub(sub))\n187\t\t\t}\n188\t\t}\n189\t\tsort.Slice(out, func(i, j int) bool {\n190\t\t\tif !out[i].CurrentPeriodEnd.Equal(out[j].CurrentPeriodEnd) {\n191\t\t\t\treturn out[i].CurrentPeriodEnd.Before(out[j].CurrentPeriodEnd)\n192\t\t\t}\n193\t\t\treturn out[i].ID \u003c out[j].ID\n194\t\t})\n195\t\treturn out\n196\t}\n197\t\n198\tfunc copySub(sub Subscription) Subscription {\n199\t\tif sub.TrialEnd != nil {\n200\t\t\tt := *sub.TrialEnd\n201\t\t\tsub.TrialEnd = \u0026t\n202\t\t}\n203\t\tif sub.CanceledAt != nil {\n204\t\t\tt := *sub.CanceledAt\n205\t\t\tsub.CanceledAt = \u0026t\n206\t\t}\n207\t\treturn sub\n208\t}\n209\t\n210\t// AddUsage records usage of a subscription to a metered plan at time at.\n211\tfunc (s *Store) AddUsage(orgID, subID string, quantity int64, at, now time.Time) (UsageRecord, error) {\n212\t\tif quantity \u003c= 0 {\n213\t\t\treturn UsageRecord{}, invalid(\"usage must be a positive quantity\")\n214\t\t}\n215\t\ts.mu.Lock()\n216\t\tdefer s.mu.Unlock()\n217\t\tsub, ok := s.subs[subID]\n218\t\tif !ok || sub.OrgID != orgID {\n219\t\t\treturn UsageRecord{}, ErrNotFound\n220\t\t}\n221\t\tif p := s.plans[sub.PlanID]; p.UsageType != Metered {\n222\t\t\treturn UsageRecord{}, invalid(\"the subscription's plan is not metered\")\n223\t\t}\n224\t\tu := UsageRecord{ID: s.newID(\"use\"), OrgID: orgID, SubscriptionID: subID, Quantity: quantity, At: at.UTC(), CreatedAt: now.UTC()}\n225\t\ts.usage = append(s.usage, u)\n226\t\treturn u, nil\n227\t}\n228\t\n229\t// UsageTotal adds up a subscription's usage at times in [from, to).\n230\tfunc (s *Store) UsageTotal(orgID, subID string, from, to time.Time) int64 {\n231\t\ts.mu.Lock()\n232\t\tdefer s.mu.Unlock()\n233\t\tvar n int64\n234\t\tfor _, u := range s.usage {\n235\t\t\tif u.OrgID == orgID \u0026\u0026 u.SubscriptionID == subID \u0026\u0026 !u.At.Before(from) \u0026\u0026 u.At.Before(to) {\n236\t\t\t\tn += u.Quantity\n237\t\t\t}\n238\t\t}\n239\t\treturn n\n240\t}\n241\t\n242\t// ---- invoices\n243\t\n244\t// CreateInvoice stores an invoice for one of the organization's customers, with the organization's tax rate. It is open.\n245\tfunc (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {\n246\t\tif !inv.Currency.Valid() {\n247\t\t\treturn Invoice{}, invalid(\"unknown currency %q\", inv.Currency)\n248\t\t}\n249\t\tif inv.DiscountPercent \u003c 0 || inv.DiscountPercent \u003e 100 {\n250\t\t\treturn Invoice{}, invalid(\"the discount is 0 to 100 percent\")\n251\t\t}\n252\t\tfor _, l := range inv.Lines {\n253\t\t\tif l.Quantity \u003c= 0 {\n254\t\t\t\treturn Invoice{}, invalid(\"a line needs a positive quantity\")\n255\t\t\t}\n256\t\t}\n257\t\ts.mu.Lock()\n258\t\tdefer s.mu.Unlock()\n259\t\torg, ok := s.orgs[inv.OrgID]\n260\t\tif !ok {\n261\t\t\treturn Invoice{}, ErrNotFound\n262\t\t}\n263\t\tc, ok := s.customers[inv.CustomerID]\n264\t\tif !ok {\n265\t\t\treturn Invoice{}, ErrNotFound\n266\t\t}\n267\t\tif c.OrgID != inv.OrgID {\n268\t\t\treturn Invoice{}, ErrCustomerOrgMismatch\n269\t\t}\n270\t\tinv.ID = s.newID(\"in\")\n271\t\tinv.TaxRateBP = org.TaxRateBP\n272\t\tinv.Status = InvoiceOpen\n273\t\tinv.CreatedAt = now.UTC()\n274\t\tinv.PaidAt, inv.VoidedAt = nil, nil\n275\t\tinv = copyInvoice(inv)\n276\t\ts.invoices[inv.ID] = inv\n277\t\treturn copyInvoice(inv), nil\n278\t}\n279\t\n280\t// Invoice returns one of an organization's invoices.\n281\tfunc (s *Store) Invoice(orgID, id string) (Invoice, bool) {\n282\t\ts.mu.Lock()\n283\t\tdefer s.mu.Unlock()\n284\t\tinv, ok := s.invoices[id]\n285\t\tif !ok || inv.OrgID != orgID {\n286\t\t\treturn Invoice{}, false\n287\t\t}\n288\t\treturn copyInvoice(inv), true\n289\t}\n290\t\n291\t// InvoiceByID returns an invoice of any organization (background jobs and the admin tool).\n292\tfunc (s *Store) InvoiceByID(id string) (Invoice, bool) {\n293\t\ts.mu.Lock()\n294\t\tdefer s.mu.Unlock()\n295\t\tinv, ok := s.invoices[id]\n296\t\treturn copyInvoice(inv), ok\n297\t}\n298\t\n299\t// InvoiceFilter narrows ListInvoices.\n300\ttype InvoiceFilter struct {\n301\t\tCustomerID     string\n302\t\tSubscriptionID string\n303\t\tStatus         InvoiceStatus\n304\t}\n305\t\n306\t// ListInvoices returns an organization's invoices that match f, oldest first (ties by ID).\n307\tfunc (s *Store) ListInvoices(orgID string, f InvoiceFilter) []Invoice {\n308\t\ts.mu.Lock()\n309\t\tall := make([]Invoice, 0, len(s.invoices))\n310\t\tfor _, inv := range s.invoices {\n311\t\t\tall = append(all, inv)\n312\t\t}\n313\t\ts.mu.Unlock()\n314\t\tout := []Invoice{}\n315\t\tfor _, inv := range all {\n316\t\t\tc := cloneInvoice(inv)\n317\t\t\tif c.OrgID != orgID {\n318\t\t\t\tcontinue\n319\t\t\t}\n320\t\t\tif (f.CustomerID != \"\" \u0026\u0026 c.CustomerID != f.CustomerID) || (f.SubscriptionID != \"\" \u0026\u0026 c.SubscriptionID != f.SubscriptionID) || (f.Status != \"\" \u0026\u0026 c.Status != f.Status) {\n321\t\t\t\tcontinue\n322\t\t\t}\n323\t\t\tout = append(out, c)\n324\t\t}\n325\t\tsort.Slice(out, func(i, j int) bool {\n326\t\t\tif !out[i].CreatedAt.Equal(out[j].CreatedAt) {\n327\t\t\t\treturn out[i].CreatedAt.Before(out[j].CreatedAt)\n328\t\t\t}\n329\t\t\treturn out[i].ID \u003c out[j].ID\n330\t\t})\n331\t\treturn out\n332\t}\n333\t\n334\t// UpdateInvoice changes an invoice with f, which may refuse with an error. Only its status, timestamps and lines change.\n335\tfunc (s *Store) UpdateInvoice(orgID, id string, f func(*Invoice) error) (Invoice, error) {\n336\t\ts.mu.Lock()\n337\t\tdefer s.mu.Unlock()\n338\t\told, ok := s.invoices[id]\n339\t\tif !ok || old.OrgID != orgID {\n340\t\t\treturn Invoice{}, ErrNotFound\n341\t\t}\n342\t\tinv := copyInvoice(old)\n343\t\tif err := f(\u0026inv); err != nil {\n344\t\t\treturn Invoice{}, err\n345\t\t}\n346\t\tinv.ID, inv.OrgID, inv.CustomerID, inv.SubscriptionID, inv.Currency, inv.CreatedAt = old.ID, old.OrgID, old.CustomerID, old.SubscriptionID, old.Currency, old.CreatedAt\n347\t\ts.invoices[id] = copyInvoice(inv)\n348\t\treturn copyInvoice(inv), nil\n349\t}\n350\t\n351\t// copyInvoice is a deep copy, so callers cannot change stored lines.\n352\tfunc copyInvoice(inv Invoice) Invoice {\n353\t\tinv.Lines = append([]Line(nil), inv.Lines...)\n354\t\tfor _, p := range []**time.Time{\u0026inv.PeriodStart, \u0026inv.PeriodEnd, \u0026inv.PaidAt, \u0026inv.VoidedAt} {\n355\t\t\tif *p != nil {\n356\t\t\t\tt := **p\n357\t\t\t\t*p = \u0026t\n358\t\t\t}\n359\t\t}\n360\t\treturn inv\n361\t}\n362\t\n363\t// cloneInvoice is a deep copy through JSON, which cannot miss a field added later.\n364\tfunc cloneInvoice(inv Invoice) Invoice {\n365\t\tb, err := json.Marshal(inv)\n366\t\tif err != nil {\n367\t\t\treturn copyInvoice(inv)\n368\t\t}\n369\t\tvar out Invoice\n370\t\tif err := json.Unmarshal(b, \u0026out); err != nil {\n371\t\t\treturn copyInvoice(inv)\n372\t\t}\n373\t\treturn out\n374\t}\n375\t\n376\t// ---- payments\n377\t\n378\t// CreatePayment records a payment attempt for one of the organization's invoices.\n379\tfunc (s *Store) CreatePayment(p Payment, now time.Time) (Payment, error) {\n380\t\ts.mu.Lock()\n381\t\tdefer s.mu.Unlock()\n382\t\tinv, ok := s.invoices[p.InvoiceID]\n383\t\tif !ok || inv.OrgID != p.OrgID {\n384\t\t\treturn Payment{}, ErrNotFound\n385\t\t}\n386\t\tif p.Status != PaymentSucceeded \u0026\u0026 p.Status != PaymentFailed {\n387\t\t\treturn Payment{}, invalid(\"a payment succeeded or failed\")\n388\t\t}\n389\t\tp.ID = s.newID(\"pay\")\n390\t\tp.CreatedAt = now.UTC()\n391\t\ts.payments[p.ID] = p\n392\t\treturn p, nil\n393\t}\n394\t\n395\t// Payments returns an organization's payments, oldest first, only those of one invoice when invoiceID is set.\n396\tfunc (s *Store) Payments(orgID, invoiceID string) []Payment {\n397\t\ts.mu.Lock()\n398\t\tdefer s.mu.Unlock()\n399\t\tout := []Payment{}\n400\t\tfor _, p := range s.payments {\n401\t\t\tif p.OrgID == orgID \u0026\u0026 (invoiceID == \"\" || p.InvoiceID == invoiceID) {\n402\t\t\t\tout = append(out, p)\n403\t\t\t}\n404\t\t}\n405\t\tsort.Slice(out, func(i, j int) bool {\n406\t\t\tif !out[i].CreatedAt.Equal(out[j].CreatedAt) {\n407\t\t\t\treturn out[i].CreatedAt.Before(out[j].CreatedAt)\n408\t\t\t}\n409\t\t\treturn out[i].ID \u003c out[j].ID\n410\t\t})\n411\t\treturn out\n412\t}\n413\t"
         }
@@ -4858,7 +4858,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "old_string": "// describe is the invoice's first line, and how many more there are.\nfunc describe(lines []store.Line) string {\n\td := lines[0].Description",
           "new_string": "// describe is the invoice's first line, and how many more there are; empty when the invoice has no lines.\nfunc describe(lines []store.Line) string {\n\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
         }
@@ -4882,7 +4882,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "old_string": "// describe is the invoice's first line, and how many more there are.\nfunc describe(lines []store.Line) string {\n\td := lines[0].Description",
             "new_string": "// describe is the invoice's first line, and how many more there are; empty when the invoice has no lines.\nfunc describe(lines []store.Line) string {\n\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
           }
@@ -4906,11 +4906,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "old_string": "// describe is the invoice's first line, and how many more there are.\nfunc describe(lines []store.Line) string {\n\td := lines[0].Description",
           "new_string": "// describe is the invoice's first line, and how many more there are; empty when the invoice has no lines.\nfunc describe(lines []store.Line) string {\n\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4931,11 +4931,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "old_string": "// describe is the invoice's first line, and how many more there are.\nfunc describe(lines []store.Line) string {\n\td := lines[0].Description",
             "new_string": "// describe is the invoice's first line, and how many more there are; empty when the invoice has no lines.\nfunc describe(lines []store.Line) string {\n\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4969,7 +4969,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
           "old_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand).\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tif plan.UnitAmount \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\t\t}\n\tcase store.Metered:\n\t\tif used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end); used \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t\t}\n\t}",
           "new_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand). A metered period without usage has nothing to\n// bill, so no invoice is created for it.\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\tcase store.Metered:\n\t\tused := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end)\n\t\tif used == 0 {\n\t\t\treturn true, nil\n\t\t}\n\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t}"
         }
@@ -4993,7 +4993,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
             "old_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand).\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tif plan.UnitAmount \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\t\t}\n\tcase store.Metered:\n\t\tif used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end); used \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t\t}\n\t}",
             "new_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand). A metered period without usage has nothing to\n// bill, so no invoice is created for it.\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\tcase store.Metered:\n\t\tused := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end)\n\t\tif used == 0 {\n\t\t\treturn true, nil\n\t\t}\n\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t}"
           }
@@ -5017,11 +5017,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
           "old_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand).\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tif plan.UnitAmount \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\t\t}\n\tcase store.Metered:\n\t\tif used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end); used \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t\t}\n\t}",
           "new_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand). A metered period without usage has nothing to\n// bill, so no invoice is created for it.\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\tcase store.Metered:\n\t\tused := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end)\n\t\tif used == 0 {\n\t\t\treturn true, nil\n\t\t}\n\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5042,11 +5042,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
             "old_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand).\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tif plan.UnitAmount \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\t\t}\n\tcase store.Metered:\n\t\tif used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end); used \u003e 0 {\n\t\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t\t}\n\t}",
             "new_string": "// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.\n// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no\n// payment method stays open and counts as paid here (it is paid by hand). A metered period without usage has nothing to\n// bill, so no invoice is created for it.\nfunc (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {\n\tvar lines []store.Line\n\tperiod := start.Format(\"Jan 2, 2006\") + \" to \" + end.Format(\"Jan 2, 2006\")\n\tswitch plan.UsageType {\n\tcase store.Licensed:\n\t\tlines = append(lines, store.Line{Description: plan.Name + \", \" + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})\n\tcase store.Metered:\n\t\tused := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end)\n\t\tif used == 0 {\n\t\t\treturn true, nil\n\t\t}\n\t\tlines = append(lines, store.Line{Description: plan.Name + \" usage, \" + period, Quantity: used, UnitAmount: plan.UnitAmount})\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5921,7 +5921,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
           "old_string": "func TestWebhookEndpoints(t *testing.T) {",
           "new_string": "// TestInvoiceWithoutLines reproduces the incident: an invoice without lines (the renewals of a free plan made them) made\n// the list and the get answer 500. Every answer shows such an invoice with an empty description.\nfunc TestInvoiceWithoutLines(t *testing.T) {\n\te := apitest.New(t)\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tempty, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\ttype invoice struct {\n\t\tID          string `json:\"id\"`\n\t\tStatus      string `json:\"status\"`\n\t\tDescription string `json:\"description\"`\n\t}\n\tvar list struct{ Items []invoice }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].ID != empty.ID || list.Items[0].Description != \"\" {\n\t\tt.Fatalf(\"list = %+v\", list)\n\t}\n\tvar got invoice\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices/\"+empty.ID, e.Acme.Key, nil, \u0026got)\n\tif got.ID != empty.ID || got.Description != \"\" {\n\t\tt.Fatalf(\"get = %+v\", got)\n\t}\n\tvar paid struct{ Invoice invoice }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+empty.ID+\"/pay\", e.Acme.Key, nil, \u0026paid)\n\tif paid.Invoice.Status != \"paid\" || paid.Invoice.Description != \"\" {\n\t\tt.Fatalf(\"pay = %+v\", paid.Invoice)\n\t}\n\tother, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tvar voided invoice\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+other.ID+\"/void\", e.Acme.Key, nil, \u0026voided)\n\tif voided.Status != \"void\" || voided.Description != \"\" {\n\t\tt.Fatalf(\"void = %+v\", voided)\n\t}\n}\n\nfunc TestWebhookEndpoints(t *testing.T) {"
         }
@@ -5945,7 +5945,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
             "old_string": "func TestWebhookEndpoints(t *testing.T) {",
             "new_string": "// TestInvoiceWithoutLines reproduces the incident: an invoice without lines (the renewals of a free plan made them) made\n// the list and the get answer 500. Every answer shows such an invoice with an empty description.\nfunc TestInvoiceWithoutLines(t *testing.T) {\n\te := apitest.New(t)\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tempty, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\ttype invoice struct {\n\t\tID          string `json:\"id\"`\n\t\tStatus      string `json:\"status\"`\n\t\tDescription string `json:\"description\"`\n\t}\n\tvar list struct{ Items []invoice }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].ID != empty.ID || list.Items[0].Description != \"\" {\n\t\tt.Fatalf(\"list = %+v\", list)\n\t}\n\tvar got invoice\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices/\"+empty.ID, e.Acme.Key, nil, \u0026got)\n\tif got.ID != empty.ID || got.Description != \"\" {\n\t\tt.Fatalf(\"get = %+v\", got)\n\t}\n\tvar paid struct{ Invoice invoice }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+empty.ID+\"/pay\", e.Acme.Key, nil, \u0026paid)\n\tif paid.Invoice.Status != \"paid\" || paid.Invoice.Description != \"\" {\n\t\tt.Fatalf(\"pay = %+v\", paid.Invoice)\n\t}\n\tother, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tvar voided invoice\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+other.ID+\"/void\", e.Acme.Key, nil, \u0026voided)\n\tif voided.Status != \"void\" || voided.Description != \"\" {\n\t\tt.Fatalf(\"void = %+v\", voided)\n\t}\n}\n\nfunc TestWebhookEndpoints(t *testing.T) {"
           }
@@ -5969,11 +5969,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
           "old_string": "func TestWebhookEndpoints(t *testing.T) {",
           "new_string": "// TestInvoiceWithoutLines reproduces the incident: an invoice without lines (the renewals of a free plan made them) made\n// the list and the get answer 500. Every answer shows such an invoice with an empty description.\nfunc TestInvoiceWithoutLines(t *testing.T) {\n\te := apitest.New(t)\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tempty, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\ttype invoice struct {\n\t\tID          string `json:\"id\"`\n\t\tStatus      string `json:\"status\"`\n\t\tDescription string `json:\"description\"`\n\t}\n\tvar list struct{ Items []invoice }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].ID != empty.ID || list.Items[0].Description != \"\" {\n\t\tt.Fatalf(\"list = %+v\", list)\n\t}\n\tvar got invoice\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices/\"+empty.ID, e.Acme.Key, nil, \u0026got)\n\tif got.ID != empty.ID || got.Description != \"\" {\n\t\tt.Fatalf(\"get = %+v\", got)\n\t}\n\tvar paid struct{ Invoice invoice }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+empty.ID+\"/pay\", e.Acme.Key, nil, \u0026paid)\n\tif paid.Invoice.Status != \"paid\" || paid.Invoice.Description != \"\" {\n\t\tt.Fatalf(\"pay = %+v\", paid.Invoice)\n\t}\n\tother, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tvar voided invoice\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+other.ID+\"/void\", e.Acme.Key, nil, \u0026voided)\n\tif voided.Status != \"void\" || voided.Description != \"\" {\n\t\tt.Fatalf(\"void = %+v\", voided)\n\t}\n}\n\nfunc TestWebhookEndpoints(t *testing.T) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5994,11 +5994,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go",
             "old_string": "func TestWebhookEndpoints(t *testing.T) {",
             "new_string": "// TestInvoiceWithoutLines reproduces the incident: an invoice without lines (the renewals of a free plan made them) made\n// the list and the get answer 500. Every answer shows such an invoice with an empty description.\nfunc TestInvoiceWithoutLines(t *testing.T) {\n\te := apitest.New(t)\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tempty, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\ttype invoice struct {\n\t\tID          string `json:\"id\"`\n\t\tStatus      string `json:\"status\"`\n\t\tDescription string `json:\"description\"`\n\t}\n\tvar list struct{ Items []invoice }\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices\", e.Acme.Key, nil, \u0026list)\n\tif len(list.Items) != 1 || list.Items[0].ID != empty.ID || list.Items[0].Description != \"\" {\n\t\tt.Fatalf(\"list = %+v\", list)\n\t}\n\tvar got invoice\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/invoices/\"+empty.ID, e.Acme.Key, nil, \u0026got)\n\tif got.ID != empty.ID || got.Description != \"\" {\n\t\tt.Fatalf(\"get = %+v\", got)\n\t}\n\tvar paid struct{ Invoice invoice }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+empty.ID+\"/pay\", e.Acme.Key, nil, \u0026paid)\n\tif paid.Invoice.Status != \"paid\" || paid.Invoice.Description != \"\" {\n\t\tt.Fatalf(\"pay = %+v\", paid.Invoice)\n\t}\n\tother, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: \"USD\"}, e.Clock.Now())\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tvar voided invoice\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/invoices/\"+other.ID+\"/void\", e.Acme.Key, nil, \u0026voided)\n\tif voided.Status != \"void\" || voided.Description != \"\" {\n\t\tt.Fatalf(\"void = %+v\", voided)\n\t}\n}\n\nfunc TestWebhookEndpoints(t *testing.T) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6032,7 +6032,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
           "old_string": "func TestCancelAtPeriodEnd(t *testing.T) {",
           "new_string": "func TestFreePlanIsInvoicedWithALine(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\t_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = \"pm_card_visa\"; return nil })\n\tp := e.CreatePlan(e.Acme, \"Free\", \"USD\", \"0.00\")\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 4})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tinvs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})\n\tif len(invs) != 2 {\n\t\tt.Fatalf(\"invoices = %+v, want the first and the renewal\", invs)\n\t}\n\tfor _, inv := range invs {\n\t\tif inv.Status != store.InvoicePaid || len(inv.Lines) != 1 || !strings.HasPrefix(inv.Lines[0].Description, \"Free, \") ||\n\t\t\tinv.Lines[0].Quantity != 4 || inv.Lines[0].UnitAmount != 0 {\n\t\t\tt.Fatalf(\"invoice = %+v\", inv)\n\t\t}\n\t}\n\tif cs := e.Gateway.Charges(); len(cs) != 0 {\n\t\tt.Fatalf(\"charges = %+v, a free plan charges nothing\", cs)\n\t}\n}\n\nfunc TestMeteredRenewalWithoutUsageCreatesNoInvoice(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tp, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: \"API calls\", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tif invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 0 {\n\t\tt.Fatalf(\"a renewal without usage was invoiced: %+v\", invs)\n\t}\n\tgot, _ := e.Store.Subscription(e.Acme.ID, sub.ID)\n\tif got.Status != store.Active || !got.CurrentPeriodStart.Equal(sub.CurrentPeriodEnd) {\n\t\tt.Fatalf(\"after the renewal = %+v\", got)\n\t}\n}\n\nfunc TestCancelAtPeriodEnd(t *testing.T) {"
         }
@@ -6056,7 +6056,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
             "old_string": "func TestCancelAtPeriodEnd(t *testing.T) {",
             "new_string": "func TestFreePlanIsInvoicedWithALine(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\t_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = \"pm_card_visa\"; return nil })\n\tp := e.CreatePlan(e.Acme, \"Free\", \"USD\", \"0.00\")\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 4})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tinvs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})\n\tif len(invs) != 2 {\n\t\tt.Fatalf(\"invoices = %+v, want the first and the renewal\", invs)\n\t}\n\tfor _, inv := range invs {\n\t\tif inv.Status != store.InvoicePaid || len(inv.Lines) != 1 || !strings.HasPrefix(inv.Lines[0].Description, \"Free, \") ||\n\t\t\tinv.Lines[0].Quantity != 4 || inv.Lines[0].UnitAmount != 0 {\n\t\t\tt.Fatalf(\"invoice = %+v\", inv)\n\t\t}\n\t}\n\tif cs := e.Gateway.Charges(); len(cs) != 0 {\n\t\tt.Fatalf(\"charges = %+v, a free plan charges nothing\", cs)\n\t}\n}\n\nfunc TestMeteredRenewalWithoutUsageCreatesNoInvoice(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tp, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: \"API calls\", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tif invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 0 {\n\t\tt.Fatalf(\"a renewal without usage was invoiced: %+v\", invs)\n\t}\n\tgot, _ := e.Store.Subscription(e.Acme.ID, sub.ID)\n\tif got.Status != store.Active || !got.CurrentPeriodStart.Equal(sub.CurrentPeriodEnd) {\n\t\tt.Fatalf(\"after the renewal = %+v\", got)\n\t}\n}\n\nfunc TestCancelAtPeriodEnd(t *testing.T) {"
           }
@@ -6080,11 +6080,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
           "old_string": "func TestCancelAtPeriodEnd(t *testing.T) {",
           "new_string": "func TestFreePlanIsInvoicedWithALine(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\t_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = \"pm_card_visa\"; return nil })\n\tp := e.CreatePlan(e.Acme, \"Free\", \"USD\", \"0.00\")\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 4})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tinvs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})\n\tif len(invs) != 2 {\n\t\tt.Fatalf(\"invoices = %+v, want the first and the renewal\", invs)\n\t}\n\tfor _, inv := range invs {\n\t\tif inv.Status != store.InvoicePaid || len(inv.Lines) != 1 || !strings.HasPrefix(inv.Lines[0].Description, \"Free, \") ||\n\t\t\tinv.Lines[0].Quantity != 4 || inv.Lines[0].UnitAmount != 0 {\n\t\t\tt.Fatalf(\"invoice = %+v\", inv)\n\t\t}\n\t}\n\tif cs := e.Gateway.Charges(); len(cs) != 0 {\n\t\tt.Fatalf(\"charges = %+v, a free plan charges nothing\", cs)\n\t}\n}\n\nfunc TestMeteredRenewalWithoutUsageCreatesNoInvoice(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tp, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: \"API calls\", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tif invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 0 {\n\t\tt.Fatalf(\"a renewal without usage was invoiced: %+v\", invs)\n\t}\n\tgot, _ := e.Store.Subscription(e.Acme.ID, sub.ID)\n\tif got.Status != store.Active || !got.CurrentPeriodStart.Equal(sub.CurrentPeriodEnd) {\n\t\tt.Fatalf(\"after the renewal = %+v\", got)\n\t}\n}\n\nfunc TestCancelAtPeriodEnd(t *testing.T) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6105,11 +6105,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
             "old_string": "func TestCancelAtPeriodEnd(t *testing.T) {",
             "new_string": "func TestFreePlanIsInvoicedWithALine(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\t_, _ = e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = \"pm_card_visa\"; return nil })\n\tp := e.CreatePlan(e.Acme, \"Free\", \"USD\", \"0.00\")\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 4})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tinvs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})\n\tif len(invs) != 2 {\n\t\tt.Fatalf(\"invoices = %+v, want the first and the renewal\", invs)\n\t}\n\tfor _, inv := range invs {\n\t\tif inv.Status != store.InvoicePaid || len(inv.Lines) != 1 || !strings.HasPrefix(inv.Lines[0].Description, \"Free, \") ||\n\t\t\tinv.Lines[0].Quantity != 4 || inv.Lines[0].UnitAmount != 0 {\n\t\t\tt.Fatalf(\"invoice = %+v\", inv)\n\t\t}\n\t}\n\tif cs := e.Gateway.Charges(); len(cs) != 0 {\n\t\tt.Fatalf(\"charges = %+v, a free plan charges nothing\", cs)\n\t}\n}\n\nfunc TestMeteredRenewalWithoutUsageCreatesNoInvoice(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tc := e.CreateCustomer(e.Acme, \"Jane\", \"jane@example.com\")\n\tp, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: \"API calls\", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())\n\tsub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\te.Clock.Set(sub.CurrentPeriodEnd)\n\tif n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RenewDue = %d, %v\", n, err)\n\t}\n\tif invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 0 {\n\t\tt.Fatalf(\"a renewal without usage was invoiced: %+v\", invs)\n\t}\n\tgot, _ := e.Store.Subscription(e.Acme.ID, sub.ID)\n\tif got.Status != store.Active || !got.CurrentPeriodStart.Equal(sub.CurrentPeriodEnd) {\n\t\tt.Fatalf(\"after the renewal = %+v\", got)\n\t}\n}\n\nfunc TestCancelAtPeriodEnd(t *testing.T) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6396,7 +6396,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
           "old_string": "\t\"context\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"",
           "new_string": "\t\"context\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\""
         }
@@ -6420,7 +6420,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
             "old_string": "\t\"context\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"",
             "new_string": "\t\"context\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\""
           }
@@ -6444,11 +6444,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
           "old_string": "\t\"context\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"",
           "new_string": "\t\"context\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6469,11 +6469,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go",
             "old_string": "\t\"context\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\"",
             "new_string": "\t\"context\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n\n\t\"example.com/tally/internal/apitest\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7167,7 +7167,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "old_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description",
           "new_string": "\td := lines[0].Description"
         }
@@ -7191,7 +7191,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "old_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description",
             "new_string": "\td := lines[0].Description"
           }
@@ -7215,11 +7215,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "old_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description",
           "new_string": "\td := lines[0].Description"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -7240,11 +7240,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "old_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description",
             "new_string": "\td := lines[0].Description"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -7658,7 +7658,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "old_string": "\td := lines[0].Description",
           "new_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
         }
@@ -7682,7 +7682,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "old_string": "\td := lines[0].Description",
             "new_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
           }
@@ -7706,11 +7706,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "old_string": "\td := lines[0].Description",
           "new_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -7731,11 +7731,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "old_string": "\td := lines[0].Description",
             "new_string": "\tif len(lines) == 0 {\n\t\treturn \"\"\n\t}\n\td := lines[0].Description"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -12309,7 +12309,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_b7dee1554266",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09",
+      "cwd": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -12542,7 +12542,7 @@
         "id": "toolu_01Nm4D1habaEMb2Xd4QGpYip",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
           "offset": 150,
           "limit": 110
         }
@@ -12565,7 +12565,7 @@
           "id": "toolu_01Nm4D1habaEMb2Xd4QGpYip",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
             "offset": 150,
             "limit": 110
           }
@@ -12666,7 +12666,7 @@
         "id": "toolu_01Nm4D1habaEMb2Xd4QGpYip",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
           "offset": 150,
           "limit": 110
         },
@@ -12690,7 +12690,7 @@
           "id": "toolu_01Nm4D1habaEMb2Xd4QGpYip",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
             "offset": 150,
             "limit": 110
           },
@@ -12946,7 +12946,7 @@
         "id": "toolu_011D8mcphtToFhzqB1dzXhjw",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
           "offset": 60,
           "limit": 70
         }
@@ -12969,7 +12969,7 @@
           "id": "toolu_011D8mcphtToFhzqB1dzXhjw",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
             "offset": 60,
             "limit": 70
           }
@@ -12992,7 +12992,7 @@
         "id": "toolu_011D8mcphtToFhzqB1dzXhjw",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
           "offset": 60,
           "limit": 70
         },
@@ -13016,7 +13016,7 @@
           "id": "toolu_011D8mcphtToFhzqB1dzXhjw",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/payments/payments.go",
             "offset": 60,
             "limit": 70
           },
@@ -13053,7 +13053,7 @@
         "id": "toolu_01FoYsiD51L5LzrqkMABC2wA",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
           "offset": 40,
           "limit": 40
         }
@@ -13076,7 +13076,7 @@
           "id": "toolu_01FoYsiD51L5LzrqkMABC2wA",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
             "offset": 40,
             "limit": 40
           }
@@ -13099,7 +13099,7 @@
         "id": "toolu_01FoYsiD51L5LzrqkMABC2wA",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
           "offset": 40,
           "limit": 40
         },
@@ -13123,7 +13123,7 @@
           "id": "toolu_01FoYsiD51L5LzrqkMABC2wA",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/subscriptions/subscriptions.go",
             "offset": 40,
             "limit": 40
           },
@@ -13147,7 +13147,7 @@
         "id": "toolu_016wewNEzwozoHjrUrsq1Kim",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "offset": 1,
           "limit": 60
         }
@@ -13170,7 +13170,7 @@
           "id": "toolu_016wewNEzwozoHjrUrsq1Kim",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "offset": 1,
             "limit": 60
           }
@@ -13206,7 +13206,7 @@
         "id": "toolu_016wewNEzwozoHjrUrsq1Kim",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "offset": 1,
           "limit": 60
         },
@@ -13230,7 +13230,7 @@
           "id": "toolu_016wewNEzwozoHjrUrsq1Kim",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "offset": 1,
             "limit": 60
           },
@@ -13445,7 +13445,7 @@
         "id": "toolu_01L5iTYmD4c4gL3sMvo3dKTu",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "offset": 95,
           "limit": 40
         }
@@ -13468,7 +13468,7 @@
           "id": "toolu_01L5iTYmD4c4gL3sMvo3dKTu",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "offset": 95,
             "limit": 40
           }
@@ -13491,7 +13491,7 @@
         "id": "toolu_01L5iTYmD4c4gL3sMvo3dKTu",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+          "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
           "offset": 95,
           "limit": 40
         },
@@ -13515,7 +13515,7 @@
           "id": "toolu_01L5iTYmD4c4gL3sMvo3dKTu",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
+            "file_path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09/internal/api/invoices.go",
             "offset": 95,
             "limit": 40
           },
@@ -17461,7 +17461,7 @@
     "projectId": "prj_0cdb3149732c",
     "taskId": "task_225fbe847f09",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09"
+      "path": "<scratchpad>/trialwork/none-2-1/tally-zero-line-invoices-D-1/data/worktrees/prj_0cdb3149732c/task_225fbe847f09"
     }
   },
   {

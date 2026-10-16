@@ -6,6 +6,7 @@
 //	drydock-trial run -tasks saasapi-invoice-rules -k 1 -model haiku
 //	drydock-trial report -trial 2026-10-10-pilot
 //	drydock-trial selfcheck
+//	drydock-trial redact                  # make the files of runs recorded earlier safe to commit (new runs are written that way)
 package main
 
 import (
@@ -50,6 +51,8 @@ func main() {
 		err = selfcheck(ctx, os.Args[2:])
 	case "compare":
 		err = compare(os.Args[2:])
+	case "redact":
+		err = redact(os.Args[2:])
 	case "fetch-skills":
 		err = fetchSkills(ctx, os.Args[2:])
 	default:
@@ -62,7 +65,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: drydock-trial run|report|compare|selfcheck|fetch-skills [flags] (-h for the flags)")
+	fmt.Fprintln(os.Stderr, "usage: drydock-trial run|report|compare|selfcheck|redact|fetch-skills [flags] (-h for the flags)")
 	os.Exit(2)
 }
 
@@ -305,6 +308,21 @@ func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model stri
 	}
 	rec.StartCommit, rec.StartedAt, rec.TaskClass = startCommit, started, t.Class
 	return rec, extra
+}
+
+// redact rewrites the transcripts, event and evidence files of the recorded runs so they hold no account, connector or machine
+// detail (trial.RedactResults). It changes nothing that is already redacted.
+func redact(args []string) error {
+	fs := flag.NewFlagSet("redact", flag.ExitOnError)
+	dir := fs.String("dir", "evals/results", "where the run records are (relative to the repository)")
+	_ = fs.Parse(args)
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+	n, err := trial.RedactResults(filepath.Join(root, *dir))
+	fmt.Printf("%d files rewritten\n", n)
+	return err
 }
 
 func report(args []string) error {

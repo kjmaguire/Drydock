@@ -6,7 +6,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 550ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/build_32c8ce3b50d5.log",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/build_32c8ce3b50d5.log",
     "data": {
       "argv": [
         "go",
@@ -28,7 +28,7 @@
     "kind": "test",
     "passed": false,
     "summary": "test failed (exit 1) in 1.59s: TestStaleReadDoesNotRenewAgain",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/test_18c1009c624c.log",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/test_18c1009c624c.log",
     "data": {
       "argv": [
         "go",
@@ -61,7 +61,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 700ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/build_26873a859db9.log",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/build_26873a859db9.log",
     "data": {
       "argv": [
         "go",
@@ -83,7 +83,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 800ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/test_0caa7250dcfb.log",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/test_0caa7250dcfb.log",
     "data": {
       "argv": [
         "go",
@@ -105,7 +105,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 590ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/lint_1846841b28ee.log",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/lint_1846841b28ee.log",
     "data": {
       "argv": [
         "go",
@@ -127,7 +127,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 80ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/secrets_1e9184779ac3.log",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/secrets_1e9184779ac3.log",
     "data": {
       "argv": [
         "drydock",
@@ -147,7 +147,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +271 -31",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 271,

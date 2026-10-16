@@ -382,7 +382,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_de6dfded2e33",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
+      "cwd": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -1319,7 +1319,7 @@
         "id": "toolu_01TBxEYpEbQtxAEP95gsm9Fs",
         "name": "Bash",
         "args": {
-          "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
+          "command": "cd <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
           "description": "Locate jobs package and cmd/tally files"
         }
       },
@@ -1341,7 +1341,7 @@
           "id": "toolu_01TBxEYpEbQtxAEP95gsm9Fs",
           "name": "Bash",
           "args": {
-            "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
+            "command": "cd <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
             "description": "Locate jobs package and cmd/tally files"
           }
         }
@@ -1441,10 +1441,10 @@
         "id": "toolu_01TBxEYpEbQtxAEP95gsm9Fs",
         "name": "Bash",
         "args": {
-          "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
+          "command": "cd <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
           "description": "Locate jobs package and cmd/tally files"
         },
-        "output": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b\nAGENTS.md\nCLAUDE.md\nGEMINI.md\nREADME.md\ncmd\ngo.mod\ninternal\n./cmd/tally/main.go\n./internal/jobs/jobs.go\n./internal/jobs/jobs_test.go"
+        "output": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b\nAGENTS.md\nCLAUDE.md\nGEMINI.md\nREADME.md\ncmd\ngo.mod\ninternal\n./cmd/tally/main.go\n./internal/jobs/jobs.go\n./internal/jobs/jobs_test.go"
       },
       "kind": "tool_result"
     }
@@ -1464,10 +1464,10 @@
           "id": "toolu_01TBxEYpEbQtxAEP95gsm9Fs",
           "name": "Bash",
           "args": {
-            "command": "cd /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
+            "command": "cd <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b 2\u003e/dev/null; pwd; git status --short; ls; find . -path ./.git -prune -o -name '*.go' -print | grep -E 'jobs|cmd/tally' ",
             "description": "Locate jobs package and cmd/tally files"
           },
-          "output": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b\nAGENTS.md\nCLAUDE.md\nGEMINI.md\nREADME.md\ncmd\ngo.mod\ninternal\n./cmd/tally/main.go\n./internal/jobs/jobs.go\n./internal/jobs/jobs_test.go"
+          "output": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b\nAGENTS.md\nCLAUDE.md\nGEMINI.md\nREADME.md\ncmd\ngo.mod\ninternal\n./cmd/tally/main.go\n./internal/jobs/jobs.go\n./internal/jobs/jobs_test.go"
         }
       },
       "node": "work",
@@ -1500,7 +1500,7 @@
         "id": "toolu_01W8cwZo7Y6R4FWi3uutv8Rx",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
         }
       },
       "kind": "tool_call"
@@ -1521,7 +1521,7 @@
           "id": "toolu_01W8cwZo7Y6R4FWi3uutv8Rx",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
           }
         }
       },
@@ -1542,7 +1542,7 @@
         "id": "toolu_01W8cwZo7Y6R4FWi3uutv8Rx",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
         },
         "output": "1\t// Package jobs runs background work (renewals, webhook deliveries, emails) on a fixed number of workers.\n2\tpackage jobs\n3\t\n4\timport (\n5\t\t\"context\"\n6\t\t\"errors\"\n7\t\t\"io\"\n8\t\t\"log/slog\"\n9\t)\n10\t\n11\t// Job is one piece of background work.\n12\ttype Job struct {\n13\t\tName string\n14\t\tRun  func(ctx context.Context) error\n15\t}\n16\t\n17\t// ErrQueueFull is returned by Enqueue when the queue has no room.\n18\tvar ErrQueueFull = errors.New(\"the job queue is full\")\n19\t\n20\t// Runner runs jobs on its workers.\n21\ttype Runner struct {\n22\t\tqueue   chan Job\n23\t\tworkers int\n24\t\tlog     *slog.Logger\n25\t}\n26\t\n27\t// NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.\n28\tfunc NewRunner(workers, queueSize int, log *slog.Logger) *Runner {\n29\t\tif workers \u003c 1 {\n30\t\t\tworkers = 1\n31\t\t}\n32\t\tif log == nil {\n33\t\t\tlog = slog.New(slog.NewTextHandler(io.Discard, nil))\n34\t\t}\n35\t\treturn \u0026Runner{queue: make(chan Job, queueSize), workers: workers, log: log}\n36\t}\n37\t\n38\t// Start starts the workers.\n39\tfunc (r *Runner) Start() {\n40\t\tfor i := 0; i \u003c r.workers; i++ {\n41\t\t\tgo r.work()\n42\t\t}\n43\t}\n44\t\n45\tfunc (r *Runner) work() {\n46\t\tfor j := range r.queue {\n47\t\t\tif err := j.Run(context.Background()); err != nil {\n48\t\t\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n49\t\t\t}\n50\t\t}\n51\t}\n52\t\n53\t// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room.\n54\tfunc (r *Runner) Enqueue(j Job) error {\n55\t\tselect {\n56\t\tcase r.queue \u003c- j:\n57\t\t\treturn nil\n58\t\tdefault:\n59\t\t\treturn ErrQueueFull\n60\t\t}\n61\t}\n62\t\n63\t// Stop stops the runner.\n64\tfunc (r *Runner) Stop() {\n65\t\tclose(r.queue)\n66\t}\n67\t"
       },
@@ -1564,7 +1564,7 @@
           "id": "toolu_01W8cwZo7Y6R4FWi3uutv8Rx",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go"
           },
           "output": "1\t// Package jobs runs background work (renewals, webhook deliveries, emails) on a fixed number of workers.\n2\tpackage jobs\n3\t\n4\timport (\n5\t\t\"context\"\n6\t\t\"errors\"\n7\t\t\"io\"\n8\t\t\"log/slog\"\n9\t)\n10\t\n11\t// Job is one piece of background work.\n12\ttype Job struct {\n13\t\tName string\n14\t\tRun  func(ctx context.Context) error\n15\t}\n16\t\n17\t// ErrQueueFull is returned by Enqueue when the queue has no room.\n18\tvar ErrQueueFull = errors.New(\"the job queue is full\")\n19\t\n20\t// Runner runs jobs on its workers.\n21\ttype Runner struct {\n22\t\tqueue   chan Job\n23\t\tworkers int\n24\t\tlog     *slog.Logger\n25\t}\n26\t\n27\t// NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.\n28\tfunc NewRunner(workers, queueSize int, log *slog.Logger) *Runner {\n29\t\tif workers \u003c 1 {\n30\t\t\tworkers = 1\n31\t\t}\n32\t\tif log == nil {\n33\t\t\tlog = slog.New(slog.NewTextHandler(io.Discard, nil))\n34\t\t}\n35\t\treturn \u0026Runner{queue: make(chan Job, queueSize), workers: workers, log: log}\n36\t}\n37\t\n38\t// Start starts the workers.\n39\tfunc (r *Runner) Start() {\n40\t\tfor i := 0; i \u003c r.workers; i++ {\n41\t\t\tgo r.work()\n42\t\t}\n43\t}\n44\t\n45\tfunc (r *Runner) work() {\n46\t\tfor j := range r.queue {\n47\t\t\tif err := j.Run(context.Background()); err != nil {\n48\t\t\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n49\t\t\t}\n50\t\t}\n51\t}\n52\t\n53\t// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room.\n54\tfunc (r *Runner) Enqueue(j Job) error {\n55\t\tselect {\n56\t\tcase r.queue \u003c- j:\n57\t\t\treturn nil\n58\t\tdefault:\n59\t\t\treturn ErrQueueFull\n60\t\t}\n61\t}\n62\t\n63\t// Stop stops the runner.\n64\tfunc (r *Runner) Stop() {\n65\t\tclose(r.queue)\n66\t}\n67\t"
         }
@@ -1599,7 +1599,7 @@
         "id": "toolu_01AUqotWpbisXoGxSUXEh9y8",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
         }
       },
       "kind": "tool_call"
@@ -1620,7 +1620,7 @@
           "id": "toolu_01AUqotWpbisXoGxSUXEh9y8",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
           }
         }
       },
@@ -1641,7 +1641,7 @@
         "id": "toolu_01AUqotWpbisXoGxSUXEh9y8",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
         },
         "output": "1\tpackage jobs\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"errors\"\n6\t\t\"sync\"\n7\t\t\"testing\"\n8\t\t\"time\"\n9\t)\n10\t\n11\tfunc TestRunnerRunsJobs(t *testing.T) {\n12\t\tr := NewRunner(3, 10, nil)\n13\t\tr.Start()\n14\t\tvar mu sync.Mutex\n15\t\tdone := map[string]bool{}\n16\t\tvar wg sync.WaitGroup\n17\t\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n18\t\t\twg.Add(1)\n19\t\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n20\t\t\t\tdefer wg.Done()\n21\t\t\t\tmu.Lock()\n22\t\t\t\tdone[name] = true\n23\t\t\t\tmu.Unlock()\n24\t\t\t\treturn nil\n25\t\t\t}}); err != nil {\n26\t\t\t\tt.Fatal(err)\n27\t\t\t}\n28\t\t}\n29\t\tfinished := make(chan struct{})\n30\t\tgo func() { wg.Wait(); close(finished) }()\n31\t\tselect {\n32\t\tcase \u003c-finished:\n33\t\tcase \u003c-time.After(5 * time.Second):\n34\t\t\tt.Fatal(\"jobs did not run\")\n35\t\t}\n36\t\tif len(done) != 5 {\n37\t\t\tt.Fatalf(\"done = %v\", done)\n38\t\t}\n39\t}\n40\t\n41\tfunc TestEnqueueWhenFull(t *testing.T) {\n42\t\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n43\t\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n44\t\tif err := r.Enqueue(job); err != nil {\n45\t\t\tt.Fatal(err)\n46\t\t}\n47\t\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n48\t\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n49\t\t}\n50\t}\n51\t"
       },
@@ -1663,7 +1663,7 @@
           "id": "toolu_01AUqotWpbisXoGxSUXEh9y8",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go"
           },
           "output": "1\tpackage jobs\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"errors\"\n6\t\t\"sync\"\n7\t\t\"testing\"\n8\t\t\"time\"\n9\t)\n10\t\n11\tfunc TestRunnerRunsJobs(t *testing.T) {\n12\t\tr := NewRunner(3, 10, nil)\n13\t\tr.Start()\n14\t\tvar mu sync.Mutex\n15\t\tdone := map[string]bool{}\n16\t\tvar wg sync.WaitGroup\n17\t\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n18\t\t\twg.Add(1)\n19\t\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n20\t\t\t\tdefer wg.Done()\n21\t\t\t\tmu.Lock()\n22\t\t\t\tdone[name] = true\n23\t\t\t\tmu.Unlock()\n24\t\t\t\treturn nil\n25\t\t\t}}); err != nil {\n26\t\t\t\tt.Fatal(err)\n27\t\t\t}\n28\t\t}\n29\t\tfinished := make(chan struct{})\n30\t\tgo func() { wg.Wait(); close(finished) }()\n31\t\tselect {\n32\t\tcase \u003c-finished:\n33\t\tcase \u003c-time.After(5 * time.Second):\n34\t\t\tt.Fatal(\"jobs did not run\")\n35\t\t}\n36\t\tif len(done) != 5 {\n37\t\t\tt.Fatalf(\"done = %v\", done)\n38\t\t}\n39\t}\n40\t\n41\tfunc TestEnqueueWhenFull(t *testing.T) {\n42\t\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n43\t\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n44\t\tif err := r.Enqueue(job); err != nil {\n45\t\t\tt.Fatal(err)\n46\t\t}\n47\t\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n48\t\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n49\t\t}\n50\t}\n51\t"
         }
@@ -1685,7 +1685,7 @@
         "id": "toolu_01JzdtBN834ftYjgbyXkxoAF",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
         }
       },
       "kind": "tool_call"
@@ -1706,7 +1706,7 @@
           "id": "toolu_01JzdtBN834ftYjgbyXkxoAF",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
           }
         }
       },
@@ -1727,7 +1727,7 @@
         "id": "toolu_01JzdtBN834ftYjgbyXkxoAF",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
         },
         "output": "1\t// Command tally runs the Tally API with the demo payment gateway, keeping its data in a snapshot file.\n2\t//\n3\t//\ttally -addr :8080 -data tally.json\n4\tpackage main\n5\t\n6\timport (\n7\t\t\"context\"\n8\t\t\"errors\"\n9\t\t\"flag\"\n10\t\t\"log/slog\"\n11\t\t\"net/http\"\n12\t\t\"os\"\n13\t\t\"os/signal\"\n14\t\t\"syscall\"\n15\t\t\"time\"\n16\t\n17\t\t\"example.com/tally/internal/api\"\n18\t\t\"example.com/tally/internal/clock\"\n19\t\t\"example.com/tally/internal/jobs\"\n20\t\t\"example.com/tally/internal/mail\"\n21\t\t\"example.com/tally/internal/payments\"\n22\t\t\"example.com/tally/internal/snapshot\"\n23\t\t\"example.com/tally/internal/store\"\n24\t\t\"example.com/tally/internal/subscriptions\"\n25\t\t\"example.com/tally/internal/webhooks\"\n26\t)\n27\t\n28\tfunc main() {\n29\t\taddr := flag.String(\"addr\", \":8080\", \"address to listen on\")\n30\t\tdata := flag.String(\"data\", \"tally.json\", \"snapshot file (created when missing)\")\n31\t\tflag.Parse()\n32\t\tlog := slog.New(slog.NewTextHandler(os.Stderr, nil))\n33\t\tclk := clock.Real{}\n34\t\n35\t\tst, err := snapshot.Load(*data)\n36\t\tswitch {\n37\t\tcase errors.Is(err, os.ErrNotExist):\n38\t\t\tst = store.New()\n39\t\t\tif err := seed(st, clk.Now(), log); err != nil {\n40\t\t\t\tlog.Error(\"seed\", \"err\", err)\n41\t\t\t\tos.Exit(1)\n42\t\t\t}\n43\t\tcase err != nil:\n44\t\t\tlog.Error(\"load snapshot\", \"err\", err)\n45\t\t\tos.Exit(1)\n46\t\t}\n47\t\n48\t\thooks := webhooks.New(webhooks.Options{Store: st, Clock: clk})\n49\t\tpay := \u0026payments.Service{Store: st, Gateway: \u0026payments.Fake{}, Clock: clk, Publisher: hooks}\n50\t\tsubs := \u0026subscriptions.Service{Store: st, Payments: pay, Clock: clk, Publisher: hooks}\n51\t\tsrv := api.New(st, api.Options{Clock: clk, Payments: pay, Subscriptions: subs, Webhooks: hooks, Mail: \u0026mail.Outbox{Log: log}, Logger: log})\n52\t\n53\t\trunner := jobs.NewRunner(4, 100, log)\n54\t\trunner.Start()\n55\t\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n56\t\tdefer stop()\n57\t\tgo func() {\n58\t\t\tt := time.NewTicker(30 * time.Second)\n59\t\t\tdefer t.Stop()\n60\t\t\tfor {\n61\t\t\t\tselect {\n62\t\t\t\tcase \u003c-ctx.Done():\n63\t\t\t\t\treturn\n64\t\t\t\tcase \u003c-t.C:\n65\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"renewals\", Run: func(ctx context.Context) error { _, err := subs.RenewDue(ctx); return err }})\n66\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"webhooks\", Run: func(ctx context.Context) error { _, err := hooks.RunDue(ctx); return err }})\n67\t\t\t\t}\n68\t\t\t}\n69\t\t}()\n70\t\n71\t\ths := \u0026http.Server{Addr: *addr, Handler: srv, ReadHeaderTimeout: 10 * time.Second}\n72\t\tgo func() {\n73\t\t\tlog.Info(\"listening\", \"addr\", *addr)\n74\t\t\tif err := hs.ListenAndServe(); err != nil \u0026\u0026 !errors.Is(err, http.ErrServerClosed) {\n75\t\t\t\tlog.Error(\"serve\", \"err\", err)\n76\t\t\t\tstop()\n77\t\t\t}\n78\t\t}()\n79\t\t\u003c-ctx.Done()\n80\t\tshutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n81\t\tdefer cancel()\n82\t\t_ = hs.Shutdown(shutdown)\n83\t\trunner.Stop()\n84\t\tif err := snapshot.Save(st, *data, clk.Now()); err != nil {\n85\t\t\tlog.Error(\"save snapshot\", \"err\", err)\n86\t\t\tos.Exit(1)\n87\t\t}\n88\t}\n89\t\n90\t// seed adds a demo organization with an owner and prints the owner's API key.\n91\tfunc seed(st *store.Store, now time.Time, log *slog.Logger) error {\n92\t\to, err := st.CreateOrg(\"Demo Co\", store.OrgTeam, \"UTC\", 0, now)\n93\t\tif err != nil {\n94\t\t\treturn err\n95\t\t}\n96\t\tu, err := st.CreateUser(\"owner@demo.example\", \"Demo Owner\", now)\n97\t\tif err != nil {\n98\t\t\treturn err\n99\t\t}\n100\t\tif _, err := st.AddMember(o.ID, u.ID, store.RoleOwner, now); err != nil {\n101\t\t\treturn err\n102\t\t}\n103\t\tk, err := st.CreateAPIKey(o.ID, u.ID, \"Demo key\", now)\n104\t\tif err != nil {\n105\t\t\treturn err\n106\t\t}\n107\t\tlog.Info(\"demo organization created\", \"org\", o.ID, \"api_key\", k.Token)\n108\t\treturn nil\n109\t}\n110\t"
       },
@@ -1749,7 +1749,7 @@
           "id": "toolu_01JzdtBN834ftYjgbyXkxoAF",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
           },
           "output": "1\t// Command tally runs the Tally API with the demo payment gateway, keeping its data in a snapshot file.\n2\t//\n3\t//\ttally -addr :8080 -data tally.json\n4\tpackage main\n5\t\n6\timport (\n7\t\t\"context\"\n8\t\t\"errors\"\n9\t\t\"flag\"\n10\t\t\"log/slog\"\n11\t\t\"net/http\"\n12\t\t\"os\"\n13\t\t\"os/signal\"\n14\t\t\"syscall\"\n15\t\t\"time\"\n16\t\n17\t\t\"example.com/tally/internal/api\"\n18\t\t\"example.com/tally/internal/clock\"\n19\t\t\"example.com/tally/internal/jobs\"\n20\t\t\"example.com/tally/internal/mail\"\n21\t\t\"example.com/tally/internal/payments\"\n22\t\t\"example.com/tally/internal/snapshot\"\n23\t\t\"example.com/tally/internal/store\"\n24\t\t\"example.com/tally/internal/subscriptions\"\n25\t\t\"example.com/tally/internal/webhooks\"\n26\t)\n27\t\n28\tfunc main() {\n29\t\taddr := flag.String(\"addr\", \":8080\", \"address to listen on\")\n30\t\tdata := flag.String(\"data\", \"tally.json\", \"snapshot file (created when missing)\")\n31\t\tflag.Parse()\n32\t\tlog := slog.New(slog.NewTextHandler(os.Stderr, nil))\n33\t\tclk := clock.Real{}\n34\t\n35\t\tst, err := snapshot.Load(*data)\n36\t\tswitch {\n37\t\tcase errors.Is(err, os.ErrNotExist):\n38\t\t\tst = store.New()\n39\t\t\tif err := seed(st, clk.Now(), log); err != nil {\n40\t\t\t\tlog.Error(\"seed\", \"err\", err)\n41\t\t\t\tos.Exit(1)\n42\t\t\t}\n43\t\tcase err != nil:\n44\t\t\tlog.Error(\"load snapshot\", \"err\", err)\n45\t\t\tos.Exit(1)\n46\t\t}\n47\t\n48\t\thooks := webhooks.New(webhooks.Options{Store: st, Clock: clk})\n49\t\tpay := \u0026payments.Service{Store: st, Gateway: \u0026payments.Fake{}, Clock: clk, Publisher: hooks}\n50\t\tsubs := \u0026subscriptions.Service{Store: st, Payments: pay, Clock: clk, Publisher: hooks}\n51\t\tsrv := api.New(st, api.Options{Clock: clk, Payments: pay, Subscriptions: subs, Webhooks: hooks, Mail: \u0026mail.Outbox{Log: log}, Logger: log})\n52\t\n53\t\trunner := jobs.NewRunner(4, 100, log)\n54\t\trunner.Start()\n55\t\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n56\t\tdefer stop()\n57\t\tgo func() {\n58\t\t\tt := time.NewTicker(30 * time.Second)\n59\t\t\tdefer t.Stop()\n60\t\t\tfor {\n61\t\t\t\tselect {\n62\t\t\t\tcase \u003c-ctx.Done():\n63\t\t\t\t\treturn\n64\t\t\t\tcase \u003c-t.C:\n65\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"renewals\", Run: func(ctx context.Context) error { _, err := subs.RenewDue(ctx); return err }})\n66\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"webhooks\", Run: func(ctx context.Context) error { _, err := hooks.RunDue(ctx); return err }})\n67\t\t\t\t}\n68\t\t\t}\n69\t\t}()\n70\t\n71\t\ths := \u0026http.Server{Addr: *addr, Handler: srv, ReadHeaderTimeout: 10 * time.Second}\n72\t\tgo func() {\n73\t\t\tlog.Info(\"listening\", \"addr\", *addr)\n74\t\t\tif err := hs.ListenAndServe(); err != nil \u0026\u0026 !errors.Is(err, http.ErrServerClosed) {\n75\t\t\t\tlog.Error(\"serve\", \"err\", err)\n76\t\t\t\tstop()\n77\t\t\t}\n78\t\t}()\n79\t\t\u003c-ctx.Done()\n80\t\tshutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n81\t\tdefer cancel()\n82\t\t_ = hs.Shutdown(shutdown)\n83\t\trunner.Stop()\n84\t\tif err := snapshot.Save(st, *data, clk.Now()); err != nil {\n85\t\t\tlog.Error(\"save snapshot\", \"err\", err)\n86\t\t\tos.Exit(1)\n87\t\t}\n88\t}\n89\t\n90\t// seed adds a demo organization with an owner and prints the owner's API key.\n91\tfunc seed(st *store.Store, now time.Time, log *slog.Logger) error {\n92\t\to, err := st.CreateOrg(\"Demo Co\", store.OrgTeam, \"UTC\", 0, now)\n93\t\tif err != nil {\n94\t\t\treturn err\n95\t\t}\n96\t\tu, err := st.CreateUser(\"owner@demo.example\", \"Demo Owner\", now)\n97\t\tif err != nil {\n98\t\t\treturn err\n99\t\t}\n100\t\tif _, err := st.AddMember(o.ID, u.ID, store.RoleOwner, now); err != nil {\n101\t\t\treturn err\n102\t\t}\n103\t\tk, err := st.CreateAPIKey(o.ID, u.ID, \"Demo key\", now)\n104\t\tif err != nil {\n105\t\t\treturn err\n106\t\t}\n107\t\tlog.Info(\"demo organization created\", \"org\", o.ID, \"api_key\", k.Token)\n108\t\treturn nil\n109\t}\n110\t"
         }
@@ -3452,7 +3452,7 @@
         "id": "toolu_013tCqvcgt7wEfPNLDMBCSjq",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "content": "// Package jobs runs background work (renewals, webhook deliveries, emails) on a fixed number of workers.\npackage jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io\"\n\t\"log/slog\"\n\t\"slices\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Job is one piece of background work.\ntype Job struct {\n\tName string\n\tRun  func(ctx context.Context) error\n}\n\n// ErrQueueFull is returned by Enqueue when the queue has no room.\nvar ErrQueueFull = errors.New(\"the job queue is full\")\n\n// ErrStopped is returned by Enqueue once Shutdown or Stop has been called.\nvar ErrStopped = errors.New(\"the job runner is stopped\")\n\n// stopTimeout is how long Stop waits for running jobs before cancelling them.\nconst stopTimeout = 30 * time.Second\n\n// entry is a job with its position in the enqueue order.\ntype entry struct {\n\tseq int\n\tjob Job\n}\n\n// running is a job that a worker is executing.\ntype running struct {\n\tcancel   context.CancelFunc\n\tcanceled bool // Shutdown cancelled the job's context\n}\n\n// Runner runs jobs on its workers.\ntype Runner struct {\n\tworkers   int\n\tqueueSize int\n\tlog       *slog.Logger\n\n\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}\n\n// NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.\nfunc NewRunner(workers, queueSize int, log *slog.Logger) *Runner {\n\tif workers \u003c 1 {\n\t\tworkers = 1\n\t}\n\tif queueSize \u003c 0 {\n\t\tqueueSize = 0\n\t}\n\tif log == nil {\n\t\tlog = slog.New(slog.NewTextHandler(io.Discard, nil))\n\t}\n\tr := \u0026Runner{workers: workers, queueSize: queueSize, log: log, active: map[int]*running{}}\n\tr.cond = sync.NewCond(\u0026r.mu)\n\treturn r\n}\n\n// Start starts the workers. It does nothing after Shutdown.\nfunc (r *Runner) Start() {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn\n\t}\n\tfor i := 0; i \u003c r.workers; i++ {\n\t\tr.wg.Add(1)\n\t\tgo r.work()\n\t}\n}\n\nfunc (r *Runner) work() {\n\tdefer r.wg.Done()\n\tfor {\n\t\tr.mu.Lock()\n\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}\n\t\tif r.closed {\n\t\t\tr.mu.Unlock()\n\t\t\treturn\n\t\t}\n\t\te := r.queue[0]\n\t\tr.queue[0] = entry{}\n\t\tr.queue = r.queue[1:]\n\t\tctx, cancel := context.WithCancel(context.Background())\n\t\trun := \u0026running{cancel: cancel}\n\t\tr.active[e.seq] = run\n\t\tr.mu.Unlock()\n\n\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()\n\n\t\tr.mu.Lock()\n\t\tdelete(r.active, e.seq)\n\t\tif run.canceled \u0026\u0026 err != nil \u0026\u0026 ok {\n\t\t\tr.abandon = append(r.abandon, e)\n\t\t}\n\t\tr.mu.Unlock()\n\t}\n}\n\n// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}\n\n// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room\n// and ErrStopped once Shutdown has been called.\nfunc (r *Runner) Enqueue(j Job) error {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn ErrStopped\n\t}\n\tif len(r.queue) \u003e= r.queueSize {\n\t\treturn ErrQueueFull\n\t}\n\tr.seq++\n\tr.queue = append(r.queue, entry{seq: r.seq, job: j})\n\tr.cond.Signal()\n\treturn nil\n}\n\n// Shutdown stops the runner. From the moment it is called, Enqueue returns ErrStopped and jobs that have\n// not started are not started. It waits for running jobs to finish. If ctx ends first, it cancels the\n// context of every running job, waits for them to return and returns ctx.Err(). It returns nil when every\n// running job finished before ctx ended. A call after the first returns nil at once, without waiting.\nfunc (r *Runner) Shutdown(ctx context.Context) error {\n\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()\n\n\tdone := make(chan struct{})\n\tgo func() {\n\t\tr.wg.Wait()\n\t\tclose(done)\n\t}()\n\n\tselect {\n\tcase \u003c-done:\n\t\treturn nil\n\tcase \u003c-ctx.Done():\n\t}\n\n\tr.mu.Lock()\n\tif len(r.active) == 0 {\n\t\t// Every job finished before ctx ended; the workers are just exiting.\n\t\tr.mu.Unlock()\n\t\t\u003c-done\n\t\treturn nil\n\t}\n\tfor _, run := range r.active {\n\t\trun.canceled = true\n\t\trun.cancel()\n\t}\n\tr.mu.Unlock()\n\t\u003c-done\n\treturn ctx.Err()\n}\n\n// Stop stops the runner like Shutdown, with a 30 second timeout.\nfunc (r *Runner) Stop() {\n\tctx, cancel := context.WithTimeout(context.Background(), stopTimeout)\n\tdefer cancel()\n\t_ = r.Shutdown(ctx)\n}\n\n// Pending returns the jobs that still need to run, in the order they were enqueued. Before Shutdown these\n// are the queued jobs that have not started. After Shutdown they are the jobs that were never started,\n// followed by the jobs whose context Shutdown cancelled and that returned an error.\nfunc (r *Runner) Pending() []Job {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tabandon := slices.Clone(r.abandon)\n\tslices.SortFunc(abandon, func(a, b entry) int { return a.seq - b.seq })\n\tpending := make([]Job, 0, len(r.queue)+len(abandon))\n\tfor _, e := range r.queue {\n\t\tpending = append(pending, e.job)\n\t}\n\tfor _, e := range abandon {\n\t\tpending = append(pending, e.job)\n\t}\n\treturn pending\n}\n"
         }
       },
@@ -3474,7 +3474,7 @@
           "id": "toolu_013tCqvcgt7wEfPNLDMBCSjq",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "content": "// Package jobs runs background work (renewals, webhook deliveries, emails) on a fixed number of workers.\npackage jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io\"\n\t\"log/slog\"\n\t\"slices\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Job is one piece of background work.\ntype Job struct {\n\tName string\n\tRun  func(ctx context.Context) error\n}\n\n// ErrQueueFull is returned by Enqueue when the queue has no room.\nvar ErrQueueFull = errors.New(\"the job queue is full\")\n\n// ErrStopped is returned by Enqueue once Shutdown or Stop has been called.\nvar ErrStopped = errors.New(\"the job runner is stopped\")\n\n// stopTimeout is how long Stop waits for running jobs before cancelling them.\nconst stopTimeout = 30 * time.Second\n\n// entry is a job with its position in the enqueue order.\ntype entry struct {\n\tseq int\n\tjob Job\n}\n\n// running is a job that a worker is executing.\ntype running struct {\n\tcancel   context.CancelFunc\n\tcanceled bool // Shutdown cancelled the job's context\n}\n\n// Runner runs jobs on its workers.\ntype Runner struct {\n\tworkers   int\n\tqueueSize int\n\tlog       *slog.Logger\n\n\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}\n\n// NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.\nfunc NewRunner(workers, queueSize int, log *slog.Logger) *Runner {\n\tif workers \u003c 1 {\n\t\tworkers = 1\n\t}\n\tif queueSize \u003c 0 {\n\t\tqueueSize = 0\n\t}\n\tif log == nil {\n\t\tlog = slog.New(slog.NewTextHandler(io.Discard, nil))\n\t}\n\tr := \u0026Runner{workers: workers, queueSize: queueSize, log: log, active: map[int]*running{}}\n\tr.cond = sync.NewCond(\u0026r.mu)\n\treturn r\n}\n\n// Start starts the workers. It does nothing after Shutdown.\nfunc (r *Runner) Start() {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn\n\t}\n\tfor i := 0; i \u003c r.workers; i++ {\n\t\tr.wg.Add(1)\n\t\tgo r.work()\n\t}\n}\n\nfunc (r *Runner) work() {\n\tdefer r.wg.Done()\n\tfor {\n\t\tr.mu.Lock()\n\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}\n\t\tif r.closed {\n\t\t\tr.mu.Unlock()\n\t\t\treturn\n\t\t}\n\t\te := r.queue[0]\n\t\tr.queue[0] = entry{}\n\t\tr.queue = r.queue[1:]\n\t\tctx, cancel := context.WithCancel(context.Background())\n\t\trun := \u0026running{cancel: cancel}\n\t\tr.active[e.seq] = run\n\t\tr.mu.Unlock()\n\n\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()\n\n\t\tr.mu.Lock()\n\t\tdelete(r.active, e.seq)\n\t\tif run.canceled \u0026\u0026 err != nil \u0026\u0026 ok {\n\t\t\tr.abandon = append(r.abandon, e)\n\t\t}\n\t\tr.mu.Unlock()\n\t}\n}\n\n// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}\n\n// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room\n// and ErrStopped once Shutdown has been called.\nfunc (r *Runner) Enqueue(j Job) error {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn ErrStopped\n\t}\n\tif len(r.queue) \u003e= r.queueSize {\n\t\treturn ErrQueueFull\n\t}\n\tr.seq++\n\tr.queue = append(r.queue, entry{seq: r.seq, job: j})\n\tr.cond.Signal()\n\treturn nil\n}\n\n// Shutdown stops the runner. From the moment it is called, Enqueue returns ErrStopped and jobs that have\n// not started are not started. It waits for running jobs to finish. If ctx ends first, it cancels the\n// context of every running job, waits for them to return and returns ctx.Err(). It returns nil when every\n// running job finished before ctx ended. A call after the first returns nil at once, without waiting.\nfunc (r *Runner) Shutdown(ctx context.Context) error {\n\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()\n\n\tdone := make(chan struct{})\n\tgo func() {\n\t\tr.wg.Wait()\n\t\tclose(done)\n\t}()\n\n\tselect {\n\tcase \u003c-done:\n\t\treturn nil\n\tcase \u003c-ctx.Done():\n\t}\n\n\tr.mu.Lock()\n\tif len(r.active) == 0 {\n\t\t// Every job finished before ctx ended; the workers are just exiting.\n\t\tr.mu.Unlock()\n\t\t\u003c-done\n\t\treturn nil\n\t}\n\tfor _, run := range r.active {\n\t\trun.canceled = true\n\t\trun.cancel()\n\t}\n\tr.mu.Unlock()\n\t\u003c-done\n\treturn ctx.Err()\n}\n\n// Stop stops the runner like Shutdown, with a 30 second timeout.\nfunc (r *Runner) Stop() {\n\tctx, cancel := context.WithTimeout(context.Background(), stopTimeout)\n\tdefer cancel()\n\t_ = r.Shutdown(ctx)\n}\n\n// Pending returns the jobs that still need to run, in the order they were enqueued. Before Shutdown these\n// are the queued jobs that have not started. After Shutdown they are the jobs that were never started,\n// followed by the jobs whose context Shutdown cancelled and that returned an error.\nfunc (r *Runner) Pending() []Job {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tabandon := slices.Clone(r.abandon)\n\tslices.SortFunc(abandon, func(a, b entry) int { return a.seq - b.seq })\n\tpending := make([]Job, 0, len(r.queue)+len(abandon))\n\tfor _, e := range r.queue {\n\t\tpending = append(pending, e.job)\n\t}\n\tfor _, e := range abandon {\n\t\tpending = append(pending, e.job)\n\t}\n\treturn pending\n}\n"
           }
         }
@@ -3496,10 +3496,10 @@
         "id": "toolu_013tCqvcgt7wEfPNLDMBCSjq",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "content": "// Package jobs runs background work (renewals, webhook deliveries, emails) on a fixed number of workers.\npackage jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io\"\n\t\"log/slog\"\n\t\"slices\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Job is one piece of background work.\ntype Job struct {\n\tName string\n\tRun  func(ctx context.Context) error\n}\n\n// ErrQueueFull is returned by Enqueue when the queue has no room.\nvar ErrQueueFull = errors.New(\"the job queue is full\")\n\n// ErrStopped is returned by Enqueue once Shutdown or Stop has been called.\nvar ErrStopped = errors.New(\"the job runner is stopped\")\n\n// stopTimeout is how long Stop waits for running jobs before cancelling them.\nconst stopTimeout = 30 * time.Second\n\n// entry is a job with its position in the enqueue order.\ntype entry struct {\n\tseq int\n\tjob Job\n}\n\n// running is a job that a worker is executing.\ntype running struct {\n\tcancel   context.CancelFunc\n\tcanceled bool // Shutdown cancelled the job's context\n}\n\n// Runner runs jobs on its workers.\ntype Runner struct {\n\tworkers   int\n\tqueueSize int\n\tlog       *slog.Logger\n\n\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}\n\n// NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.\nfunc NewRunner(workers, queueSize int, log *slog.Logger) *Runner {\n\tif workers \u003c 1 {\n\t\tworkers = 1\n\t}\n\tif queueSize \u003c 0 {\n\t\tqueueSize = 0\n\t}\n\tif log == nil {\n\t\tlog = slog.New(slog.NewTextHandler(io.Discard, nil))\n\t}\n\tr := \u0026Runner{workers: workers, queueSize: queueSize, log: log, active: map[int]*running{}}\n\tr.cond = sync.NewCond(\u0026r.mu)\n\treturn r\n}\n\n// Start starts the workers. It does nothing after Shutdown.\nfunc (r *Runner) Start() {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn\n\t}\n\tfor i := 0; i \u003c r.workers; i++ {\n\t\tr.wg.Add(1)\n\t\tgo r.work()\n\t}\n}\n\nfunc (r *Runner) work() {\n\tdefer r.wg.Done()\n\tfor {\n\t\tr.mu.Lock()\n\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}\n\t\tif r.closed {\n\t\t\tr.mu.Unlock()\n\t\t\treturn\n\t\t}\n\t\te := r.queue[0]\n\t\tr.queue[0] = entry{}\n\t\tr.queue = r.queue[1:]\n\t\tctx, cancel := context.WithCancel(context.Background())\n\t\trun := \u0026running{cancel: cancel}\n\t\tr.active[e.seq] = run\n\t\tr.mu.Unlock()\n\n\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()\n\n\t\tr.mu.Lock()\n\t\tdelete(r.active, e.seq)\n\t\tif run.canceled \u0026\u0026 err != nil \u0026\u0026 ok {\n\t\t\tr.abandon = append(r.abandon, e)\n\t\t}\n\t\tr.mu.Unlock()\n\t}\n}\n\n// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}\n\n// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room\n// and ErrStopped once Shutdown has been called.\nfunc (r *Runner) Enqueue(j Job) error {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn ErrStopped\n\t}\n\tif len(r.queue) \u003e= r.queueSize {\n\t\treturn ErrQueueFull\n\t}\n\tr.seq++\n\tr.queue = append(r.queue, entry{seq: r.seq, job: j})\n\tr.cond.Signal()\n\treturn nil\n}\n\n// Shutdown stops the runner. From the moment it is called, Enqueue returns ErrStopped and jobs that have\n// not started are not started. It waits for running jobs to finish. If ctx ends first, it cancels the\n// context of every running job, waits for them to return and returns ctx.Err(). It returns nil when every\n// running job finished before ctx ended. A call after the first returns nil at once, without waiting.\nfunc (r *Runner) Shutdown(ctx context.Context) error {\n\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()\n\n\tdone := make(chan struct{})\n\tgo func() {\n\t\tr.wg.Wait()\n\t\tclose(done)\n\t}()\n\n\tselect {\n\tcase \u003c-done:\n\t\treturn nil\n\tcase \u003c-ctx.Done():\n\t}\n\n\tr.mu.Lock()\n\tif len(r.active) == 0 {\n\t\t// Every job finished before ctx ended; the workers are just exiting.\n\t\tr.mu.Unlock()\n\t\t\u003c-done\n\t\treturn nil\n\t}\n\tfor _, run := range r.active {\n\t\trun.canceled = true\n\t\trun.cancel()\n\t}\n\tr.mu.Unlock()\n\t\u003c-done\n\treturn ctx.Err()\n}\n\n// Stop stops the runner like Shutdown, with a 30 second timeout.\nfunc (r *Runner) Stop() {\n\tctx, cancel := context.WithTimeout(context.Background(), stopTimeout)\n\tdefer cancel()\n\t_ = r.Shutdown(ctx)\n}\n\n// Pending returns the jobs that still need to run, in the order they were enqueued. Before Shutdown these\n// are the queued jobs that have not started. After Shutdown they are the jobs that were never started,\n// followed by the jobs whose context Shutdown cancelled and that returned an error.\nfunc (r *Runner) Pending() []Job {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tabandon := slices.Clone(r.abandon)\n\tslices.SortFunc(abandon, func(a, b entry) int { return a.seq - b.seq })\n\tpending := make([]Job, 0, len(r.queue)+len(abandon))\n\tfor _, e := range r.queue {\n\t\tpending = append(pending, e.job)\n\t}\n\tfor _, e := range abandon {\n\t\tpending = append(pending, e.job)\n\t}\n\treturn pending\n}\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -3519,10 +3519,10 @@
           "id": "toolu_013tCqvcgt7wEfPNLDMBCSjq",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "content": "// Package jobs runs background work (renewals, webhook deliveries, emails) on a fixed number of workers.\npackage jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io\"\n\t\"log/slog\"\n\t\"slices\"\n\t\"sync\"\n\t\"time\"\n)\n\n// Job is one piece of background work.\ntype Job struct {\n\tName string\n\tRun  func(ctx context.Context) error\n}\n\n// ErrQueueFull is returned by Enqueue when the queue has no room.\nvar ErrQueueFull = errors.New(\"the job queue is full\")\n\n// ErrStopped is returned by Enqueue once Shutdown or Stop has been called.\nvar ErrStopped = errors.New(\"the job runner is stopped\")\n\n// stopTimeout is how long Stop waits for running jobs before cancelling them.\nconst stopTimeout = 30 * time.Second\n\n// entry is a job with its position in the enqueue order.\ntype entry struct {\n\tseq int\n\tjob Job\n}\n\n// running is a job that a worker is executing.\ntype running struct {\n\tcancel   context.CancelFunc\n\tcanceled bool // Shutdown cancelled the job's context\n}\n\n// Runner runs jobs on its workers.\ntype Runner struct {\n\tworkers   int\n\tqueueSize int\n\tlog       *slog.Logger\n\n\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}\n\n// NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.\nfunc NewRunner(workers, queueSize int, log *slog.Logger) *Runner {\n\tif workers \u003c 1 {\n\t\tworkers = 1\n\t}\n\tif queueSize \u003c 0 {\n\t\tqueueSize = 0\n\t}\n\tif log == nil {\n\t\tlog = slog.New(slog.NewTextHandler(io.Discard, nil))\n\t}\n\tr := \u0026Runner{workers: workers, queueSize: queueSize, log: log, active: map[int]*running{}}\n\tr.cond = sync.NewCond(\u0026r.mu)\n\treturn r\n}\n\n// Start starts the workers. It does nothing after Shutdown.\nfunc (r *Runner) Start() {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn\n\t}\n\tfor i := 0; i \u003c r.workers; i++ {\n\t\tr.wg.Add(1)\n\t\tgo r.work()\n\t}\n}\n\nfunc (r *Runner) work() {\n\tdefer r.wg.Done()\n\tfor {\n\t\tr.mu.Lock()\n\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}\n\t\tif r.closed {\n\t\t\tr.mu.Unlock()\n\t\t\treturn\n\t\t}\n\t\te := r.queue[0]\n\t\tr.queue[0] = entry{}\n\t\tr.queue = r.queue[1:]\n\t\tctx, cancel := context.WithCancel(context.Background())\n\t\trun := \u0026running{cancel: cancel}\n\t\tr.active[e.seq] = run\n\t\tr.mu.Unlock()\n\n\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()\n\n\t\tr.mu.Lock()\n\t\tdelete(r.active, e.seq)\n\t\tif run.canceled \u0026\u0026 err != nil \u0026\u0026 ok {\n\t\t\tr.abandon = append(r.abandon, e)\n\t\t}\n\t\tr.mu.Unlock()\n\t}\n}\n\n// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}\n\n// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room\n// and ErrStopped once Shutdown has been called.\nfunc (r *Runner) Enqueue(j Job) error {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tif r.closed {\n\t\treturn ErrStopped\n\t}\n\tif len(r.queue) \u003e= r.queueSize {\n\t\treturn ErrQueueFull\n\t}\n\tr.seq++\n\tr.queue = append(r.queue, entry{seq: r.seq, job: j})\n\tr.cond.Signal()\n\treturn nil\n}\n\n// Shutdown stops the runner. From the moment it is called, Enqueue returns ErrStopped and jobs that have\n// not started are not started. It waits for running jobs to finish. If ctx ends first, it cancels the\n// context of every running job, waits for them to return and returns ctx.Err(). It returns nil when every\n// running job finished before ctx ended. A call after the first returns nil at once, without waiting.\nfunc (r *Runner) Shutdown(ctx context.Context) error {\n\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()\n\n\tdone := make(chan struct{})\n\tgo func() {\n\t\tr.wg.Wait()\n\t\tclose(done)\n\t}()\n\n\tselect {\n\tcase \u003c-done:\n\t\treturn nil\n\tcase \u003c-ctx.Done():\n\t}\n\n\tr.mu.Lock()\n\tif len(r.active) == 0 {\n\t\t// Every job finished before ctx ended; the workers are just exiting.\n\t\tr.mu.Unlock()\n\t\t\u003c-done\n\t\treturn nil\n\t}\n\tfor _, run := range r.active {\n\t\trun.canceled = true\n\t\trun.cancel()\n\t}\n\tr.mu.Unlock()\n\t\u003c-done\n\treturn ctx.Err()\n}\n\n// Stop stops the runner like Shutdown, with a 30 second timeout.\nfunc (r *Runner) Stop() {\n\tctx, cancel := context.WithTimeout(context.Background(), stopTimeout)\n\tdefer cancel()\n\t_ = r.Shutdown(ctx)\n}\n\n// Pending returns the jobs that still need to run, in the order they were enqueued. Before Shutdown these\n// are the queued jobs that have not started. After Shutdown they are the jobs that were never started,\n// followed by the jobs whose context Shutdown cancelled and that returned an error.\nfunc (r *Runner) Pending() []Job {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tabandon := slices.Clone(r.abandon)\n\tslices.SortFunc(abandon, func(a, b entry) int { return a.seq - b.seq })\n\tpending := make([]Job, 0, len(r.queue)+len(abandon))\n\tfor _, e := range r.queue {\n\t\tpending = append(pending, e.job)\n\t}\n\tfor _, e := range abandon {\n\t\tpending = append(pending, e.job)\n\t}\n\treturn pending\n}\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4044,7 +4044,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\t\"errors\"\n\t\"fmt\"\n\t\"io\"",
           "new_string": "\t\"errors\"\n\t\"io\""
         }
@@ -4068,7 +4068,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\t\"errors\"\n\t\"fmt\"\n\t\"io\"",
             "new_string": "\t\"errors\"\n\t\"io\""
           }
@@ -4092,11 +4092,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\t\"errors\"\n\t\"fmt\"\n\t\"io\"",
           "new_string": "\t\"errors\"\n\t\"io\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4117,11 +4117,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\t\"errors\"\n\t\"fmt\"\n\t\"io\"",
             "new_string": "\t\"errors\"\n\t\"io\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4155,7 +4155,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}",
           "new_string": "\tmu      sync.Mutex\n\tcond    *sync.Cond\n\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job\n\tclosed  bool             // Shutdown has been called\n\tactive  map[int]*running // jobs being executed, by seq\n\tabandon []entry          // jobs cancelled by Shutdown that returned an error\n\twg      sync.WaitGroup   // workers\n}"
         }
@@ -4179,7 +4179,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}",
             "new_string": "\tmu      sync.Mutex\n\tcond    *sync.Cond\n\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job\n\tclosed  bool             // Shutdown has been called\n\tactive  map[int]*running // jobs being executed, by seq\n\tabandon []entry          // jobs cancelled by Shutdown that returned an error\n\twg      sync.WaitGroup   // workers\n}"
           }
@@ -4203,11 +4203,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}",
           "new_string": "\tmu      sync.Mutex\n\tcond    *sync.Cond\n\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job\n\tclosed  bool             // Shutdown has been called\n\tactive  map[int]*running // jobs being executed, by seq\n\tabandon []entry          // jobs cancelled by Shutdown that returned an error\n\twg      sync.WaitGroup   // workers\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4228,11 +4228,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tmu       sync.Mutex\n\tcond     *sync.Cond\n\tqueue    []entry           // enqueued jobs that have not started, in enqueue order\n\tseq      int               // sequence number of the last enqueued job\n\tclosed   bool              // Shutdown has been called\n\tactive   map[int]*running  // jobs being executed, by seq\n\tabandon  []entry           // jobs cancelled by Shutdown that returned an error\n\twg       sync.WaitGroup    // workers\n\tshutdown sync.Once         // makes the first Shutdown call the only one that waits\n}",
             "new_string": "\tmu      sync.Mutex\n\tcond    *sync.Cond\n\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job\n\tclosed  bool             // Shutdown has been called\n\tactive  map[int]*running // jobs being executed, by seq\n\tabandon []entry          // jobs cancelled by Shutdown that returned an error\n\twg      sync.WaitGroup   // workers\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4266,7 +4266,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()",
           "new_string": "\t\tok, err := r.call(ctx, e.job)\n\t\tcancel()"
         }
@@ -4290,7 +4290,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()",
             "new_string": "\t\tok, err := r.call(ctx, e.job)\n\t\tcancel()"
           }
@@ -4314,11 +4314,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()",
           "new_string": "\t\tok, err := r.call(ctx, e.job)\n\t\tcancel()"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4339,11 +4339,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\t\terr, ok := r.call(ctx, e.job)\n\t\tcancel()",
             "new_string": "\t\tok, err := r.call(ctx, e.job)\n\t\tcancel()"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4377,7 +4377,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}",
           "new_string": "// call runs j and recovers a panic. ok is false when j panicked; the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (ok bool, err error) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\tok, err = false, nil\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn true, err\n\t}\n\treturn true, nil\n}"
         }
@@ -4401,7 +4401,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}",
             "new_string": "// call runs j and recovers a panic. ok is false when j panicked; the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (ok bool, err error) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\tok, err = false, nil\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn true, err\n\t}\n\treturn true, nil\n}"
           }
@@ -4425,11 +4425,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}",
           "new_string": "// call runs j and recovers a panic. ok is false when j panicked; the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (ok bool, err error) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\tok, err = false, nil\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn true, err\n\t}\n\treturn true, nil\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4450,11 +4450,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "// call runs j and recovers a panic. ok is false when j panicked, so the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (err error, ok bool) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\terr, ok = nil, false\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn err, true\n\t}\n\treturn nil, true\n}",
             "new_string": "// call runs j and recovers a panic. ok is false when j panicked; the job is not run again.\nfunc (r *Runner) call(ctx context.Context, j Job) (ok bool, err error) {\n\tdefer func() {\n\t\tif p := recover(); p != nil {\n\t\t\tr.log.Error(\"job panicked\", \"job\", j.Name, \"panic\", p)\n\t\t\tok, err = false, nil\n\t\t}\n\t}()\n\tif err := j.Run(ctx); err != nil {\n\t\tr.log.Error(\"job failed\", \"job\", j.Name, \"err\", err)\n\t\treturn true, err\n\t}\n\treturn true, nil\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4488,7 +4488,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()",
           "new_string": "\tr.mu.Lock()\n\tif r.closed {\n\t\tr.mu.Unlock()\n\t\treturn nil\n\t}\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()"
         }
@@ -4512,7 +4512,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()",
             "new_string": "\tr.mu.Lock()\n\tif r.closed {\n\t\tr.mu.Unlock()\n\t\treturn nil\n\t}\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()"
           }
@@ -4536,11 +4536,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()",
           "new_string": "\tr.mu.Lock()\n\tif r.closed {\n\t\tr.mu.Unlock()\n\t\treturn nil\n\t}\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4561,11 +4561,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tfirst := false\n\tr.shutdown.Do(func() { first = true })\n\tif !first {\n\t\treturn nil\n\t}\n\n\tr.mu.Lock()\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()",
             "new_string": "\tr.mu.Lock()\n\tif r.closed {\n\t\tr.mu.Unlock()\n\t\treturn nil\n\t}\n\tr.closed = true\n\tr.cond.Broadcast()\n\tr.mu.Unlock()"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4903,7 +4903,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
           "old_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\trunner.Stop()",
           "new_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\tif err := runner.Shutdown(shutdown); err != nil {\n\t\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t\t}\n\t\tif n := len(runner.Pending()); n \u003e 0 {\n\t\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t\t}"
         }
@@ -4927,7 +4927,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
             "old_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\trunner.Stop()",
             "new_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\tif err := runner.Shutdown(shutdown); err != nil {\n\t\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t\t}\n\t\tif n := len(runner.Pending()); n \u003e 0 {\n\t\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t\t}"
           }
@@ -4951,7 +4951,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
           "old_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\trunner.Stop()",
           "new_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\tif err := runner.Shutdown(shutdown); err != nil {\n\t\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t\t}\n\t\tif n := len(runner.Pending()); n \u003e 0 {\n\t\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t\t}"
         },
@@ -4977,7 +4977,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
             "old_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\trunner.Stop()",
             "new_string": "\t\t_ = hs.Shutdown(shutdown)\n\t\tif err := runner.Shutdown(shutdown); err != nil {\n\t\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t\t}\n\t\tif n := len(runner.Pending()); n \u003e 0 {\n\t\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t\t}"
           },
@@ -5323,7 +5323,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
           "old_string": "\t_ = hs.Shutdown(shutdown)\n\trunner.Stop()",
           "new_string": "\t_ = hs.Shutdown(shutdown)\n\tif err := runner.Shutdown(shutdown); err != nil {\n\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t}\n\tif n := len(runner.Pending()); n \u003e 0 {\n\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t}"
         }
@@ -5347,7 +5347,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
             "old_string": "\t_ = hs.Shutdown(shutdown)\n\trunner.Stop()",
             "new_string": "\t_ = hs.Shutdown(shutdown)\n\tif err := runner.Shutdown(shutdown); err != nil {\n\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t}\n\tif n := len(runner.Pending()); n \u003e 0 {\n\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t}"
           }
@@ -5449,11 +5449,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
           "old_string": "\t_ = hs.Shutdown(shutdown)\n\trunner.Stop()",
           "new_string": "\t_ = hs.Shutdown(shutdown)\n\tif err := runner.Shutdown(shutdown); err != nil {\n\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t}\n\tif n := len(runner.Pending()); n \u003e 0 {\n\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5474,11 +5474,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go",
             "old_string": "\t_ = hs.Shutdown(shutdown)\n\trunner.Stop()",
             "new_string": "\t_ = hs.Shutdown(shutdown)\n\tif err := runner.Shutdown(shutdown); err != nil {\n\t\tlog.Error(\"stop jobs\", \"err\", err)\n\t}\n\tif n := len(runner.Pending()); n \u003e 0 {\n\t\tlog.Info(\"jobs not run\", \"count\", n)\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -6040,7 +6040,7 @@
         "id": "toolu_01HTPNpUpQ4Rj66Nt9uJU7Du",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "content": "package jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"slices\"\n\t\"sync\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestRunnerRunsJobs(t *testing.T) {\n\tr := NewRunner(3, 10, nil)\n\tr.Start()\n\tvar mu sync.Mutex\n\tdone := map[string]bool{}\n\tvar wg sync.WaitGroup\n\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n\t\twg.Add(1)\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n\t\t\tdefer wg.Done()\n\t\t\tmu.Lock()\n\t\t\tdone[name] = true\n\t\t\tmu.Unlock()\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tfinished := make(chan struct{})\n\tgo func() { wg.Wait(); close(finished) }()\n\tselect {\n\tcase \u003c-finished:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"jobs did not run\")\n\t}\n\tif len(done) != 5 {\n\t\tt.Fatalf(\"done = %v\", done)\n\t}\n}\n\nfunc TestEnqueueWhenFull(t *testing.T) {\n\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n\tif err := r.Enqueue(job); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tlate := Job{Name: \"late\", Run: func(context.Context) error {\n\t\tt.Error(\"late job ran\")\n\t\treturn nil\n\t}}\n\tif err := r.Enqueue(late); !errors.Is(err, ErrStopped) {\n\t\tt.Fatalf(\"err = %v, want ErrStopped\", err)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\nfunc TestShutdownWaitsForRunningJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tfinished := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\tclose(finished)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase \u003c-errc:\n\t\tt.Fatal(\"Shutdown returned while a job was running\")\n\tcase \u003c-time.After(50 * time.Millisecond):\n\t}\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"Shutdown = %v, want nil\", err)\n\t}\n\tselect {\n\tcase \u003c-finished:\n\tdefault:\n\t\tt.Fatal(\"Shutdown returned before the running job finished\")\n\t}\n}\n\nfunc TestShutdownCancelsRunningJobsWhenContextEnds(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"stuck\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done()\n\t\treturn ctx.Err()\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"stuck\"}) {\n\t\tt.Fatalf(\"pending = %v, want [stuck]\", got)\n\t}\n}\n\nfunc TestShutdownDoesNotStartQueuedJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tran := make(chan string, 10)\n\tif err := r.Enqueue(Job{Name: \"first\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done() // returns nil once cancelled, so it is not pending\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tfor _, name := range []string{\"second\", \"third\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error {\n\t\t\tran \u003c- name\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tselect {\n\tcase name := \u003c-ran:\n\t\tt.Fatalf(\"queued job %s was started\", name)\n\tdefault:\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"second\", \"third\"}) {\n\t\tt.Fatalf(\"pending = %v, want [second third]\", got)\n\t}\n}\n\nfunc TestPendingListsQueuedJobsInEnqueueOrder(t *testing.T) {\n\tr := NewRunner(1, 10, nil) // not started\n\tfor _, name := range []string{\"a\", \"b\", \"c\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error { return nil }}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending before Shutdown = %v, want [a b c]\", got)\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending after Shutdown = %v, want [a b c]\", got)\n\t}\n}\n\nfunc TestSecondShutdownReturnsAtOnce(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)\n\tgo func() { second \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase err := \u003c-second:\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"second Shutdown = %v, want nil\", err)\n\t\t}\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"second Shutdown blocked\")\n\t}\n\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"first Shutdown = %v, want nil\", err)\n\t}\n\tstopped := make(chan struct{})\n\tgo func() { r.Stop(); close(stopped) }()\n\tselect {\n\tcase \u003c-stopped:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"Stop after Shutdown blocked\")\n\t}\n}\n\nfunc TestPanickingJobIsRecovered(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tboomRuns := 0\n\tran := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"boom\", Run: func(context.Context) error {\n\t\tboomRuns++\n\t\tpanic(\"boom\")\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(Job{Name: \"after\", Run: func(context.Context) error {\n\t\tclose(ran)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tselect {\n\tcase \u003c-ran:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"job after the panic did not run\")\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif boomRuns != 1 {\n\t\tt.Fatalf(\"panicking job ran %d times, want 1\", boomRuns)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\n// names returns the names of jobs, for comparing Pending results.\nfunc names(jobs []Job) []string {\n\tvar out []string\n\tfor _, j := range jobs {\n\t\tout = append(out, j.Name)\n\t}\n\treturn out\n}\n"
         }
       },
@@ -6062,7 +6062,7 @@
           "id": "toolu_01HTPNpUpQ4Rj66Nt9uJU7Du",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "content": "package jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"slices\"\n\t\"sync\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestRunnerRunsJobs(t *testing.T) {\n\tr := NewRunner(3, 10, nil)\n\tr.Start()\n\tvar mu sync.Mutex\n\tdone := map[string]bool{}\n\tvar wg sync.WaitGroup\n\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n\t\twg.Add(1)\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n\t\t\tdefer wg.Done()\n\t\t\tmu.Lock()\n\t\t\tdone[name] = true\n\t\t\tmu.Unlock()\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tfinished := make(chan struct{})\n\tgo func() { wg.Wait(); close(finished) }()\n\tselect {\n\tcase \u003c-finished:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"jobs did not run\")\n\t}\n\tif len(done) != 5 {\n\t\tt.Fatalf(\"done = %v\", done)\n\t}\n}\n\nfunc TestEnqueueWhenFull(t *testing.T) {\n\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n\tif err := r.Enqueue(job); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tlate := Job{Name: \"late\", Run: func(context.Context) error {\n\t\tt.Error(\"late job ran\")\n\t\treturn nil\n\t}}\n\tif err := r.Enqueue(late); !errors.Is(err, ErrStopped) {\n\t\tt.Fatalf(\"err = %v, want ErrStopped\", err)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\nfunc TestShutdownWaitsForRunningJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tfinished := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\tclose(finished)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase \u003c-errc:\n\t\tt.Fatal(\"Shutdown returned while a job was running\")\n\tcase \u003c-time.After(50 * time.Millisecond):\n\t}\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"Shutdown = %v, want nil\", err)\n\t}\n\tselect {\n\tcase \u003c-finished:\n\tdefault:\n\t\tt.Fatal(\"Shutdown returned before the running job finished\")\n\t}\n}\n\nfunc TestShutdownCancelsRunningJobsWhenContextEnds(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"stuck\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done()\n\t\treturn ctx.Err()\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"stuck\"}) {\n\t\tt.Fatalf(\"pending = %v, want [stuck]\", got)\n\t}\n}\n\nfunc TestShutdownDoesNotStartQueuedJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tran := make(chan string, 10)\n\tif err := r.Enqueue(Job{Name: \"first\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done() // returns nil once cancelled, so it is not pending\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tfor _, name := range []string{\"second\", \"third\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error {\n\t\t\tran \u003c- name\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tselect {\n\tcase name := \u003c-ran:\n\t\tt.Fatalf(\"queued job %s was started\", name)\n\tdefault:\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"second\", \"third\"}) {\n\t\tt.Fatalf(\"pending = %v, want [second third]\", got)\n\t}\n}\n\nfunc TestPendingListsQueuedJobsInEnqueueOrder(t *testing.T) {\n\tr := NewRunner(1, 10, nil) // not started\n\tfor _, name := range []string{\"a\", \"b\", \"c\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error { return nil }}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending before Shutdown = %v, want [a b c]\", got)\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending after Shutdown = %v, want [a b c]\", got)\n\t}\n}\n\nfunc TestSecondShutdownReturnsAtOnce(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)\n\tgo func() { second \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase err := \u003c-second:\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"second Shutdown = %v, want nil\", err)\n\t\t}\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"second Shutdown blocked\")\n\t}\n\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"first Shutdown = %v, want nil\", err)\n\t}\n\tstopped := make(chan struct{})\n\tgo func() { r.Stop(); close(stopped) }()\n\tselect {\n\tcase \u003c-stopped:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"Stop after Shutdown blocked\")\n\t}\n}\n\nfunc TestPanickingJobIsRecovered(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tboomRuns := 0\n\tran := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"boom\", Run: func(context.Context) error {\n\t\tboomRuns++\n\t\tpanic(\"boom\")\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(Job{Name: \"after\", Run: func(context.Context) error {\n\t\tclose(ran)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tselect {\n\tcase \u003c-ran:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"job after the panic did not run\")\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif boomRuns != 1 {\n\t\tt.Fatalf(\"panicking job ran %d times, want 1\", boomRuns)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\n// names returns the names of jobs, for comparing Pending results.\nfunc names(jobs []Job) []string {\n\tvar out []string\n\tfor _, j := range jobs {\n\t\tout = append(out, j.Name)\n\t}\n\treturn out\n}\n"
           }
         }
@@ -6084,10 +6084,10 @@
         "id": "toolu_01HTPNpUpQ4Rj66Nt9uJU7Du",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "content": "package jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"slices\"\n\t\"sync\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestRunnerRunsJobs(t *testing.T) {\n\tr := NewRunner(3, 10, nil)\n\tr.Start()\n\tvar mu sync.Mutex\n\tdone := map[string]bool{}\n\tvar wg sync.WaitGroup\n\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n\t\twg.Add(1)\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n\t\t\tdefer wg.Done()\n\t\t\tmu.Lock()\n\t\t\tdone[name] = true\n\t\t\tmu.Unlock()\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tfinished := make(chan struct{})\n\tgo func() { wg.Wait(); close(finished) }()\n\tselect {\n\tcase \u003c-finished:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"jobs did not run\")\n\t}\n\tif len(done) != 5 {\n\t\tt.Fatalf(\"done = %v\", done)\n\t}\n}\n\nfunc TestEnqueueWhenFull(t *testing.T) {\n\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n\tif err := r.Enqueue(job); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tlate := Job{Name: \"late\", Run: func(context.Context) error {\n\t\tt.Error(\"late job ran\")\n\t\treturn nil\n\t}}\n\tif err := r.Enqueue(late); !errors.Is(err, ErrStopped) {\n\t\tt.Fatalf(\"err = %v, want ErrStopped\", err)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\nfunc TestShutdownWaitsForRunningJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tfinished := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\tclose(finished)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase \u003c-errc:\n\t\tt.Fatal(\"Shutdown returned while a job was running\")\n\tcase \u003c-time.After(50 * time.Millisecond):\n\t}\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"Shutdown = %v, want nil\", err)\n\t}\n\tselect {\n\tcase \u003c-finished:\n\tdefault:\n\t\tt.Fatal(\"Shutdown returned before the running job finished\")\n\t}\n}\n\nfunc TestShutdownCancelsRunningJobsWhenContextEnds(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"stuck\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done()\n\t\treturn ctx.Err()\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"stuck\"}) {\n\t\tt.Fatalf(\"pending = %v, want [stuck]\", got)\n\t}\n}\n\nfunc TestShutdownDoesNotStartQueuedJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tran := make(chan string, 10)\n\tif err := r.Enqueue(Job{Name: \"first\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done() // returns nil once cancelled, so it is not pending\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tfor _, name := range []string{\"second\", \"third\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error {\n\t\t\tran \u003c- name\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tselect {\n\tcase name := \u003c-ran:\n\t\tt.Fatalf(\"queued job %s was started\", name)\n\tdefault:\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"second\", \"third\"}) {\n\t\tt.Fatalf(\"pending = %v, want [second third]\", got)\n\t}\n}\n\nfunc TestPendingListsQueuedJobsInEnqueueOrder(t *testing.T) {\n\tr := NewRunner(1, 10, nil) // not started\n\tfor _, name := range []string{\"a\", \"b\", \"c\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error { return nil }}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending before Shutdown = %v, want [a b c]\", got)\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending after Shutdown = %v, want [a b c]\", got)\n\t}\n}\n\nfunc TestSecondShutdownReturnsAtOnce(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)\n\tgo func() { second \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase err := \u003c-second:\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"second Shutdown = %v, want nil\", err)\n\t\t}\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"second Shutdown blocked\")\n\t}\n\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"first Shutdown = %v, want nil\", err)\n\t}\n\tstopped := make(chan struct{})\n\tgo func() { r.Stop(); close(stopped) }()\n\tselect {\n\tcase \u003c-stopped:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"Stop after Shutdown blocked\")\n\t}\n}\n\nfunc TestPanickingJobIsRecovered(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tboomRuns := 0\n\tran := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"boom\", Run: func(context.Context) error {\n\t\tboomRuns++\n\t\tpanic(\"boom\")\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(Job{Name: \"after\", Run: func(context.Context) error {\n\t\tclose(ran)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tselect {\n\tcase \u003c-ran:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"job after the panic did not run\")\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif boomRuns != 1 {\n\t\tt.Fatalf(\"panicking job ran %d times, want 1\", boomRuns)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\n// names returns the names of jobs, for comparing Pending results.\nfunc names(jobs []Job) []string {\n\tvar out []string\n\tfor _, j := range jobs {\n\t\tout = append(out, j.Name)\n\t}\n\treturn out\n}\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -6107,10 +6107,10 @@
           "id": "toolu_01HTPNpUpQ4Rj66Nt9uJU7Du",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "content": "package jobs\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"slices\"\n\t\"sync\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestRunnerRunsJobs(t *testing.T) {\n\tr := NewRunner(3, 10, nil)\n\tr.Start()\n\tvar mu sync.Mutex\n\tdone := map[string]bool{}\n\tvar wg sync.WaitGroup\n\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n\t\twg.Add(1)\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n\t\t\tdefer wg.Done()\n\t\t\tmu.Lock()\n\t\t\tdone[name] = true\n\t\t\tmu.Unlock()\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tfinished := make(chan struct{})\n\tgo func() { wg.Wait(); close(finished) }()\n\tselect {\n\tcase \u003c-finished:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"jobs did not run\")\n\t}\n\tif len(done) != 5 {\n\t\tt.Fatalf(\"done = %v\", done)\n\t}\n}\n\nfunc TestEnqueueWhenFull(t *testing.T) {\n\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n\tif err := r.Enqueue(job); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tlate := Job{Name: \"late\", Run: func(context.Context) error {\n\t\tt.Error(\"late job ran\")\n\t\treturn nil\n\t}}\n\tif err := r.Enqueue(late); !errors.Is(err, ErrStopped) {\n\t\tt.Fatalf(\"err = %v, want ErrStopped\", err)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\nfunc TestShutdownWaitsForRunningJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tfinished := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\tclose(finished)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase \u003c-errc:\n\t\tt.Fatal(\"Shutdown returned while a job was running\")\n\tcase \u003c-time.After(50 * time.Millisecond):\n\t}\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"Shutdown = %v, want nil\", err)\n\t}\n\tselect {\n\tcase \u003c-finished:\n\tdefault:\n\t\tt.Fatal(\"Shutdown returned before the running job finished\")\n\t}\n}\n\nfunc TestShutdownCancelsRunningJobsWhenContextEnds(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"stuck\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done()\n\t\treturn ctx.Err()\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"stuck\"}) {\n\t\tt.Fatalf(\"pending = %v, want [stuck]\", got)\n\t}\n}\n\nfunc TestShutdownDoesNotStartQueuedJobs(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\tran := make(chan string, 10)\n\tif err := r.Enqueue(Job{Name: \"first\", Run: func(ctx context.Context) error {\n\t\tclose(started)\n\t\t\u003c-ctx.Done() // returns nil once cancelled, so it is not pending\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tfor _, name := range []string{\"second\", \"third\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error {\n\t\t\tran \u003c- name\n\t\t\treturn nil\n\t\t}}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\t\u003c-started\n\n\tctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)\n\tdefer cancel()\n\tif err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {\n\t\tt.Fatalf(\"Shutdown = %v, want context.DeadlineExceeded\", err)\n\t}\n\tselect {\n\tcase name := \u003c-ran:\n\t\tt.Fatalf(\"queued job %s was started\", name)\n\tdefault:\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"second\", \"third\"}) {\n\t\tt.Fatalf(\"pending = %v, want [second third]\", got)\n\t}\n}\n\nfunc TestPendingListsQueuedJobsInEnqueueOrder(t *testing.T) {\n\tr := NewRunner(1, 10, nil) // not started\n\tfor _, name := range []string{\"a\", \"b\", \"c\"} {\n\t\tif err := r.Enqueue(Job{Name: name, Run: func(context.Context) error { return nil }}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending before Shutdown = %v, want [a b c]\", got)\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif got := names(r.Pending()); !slices.Equal(got, []string{\"a\", \"b\", \"c\"}) {\n\t\tt.Fatalf(\"pending after Shutdown = %v, want [a b c]\", got)\n\t}\n}\n\nfunc TestSecondShutdownReturnsAtOnce(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tstarted := make(chan struct{})\n\trelease := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"slow\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t\u003c-started\n\terrc := make(chan error, 1)\n\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)\n\tgo func() { second \u003c- r.Shutdown(context.Background()) }()\n\tselect {\n\tcase err := \u003c-second:\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"second Shutdown = %v, want nil\", err)\n\t\t}\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"second Shutdown blocked\")\n\t}\n\n\tclose(release)\n\tif err := \u003c-errc; err != nil {\n\t\tt.Fatalf(\"first Shutdown = %v, want nil\", err)\n\t}\n\tstopped := make(chan struct{})\n\tgo func() { r.Stop(); close(stopped) }()\n\tselect {\n\tcase \u003c-stopped:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"Stop after Shutdown blocked\")\n\t}\n}\n\nfunc TestPanickingJobIsRecovered(t *testing.T) {\n\tr := NewRunner(1, 10, nil)\n\tr.Start()\n\tboomRuns := 0\n\tran := make(chan struct{})\n\tif err := r.Enqueue(Job{Name: \"boom\", Run: func(context.Context) error {\n\t\tboomRuns++\n\t\tpanic(\"boom\")\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := r.Enqueue(Job{Name: \"after\", Run: func(context.Context) error {\n\t\tclose(ran)\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tselect {\n\tcase \u003c-ran:\n\tcase \u003c-time.After(5 * time.Second):\n\t\tt.Fatal(\"job after the panic did not run\")\n\t}\n\tif err := r.Shutdown(context.Background()); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif boomRuns != 1 {\n\t\tt.Fatalf(\"panicking job ran %d times, want 1\", boomRuns)\n\t}\n\tif got := r.Pending(); len(got) != 0 {\n\t\tt.Fatalf(\"pending = %v, want none\", names(got))\n\t}\n}\n\n// names returns the names of jobs, for comparing Pending results.\nfunc names(jobs []Job) []string {\n\tvar out []string\n\tfor _, j := range jobs {\n\t\tout = append(out, j.Name)\n\t}\n\treturn out\n}\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -7180,7 +7180,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "old_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)",
           "new_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\t// Wait until the first call has stopped the runner, so the next call is a second one.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor !errors.Is(r.Enqueue(Job{Name: \"probe\", Run: func(context.Context) error { return nil }}), ErrStopped) {\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"first Shutdown did not stop the runner\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tsecond := make(chan error, 1)"
         }
@@ -7204,7 +7204,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "old_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)",
             "new_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\t// Wait until the first call has stopped the runner, so the next call is a second one.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor !errors.Is(r.Enqueue(Job{Name: \"probe\", Run: func(context.Context) error { return nil }}), ErrStopped) {\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"first Shutdown did not stop the runner\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tsecond := make(chan error, 1)"
           }
@@ -7228,11 +7228,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "old_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)",
           "new_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\t// Wait until the first call has stopped the runner, so the next call is a second one.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor !errors.Is(r.Enqueue(Job{Name: \"probe\", Run: func(context.Context) error { return nil }}), ErrStopped) {\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"first Shutdown did not stop the runner\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tsecond := make(chan error, 1)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -7253,11 +7253,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "old_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\n\tsecond := make(chan error, 1)",
             "new_string": "\tgo func() { errc \u003c- r.Shutdown(context.Background()) }()\n\t// Wait until the first call has stopped the runner, so the next call is a second one.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor !errors.Is(r.Enqueue(Job{Name: \"probe\", Run: func(context.Context) error { return nil }}), ErrStopped) {\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"first Shutdown did not stop the runner\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tsecond := make(chan error, 1)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -13486,7 +13486,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_d0ec345af6d2",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
+      "cwd": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -13985,7 +13985,7 @@
         "id": "toolu_01VgoakXBNdCizVwVg1G6aL9",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "limit": 50
         }
       },
@@ -14007,7 +14007,7 @@
           "id": "toolu_01VgoakXBNdCizVwVg1G6aL9",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "limit": 50
           }
         }
@@ -14107,7 +14107,7 @@
         "id": "toolu_01VgoakXBNdCizVwVg1G6aL9",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "limit": 50
         },
         "output": "1\tpackage jobs\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"errors\"\n6\t\t\"slices\"\n7\t\t\"sync\"\n8\t\t\"testing\"\n9\t\t\"time\"\n10\t)\n11\t\n12\tfunc TestRunnerRunsJobs(t *testing.T) {\n13\t\tr := NewRunner(3, 10, nil)\n14\t\tr.Start()\n15\t\tvar mu sync.Mutex\n16\t\tdone := map[string]bool{}\n17\t\tvar wg sync.WaitGroup\n18\t\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n19\t\t\twg.Add(1)\n20\t\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n21\t\t\t\tdefer wg.Done()\n22\t\t\t\tmu.Lock()\n23\t\t\t\tdone[name] = true\n24\t\t\t\tmu.Unlock()\n25\t\t\t\treturn nil\n26\t\t\t}}); err != nil {\n27\t\t\t\tt.Fatal(err)\n28\t\t\t}\n29\t\t}\n30\t\tfinished := make(chan struct{})\n31\t\tgo func() { wg.Wait(); close(finished) }()\n32\t\tselect {\n33\t\tcase \u003c-finished:\n34\t\tcase \u003c-time.After(5 * time.Second):\n35\t\t\tt.Fatal(\"jobs did not run\")\n36\t\t}\n37\t\tif len(done) != 5 {\n38\t\t\tt.Fatalf(\"done = %v\", done)\n39\t\t}\n40\t}\n41\t\n42\tfunc TestEnqueueWhenFull(t *testing.T) {\n43\t\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n44\t\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n45\t\tif err := r.Enqueue(job); err != nil {\n46\t\t\tt.Fatal(err)\n47\t\t}\n48\t\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n49\t\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n50\t\t}"
@@ -14130,7 +14130,7 @@
           "id": "toolu_01VgoakXBNdCizVwVg1G6aL9",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "limit": 50
           },
           "output": "1\tpackage jobs\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"errors\"\n6\t\t\"slices\"\n7\t\t\"sync\"\n8\t\t\"testing\"\n9\t\t\"time\"\n10\t)\n11\t\n12\tfunc TestRunnerRunsJobs(t *testing.T) {\n13\t\tr := NewRunner(3, 10, nil)\n14\t\tr.Start()\n15\t\tvar mu sync.Mutex\n16\t\tdone := map[string]bool{}\n17\t\tvar wg sync.WaitGroup\n18\t\tfor _, name := range []string{\"a\", \"b\", \"c\", \"d\", \"e\"} {\n19\t\t\twg.Add(1)\n20\t\t\tif err := r.Enqueue(Job{Name: name, Run: func(ctx context.Context) error {\n21\t\t\t\tdefer wg.Done()\n22\t\t\t\tmu.Lock()\n23\t\t\t\tdone[name] = true\n24\t\t\t\tmu.Unlock()\n25\t\t\t\treturn nil\n26\t\t\t}}); err != nil {\n27\t\t\t\tt.Fatal(err)\n28\t\t\t}\n29\t\t}\n30\t\tfinished := make(chan struct{})\n31\t\tgo func() { wg.Wait(); close(finished) }()\n32\t\tselect {\n33\t\tcase \u003c-finished:\n34\t\tcase \u003c-time.After(5 * time.Second):\n35\t\t\tt.Fatal(\"jobs did not run\")\n36\t\t}\n37\t\tif len(done) != 5 {\n38\t\t\tt.Fatalf(\"done = %v\", done)\n39\t\t}\n40\t}\n41\t\n42\tfunc TestEnqueueWhenFull(t *testing.T) {\n43\t\tr := NewRunner(1, 1, nil) // not started: nothing takes jobs off the queue\n44\t\tjob := Job{Name: \"x\", Run: func(context.Context) error { return nil }}\n45\t\tif err := r.Enqueue(job); err != nil {\n46\t\t\tt.Fatal(err)\n47\t\t}\n48\t\tif err := r.Enqueue(job); !errors.Is(err, ErrQueueFull) {\n49\t\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n50\t\t}"
@@ -19089,7 +19089,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_decaed8bdbb2",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
+      "cwd": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -19630,7 +19630,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job",
           "new_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tidle    int              // workers waiting for a job\n\tseq     int              // sequence number of the last enqueued job"
         }
@@ -19654,7 +19654,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job",
             "new_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tidle    int              // workers waiting for a job\n\tseq     int              // sequence number of the last enqueued job"
           }
@@ -19691,11 +19691,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job",
           "new_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tidle    int              // workers waiting for a job\n\tseq     int              // sequence number of the last enqueued job"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -19716,11 +19716,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tseq     int              // sequence number of the last enqueued job",
             "new_string": "\tqueue   []entry          // enqueued jobs that have not started, in enqueue order\n\tidle    int              // workers waiting for a job\n\tseq     int              // sequence number of the last enqueued job"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
         }
       },
       "node": "work",
@@ -19741,7 +19741,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}",
           "new_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.idle++\n\t\t\tr.cond.Wait()\n\t\t\tr.idle--\n\t\t}"
         }
@@ -19765,7 +19765,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}",
             "new_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.idle++\n\t\t\tr.cond.Wait()\n\t\t\tr.idle--\n\t\t}"
           }
@@ -19789,11 +19789,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}",
           "new_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.idle++\n\t\t\tr.cond.Wait()\n\t\t\tr.idle--\n\t\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -19814,11 +19814,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.cond.Wait()\n\t\t}",
             "new_string": "\t\tfor len(r.queue) == 0 \u0026\u0026 !r.closed {\n\t\t\tr.idle++\n\t\t\tr.cond.Wait()\n\t\t\tr.idle--\n\t\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
         }
       },
       "node": "work",
@@ -19852,7 +19852,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tif len(r.queue) \u003e= r.queueSize {",
           "new_string": "\t// An idle worker takes a job at once, so a queue of size 0 still accepts a job while a worker waits.\n\tif len(r.queue) \u003e= r.queueSize+r.idle {"
         }
@@ -19876,7 +19876,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tif len(r.queue) \u003e= r.queueSize {",
             "new_string": "\t// An idle worker takes a job at once, so a queue of size 0 still accepts a job while a worker waits.\n\tif len(r.queue) \u003e= r.queueSize+r.idle {"
           }
@@ -19900,11 +19900,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
           "old_string": "\tif len(r.queue) \u003e= r.queueSize {",
           "new_string": "\t// An idle worker takes a job at once, so a queue of size 0 still accepts a job while a worker waits.\n\tif len(r.queue) \u003e= r.queueSize+r.idle {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -19925,11 +19925,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go",
             "old_string": "\tif len(r.queue) \u003e= r.queueSize {",
             "new_string": "\t// An idle worker takes a job at once, so a queue of size 0 still accepts a job while a worker waits.\n\tif len(r.queue) \u003e= r.queueSize+r.idle {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs.go has been updated successfully."
         }
       },
       "node": "work",
@@ -20039,7 +20039,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "old_string": "func TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {",
           "new_string": "func TestZeroQueueAcceptsJobWhenWorkerIdle(t *testing.T) {\n\tr := NewRunner(1, 0, nil)\n\tr.Start()\n\trelease := make(chan struct{})\n\tstarted := make(chan struct{})\n\tdefer r.Stop()\n\tdefer close(release)\n\n\t// Wait until the worker is waiting for a job.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor {\n\t\tr.mu.Lock()\n\t\tidle := r.idle\n\t\tr.mu.Unlock()\n\t\tif idle == 1 {\n\t\t\tbreak\n\t\t}\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"worker did not become idle\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tif err := r.Enqueue(Job{Name: \"block\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatalf(\"enqueue with idle worker: err = %v, want nil\", err)\n\t}\n\t\u003c-started\n\tif err := r.Enqueue(Job{Name: \"next\", Run: func(context.Context) error { return nil }}); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {"
         }
@@ -20063,7 +20063,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "old_string": "func TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {",
             "new_string": "func TestZeroQueueAcceptsJobWhenWorkerIdle(t *testing.T) {\n\tr := NewRunner(1, 0, nil)\n\tr.Start()\n\trelease := make(chan struct{})\n\tstarted := make(chan struct{})\n\tdefer r.Stop()\n\tdefer close(release)\n\n\t// Wait until the worker is waiting for a job.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor {\n\t\tr.mu.Lock()\n\t\tidle := r.idle\n\t\tr.mu.Unlock()\n\t\tif idle == 1 {\n\t\t\tbreak\n\t\t}\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"worker did not become idle\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tif err := r.Enqueue(Job{Name: \"block\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatalf(\"enqueue with idle worker: err = %v, want nil\", err)\n\t}\n\t\u003c-started\n\tif err := r.Enqueue(Job{Name: \"next\", Run: func(context.Context) error { return nil }}); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {"
           }
@@ -20087,11 +20087,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
           "old_string": "func TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {",
           "new_string": "func TestZeroQueueAcceptsJobWhenWorkerIdle(t *testing.T) {\n\tr := NewRunner(1, 0, nil)\n\tr.Start()\n\trelease := make(chan struct{})\n\tstarted := make(chan struct{})\n\tdefer r.Stop()\n\tdefer close(release)\n\n\t// Wait until the worker is waiting for a job.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor {\n\t\tr.mu.Lock()\n\t\tidle := r.idle\n\t\tr.mu.Unlock()\n\t\tif idle == 1 {\n\t\t\tbreak\n\t\t}\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"worker did not become idle\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tif err := r.Enqueue(Job{Name: \"block\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatalf(\"enqueue with idle worker: err = %v, want nil\", err)\n\t}\n\t\u003c-started\n\tif err := r.Enqueue(Job{Name: \"next\", Run: func(context.Context) error { return nil }}); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -20112,11 +20112,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go",
             "old_string": "func TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {",
             "new_string": "func TestZeroQueueAcceptsJobWhenWorkerIdle(t *testing.T) {\n\tr := NewRunner(1, 0, nil)\n\tr.Start()\n\trelease := make(chan struct{})\n\tstarted := make(chan struct{})\n\tdefer r.Stop()\n\tdefer close(release)\n\n\t// Wait until the worker is waiting for a job.\n\tdeadline := time.Now().Add(5 * time.Second)\n\tfor {\n\t\tr.mu.Lock()\n\t\tidle := r.idle\n\t\tr.mu.Unlock()\n\t\tif idle == 1 {\n\t\t\tbreak\n\t\t}\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"worker did not become idle\")\n\t\t}\n\t\ttime.Sleep(time.Millisecond)\n\t}\n\n\tif err := r.Enqueue(Job{Name: \"block\", Run: func(context.Context) error {\n\t\tclose(started)\n\t\t\u003c-release\n\t\treturn nil\n\t}}); err != nil {\n\t\tt.Fatalf(\"enqueue with idle worker: err = %v, want nil\", err)\n\t}\n\t\u003c-started\n\tif err := r.Enqueue(Job{Name: \"next\", Run: func(context.Context) error { return nil }}); !errors.Is(err, ErrQueueFull) {\n\t\tt.Fatalf(\"err = %v, want ErrQueueFull\", err)\n\t}\n}\n\nfunc TestEnqueueAfterShutdownReturnsErrStopped(t *testing.T) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/internal/jobs/jobs_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -25112,7 +25112,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_1359d5e5809b",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
+      "cwd": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -25500,7 +25500,7 @@
         "id": "toolu_011a135Y9zq9h2ryHm2dvq6T",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
         }
       },
       "kind": "tool_call"
@@ -25521,7 +25521,7 @@
           "id": "toolu_011a135Y9zq9h2ryHm2dvq6T",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
           }
         }
       },
@@ -25620,7 +25620,7 @@
         "id": "toolu_011a135Y9zq9h2ryHm2dvq6T",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+          "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
         },
         "output": "1\t// Command tally runs the Tally API with the demo payment gateway, keeping its data in a snapshot file.\n2\t//\n3\t//\ttally -addr :8080 -data tally.json\n4\tpackage main\n5\t\n6\timport (\n7\t\t\"context\"\n8\t\t\"errors\"\n9\t\t\"flag\"\n10\t\t\"log/slog\"\n11\t\t\"net/http\"\n12\t\t\"os\"\n13\t\t\"os/signal\"\n14\t\t\"syscall\"\n15\t\t\"time\"\n16\t\n17\t\t\"example.com/tally/internal/api\"\n18\t\t\"example.com/tally/internal/clock\"\n19\t\t\"example.com/tally/internal/jobs\"\n20\t\t\"example.com/tally/internal/mail\"\n21\t\t\"example.com/tally/internal/payments\"\n22\t\t\"example.com/tally/internal/snapshot\"\n23\t\t\"example.com/tally/internal/store\"\n24\t\t\"example.com/tally/internal/subscriptions\"\n25\t\t\"example.com/tally/internal/webhooks\"\n26\t)\n27\t\n28\tfunc main() {\n29\t\taddr := flag.String(\"addr\", \":8080\", \"address to listen on\")\n30\t\tdata := flag.String(\"data\", \"tally.json\", \"snapshot file (created when missing)\")\n31\t\tflag.Parse()\n32\t\tlog := slog.New(slog.NewTextHandler(os.Stderr, nil))\n33\t\tclk := clock.Real{}\n34\t\n35\t\tst, err := snapshot.Load(*data)\n36\t\tswitch {\n37\t\tcase errors.Is(err, os.ErrNotExist):\n38\t\t\tst = store.New()\n39\t\t\tif err := seed(st, clk.Now(), log); err != nil {\n40\t\t\t\tlog.Error(\"seed\", \"err\", err)\n41\t\t\t\tos.Exit(1)\n42\t\t\t}\n43\t\tcase err != nil:\n44\t\t\tlog.Error(\"load snapshot\", \"err\", err)\n45\t\t\tos.Exit(1)\n46\t\t}\n47\t\n48\t\thooks := webhooks.New(webhooks.Options{Store: st, Clock: clk})\n49\t\tpay := \u0026payments.Service{Store: st, Gateway: \u0026payments.Fake{}, Clock: clk, Publisher: hooks}\n50\t\tsubs := \u0026subscriptions.Service{Store: st, Payments: pay, Clock: clk, Publisher: hooks}\n51\t\tsrv := api.New(st, api.Options{Clock: clk, Payments: pay, Subscriptions: subs, Webhooks: hooks, Mail: \u0026mail.Outbox{Log: log}, Logger: log})\n52\t\n53\t\trunner := jobs.NewRunner(4, 100, log)\n54\t\trunner.Start()\n55\t\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n56\t\tdefer stop()\n57\t\tgo func() {\n58\t\t\tt := time.NewTicker(30 * time.Second)\n59\t\t\tdefer t.Stop()\n60\t\t\tfor {\n61\t\t\t\tselect {\n62\t\t\t\tcase \u003c-ctx.Done():\n63\t\t\t\t\treturn\n64\t\t\t\tcase \u003c-t.C:\n65\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"renewals\", Run: func(ctx context.Context) error { _, err := subs.RenewDue(ctx); return err }})\n66\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"webhooks\", Run: func(ctx context.Context) error { _, err := hooks.RunDue(ctx); return err }})\n67\t\t\t\t}\n68\t\t\t}\n69\t\t}()\n70\t\n71\t\ths := \u0026http.Server{Addr: *addr, Handler: srv, ReadHeaderTimeout: 10 * time.Second}\n72\t\tgo func() {\n73\t\t\tlog.Info(\"listening\", \"addr\", *addr)\n74\t\t\tif err := hs.ListenAndServe(); err != nil \u0026\u0026 !errors.Is(err, http.ErrServerClosed) {\n75\t\t\t\tlog.Error(\"serve\", \"err\", err)\n76\t\t\t\tstop()\n77\t\t\t}\n78\t\t}()\n79\t\t\u003c-ctx.Done()\n80\t\tshutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n81\t\tdefer cancel()\n82\t\t_ = hs.Shutdown(shutdown)\n83\t\tif err := runner.Shutdown(shutdown); err != nil {\n84\t\t\tlog.Error(\"stop jobs\", \"err\", err)\n85\t\t}\n86\t\tif n := len(runner.Pending()); n \u003e 0 {\n87\t\t\tlog.Info(\"jobs not run\", \"count\", n)\n88\t\t}\n89\t\tif err := snapshot.Save(st, *data, clk.Now()); err != nil {\n90\t\t\tlog.Error(\"save snapshot\", \"err\", err)\n91\t\t\tos.Exit(1)\n92\t\t}\n93\t}\n94\t\n95\t// seed adds a demo organization with an owner and prints the owner's API key.\n96\tfunc seed(st *store.Store, now time.Time, log *slog.Logger) error {\n97\t\to, err := st.CreateOrg(\"Demo Co\", store.OrgTeam, \"UTC\", 0, now)\n98\t\tif err != nil {\n99\t\t\treturn err\n100\t\t}\n101\t\tu, err := st.CreateUser(\"owner@demo.example\", \"Demo Owner\", now)\n102\t\tif err != nil {\n103\t\t\treturn err\n104\t\t}\n105\t\tif _, err := st.AddMember(o.ID, u.ID, store.RoleOwner, now); err != nil {\n106\t\t\treturn err\n107\t\t}\n108\t\tk, err := st.CreateAPIKey(o.ID, u.ID, \"Demo key\", now)\n109\t\tif err != nil {\n110\t\t\treturn err\n111\t\t}\n112\t\tlog.Info(\"demo organization created\", \"org\", o.ID, \"api_key\", k.Token)\n113\t\treturn nil\n114\t}\n115\t"
       },
@@ -25642,7 +25642,7 @@
           "id": "toolu_011a135Y9zq9h2ryHm2dvq6T",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
+            "file_path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b/cmd/tally/main.go"
           },
           "output": "1\t// Command tally runs the Tally API with the demo payment gateway, keeping its data in a snapshot file.\n2\t//\n3\t//\ttally -addr :8080 -data tally.json\n4\tpackage main\n5\t\n6\timport (\n7\t\t\"context\"\n8\t\t\"errors\"\n9\t\t\"flag\"\n10\t\t\"log/slog\"\n11\t\t\"net/http\"\n12\t\t\"os\"\n13\t\t\"os/signal\"\n14\t\t\"syscall\"\n15\t\t\"time\"\n16\t\n17\t\t\"example.com/tally/internal/api\"\n18\t\t\"example.com/tally/internal/clock\"\n19\t\t\"example.com/tally/internal/jobs\"\n20\t\t\"example.com/tally/internal/mail\"\n21\t\t\"example.com/tally/internal/payments\"\n22\t\t\"example.com/tally/internal/snapshot\"\n23\t\t\"example.com/tally/internal/store\"\n24\t\t\"example.com/tally/internal/subscriptions\"\n25\t\t\"example.com/tally/internal/webhooks\"\n26\t)\n27\t\n28\tfunc main() {\n29\t\taddr := flag.String(\"addr\", \":8080\", \"address to listen on\")\n30\t\tdata := flag.String(\"data\", \"tally.json\", \"snapshot file (created when missing)\")\n31\t\tflag.Parse()\n32\t\tlog := slog.New(slog.NewTextHandler(os.Stderr, nil))\n33\t\tclk := clock.Real{}\n34\t\n35\t\tst, err := snapshot.Load(*data)\n36\t\tswitch {\n37\t\tcase errors.Is(err, os.ErrNotExist):\n38\t\t\tst = store.New()\n39\t\t\tif err := seed(st, clk.Now(), log); err != nil {\n40\t\t\t\tlog.Error(\"seed\", \"err\", err)\n41\t\t\t\tos.Exit(1)\n42\t\t\t}\n43\t\tcase err != nil:\n44\t\t\tlog.Error(\"load snapshot\", \"err\", err)\n45\t\t\tos.Exit(1)\n46\t\t}\n47\t\n48\t\thooks := webhooks.New(webhooks.Options{Store: st, Clock: clk})\n49\t\tpay := \u0026payments.Service{Store: st, Gateway: \u0026payments.Fake{}, Clock: clk, Publisher: hooks}\n50\t\tsubs := \u0026subscriptions.Service{Store: st, Payments: pay, Clock: clk, Publisher: hooks}\n51\t\tsrv := api.New(st, api.Options{Clock: clk, Payments: pay, Subscriptions: subs, Webhooks: hooks, Mail: \u0026mail.Outbox{Log: log}, Logger: log})\n52\t\n53\t\trunner := jobs.NewRunner(4, 100, log)\n54\t\trunner.Start()\n55\t\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n56\t\tdefer stop()\n57\t\tgo func() {\n58\t\t\tt := time.NewTicker(30 * time.Second)\n59\t\t\tdefer t.Stop()\n60\t\t\tfor {\n61\t\t\t\tselect {\n62\t\t\t\tcase \u003c-ctx.Done():\n63\t\t\t\t\treturn\n64\t\t\t\tcase \u003c-t.C:\n65\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"renewals\", Run: func(ctx context.Context) error { _, err := subs.RenewDue(ctx); return err }})\n66\t\t\t\t\t_ = runner.Enqueue(jobs.Job{Name: \"webhooks\", Run: func(ctx context.Context) error { _, err := hooks.RunDue(ctx); return err }})\n67\t\t\t\t}\n68\t\t\t}\n69\t\t}()\n70\t\n71\t\ths := \u0026http.Server{Addr: *addr, Handler: srv, ReadHeaderTimeout: 10 * time.Second}\n72\t\tgo func() {\n73\t\t\tlog.Info(\"listening\", \"addr\", *addr)\n74\t\t\tif err := hs.ListenAndServe(); err != nil \u0026\u0026 !errors.Is(err, http.ErrServerClosed) {\n75\t\t\t\tlog.Error(\"serve\", \"err\", err)\n76\t\t\t\tstop()\n77\t\t\t}\n78\t\t}()\n79\t\t\u003c-ctx.Done()\n80\t\tshutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n81\t\tdefer cancel()\n82\t\t_ = hs.Shutdown(shutdown)\n83\t\tif err := runner.Shutdown(shutdown); err != nil {\n84\t\t\tlog.Error(\"stop jobs\", \"err\", err)\n85\t\t}\n86\t\tif n := len(runner.Pending()); n \u003e 0 {\n87\t\t\tlog.Info(\"jobs not run\", \"count\", n)\n88\t\t}\n89\t\tif err := snapshot.Save(st, *data, clk.Now()); err != nil {\n90\t\t\tlog.Error(\"save snapshot\", \"err\", err)\n91\t\t\tos.Exit(1)\n92\t\t}\n93\t}\n94\t\n95\t// seed adds a demo organization with an owner and prints the owner's API key.\n96\tfunc seed(st *store.Store, now time.Time, log *slog.Logger) error {\n97\t\to, err := st.CreateOrg(\"Demo Co\", store.OrgTeam, \"UTC\", 0, now)\n98\t\tif err != nil {\n99\t\t\treturn err\n100\t\t}\n101\t\tu, err := st.CreateUser(\"owner@demo.example\", \"Demo Owner\", now)\n102\t\tif err != nil {\n103\t\t\treturn err\n104\t\t}\n105\t\tif _, err := st.AddMember(o.ID, u.ID, store.RoleOwner, now); err != nil {\n106\t\t\treturn err\n107\t\t}\n108\t\tk, err := st.CreateAPIKey(o.ID, u.ID, \"Demo key\", now)\n109\t\tif err != nil {\n110\t\t\treturn err\n111\t\t}\n112\t\tlog.Info(\"demo organization created\", \"org\", o.ID, \"api_key\", k.Token)\n113\t\treturn nil\n114\t}\n115\t"
         }
@@ -29311,7 +29311,7 @@
     "projectId": "prj_ce99d65feec3",
     "taskId": "task_4dd522e6896b",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b"
+      "path": "<scratchpad>/trialwork/none-1-1/tally-graceful-shutdown-D-1/data/worktrees/prj_ce99d65feec3/task_4dd522e6896b"
     }
   },
   {

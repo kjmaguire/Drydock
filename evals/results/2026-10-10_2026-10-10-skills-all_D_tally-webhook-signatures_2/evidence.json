@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 480ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/build_50f78817ea57.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/build_50f78817ea57.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 390ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/test_f225e90ac64f.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/test_f225e90ac64f.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 340ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/lint_864351fa52b7.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/lint_864351fa52b7.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/secrets_88103778182c.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/checks/secrets_88103778182c.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "7 file(s), +303 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/runs/run_ee5959612110/evidence/task.diff",
     "data": {
       "Files": 7,
       "Insertions": 303,

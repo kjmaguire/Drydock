@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 500ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/build_4b0be0d76533.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/build_4b0be0d76533.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 460ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/test_870f0c21eada.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/test_870f0c21eada.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 370ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/lint_bcc93c7d1928.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/lint_bcc93c7d1928.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/secrets_27f6d6ebf272.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/secrets_27f6d6ebf272.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "10 file(s), +268 -15",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/evidence/task.diff",
     "data": {
       "Files": 10,
       "Insertions": 268,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 510ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/build_e44d3e3ff840.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/build_e44d3e3ff840.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 400ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/test_3c1d9b1faf80.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/test_3c1d9b1faf80.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 360ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/lint_9169f3be45d3.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/lint_9169f3be45d3.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/secrets_e2c52135e575.log",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/checks/secrets_e2c52135e575.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "10 file(s), +289 -15",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-1-1/tally-tiered-pricing-D-1/data/runs/run_d6e9a155d0dc/evidence/task.diff",
     "data": {
       "Files": 10,
       "Insertions": 289,

@@ -590,7 +590,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_e29c157c0239",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
+      "cwd": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -1233,7 +1233,7 @@
         "id": "toolu_01N4GUntiSZv668YAr6brCYG",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
         }
       },
       "kind": "tool_call"
@@ -1254,7 +1254,7 @@
           "id": "toolu_01N4GUntiSZv668YAr6brCYG",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
           }
         }
       },
@@ -1275,7 +1275,7 @@
         "id": "toolu_01N4GUntiSZv668YAr6brCYG",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
         },
         "output": "1\tpackage api\n2\t\n3\timport (\n4\t\t\"encoding/csv\"\n5\t\t\"net/http\"\n6\t\t\"time\"\n7\t\n8\t\t\"example.com/tally/internal/auth\"\n9\t\t\"example.com/tally/internal/store\"\n10\t)\n11\t\n12\tfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n13\t\n14\t// listCustomers lists the organization's customers, oldest first: all of them, those matching ?q= (name or email contains\n15\t// it, ignoring case), or the one with exactly ?email=.\n16\tfunc (s *Server) listCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n17\t\tpg, ok := parsePage(w, r)\n18\t\tif !ok {\n19\t\t\treturn\n20\t\t}\n21\t\tq := r.URL.Query()\n22\t\tvar cs []store.Customer\n23\t\tswitch {\n24\t\tcase q.Get(\"email\") != \"\":\n25\t\t\tcs = []store.Customer{}\n26\t\t\tif c, ok := s.store.FindCustomerByEmail(p.OrgID, q.Get(\"email\")); ok {\n27\t\t\t\tcs = append(cs, c)\n28\t\t\t}\n29\t\tcase q.Get(\"q\") != \"\":\n30\t\t\tcs = s.store.SearchCustomers(p.OrgID, q.Get(\"q\"))\n31\t\tdefault:\n32\t\t\tcs = s.store.Customers(p.OrgID)\n33\t\t}\n34\t\titems, next := pageOf(cs, customerKey, pg)\n35\t\twriteJSON(w, http.StatusOK, list{Items: items, NextCursor: next})\n36\t}\n37\t\n38\tfunc (s *Server) createCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n39\t\tvar in struct {\n40\t\t\tName                 string            `json:\"name\"`\n41\t\t\tEmail                string            `json:\"email\"`\n42\t\t\tDefaultPaymentMethod string            `json:\"default_payment_method\"`\n43\t\t\tMetadata             map[string]string `json:\"metadata\"`\n44\t\t}\n45\t\tif !decode(w, r, \u0026in) {\n46\t\t\treturn\n47\t\t}\n48\t\tc, err := s.store.CreateCustomer(p.OrgID, in.Name, in.Email, s.clock.Now())\n49\t\tif err != nil {\n50\t\t\ts.storeError(w, err)\n51\t\t\treturn\n52\t\t}\n53\t\tif in.DefaultPaymentMethod != \"\" || len(in.Metadata) \u003e 0 {\n54\t\t\tc, err = s.store.UpdateCustomer(p.OrgID, c.ID, func(c *store.Customer) error {\n55\t\t\t\tc.DefaultPaymentMethod, c.Metadata = in.DefaultPaymentMethod, in.Metadata\n56\t\t\t\treturn nil\n57\t\t\t})\n58\t\t\tif err != nil {\n59\t\t\t\t_ = s.store.DeleteCustomer(p.OrgID, c.ID)\n60\t\t\t\ts.storeError(w, err)\n61\t\t\t\treturn\n62\t\t\t}\n63\t\t}\n64\t\ts.publish(r.Context(), p.OrgID, \"customer.created\", c)\n65\t\twriteJSON(w, http.StatusCreated, c)\n66\t}\n67\t\n68\tfunc (s *Server) getCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n69\t\tc, ok := s.store.Customer(p.OrgID, r.PathValue(\"id\"))\n70\t\tif !ok {\n71\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such customer\")\n72\t\t\treturn\n73\t\t}\n74\t\twriteJSON(w, http.StatusOK, c)\n75\t}\n76\t\n77\tfunc (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n78\t\tvar in struct {\n79\t\t\tName                 *string            `json:\"name\"`\n80\t\t\tEmail                *string            `json:\"email\"`\n81\t\t\tDefaultPaymentMethod *string            `json:\"default_payment_method\"`\n82\t\t\tMetadata             *map[string]string `json:\"metadata\"`\n83\t\t}\n84\t\tif !decode(w, r, \u0026in) {\n85\t\t\treturn\n86\t\t}\n87\t\tc, err := s.store.UpdateCustomer(p.OrgID, r.PathValue(\"id\"), func(c *store.Customer) error {\n88\t\t\tif in.Name != nil {\n89\t\t\t\tc.Name = *in.Name\n90\t\t\t}\n91\t\t\tif in.Email != nil {\n92\t\t\t\tc.Email = *in.Email\n93\t\t\t}\n94\t\t\tif in.DefaultPaymentMethod != nil {\n95\t\t\t\tc.DefaultPaymentMethod = *in.DefaultPaymentMethod\n96\t\t\t}\n97\t\t\tif in.Metadata != nil {\n98\t\t\t\tc.Metadata = *in.Metadata\n99\t\t\t}\n100\t\t\treturn nil\n101\t\t})\n102\t\tif err != nil {\n103\t\t\ts.storeError(w, err)\n104\t\t\treturn\n105\t\t}\n106\t\ts.publish(r.Context(), p.OrgID, \"customer.updated\", c)\n107\t\twriteJSON(w, http.StatusOK, c)\n108\t}\n109\t\n110\tfunc (s *Server) deleteCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n111\t\tid := r.PathValue(\"id\")\n112\t\tif err := s.store.DeleteCustomer(p.OrgID, id); err != nil {\n113\t\t\ts.storeError(w, err)\n114\t\t\treturn\n115\t\t}\n116\t\ts.publish(r.Context(), p.OrgID, \"customer.deleted\", map[string]string{\"id\": id})\n117\t\tw.WriteHeader(http.StatusNoContent)\n118\t}\n119\t\n120\t// exportCustomers answers the organization's customers as CSV, oldest first.\n121\tfunc (s *Server) exportCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n122\t\tw.Header().Set(\"Content-Type\", \"text/csv; charset=utf-8\")\n123\t\tw.Header().Set(\"Content-Disposition\", `attachment; filename=\"customers.csv\"`)\n124\t\tcw := csv.NewWriter(w)\n125\t\tcw.UseCRLF = true\n126\t\t_ = cw.Write([]string{\"id\", \"name\", \"email\", \"created_at\"})\n127\t\tfor _, c := range s.store.Customers(p.OrgID) {\n128\t\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n129\t\t}\n130\t\tcw.Flush()\n131\t}\n132\t"
       },
@@ -1297,7 +1297,7 @@
           "id": "toolu_01N4GUntiSZv668YAr6brCYG",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go"
           },
           "output": "1\tpackage api\n2\t\n3\timport (\n4\t\t\"encoding/csv\"\n5\t\t\"net/http\"\n6\t\t\"time\"\n7\t\n8\t\t\"example.com/tally/internal/auth\"\n9\t\t\"example.com/tally/internal/store\"\n10\t)\n11\t\n12\tfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n13\t\n14\t// listCustomers lists the organization's customers, oldest first: all of them, those matching ?q= (name or email contains\n15\t// it, ignoring case), or the one with exactly ?email=.\n16\tfunc (s *Server) listCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n17\t\tpg, ok := parsePage(w, r)\n18\t\tif !ok {\n19\t\t\treturn\n20\t\t}\n21\t\tq := r.URL.Query()\n22\t\tvar cs []store.Customer\n23\t\tswitch {\n24\t\tcase q.Get(\"email\") != \"\":\n25\t\t\tcs = []store.Customer{}\n26\t\t\tif c, ok := s.store.FindCustomerByEmail(p.OrgID, q.Get(\"email\")); ok {\n27\t\t\t\tcs = append(cs, c)\n28\t\t\t}\n29\t\tcase q.Get(\"q\") != \"\":\n30\t\t\tcs = s.store.SearchCustomers(p.OrgID, q.Get(\"q\"))\n31\t\tdefault:\n32\t\t\tcs = s.store.Customers(p.OrgID)\n33\t\t}\n34\t\titems, next := pageOf(cs, customerKey, pg)\n35\t\twriteJSON(w, http.StatusOK, list{Items: items, NextCursor: next})\n36\t}\n37\t\n38\tfunc (s *Server) createCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n39\t\tvar in struct {\n40\t\t\tName                 string            `json:\"name\"`\n41\t\t\tEmail                string            `json:\"email\"`\n42\t\t\tDefaultPaymentMethod string            `json:\"default_payment_method\"`\n43\t\t\tMetadata             map[string]string `json:\"metadata\"`\n44\t\t}\n45\t\tif !decode(w, r, \u0026in) {\n46\t\t\treturn\n47\t\t}\n48\t\tc, err := s.store.CreateCustomer(p.OrgID, in.Name, in.Email, s.clock.Now())\n49\t\tif err != nil {\n50\t\t\ts.storeError(w, err)\n51\t\t\treturn\n52\t\t}\n53\t\tif in.DefaultPaymentMethod != \"\" || len(in.Metadata) \u003e 0 {\n54\t\t\tc, err = s.store.UpdateCustomer(p.OrgID, c.ID, func(c *store.Customer) error {\n55\t\t\t\tc.DefaultPaymentMethod, c.Metadata = in.DefaultPaymentMethod, in.Metadata\n56\t\t\t\treturn nil\n57\t\t\t})\n58\t\t\tif err != nil {\n59\t\t\t\t_ = s.store.DeleteCustomer(p.OrgID, c.ID)\n60\t\t\t\ts.storeError(w, err)\n61\t\t\t\treturn\n62\t\t\t}\n63\t\t}\n64\t\ts.publish(r.Context(), p.OrgID, \"customer.created\", c)\n65\t\twriteJSON(w, http.StatusCreated, c)\n66\t}\n67\t\n68\tfunc (s *Server) getCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n69\t\tc, ok := s.store.Customer(p.OrgID, r.PathValue(\"id\"))\n70\t\tif !ok {\n71\t\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such customer\")\n72\t\t\treturn\n73\t\t}\n74\t\twriteJSON(w, http.StatusOK, c)\n75\t}\n76\t\n77\tfunc (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n78\t\tvar in struct {\n79\t\t\tName                 *string            `json:\"name\"`\n80\t\t\tEmail                *string            `json:\"email\"`\n81\t\t\tDefaultPaymentMethod *string            `json:\"default_payment_method\"`\n82\t\t\tMetadata             *map[string]string `json:\"metadata\"`\n83\t\t}\n84\t\tif !decode(w, r, \u0026in) {\n85\t\t\treturn\n86\t\t}\n87\t\tc, err := s.store.UpdateCustomer(p.OrgID, r.PathValue(\"id\"), func(c *store.Customer) error {\n88\t\t\tif in.Name != nil {\n89\t\t\t\tc.Name = *in.Name\n90\t\t\t}\n91\t\t\tif in.Email != nil {\n92\t\t\t\tc.Email = *in.Email\n93\t\t\t}\n94\t\t\tif in.DefaultPaymentMethod != nil {\n95\t\t\t\tc.DefaultPaymentMethod = *in.DefaultPaymentMethod\n96\t\t\t}\n97\t\t\tif in.Metadata != nil {\n98\t\t\t\tc.Metadata = *in.Metadata\n99\t\t\t}\n100\t\t\treturn nil\n101\t\t})\n102\t\tif err != nil {\n103\t\t\ts.storeError(w, err)\n104\t\t\treturn\n105\t\t}\n106\t\ts.publish(r.Context(), p.OrgID, \"customer.updated\", c)\n107\t\twriteJSON(w, http.StatusOK, c)\n108\t}\n109\t\n110\tfunc (s *Server) deleteCustomer(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n111\t\tid := r.PathValue(\"id\")\n112\t\tif err := s.store.DeleteCustomer(p.OrgID, id); err != nil {\n113\t\t\ts.storeError(w, err)\n114\t\t\treturn\n115\t\t}\n116\t\ts.publish(r.Context(), p.OrgID, \"customer.deleted\", map[string]string{\"id\": id})\n117\t\tw.WriteHeader(http.StatusNoContent)\n118\t}\n119\t\n120\t// exportCustomers answers the organization's customers as CSV, oldest first.\n121\tfunc (s *Server) exportCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n122\t\tw.Header().Set(\"Content-Type\", \"text/csv; charset=utf-8\")\n123\t\tw.Header().Set(\"Content-Disposition\", `attachment; filename=\"customers.csv\"`)\n124\t\tcw := csv.NewWriter(w)\n125\t\tcw.UseCRLF = true\n126\t\t_ = cw.Write([]string{\"id\", \"name\", \"email\", \"created_at\"})\n127\t\tfor _, c := range s.store.Customers(p.OrgID) {\n128\t\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n129\t\t}\n130\t\tcw.Flush()\n131\t}\n132\t"
         }
@@ -1332,7 +1332,7 @@
         "id": "toolu_01LArhGyi1kAcHE4Yk1xRED8",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
         }
       },
       "kind": "tool_call"
@@ -1353,7 +1353,7 @@
           "id": "toolu_01LArhGyi1kAcHE4Yk1xRED8",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
           }
         }
       },
@@ -1374,7 +1374,7 @@
         "id": "toolu_01LArhGyi1kAcHE4Yk1xRED8",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
         },
         "output": "1\tpackage store\n2\t\n3\timport (\n4\t\t\"sort\"\n5\t\t\"strings\"\n6\t\t\"time\"\n7\t)\n8\t\n9\t// CreateCustomer adds a customer to an organization. A customer's email address is unique within the organization,\n10\t// ignoring case.\n11\tfunc (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Customer, error) {\n12\t\tname, email = strings.TrimSpace(name), strings.TrimSpace(email)\n13\t\tif name == \"\" || !validEmail(email) {\n14\t\t\treturn Customer{}, invalid(\"a customer needs a name and a valid email address\")\n15\t\t}\n16\t\ts.mu.Lock()\n17\t\tdefer s.mu.Unlock()\n18\t\tif _, ok := s.orgs[orgID]; !ok {\n19\t\t\treturn Customer{}, ErrNotFound\n20\t\t}\n21\t\tkey := normEmail(email)\n22\t\tif id, ok := s.customersByEmail[key]; ok \u0026\u0026 s.customers[id].OrgID == orgID {\n23\t\t\treturn Customer{}, ErrEmailTaken\n24\t\t}\n25\t\tc := Customer{ID: s.newID(\"cus\"), OrgID: orgID, Name: name, Email: email, CreatedAt: now.UTC()}\n26\t\ts.customers[c.ID] = c\n27\t\ts.customersByEmail[key] = c.ID\n28\t\treturn c, nil\n29\t}\n30\t\n31\t// Customer returns one of an organization's customers.\n32\tfunc (s *Store) Customer(orgID, id string) (Customer, bool) {\n33\t\ts.mu.Lock()\n34\t\tdefer s.mu.Unlock()\n35\t\tc, ok := s.customers[id]\n36\t\tif !ok || c.OrgID != orgID {\n37\t\t\treturn Customer{}, false\n38\t\t}\n39\t\treturn copyCustomer(c), true\n40\t}\n41\t\n42\t// CustomerByID returns a customer of any organization (background jobs and the admin tool).\n43\tfunc (s *Store) CustomerByID(id string) (Customer, bool) {\n44\t\ts.mu.Lock()\n45\t\tdefer s.mu.Unlock()\n46\t\tc, ok := s.customers[id]\n47\t\treturn copyCustomer(c), ok\n48\t}\n49\t\n50\t// Customers returns an organization's customers, oldest first.\n51\tfunc (s *Store) Customers(orgID string) []Customer {\n52\t\ts.mu.Lock()\n53\t\tdefer s.mu.Unlock()\n54\t\tout := []Customer{}\n55\t\tfor _, c := range s.customers {\n56\t\t\tif c.OrgID == orgID {\n57\t\t\t\tout = append(out, copyCustomer(c))\n58\t\t\t}\n59\t\t}\n60\t\tsortCustomers(out)\n61\t\treturn out\n62\t}\n63\t\n64\t// SearchCustomers returns an organization's customers whose name or email contains q, ignoring case, oldest first.\n65\tfunc (s *Store) SearchCustomers(orgID, q string) []Customer {\n66\t\tq = strings.ToLower(strings.TrimSpace(q))\n67\t\tout := []Customer{}\n68\t\tfor _, c := range s.Customers(orgID) {\n69\t\t\tif strings.Contains(strings.ToLower(c.Name), q) || strings.Contains(strings.ToLower(c.Email), q) {\n70\t\t\t\tout = append(out, c)\n71\t\t\t}\n72\t\t}\n73\t\treturn out\n74\t}\n75\t\n76\t// FindCustomerByEmail returns the organization's customer with this email address, ignoring case.\n77\tfunc (s *Store) FindCustomerByEmail(orgID, email string) (Customer, bool) {\n78\t\ts.mu.Lock()\n79\t\tdefer s.mu.Unlock()\n80\t\tid, ok := s.customersByEmail[normEmail(email)]\n81\t\tif !ok {\n82\t\t\treturn Customer{}, false\n83\t\t}\n84\t\treturn copyCustomer(s.customers[id]), true\n85\t}\n86\t\n87\t// UpdateCustomer changes a customer with f, which may refuse with an error. The ID and organization cannot change.\n88\tfunc (s *Store) UpdateCustomer(orgID, id string, f func(*Customer) error) (Customer, error) {\n89\t\ts.mu.Lock()\n90\t\tdefer s.mu.Unlock()\n91\t\told, ok := s.customers[id]\n92\t\tif !ok || old.OrgID != orgID {\n93\t\t\treturn Customer{}, ErrNotFound\n94\t\t}\n95\t\tc := copyCustomer(old)\n96\t\tif err := f(\u0026c); err != nil {\n97\t\t\treturn Customer{}, err\n98\t\t}\n99\t\tc.ID, c.OrgID, c.CreatedAt = old.ID, old.OrgID, old.CreatedAt\n100\t\tc.Name, c.Email = strings.TrimSpace(c.Name), strings.TrimSpace(c.Email)\n101\t\tif c.Name == \"\" || !validEmail(c.Email) {\n102\t\t\treturn Customer{}, invalid(\"a customer needs a name and a valid email address\")\n103\t\t}\n104\t\tif c.DefaultPaymentMethod != \"\" \u0026\u0026 !strings.HasPrefix(c.DefaultPaymentMethod, \"pm_\") {\n105\t\t\treturn Customer{}, invalid(\"a payment method looks like pm_...\")\n106\t\t}\n107\t\tif newKey := normEmail(c.Email); newKey != normEmail(old.Email) {\n108\t\t\tif other, ok := s.customersByEmail[newKey]; ok \u0026\u0026 s.customers[other].OrgID == orgID {\n109\t\t\t\treturn Customer{}, ErrEmailTaken\n110\t\t\t}\n111\t\t\tdelete(s.customersByEmail, normEmail(old.Email))\n112\t\t\ts.customersByEmail[newKey] = c.ID\n113\t\t}\n114\t\ts.customers[id] = c\n115\t\treturn copyCustomer(c), nil\n116\t}\n117\t\n118\t// DeleteCustomer removes a customer.\n119\tfunc (s *Store) DeleteCustomer(orgID, id string) error {\n120\t\ts.mu.Lock()\n121\t\tdefer s.mu.Unlock()\n122\t\tc, ok := s.customers[id]\n123\t\tif !ok || c.OrgID != orgID {\n124\t\t\treturn ErrNotFound\n125\t\t}\n126\t\tdelete(s.customers, id)\n127\t\tif s.customersByEmail[normEmail(c.Email)] == id {\n128\t\t\tdelete(s.customersByEmail, normEmail(c.Email))\n129\t\t}\n130\t\treturn nil\n131\t}\n132\t\n133\tfunc copyCustomer(c Customer) Customer {\n134\t\tif c.Metadata != nil {\n135\t\t\tm := make(map[string]string, len(c.Metadata))\n136\t\t\tfor k, v := range c.Metadata {\n137\t\t\t\tm[k] = v\n138\t\t\t}\n139\t\t\tc.Metadata = m\n140\t\t}\n141\t\treturn c\n142\t}\n143\t\n144\tfunc sortCustomers(cs []Customer) {\n145\t\tsort.Slice(cs, func(i, j int) bool {\n146\t\t\tif !cs[i].CreatedAt.Equal(cs[j].CreatedAt) {\n147\t\t\t\treturn cs[i].CreatedAt.Before(cs[j].CreatedAt)\n148\t\t\t}\n149\t\t\treturn cs[i].ID \u003c cs[j].ID\n150\t\t})\n151\t}\n152\t"
       },
@@ -1396,7 +1396,7 @@
           "id": "toolu_01LArhGyi1kAcHE4Yk1xRED8",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go"
           },
           "output": "1\tpackage store\n2\t\n3\timport (\n4\t\t\"sort\"\n5\t\t\"strings\"\n6\t\t\"time\"\n7\t)\n8\t\n9\t// CreateCustomer adds a customer to an organization. A customer's email address is unique within the organization,\n10\t// ignoring case.\n11\tfunc (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Customer, error) {\n12\t\tname, email = strings.TrimSpace(name), strings.TrimSpace(email)\n13\t\tif name == \"\" || !validEmail(email) {\n14\t\t\treturn Customer{}, invalid(\"a customer needs a name and a valid email address\")\n15\t\t}\n16\t\ts.mu.Lock()\n17\t\tdefer s.mu.Unlock()\n18\t\tif _, ok := s.orgs[orgID]; !ok {\n19\t\t\treturn Customer{}, ErrNotFound\n20\t\t}\n21\t\tkey := normEmail(email)\n22\t\tif id, ok := s.customersByEmail[key]; ok \u0026\u0026 s.customers[id].OrgID == orgID {\n23\t\t\treturn Customer{}, ErrEmailTaken\n24\t\t}\n25\t\tc := Customer{ID: s.newID(\"cus\"), OrgID: orgID, Name: name, Email: email, CreatedAt: now.UTC()}\n26\t\ts.customers[c.ID] = c\n27\t\ts.customersByEmail[key] = c.ID\n28\t\treturn c, nil\n29\t}\n30\t\n31\t// Customer returns one of an organization's customers.\n32\tfunc (s *Store) Customer(orgID, id string) (Customer, bool) {\n33\t\ts.mu.Lock()\n34\t\tdefer s.mu.Unlock()\n35\t\tc, ok := s.customers[id]\n36\t\tif !ok || c.OrgID != orgID {\n37\t\t\treturn Customer{}, false\n38\t\t}\n39\t\treturn copyCustomer(c), true\n40\t}\n41\t\n42\t// CustomerByID returns a customer of any organization (background jobs and the admin tool).\n43\tfunc (s *Store) CustomerByID(id string) (Customer, bool) {\n44\t\ts.mu.Lock()\n45\t\tdefer s.mu.Unlock()\n46\t\tc, ok := s.customers[id]\n47\t\treturn copyCustomer(c), ok\n48\t}\n49\t\n50\t// Customers returns an organization's customers, oldest first.\n51\tfunc (s *Store) Customers(orgID string) []Customer {\n52\t\ts.mu.Lock()\n53\t\tdefer s.mu.Unlock()\n54\t\tout := []Customer{}\n55\t\tfor _, c := range s.customers {\n56\t\t\tif c.OrgID == orgID {\n57\t\t\t\tout = append(out, copyCustomer(c))\n58\t\t\t}\n59\t\t}\n60\t\tsortCustomers(out)\n61\t\treturn out\n62\t}\n63\t\n64\t// SearchCustomers returns an organization's customers whose name or email contains q, ignoring case, oldest first.\n65\tfunc (s *Store) SearchCustomers(orgID, q string) []Customer {\n66\t\tq = strings.ToLower(strings.TrimSpace(q))\n67\t\tout := []Customer{}\n68\t\tfor _, c := range s.Customers(orgID) {\n69\t\t\tif strings.Contains(strings.ToLower(c.Name), q) || strings.Contains(strings.ToLower(c.Email), q) {\n70\t\t\t\tout = append(out, c)\n71\t\t\t}\n72\t\t}\n73\t\treturn out\n74\t}\n75\t\n76\t// FindCustomerByEmail returns the organization's customer with this email address, ignoring case.\n77\tfunc (s *Store) FindCustomerByEmail(orgID, email string) (Customer, bool) {\n78\t\ts.mu.Lock()\n79\t\tdefer s.mu.Unlock()\n80\t\tid, ok := s.customersByEmail[normEmail(email)]\n81\t\tif !ok {\n82\t\t\treturn Customer{}, false\n83\t\t}\n84\t\treturn copyCustomer(s.customers[id]), true\n85\t}\n86\t\n87\t// UpdateCustomer changes a customer with f, which may refuse with an error. The ID and organization cannot change.\n88\tfunc (s *Store) UpdateCustomer(orgID, id string, f func(*Customer) error) (Customer, error) {\n89\t\ts.mu.Lock()\n90\t\tdefer s.mu.Unlock()\n91\t\told, ok := s.customers[id]\n92\t\tif !ok || old.OrgID != orgID {\n93\t\t\treturn Customer{}, ErrNotFound\n94\t\t}\n95\t\tc := copyCustomer(old)\n96\t\tif err := f(\u0026c); err != nil {\n97\t\t\treturn Customer{}, err\n98\t\t}\n99\t\tc.ID, c.OrgID, c.CreatedAt = old.ID, old.OrgID, old.CreatedAt\n100\t\tc.Name, c.Email = strings.TrimSpace(c.Name), strings.TrimSpace(c.Email)\n101\t\tif c.Name == \"\" || !validEmail(c.Email) {\n102\t\t\treturn Customer{}, invalid(\"a customer needs a name and a valid email address\")\n103\t\t}\n104\t\tif c.DefaultPaymentMethod != \"\" \u0026\u0026 !strings.HasPrefix(c.DefaultPaymentMethod, \"pm_\") {\n105\t\t\treturn Customer{}, invalid(\"a payment method looks like pm_...\")\n106\t\t}\n107\t\tif newKey := normEmail(c.Email); newKey != normEmail(old.Email) {\n108\t\t\tif other, ok := s.customersByEmail[newKey]; ok \u0026\u0026 s.customers[other].OrgID == orgID {\n109\t\t\t\treturn Customer{}, ErrEmailTaken\n110\t\t\t}\n111\t\t\tdelete(s.customersByEmail, normEmail(old.Email))\n112\t\t\ts.customersByEmail[newKey] = c.ID\n113\t\t}\n114\t\ts.customers[id] = c\n115\t\treturn copyCustomer(c), nil\n116\t}\n117\t\n118\t// DeleteCustomer removes a customer.\n119\tfunc (s *Store) DeleteCustomer(orgID, id string) error {\n120\t\ts.mu.Lock()\n121\t\tdefer s.mu.Unlock()\n122\t\tc, ok := s.customers[id]\n123\t\tif !ok || c.OrgID != orgID {\n124\t\t\treturn ErrNotFound\n125\t\t}\n126\t\tdelete(s.customers, id)\n127\t\tif s.customersByEmail[normEmail(c.Email)] == id {\n128\t\t\tdelete(s.customersByEmail, normEmail(c.Email))\n129\t\t}\n130\t\treturn nil\n131\t}\n132\t\n133\tfunc copyCustomer(c Customer) Customer {\n134\t\tif c.Metadata != nil {\n135\t\t\tm := make(map[string]string, len(c.Metadata))\n136\t\t\tfor k, v := range c.Metadata {\n137\t\t\t\tm[k] = v\n138\t\t\t}\n139\t\t\tc.Metadata = m\n140\t\t}\n141\t\treturn c\n142\t}\n143\t\n144\tfunc sortCustomers(cs []Customer) {\n145\t\tsort.Slice(cs, func(i, j int) bool {\n146\t\t\tif !cs[i].CreatedAt.Equal(cs[j].CreatedAt) {\n147\t\t\t\treturn cs[i].CreatedAt.Before(cs[j].CreatedAt)\n148\t\t\t}\n149\t\t\treturn cs[i].ID \u003c cs[j].ID\n150\t\t})\n151\t}\n152\t"
         }
@@ -4251,7 +4251,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
           "old_string": "// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {",
           "new_string": "// CustomerRow is one customer to import, before it has an ID.\ntype CustomerRow struct {\n\tName                 string\n\tEmail                string\n\tDefaultPaymentMethod string\n\tMetadata             map[string]string\n}\n\n// RowProblem says why the row at Index of an import cannot be created: the first of missing_name, invalid_email,\n// invalid_payment_method, email_taken and duplicate_email that applies.\ntype RowProblem struct {\n\tIndex int\n\tCode  string\n}\n\n// ImportCustomers creates rows as an organization's customers, in order, or none of them. When any row has a problem,\n// nothing is created and every problem is returned, in order. With dryRun, the rows are checked but nothing is created.\n// A row's email may not be used by one of the organization's customers or by an earlier row, ignoring case.\nfunc (s *Store) ImportCustomers(orgID string, rows []CustomerRow, now time.Time, dryRun bool) ([]Customer, []RowProblem, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn nil, nil, ErrNotFound\n\t}\n\t// The email index is shared by all organizations, so the organization's own emails are collected from its customers.\n\texisting := map[string]bool{}\n\tfor _, c := range s.customers {\n\t\tif c.OrgID == orgID {\n\t\t\texisting[normEmail(c.Email)] = true\n\t\t}\n\t}\n\tearlier := map[string]bool{}\n\tvar problems []RowProblem\n\tfor i, row := range rows {\n\t\tname, email := strings.TrimSpace(row.Name), strings.TrimSpace(row.Email)\n\t\tkey := normEmail(email)\n\t\tcode := \"\"\n\t\tswitch {\n\t\tcase name == \"\":\n\t\t\tcode = \"missing_name\"\n\t\tcase !validEmail(email):\n\t\t\tcode = \"invalid_email\"\n\t\tcase row.DefaultPaymentMethod != \"\" \u0026\u0026 !strings.HasPrefix(row.DefaultPaymentMethod, \"pm_\"):\n\t\t\tcode = \"invalid_payment_method\"\n\t\tcase existing[key]:\n\t\t\tcode = \"email_taken\"\n\t\tcase earlier[key]:\n\t\t\tcode = \"duplicate_email\"\n\t\t}\n\t\tif code != \"\" {\n\t\t\tproblems = append(problems, RowProblem{Index: i, Code: code})\n\t\t}\n\t\tearlier[key] = true\n\t}\n\tif len(problems) \u003e 0 || dryRun {\n\t\treturn nil, problems, nil\n\t}\n\tout := make([]Customer, 0, len(rows))\n\tfor _, row := range rows {\n\t\tc := Customer{ID: s.newID(\"cus\"), OrgID: orgID, Name: strings.TrimSpace(row.Name), Email: strings.TrimSpace(row.Email),\n\t\t\tDefaultPaymentMethod: row.DefaultPaymentMethod, Metadata: row.Metadata, CreatedAt: now.UTC()}\n\t\ts.customers[c.ID] = c\n\t\ts.customersByEmail[normEmail(c.Email)] = c.ID\n\t\tout = append(out, copyCustomer(c))\n\t}\n\treturn out, nil, nil\n}\n\n// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {"
         }
@@ -4275,7 +4275,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
             "old_string": "// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {",
             "new_string": "// CustomerRow is one customer to import, before it has an ID.\ntype CustomerRow struct {\n\tName                 string\n\tEmail                string\n\tDefaultPaymentMethod string\n\tMetadata             map[string]string\n}\n\n// RowProblem says why the row at Index of an import cannot be created: the first of missing_name, invalid_email,\n// invalid_payment_method, email_taken and duplicate_email that applies.\ntype RowProblem struct {\n\tIndex int\n\tCode  string\n}\n\n// ImportCustomers creates rows as an organization's customers, in order, or none of them. When any row has a problem,\n// nothing is created and every problem is returned, in order. With dryRun, the rows are checked but nothing is created.\n// A row's email may not be used by one of the organization's customers or by an earlier row, ignoring case.\nfunc (s *Store) ImportCustomers(orgID string, rows []CustomerRow, now time.Time, dryRun bool) ([]Customer, []RowProblem, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn nil, nil, ErrNotFound\n\t}\n\t// The email index is shared by all organizations, so the organization's own emails are collected from its customers.\n\texisting := map[string]bool{}\n\tfor _, c := range s.customers {\n\t\tif c.OrgID == orgID {\n\t\t\texisting[normEmail(c.Email)] = true\n\t\t}\n\t}\n\tearlier := map[string]bool{}\n\tvar problems []RowProblem\n\tfor i, row := range rows {\n\t\tname, email := strings.TrimSpace(row.Name), strings.TrimSpace(row.Email)\n\t\tkey := normEmail(email)\n\t\tcode := \"\"\n\t\tswitch {\n\t\tcase name == \"\":\n\t\t\tcode = \"missing_name\"\n\t\tcase !validEmail(email):\n\t\t\tcode = \"invalid_email\"\n\t\tcase row.DefaultPaymentMethod != \"\" \u0026\u0026 !strings.HasPrefix(row.DefaultPaymentMethod, \"pm_\"):\n\t\t\tcode = \"invalid_payment_method\"\n\t\tcase existing[key]:\n\t\t\tcode = \"email_taken\"\n\t\tcase earlier[key]:\n\t\t\tcode = \"duplicate_email\"\n\t\t}\n\t\tif code != \"\" {\n\t\t\tproblems = append(problems, RowProblem{Index: i, Code: code})\n\t\t}\n\t\tearlier[key] = true\n\t}\n\tif len(problems) \u003e 0 || dryRun {\n\t\treturn nil, problems, nil\n\t}\n\tout := make([]Customer, 0, len(rows))\n\tfor _, row := range rows {\n\t\tc := Customer{ID: s.newID(\"cus\"), OrgID: orgID, Name: strings.TrimSpace(row.Name), Email: strings.TrimSpace(row.Email),\n\t\t\tDefaultPaymentMethod: row.DefaultPaymentMethod, Metadata: row.Metadata, CreatedAt: now.UTC()}\n\t\ts.customers[c.ID] = c\n\t\ts.customersByEmail[normEmail(c.Email)] = c.ID\n\t\tout = append(out, copyCustomer(c))\n\t}\n\treturn out, nil, nil\n}\n\n// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {"
           }
@@ -4299,11 +4299,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
           "old_string": "// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {",
           "new_string": "// CustomerRow is one customer to import, before it has an ID.\ntype CustomerRow struct {\n\tName                 string\n\tEmail                string\n\tDefaultPaymentMethod string\n\tMetadata             map[string]string\n}\n\n// RowProblem says why the row at Index of an import cannot be created: the first of missing_name, invalid_email,\n// invalid_payment_method, email_taken and duplicate_email that applies.\ntype RowProblem struct {\n\tIndex int\n\tCode  string\n}\n\n// ImportCustomers creates rows as an organization's customers, in order, or none of them. When any row has a problem,\n// nothing is created and every problem is returned, in order. With dryRun, the rows are checked but nothing is created.\n// A row's email may not be used by one of the organization's customers or by an earlier row, ignoring case.\nfunc (s *Store) ImportCustomers(orgID string, rows []CustomerRow, now time.Time, dryRun bool) ([]Customer, []RowProblem, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn nil, nil, ErrNotFound\n\t}\n\t// The email index is shared by all organizations, so the organization's own emails are collected from its customers.\n\texisting := map[string]bool{}\n\tfor _, c := range s.customers {\n\t\tif c.OrgID == orgID {\n\t\t\texisting[normEmail(c.Email)] = true\n\t\t}\n\t}\n\tearlier := map[string]bool{}\n\tvar problems []RowProblem\n\tfor i, row := range rows {\n\t\tname, email := strings.TrimSpace(row.Name), strings.TrimSpace(row.Email)\n\t\tkey := normEmail(email)\n\t\tcode := \"\"\n\t\tswitch {\n\t\tcase name == \"\":\n\t\t\tcode = \"missing_name\"\n\t\tcase !validEmail(email):\n\t\t\tcode = \"invalid_email\"\n\t\tcase row.DefaultPaymentMethod != \"\" \u0026\u0026 !strings.HasPrefix(row.DefaultPaymentMethod, \"pm_\"):\n\t\t\tcode = \"invalid_payment_method\"\n\t\tcase existing[key]:\n\t\t\tcode = \"email_taken\"\n\t\tcase earlier[key]:\n\t\t\tcode = \"duplicate_email\"\n\t\t}\n\t\tif code != \"\" {\n\t\t\tproblems = append(problems, RowProblem{Index: i, Code: code})\n\t\t}\n\t\tearlier[key] = true\n\t}\n\tif len(problems) \u003e 0 || dryRun {\n\t\treturn nil, problems, nil\n\t}\n\tout := make([]Customer, 0, len(rows))\n\tfor _, row := range rows {\n\t\tc := Customer{ID: s.newID(\"cus\"), OrgID: orgID, Name: strings.TrimSpace(row.Name), Email: strings.TrimSpace(row.Email),\n\t\t\tDefaultPaymentMethod: row.DefaultPaymentMethod, Metadata: row.Metadata, CreatedAt: now.UTC()}\n\t\ts.customers[c.ID] = c\n\t\ts.customersByEmail[normEmail(c.Email)] = c.ID\n\t\tout = append(out, copyCustomer(c))\n\t}\n\treturn out, nil, nil\n}\n\n// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4324,11 +4324,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
             "old_string": "// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {",
             "new_string": "// CustomerRow is one customer to import, before it has an ID.\ntype CustomerRow struct {\n\tName                 string\n\tEmail                string\n\tDefaultPaymentMethod string\n\tMetadata             map[string]string\n}\n\n// RowProblem says why the row at Index of an import cannot be created: the first of missing_name, invalid_email,\n// invalid_payment_method, email_taken and duplicate_email that applies.\ntype RowProblem struct {\n\tIndex int\n\tCode  string\n}\n\n// ImportCustomers creates rows as an organization's customers, in order, or none of them. When any row has a problem,\n// nothing is created and every problem is returned, in order. With dryRun, the rows are checked but nothing is created.\n// A row's email may not be used by one of the organization's customers or by an earlier row, ignoring case.\nfunc (s *Store) ImportCustomers(orgID string, rows []CustomerRow, now time.Time, dryRun bool) ([]Customer, []RowProblem, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tif _, ok := s.orgs[orgID]; !ok {\n\t\treturn nil, nil, ErrNotFound\n\t}\n\t// The email index is shared by all organizations, so the organization's own emails are collected from its customers.\n\texisting := map[string]bool{}\n\tfor _, c := range s.customers {\n\t\tif c.OrgID == orgID {\n\t\t\texisting[normEmail(c.Email)] = true\n\t\t}\n\t}\n\tearlier := map[string]bool{}\n\tvar problems []RowProblem\n\tfor i, row := range rows {\n\t\tname, email := strings.TrimSpace(row.Name), strings.TrimSpace(row.Email)\n\t\tkey := normEmail(email)\n\t\tcode := \"\"\n\t\tswitch {\n\t\tcase name == \"\":\n\t\t\tcode = \"missing_name\"\n\t\tcase !validEmail(email):\n\t\t\tcode = \"invalid_email\"\n\t\tcase row.DefaultPaymentMethod != \"\" \u0026\u0026 !strings.HasPrefix(row.DefaultPaymentMethod, \"pm_\"):\n\t\t\tcode = \"invalid_payment_method\"\n\t\tcase existing[key]:\n\t\t\tcode = \"email_taken\"\n\t\tcase earlier[key]:\n\t\t\tcode = \"duplicate_email\"\n\t\t}\n\t\tif code != \"\" {\n\t\t\tproblems = append(problems, RowProblem{Index: i, Code: code})\n\t\t}\n\t\tearlier[key] = true\n\t}\n\tif len(problems) \u003e 0 || dryRun {\n\t\treturn nil, problems, nil\n\t}\n\tout := make([]Customer, 0, len(rows))\n\tfor _, row := range rows {\n\t\tc := Customer{ID: s.newID(\"cus\"), OrgID: orgID, Name: strings.TrimSpace(row.Name), Email: strings.TrimSpace(row.Email),\n\t\t\tDefaultPaymentMethod: row.DefaultPaymentMethod, Metadata: row.Metadata, CreatedAt: now.UTC()}\n\t\ts.customers[c.ID] = c\n\t\ts.customersByEmail[normEmail(c.Email)] = c.ID\n\t\tout = append(out, copyCustomer(c))\n\t}\n\treturn out, nil, nil\n}\n\n// Customer returns one of an organization's customers.\nfunc (s *Store) Customer(orgID, id string) (Customer, bool) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4574,7 +4574,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "import (\n\t\"encoding/csv\"\n\t\"net/http\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n",
           "new_string": "import (\n\t\"bytes\"\n\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"\n\t\"net/http\"\n\t\"strings\"\n\t\"time\"\n\t\"unicode/utf8\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n\n// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)\n"
         }
@@ -4598,7 +4598,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "import (\n\t\"encoding/csv\"\n\t\"net/http\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n",
             "new_string": "import (\n\t\"bytes\"\n\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"\n\t\"net/http\"\n\t\"strings\"\n\t\"time\"\n\t\"unicode/utf8\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n\n// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)\n"
           }
@@ -4622,11 +4622,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "import (\n\t\"encoding/csv\"\n\t\"net/http\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n",
           "new_string": "import (\n\t\"bytes\"\n\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"\n\t\"net/http\"\n\t\"strings\"\n\t\"time\"\n\t\"unicode/utf8\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n\n// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4647,11 +4647,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "import (\n\t\"encoding/csv\"\n\t\"net/http\"\n\t\"time\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n",
             "new_string": "import (\n\t\"bytes\"\n\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"\n\t\"net/http\"\n\t\"strings\"\n\t\"time\"\n\t\"unicode/utf8\"\n\n\t\"example.com/tally/internal/auth\"\n\t\"example.com/tally/internal/store\"\n)\n\nfunc customerKey(c store.Customer) cursor { return cursor{T: c.CreatedAt, ID: c.ID} }\n\n// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5059,7 +5059,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n",
           "new_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n\n// importCustomers creates customers from a CSV body. The first record is a header with the columns name and email, and\n// may have default_payment_method and metadata.\u003ckey\u003e columns. Nothing is created unless every row is fine.\nfunc (s *Server) importCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix(body, []byte(\"\\xef\\xbb\\xbf\"))\n\tif !utf8.Valid(body) {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not UTF-8 text\")\n\t\treturn\n\t}\n\trows, lines, ok := parseCustomerCSV(w, body)\n\tif !ok {\n\t\treturn\n\t}\n\tdryRun := r.URL.Query().Get(\"dry_run\") == \"true\"\n\tcs, problems, err := s.store.ImportCustomers(p.OrgID, rows, s.clock.Now(), dryRun)\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\tif len(problems) \u003e 0 {\n\t\tout := make([]importRowError, len(problems))\n\t\tfor i, pr := range problems {\n\t\t\tout[i] = importRowError{Row: lines[pr.Index], Error: pr.Code}\n\t\t}\n\t\twriteJSON(w, http.StatusUnprocessableEntity, map[string]any{\n\t\t\t\"error\": \"invalid_rows\", \"message\": \"some rows cannot be imported; nothing was created\", \"rows\": out})\n\t\treturn\n\t}\n\tif dryRun {\n\t\twriteJSON(w, http.StatusOK, map[string]int{\"created\": 0, \"would_create\": len(rows)})\n\t\treturn\n\t}\n\tfor _, c := range cs {\n\t\ts.publish(r.Context(), p.OrgID, \"customer.created\", c)\n\t}\n\twriteJSON(w, http.StatusCreated, map[string]any{\"created\": len(cs), \"items\": cs})\n}\n\n// importRowError is one row of an import that cannot be created. Row is the line where the record starts.\ntype importRowError struct {\n\tRow   int    `json:\"row\"`\n\tError string `json:\"error\"`\n}\n\n// parseCustomerCSV reads the header and the data records of a customer import, with the line where each record starts.\n// Blank records are skipped. It answers the error and returns false when the body is not usable.\nfunc parseCustomerCSV(w http.ResponseWriter, body []byte) ([]store.CustomerRow, []int, bool) {\n\tcr := csv.NewReader(bytes.NewReader(body))\n\tcr.FieldsPerRecord = -1\n\tvar cols *customerColumns\n\tvar rows []store.CustomerRow\n\tvar lines []int\n\tfor {\n\t\trec, err := cr.Read()\n\t\tif err == io.EOF {\n\t\t\tbreak\n\t\t}\n\t\tif err != nil {\n\t\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not valid CSV: \"+err.Error())\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tif blankRecord(rec) {\n\t\t\tcontinue\n\t\t}\n\t\tif cols == nil {\n\t\t\tc := customerColumnsOf(rec)\n\t\t\tif c.name \u003c 0 || c.email \u003c 0 {\n\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the header needs the columns name and email\")\n\t\t\t\treturn nil, nil, false\n\t\t\t}\n\t\t\tcols = \u0026c\n\t\t\tcontinue\n\t\t}\n\t\tif len(rows) == importMaxRows {\n\t\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_many_rows\", \"an import creates at most 10,000 customers\")\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tline, _ := cr.FieldPos(0)\n\t\trows = append(rows, cols.row(rec))\n\t\tlines = append(lines, line)\n\t}\n\tif cols == nil {\n\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the body needs a header with the columns name and email\")\n\t\treturn nil, nil, false\n\t}\n\treturn rows, lines, true\n}\n\n// blankRecord reports whether every field of a record is empty or spaces.\nfunc blankRecord(rec []string) bool {\n\tfor _, f := range rec {\n\t\tif strings.TrimSpace(f) != \"\" {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// customerColumns says which field of a record holds each column of a customer import; -1 when there is no such column.\ntype customerColumns struct {\n\tname, email, paymentMethod int\n\tmetadata                   map[int]string // field index -\u003e metadata key\n}\n\n// customerColumnsOf matches a header's names ignoring case and surrounding spaces. Other columns are ignored.\nfunc customerColumnsOf(header []string) customerColumns {\n\tc := customerColumns{name: -1, email: -1, paymentMethod: -1, metadata: map[int]string{}}\n\tfor i, h := range header {\n\t\th = strings.TrimSpace(h)\n\t\tlower := strings.ToLower(h)\n\t\tswitch {\n\t\tcase lower == \"name\" \u0026\u0026 c.name \u003c 0:\n\t\t\tc.name = i\n\t\tcase lower == \"email\" \u0026\u0026 c.email \u003c 0:\n\t\t\tc.email = i\n\t\tcase lower == \"default_payment_method\" \u0026\u0026 c.paymentMethod \u003c 0:\n\t\t\tc.paymentMethod = i\n\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}\n\t}\n\treturn c\n}\n\n// row reads a record's customer. Empty optional cells are left out.\nfunc (c customerColumns) row(rec []string) store.CustomerRow {\n\tfield := func(i int) string {\n\t\tif i \u003c 0 || i \u003e= len(rec) {\n\t\t\treturn \"\"\n\t\t}\n\t\treturn strings.TrimSpace(rec[i])\n\t}\n\trow := store.CustomerRow{Name: field(c.name), Email: field(c.email), DefaultPaymentMethod: field(c.paymentMethod)}\n\tfor i, key := range c.metadata {\n\t\tif v := field(i); v != \"\" {\n\t\t\tif row.Metadata == nil {\n\t\t\t\trow.Metadata = map[string]string{}\n\t\t\t}\n\t\t\trow.Metadata[key] = v\n\t\t}\n\t}\n\treturn row\n}\n"
         }
@@ -5083,7 +5083,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n",
             "new_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n\n// importCustomers creates customers from a CSV body. The first record is a header with the columns name and email, and\n// may have default_payment_method and metadata.\u003ckey\u003e columns. Nothing is created unless every row is fine.\nfunc (s *Server) importCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix(body, []byte(\"\\xef\\xbb\\xbf\"))\n\tif !utf8.Valid(body) {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not UTF-8 text\")\n\t\treturn\n\t}\n\trows, lines, ok := parseCustomerCSV(w, body)\n\tif !ok {\n\t\treturn\n\t}\n\tdryRun := r.URL.Query().Get(\"dry_run\") == \"true\"\n\tcs, problems, err := s.store.ImportCustomers(p.OrgID, rows, s.clock.Now(), dryRun)\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\tif len(problems) \u003e 0 {\n\t\tout := make([]importRowError, len(problems))\n\t\tfor i, pr := range problems {\n\t\t\tout[i] = importRowError{Row: lines[pr.Index], Error: pr.Code}\n\t\t}\n\t\twriteJSON(w, http.StatusUnprocessableEntity, map[string]any{\n\t\t\t\"error\": \"invalid_rows\", \"message\": \"some rows cannot be imported; nothing was created\", \"rows\": out})\n\t\treturn\n\t}\n\tif dryRun {\n\t\twriteJSON(w, http.StatusOK, map[string]int{\"created\": 0, \"would_create\": len(rows)})\n\t\treturn\n\t}\n\tfor _, c := range cs {\n\t\ts.publish(r.Context(), p.OrgID, \"customer.created\", c)\n\t}\n\twriteJSON(w, http.StatusCreated, map[string]any{\"created\": len(cs), \"items\": cs})\n}\n\n// importRowError is one row of an import that cannot be created. Row is the line where the record starts.\ntype importRowError struct {\n\tRow   int    `json:\"row\"`\n\tError string `json:\"error\"`\n}\n\n// parseCustomerCSV reads the header and the data records of a customer import, with the line where each record starts.\n// Blank records are skipped. It answers the error and returns false when the body is not usable.\nfunc parseCustomerCSV(w http.ResponseWriter, body []byte) ([]store.CustomerRow, []int, bool) {\n\tcr := csv.NewReader(bytes.NewReader(body))\n\tcr.FieldsPerRecord = -1\n\tvar cols *customerColumns\n\tvar rows []store.CustomerRow\n\tvar lines []int\n\tfor {\n\t\trec, err := cr.Read()\n\t\tif err == io.EOF {\n\t\t\tbreak\n\t\t}\n\t\tif err != nil {\n\t\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not valid CSV: \"+err.Error())\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tif blankRecord(rec) {\n\t\t\tcontinue\n\t\t}\n\t\tif cols == nil {\n\t\t\tc := customerColumnsOf(rec)\n\t\t\tif c.name \u003c 0 || c.email \u003c 0 {\n\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the header needs the columns name and email\")\n\t\t\t\treturn nil, nil, false\n\t\t\t}\n\t\t\tcols = \u0026c\n\t\t\tcontinue\n\t\t}\n\t\tif len(rows) == importMaxRows {\n\t\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_many_rows\", \"an import creates at most 10,000 customers\")\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tline, _ := cr.FieldPos(0)\n\t\trows = append(rows, cols.row(rec))\n\t\tlines = append(lines, line)\n\t}\n\tif cols == nil {\n\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the body needs a header with the columns name and email\")\n\t\treturn nil, nil, false\n\t}\n\treturn rows, lines, true\n}\n\n// blankRecord reports whether every field of a record is empty or spaces.\nfunc blankRecord(rec []string) bool {\n\tfor _, f := range rec {\n\t\tif strings.TrimSpace(f) != \"\" {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// customerColumns says which field of a record holds each column of a customer import; -1 when there is no such column.\ntype customerColumns struct {\n\tname, email, paymentMethod int\n\tmetadata                   map[int]string // field index -\u003e metadata key\n}\n\n// customerColumnsOf matches a header's names ignoring case and surrounding spaces. Other columns are ignored.\nfunc customerColumnsOf(header []string) customerColumns {\n\tc := customerColumns{name: -1, email: -1, paymentMethod: -1, metadata: map[int]string{}}\n\tfor i, h := range header {\n\t\th = strings.TrimSpace(h)\n\t\tlower := strings.ToLower(h)\n\t\tswitch {\n\t\tcase lower == \"name\" \u0026\u0026 c.name \u003c 0:\n\t\t\tc.name = i\n\t\tcase lower == \"email\" \u0026\u0026 c.email \u003c 0:\n\t\t\tc.email = i\n\t\tcase lower == \"default_payment_method\" \u0026\u0026 c.paymentMethod \u003c 0:\n\t\t\tc.paymentMethod = i\n\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}\n\t}\n\treturn c\n}\n\n// row reads a record's customer. Empty optional cells are left out.\nfunc (c customerColumns) row(rec []string) store.CustomerRow {\n\tfield := func(i int) string {\n\t\tif i \u003c 0 || i \u003e= len(rec) {\n\t\t\treturn \"\"\n\t\t}\n\t\treturn strings.TrimSpace(rec[i])\n\t}\n\trow := store.CustomerRow{Name: field(c.name), Email: field(c.email), DefaultPaymentMethod: field(c.paymentMethod)}\n\tfor i, key := range c.metadata {\n\t\tif v := field(i); v != \"\" {\n\t\t\tif row.Metadata == nil {\n\t\t\t\trow.Metadata = map[string]string{}\n\t\t\t}\n\t\t\trow.Metadata[key] = v\n\t\t}\n\t}\n\treturn row\n}\n"
           }
@@ -5107,11 +5107,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n",
           "new_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n\n// importCustomers creates customers from a CSV body. The first record is a header with the columns name and email, and\n// may have default_payment_method and metadata.\u003ckey\u003e columns. Nothing is created unless every row is fine.\nfunc (s *Server) importCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix(body, []byte(\"\\xef\\xbb\\xbf\"))\n\tif !utf8.Valid(body) {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not UTF-8 text\")\n\t\treturn\n\t}\n\trows, lines, ok := parseCustomerCSV(w, body)\n\tif !ok {\n\t\treturn\n\t}\n\tdryRun := r.URL.Query().Get(\"dry_run\") == \"true\"\n\tcs, problems, err := s.store.ImportCustomers(p.OrgID, rows, s.clock.Now(), dryRun)\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\tif len(problems) \u003e 0 {\n\t\tout := make([]importRowError, len(problems))\n\t\tfor i, pr := range problems {\n\t\t\tout[i] = importRowError{Row: lines[pr.Index], Error: pr.Code}\n\t\t}\n\t\twriteJSON(w, http.StatusUnprocessableEntity, map[string]any{\n\t\t\t\"error\": \"invalid_rows\", \"message\": \"some rows cannot be imported; nothing was created\", \"rows\": out})\n\t\treturn\n\t}\n\tif dryRun {\n\t\twriteJSON(w, http.StatusOK, map[string]int{\"created\": 0, \"would_create\": len(rows)})\n\t\treturn\n\t}\n\tfor _, c := range cs {\n\t\ts.publish(r.Context(), p.OrgID, \"customer.created\", c)\n\t}\n\twriteJSON(w, http.StatusCreated, map[string]any{\"created\": len(cs), \"items\": cs})\n}\n\n// importRowError is one row of an import that cannot be created. Row is the line where the record starts.\ntype importRowError struct {\n\tRow   int    `json:\"row\"`\n\tError string `json:\"error\"`\n}\n\n// parseCustomerCSV reads the header and the data records of a customer import, with the line where each record starts.\n// Blank records are skipped. It answers the error and returns false when the body is not usable.\nfunc parseCustomerCSV(w http.ResponseWriter, body []byte) ([]store.CustomerRow, []int, bool) {\n\tcr := csv.NewReader(bytes.NewReader(body))\n\tcr.FieldsPerRecord = -1\n\tvar cols *customerColumns\n\tvar rows []store.CustomerRow\n\tvar lines []int\n\tfor {\n\t\trec, err := cr.Read()\n\t\tif err == io.EOF {\n\t\t\tbreak\n\t\t}\n\t\tif err != nil {\n\t\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not valid CSV: \"+err.Error())\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tif blankRecord(rec) {\n\t\t\tcontinue\n\t\t}\n\t\tif cols == nil {\n\t\t\tc := customerColumnsOf(rec)\n\t\t\tif c.name \u003c 0 || c.email \u003c 0 {\n\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the header needs the columns name and email\")\n\t\t\t\treturn nil, nil, false\n\t\t\t}\n\t\t\tcols = \u0026c\n\t\t\tcontinue\n\t\t}\n\t\tif len(rows) == importMaxRows {\n\t\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_many_rows\", \"an import creates at most 10,000 customers\")\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tline, _ := cr.FieldPos(0)\n\t\trows = append(rows, cols.row(rec))\n\t\tlines = append(lines, line)\n\t}\n\tif cols == nil {\n\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the body needs a header with the columns name and email\")\n\t\treturn nil, nil, false\n\t}\n\treturn rows, lines, true\n}\n\n// blankRecord reports whether every field of a record is empty or spaces.\nfunc blankRecord(rec []string) bool {\n\tfor _, f := range rec {\n\t\tif strings.TrimSpace(f) != \"\" {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// customerColumns says which field of a record holds each column of a customer import; -1 when there is no such column.\ntype customerColumns struct {\n\tname, email, paymentMethod int\n\tmetadata                   map[int]string // field index -\u003e metadata key\n}\n\n// customerColumnsOf matches a header's names ignoring case and surrounding spaces. Other columns are ignored.\nfunc customerColumnsOf(header []string) customerColumns {\n\tc := customerColumns{name: -1, email: -1, paymentMethod: -1, metadata: map[int]string{}}\n\tfor i, h := range header {\n\t\th = strings.TrimSpace(h)\n\t\tlower := strings.ToLower(h)\n\t\tswitch {\n\t\tcase lower == \"name\" \u0026\u0026 c.name \u003c 0:\n\t\t\tc.name = i\n\t\tcase lower == \"email\" \u0026\u0026 c.email \u003c 0:\n\t\t\tc.email = i\n\t\tcase lower == \"default_payment_method\" \u0026\u0026 c.paymentMethod \u003c 0:\n\t\t\tc.paymentMethod = i\n\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}\n\t}\n\treturn c\n}\n\n// row reads a record's customer. Empty optional cells are left out.\nfunc (c customerColumns) row(rec []string) store.CustomerRow {\n\tfield := func(i int) string {\n\t\tif i \u003c 0 || i \u003e= len(rec) {\n\t\t\treturn \"\"\n\t\t}\n\t\treturn strings.TrimSpace(rec[i])\n\t}\n\trow := store.CustomerRow{Name: field(c.name), Email: field(c.email), DefaultPaymentMethod: field(c.paymentMethod)}\n\tfor i, key := range c.metadata {\n\t\tif v := field(i); v != \"\" {\n\t\t\tif row.Metadata == nil {\n\t\t\t\trow.Metadata = map[string]string{}\n\t\t\t}\n\t\t\trow.Metadata[key] = v\n\t\t}\n\t}\n\treturn row\n}\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5132,11 +5132,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n",
             "new_string": "\t\t_ = cw.Write([]string{c.ID, c.Name, c.Email, c.CreatedAt.UTC().Format(time.RFC3339)})\n\t}\n\tcw.Flush()\n}\n\n// importCustomers creates customers from a CSV body. The first record is a header with the columns name and email, and\n// may have default_payment_method and metadata.\u003ckey\u003e columns. Nothing is created unless every row is fine.\nfunc (s *Server) importCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix(body, []byte(\"\\xef\\xbb\\xbf\"))\n\tif !utf8.Valid(body) {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not UTF-8 text\")\n\t\treturn\n\t}\n\trows, lines, ok := parseCustomerCSV(w, body)\n\tif !ok {\n\t\treturn\n\t}\n\tdryRun := r.URL.Query().Get(\"dry_run\") == \"true\"\n\tcs, problems, err := s.store.ImportCustomers(p.OrgID, rows, s.clock.Now(), dryRun)\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\tif len(problems) \u003e 0 {\n\t\tout := make([]importRowError, len(problems))\n\t\tfor i, pr := range problems {\n\t\t\tout[i] = importRowError{Row: lines[pr.Index], Error: pr.Code}\n\t\t}\n\t\twriteJSON(w, http.StatusUnprocessableEntity, map[string]any{\n\t\t\t\"error\": \"invalid_rows\", \"message\": \"some rows cannot be imported; nothing was created\", \"rows\": out})\n\t\treturn\n\t}\n\tif dryRun {\n\t\twriteJSON(w, http.StatusOK, map[string]int{\"created\": 0, \"would_create\": len(rows)})\n\t\treturn\n\t}\n\tfor _, c := range cs {\n\t\ts.publish(r.Context(), p.OrgID, \"customer.created\", c)\n\t}\n\twriteJSON(w, http.StatusCreated, map[string]any{\"created\": len(cs), \"items\": cs})\n}\n\n// importRowError is one row of an import that cannot be created. Row is the line where the record starts.\ntype importRowError struct {\n\tRow   int    `json:\"row\"`\n\tError string `json:\"error\"`\n}\n\n// parseCustomerCSV reads the header and the data records of a customer import, with the line where each record starts.\n// Blank records are skipped. It answers the error and returns false when the body is not usable.\nfunc parseCustomerCSV(w http.ResponseWriter, body []byte) ([]store.CustomerRow, []int, bool) {\n\tcr := csv.NewReader(bytes.NewReader(body))\n\tcr.FieldsPerRecord = -1\n\tvar cols *customerColumns\n\tvar rows []store.CustomerRow\n\tvar lines []int\n\tfor {\n\t\trec, err := cr.Read()\n\t\tif err == io.EOF {\n\t\t\tbreak\n\t\t}\n\t\tif err != nil {\n\t\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body is not valid CSV: \"+err.Error())\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tif blankRecord(rec) {\n\t\t\tcontinue\n\t\t}\n\t\tif cols == nil {\n\t\t\tc := customerColumnsOf(rec)\n\t\t\tif c.name \u003c 0 || c.email \u003c 0 {\n\t\t\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the header needs the columns name and email\")\n\t\t\t\treturn nil, nil, false\n\t\t\t}\n\t\t\tcols = \u0026c\n\t\t\tcontinue\n\t\t}\n\t\tif len(rows) == importMaxRows {\n\t\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_many_rows\", \"an import creates at most 10,000 customers\")\n\t\t\treturn nil, nil, false\n\t\t}\n\t\tline, _ := cr.FieldPos(0)\n\t\trows = append(rows, cols.row(rec))\n\t\tlines = append(lines, line)\n\t}\n\tif cols == nil {\n\t\twriteError(w, http.StatusUnprocessableEntity, \"invalid_header\", \"the body needs a header with the columns name and email\")\n\t\treturn nil, nil, false\n\t}\n\treturn rows, lines, true\n}\n\n// blankRecord reports whether every field of a record is empty or spaces.\nfunc blankRecord(rec []string) bool {\n\tfor _, f := range rec {\n\t\tif strings.TrimSpace(f) != \"\" {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// customerColumns says which field of a record holds each column of a customer import; -1 when there is no such column.\ntype customerColumns struct {\n\tname, email, paymentMethod int\n\tmetadata                   map[int]string // field index -\u003e metadata key\n}\n\n// customerColumnsOf matches a header's names ignoring case and surrounding spaces. Other columns are ignored.\nfunc customerColumnsOf(header []string) customerColumns {\n\tc := customerColumns{name: -1, email: -1, paymentMethod: -1, metadata: map[int]string{}}\n\tfor i, h := range header {\n\t\th = strings.TrimSpace(h)\n\t\tlower := strings.ToLower(h)\n\t\tswitch {\n\t\tcase lower == \"name\" \u0026\u0026 c.name \u003c 0:\n\t\t\tc.name = i\n\t\tcase lower == \"email\" \u0026\u0026 c.email \u003c 0:\n\t\t\tc.email = i\n\t\tcase lower == \"default_payment_method\" \u0026\u0026 c.paymentMethod \u003c 0:\n\t\t\tc.paymentMethod = i\n\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}\n\t}\n\treturn c\n}\n\n// row reads a record's customer. Empty optional cells are left out.\nfunc (c customerColumns) row(rec []string) store.CustomerRow {\n\tfield := func(i int) string {\n\t\tif i \u003c 0 || i \u003e= len(rec) {\n\t\t\treturn \"\"\n\t\t}\n\t\treturn strings.TrimSpace(rec[i])\n\t}\n\trow := store.CustomerRow{Name: field(c.name), Email: field(c.email), DefaultPaymentMethod: field(c.paymentMethod)}\n\tfor i, key := range c.metadata {\n\t\tif v := field(i); v != \"\" {\n\t\t\tif row.Metadata == nil {\n\t\t\t\trow.Metadata = map[string]string{}\n\t\t\t}\n\t\t\trow.Metadata[key] = v\n\t\t}\n\t}\n\treturn row\n}\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5493,7 +5493,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}",
           "new_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tif key := strings.TrimSpace(h[len(\"metadata.\"):]); key != \"\" {\n\t\t\t\tc.metadata[i] = key\n\t\t\t}\n\t\t}"
         }
@@ -5517,7 +5517,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}",
             "new_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tif key := strings.TrimSpace(h[len(\"metadata.\"):]); key != \"\" {\n\t\t\t\tc.metadata[i] = key\n\t\t\t}\n\t\t}"
           }
@@ -5541,11 +5541,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}",
           "new_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tif key := strings.TrimSpace(h[len(\"metadata.\"):]); key != \"\" {\n\t\t\t\tc.metadata[i] = key\n\t\t\t}\n\t\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5566,11 +5566,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tc.metadata[i] = strings.TrimSpace(h[len(\"metadata.\"):])\n\t\t}",
             "new_string": "\t\tcase len(h) \u003e len(\"metadata.\") \u0026\u0026 strings.EqualFold(h[:len(\"metadata.\")], \"metadata.\"):\n\t\t\tif key := strings.TrimSpace(h[len(\"metadata.\"):]); key != \"\" {\n\t\t\t\tc.metadata[i] = key\n\t\t\t}\n\t\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5604,7 +5604,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
           "old_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n",
           "new_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n\tm.HandleFunc(\"POST /v1/customers/import\", s.authed(s.importCustomers))\n"
         }
@@ -5628,7 +5628,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
             "old_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n",
             "new_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n\tm.HandleFunc(\"POST /v1/customers/import\", s.authed(s.importCustomers))\n"
           }
@@ -5652,11 +5652,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
           "old_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n",
           "new_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n\tm.HandleFunc(\"POST /v1/customers/import\", s.authed(s.importCustomers))\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5677,11 +5677,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go",
             "old_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n",
             "new_string": "\tm.HandleFunc(\"GET /v1/customers/export.csv\", s.authed(s.exportCustomers))\n\tm.HandleFunc(\"POST /v1/customers/import\", s.authed(s.importCustomers))\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/server.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6614,7 +6614,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "func TestPlans(t *testing.T) {",
           "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}\n\nfunc TestPlans(t *testing.T) {"
         }
@@ -6638,7 +6638,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "func TestPlans(t *testing.T) {",
             "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}\n\nfunc TestPlans(t *testing.T) {"
           }
@@ -6662,11 +6662,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "func TestPlans(t *testing.T) {",
           "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}\n\nfunc TestPlans(t *testing.T) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6687,11 +6687,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "func TestPlans(t *testing.T) {",
             "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}\n\nfunc TestPlans(t *testing.T) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7327,7 +7327,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}",
           "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(query string, body any) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+query, e.Acme.Key, body)\n\t}\n\tcount := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor _, c := range []struct {\n\t\tbody   string\n\t\tstatus int\n\t\tcode   string\n\t}{\n\t\t{\"\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,phone\\nA,1\\n\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,email\\n\\\"A,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\nA\\\"b,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\n\\xff,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t} {\n\t\tif r := imp(\"\", c.body); r.Code != c.status || r.Map(t)[\"error\"] != c.code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", c.body, r, c.status, c.code)\n\t\t}\n\t}\n\tif r := imp(\"\", \"name,email\\n\"); r.Code != http.StatusCreated || !strings.Contains(string(r.Body), `\"items\":[]`) {\n\t\tt.Fatalf(\"header only: %s\", r)\n\t}\n\n\t// Columns come in any order; names match ignoring case and spaces; other columns are ignored; a BOM, CRLF line ends and\n\t// blank lines are fine; quoted fields may hold commas, quotes and line breaks.\n\tevents0 := events()\n\tbody := \"﻿ Metadata.CRM ,ignored, Default_Payment_Method ,NAME, EMAIL\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar made struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026made)\n\tif made.Created != 2 || len(made.Items) != 2 {\n\t\tt.Fatalf(\"created = %+v\", made)\n\t}\n\tann, bo := made.Items[0], made.Items[1]\n\tif ann.Name != `Ann, \"the\" Lee` || ann.Email != \"ann@example.com\" || ann.DefaultPaymentMethod != \"pm_1\" || ann.Metadata[\"CRM\"] != \"7\" {\n\t\tt.Fatalf(\"ann = %+v\", ann)\n\t}\n\tif bo.Name != \"Bo\\nBo\" || bo.Email != \"bo@example.com\" || len(bo.Metadata) != 0 || bo.OrgID != e.Acme.ID {\n\t\tt.Fatalf(\"bo = %+v\", bo)\n\t}\n\tif n := events(); n != events0+2 {\n\t\tt.Fatalf(\"customer.created events: %d, want %d\", n, events0+2)\n\t}\n\tif n := count(); n != 3 {\n\t\tt.Fatalf(\"customers after import: %d\", n)\n\t}\n\n\t// Another organization's customer does not take an email here.\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, \"name,email\\nGus,gus@example.com\\n\", \u0026made)\n\tif made.Created != 1 {\n\t\tt.Fatalf(\"other org's email: %+v\", made)\n\t}\n\n\t// Dry run checks the rows and creates nothing.\n\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/customers/import?dry_run=true\", e.Acme.Key, \"name,email\\nDry,dry@example.com\\n\", \u0026dry)\n\tif dry.Created != 0 || dry.WouldCreate != 1 || count() != 4 {\n\t\tt.Fatalf(\"dry run = %+v, customers %d\", dry, count())\n\t}\n\n\t// Every bad row is listed with the line where it starts (quoted line breaks count), with the first problem that applies.\n\tbad := \"name,email,default_payment_method\\n\" +\n\t\t\",nobody@example.com,\\n\" + // 2: missing_name\n\t\t\"Cy,not-an-email,\\n\" + // 3: invalid_email\n\t\t\"Di,di@example.com,card_1\\n\" + // 4: invalid_payment_method\n\t\t\"Ed,JANE@example.com,\\n\" + // 5: email_taken\n\t\t\"\\\"Fi\\nFi\\\",fi@example.com,\\n\" + // 6-7: fine\n\t\t\"Gi,FI@example.com,\\n\" + // 8: duplicate_email\n\t\t\",FI@example.com,\\n\" // 9: missing_name comes before duplicate_email\n\tvar invalid struct {\n\t\tError string\n\t\tRows  []struct {\n\t\t\tRow   int\n\t\t\tError string\n\t\t}\n\t}\n\tr := imp(\"\", bad)\n\tr.JSON(t, \u0026invalid)\n\tif r.Code != http.StatusUnprocessableEntity || invalid.Error != \"invalid_rows\" {\n\t\tt.Fatalf(\"bad rows: %s\", r)\n\t}\n\twant := []struct {\n\t\trow  int\n\t\tcode string\n\t}{{2, \"missing_name\"}, {3, \"invalid_email\"}, {4, \"invalid_payment_method\"}, {5, \"email_taken\"}, {8, \"duplicate_email\"}, {9, \"missing_name\"}}\n\tif len(invalid.Rows) != len(want) {\n\t\tt.Fatalf(\"rows = %+v\", invalid.Rows)\n\t}\n\tfor i, w := range want {\n\t\tif got := invalid.Rows[i]; got.Row != w.row || got.Error != w.code {\n\t\t\tt.Fatalf(\"row %d = %+v, want %+v\", i, got, w)\n\t\t}\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"nothing may be created: %d customers\", count())\n\t}\n\tif r := imp(\"?dry_run=true\", bad); r.Code != http.StatusUnprocessableEntity {\n\t\tt.Fatalf(\"dry run of bad rows: %s\", r)\n\t}\n\n\t// At most 10,000 data records.\n\tvar big strings.Builder\n\tbig.WriteString(\"name,email\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026big, \"C%d,c%d@example.com\\n\", i, i)\n\t}\n\tif r := imp(\"\", big.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 rows: %s\", r)\n\t}\n\tfull := strings.SplitAfter(big.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
         }
@@ -7351,7 +7351,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}",
             "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(query string, body any) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+query, e.Acme.Key, body)\n\t}\n\tcount := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor _, c := range []struct {\n\t\tbody   string\n\t\tstatus int\n\t\tcode   string\n\t}{\n\t\t{\"\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,phone\\nA,1\\n\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,email\\n\\\"A,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\nA\\\"b,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\n\\xff,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t} {\n\t\tif r := imp(\"\", c.body); r.Code != c.status || r.Map(t)[\"error\"] != c.code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", c.body, r, c.status, c.code)\n\t\t}\n\t}\n\tif r := imp(\"\", \"name,email\\n\"); r.Code != http.StatusCreated || !strings.Contains(string(r.Body), `\"items\":[]`) {\n\t\tt.Fatalf(\"header only: %s\", r)\n\t}\n\n\t// Columns come in any order; names match ignoring case and spaces; other columns are ignored; a BOM, CRLF line ends and\n\t// blank lines are fine; quoted fields may hold commas, quotes and line breaks.\n\tevents0 := events()\n\tbody := \"﻿ Metadata.CRM ,ignored, Default_Payment_Method ,NAME, EMAIL\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar made struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026made)\n\tif made.Created != 2 || len(made.Items) != 2 {\n\t\tt.Fatalf(\"created = %+v\", made)\n\t}\n\tann, bo := made.Items[0], made.Items[1]\n\tif ann.Name != `Ann, \"the\" Lee` || ann.Email != \"ann@example.com\" || ann.DefaultPaymentMethod != \"pm_1\" || ann.Metadata[\"CRM\"] != \"7\" {\n\t\tt.Fatalf(\"ann = %+v\", ann)\n\t}\n\tif bo.Name != \"Bo\\nBo\" || bo.Email != \"bo@example.com\" || len(bo.Metadata) != 0 || bo.OrgID != e.Acme.ID {\n\t\tt.Fatalf(\"bo = %+v\", bo)\n\t}\n\tif n := events(); n != events0+2 {\n\t\tt.Fatalf(\"customer.created events: %d, want %d\", n, events0+2)\n\t}\n\tif n := count(); n != 3 {\n\t\tt.Fatalf(\"customers after import: %d\", n)\n\t}\n\n\t// Another organization's customer does not take an email here.\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, \"name,email\\nGus,gus@example.com\\n\", \u0026made)\n\tif made.Created != 1 {\n\t\tt.Fatalf(\"other org's email: %+v\", made)\n\t}\n\n\t// Dry run checks the rows and creates nothing.\n\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/customers/import?dry_run=true\", e.Acme.Key, \"name,email\\nDry,dry@example.com\\n\", \u0026dry)\n\tif dry.Created != 0 || dry.WouldCreate != 1 || count() != 4 {\n\t\tt.Fatalf(\"dry run = %+v, customers %d\", dry, count())\n\t}\n\n\t// Every bad row is listed with the line where it starts (quoted line breaks count), with the first problem that applies.\n\tbad := \"name,email,default_payment_method\\n\" +\n\t\t\",nobody@example.com,\\n\" + // 2: missing_name\n\t\t\"Cy,not-an-email,\\n\" + // 3: invalid_email\n\t\t\"Di,di@example.com,card_1\\n\" + // 4: invalid_payment_method\n\t\t\"Ed,JANE@example.com,\\n\" + // 5: email_taken\n\t\t\"\\\"Fi\\nFi\\\",fi@example.com,\\n\" + // 6-7: fine\n\t\t\"Gi,FI@example.com,\\n\" + // 8: duplicate_email\n\t\t\",FI@example.com,\\n\" // 9: missing_name comes before duplicate_email\n\tvar invalid struct {\n\t\tError string\n\t\tRows  []struct {\n\t\t\tRow   int\n\t\t\tError string\n\t\t}\n\t}\n\tr := imp(\"\", bad)\n\tr.JSON(t, \u0026invalid)\n\tif r.Code != http.StatusUnprocessableEntity || invalid.Error != \"invalid_rows\" {\n\t\tt.Fatalf(\"bad rows: %s\", r)\n\t}\n\twant := []struct {\n\t\trow  int\n\t\tcode string\n\t}{{2, \"missing_name\"}, {3, \"invalid_email\"}, {4, \"invalid_payment_method\"}, {5, \"email_taken\"}, {8, \"duplicate_email\"}, {9, \"missing_name\"}}\n\tif len(invalid.Rows) != len(want) {\n\t\tt.Fatalf(\"rows = %+v\", invalid.Rows)\n\t}\n\tfor i, w := range want {\n\t\tif got := invalid.Rows[i]; got.Row != w.row || got.Error != w.code {\n\t\t\tt.Fatalf(\"row %d = %+v, want %+v\", i, got, w)\n\t\t}\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"nothing may be created: %d customers\", count())\n\t}\n\tif r := imp(\"?dry_run=true\", bad); r.Code != http.StatusUnprocessableEntity {\n\t\tt.Fatalf(\"dry run of bad rows: %s\", r)\n\t}\n\n\t// At most 10,000 data records.\n\tvar big strings.Builder\n\tbig.WriteString(\"name,email\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026big, \"C%d,c%d@example.com\\n\", i, i)\n\t}\n\tif r := imp(\"\", big.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 rows: %s\", r)\n\t}\n\tfull := strings.SplitAfter(big.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
           }
@@ -7375,11 +7375,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}",
           "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(query string, body any) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+query, e.Acme.Key, body)\n\t}\n\tcount := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor _, c := range []struct {\n\t\tbody   string\n\t\tstatus int\n\t\tcode   string\n\t}{\n\t\t{\"\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,phone\\nA,1\\n\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,email\\n\\\"A,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\nA\\\"b,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\n\\xff,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t} {\n\t\tif r := imp(\"\", c.body); r.Code != c.status || r.Map(t)[\"error\"] != c.code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", c.body, r, c.status, c.code)\n\t\t}\n\t}\n\tif r := imp(\"\", \"name,email\\n\"); r.Code != http.StatusCreated || !strings.Contains(string(r.Body), `\"items\":[]`) {\n\t\tt.Fatalf(\"header only: %s\", r)\n\t}\n\n\t// Columns come in any order; names match ignoring case and spaces; other columns are ignored; a BOM, CRLF line ends and\n\t// blank lines are fine; quoted fields may hold commas, quotes and line breaks.\n\tevents0 := events()\n\tbody := \"﻿ Metadata.CRM ,ignored, Default_Payment_Method ,NAME, EMAIL\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar made struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026made)\n\tif made.Created != 2 || len(made.Items) != 2 {\n\t\tt.Fatalf(\"created = %+v\", made)\n\t}\n\tann, bo := made.Items[0], made.Items[1]\n\tif ann.Name != `Ann, \"the\" Lee` || ann.Email != \"ann@example.com\" || ann.DefaultPaymentMethod != \"pm_1\" || ann.Metadata[\"CRM\"] != \"7\" {\n\t\tt.Fatalf(\"ann = %+v\", ann)\n\t}\n\tif bo.Name != \"Bo\\nBo\" || bo.Email != \"bo@example.com\" || len(bo.Metadata) != 0 || bo.OrgID != e.Acme.ID {\n\t\tt.Fatalf(\"bo = %+v\", bo)\n\t}\n\tif n := events(); n != events0+2 {\n\t\tt.Fatalf(\"customer.created events: %d, want %d\", n, events0+2)\n\t}\n\tif n := count(); n != 3 {\n\t\tt.Fatalf(\"customers after import: %d\", n)\n\t}\n\n\t// Another organization's customer does not take an email here.\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, \"name,email\\nGus,gus@example.com\\n\", \u0026made)\n\tif made.Created != 1 {\n\t\tt.Fatalf(\"other org's email: %+v\", made)\n\t}\n\n\t// Dry run checks the rows and creates nothing.\n\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/customers/import?dry_run=true\", e.Acme.Key, \"name,email\\nDry,dry@example.com\\n\", \u0026dry)\n\tif dry.Created != 0 || dry.WouldCreate != 1 || count() != 4 {\n\t\tt.Fatalf(\"dry run = %+v, customers %d\", dry, count())\n\t}\n\n\t// Every bad row is listed with the line where it starts (quoted line breaks count), with the first problem that applies.\n\tbad := \"name,email,default_payment_method\\n\" +\n\t\t\",nobody@example.com,\\n\" + // 2: missing_name\n\t\t\"Cy,not-an-email,\\n\" + // 3: invalid_email\n\t\t\"Di,di@example.com,card_1\\n\" + // 4: invalid_payment_method\n\t\t\"Ed,JANE@example.com,\\n\" + // 5: email_taken\n\t\t\"\\\"Fi\\nFi\\\",fi@example.com,\\n\" + // 6-7: fine\n\t\t\"Gi,FI@example.com,\\n\" + // 8: duplicate_email\n\t\t\",FI@example.com,\\n\" // 9: missing_name comes before duplicate_email\n\tvar invalid struct {\n\t\tError string\n\t\tRows  []struct {\n\t\t\tRow   int\n\t\t\tError string\n\t\t}\n\t}\n\tr := imp(\"\", bad)\n\tr.JSON(t, \u0026invalid)\n\tif r.Code != http.StatusUnprocessableEntity || invalid.Error != \"invalid_rows\" {\n\t\tt.Fatalf(\"bad rows: %s\", r)\n\t}\n\twant := []struct {\n\t\trow  int\n\t\tcode string\n\t}{{2, \"missing_name\"}, {3, \"invalid_email\"}, {4, \"invalid_payment_method\"}, {5, \"email_taken\"}, {8, \"duplicate_email\"}, {9, \"missing_name\"}}\n\tif len(invalid.Rows) != len(want) {\n\t\tt.Fatalf(\"rows = %+v\", invalid.Rows)\n\t}\n\tfor i, w := range want {\n\t\tif got := invalid.Rows[i]; got.Row != w.row || got.Error != w.code {\n\t\t\tt.Fatalf(\"row %d = %+v, want %+v\", i, got, w)\n\t\t}\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"nothing may be created: %d customers\", count())\n\t}\n\tif r := imp(\"?dry_run=true\", bad); r.Code != http.StatusUnprocessableEntity {\n\t\tt.Fatalf(\"dry run of bad rows: %s\", r)\n\t}\n\n\t// At most 10,000 data records.\n\tvar big strings.Builder\n\tbig.WriteString(\"name,email\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026big, \"C%d,c%d@example.com\\n\", i, i)\n\t}\n\tif r := imp(\"\", big.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 rows: %s\", r)\n\t}\n\tfull := strings.SplitAfter(big.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7400,11 +7400,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(q, body string) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+q, e.Acme.Key, body)\n\t}\n\tcustomers := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor body, code := range map[string]string{\n\t\t\"\":                       \"invalid_header\",\n\t\t\"name,phone\\nA,1\\n\":      \"invalid_header\",\n\t\t\"email,name\\n\\n\\n\":       \"invalid_header\",\n\t\t\"name,email\\n\\\"A,a@x\\n\":  \"invalid_csv\",\n\t\t\"name,email\\nA\\\"b,a@x\\n\": \"invalid_csv\",\n\t\t\"name,email\\n\\xff,a@x\\n\": \"invalid_csv\",\n\t} {\n\t\twant := http.StatusUnprocessableEntity\n\t\tif code == \"invalid_csv\" {\n\t\t\twant = http.StatusBadRequest\n\t\t}\n\t\tif r := imp(\"\", body); r.Code != want || r.Map(t)[\"error\"] != code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", body, r, want, code)\n\t\t}\n\t}\n\n\t// A header alone is an import of no customers. Columns come in any order, names match ignoring case and spaces, other\n\t// columns are ignored, a BOM is skipped, CRLF and blank lines are fine, and quoted fields may hold commas, quotes and\n\t// line breaks.\n\tbefore := events()\n\tbody := \"﻿ Metadata.CRM ,ignored,Default_Payment_Method, NAME ,E-mail,Email\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar created struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026created)\n\tif created.Created != 0 \u0026\u0026 created.Created != 2 {\n\t\tt.Fatalf(\"created = %+v\", created)\n\t}\n\t_ = before\n\tt.Fatal(\"unfinished\")\n}",
             "new_string": "func TestImportCustomers(t *testing.T) {\n\te := apitest.New(t)\n\te.CreateCustomer(e.Acme, \"Jane Doe\", \"jane@example.com\")\n\te.CreateCustomer(e.Globex, \"Gus\", \"gus@example.com\")\n\timp := func(query string, body any) *apitest.Response {\n\t\treturn e.Do(\"POST\", \"/v1/customers/import\"+query, e.Acme.Key, body)\n\t}\n\tcount := func() int {\n\t\tvar l struct{ Items []store.Customer }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/customers\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\tevents := func() int {\n\t\tvar l struct{ Items []store.Event }\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/events?type=customer.created\", e.Acme.Key, nil, \u0026l)\n\t\treturn len(l.Items)\n\t}\n\n\tfor _, c := range []struct {\n\t\tbody   string\n\t\tstatus int\n\t\tcode   string\n\t}{\n\t\t{\"\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,phone\\nA,1\\n\", http.StatusUnprocessableEntity, \"invalid_header\"},\n\t\t{\"name,email\\n\\\"A,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\nA\\\"b,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t\t{\"name,email\\n\\xff,a@x\\n\", http.StatusBadRequest, \"invalid_csv\"},\n\t} {\n\t\tif r := imp(\"\", c.body); r.Code != c.status || r.Map(t)[\"error\"] != c.code {\n\t\t\tt.Fatalf(\"%q: %s, want %d %s\", c.body, r, c.status, c.code)\n\t\t}\n\t}\n\tif r := imp(\"\", \"name,email\\n\"); r.Code != http.StatusCreated || !strings.Contains(string(r.Body), `\"items\":[]`) {\n\t\tt.Fatalf(\"header only: %s\", r)\n\t}\n\n\t// Columns come in any order; names match ignoring case and spaces; other columns are ignored; a BOM, CRLF line ends and\n\t// blank lines are fine; quoted fields may hold commas, quotes and line breaks.\n\tevents0 := events()\n\tbody := \"﻿ Metadata.CRM ,ignored, Default_Payment_Method ,NAME, EMAIL\\r\\n\" +\n\t\t\"7,x,pm_1,\\\"Ann, \\\"\\\"the\\\"\\\" Lee\\\",ann@example.com\\r\\n\" +\n\t\t\"\\r\\n\" +\n\t\t\"   \\r\\n\" +\n\t\t\",x,,\\\"Bo\\nBo\\\",bo@example.com\\n\"\n\tvar made struct {\n\t\tCreated int\n\t\tItems   []store.Customer\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, body, \u0026made)\n\tif made.Created != 2 || len(made.Items) != 2 {\n\t\tt.Fatalf(\"created = %+v\", made)\n\t}\n\tann, bo := made.Items[0], made.Items[1]\n\tif ann.Name != `Ann, \"the\" Lee` || ann.Email != \"ann@example.com\" || ann.DefaultPaymentMethod != \"pm_1\" || ann.Metadata[\"CRM\"] != \"7\" {\n\t\tt.Fatalf(\"ann = %+v\", ann)\n\t}\n\tif bo.Name != \"Bo\\nBo\" || bo.Email != \"bo@example.com\" || len(bo.Metadata) != 0 || bo.OrgID != e.Acme.ID {\n\t\tt.Fatalf(\"bo = %+v\", bo)\n\t}\n\tif n := events(); n != events0+2 {\n\t\tt.Fatalf(\"customer.created events: %d, want %d\", n, events0+2)\n\t}\n\tif n := count(); n != 3 {\n\t\tt.Fatalf(\"customers after import: %d\", n)\n\t}\n\n\t// Another organization's customer does not take an email here.\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/customers/import\", e.Acme.Key, \"name,email\\nGus,gus@example.com\\n\", \u0026made)\n\tif made.Created != 1 {\n\t\tt.Fatalf(\"other org's email: %+v\", made)\n\t}\n\n\t// Dry run checks the rows and creates nothing.\n\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/customers/import?dry_run=true\", e.Acme.Key, \"name,email\\nDry,dry@example.com\\n\", \u0026dry)\n\tif dry.Created != 0 || dry.WouldCreate != 1 || count() != 4 {\n\t\tt.Fatalf(\"dry run = %+v, customers %d\", dry, count())\n\t}\n\n\t// Every bad row is listed with the line where it starts (quoted line breaks count), with the first problem that applies.\n\tbad := \"name,email,default_payment_method\\n\" +\n\t\t\",nobody@example.com,\\n\" + // 2: missing_name\n\t\t\"Cy,not-an-email,\\n\" + // 3: invalid_email\n\t\t\"Di,di@example.com,card_1\\n\" + // 4: invalid_payment_method\n\t\t\"Ed,JANE@example.com,\\n\" + // 5: email_taken\n\t\t\"\\\"Fi\\nFi\\\",fi@example.com,\\n\" + // 6-7: fine\n\t\t\"Gi,FI@example.com,\\n\" + // 8: duplicate_email\n\t\t\",FI@example.com,\\n\" // 9: missing_name comes before duplicate_email\n\tvar invalid struct {\n\t\tError string\n\t\tRows  []struct {\n\t\t\tRow   int\n\t\t\tError string\n\t\t}\n\t}\n\tr := imp(\"\", bad)\n\tr.JSON(t, \u0026invalid)\n\tif r.Code != http.StatusUnprocessableEntity || invalid.Error != \"invalid_rows\" {\n\t\tt.Fatalf(\"bad rows: %s\", r)\n\t}\n\twant := []struct {\n\t\trow  int\n\t\tcode string\n\t}{{2, \"missing_name\"}, {3, \"invalid_email\"}, {4, \"invalid_payment_method\"}, {5, \"email_taken\"}, {8, \"duplicate_email\"}, {9, \"missing_name\"}}\n\tif len(invalid.Rows) != len(want) {\n\t\tt.Fatalf(\"rows = %+v\", invalid.Rows)\n\t}\n\tfor i, w := range want {\n\t\tif got := invalid.Rows[i]; got.Row != w.row || got.Error != w.code {\n\t\t\tt.Fatalf(\"row %d = %+v, want %+v\", i, got, w)\n\t\t}\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"nothing may be created: %d customers\", count())\n\t}\n\tif r := imp(\"?dry_run=true\", bad); r.Code != http.StatusUnprocessableEntity {\n\t\tt.Fatalf(\"dry run of bad rows: %s\", r)\n\t}\n\n\t// At most 10,000 data records.\n\tvar big strings.Builder\n\tbig.WriteString(\"name,email\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026big, \"C%d,c%d@example.com\\n\", i, i)\n\t}\n\tif r := imp(\"\", big.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 rows: %s\", r)\n\t}\n\tfull := strings.SplitAfter(big.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7761,7 +7761,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }",
           "new_string": "\tvar dry struct {\n\t\tCreated     int\n\t\tWouldCreate int `json:\"would_create\"`\n\t}"
         }
@@ -7785,7 +7785,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }",
             "new_string": "\tvar dry struct {\n\t\tCreated     int\n\t\tWouldCreate int `json:\"would_create\"`\n\t}"
           }
@@ -7809,11 +7809,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }",
           "new_string": "\tvar dry struct {\n\t\tCreated     int\n\t\tWouldCreate int `json:\"would_create\"`\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7834,11 +7834,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\tvar dry struct{ Created, WouldCreate int `json:\"would_create\"` }",
             "new_string": "\tvar dry struct {\n\t\tCreated     int\n\t\tWouldCreate int `json:\"would_create\"`\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7872,7 +7872,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\t\"encoding/csv\"\n\t\"net/http\"",
           "new_string": "\t\"encoding/csv\"\n\t\"fmt\"\n\t\"net/http\""
         }
@@ -7896,7 +7896,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\t\"encoding/csv\"\n\t\"net/http\"",
             "new_string": "\t\"encoding/csv\"\n\t\"fmt\"\n\t\"net/http\""
           }
@@ -7920,11 +7920,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\t\"encoding/csv\"\n\t\"net/http\"",
           "new_string": "\t\"encoding/csv\"\n\t\"fmt\"\n\t\"net/http\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7945,11 +7945,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\t\"encoding/csv\"\n\t\"net/http\"",
             "new_string": "\t\"encoding/csv\"\n\t\"fmt\"\n\t\"net/http\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -9206,7 +9206,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\tbody := \"﻿ Metadata.CRM ,ignored",
           "new_string": "\tbody := \"﻿ Metadata.CRM ,ignored"
         }
@@ -9230,7 +9230,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\tbody := \"﻿ Metadata.CRM ,ignored",
             "new_string": "\tbody := \"﻿ Metadata.CRM ,ignored"
           }
@@ -9254,7 +9254,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\tbody := \"﻿ Metadata.CRM ,ignored",
           "new_string": "\tbody := \"﻿ Metadata.CRM ,ignored"
         },
@@ -9280,7 +9280,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\tbody := \"﻿ Metadata.CRM ,ignored",
             "new_string": "\tbody := \"﻿ Metadata.CRM ,ignored"
           },
@@ -17576,7 +17576,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_584220e30a2f",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
+      "cwd": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -20705,7 +20705,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_865f0912779e",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
+      "cwd": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -21002,7 +21002,7 @@
         "id": "toolu_012jPTksjVbqGdEMoYM78Bh4",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "offset": 1,
           "limit": 260
         }
@@ -21025,7 +21025,7 @@
           "id": "toolu_012jPTksjVbqGdEMoYM78Bh4",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "offset": 1,
             "limit": 260
           }
@@ -21048,7 +21048,7 @@
         "id": "toolu_012jPTksjVbqGdEMoYM78Bh4",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "offset": 1,
           "limit": 260
         },
@@ -21072,7 +21072,7 @@
           "id": "toolu_012jPTksjVbqGdEMoYM78Bh4",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "offset": 1,
             "limit": 260
           },
@@ -21096,7 +21096,7 @@
         "id": "toolu_01GqfUJJ7qZkoQPTPTDwUCfi",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "offset": 200,
           "limit": 120
         }
@@ -21119,7 +21119,7 @@
           "id": "toolu_01GqfUJJ7qZkoQPTPTDwUCfi",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "offset": 200,
             "limit": 120
           }
@@ -21142,7 +21142,7 @@
         "id": "toolu_01GqfUJJ7qZkoQPTPTDwUCfi",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "offset": 200,
           "limit": 120
         },
@@ -21166,7 +21166,7 @@
           "id": "toolu_01GqfUJJ7qZkoQPTPTDwUCfi",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "offset": 200,
             "limit": 120
           },
@@ -21968,7 +21968,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)",
           "new_string": "// importMaxRows is the most data records one customer import may have.\nconst importMaxRows = 10000"
         }
@@ -21992,7 +21992,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)",
             "new_string": "// importMaxRows is the most data records one customer import may have.\nconst importMaxRows = 10000"
           }
@@ -22016,11 +22016,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)",
           "new_string": "// importMaxRows is the most data records one customer import may have.\nconst importMaxRows = 10000"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -22041,11 +22041,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "// Limits of a customer import: the CSV body and its data records.\nconst (\n\timportMaxBytes = 10 \u003c\u003c 20\n\timportMaxRows  = 10000\n)",
             "new_string": "// importMaxRows is the most data records one customer import may have.\nconst importMaxRows = 10000"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
         }
       },
       "node": "work",
@@ -22079,7 +22079,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix",
           "new_string": "\t// No byte cap: the body is limited by its data records (importMaxRows), which answer too_many_rows.\n\tbody, err := io.ReadAll(r.Body)\n\tif err != nil {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix"
         }
@@ -22103,7 +22103,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix",
             "new_string": "\t// No byte cap: the body is limited by its data records (importMaxRows), which answer too_many_rows.\n\tbody, err := io.ReadAll(r.Body)\n\tif err != nil {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix"
           }
@@ -22127,11 +22127,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix",
           "new_string": "\t// No byte cap: the body is limited by its data records (importMaxRows), which answer too_many_rows.\n\tbody, err := io.ReadAll(r.Body)\n\tif err != nil {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -22152,11 +22152,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\tbody, err := io.ReadAll(http.MaxBytesReader(w, r.Body, importMaxBytes))\n\tvar tooBig *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, \u0026tooBig):\n\t\twriteError(w, http.StatusRequestEntityTooLarge, \"too_large\", \"the body is larger than 10 MiB\")\n\t\treturn\n\tcase err != nil:\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix",
             "new_string": "\t// No byte cap: the body is limited by its data records (importMaxRows), which answer too_many_rows.\n\tbody, err := io.ReadAll(r.Body)\n\tif err != nil {\n\t\twriteError(w, http.StatusBadRequest, \"invalid_csv\", \"the body could not be read\")\n\t\treturn\n\t}\n\tbody = bytes.TrimPrefix"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
         }
       },
       "node": "work",
@@ -22190,7 +22190,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"",
           "new_string": "\t\"encoding/csv\"\n\t\"io\""
         }
@@ -22214,7 +22214,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"",
             "new_string": "\t\"encoding/csv\"\n\t\"io\""
           }
@@ -22238,11 +22238,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "old_string": "\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"",
           "new_string": "\t\"encoding/csv\"\n\t\"io\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -22263,11 +22263,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "old_string": "\t\"encoding/csv\"\n\t\"errors\"\n\t\"io\"",
             "new_string": "\t\"encoding/csv\"\n\t\"io\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go has been updated successfully."
         }
       },
       "node": "work",
@@ -22567,7 +22567,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}",
           "new_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n\n\t// The limit counts records, not bytes: 10,000 long rows are over 10 MiB and still fine, 10,001 are too_many_rows.\n\tlong := strings.Repeat(\"x\", 1100)\n\tvar longRows strings.Builder\n\tlongRows.WriteString(\"name,email,metadata.note\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026longRows, \"L%d,l%d@example.com,%s\\n\", i, i, long)\n\t}\n\tif longRows.Len() \u003c= 10\u003c\u003c20 {\n\t\tt.Fatalf(\"long rows fit in 10 MiB (%d bytes), the test needs a bigger body\", longRows.Len())\n\t}\n\tfull = strings.SplitAfter(longRows.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 long rows: %s\", r)\n\t}\n\tif r := imp(\"\", longRows.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 long rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
         }
@@ -22591,7 +22591,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}",
             "new_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n\n\t// The limit counts records, not bytes: 10,000 long rows are over 10 MiB and still fine, 10,001 are too_many_rows.\n\tlong := strings.Repeat(\"x\", 1100)\n\tvar longRows strings.Builder\n\tlongRows.WriteString(\"name,email,metadata.note\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026longRows, \"L%d,l%d@example.com,%s\\n\", i, i, long)\n\t}\n\tif longRows.Len() \u003c= 10\u003c\u003c20 {\n\t\tt.Fatalf(\"long rows fit in 10 MiB (%d bytes), the test needs a bigger body\", longRows.Len())\n\t}\n\tfull = strings.SplitAfter(longRows.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 long rows: %s\", r)\n\t}\n\tif r := imp(\"\", longRows.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 long rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
           }
@@ -22615,11 +22615,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
           "old_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}",
           "new_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n\n\t// The limit counts records, not bytes: 10,000 long rows are over 10 MiB and still fine, 10,001 are too_many_rows.\n\tlong := strings.Repeat(\"x\", 1100)\n\tvar longRows strings.Builder\n\tlongRows.WriteString(\"name,email,metadata.note\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026longRows, \"L%d,l%d@example.com,%s\\n\", i, i, long)\n\t}\n\tif longRows.Len() \u003c= 10\u003c\u003c20 {\n\t\tt.Fatalf(\"long rows fit in 10 MiB (%d bytes), the test needs a bigger body\", longRows.Len())\n\t}\n\tfull = strings.SplitAfter(longRows.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 long rows: %s\", r)\n\t}\n\tif r := imp(\"\", longRows.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 long rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -22640,11 +22640,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go",
             "old_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}",
             "new_string": "\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n\n\t// The limit counts records, not bytes: 10,000 long rows are over 10 MiB and still fine, 10,001 are too_many_rows.\n\tlong := strings.Repeat(\"x\", 1100)\n\tvar longRows strings.Builder\n\tlongRows.WriteString(\"name,email,metadata.note\\n\")\n\tfor i := range 10001 {\n\t\tfmt.Fprintf(\u0026longRows, \"L%d,l%d@example.com,%s\\n\", i, i, long)\n\t}\n\tif longRows.Len() \u003c= 10\u003c\u003c20 {\n\t\tt.Fatalf(\"long rows fit in 10 MiB (%d bytes), the test needs a bigger body\", longRows.Len())\n\t}\n\tfull = strings.SplitAfter(longRows.String(), \"\\n\")\n\tif r := imp(\"?dry_run=true\", strings.Join(full[:10001], \"\")); r.Code != http.StatusOK || r.Map(t)[\"would_create\"] != float64(10000) {\n\t\tt.Fatalf(\"10,000 long rows: %s\", r)\n\t}\n\tif r := imp(\"\", longRows.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)[\"error\"] != \"too_many_rows\" {\n\t\tt.Fatalf(\"10,001 long rows: %s\", r)\n\t}\n\tif count() != 4 {\n\t\tt.Fatalf(\"customers changed: %d\", count())\n\t}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -27432,7 +27432,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_ab24f4fafda9",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
+      "cwd": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -27895,7 +27895,7 @@
         "id": "toolu_01WvxXk5XNqRHG3B6SmEVDAo",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
           "offset": 10,
           "limit": 30
         }
@@ -27918,7 +27918,7 @@
           "id": "toolu_01WvxXk5XNqRHG3B6SmEVDAo",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
             "offset": 10,
             "limit": 30
           }
@@ -27941,7 +27941,7 @@
         "id": "toolu_01WvxXk5XNqRHG3B6SmEVDAo",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
           "offset": 10,
           "limit": 30
         },
@@ -27965,7 +27965,7 @@
           "id": "toolu_01WvxXk5XNqRHG3B6SmEVDAo",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/customers.go",
             "offset": 10,
             "limit": 30
           },
@@ -28002,7 +28002,7 @@
         "id": "toolu_01THPA8GF5JzuY6TLdwC67Z5",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "offset": 44,
           "limit": 40
         }
@@ -28025,7 +28025,7 @@
           "id": "toolu_01THPA8GF5JzuY6TLdwC67Z5",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "offset": 44,
             "limit": 40
           }
@@ -28048,7 +28048,7 @@
         "id": "toolu_01THPA8GF5JzuY6TLdwC67Z5",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
           "offset": 44,
           "limit": 40
         },
@@ -28072,7 +28072,7 @@
           "id": "toolu_01THPA8GF5JzuY6TLdwC67Z5",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/api/customers.go",
             "offset": 44,
             "limit": 40
           },
@@ -28096,7 +28096,7 @@
         "id": "toolu_01EWsg6H47pvBQQtCGPgaV2e",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
           "offset": 84,
           "limit": 12
         }
@@ -28119,7 +28119,7 @@
           "id": "toolu_01EWsg6H47pvBQQtCGPgaV2e",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
             "offset": 84,
             "limit": 12
           }
@@ -28142,7 +28142,7 @@
         "id": "toolu_01EWsg6H47pvBQQtCGPgaV2e",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
           "offset": 84,
           "limit": 12
         },
@@ -28166,7 +28166,7 @@
           "id": "toolu_01EWsg6H47pvBQQtCGPgaV2e",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa/internal/store/store.go",
             "offset": 84,
             "limit": 12
           },
@@ -32026,7 +32026,7 @@
     "projectId": "prj_06d22cc98592",
     "taskId": "task_3747989aaafa",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa"
+      "path": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/worktrees/prj_06d22cc98592/task_3747989aaafa"
     }
   },
   {

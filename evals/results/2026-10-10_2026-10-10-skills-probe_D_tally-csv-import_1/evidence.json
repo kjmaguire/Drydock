@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/build_326fab06c0ba.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/build_326fab06c0ba.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 440ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/test_48c7a7dae866.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/test_48c7a7dae866.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 370ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/lint_c6d10ccfcb40.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/lint_c6d10ccfcb40.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/secrets_e9f4a92b632f.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/secrets_e9f4a92b632f.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "4 file(s), +377 -0",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/evidence/task.diff",
     "data": {
       "Files": 4,
       "Insertions": 377,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 470ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/build_9615dfd8cbc3.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/build_9615dfd8cbc3.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 400ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/test_a6a8bb1b65aa.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/test_a6a8bb1b65aa.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 400ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/lint_ed2c2d43250f.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/lint_ed2c2d43250f.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/secrets_ac1f40e0020f.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/secrets_ac1f40e0020f.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "4 file(s), +390 -0",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/evidence/task.diff",
     "data": {
       "Files": 4,
       "Insertions": 390,

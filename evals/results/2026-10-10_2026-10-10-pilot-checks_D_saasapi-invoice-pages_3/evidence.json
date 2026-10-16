@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 420ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/build-1791598171498155479.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/build-1791598171498155479.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 140ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/test-1791598171917831979.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/test-1791598171917831979.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 130ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/lint-1791598172056546353.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/lint-1791598172056546353.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/secrets-1791598172200604560.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/secrets-1791598172200604560.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +221 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/evidence/task.diff",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 221,
@@ -128,7 +128,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 580ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/build-1791598240665349121.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/build-1791598240665349121.log",
     "data": {
       "argv": [
         "go",
@@ -150,7 +150,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/test-1791598241246556491.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/test-1791598241246556491.log",
     "data": {
       "argv": [
         "go",
@@ -172,7 +172,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 230ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/lint-1791598241743454165.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/lint-1791598241743454165.log",
     "data": {
       "argv": [
         "go",
@@ -194,7 +194,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/secrets-1791598241990833012.log",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/checks/secrets-1791598241990833012.log",
     "data": {
       "argv": [
         "drydock",
@@ -214,7 +214,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +229 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/evidence/task.diff",
+    "ref": "<scratchpad>/trial-work/saasapi-invoice-pages-D-3/data/runs/run_e911cd34defe/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 229,

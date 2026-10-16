@@ -574,7 +574,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_535c17f66055",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e",
+      "cwd": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -4513,7 +4513,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
           "old_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }",
           "new_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }\n\n// SeatLimit returns how many seats the plan allows. ok is false when the plan has no limit.\nfunc (p OrgPlan) SeatLimit() (limit int, ok bool) {\n\tswitch p {\n\tcase OrgFree:\n\t\treturn 3, true\n\tcase OrgTeam:\n\t\treturn 10, true\n\t}\n\treturn 0, false\n}"
         }
@@ -4537,7 +4537,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
             "old_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }",
             "new_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }\n\n// SeatLimit returns how many seats the plan allows. ok is false when the plan has no limit.\nfunc (p OrgPlan) SeatLimit() (limit int, ok bool) {\n\tswitch p {\n\tcase OrgFree:\n\t\treturn 3, true\n\tcase OrgTeam:\n\t\treturn 10, true\n\t}\n\treturn 0, false\n}"
           }
@@ -4561,11 +4561,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
           "old_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }",
           "new_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }\n\n// SeatLimit returns how many seats the plan allows. ok is false when the plan has no limit.\nfunc (p OrgPlan) SeatLimit() (limit int, ok bool) {\n\tswitch p {\n\tcase OrgFree:\n\t\treturn 3, true\n\tcase OrgTeam:\n\t\treturn 10, true\n\t}\n\treturn 0, false\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4586,11 +4586,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go",
             "old_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }",
             "new_string": "// Valid reports whether p is a known plan.\nfunc (p OrgPlan) Valid() bool { return p == OrgFree || p == OrgTeam || p == OrgBusiness }\n\n// SeatLimit returns how many seats the plan allows. ok is false when the plan has no limit.\nfunc (p OrgPlan) SeatLimit() (limit int, ok bool) {\n\tswitch p {\n\tcase OrgFree:\n\t\treturn 3, true\n\tcase OrgTeam:\n\t\treturn 10, true\n\t}\n\treturn 0, false\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/types.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4931,7 +4931,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
           "new_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)\n\n// SeatLimitError is returned when a change would take an organization past its plan's seat limit. It is a conflict.\ntype SeatLimitError struct {\n\tLimit int // the plan's seat limit\n\tUsed  int // the seats in use\n}\n\nfunc (e *SeatLimitError) Error() string {\n\treturn fmt.Sprintf(\"%v: the plan allows %d seats and %d are in use\", ErrConflict, e.Limit, e.Used)\n}\n\n// Unwrap makes a SeatLimitError a conflict.\nfunc (e *SeatLimitError) Unwrap() error { return ErrConflict }"
         }
@@ -4955,7 +4955,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
             "new_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)\n\n// SeatLimitError is returned when a change would take an organization past its plan's seat limit. It is a conflict.\ntype SeatLimitError struct {\n\tLimit int // the plan's seat limit\n\tUsed  int // the seats in use\n}\n\nfunc (e *SeatLimitError) Error() string {\n\treturn fmt.Sprintf(\"%v: the plan allows %d seats and %d are in use\", ErrConflict, e.Limit, e.Used)\n}\n\n// Unwrap makes a SeatLimitError a conflict.\nfunc (e *SeatLimitError) Unwrap() error { return ErrConflict }"
           }
@@ -4979,11 +4979,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
           "new_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)\n\n// SeatLimitError is returned when a change would take an organization past its plan's seat limit. It is a conflict.\ntype SeatLimitError struct {\n\tLimit int // the plan's seat limit\n\tUsed  int // the seats in use\n}\n\nfunc (e *SeatLimitError) Error() string {\n\treturn fmt.Sprintf(\"%v: the plan allows %d seats and %d are in use\", ErrConflict, e.Limit, e.Used)\n}\n\n// Unwrap makes a SeatLimitError a conflict.\nfunc (e *SeatLimitError) Unwrap() error { return ErrConflict }"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5004,11 +5004,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)",
             "new_string": "\tErrCustomerOrgMismatch = errors.New(\"customer belongs to another organization\")\n)\n\n// SeatLimitError is returned when a change would take an organization past its plan's seat limit. It is a conflict.\ntype SeatLimitError struct {\n\tLimit int // the plan's seat limit\n\tUsed  int // the seats in use\n}\n\nfunc (e *SeatLimitError) Error() string {\n\treturn fmt.Sprintf(\"%v: the plan allows %d seats and %d are in use\", ErrConflict, e.Limit, e.Used)\n}\n\n// Unwrap makes a SeatLimitError a conflict.\nfunc (e *SeatLimitError) Unwrap() error { return ErrConflict }"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5080,7 +5080,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "// UpdateOrg changes an organization with f, which may refuse with an error.\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}",
           "new_string": "// UpdateOrg changes an organization with f, which may refuse with an error. A new plan must allow the seats in use\n// (otherwise it is a *SeatLimitError).\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tprev := o\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\tif o.Plan != prev.Plan {\n\t\tif limit, limited := o.Plan.SeatLimit(); limited {\n\t\t\tif used := s.seatsUsedLocked(id); used \u003e limit {\n\t\t\t\treturn Org{}, \u0026SeatLimitError{Limit: limit, Used: used}\n\t\t\t}\n\t\t}\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}\n\n// SeatsUsed returns how many seats an organization uses: its members and pending invites whose role is not viewer.\nfunc (s *Store) SeatsUsed(orgID string) int {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\treturn s.seatsUsedLocked(orgID)\n}\n\n// seatsUsedLocked is SeatsUsed for a caller that holds the lock.\nfunc (s *Store) seatsUsedLocked(orgID string) int {\n\tused := 0\n\tfor k, m := range s.members {\n\t\tif k.org == orgID \u0026\u0026 m.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 inv.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\treturn used\n}\n\n// checkSeatLocked returns a *SeatLimitError unless the organization's plan has a free seat for one more. The caller\n// holds the lock.\nfunc (s *Store) checkSeatLocked(orgID string) error {\n\to, ok := s.orgs[orgID]\n\tif !ok {\n\t\treturn ErrNotFound\n\t}\n\tlimit, limited := o.Plan.SeatLimit()\n\tif !limited {\n\t\treturn nil\n\t}\n\tif used := s.seatsUsedLocked(orgID); used \u003e= limit {\n\t\treturn \u0026SeatLimitError{Limit: limit, Used: used}\n\t}\n\treturn nil\n}"
         }
@@ -5104,7 +5104,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "// UpdateOrg changes an organization with f, which may refuse with an error.\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}",
             "new_string": "// UpdateOrg changes an organization with f, which may refuse with an error. A new plan must allow the seats in use\n// (otherwise it is a *SeatLimitError).\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tprev := o\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\tif o.Plan != prev.Plan {\n\t\tif limit, limited := o.Plan.SeatLimit(); limited {\n\t\t\tif used := s.seatsUsedLocked(id); used \u003e limit {\n\t\t\t\treturn Org{}, \u0026SeatLimitError{Limit: limit, Used: used}\n\t\t\t}\n\t\t}\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}\n\n// SeatsUsed returns how many seats an organization uses: its members and pending invites whose role is not viewer.\nfunc (s *Store) SeatsUsed(orgID string) int {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\treturn s.seatsUsedLocked(orgID)\n}\n\n// seatsUsedLocked is SeatsUsed for a caller that holds the lock.\nfunc (s *Store) seatsUsedLocked(orgID string) int {\n\tused := 0\n\tfor k, m := range s.members {\n\t\tif k.org == orgID \u0026\u0026 m.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 inv.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\treturn used\n}\n\n// checkSeatLocked returns a *SeatLimitError unless the organization's plan has a free seat for one more. The caller\n// holds the lock.\nfunc (s *Store) checkSeatLocked(orgID string) error {\n\to, ok := s.orgs[orgID]\n\tif !ok {\n\t\treturn ErrNotFound\n\t}\n\tlimit, limited := o.Plan.SeatLimit()\n\tif !limited {\n\t\treturn nil\n\t}\n\tif used := s.seatsUsedLocked(orgID); used \u003e= limit {\n\t\treturn \u0026SeatLimitError{Limit: limit, Used: used}\n\t}\n\treturn nil\n}"
           }
@@ -5128,11 +5128,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "// UpdateOrg changes an organization with f, which may refuse with an error.\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}",
           "new_string": "// UpdateOrg changes an organization with f, which may refuse with an error. A new plan must allow the seats in use\n// (otherwise it is a *SeatLimitError).\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tprev := o\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\tif o.Plan != prev.Plan {\n\t\tif limit, limited := o.Plan.SeatLimit(); limited {\n\t\t\tif used := s.seatsUsedLocked(id); used \u003e limit {\n\t\t\t\treturn Org{}, \u0026SeatLimitError{Limit: limit, Used: used}\n\t\t\t}\n\t\t}\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}\n\n// SeatsUsed returns how many seats an organization uses: its members and pending invites whose role is not viewer.\nfunc (s *Store) SeatsUsed(orgID string) int {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\treturn s.seatsUsedLocked(orgID)\n}\n\n// seatsUsedLocked is SeatsUsed for a caller that holds the lock.\nfunc (s *Store) seatsUsedLocked(orgID string) int {\n\tused := 0\n\tfor k, m := range s.members {\n\t\tif k.org == orgID \u0026\u0026 m.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 inv.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\treturn used\n}\n\n// checkSeatLocked returns a *SeatLimitError unless the organization's plan has a free seat for one more. The caller\n// holds the lock.\nfunc (s *Store) checkSeatLocked(orgID string) error {\n\to, ok := s.orgs[orgID]\n\tif !ok {\n\t\treturn ErrNotFound\n\t}\n\tlimit, limited := o.Plan.SeatLimit()\n\tif !limited {\n\t\treturn nil\n\t}\n\tif used := s.seatsUsedLocked(orgID); used \u003e= limit {\n\t\treturn \u0026SeatLimitError{Limit: limit, Used: used}\n\t}\n\treturn nil\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5153,11 +5153,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "// UpdateOrg changes an organization with f, which may refuse with an error.\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}",
             "new_string": "// UpdateOrg changes an organization with f, which may refuse with an error. A new plan must allow the seats in use\n// (otherwise it is a *SeatLimitError).\nfunc (s *Store) UpdateOrg(id string, f func(*Org) error) (Org, error) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\to, ok := s.orgs[id]\n\tif !ok {\n\t\treturn Org{}, ErrNotFound\n\t}\n\tprev := o\n\tif err := f(\u0026o); err != nil {\n\t\treturn Org{}, err\n\t}\n\to.ID = id\n\tif err := checkOrg(o); err != nil {\n\t\treturn Org{}, err\n\t}\n\tif o.Plan != prev.Plan {\n\t\tif limit, limited := o.Plan.SeatLimit(); limited {\n\t\t\tif used := s.seatsUsedLocked(id); used \u003e limit {\n\t\t\t\treturn Org{}, \u0026SeatLimitError{Limit: limit, Used: used}\n\t\t\t}\n\t\t}\n\t}\n\ts.orgs[id] = o\n\treturn o, nil\n}\n\n// SeatsUsed returns how many seats an organization uses: its members and pending invites whose role is not viewer.\nfunc (s *Store) SeatsUsed(orgID string) int {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\treturn s.seatsUsedLocked(orgID)\n}\n\n// seatsUsedLocked is SeatsUsed for a caller that holds the lock.\nfunc (s *Store) seatsUsedLocked(orgID string) int {\n\tused := 0\n\tfor k, m := range s.members {\n\t\tif k.org == orgID \u0026\u0026 m.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\tfor _, inv := range s.invites {\n\t\tif inv.OrgID == orgID \u0026\u0026 inv.AcceptedAt == nil \u0026\u0026 inv.RevokedAt == nil \u0026\u0026 inv.Role != RoleViewer {\n\t\t\tused++\n\t\t}\n\t}\n\treturn used\n}\n\n// checkSeatLocked returns a *SeatLimitError unless the organization's plan has a free seat for one more. The caller\n// holds the lock.\nfunc (s *Store) checkSeatLocked(orgID string) error {\n\to, ok := s.orgs[orgID]\n\tif !ok {\n\t\treturn ErrNotFound\n\t}\n\tlimit, limited := o.Plan.SeatLimit()\n\tif !limited {\n\t\treturn nil\n\t}\n\tif used := s.seatsUsedLocked(orgID); used \u003e= limit {\n\t\treturn \u0026SeatLimitError{Limit: limit, Used: used}\n\t}\n\treturn nil\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5384,7 +5384,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "// SetMemberRole changes a member's role.\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tm.Role = role",
           "new_string": "// SetMemberRole changes a member's role. A viewer who becomes anything else needs a free seat (otherwise it is a\n// *SeatLimitError).\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tif m.Role == RoleViewer \u0026\u0026 role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Member{}, err\n\t\t}\n\t}\n\tm.Role = role"
         }
@@ -5408,7 +5408,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "// SetMemberRole changes a member's role.\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tm.Role = role",
             "new_string": "// SetMemberRole changes a member's role. A viewer who becomes anything else needs a free seat (otherwise it is a\n// *SeatLimitError).\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tif m.Role == RoleViewer \u0026\u0026 role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Member{}, err\n\t\t}\n\t}\n\tm.Role = role"
           }
@@ -5432,11 +5432,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "// SetMemberRole changes a member's role.\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tm.Role = role",
           "new_string": "// SetMemberRole changes a member's role. A viewer who becomes anything else needs a free seat (otherwise it is a\n// *SeatLimitError).\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tif m.Role == RoleViewer \u0026\u0026 role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Member{}, err\n\t\t}\n\t}\n\tm.Role = role"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5457,11 +5457,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "// SetMemberRole changes a member's role.\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tm.Role = role",
             "new_string": "// SetMemberRole changes a member's role. A viewer who becomes anything else needs a free seat (otherwise it is a\n// *SeatLimitError).\nfunc (s *Store) SetMemberRole(orgID, userID string, role Role) (Member, error) {\n\tif !role.Valid() {\n\t\treturn Member{}, invalid(\"unknown role %q\", role)\n\t}\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tk := memberKey{orgID, userID}\n\tm, ok := s.members[k]\n\tif !ok {\n\t\treturn Member{}, ErrNotFound\n\t}\n\tif m.Role == RoleViewer \u0026\u0026 role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Member{}, err\n\t\t}\n\t}\n\tm.Role = role"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5495,7 +5495,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {",
           "new_string": "// CreateInvite invites an email address to join an organization with a role. An invite for a role other than viewer\n// holds a seat, so it needs a free one (otherwise it is a *SeatLimitError).\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {"
         }
@@ -5519,7 +5519,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {",
             "new_string": "// CreateInvite invites an email address to join an organization with a role. An invite for a role other than viewer\n// holds a seat, so it needs a free one (otherwise it is a *SeatLimitError).\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {"
           }
@@ -5543,11 +5543,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {",
           "new_string": "// CreateInvite invites an email address to join an organization with a role. An invite for a role other than viewer\n// holds a seat, so it needs a free one (otherwise it is a *SeatLimitError).\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5568,11 +5568,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "// CreateInvite invites an email address to join an organization with a role.\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {",
             "new_string": "// CreateInvite invites an email address to join an organization with a role. An invite for a role other than viewer\n// holds a seat, so it needs a free one (otherwise it is a *SeatLimitError).\nfunc (s *Store) CreateInvite(orgID, email string, role Role, invitedBy string, now time.Time) (Invite, error) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -5606,7 +5606,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{",
           "new_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tif role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Invite{}, err\n\t\t}\n\t}\n\tinv := Invite{"
         }
@@ -5630,7 +5630,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{",
             "new_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tif role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Invite{}, err\n\t\t}\n\t}\n\tinv := Invite{"
           }
@@ -5667,11 +5667,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "old_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{",
           "new_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tif role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Invite{}, err\n\t\t}\n\t}\n\tinv := Invite{"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -5692,11 +5692,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "old_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tinv := Invite{",
             "new_string": "\t\tif _, member := s.members[memberKey{orgID, uid}]; member {\n\t\t\treturn Invite{}, ErrAlreadyMember\n\t\t}\n\t}\n\tif role != RoleViewer {\n\t\tif err := s.checkSeatLocked(orgID); err != nil {\n\t\t\treturn Invite{}, err\n\t\t}\n\t}\n\tinv := Invite{"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -6097,7 +6097,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
           "old_string": "// decode reads a JSON body",
           "new_string": "// writeSeatLimit answers {\"error\": code, \"limit\": n, \"used\": n} for a change the plan's seat limit refuses.\nfunc writeSeatLimit(w http.ResponseWriter, status int, code string, e *store.SeatLimitError) {\n\twriteJSON(w, status, map[string]any{\"error\": code, \"limit\": e.Limit, \"used\": e.Used})\n}\n\n// decode reads a JSON body"
         }
@@ -6121,7 +6121,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
             "old_string": "// decode reads a JSON body",
             "new_string": "// writeSeatLimit answers {\"error\": code, \"limit\": n, \"used\": n} for a change the plan's seat limit refuses.\nfunc writeSeatLimit(w http.ResponseWriter, status int, code string, e *store.SeatLimitError) {\n\twriteJSON(w, status, map[string]any{\"error\": code, \"limit\": e.Limit, \"used\": e.Used})\n}\n\n// decode reads a JSON body"
           }
@@ -6145,11 +6145,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
           "old_string": "// decode reads a JSON body",
           "new_string": "// writeSeatLimit answers {\"error\": code, \"limit\": n, \"used\": n} for a change the plan's seat limit refuses.\nfunc writeSeatLimit(w http.ResponseWriter, status int, code string, e *store.SeatLimitError) {\n\twriteJSON(w, status, map[string]any{\"error\": code, \"limit\": e.Limit, \"used\": e.Used})\n}\n\n// decode reads a JSON body"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6170,11 +6170,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go",
             "old_string": "// decode reads a JSON body",
             "new_string": "// writeSeatLimit answers {\"error\": code, \"limit\": n, \"used\": n} for a change the plan's seat limit refuses.\nfunc writeSeatLimit(w http.ResponseWriter, status int, code string, e *store.SeatLimitError) {\n\twriteJSON(w, status, map[string]any{\"error\": code, \"limit\": e.Limit, \"used\": e.Used})\n}\n\n// decode reads a JSON body"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/respond.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6208,7 +6208,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "func (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}",
           "new_string": "// orgView is an organization with its seats.\ntype orgView struct {\n\tstore.Org\n\tSeats seatsView `json:\"seats\"`\n}\n\n// seatsView is how many seats an organization uses and how many its plan allows (Limit is null when unlimited).\ntype seatsView struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc (s *Server) viewOrg(o store.Org) orgView {\n\tv := orgView{Org: o, Seats: seatsView{Used: s.store.SeatsUsed(o.ID)}}\n\tif limit, ok := o.Plan.SeatLimit(); ok {\n\t\tv.Seats.Limit = \u0026limit\n\t}\n\treturn v\n}\n\nfunc (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}"
         }
@@ -6232,7 +6232,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "func (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}",
             "new_string": "// orgView is an organization with its seats.\ntype orgView struct {\n\tstore.Org\n\tSeats seatsView `json:\"seats\"`\n}\n\n// seatsView is how many seats an organization uses and how many its plan allows (Limit is null when unlimited).\ntype seatsView struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc (s *Server) viewOrg(o store.Org) orgView {\n\tv := orgView{Org: o, Seats: seatsView{Used: s.store.SeatsUsed(o.ID)}}\n\tif limit, ok := o.Plan.SeatLimit(); ok {\n\t\tv.Seats.Limit = \u0026limit\n\t}\n\treturn v\n}\n\nfunc (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}"
           }
@@ -6256,11 +6256,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "func (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}",
           "new_string": "// orgView is an organization with its seats.\ntype orgView struct {\n\tstore.Org\n\tSeats seatsView `json:\"seats\"`\n}\n\n// seatsView is how many seats an organization uses and how many its plan allows (Limit is null when unlimited).\ntype seatsView struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc (s *Server) viewOrg(o store.Org) orgView {\n\tv := orgView{Org: o, Seats: seatsView{Used: s.store.SeatsUsed(o.ID)}}\n\tif limit, ok := o.Plan.SeatLimit(); ok {\n\t\tv.Seats.Limit = \u0026limit\n\t}\n\treturn v\n}\n\nfunc (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -6281,11 +6281,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "func (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}",
             "new_string": "// orgView is an organization with its seats.\ntype orgView struct {\n\tstore.Org\n\tSeats seatsView `json:\"seats\"`\n}\n\n// seatsView is how many seats an organization uses and how many its plan allows (Limit is null when unlimited).\ntype seatsView struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc (s *Server) viewOrg(o store.Org) orgView {\n\tv := orgView{Org: o, Seats: seatsView{Used: s.store.SeatsUsed(o.ID)}}\n\tif limit, ok := o.Plan.SeatLimit(); ok {\n\t\tv.Seats.Limit = \u0026limit\n\t}\n\treturn v\n}\n\nfunc (s *Server) getOrg(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\to, ok := s.store.Org(p.OrgID)\n\tif !ok {\n\t\twriteError(w, http.StatusNotFound, \"not_found\", \"no such organization\")\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -6319,7 +6319,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}\n\n// memberView",
           "new_string": "\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusConflict, \"over_seat_limit\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}\n\n// memberView"
         }
@@ -6343,7 +6343,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}\n\n// memberView",
             "new_string": "\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusConflict, \"over_seat_limit\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}\n\n// memberView"
           }
@@ -6367,11 +6367,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}\n\n// memberView",
           "new_string": "\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusConflict, \"over_seat_limit\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}\n\n// memberView"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -6392,11 +6392,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, o)\n}\n\n// memberView",
             "new_string": "\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusConflict, \"over_seat_limit\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, s.viewOrg(o))\n}\n\n// memberView"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -6430,7 +6430,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\ts.storeError(w, err)",
           "new_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
         }
@@ -6454,7 +6454,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\ts.storeError(w, err)",
             "new_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
           }
@@ -6478,11 +6478,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\ts.storeError(w, err)",
           "new_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -6503,11 +6503,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\ts.storeError(w, err)",
             "new_string": "\tm, err := s.store.SetMemberRole(p.OrgID, r.PathValue(\"user_id\"), in.Role)\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -6541,7 +6541,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\ts.storeError(w, err)",
           "new_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
         }
@@ -6565,7 +6565,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\ts.storeError(w, err)",
             "new_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
           }
@@ -6589,11 +6589,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
           "old_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\ts.storeError(w, err)",
           "new_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -6614,11 +6614,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go",
             "old_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\ts.storeError(w, err)",
             "new_string": "\tinv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())\n\tif err != nil {\n\t\tvar seats *store.SeatLimitError\n\t\tif errors.As(err, \u0026seats) {\n\t\t\twriteSeatLimit(w, http.StatusPaymentRequired, \"seat_limit_reached\", seats)\n\t\t\treturn\n\t\t}\n\t\ts.storeError(w, err)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/team.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -7703,7 +7703,7 @@
         "id": "toolu_01EDMUFyPCaPAHn9SgBTkm8P",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
           "content": "package store\n\nimport (\n\t\"errors\"\n\t\"sync\"\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\n// wantSeatLimit fails the test unless err is a seat limit refusal with these numbers.\nfunc wantSeatLimit(t *testing.T, err error, limit, used int) {\n\tt.Helper()\n\tvar e *SeatLimitError\n\tif !errors.As(err, \u0026e) || e.Limit != limit || e.Used != used || !errors.Is(err, ErrConflict) {\n\t\tt.Fatalf(\"err = %v, want a seat limit of %d with %d in use\", err, limit, used)\n\t}\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tinvite := func(email string, role Role) (Invite, error) {\n\t\treturn s.CreateInvite(o.ID, email, role, owner.ID, t0)\n\t}\n\tseatsUsed := func(want int) {\n\t\tt.Helper()\n\t\tif used := s.SeatsUsed(o.ID); used != want {\n\t\t\tt.Fatalf(\"SeatsUsed = %d, want %d\", used, want)\n\t\t}\n\t}\n\n\t// The owner holds one of the free plan's three seats.\n\tia, err := invite(\"a@free.example\", RoleMember)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tib, err := invite(\"b@free.example\", RoleAdmin)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = invite(\"c@free.example\", RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif _, err := invite(\"v@free.example\", RoleViewer); err != nil {\n\t\tt.Fatalf(\"a viewer invite needs no seat: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Revoking an invite frees its seat.\n\tif _, err := s.RevokeInvite(o.ID, ib.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := invite(\"c@free.example\", RoleMember); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(3)\n\n\t// A viewer needs a free seat to become anything else.\n\tw, err := s.CreateUser(\"w@free.example\", \"W\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, w.ID, RoleViewer, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = s.SetMemberRole(o.ID, w.ID, RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif m, _ := s.Member(o.ID, w.ID); m.Role != RoleViewer {\n\t\tt.Fatalf(\"role after a refused change = %s\", m.Role)\n\t}\n\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// A plan must allow the seats in use.\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgTeam; return nil }); err != nil {\n\t\tt.Fatalf(\"free to team: %v\", err)\n\t}\n\tif _, err := invite(\"d@free.example\", RoleMember); err != nil {\n\t\tt.Fatalf(\"team has room: %v\", err)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgFree; return nil }); err == nil {\n\t\tt.Fatal(\"team to free with 4 seats in use\")\n\t} else {\n\t\twantSeatLimit(t, err, 3, 4)\n\t}\n\tif got, _ := s.Org(o.ID); got.Plan != OrgTeam {\n\t\tt.Fatalf(\"plan after a refused change = %s\", got.Plan)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgBusiness; return nil }); err != nil {\n\t\tt.Fatalf(\"team to business: %v\", err)\n\t}\n}\n\nfunc TestSeatLimitHoldsUnderConcurrency(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.CreateInvite(o.ID, \"a@free.example\", RoleMember, owner.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Two of the free plan's three seats are in use, so exactly one more invite fits.\n\tvar wg sync.WaitGroup\n\tvar succeeded atomic.Int32\n\tfor range 8 {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\t_, err := s.CreateInvite(o.ID, \"b@free.example\", RoleMember, owner.ID, t0)\n\t\t\tvar seats *SeatLimitError\n\t\t\tswitch {\n\t\t\tcase err == nil:\n\t\t\t\tsucceeded.Add(1)\n\t\t\tcase !errors.As(err, \u0026seats):\n\t\t\t\tt.Errorf(\"unexpected error: %v\", err)\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tif n := succeeded.Load(); n != 1 {\n\t\tt.Fatalf(\"%d of 8 concurrent invites succeeded, want 1\", n)\n\t}\n\tif used := s.SeatsUsed(o.ID); used != 3 {\n\t\tt.Fatalf(\"SeatsUsed = %d, want 3\", used)\n\t}\n}\n"
         }
       },
@@ -7725,7 +7725,7 @@
           "id": "toolu_01EDMUFyPCaPAHn9SgBTkm8P",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
             "content": "package store\n\nimport (\n\t\"errors\"\n\t\"sync\"\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\n// wantSeatLimit fails the test unless err is a seat limit refusal with these numbers.\nfunc wantSeatLimit(t *testing.T, err error, limit, used int) {\n\tt.Helper()\n\tvar e *SeatLimitError\n\tif !errors.As(err, \u0026e) || e.Limit != limit || e.Used != used || !errors.Is(err, ErrConflict) {\n\t\tt.Fatalf(\"err = %v, want a seat limit of %d with %d in use\", err, limit, used)\n\t}\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tinvite := func(email string, role Role) (Invite, error) {\n\t\treturn s.CreateInvite(o.ID, email, role, owner.ID, t0)\n\t}\n\tseatsUsed := func(want int) {\n\t\tt.Helper()\n\t\tif used := s.SeatsUsed(o.ID); used != want {\n\t\t\tt.Fatalf(\"SeatsUsed = %d, want %d\", used, want)\n\t\t}\n\t}\n\n\t// The owner holds one of the free plan's three seats.\n\tia, err := invite(\"a@free.example\", RoleMember)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tib, err := invite(\"b@free.example\", RoleAdmin)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = invite(\"c@free.example\", RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif _, err := invite(\"v@free.example\", RoleViewer); err != nil {\n\t\tt.Fatalf(\"a viewer invite needs no seat: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Revoking an invite frees its seat.\n\tif _, err := s.RevokeInvite(o.ID, ib.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := invite(\"c@free.example\", RoleMember); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(3)\n\n\t// A viewer needs a free seat to become anything else.\n\tw, err := s.CreateUser(\"w@free.example\", \"W\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, w.ID, RoleViewer, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = s.SetMemberRole(o.ID, w.ID, RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif m, _ := s.Member(o.ID, w.ID); m.Role != RoleViewer {\n\t\tt.Fatalf(\"role after a refused change = %s\", m.Role)\n\t}\n\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// A plan must allow the seats in use.\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgTeam; return nil }); err != nil {\n\t\tt.Fatalf(\"free to team: %v\", err)\n\t}\n\tif _, err := invite(\"d@free.example\", RoleMember); err != nil {\n\t\tt.Fatalf(\"team has room: %v\", err)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgFree; return nil }); err == nil {\n\t\tt.Fatal(\"team to free with 4 seats in use\")\n\t} else {\n\t\twantSeatLimit(t, err, 3, 4)\n\t}\n\tif got, _ := s.Org(o.ID); got.Plan != OrgTeam {\n\t\tt.Fatalf(\"plan after a refused change = %s\", got.Plan)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgBusiness; return nil }); err != nil {\n\t\tt.Fatalf(\"team to business: %v\", err)\n\t}\n}\n\nfunc TestSeatLimitHoldsUnderConcurrency(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.CreateInvite(o.ID, \"a@free.example\", RoleMember, owner.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Two of the free plan's three seats are in use, so exactly one more invite fits.\n\tvar wg sync.WaitGroup\n\tvar succeeded atomic.Int32\n\tfor range 8 {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\t_, err := s.CreateInvite(o.ID, \"b@free.example\", RoleMember, owner.ID, t0)\n\t\t\tvar seats *SeatLimitError\n\t\t\tswitch {\n\t\t\tcase err == nil:\n\t\t\t\tsucceeded.Add(1)\n\t\t\tcase !errors.As(err, \u0026seats):\n\t\t\t\tt.Errorf(\"unexpected error: %v\", err)\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tif n := succeeded.Load(); n != 1 {\n\t\tt.Fatalf(\"%d of 8 concurrent invites succeeded, want 1\", n)\n\t}\n\tif used := s.SeatsUsed(o.ID); used != 3 {\n\t\tt.Fatalf(\"SeatsUsed = %d, want 3\", used)\n\t}\n}\n"
           }
         }
@@ -7747,10 +7747,10 @@
         "id": "toolu_01EDMUFyPCaPAHn9SgBTkm8P",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
           "content": "package store\n\nimport (\n\t\"errors\"\n\t\"sync\"\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\n// wantSeatLimit fails the test unless err is a seat limit refusal with these numbers.\nfunc wantSeatLimit(t *testing.T, err error, limit, used int) {\n\tt.Helper()\n\tvar e *SeatLimitError\n\tif !errors.As(err, \u0026e) || e.Limit != limit || e.Used != used || !errors.Is(err, ErrConflict) {\n\t\tt.Fatalf(\"err = %v, want a seat limit of %d with %d in use\", err, limit, used)\n\t}\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tinvite := func(email string, role Role) (Invite, error) {\n\t\treturn s.CreateInvite(o.ID, email, role, owner.ID, t0)\n\t}\n\tseatsUsed := func(want int) {\n\t\tt.Helper()\n\t\tif used := s.SeatsUsed(o.ID); used != want {\n\t\t\tt.Fatalf(\"SeatsUsed = %d, want %d\", used, want)\n\t\t}\n\t}\n\n\t// The owner holds one of the free plan's three seats.\n\tia, err := invite(\"a@free.example\", RoleMember)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tib, err := invite(\"b@free.example\", RoleAdmin)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = invite(\"c@free.example\", RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif _, err := invite(\"v@free.example\", RoleViewer); err != nil {\n\t\tt.Fatalf(\"a viewer invite needs no seat: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Revoking an invite frees its seat.\n\tif _, err := s.RevokeInvite(o.ID, ib.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := invite(\"c@free.example\", RoleMember); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(3)\n\n\t// A viewer needs a free seat to become anything else.\n\tw, err := s.CreateUser(\"w@free.example\", \"W\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, w.ID, RoleViewer, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = s.SetMemberRole(o.ID, w.ID, RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif m, _ := s.Member(o.ID, w.ID); m.Role != RoleViewer {\n\t\tt.Fatalf(\"role after a refused change = %s\", m.Role)\n\t}\n\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// A plan must allow the seats in use.\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgTeam; return nil }); err != nil {\n\t\tt.Fatalf(\"free to team: %v\", err)\n\t}\n\tif _, err := invite(\"d@free.example\", RoleMember); err != nil {\n\t\tt.Fatalf(\"team has room: %v\", err)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgFree; return nil }); err == nil {\n\t\tt.Fatal(\"team to free with 4 seats in use\")\n\t} else {\n\t\twantSeatLimit(t, err, 3, 4)\n\t}\n\tif got, _ := s.Org(o.ID); got.Plan != OrgTeam {\n\t\tt.Fatalf(\"plan after a refused change = %s\", got.Plan)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgBusiness; return nil }); err != nil {\n\t\tt.Fatalf(\"team to business: %v\", err)\n\t}\n}\n\nfunc TestSeatLimitHoldsUnderConcurrency(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.CreateInvite(o.ID, \"a@free.example\", RoleMember, owner.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Two of the free plan's three seats are in use, so exactly one more invite fits.\n\tvar wg sync.WaitGroup\n\tvar succeeded atomic.Int32\n\tfor range 8 {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\t_, err := s.CreateInvite(o.ID, \"b@free.example\", RoleMember, owner.ID, t0)\n\t\t\tvar seats *SeatLimitError\n\t\t\tswitch {\n\t\t\tcase err == nil:\n\t\t\t\tsucceeded.Add(1)\n\t\t\tcase !errors.As(err, \u0026seats):\n\t\t\t\tt.Errorf(\"unexpected error: %v\", err)\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tif n := succeeded.Load(); n != 1 {\n\t\tt.Fatalf(\"%d of 8 concurrent invites succeeded, want 1\", n)\n\t}\n\tif used := s.SeatsUsed(o.ID); used != 3 {\n\t\tt.Fatalf(\"SeatsUsed = %d, want 3\", used)\n\t}\n}\n"
         },
-        "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go (file state is current in your context — no need to Read it back)"
+        "output": "File created successfully at: <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -7770,10 +7770,10 @@
           "id": "toolu_01EDMUFyPCaPAHn9SgBTkm8P",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
             "content": "package store\n\nimport (\n\t\"errors\"\n\t\"sync\"\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\n// wantSeatLimit fails the test unless err is a seat limit refusal with these numbers.\nfunc wantSeatLimit(t *testing.T, err error, limit, used int) {\n\tt.Helper()\n\tvar e *SeatLimitError\n\tif !errors.As(err, \u0026e) || e.Limit != limit || e.Used != used || !errors.Is(err, ErrConflict) {\n\t\tt.Fatalf(\"err = %v, want a seat limit of %d with %d in use\", err, limit, used)\n\t}\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tinvite := func(email string, role Role) (Invite, error) {\n\t\treturn s.CreateInvite(o.ID, email, role, owner.ID, t0)\n\t}\n\tseatsUsed := func(want int) {\n\t\tt.Helper()\n\t\tif used := s.SeatsUsed(o.ID); used != want {\n\t\t\tt.Fatalf(\"SeatsUsed = %d, want %d\", used, want)\n\t\t}\n\t}\n\n\t// The owner holds one of the free plan's three seats.\n\tia, err := invite(\"a@free.example\", RoleMember)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tib, err := invite(\"b@free.example\", RoleAdmin)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = invite(\"c@free.example\", RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif _, err := invite(\"v@free.example\", RoleViewer); err != nil {\n\t\tt.Fatalf(\"a viewer invite needs no seat: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// Revoking an invite frees its seat.\n\tif _, err := s.RevokeInvite(o.ID, ib.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := invite(\"c@free.example\", RoleMember); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(3)\n\n\t// A viewer needs a free seat to become anything else.\n\tw, err := s.CreateUser(\"w@free.example\", \"W\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, w.ID, RoleViewer, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, err = s.SetMemberRole(o.ID, w.ID, RoleMember)\n\twantSeatLimit(t, err, 3, 3)\n\tif m, _ := s.Member(o.ID, w.ID); m.Role != RoleViewer {\n\t\tt.Fatalf(\"role after a refused change = %s\", m.Role)\n\t}\n\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)\n\n\t// A plan must allow the seats in use.\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgTeam; return nil }); err != nil {\n\t\tt.Fatalf(\"free to team: %v\", err)\n\t}\n\tif _, err := invite(\"d@free.example\", RoleMember); err != nil {\n\t\tt.Fatalf(\"team has room: %v\", err)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgFree; return nil }); err == nil {\n\t\tt.Fatal(\"team to free with 4 seats in use\")\n\t} else {\n\t\twantSeatLimit(t, err, 3, 4)\n\t}\n\tif got, _ := s.Org(o.ID); got.Plan != OrgTeam {\n\t\tt.Fatalf(\"plan after a refused change = %s\", got.Plan)\n\t}\n\tif _, err := s.UpdateOrg(o.ID, func(o *Org) error { o.Plan = OrgBusiness; return nil }); err != nil {\n\t\tt.Fatalf(\"team to business: %v\", err)\n\t}\n}\n\nfunc TestSeatLimitHoldsUnderConcurrency(t *testing.T) {\n\ts := New()\n\to, err := s.CreateOrg(\"Free\", OrgFree, \"UTC\", 0, t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\towner, err := s.CreateUser(\"owner@free.example\", \"Owner\", t0)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.AddMember(o.ID, owner.ID, RoleOwner, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := s.CreateInvite(o.ID, \"a@free.example\", RoleMember, owner.ID, t0); err != nil {\n\t\tt.Fatal(err)\n\t}\n\t// Two of the free plan's three seats are in use, so exactly one more invite fits.\n\tvar wg sync.WaitGroup\n\tvar succeeded atomic.Int32\n\tfor range 8 {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\t_, err := s.CreateInvite(o.ID, \"b@free.example\", RoleMember, owner.ID, t0)\n\t\t\tvar seats *SeatLimitError\n\t\t\tswitch {\n\t\t\tcase err == nil:\n\t\t\t\tsucceeded.Add(1)\n\t\t\tcase !errors.As(err, \u0026seats):\n\t\t\t\tt.Errorf(\"unexpected error: %v\", err)\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tif n := succeeded.Load(); n != 1 {\n\t\tt.Fatalf(\"%d of 8 concurrent invites succeeded, want 1\", n)\n\t}\n\tif used := s.SeatsUsed(o.ID); used != 3 {\n\t\tt.Fatalf(\"SeatsUsed = %d, want 3\", used)\n\t}\n}\n"
           },
-          "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go (file state is current in your context — no need to Read it back)"
+          "output": "File created successfully at: <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -8292,7 +8292,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
           "old_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)",
           "new_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tua, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0)\n\tif err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)"
         }
@@ -8316,7 +8316,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
             "old_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)",
             "new_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tua, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0)\n\tif err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)"
           }
@@ -8340,11 +8340,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
           "old_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)",
           "new_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tua, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0)\n\tif err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -8365,11 +8365,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
             "old_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tif _, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0); err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)",
             "new_string": "\t// Accepting holds no seat check: the invite already holds one.\n\tua, _, _, err := s.AcceptInvite(ia.Token, \"A\", t0)\n\tif err != nil {\n\t\tt.Fatalf(\"accept at the limit: %v\", err)\n\t}\n\tseatsUsed(3)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -8403,7 +8403,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
           "old_string": "\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)",
           "new_string": "\t// Moving a seat holder to viewer frees their seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, ua.ID, RoleViewer); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleMember); err != nil {\n\t\tt.Fatalf(\"viewer to member with a seat free: %v\", err)\n\t}\n\tseatsUsed(3)"
         }
@@ -8427,7 +8427,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
             "old_string": "\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)",
             "new_string": "\t// Moving a seat holder to viewer frees their seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, ua.ID, RoleViewer); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleMember); err != nil {\n\t\tt.Fatalf(\"viewer to member with a seat free: %v\", err)\n\t}\n\tseatsUsed(3)"
           }
@@ -8451,11 +8451,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
           "old_string": "\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)",
           "new_string": "\t// Moving a seat holder to viewer frees their seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, ua.ID, RoleViewer); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleMember); err != nil {\n\t\tt.Fatalf(\"viewer to member with a seat free: %v\", err)\n\t}\n\tseatsUsed(3)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -8476,11 +8476,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go",
             "old_string": "\t// Moving a seat holder to viewer frees a seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, \"usr_\"+ia.Token[:0]+\"\", RoleViewer); err == nil {\n\t\tt.Fatal(\"a made-up user changed role\")\n\t}\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleViewer); err != nil {\n\t\tt.Fatalf(\"viewer to viewer: %v\", err)\n\t}\n\tseatsUsed(3)",
             "new_string": "\t// Moving a seat holder to viewer frees their seat for the viewer.\n\tif _, err := s.SetMemberRole(o.ID, ua.ID, RoleViewer); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tseatsUsed(2)\n\tif _, err := s.SetMemberRole(o.ID, w.ID, RoleMember); err != nil {\n\t\tt.Fatalf(\"viewer to member with a seat free: %v\", err)\n\t}\n\tseatsUsed(3)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/seats_test.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -8744,7 +8744,7 @@
         "id": "toolu_01TS2JDcT3JG6tr4niBDCLYR",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
           "content": "package api_test\n\nimport (\n\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\ntype seats struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\te := apitest.New(t)\n\tfree := e.NewOrg(\"Free\", store.OrgFree, \"UTC\")\n\tgetSeats := func(key string) seats {\n\t\tt.Helper()\n\t\tvar org struct {\n\t\t\tSeats seats `json:\"seats\"`\n\t\t}\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", key, nil, \u0026org)\n\t\treturn org.Seats\n\t}\n\trefused := func(r *apitest.Response, status int, code string, limit, used int) {\n\t\tt.Helper()\n\t\tvar body struct {\n\t\t\tError string `json:\"error\"`\n\t\t\tLimit int    `json:\"limit\"`\n\t\t\tUsed  int    `json:\"used\"`\n\t\t}\n\t\tr.JSON(t, \u0026body)\n\t\tif r.Code != status || body.Error != code || body.Limit != limit || body.Used != used {\n\t\t\tt.Fatalf(\"refusal = %s, want %d %s with limit %d and used %d\", r, status, code, limit, used)\n\t\t}\n\t}\n\n\tif got := getSeats(free.Key); got.Used != 1 || got.Limit == nil || *got.Limit != 3 {\n\t\tt.Fatalf(\"seats = %+v\", got)\n\t}\n\n\t// The owner and two invites use the free plan's three seats; a viewer invite is free.\n\tvar ia, ib store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"a@free.example\", \"role\": \"member\"}, \u0026ia)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"b@free.example\", \"role\": \"admin\"}, \u0026ib)\n\trefused(e.Do(\"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"v@free.example\", \"role\": \"viewer\"}, nil)\n\n\t// Accepting an invite never needs a seat: the invite holds one.\n\tvar accepted struct {\n\t\tUser store.User `json:\"user\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": ia.Token, \"name\": \"A\"}, \u0026accepted)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after accepting = %+v\", got)\n\t}\n\n\t// A revoked invite frees its seat.\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+ib.ID, free.Key, nil, nil)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}, nil)\n\n\t// A viewer needs a free seat to become a member, and a seat holder who becomes a viewer frees one.\n\tw, _ := e.AddMember(free, \"w@free.example\", store.RoleViewer)\n\trefused(e.Do(\"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+accepted.User.ID, free.Key, map[string]string{\"role\": \"viewer\"}, nil)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}, nil)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after the role changes = %+v\", got)\n\t}\n\n\t// A plan change must leave room for the seats in use. Business has no limit.\n\tfor _, email := range []string{\"x1@globex.example\", \"x2@globex.example\", \"x3@globex.example\"} {\n\t\te.AddMember(e.Globex, email, store.RoleMember)\n\t}\n\tif got := getSeats(e.Globex.Key); got.Used != 4 || got.Limit != nil {\n\t\tt.Fatalf(\"business seats = %+v\", got)\n\t}\n\trefused(e.Do(\"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"free\"}),\n\t\thttp.StatusConflict, \"over_seat_limit\", 3, 4)\n\tvar org struct {\n\t\tPlan store.OrgPlan `json:\"plan\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", e.Globex.Key, nil, \u0026org)\n\tif org.Plan != store.OrgBusiness {\n\t\tt.Fatalf(\"plan after a refused change = %s\", org.Plan)\n\t}\n\tvar changed struct {\n\t\tPlan  store.OrgPlan `json:\"plan\"`\n\t\tSeats seats         `json:\"seats\"`\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"team\"}, \u0026changed)\n\tif changed.Plan != store.OrgTeam || changed.Seats.Limit == nil || *changed.Seats.Limit != 10 || changed.Seats.Used != 4 {\n\t\tt.Fatalf(\"after the change = %+v\", changed)\n\t}\n}\n"
         }
       },
@@ -8766,7 +8766,7 @@
           "id": "toolu_01TS2JDcT3JG6tr4niBDCLYR",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
             "content": "package api_test\n\nimport (\n\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\ntype seats struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\te := apitest.New(t)\n\tfree := e.NewOrg(\"Free\", store.OrgFree, \"UTC\")\n\tgetSeats := func(key string) seats {\n\t\tt.Helper()\n\t\tvar org struct {\n\t\t\tSeats seats `json:\"seats\"`\n\t\t}\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", key, nil, \u0026org)\n\t\treturn org.Seats\n\t}\n\trefused := func(r *apitest.Response, status int, code string, limit, used int) {\n\t\tt.Helper()\n\t\tvar body struct {\n\t\t\tError string `json:\"error\"`\n\t\t\tLimit int    `json:\"limit\"`\n\t\t\tUsed  int    `json:\"used\"`\n\t\t}\n\t\tr.JSON(t, \u0026body)\n\t\tif r.Code != status || body.Error != code || body.Limit != limit || body.Used != used {\n\t\t\tt.Fatalf(\"refusal = %s, want %d %s with limit %d and used %d\", r, status, code, limit, used)\n\t\t}\n\t}\n\n\tif got := getSeats(free.Key); got.Used != 1 || got.Limit == nil || *got.Limit != 3 {\n\t\tt.Fatalf(\"seats = %+v\", got)\n\t}\n\n\t// The owner and two invites use the free plan's three seats; a viewer invite is free.\n\tvar ia, ib store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"a@free.example\", \"role\": \"member\"}, \u0026ia)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"b@free.example\", \"role\": \"admin\"}, \u0026ib)\n\trefused(e.Do(\"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"v@free.example\", \"role\": \"viewer\"}, nil)\n\n\t// Accepting an invite never needs a seat: the invite holds one.\n\tvar accepted struct {\n\t\tUser store.User `json:\"user\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": ia.Token, \"name\": \"A\"}, \u0026accepted)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after accepting = %+v\", got)\n\t}\n\n\t// A revoked invite frees its seat.\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+ib.ID, free.Key, nil, nil)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}, nil)\n\n\t// A viewer needs a free seat to become a member, and a seat holder who becomes a viewer frees one.\n\tw, _ := e.AddMember(free, \"w@free.example\", store.RoleViewer)\n\trefused(e.Do(\"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+accepted.User.ID, free.Key, map[string]string{\"role\": \"viewer\"}, nil)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}, nil)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after the role changes = %+v\", got)\n\t}\n\n\t// A plan change must leave room for the seats in use. Business has no limit.\n\tfor _, email := range []string{\"x1@globex.example\", \"x2@globex.example\", \"x3@globex.example\"} {\n\t\te.AddMember(e.Globex, email, store.RoleMember)\n\t}\n\tif got := getSeats(e.Globex.Key); got.Used != 4 || got.Limit != nil {\n\t\tt.Fatalf(\"business seats = %+v\", got)\n\t}\n\trefused(e.Do(\"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"free\"}),\n\t\thttp.StatusConflict, \"over_seat_limit\", 3, 4)\n\tvar org struct {\n\t\tPlan store.OrgPlan `json:\"plan\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", e.Globex.Key, nil, \u0026org)\n\tif org.Plan != store.OrgBusiness {\n\t\tt.Fatalf(\"plan after a refused change = %s\", org.Plan)\n\t}\n\tvar changed struct {\n\t\tPlan  store.OrgPlan `json:\"plan\"`\n\t\tSeats seats         `json:\"seats\"`\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"team\"}, \u0026changed)\n\tif changed.Plan != store.OrgTeam || changed.Seats.Limit == nil || *changed.Seats.Limit != 10 || changed.Seats.Used != 4 {\n\t\tt.Fatalf(\"after the change = %+v\", changed)\n\t}\n}\n"
           }
         }
@@ -8788,10 +8788,10 @@
         "id": "toolu_01TS2JDcT3JG6tr4niBDCLYR",
         "name": "Write",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
           "content": "package api_test\n\nimport (\n\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\ntype seats struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\te := apitest.New(t)\n\tfree := e.NewOrg(\"Free\", store.OrgFree, \"UTC\")\n\tgetSeats := func(key string) seats {\n\t\tt.Helper()\n\t\tvar org struct {\n\t\t\tSeats seats `json:\"seats\"`\n\t\t}\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", key, nil, \u0026org)\n\t\treturn org.Seats\n\t}\n\trefused := func(r *apitest.Response, status int, code string, limit, used int) {\n\t\tt.Helper()\n\t\tvar body struct {\n\t\t\tError string `json:\"error\"`\n\t\t\tLimit int    `json:\"limit\"`\n\t\t\tUsed  int    `json:\"used\"`\n\t\t}\n\t\tr.JSON(t, \u0026body)\n\t\tif r.Code != status || body.Error != code || body.Limit != limit || body.Used != used {\n\t\t\tt.Fatalf(\"refusal = %s, want %d %s with limit %d and used %d\", r, status, code, limit, used)\n\t\t}\n\t}\n\n\tif got := getSeats(free.Key); got.Used != 1 || got.Limit == nil || *got.Limit != 3 {\n\t\tt.Fatalf(\"seats = %+v\", got)\n\t}\n\n\t// The owner and two invites use the free plan's three seats; a viewer invite is free.\n\tvar ia, ib store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"a@free.example\", \"role\": \"member\"}, \u0026ia)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"b@free.example\", \"role\": \"admin\"}, \u0026ib)\n\trefused(e.Do(\"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"v@free.example\", \"role\": \"viewer\"}, nil)\n\n\t// Accepting an invite never needs a seat: the invite holds one.\n\tvar accepted struct {\n\t\tUser store.User `json:\"user\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": ia.Token, \"name\": \"A\"}, \u0026accepted)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after accepting = %+v\", got)\n\t}\n\n\t// A revoked invite frees its seat.\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+ib.ID, free.Key, nil, nil)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}, nil)\n\n\t// A viewer needs a free seat to become a member, and a seat holder who becomes a viewer frees one.\n\tw, _ := e.AddMember(free, \"w@free.example\", store.RoleViewer)\n\trefused(e.Do(\"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+accepted.User.ID, free.Key, map[string]string{\"role\": \"viewer\"}, nil)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}, nil)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after the role changes = %+v\", got)\n\t}\n\n\t// A plan change must leave room for the seats in use. Business has no limit.\n\tfor _, email := range []string{\"x1@globex.example\", \"x2@globex.example\", \"x3@globex.example\"} {\n\t\te.AddMember(e.Globex, email, store.RoleMember)\n\t}\n\tif got := getSeats(e.Globex.Key); got.Used != 4 || got.Limit != nil {\n\t\tt.Fatalf(\"business seats = %+v\", got)\n\t}\n\trefused(e.Do(\"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"free\"}),\n\t\thttp.StatusConflict, \"over_seat_limit\", 3, 4)\n\tvar org struct {\n\t\tPlan store.OrgPlan `json:\"plan\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", e.Globex.Key, nil, \u0026org)\n\tif org.Plan != store.OrgBusiness {\n\t\tt.Fatalf(\"plan after a refused change = %s\", org.Plan)\n\t}\n\tvar changed struct {\n\t\tPlan  store.OrgPlan `json:\"plan\"`\n\t\tSeats seats         `json:\"seats\"`\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"team\"}, \u0026changed)\n\tif changed.Plan != store.OrgTeam || changed.Seats.Limit == nil || *changed.Seats.Limit != 10 || changed.Seats.Used != 4 {\n\t\tt.Fatalf(\"after the change = %+v\", changed)\n\t}\n}\n"
         },
-        "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go (file state is current in your context — no need to Read it back)"
+        "output": "File created successfully at: <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -8811,10 +8811,10 @@
           "id": "toolu_01TS2JDcT3JG6tr4niBDCLYR",
           "name": "Write",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go",
             "content": "package api_test\n\nimport (\n\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"\n\t\"example.com/tally/internal/store\"\n)\n\ntype seats struct {\n\tUsed  int  `json:\"used\"`\n\tLimit *int `json:\"limit\"`\n}\n\nfunc TestSeatLimits(t *testing.T) {\n\te := apitest.New(t)\n\tfree := e.NewOrg(\"Free\", store.OrgFree, \"UTC\")\n\tgetSeats := func(key string) seats {\n\t\tt.Helper()\n\t\tvar org struct {\n\t\t\tSeats seats `json:\"seats\"`\n\t\t}\n\t\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", key, nil, \u0026org)\n\t\treturn org.Seats\n\t}\n\trefused := func(r *apitest.Response, status int, code string, limit, used int) {\n\t\tt.Helper()\n\t\tvar body struct {\n\t\t\tError string `json:\"error\"`\n\t\t\tLimit int    `json:\"limit\"`\n\t\t\tUsed  int    `json:\"used\"`\n\t\t}\n\t\tr.JSON(t, \u0026body)\n\t\tif r.Code != status || body.Error != code || body.Limit != limit || body.Used != used {\n\t\t\tt.Fatalf(\"refusal = %s, want %d %s with limit %d and used %d\", r, status, code, limit, used)\n\t\t}\n\t}\n\n\tif got := getSeats(free.Key); got.Used != 1 || got.Limit == nil || *got.Limit != 3 {\n\t\tt.Fatalf(\"seats = %+v\", got)\n\t}\n\n\t// The owner and two invites use the free plan's three seats; a viewer invite is free.\n\tvar ia, ib store.Invite\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"a@free.example\", \"role\": \"member\"}, \u0026ia)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"b@free.example\", \"role\": \"admin\"}, \u0026ib)\n\trefused(e.Do(\"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"v@free.example\", \"role\": \"viewer\"}, nil)\n\n\t// Accepting an invite never needs a seat: the invite holds one.\n\tvar accepted struct {\n\t\tUser store.User `json:\"user\"`\n\t}\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites/accept\", \"\", map[string]string{\"token\": ia.Token, \"name\": \"A\"}, \u0026accepted)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after accepting = %+v\", got)\n\t}\n\n\t// A revoked invite frees its seat.\n\te.MustDo(http.StatusNoContent, \"DELETE\", \"/v1/invites/\"+ib.ID, free.Key, nil, nil)\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/invites\", free.Key, map[string]string{\"email\": \"c@free.example\", \"role\": \"member\"}, nil)\n\n\t// A viewer needs a free seat to become a member, and a seat holder who becomes a viewer frees one.\n\tw, _ := e.AddMember(free, \"w@free.example\", store.RoleViewer)\n\trefused(e.Do(\"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}),\n\t\thttp.StatusPaymentRequired, \"seat_limit_reached\", 3, 3)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+accepted.User.ID, free.Key, map[string]string{\"role\": \"viewer\"}, nil)\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/members/\"+w.ID, free.Key, map[string]string{\"role\": \"member\"}, nil)\n\tif got := getSeats(free.Key); got.Used != 3 {\n\t\tt.Fatalf(\"seats after the role changes = %+v\", got)\n\t}\n\n\t// A plan change must leave room for the seats in use. Business has no limit.\n\tfor _, email := range []string{\"x1@globex.example\", \"x2@globex.example\", \"x3@globex.example\"} {\n\t\te.AddMember(e.Globex, email, store.RoleMember)\n\t}\n\tif got := getSeats(e.Globex.Key); got.Used != 4 || got.Limit != nil {\n\t\tt.Fatalf(\"business seats = %+v\", got)\n\t}\n\trefused(e.Do(\"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"free\"}),\n\t\thttp.StatusConflict, \"over_seat_limit\", 3, 4)\n\tvar org struct {\n\t\tPlan store.OrgPlan `json:\"plan\"`\n\t}\n\te.MustDo(http.StatusOK, \"GET\", \"/v1/org\", e.Globex.Key, nil, \u0026org)\n\tif org.Plan != store.OrgBusiness {\n\t\tt.Fatalf(\"plan after a refused change = %s\", org.Plan)\n\t}\n\tvar changed struct {\n\t\tPlan  store.OrgPlan `json:\"plan\"`\n\t\tSeats seats         `json:\"seats\"`\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/org\", e.Globex.Key, map[string]string{\"plan\": \"team\"}, \u0026changed)\n\tif changed.Plan != store.OrgTeam || changed.Seats.Limit == nil || *changed.Seats.Limit != 10 || changed.Seats.Used != 4 {\n\t\tt.Fatalf(\"after the change = %+v\", changed)\n\t}\n}\n"
           },
-          "output": "File created successfully at: /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go (file state is current in your context — no need to Read it back)"
+          "output": "File created successfully at: <scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/api/seats_test.go (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -15247,7 +15247,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_22ad69bbd86f",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e",
+      "cwd": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -15562,7 +15562,7 @@
         "id": "toolu_015TfduktgEcUcfhTwcVMPZR",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "offset": 360,
           "limit": 120
         }
@@ -15585,7 +15585,7 @@
           "id": "toolu_015TfduktgEcUcfhTwcVMPZR",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "offset": 360,
             "limit": 120
           }
@@ -15608,7 +15608,7 @@
         "id": "toolu_015TfduktgEcUcfhTwcVMPZR",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "offset": 360,
           "limit": 120
         },
@@ -15632,7 +15632,7 @@
           "id": "toolu_015TfduktgEcUcfhTwcVMPZR",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "offset": 360,
             "limit": 120
           },
@@ -15804,7 +15804,7 @@
         "id": "toolu_01PmM7JhuN9Sj2Lhu4XoAFcm",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "offset": 505,
           "limit": 50
         }
@@ -15827,7 +15827,7 @@
           "id": "toolu_01PmM7JhuN9Sj2Lhu4XoAFcm",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "offset": 505,
             "limit": 50
           }
@@ -15850,7 +15850,7 @@
         "id": "toolu_01PmM7JhuN9Sj2Lhu4XoAFcm",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+          "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
           "offset": 505,
           "limit": 50
         },
@@ -15874,7 +15874,7 @@
           "id": "toolu_01PmM7JhuN9Sj2Lhu4XoAFcm",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
+            "file_path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e/internal/store/store.go",
             "offset": 505,
             "limit": 50
           },
@@ -18419,7 +18419,7 @@
     "projectId": "prj_47d0d9e64ddf",
     "taskId": "task_06f40d5fd80e",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e"
+      "path": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/worktrees/prj_47d0d9e64ddf/task_06f40d5fd80e"
     }
   },
   {

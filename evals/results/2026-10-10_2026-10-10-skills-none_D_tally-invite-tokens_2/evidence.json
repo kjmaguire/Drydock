@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 730ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/build_259fe3564ba1.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/build_259fe3564ba1.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 730ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/test_cbe6a13cda1a.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/test_cbe6a13cda1a.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 410ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/lint_7f1354c883de.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/lint_7f1354c883de.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/secrets_4d5e9db20c33.log",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/checks/secrets_4d5e9db20c33.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "5 file(s), +370 -12",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-invite-tokens-D-2/data/runs/run_4a9483c4221b/evidence/task.diff",
     "data": {
       "Files": 5,
       "Insertions": 370,

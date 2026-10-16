@@ -574,7 +574,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_0db998691c0c",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
+      "cwd": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -3798,7 +3798,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "// CheckURL checks a webhook URL before it is saved: an absolute http or https URL whose host resolves.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || (u.Scheme != \"http\" \u0026\u0026 u.Scheme != \"https\") || u.Host == \"\" {\n\t\treturn fmt.Errorf(\"%w: use an absolute http or https URL\", ErrInvalidURL)\n\t}\n\thost := u.Hostname()\n\tif net.ParseIP(host) != nil {\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"%w: the host %q does not resolve\", ErrInvalidURL, host)\n\t}\n\treturn nil\n}",
           "new_string": "// CheckURL checks a webhook URL before it is saved: an absolute https URL without user information, whose host is or resolves\n// only to public addresses.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || u.Scheme != \"https\" || u.Host == \"\" || u.User != nil {\n\t\treturn fmt.Errorf(\"%w: use an absolute https URL without a user name or password\", ErrInvalidURL)\n\t}\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn fmt.Errorf(\"%w: %v\", ErrInvalidURL, err)\n\t}\n\treturn nil\n}\n\n// errNotPublic is returned when a host is, or resolves to, an address that is not public.\nvar errNotPublic = errors.New(\"the endpoint's address is not public\")\n\n// nonPublic are the address ranges a webhook must not be sent to: loopback, private, link-local, carrier-grade NAT, \"this\n// network\", unspecified, multicast and broadcast.\nvar nonPublic = []netip.Prefix{\n\tnetip.MustParsePrefix(\"0.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"10.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"100.64.0.0/10\"),\n\tnetip.MustParsePrefix(\"127.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"169.254.0.0/16\"),\n\tnetip.MustParsePrefix(\"172.16.0.0/12\"),\n\tnetip.MustParsePrefix(\"192.168.0.0/16\"),\n\tnetip.MustParsePrefix(\"224.0.0.0/4\"),\n\tnetip.MustParsePrefix(\"255.255.255.255/32\"),\n\tnetip.MustParsePrefix(\"::/128\"),\n\tnetip.MustParsePrefix(\"::1/128\"),\n\tnetip.MustParsePrefix(\"fc00::/7\"),\n\tnetip.MustParsePrefix(\"fe80::/10\"),\n\tnetip.MustParsePrefix(\"ff00::/8\"),\n}\n\n// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {\n\t\treturn false\n\t}\n\tfor _, p := range nonPublic {\n\t\tif p.Contains(ip) {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// checkHost checks that host is, or resolves only to, public addresses. An IP address is checked as it is; a name is looked up\n// with the Resolver, so a DNS answer is checked each time it is needed.\nfunc (s *Service) checkHost(ctx context.Context, host string) error {\n\tif ip, err := netip.ParseAddr(host); err == nil {\n\t\tif !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s\", errNotPublic, ip)\n\t\t}\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"the host %q does not resolve\", host)\n\t}\n\tfor _, a := range addrs {\n\t\tip, ok := netip.AddrFromSlice(a.IP)\n\t\tif !ok || !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s resolves to %s\", errNotPublic, host, a.IP)\n\t\t}\n\t}\n\treturn nil\n}"
         }
@@ -3822,7 +3822,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "// CheckURL checks a webhook URL before it is saved: an absolute http or https URL whose host resolves.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || (u.Scheme != \"http\" \u0026\u0026 u.Scheme != \"https\") || u.Host == \"\" {\n\t\treturn fmt.Errorf(\"%w: use an absolute http or https URL\", ErrInvalidURL)\n\t}\n\thost := u.Hostname()\n\tif net.ParseIP(host) != nil {\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"%w: the host %q does not resolve\", ErrInvalidURL, host)\n\t}\n\treturn nil\n}",
             "new_string": "// CheckURL checks a webhook URL before it is saved: an absolute https URL without user information, whose host is or resolves\n// only to public addresses.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || u.Scheme != \"https\" || u.Host == \"\" || u.User != nil {\n\t\treturn fmt.Errorf(\"%w: use an absolute https URL without a user name or password\", ErrInvalidURL)\n\t}\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn fmt.Errorf(\"%w: %v\", ErrInvalidURL, err)\n\t}\n\treturn nil\n}\n\n// errNotPublic is returned when a host is, or resolves to, an address that is not public.\nvar errNotPublic = errors.New(\"the endpoint's address is not public\")\n\n// nonPublic are the address ranges a webhook must not be sent to: loopback, private, link-local, carrier-grade NAT, \"this\n// network\", unspecified, multicast and broadcast.\nvar nonPublic = []netip.Prefix{\n\tnetip.MustParsePrefix(\"0.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"10.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"100.64.0.0/10\"),\n\tnetip.MustParsePrefix(\"127.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"169.254.0.0/16\"),\n\tnetip.MustParsePrefix(\"172.16.0.0/12\"),\n\tnetip.MustParsePrefix(\"192.168.0.0/16\"),\n\tnetip.MustParsePrefix(\"224.0.0.0/4\"),\n\tnetip.MustParsePrefix(\"255.255.255.255/32\"),\n\tnetip.MustParsePrefix(\"::/128\"),\n\tnetip.MustParsePrefix(\"::1/128\"),\n\tnetip.MustParsePrefix(\"fc00::/7\"),\n\tnetip.MustParsePrefix(\"fe80::/10\"),\n\tnetip.MustParsePrefix(\"ff00::/8\"),\n}\n\n// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {\n\t\treturn false\n\t}\n\tfor _, p := range nonPublic {\n\t\tif p.Contains(ip) {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// checkHost checks that host is, or resolves only to, public addresses. An IP address is checked as it is; a name is looked up\n// with the Resolver, so a DNS answer is checked each time it is needed.\nfunc (s *Service) checkHost(ctx context.Context, host string) error {\n\tif ip, err := netip.ParseAddr(host); err == nil {\n\t\tif !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s\", errNotPublic, ip)\n\t\t}\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"the host %q does not resolve\", host)\n\t}\n\tfor _, a := range addrs {\n\t\tip, ok := netip.AddrFromSlice(a.IP)\n\t\tif !ok || !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s resolves to %s\", errNotPublic, host, a.IP)\n\t\t}\n\t}\n\treturn nil\n}"
           }
@@ -3846,11 +3846,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "// CheckURL checks a webhook URL before it is saved: an absolute http or https URL whose host resolves.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || (u.Scheme != \"http\" \u0026\u0026 u.Scheme != \"https\") || u.Host == \"\" {\n\t\treturn fmt.Errorf(\"%w: use an absolute http or https URL\", ErrInvalidURL)\n\t}\n\thost := u.Hostname()\n\tif net.ParseIP(host) != nil {\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"%w: the host %q does not resolve\", ErrInvalidURL, host)\n\t}\n\treturn nil\n}",
           "new_string": "// CheckURL checks a webhook URL before it is saved: an absolute https URL without user information, whose host is or resolves\n// only to public addresses.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || u.Scheme != \"https\" || u.Host == \"\" || u.User != nil {\n\t\treturn fmt.Errorf(\"%w: use an absolute https URL without a user name or password\", ErrInvalidURL)\n\t}\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn fmt.Errorf(\"%w: %v\", ErrInvalidURL, err)\n\t}\n\treturn nil\n}\n\n// errNotPublic is returned when a host is, or resolves to, an address that is not public.\nvar errNotPublic = errors.New(\"the endpoint's address is not public\")\n\n// nonPublic are the address ranges a webhook must not be sent to: loopback, private, link-local, carrier-grade NAT, \"this\n// network\", unspecified, multicast and broadcast.\nvar nonPublic = []netip.Prefix{\n\tnetip.MustParsePrefix(\"0.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"10.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"100.64.0.0/10\"),\n\tnetip.MustParsePrefix(\"127.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"169.254.0.0/16\"),\n\tnetip.MustParsePrefix(\"172.16.0.0/12\"),\n\tnetip.MustParsePrefix(\"192.168.0.0/16\"),\n\tnetip.MustParsePrefix(\"224.0.0.0/4\"),\n\tnetip.MustParsePrefix(\"255.255.255.255/32\"),\n\tnetip.MustParsePrefix(\"::/128\"),\n\tnetip.MustParsePrefix(\"::1/128\"),\n\tnetip.MustParsePrefix(\"fc00::/7\"),\n\tnetip.MustParsePrefix(\"fe80::/10\"),\n\tnetip.MustParsePrefix(\"ff00::/8\"),\n}\n\n// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {\n\t\treturn false\n\t}\n\tfor _, p := range nonPublic {\n\t\tif p.Contains(ip) {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// checkHost checks that host is, or resolves only to, public addresses. An IP address is checked as it is; a name is looked up\n// with the Resolver, so a DNS answer is checked each time it is needed.\nfunc (s *Service) checkHost(ctx context.Context, host string) error {\n\tif ip, err := netip.ParseAddr(host); err == nil {\n\t\tif !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s\", errNotPublic, ip)\n\t\t}\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"the host %q does not resolve\", host)\n\t}\n\tfor _, a := range addrs {\n\t\tip, ok := netip.AddrFromSlice(a.IP)\n\t\tif !ok || !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s resolves to %s\", errNotPublic, host, a.IP)\n\t\t}\n\t}\n\treturn nil\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -3871,11 +3871,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "// CheckURL checks a webhook URL before it is saved: an absolute http or https URL whose host resolves.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || (u.Scheme != \"http\" \u0026\u0026 u.Scheme != \"https\") || u.Host == \"\" {\n\t\treturn fmt.Errorf(\"%w: use an absolute http or https URL\", ErrInvalidURL)\n\t}\n\thost := u.Hostname()\n\tif net.ParseIP(host) != nil {\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"%w: the host %q does not resolve\", ErrInvalidURL, host)\n\t}\n\treturn nil\n}",
             "new_string": "// CheckURL checks a webhook URL before it is saved: an absolute https URL without user information, whose host is or resolves\n// only to public addresses.\nfunc (s *Service) CheckURL(ctx context.Context, raw string) error {\n\tu, err := url.Parse(raw)\n\tif err != nil || u.Scheme != \"https\" || u.Host == \"\" || u.User != nil {\n\t\treturn fmt.Errorf(\"%w: use an absolute https URL without a user name or password\", ErrInvalidURL)\n\t}\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn fmt.Errorf(\"%w: %v\", ErrInvalidURL, err)\n\t}\n\treturn nil\n}\n\n// errNotPublic is returned when a host is, or resolves to, an address that is not public.\nvar errNotPublic = errors.New(\"the endpoint's address is not public\")\n\n// nonPublic are the address ranges a webhook must not be sent to: loopback, private, link-local, carrier-grade NAT, \"this\n// network\", unspecified, multicast and broadcast.\nvar nonPublic = []netip.Prefix{\n\tnetip.MustParsePrefix(\"0.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"10.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"100.64.0.0/10\"),\n\tnetip.MustParsePrefix(\"127.0.0.0/8\"),\n\tnetip.MustParsePrefix(\"169.254.0.0/16\"),\n\tnetip.MustParsePrefix(\"172.16.0.0/12\"),\n\tnetip.MustParsePrefix(\"192.168.0.0/16\"),\n\tnetip.MustParsePrefix(\"224.0.0.0/4\"),\n\tnetip.MustParsePrefix(\"255.255.255.255/32\"),\n\tnetip.MustParsePrefix(\"::/128\"),\n\tnetip.MustParsePrefix(\"::1/128\"),\n\tnetip.MustParsePrefix(\"fc00::/7\"),\n\tnetip.MustParsePrefix(\"fe80::/10\"),\n\tnetip.MustParsePrefix(\"ff00::/8\"),\n}\n\n// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {\n\t\treturn false\n\t}\n\tfor _, p := range nonPublic {\n\t\tif p.Contains(ip) {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}\n\n// checkHost checks that host is, or resolves only to, public addresses. An IP address is checked as it is; a name is looked up\n// with the Resolver, so a DNS answer is checked each time it is needed.\nfunc (s *Service) checkHost(ctx context.Context, host string) error {\n\tif ip, err := netip.ParseAddr(host); err == nil {\n\t\tif !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s\", errNotPublic, ip)\n\t\t}\n\t\treturn nil\n\t}\n\taddrs, err := s.resolver.LookupIPAddr(ctx, host)\n\tif err != nil || len(addrs) == 0 {\n\t\treturn fmt.Errorf(\"the host %q does not resolve\", host)\n\t}\n\tfor _, a := range addrs {\n\t\tip, ok := netip.AddrFromSlice(a.IP)\n\t\tif !ok || !publicAddr(ip) {\n\t\t\treturn fmt.Errorf(\"%w: %s resolves to %s\", errNotPublic, host, a.IP)\n\t\t}\n\t}\n\treturn nil\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4194,7 +4194,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}",
           "new_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\tu, err := url.Parse(ep.URL)\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}\n\t// DNS can change after the URL was saved, so the host is checked again before every attempt.\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn 0, err.Error()\n\t}\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}"
         }
@@ -4218,7 +4218,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}",
             "new_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\tu, err := url.Parse(ep.URL)\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}\n\t// DNS can change after the URL was saved, so the host is checked again before every attempt.\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn 0, err.Error()\n\t}\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}"
           }
@@ -4255,11 +4255,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}",
           "new_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\tu, err := url.Parse(ep.URL)\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}\n\t// DNS can change after the URL was saved, so the host is checked again before every attempt.\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn 0, err.Error()\n\t}\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4280,11 +4280,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}",
             "new_string": "\tctx, cancel := context.WithTimeout(ctx, 10*time.Second)\n\tdefer cancel()\n\tu, err := url.Parse(ep.URL)\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}\n\t// DNS can change after the URL was saved, so the host is checked again before every attempt.\n\tif err := s.checkHost(ctx, u.Hostname()); err != nil {\n\t\treturn 0, err.Error()\n\t}\n\treq, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(body))\n\tif err != nil {\n\t\treturn 0, err.Error()\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4318,7 +4318,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/url\"",
           "new_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/netip\"\n\t\"net/url\""
         }
@@ -4342,7 +4342,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/url\"",
             "new_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/netip\"\n\t\"net/url\""
           }
@@ -4366,11 +4366,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/url\"",
           "new_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/netip\"\n\t\"net/url\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
       },
       "kind": "tool_result"
     }
@@ -4391,11 +4391,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/url\"",
             "new_string": "\t\"net\"\n\t\"net/http\"\n\t\"net/netip\"\n\t\"net/url\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully. (file state is current in your context — no need to Read it back)"
         }
       },
       "node": "work",
@@ -4790,7 +4790,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\"} {",
           "new_string": "\te.DNS.Set(\"mixed.acme.example\", \"93.184.216.34\", \"10.0.0.7\")\n\te.DNS.Set(\"loopback.acme.example\", \"127.0.0.1\")\n\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\", \"https://[2606:4700::1111]/in\", \"https://[::ffff:93.184.216.34]/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\n\t\t\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\",\n\t\t\"http://hooks.acme.example/x\", \"https://user:pass@hooks.acme.example/x\", \"https://user@hooks.acme.example/x\",\n\t\t\"https://127.0.0.1/\", \"https://[::1]/\", \"https://[::ffff:127.0.0.1]/\", \"https://0.0.0.0/\", \"https://[::]/\",\n\t\t\"https://10.1.2.3/\", \"https://172.16.0.1/\", \"https://192.168.1.1/\", \"https://[fd00::1]/\", \"https://[fe80::1]/\",\n\t\t\"https://169.254.169.254/latest/meta-data/\", \"https://100.64.0.1/\", \"https://224.0.0.1/\", \"https://[ff02::1]/\",\n\t\t\"https://255.255.255.255/\", \"https://mixed.acme.example/x\", \"https://loopback.acme.example/x\",\n\t} {"
         }
@@ -4814,7 +4814,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\"} {",
             "new_string": "\te.DNS.Set(\"mixed.acme.example\", \"93.184.216.34\", \"10.0.0.7\")\n\te.DNS.Set(\"loopback.acme.example\", \"127.0.0.1\")\n\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\", \"https://[2606:4700::1111]/in\", \"https://[::ffff:93.184.216.34]/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\n\t\t\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\",\n\t\t\"http://hooks.acme.example/x\", \"https://user:pass@hooks.acme.example/x\", \"https://user@hooks.acme.example/x\",\n\t\t\"https://127.0.0.1/\", \"https://[::1]/\", \"https://[::ffff:127.0.0.1]/\", \"https://0.0.0.0/\", \"https://[::]/\",\n\t\t\"https://10.1.2.3/\", \"https://172.16.0.1/\", \"https://192.168.1.1/\", \"https://[fd00::1]/\", \"https://[fe80::1]/\",\n\t\t\"https://169.254.169.254/latest/meta-data/\", \"https://100.64.0.1/\", \"https://224.0.0.1/\", \"https://[ff02::1]/\",\n\t\t\"https://255.255.255.255/\", \"https://mixed.acme.example/x\", \"https://loopback.acme.example/x\",\n\t} {"
           }
@@ -4838,11 +4838,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\"} {",
           "new_string": "\te.DNS.Set(\"mixed.acme.example\", \"93.184.216.34\", \"10.0.0.7\")\n\te.DNS.Set(\"loopback.acme.example\", \"127.0.0.1\")\n\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\", \"https://[2606:4700::1111]/in\", \"https://[::ffff:93.184.216.34]/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\n\t\t\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\",\n\t\t\"http://hooks.acme.example/x\", \"https://user:pass@hooks.acme.example/x\", \"https://user@hooks.acme.example/x\",\n\t\t\"https://127.0.0.1/\", \"https://[::1]/\", \"https://[::ffff:127.0.0.1]/\", \"https://0.0.0.0/\", \"https://[::]/\",\n\t\t\"https://10.1.2.3/\", \"https://172.16.0.1/\", \"https://192.168.1.1/\", \"https://[fd00::1]/\", \"https://[fe80::1]/\",\n\t\t\"https://169.254.169.254/latest/meta-data/\", \"https://100.64.0.1/\", \"https://224.0.0.1/\", \"https://[ff02::1]/\",\n\t\t\"https://255.255.255.255/\", \"https://mixed.acme.example/x\", \"https://loopback.acme.example/x\",\n\t} {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -4863,11 +4863,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\"} {",
             "new_string": "\te.DNS.Set(\"mixed.acme.example\", \"93.184.216.34\", \"10.0.0.7\")\n\te.DNS.Set(\"loopback.acme.example\", \"127.0.0.1\")\n\tfor _, ok := range []string{\"https://hooks.acme.example/tally\", \"https://93.184.216.34:8443/in\", \"https://[2606:4700::1111]/in\", \"https://[::ffff:93.184.216.34]/in\"} {\n\t\tif err := e.Webhooks.CheckURL(ctx, ok); err != nil {\n\t\t\tt.Errorf(\"CheckURL(%q) = %v\", ok, err)\n\t\t}\n\t}\n\tfor _, bad := range []string{\n\t\t\"\", \"hooks.acme.example/x\", \"ftp://hooks.acme.example/\", \"https:///x\", \"https://unknown.example/x\",\n\t\t\"http://hooks.acme.example/x\", \"https://user:pass@hooks.acme.example/x\", \"https://user@hooks.acme.example/x\",\n\t\t\"https://127.0.0.1/\", \"https://[::1]/\", \"https://[::ffff:127.0.0.1]/\", \"https://0.0.0.0/\", \"https://[::]/\",\n\t\t\"https://10.1.2.3/\", \"https://172.16.0.1/\", \"https://192.168.1.1/\", \"https://[fd00::1]/\", \"https://[fe80::1]/\",\n\t\t\"https://169.254.169.254/latest/meta-data/\", \"https://100.64.0.1/\", \"https://224.0.0.1/\", \"https://[ff02::1]/\",\n\t\t\"https://255.255.255.255/\", \"https://mixed.acme.example/x\", \"https://loopback.acme.example/x\",\n\t} {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -4901,7 +4901,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "func TestPublishAndDeliver(t *testing.T) {",
           "new_string": "func TestDeliveryChecksAddressAgain(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tnow := e.Clock.Now()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/all\", Events: []string{\"*\"}, Secret: \"whsec_a\", Enabled: true}, now)\n\n\t// The name now answers with a private address: nothing is sent, and the endpoint is left as it was.\n\te.DNS.Set(\"hooks.acme.example\", \"10.0.0.5\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 0 {\n\t\tt.Fatalf(\"a request was sent to a private address: %+v\", reqs)\n\t}\n\tds := e.Store.Deliveries(e.Acme.ID, ep.ID)\n\tif len(ds) != 1 || ds[0].Status != store.DeliveryFailed || !strings.Contains(ds[0].Error, \"not public\") {\n\t\tt.Fatalf(\"deliveries = %+v\", ds)\n\t}\n\tif got, ok := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID); !ok || !got.Enabled || got.URL != ep.URL {\n\t\tt.Fatalf(\"endpoint = %+v, %v\", got, ok)\n\t}\n\n\t// Once the name answers with a public address again, the delivery goes out.\n\te.DNS.Set(\"hooks.acme.example\", \"93.184.216.34\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_2\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 1 || reqs[0].URL != ep.URL {\n\t\tt.Fatalf(\"requests = %+v\", reqs)\n\t}\n}\n\nfunc TestPublishAndDeliver(t *testing.T) {"
         }
@@ -4925,7 +4925,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "func TestPublishAndDeliver(t *testing.T) {",
             "new_string": "func TestDeliveryChecksAddressAgain(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tnow := e.Clock.Now()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/all\", Events: []string{\"*\"}, Secret: \"whsec_a\", Enabled: true}, now)\n\n\t// The name now answers with a private address: nothing is sent, and the endpoint is left as it was.\n\te.DNS.Set(\"hooks.acme.example\", \"10.0.0.5\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 0 {\n\t\tt.Fatalf(\"a request was sent to a private address: %+v\", reqs)\n\t}\n\tds := e.Store.Deliveries(e.Acme.ID, ep.ID)\n\tif len(ds) != 1 || ds[0].Status != store.DeliveryFailed || !strings.Contains(ds[0].Error, \"not public\") {\n\t\tt.Fatalf(\"deliveries = %+v\", ds)\n\t}\n\tif got, ok := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID); !ok || !got.Enabled || got.URL != ep.URL {\n\t\tt.Fatalf(\"endpoint = %+v, %v\", got, ok)\n\t}\n\n\t// Once the name answers with a public address again, the delivery goes out.\n\te.DNS.Set(\"hooks.acme.example\", \"93.184.216.34\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_2\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 1 || reqs[0].URL != ep.URL {\n\t\tt.Fatalf(\"requests = %+v\", reqs)\n\t}\n}\n\nfunc TestPublishAndDeliver(t *testing.T) {"
           }
@@ -4949,11 +4949,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "func TestPublishAndDeliver(t *testing.T) {",
           "new_string": "func TestDeliveryChecksAddressAgain(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tnow := e.Clock.Now()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/all\", Events: []string{\"*\"}, Secret: \"whsec_a\", Enabled: true}, now)\n\n\t// The name now answers with a private address: nothing is sent, and the endpoint is left as it was.\n\te.DNS.Set(\"hooks.acme.example\", \"10.0.0.5\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 0 {\n\t\tt.Fatalf(\"a request was sent to a private address: %+v\", reqs)\n\t}\n\tds := e.Store.Deliveries(e.Acme.ID, ep.ID)\n\tif len(ds) != 1 || ds[0].Status != store.DeliveryFailed || !strings.Contains(ds[0].Error, \"not public\") {\n\t\tt.Fatalf(\"deliveries = %+v\", ds)\n\t}\n\tif got, ok := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID); !ok || !got.Enabled || got.URL != ep.URL {\n\t\tt.Fatalf(\"endpoint = %+v, %v\", got, ok)\n\t}\n\n\t// Once the name answers with a public address again, the delivery goes out.\n\te.DNS.Set(\"hooks.acme.example\", \"93.184.216.34\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_2\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 1 || reqs[0].URL != ep.URL {\n\t\tt.Fatalf(\"requests = %+v\", reqs)\n\t}\n}\n\nfunc TestPublishAndDeliver(t *testing.T) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -4974,11 +4974,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "func TestPublishAndDeliver(t *testing.T) {",
             "new_string": "func TestDeliveryChecksAddressAgain(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tnow := e.Clock.Now()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/all\", Events: []string{\"*\"}, Secret: \"whsec_a\", Enabled: true}, now)\n\n\t// The name now answers with a private address: nothing is sent, and the endpoint is left as it was.\n\te.DNS.Set(\"hooks.acme.example\", \"10.0.0.5\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 0 {\n\t\tt.Fatalf(\"a request was sent to a private address: %+v\", reqs)\n\t}\n\tds := e.Store.Deliveries(e.Acme.ID, ep.ID)\n\tif len(ds) != 1 || ds[0].Status != store.DeliveryFailed || !strings.Contains(ds[0].Error, \"not public\") {\n\t\tt.Fatalf(\"deliveries = %+v\", ds)\n\t}\n\tif got, ok := e.Store.WebhookEndpoint(e.Acme.ID, ep.ID); !ok || !got.Enabled || got.URL != ep.URL {\n\t\tt.Fatalf(\"endpoint = %+v, %v\", got, ok)\n\t}\n\n\t// Once the name answers with a public address again, the delivery goes out.\n\te.DNS.Set(\"hooks.acme.example\", \"93.184.216.34\")\n\t_ = e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_2\"})\n\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t}\n\tif reqs := e.HTTP.Requests(); len(reqs) != 1 || reqs[0].URL != ep.URL {\n\t\tt.Fatalf(\"requests = %+v\", reqs)\n\t}\n}\n\nfunc TestPublishAndDeliver(t *testing.T) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5050,7 +5050,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"",
           "new_string": "\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\""
         }
@@ -5074,7 +5074,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"",
             "new_string": "\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\""
           }
@@ -5098,11 +5098,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"",
           "new_string": "\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\""
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5123,11 +5123,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "\t\"net/http\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\"",
             "new_string": "\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"example.com/tally/internal/apitest\""
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5373,7 +5373,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
           "old_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)",
           "new_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"http://hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://admin:secret@hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://169.254.169.254/latest/meta-data/\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://localhost:8080/\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)"
         }
@@ -5397,7 +5397,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
             "old_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)",
             "new_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"http://hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://admin:secret@hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://169.254.169.254/latest/meta-data/\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://localhost:8080/\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)"
           }
@@ -5421,11 +5421,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
           "old_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)",
           "new_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"http://hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://admin:secret@hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://169.254.169.254/latest/meta-data/\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://localhost:8080/\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5446,11 +5446,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
             "old_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)",
             "new_string": "\t\t{\"url\": \"not a url\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"http://hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://admin:secret@hooks.acme.example/tally\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://169.254.169.254/latest/meta-data/\", \"events\": []string{\"*\"}},\n\t\t{\"url\": \"https://localhost:8080/\", \"events\": []string{\"*\"}},\n\t} {\n\t\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, bad); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\t\tt.Fatalf(\"%v: %s\", bad, r)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5842,7 +5842,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
           "old_string": "\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},",
           "new_string": "\te.DNS.Set(\"localhost\", \"127.0.0.1\")\n\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},"
         }
@@ -5866,7 +5866,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
             "old_string": "\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},",
             "new_string": "\te.DNS.Set(\"localhost\", \"127.0.0.1\")\n\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},"
           }
@@ -5890,11 +5890,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
           "old_string": "\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},",
           "new_string": "\te.DNS.Set(\"localhost\", \"127.0.0.1\")\n\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5915,11 +5915,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
             "old_string": "\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},",
             "new_string": "\te.DNS.Set(\"localhost\", \"127.0.0.1\")\n\tfor _, bad := range []map[string]any{\n\t\t{\"url\": \"https://does-not-resolve.example/\", \"events\": []string{\"*\"}},"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6146,7 +6146,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
           "old_string": "\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)",
           "new_string": "\tif r := e.Do(\"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"url\": \"https://10.0.0.1/hook\"}); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\tt.Fatalf(\"PATCH to a private address: %s\", r)\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)"
         }
@@ -6170,7 +6170,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
             "old_string": "\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)",
             "new_string": "\tif r := e.Do(\"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"url\": \"https://10.0.0.1/hook\"}); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\tt.Fatalf(\"PATCH to a private address: %s\", r)\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)"
           }
@@ -6194,11 +6194,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
           "old_string": "\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)",
           "new_string": "\tif r := e.Do(\"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"url\": \"https://10.0.0.1/hook\"}); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\tt.Fatalf(\"PATCH to a private address: %s\", r)\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6219,11 +6219,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go",
             "old_string": "\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)",
             "new_string": "\tif r := e.Do(\"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"url\": \"https://10.0.0.1/hook\"}); r.Code != http.StatusUnprocessableEntity || r.Map(t)[\"error\"] != \"invalid_url\" {\n\t\tt.Fatalf(\"PATCH to a private address: %s\", r)\n\t}\n\te.MustDo(http.StatusOK, \"PATCH\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, map[string]any{\"enabled\": false}, \u0026ep)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -11874,7 +11874,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_ce8cc7d96216",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
+      "cwd": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -16069,7 +16069,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_9c2d6b4b2d40",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
+      "cwd": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -16540,7 +16540,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {",
           "new_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds,\n// and an IPv6 zone (fe80::1%eth0) is ignored, since Prefix.Contains does not match a zoned address.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap().WithZone(\"\")\n\tif !ip.IsValid() {"
         }
@@ -16564,7 +16564,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {",
             "new_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds,\n// and an IPv6 zone (fe80::1%eth0) is ignored, since Prefix.Contains does not match a zoned address.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap().WithZone(\"\")\n\tif !ip.IsValid() {"
           }
@@ -16588,11 +16588,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
           "old_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {",
           "new_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds,\n// and an IPv6 zone (fe80::1%eth0) is ignored, since Prefix.Contains does not match a zoned address.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap().WithZone(\"\")\n\tif !ip.IsValid() {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -16613,11 +16613,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go",
             "old_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap()\n\tif !ip.IsValid() {",
             "new_string": "// publicAddr reports whether ip is a public address. An IPv4 address written as IPv6 is judged as the IPv4 address it holds,\n// and an IPv6 zone (fe80::1%eth0) is ignored, since Prefix.Contains does not match a zoned address.\nfunc publicAddr(ip netip.Addr) bool {\n\tip = ip.Unmap().WithZone(\"\")\n\tif !ip.IsValid() {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -17004,7 +17004,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "\"https://[fe80::1]/\",\n",
           "new_string": "\"https://[fe80::1]/\", \"https://[fe80::1%25eth0]/\",\n"
         }
@@ -17028,7 +17028,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "\"https://[fe80::1]/\",\n",
             "new_string": "\"https://[fe80::1]/\", \"https://[fe80::1%25eth0]/\",\n"
           }
@@ -17052,11 +17052,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
           "old_string": "\"https://[fe80::1]/\",\n",
           "new_string": "\"https://[fe80::1]/\", \"https://[fe80::1%25eth0]/\",\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -17077,11 +17077,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go",
             "old_string": "\"https://[fe80::1]/\",\n",
             "new_string": "\"https://[fe80::1]/\", \"https://[fe80::1%25eth0]/\",\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -20851,7 +20851,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_64be63edea4d",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
+      "cwd": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -24944,7 +24944,7 @@
     "projectId": "prj_958565569fb9",
     "taskId": "task_04a298fcdcf7",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7"
+      "path": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/worktrees/prj_958565569fb9/task_04a298fcdcf7"
     }
   },
   {

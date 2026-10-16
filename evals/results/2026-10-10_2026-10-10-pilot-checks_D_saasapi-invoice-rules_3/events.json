@@ -382,7 +382,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_f04a5bba9aea",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751",
+      "cwd": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -2114,7 +2114,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
+          "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
           "old_string": "// Compute returns the totals of an invoice: the subtotal of its lines, the credit and the coupon, then tax.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tafterCredit := subtotal - inv.CreditCents\n\tcoupon := afterCredit * int64(inv.CouponPercent) / 100\n\tdiscounted := afterCredit - coupon\n\ttax := discounted * int64(inv.TaxRateBP) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}",
           "new_string": "// Compute returns the totals of an invoice: the subtotal of its lines, then the coupon, then the credit, then tax.\n// Amounts are non-negative, so halving a remainder by adding half the divisor before dividing rounds half up.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tcoupon := (subtotal*int64(inv.CouponPercent) + 50) / 100\n\tafterCoupon := subtotal - coupon\n\tdiscounted := max(afterCoupon-inv.CreditCents, 0)\n\ttax := (discounted*int64(inv.TaxRateBP) + 5000) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}"
         }
@@ -2138,7 +2138,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
+            "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
             "old_string": "// Compute returns the totals of an invoice: the subtotal of its lines, the credit and the coupon, then tax.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tafterCredit := subtotal - inv.CreditCents\n\tcoupon := afterCredit * int64(inv.CouponPercent) / 100\n\tdiscounted := afterCredit - coupon\n\ttax := discounted * int64(inv.TaxRateBP) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}",
             "new_string": "// Compute returns the totals of an invoice: the subtotal of its lines, then the coupon, then the credit, then tax.\n// Amounts are non-negative, so halving a remainder by adding half the divisor before dividing rounds half up.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tcoupon := (subtotal*int64(inv.CouponPercent) + 50) / 100\n\tafterCoupon := subtotal - coupon\n\tdiscounted := max(afterCoupon-inv.CreditCents, 0)\n\ttax := (discounted*int64(inv.TaxRateBP) + 5000) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}"
           }
@@ -2175,11 +2175,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
+          "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
           "old_string": "// Compute returns the totals of an invoice: the subtotal of its lines, the credit and the coupon, then tax.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tafterCredit := subtotal - inv.CreditCents\n\tcoupon := afterCredit * int64(inv.CouponPercent) / 100\n\tdiscounted := afterCredit - coupon\n\ttax := discounted * int64(inv.TaxRateBP) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}",
           "new_string": "// Compute returns the totals of an invoice: the subtotal of its lines, then the coupon, then the credit, then tax.\n// Amounts are non-negative, so halving a remainder by adding half the divisor before dividing rounds half up.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tcoupon := (subtotal*int64(inv.CouponPercent) + 50) / 100\n\tafterCoupon := subtotal - coupon\n\tdiscounted := max(afterCoupon-inv.CreditCents, 0)\n\ttax := (discounted*int64(inv.TaxRateBP) + 5000) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go has been updated successfully."
+        "output": "The file <scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -2200,11 +2200,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
+            "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go",
             "old_string": "// Compute returns the totals of an invoice: the subtotal of its lines, the credit and the coupon, then tax.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tafterCredit := subtotal - inv.CreditCents\n\tcoupon := afterCredit * int64(inv.CouponPercent) / 100\n\tdiscounted := afterCredit - coupon\n\ttax := discounted * int64(inv.TaxRateBP) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}",
             "new_string": "// Compute returns the totals of an invoice: the subtotal of its lines, then the coupon, then the credit, then tax.\n// Amounts are non-negative, so halving a remainder by adding half the divisor before dividing rounds half up.\nfunc Compute(inv store.Invoice) Totals {\n\tvar subtotal int64\n\tfor _, l := range inv.Lines {\n\t\tsubtotal += int64(l.Quantity) * l.UnitCents\n\t}\n\tcoupon := (subtotal*int64(inv.CouponPercent) + 50) / 100\n\tafterCoupon := subtotal - coupon\n\tdiscounted := max(afterCoupon-inv.CreditCents, 0)\n\ttax := (discounted*int64(inv.TaxRateBP) + 5000) / 10000\n\treturn Totals{SubtotalCents: subtotal, DiscountCents: subtotal - discounted, TaxCents: tax, TotalCents: discounted + tax}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go has been updated successfully."
+          "output": "The file <scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice.go has been updated successfully."
         }
       },
       "node": "work",
@@ -2521,7 +2521,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+          "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
           "old_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}",
           "new_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}\n\nfunc TestCompute(t *testing.T) {\n\tseats := []store.LineItem{{Description: \"Seats\", Quantity: 3, UnitCents: 335}} // subtotal 1005\n\ttests := []struct {\n\t\tname string\n\t\tinv  store.Invoice\n\t\twant Totals\n\t}{\n\t\t{\n\t\t\tname: \"coupon rounds half up to a cent\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10},\n\t\t\t// coupon 100.5 -\u003e 101; after discounts 904\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 101, TotalCents: 904},\n\t\t},\n\t\t{\n\t\t\tname: \"coupon is applied before the credit\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200},\n\t\t\t// coupon 101; after coupon 904; credit 200 -\u003e 704\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TotalCents: 704},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds half up on the amount after discounts\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200, TaxRateBP: 825},\n\t\t\t// 704 * 825 / 10000 = 58.08 -\u003e 58; total 762\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TaxCents: 58, TotalCents: 762},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{\n\t\t\tname: \"half cent tax goes up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 10}}, TaxRateBP: 500},\n\t\t\t// 10 * 500 / 10000 = 0.5 -\u003e 1\n\t\t\twant: Totals{SubtotalCents: 10, TaxCents: 1, TotalCents: 11},\n\t\t},\n\t\t{\n\t\t\tname: \"credit larger than the amount due leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CreditCents: 5000, TaxRateBP: 825},\n\t\t\t// after discounts clamps to 0, so no tax and the whole subtotal is discount\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"full coupon leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 100, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"no lines\",\n\t\t\tinv:  store.Invoice{CouponPercent: 10, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{},\n\t\t},\n\t}\n\tfor _, tc := range tests {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\tif got := Compute(tc.inv); got != tc.want {\n\t\t\t\tt.Fatalf(\"got %+v, want %+v\", got, tc.want)\n\t\t\t}\n\t\t})\n\t}\n}"
         }
@@ -2545,7 +2545,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+            "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
             "old_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}",
             "new_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}\n\nfunc TestCompute(t *testing.T) {\n\tseats := []store.LineItem{{Description: \"Seats\", Quantity: 3, UnitCents: 335}} // subtotal 1005\n\ttests := []struct {\n\t\tname string\n\t\tinv  store.Invoice\n\t\twant Totals\n\t}{\n\t\t{\n\t\t\tname: \"coupon rounds half up to a cent\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10},\n\t\t\t// coupon 100.5 -\u003e 101; after discounts 904\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 101, TotalCents: 904},\n\t\t},\n\t\t{\n\t\t\tname: \"coupon is applied before the credit\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200},\n\t\t\t// coupon 101; after coupon 904; credit 200 -\u003e 704\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TotalCents: 704},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds half up on the amount after discounts\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200, TaxRateBP: 825},\n\t\t\t// 704 * 825 / 10000 = 58.08 -\u003e 58; total 762\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TaxCents: 58, TotalCents: 762},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{\n\t\t\tname: \"half cent tax goes up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 10}}, TaxRateBP: 500},\n\t\t\t// 10 * 500 / 10000 = 0.5 -\u003e 1\n\t\t\twant: Totals{SubtotalCents: 10, TaxCents: 1, TotalCents: 11},\n\t\t},\n\t\t{\n\t\t\tname: \"credit larger than the amount due leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CreditCents: 5000, TaxRateBP: 825},\n\t\t\t// after discounts clamps to 0, so no tax and the whole subtotal is discount\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"full coupon leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 100, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"no lines\",\n\t\t\tinv:  store.Invoice{CouponPercent: 10, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{},\n\t\t},\n\t}\n\tfor _, tc := range tests {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\tif got := Compute(tc.inv); got != tc.want {\n\t\t\t\tt.Fatalf(\"got %+v, want %+v\", got, tc.want)\n\t\t\t}\n\t\t})\n\t}\n}"
           }
@@ -2569,11 +2569,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+          "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
           "old_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}",
           "new_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}\n\nfunc TestCompute(t *testing.T) {\n\tseats := []store.LineItem{{Description: \"Seats\", Quantity: 3, UnitCents: 335}} // subtotal 1005\n\ttests := []struct {\n\t\tname string\n\t\tinv  store.Invoice\n\t\twant Totals\n\t}{\n\t\t{\n\t\t\tname: \"coupon rounds half up to a cent\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10},\n\t\t\t// coupon 100.5 -\u003e 101; after discounts 904\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 101, TotalCents: 904},\n\t\t},\n\t\t{\n\t\t\tname: \"coupon is applied before the credit\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200},\n\t\t\t// coupon 101; after coupon 904; credit 200 -\u003e 704\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TotalCents: 704},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds half up on the amount after discounts\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200, TaxRateBP: 825},\n\t\t\t// 704 * 825 / 10000 = 58.08 -\u003e 58; total 762\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TaxCents: 58, TotalCents: 762},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{\n\t\t\tname: \"half cent tax goes up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 10}}, TaxRateBP: 500},\n\t\t\t// 10 * 500 / 10000 = 0.5 -\u003e 1\n\t\t\twant: Totals{SubtotalCents: 10, TaxCents: 1, TotalCents: 11},\n\t\t},\n\t\t{\n\t\t\tname: \"credit larger than the amount due leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CreditCents: 5000, TaxRateBP: 825},\n\t\t\t// after discounts clamps to 0, so no tax and the whole subtotal is discount\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"full coupon leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 100, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"no lines\",\n\t\t\tinv:  store.Invoice{CouponPercent: 10, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{},\n\t\t},\n\t}\n\tfor _, tc := range tests {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\tif got := Compute(tc.inv); got != tc.want {\n\t\t\t\tt.Fatalf(\"got %+v, want %+v\", got, tc.want)\n\t\t\t}\n\t\t})\n\t}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -2594,11 +2594,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+            "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
             "old_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}",
             "new_string": "func TestTaxIsAddedToTheSubtotal(t *testing.T) {\n\tgot := Compute(store.Invoice{Lines: []store.LineItem{{Description: \"Pro plan\", Quantity: 1, UnitCents: 10000}}, TaxRateBP: 825})\n\twant := Totals{SubtotalCents: 10000, TaxCents: 825, TotalCents: 10825}\n\tif got != want {\n\t\tt.Fatalf(\"got %+v, want %+v\", got, want)\n\t}\n}\n\nfunc TestCompute(t *testing.T) {\n\tseats := []store.LineItem{{Description: \"Seats\", Quantity: 3, UnitCents: 335}} // subtotal 1005\n\ttests := []struct {\n\t\tname string\n\t\tinv  store.Invoice\n\t\twant Totals\n\t}{\n\t\t{\n\t\t\tname: \"coupon rounds half up to a cent\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10},\n\t\t\t// coupon 100.5 -\u003e 101; after discounts 904\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 101, TotalCents: 904},\n\t\t},\n\t\t{\n\t\t\tname: \"coupon is applied before the credit\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200},\n\t\t\t// coupon 101; after coupon 904; credit 200 -\u003e 704\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TotalCents: 704},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds half up on the amount after discounts\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 10, CreditCents: 200, TaxRateBP: 825},\n\t\t\t// 704 * 825 / 10000 = 58.08 -\u003e 58; total 762\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 301, TaxCents: 58, TotalCents: 762},\n\t\t},\n\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{\n\t\t\tname: \"half cent tax goes up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 10}}, TaxRateBP: 500},\n\t\t\t// 10 * 500 / 10000 = 0.5 -\u003e 1\n\t\t\twant: Totals{SubtotalCents: 10, TaxCents: 1, TotalCents: 11},\n\t\t},\n\t\t{\n\t\t\tname: \"credit larger than the amount due leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CreditCents: 5000, TaxRateBP: 825},\n\t\t\t// after discounts clamps to 0, so no tax and the whole subtotal is discount\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"full coupon leaves zero\",\n\t\t\tinv:  store.Invoice{Lines: seats, CouponPercent: 100, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{SubtotalCents: 1005, DiscountCents: 1005},\n\t\t},\n\t\t{\n\t\t\tname: \"no lines\",\n\t\t\tinv:  store.Invoice{CouponPercent: 10, CreditCents: 50, TaxRateBP: 825},\n\t\t\twant: Totals{},\n\t\t},\n\t}\n\tfor _, tc := range tests {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\tif got := Compute(tc.inv); got != tc.want {\n\t\t\t\tt.Fatalf(\"got %+v, want %+v\", got, tc.want)\n\t\t\t}\n\t\t})\n\t}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -2971,7 +2971,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+          "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
           "old_string": "\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{",
           "new_string": "\t\t{"
         }
@@ -2995,7 +2995,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+            "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
             "old_string": "\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{",
             "new_string": "\t\t{"
           }
@@ -3019,11 +3019,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+          "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
           "old_string": "\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{",
           "new_string": "\t\t{"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -3044,11 +3044,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
+            "file_path": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go",
             "old_string": "\t\t{\n\t\t\tname: \"tax rounds a half cent up\",\n\t\t\tinv:  store.Invoice{Lines: []store.LineItem{{Quantity: 1, UnitCents: 1000}}, TaxRateBP: 2500},\n\t\t\t// 1000 * 2500 / 10000 = 250 exactly, no rounding\n\t\t\twant: Totals{SubtotalCents: 1000, TaxCents: 250, TotalCents: 1250},\n\t\t},\n\t\t{",
             "new_string": "\t\t{"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751/internal/billing/invoice_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -8047,7 +8047,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_826868146ac3",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751",
+      "cwd": "<scratchpad>/trial-work/saasapi-invoice-rules-D-3/data/worktrees/prj_cbe66d56d57e/task_fab930afe751",
       "effort": "",
       "instructions": true,
       "model": "haiku",

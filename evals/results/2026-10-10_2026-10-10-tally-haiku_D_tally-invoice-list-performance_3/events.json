@@ -8568,7 +8568,7 @@
           "command": "go test ./...",
           "description": "Run all tests, recording the baseline golden file"
         },
-        "output": "Command did not complete within its 120s timeout and was moved to the background (ID: bparvs54o). Output is being written to: /tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/bparvs54o.output. You will be notified when it completes. If it is still running after 30m in the background, it will be stopped and you will be notified. To check interim output, use Read on that file path."
+        "output": "Command did not complete within its 120s timeout and was moved to the background (ID: bparvs54o). Output is being written to: <session-folder>/tasks/bparvs54o.output. You will be notified when it completes. If it is still running after 30m in the background, it will be stopped and you will be notified. To check interim output, use Read on that file path."
       },
       "kind": "tool_result"
     }
@@ -8591,7 +8591,7 @@
             "command": "go test ./...",
             "description": "Run all tests, recording the baseline golden file"
           },
-          "output": "Command did not complete within its 120s timeout and was moved to the background (ID: bparvs54o). Output is being written to: /tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/bparvs54o.output. You will be notified when it completes. If it is still running after 30m in the background, it will be stopped and you will be notified. To check interim output, use Read on that file path."
+          "output": "Command did not complete within its 120s timeout and was moved to the background (ID: bparvs54o). Output is being written to: <session-folder>/tasks/bparvs54o.output. You will be notified when it completes. If it is still running after 30m in the background, it will be stopped and you will be notified. To check interim output, use Read on that file path."
         }
       },
       "node": "work",
@@ -9397,7 +9397,7 @@
           "description": "Run all tests to record the baseline golden file",
           "run_in_background": true
         },
-        "output": "Command running in background with ID: b3fwiare0. Output is being written to: /tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/b3fwiare0.output. You will be notified when it completes. To check interim output, use Read on that file path."
+        "output": "Command running in background with ID: b3fwiare0. Output is being written to: <session-folder>/tasks/b3fwiare0.output. You will be notified when it completes. To check interim output, use Read on that file path."
       },
       "kind": "tool_result"
     }
@@ -9421,7 +9421,7 @@
             "description": "Run all tests to record the baseline golden file",
             "run_in_background": true
           },
-          "output": "Command running in background with ID: b3fwiare0. Output is being written to: /tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/b3fwiare0.output. You will be notified when it completes. To check interim output, use Read on that file path."
+          "output": "Command running in background with ID: b3fwiare0. Output is being written to: <session-folder>/tasks/b3fwiare0.output. You will be notified when it completes. To check interim output, use Read on that file path."
         }
       },
       "node": "work",
@@ -10191,7 +10191,7 @@
         "id": "toolu_01GH2Ut8KF3WEFdpzaEJ4Ncx",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/b3fwiare0.output"
+          "file_path": "<session-folder>/tasks/b3fwiare0.output"
         }
       },
       "kind": "tool_call"
@@ -10212,7 +10212,7 @@
           "id": "toolu_01GH2Ut8KF3WEFdpzaEJ4Ncx",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/b3fwiare0.output"
+            "file_path": "<session-folder>/tasks/b3fwiare0.output"
           }
         }
       },
@@ -10233,7 +10233,7 @@
         "id": "toolu_01GH2Ut8KF3WEFdpzaEJ4Ncx",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/b3fwiare0.output"
+          "file_path": "<session-folder>/tasks/b3fwiare0.output"
         },
         "output": "1\t?   \texample.com/tally/cmd/tally\t[no test files]\n2\tok  \texample.com/tally/internal/api\t2.725s\n3\t?   \texample.com/tally/internal/apitest\t[no test files]\n4\t?   \texample.com/tally/internal/auth\t[no test files]\n5\tok  \texample.com/tally/internal/billing\t(cached)\n6\t?   \texample.com/tally/internal/clock\t[no test files]\n7\tok  \texample.com/tally/internal/jobs\t(cached)\n8\t?   \texample.com/tally/internal/mail\t[no test files]\n9\tok  \texample.com/tally/internal/money\t(cached)\n10\tok  \texample.com/tally/internal/payments\t(cached)\n11\tok  \texample.com/tally/internal/reports\t(cached)\n12\tok  \texample.com/tally/internal/snapshot\t(cached)\n13\tok  \texample.com/tally/internal/store\t(cached)\n14\tok  \texample.com/tally/internal/subscriptions\t(cached)\n15\tok  \texample.com/tally/internal/webhooks\t(cached)\n16\t\n17\t[exited with code 0]\n18\t"
       },
@@ -10255,7 +10255,7 @@
           "id": "toolu_01GH2Ut8KF3WEFdpzaEJ4Ncx",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-tmp-drydock-trial-2942862489-tally-invoice-list-performance-D-3-data-worktrees-prj-272e43eaade0-task-28cd268003d6/99dcba59-18a6-4262-b56f-1e555299d9cc/tasks/b3fwiare0.output"
+            "file_path": "<session-folder>/tasks/b3fwiare0.output"
           },
           "output": "1\t?   \texample.com/tally/cmd/tally\t[no test files]\n2\tok  \texample.com/tally/internal/api\t2.725s\n3\t?   \texample.com/tally/internal/apitest\t[no test files]\n4\t?   \texample.com/tally/internal/auth\t[no test files]\n5\tok  \texample.com/tally/internal/billing\t(cached)\n6\t?   \texample.com/tally/internal/clock\t[no test files]\n7\tok  \texample.com/tally/internal/jobs\t(cached)\n8\t?   \texample.com/tally/internal/mail\t[no test files]\n9\tok  \texample.com/tally/internal/money\t(cached)\n10\tok  \texample.com/tally/internal/payments\t(cached)\n11\tok  \texample.com/tally/internal/reports\t(cached)\n12\tok  \texample.com/tally/internal/snapshot\t(cached)\n13\tok  \texample.com/tally/internal/store\t(cached)\n14\tok  \texample.com/tally/internal/subscriptions\t(cached)\n15\tok  \texample.com/tally/internal/webhooks\t(cached)\n16\t\n17\t[exited with code 0]\n18\t"
         }

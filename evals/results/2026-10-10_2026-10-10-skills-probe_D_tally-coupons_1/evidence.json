@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/build_2612e3d89513.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/build_2612e3d89513.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 440ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/test_322c327d963b.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/test_322c327d963b.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 390ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/lint_bff212ed6534.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/lint_bff212ed6534.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 30ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/secrets_12d9946d37bb.log",
+    "ref": "<scratchpad>/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/checks/secrets_12d9946d37bb.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "12 file(s), +712 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/probe-tally-coupons/tally-coupons-D-1/data/runs/run_6ee1d76efdd1/evidence/task.diff",
     "data": {
       "Files": 12,
       "Insertions": 712,

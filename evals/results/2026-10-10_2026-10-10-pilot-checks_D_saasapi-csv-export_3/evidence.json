@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 420ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/build-1791597723004008705.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/build-1791597723004008705.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 130ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/test-1791597723429837092.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/test-1791597723429837092.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 130ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/lint-1791597723558711883.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/lint-1791597723558711883.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 10ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/secrets-1791597723703998732.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/secrets-1791597723703998732.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "2 file(s), +93 -0",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/evidence/task.diff",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/evidence/task.diff",
     "data": {
       "Files": 2,
       "Insertions": 93,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 440ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/build-1791597767795416953.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/build-1791597767795416953.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 130ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/test-1791597768236552161.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/test-1791597768236552161.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 150ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/lint-1791597768368073773.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/lint-1791597768368073773.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 10ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/secrets-1791597768529640440.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/checks/secrets-1791597768529640440.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "2 file(s), +95 -0",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/evidence/task.diff",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-3/data/runs/run_9a1d55336caf/evidence/task.diff",
     "data": {
       "Files": 2,
       "Insertions": 95,

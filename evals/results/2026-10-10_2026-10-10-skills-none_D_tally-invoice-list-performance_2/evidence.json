@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 1.57s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/build_81be835ed1ef.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/build_81be835ed1ef.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 1.63s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/test_3c8a8fc3e7a1.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/test_3c8a8fc3e7a1.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 1.29s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/lint_c5d32d8c7575.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/lint_c5d32d8c7575.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 250ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/secrets_d1ca3f208e5b.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/checks/secrets_d1ca3f208e5b.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +296 -36",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-invoice-list-performance-D-2/data/runs/run_350a4b2019be/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 296,

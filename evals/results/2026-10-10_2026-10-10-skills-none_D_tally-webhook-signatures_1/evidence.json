@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 570ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/build_aabde27379fc.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/build_aabde27379fc.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 520ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/test_c1d582a9757f.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/test_c1d582a9757f.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 430ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/lint_9d71333104e9.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/lint_9d71333104e9.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/secrets_c91370ec16da.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/secrets_c91370ec16da.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "5 file(s), +294 -9",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/evidence/task.diff",
     "data": {
       "Files": 5,
       "Insertions": 294,
@@ -137,7 +137,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 1.55s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/build_f2cd2eb1aa87.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/build_f2cd2eb1aa87.log",
     "data": {
       "argv": [
         "go",
@@ -159,7 +159,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 2.06s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/test_10a12b31a013.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/test_10a12b31a013.log",
     "data": {
       "argv": [
         "go",
@@ -181,7 +181,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 1.08s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/lint_586b38956bbc.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/lint_586b38956bbc.log",
     "data": {
       "argv": [
         "go",
@@ -203,7 +203,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 60ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/secrets_1db7906ce55a.log",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/checks/secrets_1db7906ce55a.log",
     "data": {
       "argv": [
         "drydock",
@@ -223,7 +223,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +365 -9",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-1/data/runs/run_9a17c792994e/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 365,

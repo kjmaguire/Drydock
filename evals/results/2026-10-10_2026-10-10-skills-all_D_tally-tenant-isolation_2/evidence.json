@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/build_628f46471f59.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/build_628f46471f59.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 400ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/test_fe2b2d8a5830.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/test_fe2b2d8a5830.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 360ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/lint_46310d5c2df8.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/lint_46310d5c2df8.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/secrets_8d006aa69901.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/checks/secrets_8d006aa69901.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "10 file(s), +332 -32",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-tenant-isolation-D-2/data/runs/run_69227e83642e/evidence/task.diff",
     "data": {
       "Files": 10,
       "Insertions": 332,

@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 530ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/build_ed8ec4c8e859.log",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/build_ed8ec4c8e859.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 420ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/test_6c96bef2a486.log",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/test_6c96bef2a486.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 400ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/lint_bc80ae1f17a4.log",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/lint_bc80ae1f17a4.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/secrets_d1482947906e.log",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/checks/secrets_d1482947906e.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "8 file(s), +390 -14",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/none-2-1/tally-proration-D-1/data/runs/run_fe1453540e9b/evidence/task.diff",
     "data": {
       "Files": 8,
       "Insertions": 390,

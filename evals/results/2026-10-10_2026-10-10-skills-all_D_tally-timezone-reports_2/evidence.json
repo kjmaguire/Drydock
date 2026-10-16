@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/build_2458bf5df40b.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/build_2458bf5df40b.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 430ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/test_49d10ea3c33f.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/test_49d10ea3c33f.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 350ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/lint_5cc7aadad6f6.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/lint_5cc7aadad6f6.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/secrets_c6ad403791cf.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/checks/secrets_c6ad403791cf.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "4 file(s), +329 -32",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-timezone-reports-D-2/data/runs/run_c347f26dd223/evidence/task.diff",
     "data": {
       "Files": 4,
       "Insertions": 329,

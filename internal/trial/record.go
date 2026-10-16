@@ -122,7 +122,11 @@ func (r Record) Write(out string, extra map[string][]byte) (string, error) {
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		if err := os.WriteFile(filepath.Join(dir, n), extra[n], 0o644); err != nil {
+		b := extra[n]
+		if redact := redactorFor(n); redact != nil {
+			b = redact(b) // the directory is committed: see redact.go
+		}
+		if err := os.WriteFile(filepath.Join(dir, n), b, 0o644); err != nil {
 			return "", err
 		}
 	}

@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 500ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/build_9c08ce386530.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/build_9c08ce386530.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/test_cd909453590c.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/test_cd909453590c.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 420ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/lint_9c9057a9fcbe.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/lint_9c9057a9fcbe.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 10ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/secrets_fc3a5c1082d5.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/checks/secrets_fc3a5c1082d5.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "7 file(s), +365 -29",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-1/data/runs/run_5213130b4634/evidence/task.diff",
     "data": {
       "Files": 7,
       "Insertions": 365,

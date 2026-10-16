@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 1.81s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/build_27c2193789cb.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/build_27c2193789cb.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 1.03s",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/test_cf74122407e0.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/test_cf74122407e0.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 910ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/lint_f690ef176082.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/lint_f690ef176082.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/secrets_e2836a03f751.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/secrets_e2836a03f751.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "8 file(s), +438 -13",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/evidence/task.diff",
     "data": {
       "Files": 8,
       "Insertions": 438,
@@ -128,7 +128,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 950ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/build_5f0fececabf2.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/build_5f0fececabf2.log",
     "data": {
       "argv": [
         "go",
@@ -150,7 +150,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 560ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/test_5136563c7b72.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/test_5136563c7b72.log",
     "data": {
       "argv": [
         "go",
@@ -172,7 +172,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 410ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/lint_6a894a72e827.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/lint_6a894a72e827.log",
     "data": {
       "argv": [
         "go",
@@ -194,7 +194,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/secrets_c891bdeff72d.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/checks/secrets_c891bdeff72d.log",
     "data": {
       "argv": [
         "drydock",
@@ -214,7 +214,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "10 file(s), +569 -13",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-proration-D-2/data/runs/run_47afab5d8cfb/evidence/task.diff",
     "data": {
       "Files": 10,
       "Insertions": 569,

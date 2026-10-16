@@ -258,6 +258,25 @@ always runs first. Acceptance is the same for both, on a copy of the result: the
 `go vet ./...` and `go test -count=1 ./...` (the arm's own tests included), offline. Cost is Claude Code's own
 `total_cost_usd` in both arms (API list prices; not what a subscription costs).
 
+**What keeps the acceptance honest about code an agent wrote** (audit 2026-10-16, M19 and L54). The result's tests are the agent's
+code, so they run in a scrubbed environment (`proc.ToolEnv`: the toolchain's variables and the network settings, never a token for
+GitHub, a cloud, npm or the agent CLI; the password of a proxy address is dropped), with their home and temporary folders inside the
+scratch directory. And passing commands are not enough: `go test` exits 0 for a package whose `TestMain` never calls `m.Run`, or
+calls it and exits 0 whatever happened, so after the commands pass the harness runs the hidden files' tests by name with
+`go test -json` and accepts only if every one of them was seen to report a pass (a skip, a failure, a missing test or output that
+is cut or unreadable is a rejection; `AcceptResult` records the check as its last command). A task whose hidden files hold no Go test
+is judged by its commands alone. A result that prints test output by hand could still imitate a pass; the hidden test names are
+never shown to an arm, which is what stands between that and a false acceptance.
+
+**What a run directory keeps** (`evals/results/<run>/`, committed and public). `run.json`, `diff.patch`, and for arm D `events.json`,
+`usage.json` and `evidence.json`; for B1 `transcript.jsonl`, the CLI's own stream. Claude Code's first event lists the signed-in
+account's plugins (with the folder each was synced to, which names the organization), its connectors, commands and skills, and the
+machine's paths; none of that is of use to a reader and all of it says which account made the run. `Record.Write` therefore cuts
+that event down to the model, mode, version and built-in tools, and makes the machine's Claude and session folders generic in the
+transcript, the events and the evidence (`trial.RedactTranscript`, `trial.RedactPaths`); `drydock-trial redact` does the same to
+runs recorded earlier, and was run over the committed ones. Their history still holds the old files: removing them from it would mean
+rewriting a public repository, which is the owner's decision.
+
 **The suite** (`evals/tasks`, fixture `testdata/fixtures/saasapi`, a small multi-tenant billing API in standard-library Go):
 `saasapi-invoice-rules` (a money bug with exact rounding rules), `saasapi-rate-limit` (per-key sliding window, Retry-After,
 concurrency), `saasapi-csv-export` (tenant isolation, RFC 4180, spreadsheet formula injection), `saasapi-invoice-pages`

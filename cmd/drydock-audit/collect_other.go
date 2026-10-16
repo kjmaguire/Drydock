@@ -37,7 +37,7 @@ func actions(ctx context.Context) []Item {
 	items = append(items, ciGoPins(files)...)
 	for _, n := range names {
 		it := Item{ID: "action:" + n, Group: "GitHub Actions (CI)", Name: n, Kind: "action", Used: seen[n], Where: ".github/workflows/" + strings.Join(dedupe(where[n]), ", ")}
-		best, err := gitLatestTag(ctx, n)
+		best, err := gitLatestTag(ctx, actionRepo(n))
 		if err != nil {
 			fail("tags of " + n + ": " + err.Error())
 		} else {
@@ -57,6 +57,16 @@ func actions(ctx context.Context) []Item {
 		items = append(items, it)
 	}
 	return items
+}
+
+// actionRepo is the repository an action lives in: a workflow names an action inside a repository by its path
+// (github/codeql-action/init), and the tags are the repository's.
+func actionRepo(action string) string {
+	parts := strings.SplitN(action, "/", 3)
+	if len(parts) < 2 {
+		return action
+	}
+	return parts[0] + "/" + parts[1]
 }
 
 // gitLatestTag is the newest stable release tag (vX.Y.Z or X.Y.Z) of a GitHub repository, read with git ls-remote: no API

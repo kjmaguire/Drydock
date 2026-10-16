@@ -574,7 +574,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_c6c60a88e89d",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1",
+      "cwd": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -4585,7 +4585,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
           "old_string": "\t// Secret signs the deliveries (webhooks.Sign).\n\tSecret         string    `json:\"secret\"`\n\tEnabled        bool      `json:\"enabled\"`",
           "new_string": "\t// Secret signs the deliveries (webhooks.SignatureHeader).\n\tSecret string `json:\"secret\"`\n\t// PreviousSecret also signs the deliveries until PreviousSecretExpiresAt, after a rotation.\n\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`"
         }
@@ -4609,7 +4609,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
             "old_string": "\t// Secret signs the deliveries (webhooks.Sign).\n\tSecret         string    `json:\"secret\"`\n\tEnabled        bool      `json:\"enabled\"`",
             "new_string": "\t// Secret signs the deliveries (webhooks.SignatureHeader).\n\tSecret string `json:\"secret\"`\n\t// PreviousSecret also signs the deliveries until PreviousSecretExpiresAt, after a rotation.\n\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`"
           }
@@ -4633,11 +4633,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
           "old_string": "\t// Secret signs the deliveries (webhooks.Sign).\n\tSecret         string    `json:\"secret\"`\n\tEnabled        bool      `json:\"enabled\"`",
           "new_string": "\t// Secret signs the deliveries (webhooks.SignatureHeader).\n\tSecret string `json:\"secret\"`\n\t// PreviousSecret also signs the deliveries until PreviousSecretExpiresAt, after a rotation.\n\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -4658,11 +4658,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
             "old_string": "\t// Secret signs the deliveries (webhooks.Sign).\n\tSecret         string    `json:\"secret\"`\n\tEnabled        bool      `json:\"enabled\"`",
             "new_string": "\t// Secret signs the deliveries (webhooks.SignatureHeader).\n\tSecret string `json:\"secret\"`\n\t// PreviousSecret also signs the deliveries until PreviousSecretExpiresAt, after a rotation.\n\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5130,7 +5130,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
           "old_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`",
           "new_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`"
         }
@@ -5154,7 +5154,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
             "old_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`",
             "new_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`"
           }
@@ -5178,7 +5178,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
           "old_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`",
           "new_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`"
         },
@@ -5204,7 +5204,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
             "old_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`",
             "new_string": "\tPreviousSecret          string     `json:\"previous_secret,omitempty\"`\n\tPreviousSecretExpiresAt *time.Time `json:\"previous_secret_expires_at,omitempty\"`\n\tEnabled                 bool       `json:\"enabled\"`\n\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`"
           },
@@ -5384,7 +5384,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
           "old_string": "\tDisabledReason string    `json:\"disabled_reason,omitempty\"`\n\tCreatedAt      time.Time `json:\"created_at\"`\n}",
           "new_string": "\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`\n}"
         }
@@ -5408,7 +5408,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
             "old_string": "\tDisabledReason string    `json:\"disabled_reason,omitempty\"`\n\tCreatedAt      time.Time `json:\"created_at\"`\n}",
             "new_string": "\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`\n}"
           }
@@ -5432,11 +5432,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
           "old_string": "\tDisabledReason string    `json:\"disabled_reason,omitempty\"`\n\tCreatedAt      time.Time `json:\"created_at\"`\n}",
           "new_string": "\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5457,11 +5457,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go",
             "old_string": "\tDisabledReason string    `json:\"disabled_reason,omitempty\"`\n\tCreatedAt      time.Time `json:\"created_at\"`\n}",
             "new_string": "\tDisabledReason          string     `json:\"disabled_reason,omitempty\"`\n\tCreatedAt               time.Time  `json:\"created_at\"`\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/types.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5745,7 +5745,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
           "old_string": "// DeleteWebhookEndpoint removes an endpoint and its pending deliveries.",
           "new_string": "// RotateWebhookSecret gives an endpoint a new secret. The previous secret keeps signing the deliveries until until.\nfunc (s *Store) RotateWebhookSecret(orgID, id, secret string, until time.Time) (WebhookEndpoint, error) {\n\treturn s.UpdateWebhookEndpoint(orgID, id, func(ep *WebhookEndpoint) error {\n\t\tep.PreviousSecret = ep.Secret\n\t\tep.PreviousSecretExpiresAt = \u0026until\n\t\tep.Secret = secret\n\t\treturn nil\n\t})\n}\n\n// DeleteWebhookEndpoint removes an endpoint and its pending deliveries."
         }
@@ -5769,7 +5769,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
             "old_string": "// DeleteWebhookEndpoint removes an endpoint and its pending deliveries.",
             "new_string": "// RotateWebhookSecret gives an endpoint a new secret. The previous secret keeps signing the deliveries until until.\nfunc (s *Store) RotateWebhookSecret(orgID, id, secret string, until time.Time) (WebhookEndpoint, error) {\n\treturn s.UpdateWebhookEndpoint(orgID, id, func(ep *WebhookEndpoint) error {\n\t\tep.PreviousSecret = ep.Secret\n\t\tep.PreviousSecretExpiresAt = \u0026until\n\t\tep.Secret = secret\n\t\treturn nil\n\t})\n}\n\n// DeleteWebhookEndpoint removes an endpoint and its pending deliveries."
           }
@@ -5793,11 +5793,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
           "old_string": "// DeleteWebhookEndpoint removes an endpoint and its pending deliveries.",
           "new_string": "// RotateWebhookSecret gives an endpoint a new secret. The previous secret keeps signing the deliveries until until.\nfunc (s *Store) RotateWebhookSecret(orgID, id, secret string, until time.Time) (WebhookEndpoint, error) {\n\treturn s.UpdateWebhookEndpoint(orgID, id, func(ep *WebhookEndpoint) error {\n\t\tep.PreviousSecret = ep.Secret\n\t\tep.PreviousSecretExpiresAt = \u0026until\n\t\tep.Secret = secret\n\t\treturn nil\n\t})\n}\n\n// DeleteWebhookEndpoint removes an endpoint and its pending deliveries."
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5818,11 +5818,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
             "old_string": "// DeleteWebhookEndpoint removes an endpoint and its pending deliveries.",
             "new_string": "// RotateWebhookSecret gives an endpoint a new secret. The previous secret keeps signing the deliveries until until.\nfunc (s *Store) RotateWebhookSecret(orgID, id, secret string, until time.Time) (WebhookEndpoint, error) {\n\treturn s.UpdateWebhookEndpoint(orgID, id, func(ep *WebhookEndpoint) error {\n\t\tep.PreviousSecret = ep.Secret\n\t\tep.PreviousSecretExpiresAt = \u0026until\n\t\tep.Secret = secret\n\t\treturn nil\n\t})\n}\n\n// DeleteWebhookEndpoint removes an endpoint and its pending deliveries."
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -5856,7 +5856,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
           "old_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\treturn ep",
           "new_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\tif ep.PreviousSecretExpiresAt != nil {\n\t\tt := *ep.PreviousSecretExpiresAt\n\t\tep.PreviousSecretExpiresAt = \u0026t\n\t}\n\treturn ep"
         }
@@ -5880,7 +5880,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
             "old_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\treturn ep",
             "new_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\tif ep.PreviousSecretExpiresAt != nil {\n\t\tt := *ep.PreviousSecretExpiresAt\n\t\tep.PreviousSecretExpiresAt = \u0026t\n\t}\n\treturn ep"
           }
@@ -5904,11 +5904,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
           "old_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\treturn ep",
           "new_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\tif ep.PreviousSecretExpiresAt != nil {\n\t\tt := *ep.PreviousSecretExpiresAt\n\t\tep.PreviousSecretExpiresAt = \u0026t\n\t}\n\treturn ep"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -5929,11 +5929,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go",
             "old_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\treturn ep",
             "new_string": "func copyEndpoint(ep WebhookEndpoint) WebhookEndpoint {\n\tep.Events = append([]string(nil), ep.Events...)\n\tif ep.PreviousSecretExpiresAt != nil {\n\t\tt := *ep.PreviousSecretExpiresAt\n\t\tep.PreviousSecretExpiresAt = \u0026t\n\t}\n\treturn ep"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/store/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6160,7 +6160,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "\t\"slices\"\n\t\"time\"\n",
           "new_string": "\t\"slices\"\n\t\"strconv\"\n\t\"strings\"\n\t\"time\"\n"
         }
@@ -6184,7 +6184,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "\t\"slices\"\n\t\"time\"\n",
             "new_string": "\t\"slices\"\n\t\"strconv\"\n\t\"strings\"\n\t\"time\"\n"
           }
@@ -6208,11 +6208,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "\t\"slices\"\n\t\"time\"\n",
           "new_string": "\t\"slices\"\n\t\"strconv\"\n\t\"strings\"\n\t\"time\"\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6233,11 +6233,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "\t\"slices\"\n\t\"time\"\n",
             "new_string": "\t\"slices\"\n\t\"strconv\"\n\t\"strings\"\n\t\"time\"\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6271,7 +6271,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)",
           "new_string": "// SecretOverlap is how long a rotated-out secret keeps signing deliveries.\nconst SecretOverlap = 24 * time.Hour\n\n// defaultTolerance is Verify's tolerance when none is given.\nconst defaultTolerance = 5 * time.Minute\n\n// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)\n\n// Errors returned by Verify.\nvar (\n\tErrMalformedHeader    = errors.New(\"malformed signature header\")\n\tErrNoTimestamp        = errors.New(\"signature header has no timestamp\")\n\tErrTimestampTolerance = errors.New(\"signature timestamp is outside the tolerance\")\n\tErrNoSignature        = errors.New(\"signature header has no v1 signature\")\n\tErrSignatureMismatch  = errors.New(\"no signature matches\")\n)"
         }
@@ -6295,7 +6295,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)",
             "new_string": "// SecretOverlap is how long a rotated-out secret keeps signing deliveries.\nconst SecretOverlap = 24 * time.Hour\n\n// defaultTolerance is Verify's tolerance when none is given.\nconst defaultTolerance = 5 * time.Minute\n\n// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)\n\n// Errors returned by Verify.\nvar (\n\tErrMalformedHeader    = errors.New(\"malformed signature header\")\n\tErrNoTimestamp        = errors.New(\"signature header has no timestamp\")\n\tErrTimestampTolerance = errors.New(\"signature timestamp is outside the tolerance\")\n\tErrNoSignature        = errors.New(\"signature header has no v1 signature\")\n\tErrSignatureMismatch  = errors.New(\"no signature matches\")\n)"
           }
@@ -6319,11 +6319,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)",
           "new_string": "// SecretOverlap is how long a rotated-out secret keeps signing deliveries.\nconst SecretOverlap = 24 * time.Hour\n\n// defaultTolerance is Verify's tolerance when none is given.\nconst defaultTolerance = 5 * time.Minute\n\n// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)\n\n// Errors returned by Verify.\nvar (\n\tErrMalformedHeader    = errors.New(\"malformed signature header\")\n\tErrNoTimestamp        = errors.New(\"signature header has no timestamp\")\n\tErrTimestampTolerance = errors.New(\"signature timestamp is outside the tolerance\")\n\tErrNoSignature        = errors.New(\"signature header has no v1 signature\")\n\tErrSignatureMismatch  = errors.New(\"no signature matches\")\n)"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6344,11 +6344,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)",
             "new_string": "// SecretOverlap is how long a rotated-out secret keeps signing deliveries.\nconst SecretOverlap = 24 * time.Hour\n\n// defaultTolerance is Verify's tolerance when none is given.\nconst defaultTolerance = 5 * time.Minute\n\n// Errors.\nvar (\n\tErrInvalidURL    = errors.New(\"invalid webhook URL\")\n\tErrInvalidEvents = errors.New(\"invalid event types\")\n)\n\n// Errors returned by Verify.\nvar (\n\tErrMalformedHeader    = errors.New(\"malformed signature header\")\n\tErrNoTimestamp        = errors.New(\"signature header has no timestamp\")\n\tErrTimestampTolerance = errors.New(\"signature timestamp is outside the tolerance\")\n\tErrNoSignature        = errors.New(\"signature header has no v1 signature\")\n\tErrSignatureMismatch  = errors.New(\"no signature matches\")\n)"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6401,7 +6401,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n",
           "new_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// SignatureHeader returns the Tally-Signature header of a delivery sent at t: \"t=\u003cunix seconds\u003e\" and a \"v1=\u003csignature\u003e\" for\n// each secret, current first. The signature covers \"\u003ct\u003e.\u003cbody\u003e\".\nfunc SignatureHeader(secrets []string, t time.Time, body []byte) string {\n\tts := strconv.FormatInt(t.Unix(), 10)\n\tvar b strings.Builder\n\tb.WriteString(\"t=\" + ts)\n\tfor _, secret := range secrets {\n\t\tb.WriteString(\",v1=\" + signTimestamped(secret, ts, body))\n\t}\n\treturn b.String()\n}\n\n// signTimestamped returns the hex HMAC-SHA256 of \"\u003cts\u003e.\u003cpayload\u003e\", keyed with secret.\nfunc signTimestamped(secret, ts string, payload []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(ts + \".\"))\n\tm.Write(payload)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// Verify checks a Tally-Signature header against a payload. It returns nil when the header's timestamp is within tolerance of\n// now and one of its v1 signatures matches the payload signed with one of secrets. A tolerance of 0 means 5 minutes.\nfunc Verify(payload []byte, header string, secrets []string, tolerance time.Duration, now time.Time) error {\n\tif tolerance == 0 {\n\t\ttolerance = defaultTolerance\n\t}\n\tif strings.TrimSpace(header) == \"\" {\n\t\treturn fmt.Errorf(\"%w: the header is empty\", ErrMalformedHeader)\n\t}\n\tvar ts string\n\tvar sec int64\n\tvar hasTimestamp bool\n\tvar sigs []string\n\tfor _, pair := range strings.Split(header, \",\") {\n\t\tkey, value, ok := strings.Cut(pair, \"=\")\n\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"%w: %q has no \\\"=\\\"\", ErrMalformedHeader, strings.TrimSpace(pair))\n\t\t}\n\t\tkey, value = strings.TrimSpace(key), strings.TrimSpace(value)\n\t\tswitch key {\n\t\tcase \"t\":\n\t\t\tn, err := strconv.ParseInt(value, 10, 64)\n\t\t\tif err != nil {\n\t\t\t\treturn fmt.Errorf(\"%w: t is not an integer\", ErrMalformedHeader)\n\t\t\t}\n\t\t\tif !hasTimestamp {\n\t\t\t\tts, sec, hasTimestamp = value, n, true\n\t\t\t}\n\t\tcase \"v1\":\n\t\t\tsigs = append(sigs, value)\n\t\t}\n\t}\n\tif !hasTimestamp {\n\t\treturn ErrNoTimestamp\n\t}\n\tif d := now.Sub(time.Unix(sec, 0)); d \u003e tolerance || -d \u003e tolerance {\n\t\treturn fmt.Errorf(\"%w: the timestamp is %v from now\", ErrTimestampTolerance, d)\n\t}\n\tif len(sigs) == 0 {\n\t\treturn ErrNoSignature\n\t}\n\tfor _, secret := range secrets {\n\t\twant := signTimestamped(secret, ts, payload)\n\t\tfor _, got := range sigs {\n\t\t\tif hmac.Equal([]byte(got), []byte(want)) {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t}\n\t}\n\treturn ErrSignatureMismatch\n}\n\n// signingSecrets returns the secrets that sign a delivery sent at now: the current secret, then the previous one while it\n// is still within its overlap.\nfunc signingSecrets(ep store.WebhookEndpoint, now time.Time) []string {\n\tsecrets := []string{ep.Secret}\n\tif ep.PreviousSecret != \"\" \u0026\u0026 ep.PreviousSecretExpiresAt != nil \u0026\u0026 now.Before(*ep.PreviousSecretExpiresAt) {\n\t\tsecrets = append(secrets, ep.PreviousSecret)\n\t}\n\treturn secrets\n}\n"
         }
@@ -6425,7 +6425,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n",
             "new_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// SignatureHeader returns the Tally-Signature header of a delivery sent at t: \"t=\u003cunix seconds\u003e\" and a \"v1=\u003csignature\u003e\" for\n// each secret, current first. The signature covers \"\u003ct\u003e.\u003cbody\u003e\".\nfunc SignatureHeader(secrets []string, t time.Time, body []byte) string {\n\tts := strconv.FormatInt(t.Unix(), 10)\n\tvar b strings.Builder\n\tb.WriteString(\"t=\" + ts)\n\tfor _, secret := range secrets {\n\t\tb.WriteString(\",v1=\" + signTimestamped(secret, ts, body))\n\t}\n\treturn b.String()\n}\n\n// signTimestamped returns the hex HMAC-SHA256 of \"\u003cts\u003e.\u003cpayload\u003e\", keyed with secret.\nfunc signTimestamped(secret, ts string, payload []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(ts + \".\"))\n\tm.Write(payload)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// Verify checks a Tally-Signature header against a payload. It returns nil when the header's timestamp is within tolerance of\n// now and one of its v1 signatures matches the payload signed with one of secrets. A tolerance of 0 means 5 minutes.\nfunc Verify(payload []byte, header string, secrets []string, tolerance time.Duration, now time.Time) error {\n\tif tolerance == 0 {\n\t\ttolerance = defaultTolerance\n\t}\n\tif strings.TrimSpace(header) == \"\" {\n\t\treturn fmt.Errorf(\"%w: the header is empty\", ErrMalformedHeader)\n\t}\n\tvar ts string\n\tvar sec int64\n\tvar hasTimestamp bool\n\tvar sigs []string\n\tfor _, pair := range strings.Split(header, \",\") {\n\t\tkey, value, ok := strings.Cut(pair, \"=\")\n\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"%w: %q has no \\\"=\\\"\", ErrMalformedHeader, strings.TrimSpace(pair))\n\t\t}\n\t\tkey, value = strings.TrimSpace(key), strings.TrimSpace(value)\n\t\tswitch key {\n\t\tcase \"t\":\n\t\t\tn, err := strconv.ParseInt(value, 10, 64)\n\t\t\tif err != nil {\n\t\t\t\treturn fmt.Errorf(\"%w: t is not an integer\", ErrMalformedHeader)\n\t\t\t}\n\t\t\tif !hasTimestamp {\n\t\t\t\tts, sec, hasTimestamp = value, n, true\n\t\t\t}\n\t\tcase \"v1\":\n\t\t\tsigs = append(sigs, value)\n\t\t}\n\t}\n\tif !hasTimestamp {\n\t\treturn ErrNoTimestamp\n\t}\n\tif d := now.Sub(time.Unix(sec, 0)); d \u003e tolerance || -d \u003e tolerance {\n\t\treturn fmt.Errorf(\"%w: the timestamp is %v from now\", ErrTimestampTolerance, d)\n\t}\n\tif len(sigs) == 0 {\n\t\treturn ErrNoSignature\n\t}\n\tfor _, secret := range secrets {\n\t\twant := signTimestamped(secret, ts, payload)\n\t\tfor _, got := range sigs {\n\t\t\tif hmac.Equal([]byte(got), []byte(want)) {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t}\n\t}\n\treturn ErrSignatureMismatch\n}\n\n// signingSecrets returns the secrets that sign a delivery sent at now: the current secret, then the previous one while it\n// is still within its overlap.\nfunc signingSecrets(ep store.WebhookEndpoint, now time.Time) []string {\n\tsecrets := []string{ep.Secret}\n\tif ep.PreviousSecret != \"\" \u0026\u0026 ep.PreviousSecretExpiresAt != nil \u0026\u0026 now.Before(*ep.PreviousSecretExpiresAt) {\n\t\tsecrets = append(secrets, ep.PreviousSecret)\n\t}\n\treturn secrets\n}\n"
           }
@@ -6449,11 +6449,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n",
           "new_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// SignatureHeader returns the Tally-Signature header of a delivery sent at t: \"t=\u003cunix seconds\u003e\" and a \"v1=\u003csignature\u003e\" for\n// each secret, current first. The signature covers \"\u003ct\u003e.\u003cbody\u003e\".\nfunc SignatureHeader(secrets []string, t time.Time, body []byte) string {\n\tts := strconv.FormatInt(t.Unix(), 10)\n\tvar b strings.Builder\n\tb.WriteString(\"t=\" + ts)\n\tfor _, secret := range secrets {\n\t\tb.WriteString(\",v1=\" + signTimestamped(secret, ts, body))\n\t}\n\treturn b.String()\n}\n\n// signTimestamped returns the hex HMAC-SHA256 of \"\u003cts\u003e.\u003cpayload\u003e\", keyed with secret.\nfunc signTimestamped(secret, ts string, payload []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(ts + \".\"))\n\tm.Write(payload)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// Verify checks a Tally-Signature header against a payload. It returns nil when the header's timestamp is within tolerance of\n// now and one of its v1 signatures matches the payload signed with one of secrets. A tolerance of 0 means 5 minutes.\nfunc Verify(payload []byte, header string, secrets []string, tolerance time.Duration, now time.Time) error {\n\tif tolerance == 0 {\n\t\ttolerance = defaultTolerance\n\t}\n\tif strings.TrimSpace(header) == \"\" {\n\t\treturn fmt.Errorf(\"%w: the header is empty\", ErrMalformedHeader)\n\t}\n\tvar ts string\n\tvar sec int64\n\tvar hasTimestamp bool\n\tvar sigs []string\n\tfor _, pair := range strings.Split(header, \",\") {\n\t\tkey, value, ok := strings.Cut(pair, \"=\")\n\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"%w: %q has no \\\"=\\\"\", ErrMalformedHeader, strings.TrimSpace(pair))\n\t\t}\n\t\tkey, value = strings.TrimSpace(key), strings.TrimSpace(value)\n\t\tswitch key {\n\t\tcase \"t\":\n\t\t\tn, err := strconv.ParseInt(value, 10, 64)\n\t\t\tif err != nil {\n\t\t\t\treturn fmt.Errorf(\"%w: t is not an integer\", ErrMalformedHeader)\n\t\t\t}\n\t\t\tif !hasTimestamp {\n\t\t\t\tts, sec, hasTimestamp = value, n, true\n\t\t\t}\n\t\tcase \"v1\":\n\t\t\tsigs = append(sigs, value)\n\t\t}\n\t}\n\tif !hasTimestamp {\n\t\treturn ErrNoTimestamp\n\t}\n\tif d := now.Sub(time.Unix(sec, 0)); d \u003e tolerance || -d \u003e tolerance {\n\t\treturn fmt.Errorf(\"%w: the timestamp is %v from now\", ErrTimestampTolerance, d)\n\t}\n\tif len(sigs) == 0 {\n\t\treturn ErrNoSignature\n\t}\n\tfor _, secret := range secrets {\n\t\twant := signTimestamped(secret, ts, payload)\n\t\tfor _, got := range sigs {\n\t\t\tif hmac.Equal([]byte(got), []byte(want)) {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t}\n\t}\n\treturn ErrSignatureMismatch\n}\n\n// signingSecrets returns the secrets that sign a delivery sent at now: the current secret, then the previous one while it\n// is still within its overlap.\nfunc signingSecrets(ep store.WebhookEndpoint, now time.Time) []string {\n\tsecrets := []string{ep.Secret}\n\tif ep.PreviousSecret != \"\" \u0026\u0026 ep.PreviousSecretExpiresAt != nil \u0026\u0026 now.Before(*ep.PreviousSecretExpiresAt) {\n\t\tsecrets = append(secrets, ep.PreviousSecret)\n\t}\n\treturn secrets\n}\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6474,11 +6474,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n",
             "new_string": "\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// SignatureHeader returns the Tally-Signature header of a delivery sent at t: \"t=\u003cunix seconds\u003e\" and a \"v1=\u003csignature\u003e\" for\n// each secret, current first. The signature covers \"\u003ct\u003e.\u003cbody\u003e\".\nfunc SignatureHeader(secrets []string, t time.Time, body []byte) string {\n\tts := strconv.FormatInt(t.Unix(), 10)\n\tvar b strings.Builder\n\tb.WriteString(\"t=\" + ts)\n\tfor _, secret := range secrets {\n\t\tb.WriteString(\",v1=\" + signTimestamped(secret, ts, body))\n\t}\n\treturn b.String()\n}\n\n// signTimestamped returns the hex HMAC-SHA256 of \"\u003cts\u003e.\u003cpayload\u003e\", keyed with secret.\nfunc signTimestamped(secret, ts string, payload []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(ts + \".\"))\n\tm.Write(payload)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\n// Verify checks a Tally-Signature header against a payload. It returns nil when the header's timestamp is within tolerance of\n// now and one of its v1 signatures matches the payload signed with one of secrets. A tolerance of 0 means 5 minutes.\nfunc Verify(payload []byte, header string, secrets []string, tolerance time.Duration, now time.Time) error {\n\tif tolerance == 0 {\n\t\ttolerance = defaultTolerance\n\t}\n\tif strings.TrimSpace(header) == \"\" {\n\t\treturn fmt.Errorf(\"%w: the header is empty\", ErrMalformedHeader)\n\t}\n\tvar ts string\n\tvar sec int64\n\tvar hasTimestamp bool\n\tvar sigs []string\n\tfor _, pair := range strings.Split(header, \",\") {\n\t\tkey, value, ok := strings.Cut(pair, \"=\")\n\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"%w: %q has no \\\"=\\\"\", ErrMalformedHeader, strings.TrimSpace(pair))\n\t\t}\n\t\tkey, value = strings.TrimSpace(key), strings.TrimSpace(value)\n\t\tswitch key {\n\t\tcase \"t\":\n\t\t\tn, err := strconv.ParseInt(value, 10, 64)\n\t\t\tif err != nil {\n\t\t\t\treturn fmt.Errorf(\"%w: t is not an integer\", ErrMalformedHeader)\n\t\t\t}\n\t\t\tif !hasTimestamp {\n\t\t\t\tts, sec, hasTimestamp = value, n, true\n\t\t\t}\n\t\tcase \"v1\":\n\t\t\tsigs = append(sigs, value)\n\t\t}\n\t}\n\tif !hasTimestamp {\n\t\treturn ErrNoTimestamp\n\t}\n\tif d := now.Sub(time.Unix(sec, 0)); d \u003e tolerance || -d \u003e tolerance {\n\t\treturn fmt.Errorf(\"%w: the timestamp is %v from now\", ErrTimestampTolerance, d)\n\t}\n\tif len(sigs) == 0 {\n\t\treturn ErrNoSignature\n\t}\n\tfor _, secret := range secrets {\n\t\twant := signTimestamped(secret, ts, payload)\n\t\tfor _, got := range sigs {\n\t\t\tif hmac.Equal([]byte(got), []byte(want)) {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t}\n\t}\n\treturn ErrSignatureMismatch\n}\n\n// signingSecrets returns the secrets that sign a delivery sent at now: the current secret, then the previous one while it\n// is still within its overlap.\nfunc signingSecrets(ep store.WebhookEndpoint, now time.Time) []string {\n\tsecrets := []string{ep.Secret}\n\tif ep.PreviousSecret != \"\" \u0026\u0026 ep.PreviousSecretExpiresAt != nil \u0026\u0026 now.Before(*ep.PreviousSecretExpiresAt) {\n\t\tsecrets = append(secrets, ep.PreviousSecret)\n\t}\n\treturn secrets\n}\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -6797,7 +6797,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "\treq.Header.Set(\"Tally-Signature\", Sign(ep.Secret, body))",
           "new_string": "\tt := s.clock.Now()\n\treq.Header.Set(\"Tally-Signature\", SignatureHeader(signingSecrets(ep, t), t, body))"
         }
@@ -6821,7 +6821,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "\treq.Header.Set(\"Tally-Signature\", Sign(ep.Secret, body))",
             "new_string": "\tt := s.clock.Now()\n\treq.Header.Set(\"Tally-Signature\", SignatureHeader(signingSecrets(ep, t), t, body))"
           }
@@ -6923,11 +6923,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
           "old_string": "\treq.Header.Set(\"Tally-Signature\", Sign(ep.Secret, body))",
           "new_string": "\tt := s.clock.Now()\n\treq.Header.Set(\"Tally-Signature\", SignatureHeader(signingSecrets(ep, t), t, body))"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -6948,11 +6948,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go",
             "old_string": "\treq.Header.Set(\"Tally-Signature\", Sign(ep.Secret, body))",
             "new_string": "\tt := s.clock.Now()\n\treq.Header.Set(\"Tally-Signature\", SignatureHeader(signingSecrets(ep, t), t, body))"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7122,7 +7122,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
           "old_string": "func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {",
           "new_string": "// rotateEndpointSecret gives an endpoint a new signing secret. The answer includes it, and the previous secret keeps signing\n// the deliveries for webhooks.SecretOverlap.\nfunc (s *Server) rotateEndpointSecret(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tep, err := s.store.RotateWebhookSecret(p.OrgID, r.PathValue(\"id\"), webhooks.NewSecret(), s.clock.Now().Add(webhooks.SecretOverlap))\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, ep)\n}\n\nfunc (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {"
         }
@@ -7146,7 +7146,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
             "old_string": "func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {",
             "new_string": "// rotateEndpointSecret gives an endpoint a new signing secret. The answer includes it, and the previous secret keeps signing\n// the deliveries for webhooks.SecretOverlap.\nfunc (s *Server) rotateEndpointSecret(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tep, err := s.store.RotateWebhookSecret(p.OrgID, r.PathValue(\"id\"), webhooks.NewSecret(), s.clock.Now().Add(webhooks.SecretOverlap))\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, ep)\n}\n\nfunc (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {"
           }
@@ -7183,11 +7183,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
           "old_string": "func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {",
           "new_string": "// rotateEndpointSecret gives an endpoint a new signing secret. The answer includes it, and the previous secret keeps signing\n// the deliveries for webhooks.SecretOverlap.\nfunc (s *Server) rotateEndpointSecret(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tep, err := s.store.RotateWebhookSecret(p.OrgID, r.PathValue(\"id\"), webhooks.NewSecret(), s.clock.Now().Add(webhooks.SecretOverlap))\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, ep)\n}\n\nfunc (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7208,11 +7208,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go",
             "old_string": "func (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {",
             "new_string": "// rotateEndpointSecret gives an endpoint a new signing secret. The answer includes it, and the previous secret keeps signing\n// the deliveries for webhooks.SecretOverlap.\nfunc (s *Server) rotateEndpointSecret(w http.ResponseWriter, r *http.Request, p auth.Principal) {\n\tep, err := s.store.RotateWebhookSecret(p.OrgID, r.PathValue(\"id\"), webhooks.NewSecret(), s.clock.Now().Add(webhooks.SecretOverlap))\n\tif err != nil {\n\t\ts.storeError(w, err)\n\t\treturn\n\t}\n\twriteJSON(w, http.StatusOK, ep)\n}\n\nfunc (s *Server) deleteEndpoint(w http.ResponseWriter, r *http.Request, p auth.Principal) {"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/webhooks.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7246,7 +7246,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
           "old_string": "\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))",
           "new_string": "\tm.HandleFunc(\"POST /v1/webhook-endpoints/{id}/rotate-secret\", s.authed(s.rotateEndpointSecret))\n\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))"
         }
@@ -7270,7 +7270,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
             "old_string": "\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))",
             "new_string": "\tm.HandleFunc(\"POST /v1/webhook-endpoints/{id}/rotate-secret\", s.authed(s.rotateEndpointSecret))\n\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))"
           }
@@ -7372,11 +7372,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
           "old_string": "\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))",
           "new_string": "\tm.HandleFunc(\"POST /v1/webhook-endpoints/{id}/rotate-secret\", s.authed(s.rotateEndpointSecret))\n\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7397,11 +7397,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go",
             "old_string": "\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))",
             "new_string": "\tm.HandleFunc(\"POST /v1/webhook-endpoints/{id}/rotate-secret\", s.authed(s.rotateEndpointSecret))\n\tm.HandleFunc(\"DELETE /v1/webhook-endpoints/{id}\", s.authed(s.deleteEndpoint))"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/server.go has been updated successfully."
         }
       },
       "node": "work",
@@ -7701,7 +7701,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "old_string": "\tif got, want := reqs[0].Header.Get(\"Tally-Signature\"), webhooks.Sign(\"whsec_a\", reqs[0].Body); got != want {\n\t\tt.Fatalf(\"signature %q, want %q\", got, want)\n\t}",
           "new_string": "\tif err := webhooks.Verify(reqs[0].Body, reqs[0].Header.Get(\"Tally-Signature\"), []string{\"whsec_a\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"signature: %v\", err)\n\t}"
         }
@@ -7725,7 +7725,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "old_string": "\tif got, want := reqs[0].Header.Get(\"Tally-Signature\"), webhooks.Sign(\"whsec_a\", reqs[0].Body); got != want {\n\t\tt.Fatalf(\"signature %q, want %q\", got, want)\n\t}",
             "new_string": "\tif err := webhooks.Verify(reqs[0].Body, reqs[0].Header.Get(\"Tally-Signature\"), []string{\"whsec_a\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"signature: %v\", err)\n\t}"
           }
@@ -7749,11 +7749,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "old_string": "\tif got, want := reqs[0].Header.Get(\"Tally-Signature\"), webhooks.Sign(\"whsec_a\", reqs[0].Body); got != want {\n\t\tt.Fatalf(\"signature %q, want %q\", got, want)\n\t}",
           "new_string": "\tif err := webhooks.Verify(reqs[0].Body, reqs[0].Header.Get(\"Tally-Signature\"), []string{\"whsec_a\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"signature: %v\", err)\n\t}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -7774,11 +7774,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "old_string": "\tif got, want := reqs[0].Header.Get(\"Tally-Signature\"), webhooks.Sign(\"whsec_a\", reqs[0].Body); got != want {\n\t\tt.Fatalf(\"signature %q, want %q\", got, want)\n\t}",
             "new_string": "\tif err := webhooks.Verify(reqs[0].Body, reqs[0].Header.Get(\"Tally-Signature\"), []string{\"whsec_a\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"signature: %v\", err)\n\t}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -9224,7 +9224,7 @@
         "id": "toolu_01UetapJHb688Vmqz4QfRnZi",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "limit": 12
         }
       },
@@ -9246,7 +9246,7 @@
           "id": "toolu_01UetapJHb688Vmqz4QfRnZi",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "limit": 12
           }
         }
@@ -9268,7 +9268,7 @@
         "id": "toolu_01UetapJHb688Vmqz4QfRnZi",
         "name": "Read",
         "args": {
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "limit": 12
         },
         "output": "1\tpackage webhooks_test\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"encoding/json\"\n6\t\t\"errors\"\n7\t\t\"net/http\"\n8\t\t\"testing\"\n9\t\n10\t\t\"example.com/tally/internal/apitest\"\n11\t\t\"example.com/tally/internal/store\"\n12\t\t\"example.com/tally/internal/webhooks\""
@@ -9291,7 +9291,7 @@
           "id": "toolu_01UetapJHb688Vmqz4QfRnZi",
           "name": "Read",
           "args": {
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "limit": 12
           },
           "output": "1\tpackage webhooks_test\n2\t\n3\timport (\n4\t\t\"context\"\n5\t\t\"encoding/json\"\n6\t\t\"errors\"\n7\t\t\"net/http\"\n8\t\t\"testing\"\n9\t\n10\t\t\"example.com/tally/internal/apitest\"\n11\t\t\"example.com/tally/internal/store\"\n12\t\t\"example.com/tally/internal/webhooks\""
@@ -9328,7 +9328,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "old_string": "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"net/http\"\n\t\"testing\"\n",
           "new_string": "import (\n\t\"context\"\n\t\"crypto/hmac\"\n\t\"crypto/sha256\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n"
         }
@@ -9352,7 +9352,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "old_string": "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"net/http\"\n\t\"testing\"\n",
             "new_string": "import (\n\t\"context\"\n\t\"crypto/hmac\"\n\t\"crypto/sha256\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n"
           }
@@ -9389,11 +9389,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "old_string": "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"net/http\"\n\t\"testing\"\n",
           "new_string": "import (\n\t\"context\"\n\t\"crypto/hmac\"\n\t\"crypto/sha256\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -9414,11 +9414,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "old_string": "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"net/http\"\n\t\"testing\"\n",
             "new_string": "import (\n\t\"context\"\n\t\"crypto/hmac\"\n\t\"crypto/sha256\"\n\t\"encoding/hex\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -9664,7 +9664,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "old_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}",
           "new_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}\n\n// referenceSignature is the v1 signature of \"\u003ct\u003e.\u003cbody\u003e\", computed here so the tests do not use the code under test.\nfunc referenceSignature(secret string, t int64, body []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(fmt.Sprintf(\"%d.\", t)))\n\tm.Write(body)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\nfunc TestSignatureHeader(t *testing.T) {\n\tnow := time.Unix(1700000000, 0)\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tgot := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\twant := \"t=1700000000,v1=\" + referenceSignature(\"whsec_new\", 1700000000, body) + \",v1=\" + referenceSignature(\"whsec_old\", 1700000000, body)\n\tif got != want {\n\t\tt.Fatalf(\"SignatureHeader = %s\\nwant %s\", got, want)\n\t}\n\tif err := webhooks.Verify(body, got, []string{\"whsec_new\"}, 0, now); err != nil {\n\t\tt.Fatalf(\"Verify(SignatureHeader) = %v\", err)\n\t}\n}\n\nfunc TestVerify(t *testing.T) {\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tnow := time.Unix(1700000000, 0)\n\tsig := referenceSignature(\"whsec_new\", 1700000000, body)\n\tboth := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\tcases := []struct {\n\t\tname    string\n\t\tpayload []byte\n\t\theader  string\n\t\tsecrets []string\n\t\ttol     time.Duration\n\t\tat      time.Time\n\t\twant    error\n\t}{\n\t\t{name: \"valid\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"second secret matches\", payload: body, header: both, secrets: []string{\"whsec_other\", \"whsec_old\"}, at: now},\n\t\t{name: \"previous entry matches\", payload: body, header: both, secrets: []string{\"whsec_old\"}, at: now},\n\t\t{name: \"wrong secret\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_wrong\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"no secrets\", payload: body, header: \"t=1700000000,v1=\" + sig, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"changed body\", payload: []byte(`{\"id\":\"evt_2\"}`), header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"timestamp is signed\", payload: body, header: \"t=1700000001,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"exactly at the default tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5 * time.Minute)},\n\t\t{name: \"too old\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5*time.Minute + time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"too far in the future\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(-5*time.Minute - time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"custom tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, tol: time.Minute, at: now.Add(2 * time.Minute), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"spaces, order and unknown keys\", payload: body, header: \" v1=\" + sig + \" , v0=zz , t=1700000000 \", secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"empty header\", payload: body, header: \"\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"pair without =\", payload: body, header: \"t=1700000000,v1\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty pair\", payload: body, header: \"t=1700000000,,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"t not an integer\", payload: body, header: \"t=yesterday,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty t\", payload: body, header: \"t=,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"no t\", payload: body, header: \"v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoTimestamp},\n\t\t{name: \"no v1\", payload: body, header: \"t=1700000000,v0=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoSignature},\n\t\t{name: \"tolerance is checked before signatures\", payload: body, header: \"t=1700000000\", secrets: []string{\"whsec_new\"}, at: now.Add(time.Hour), want: webhooks.ErrTimestampTolerance},\n\t}\n\tfor _, c := range cases {\n\t\tt.Run(c.name, func(t *testing.T) {\n\t\t\terr := webhooks.Verify(c.payload, c.header, c.secrets, c.tol, c.at)\n\t\t\tif c.want == nil \u0026\u0026 err != nil {\n\t\t\t\tt.Fatalf(\"Verify = %v, want nil\", err)\n\t\t\t}\n\t\t\tif c.want != nil \u0026\u0026 !errors.Is(err, c.want) {\n\t\t\t\tt.Fatalf(\"Verify = %v, want %v\", err, c.want)\n\t\t\t}\n\t\t})\n\t}\n}\n\n// lastDelivery returns the most recent request the fake receiver got.\nfunc lastDelivery(t *testing.T, e *apitest.Env) apitest.Request {\n\tt.Helper()\n\treqs := e.HTTP.Requests()\n\tif len(reqs) == 0 {\n\t\tt.Fatal(\"no delivery\")\n\t}\n\treturn reqs[len(reqs)-1]\n}\n\nfunc TestRotatedSecretsSign(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/rotate\", Events: []string{\"*\"}, Secret: \"whsec_old\", Enabled: true}, e.Clock.Now())\n\tdeliver := func() apitest.Request {\n\t\tt.Helper()\n\t\tif err := e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t\t}\n\t\treturn lastDelivery(t, e)\n\t}\n\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_new\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq := deliver()\n\th := req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 || !strings.HasPrefix(h, \"t=\") {\n\t\tt.Fatalf(\"after a rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"new secret: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret: %v\", err)\n\t}\n\n\t// Rotating again drops the oldest secret at once.\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_newer\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 {\n\t\tt.Fatalf(\"after a second rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"dropped secret still signs: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret after a second rotation: %v\", err)\n\t}\n\n\t// After 24 hours only the current secret signs.\n\te.Clock.Advance(webhooks.SecretOverlap)\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 1 {\n\t\tt.Fatalf(\"after 24 hours: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"previous secret after 24 hours: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_newer\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"current secret: %v\", err)\n\t}\n}"
         }
@@ -9688,7 +9688,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "old_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}",
             "new_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}\n\n// referenceSignature is the v1 signature of \"\u003ct\u003e.\u003cbody\u003e\", computed here so the tests do not use the code under test.\nfunc referenceSignature(secret string, t int64, body []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(fmt.Sprintf(\"%d.\", t)))\n\tm.Write(body)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\nfunc TestSignatureHeader(t *testing.T) {\n\tnow := time.Unix(1700000000, 0)\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tgot := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\twant := \"t=1700000000,v1=\" + referenceSignature(\"whsec_new\", 1700000000, body) + \",v1=\" + referenceSignature(\"whsec_old\", 1700000000, body)\n\tif got != want {\n\t\tt.Fatalf(\"SignatureHeader = %s\\nwant %s\", got, want)\n\t}\n\tif err := webhooks.Verify(body, got, []string{\"whsec_new\"}, 0, now); err != nil {\n\t\tt.Fatalf(\"Verify(SignatureHeader) = %v\", err)\n\t}\n}\n\nfunc TestVerify(t *testing.T) {\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tnow := time.Unix(1700000000, 0)\n\tsig := referenceSignature(\"whsec_new\", 1700000000, body)\n\tboth := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\tcases := []struct {\n\t\tname    string\n\t\tpayload []byte\n\t\theader  string\n\t\tsecrets []string\n\t\ttol     time.Duration\n\t\tat      time.Time\n\t\twant    error\n\t}{\n\t\t{name: \"valid\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"second secret matches\", payload: body, header: both, secrets: []string{\"whsec_other\", \"whsec_old\"}, at: now},\n\t\t{name: \"previous entry matches\", payload: body, header: both, secrets: []string{\"whsec_old\"}, at: now},\n\t\t{name: \"wrong secret\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_wrong\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"no secrets\", payload: body, header: \"t=1700000000,v1=\" + sig, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"changed body\", payload: []byte(`{\"id\":\"evt_2\"}`), header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"timestamp is signed\", payload: body, header: \"t=1700000001,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"exactly at the default tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5 * time.Minute)},\n\t\t{name: \"too old\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5*time.Minute + time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"too far in the future\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(-5*time.Minute - time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"custom tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, tol: time.Minute, at: now.Add(2 * time.Minute), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"spaces, order and unknown keys\", payload: body, header: \" v1=\" + sig + \" , v0=zz , t=1700000000 \", secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"empty header\", payload: body, header: \"\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"pair without =\", payload: body, header: \"t=1700000000,v1\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty pair\", payload: body, header: \"t=1700000000,,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"t not an integer\", payload: body, header: \"t=yesterday,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty t\", payload: body, header: \"t=,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"no t\", payload: body, header: \"v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoTimestamp},\n\t\t{name: \"no v1\", payload: body, header: \"t=1700000000,v0=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoSignature},\n\t\t{name: \"tolerance is checked before signatures\", payload: body, header: \"t=1700000000\", secrets: []string{\"whsec_new\"}, at: now.Add(time.Hour), want: webhooks.ErrTimestampTolerance},\n\t}\n\tfor _, c := range cases {\n\t\tt.Run(c.name, func(t *testing.T) {\n\t\t\terr := webhooks.Verify(c.payload, c.header, c.secrets, c.tol, c.at)\n\t\t\tif c.want == nil \u0026\u0026 err != nil {\n\t\t\t\tt.Fatalf(\"Verify = %v, want nil\", err)\n\t\t\t}\n\t\t\tif c.want != nil \u0026\u0026 !errors.Is(err, c.want) {\n\t\t\t\tt.Fatalf(\"Verify = %v, want %v\", err, c.want)\n\t\t\t}\n\t\t})\n\t}\n}\n\n// lastDelivery returns the most recent request the fake receiver got.\nfunc lastDelivery(t *testing.T, e *apitest.Env) apitest.Request {\n\tt.Helper()\n\treqs := e.HTTP.Requests()\n\tif len(reqs) == 0 {\n\t\tt.Fatal(\"no delivery\")\n\t}\n\treturn reqs[len(reqs)-1]\n}\n\nfunc TestRotatedSecretsSign(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/rotate\", Events: []string{\"*\"}, Secret: \"whsec_old\", Enabled: true}, e.Clock.Now())\n\tdeliver := func() apitest.Request {\n\t\tt.Helper()\n\t\tif err := e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t\t}\n\t\treturn lastDelivery(t, e)\n\t}\n\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_new\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq := deliver()\n\th := req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 || !strings.HasPrefix(h, \"t=\") {\n\t\tt.Fatalf(\"after a rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"new secret: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret: %v\", err)\n\t}\n\n\t// Rotating again drops the oldest secret at once.\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_newer\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 {\n\t\tt.Fatalf(\"after a second rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"dropped secret still signs: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret after a second rotation: %v\", err)\n\t}\n\n\t// After 24 hours only the current secret signs.\n\te.Clock.Advance(webhooks.SecretOverlap)\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 1 {\n\t\tt.Fatalf(\"after 24 hours: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"previous secret after 24 hours: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_newer\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"current secret: %v\", err)\n\t}\n}"
           }
@@ -9712,11 +9712,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
           "old_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}",
           "new_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}\n\n// referenceSignature is the v1 signature of \"\u003ct\u003e.\u003cbody\u003e\", computed here so the tests do not use the code under test.\nfunc referenceSignature(secret string, t int64, body []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(fmt.Sprintf(\"%d.\", t)))\n\tm.Write(body)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\nfunc TestSignatureHeader(t *testing.T) {\n\tnow := time.Unix(1700000000, 0)\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tgot := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\twant := \"t=1700000000,v1=\" + referenceSignature(\"whsec_new\", 1700000000, body) + \",v1=\" + referenceSignature(\"whsec_old\", 1700000000, body)\n\tif got != want {\n\t\tt.Fatalf(\"SignatureHeader = %s\\nwant %s\", got, want)\n\t}\n\tif err := webhooks.Verify(body, got, []string{\"whsec_new\"}, 0, now); err != nil {\n\t\tt.Fatalf(\"Verify(SignatureHeader) = %v\", err)\n\t}\n}\n\nfunc TestVerify(t *testing.T) {\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tnow := time.Unix(1700000000, 0)\n\tsig := referenceSignature(\"whsec_new\", 1700000000, body)\n\tboth := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\tcases := []struct {\n\t\tname    string\n\t\tpayload []byte\n\t\theader  string\n\t\tsecrets []string\n\t\ttol     time.Duration\n\t\tat      time.Time\n\t\twant    error\n\t}{\n\t\t{name: \"valid\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"second secret matches\", payload: body, header: both, secrets: []string{\"whsec_other\", \"whsec_old\"}, at: now},\n\t\t{name: \"previous entry matches\", payload: body, header: both, secrets: []string{\"whsec_old\"}, at: now},\n\t\t{name: \"wrong secret\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_wrong\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"no secrets\", payload: body, header: \"t=1700000000,v1=\" + sig, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"changed body\", payload: []byte(`{\"id\":\"evt_2\"}`), header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"timestamp is signed\", payload: body, header: \"t=1700000001,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"exactly at the default tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5 * time.Minute)},\n\t\t{name: \"too old\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5*time.Minute + time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"too far in the future\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(-5*time.Minute - time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"custom tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, tol: time.Minute, at: now.Add(2 * time.Minute), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"spaces, order and unknown keys\", payload: body, header: \" v1=\" + sig + \" , v0=zz , t=1700000000 \", secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"empty header\", payload: body, header: \"\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"pair without =\", payload: body, header: \"t=1700000000,v1\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty pair\", payload: body, header: \"t=1700000000,,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"t not an integer\", payload: body, header: \"t=yesterday,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty t\", payload: body, header: \"t=,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"no t\", payload: body, header: \"v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoTimestamp},\n\t\t{name: \"no v1\", payload: body, header: \"t=1700000000,v0=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoSignature},\n\t\t{name: \"tolerance is checked before signatures\", payload: body, header: \"t=1700000000\", secrets: []string{\"whsec_new\"}, at: now.Add(time.Hour), want: webhooks.ErrTimestampTolerance},\n\t}\n\tfor _, c := range cases {\n\t\tt.Run(c.name, func(t *testing.T) {\n\t\t\terr := webhooks.Verify(c.payload, c.header, c.secrets, c.tol, c.at)\n\t\t\tif c.want == nil \u0026\u0026 err != nil {\n\t\t\t\tt.Fatalf(\"Verify = %v, want nil\", err)\n\t\t\t}\n\t\t\tif c.want != nil \u0026\u0026 !errors.Is(err, c.want) {\n\t\t\t\tt.Fatalf(\"Verify = %v, want %v\", err, c.want)\n\t\t\t}\n\t\t})\n\t}\n}\n\n// lastDelivery returns the most recent request the fake receiver got.\nfunc lastDelivery(t *testing.T, e *apitest.Env) apitest.Request {\n\tt.Helper()\n\treqs := e.HTTP.Requests()\n\tif len(reqs) == 0 {\n\t\tt.Fatal(\"no delivery\")\n\t}\n\treturn reqs[len(reqs)-1]\n}\n\nfunc TestRotatedSecretsSign(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/rotate\", Events: []string{\"*\"}, Secret: \"whsec_old\", Enabled: true}, e.Clock.Now())\n\tdeliver := func() apitest.Request {\n\t\tt.Helper()\n\t\tif err := e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t\t}\n\t\treturn lastDelivery(t, e)\n\t}\n\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_new\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq := deliver()\n\th := req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 || !strings.HasPrefix(h, \"t=\") {\n\t\tt.Fatalf(\"after a rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"new secret: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret: %v\", err)\n\t}\n\n\t// Rotating again drops the oldest secret at once.\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_newer\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 {\n\t\tt.Fatalf(\"after a second rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"dropped secret still signs: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret after a second rotation: %v\", err)\n\t}\n\n\t// After 24 hours only the current secret signs.\n\te.Clock.Advance(webhooks.SecretOverlap)\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 1 {\n\t\tt.Fatalf(\"after 24 hours: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"previous secret after 24 hours: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_newer\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"current secret: %v\", err)\n\t}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -9737,11 +9737,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go",
             "old_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}",
             "new_string": "\tif n, _ := e.Webhooks.RunDue(ctx); n != 0 {\n\t\tt.Fatalf(\"a failed delivery was sent again: %d\", n)\n\t}\n}\n\n// referenceSignature is the v1 signature of \"\u003ct\u003e.\u003cbody\u003e\", computed here so the tests do not use the code under test.\nfunc referenceSignature(secret string, t int64, body []byte) string {\n\tm := hmac.New(sha256.New, []byte(secret))\n\tm.Write([]byte(fmt.Sprintf(\"%d.\", t)))\n\tm.Write(body)\n\treturn hex.EncodeToString(m.Sum(nil))\n}\n\nfunc TestSignatureHeader(t *testing.T) {\n\tnow := time.Unix(1700000000, 0)\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tgot := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\twant := \"t=1700000000,v1=\" + referenceSignature(\"whsec_new\", 1700000000, body) + \",v1=\" + referenceSignature(\"whsec_old\", 1700000000, body)\n\tif got != want {\n\t\tt.Fatalf(\"SignatureHeader = %s\\nwant %s\", got, want)\n\t}\n\tif err := webhooks.Verify(body, got, []string{\"whsec_new\"}, 0, now); err != nil {\n\t\tt.Fatalf(\"Verify(SignatureHeader) = %v\", err)\n\t}\n}\n\nfunc TestVerify(t *testing.T) {\n\tbody := []byte(`{\"id\":\"evt_1\"}`)\n\tnow := time.Unix(1700000000, 0)\n\tsig := referenceSignature(\"whsec_new\", 1700000000, body)\n\tboth := webhooks.SignatureHeader([]string{\"whsec_new\", \"whsec_old\"}, now, body)\n\tcases := []struct {\n\t\tname    string\n\t\tpayload []byte\n\t\theader  string\n\t\tsecrets []string\n\t\ttol     time.Duration\n\t\tat      time.Time\n\t\twant    error\n\t}{\n\t\t{name: \"valid\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"second secret matches\", payload: body, header: both, secrets: []string{\"whsec_other\", \"whsec_old\"}, at: now},\n\t\t{name: \"previous entry matches\", payload: body, header: both, secrets: []string{\"whsec_old\"}, at: now},\n\t\t{name: \"wrong secret\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_wrong\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"no secrets\", payload: body, header: \"t=1700000000,v1=\" + sig, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"changed body\", payload: []byte(`{\"id\":\"evt_2\"}`), header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"timestamp is signed\", payload: body, header: \"t=1700000001,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrSignatureMismatch},\n\t\t{name: \"exactly at the default tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5 * time.Minute)},\n\t\t{name: \"too old\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(5*time.Minute + time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"too far in the future\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now.Add(-5*time.Minute - time.Second), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"custom tolerance\", payload: body, header: \"t=1700000000,v1=\" + sig, secrets: []string{\"whsec_new\"}, tol: time.Minute, at: now.Add(2 * time.Minute), want: webhooks.ErrTimestampTolerance},\n\t\t{name: \"spaces, order and unknown keys\", payload: body, header: \" v1=\" + sig + \" , v0=zz , t=1700000000 \", secrets: []string{\"whsec_new\"}, at: now},\n\t\t{name: \"empty header\", payload: body, header: \"\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"pair without =\", payload: body, header: \"t=1700000000,v1\", secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty pair\", payload: body, header: \"t=1700000000,,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"t not an integer\", payload: body, header: \"t=yesterday,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"empty t\", payload: body, header: \"t=,v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrMalformedHeader},\n\t\t{name: \"no t\", payload: body, header: \"v1=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoTimestamp},\n\t\t{name: \"no v1\", payload: body, header: \"t=1700000000,v0=\" + sig, secrets: []string{\"whsec_new\"}, at: now, want: webhooks.ErrNoSignature},\n\t\t{name: \"tolerance is checked before signatures\", payload: body, header: \"t=1700000000\", secrets: []string{\"whsec_new\"}, at: now.Add(time.Hour), want: webhooks.ErrTimestampTolerance},\n\t}\n\tfor _, c := range cases {\n\t\tt.Run(c.name, func(t *testing.T) {\n\t\t\terr := webhooks.Verify(c.payload, c.header, c.secrets, c.tol, c.at)\n\t\t\tif c.want == nil \u0026\u0026 err != nil {\n\t\t\t\tt.Fatalf(\"Verify = %v, want nil\", err)\n\t\t\t}\n\t\t\tif c.want != nil \u0026\u0026 !errors.Is(err, c.want) {\n\t\t\t\tt.Fatalf(\"Verify = %v, want %v\", err, c.want)\n\t\t\t}\n\t\t})\n\t}\n}\n\n// lastDelivery returns the most recent request the fake receiver got.\nfunc lastDelivery(t *testing.T, e *apitest.Env) apitest.Request {\n\tt.Helper()\n\treqs := e.HTTP.Requests()\n\tif len(reqs) == 0 {\n\t\tt.Fatal(\"no delivery\")\n\t}\n\treturn reqs[len(reqs)-1]\n}\n\nfunc TestRotatedSecretsSign(t *testing.T) {\n\te := apitest.New(t)\n\tctx := context.Background()\n\tep, _ := e.Store.CreateWebhookEndpoint(store.WebhookEndpoint{OrgID: e.Acme.ID, URL: \"https://hooks.acme.example/rotate\", Events: []string{\"*\"}, Secret: \"whsec_old\", Enabled: true}, e.Clock.Now())\n\tdeliver := func() apitest.Request {\n\t\tt.Helper()\n\t\tif err := e.Webhooks.Publish(ctx, e.Acme.ID, \"customer.created\", map[string]string{\"id\": \"cus_1\"}); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tif n, err := e.Webhooks.RunDue(ctx); err != nil || n != 1 {\n\t\t\tt.Fatalf(\"RunDue = %d, %v\", n, err)\n\t\t}\n\t\treturn lastDelivery(t, e)\n\t}\n\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_new\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq := deliver()\n\th := req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 || !strings.HasPrefix(h, \"t=\") {\n\t\tt.Fatalf(\"after a rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"new secret: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret: %v\", err)\n\t}\n\n\t// Rotating again drops the oldest secret at once.\n\tif _, err := e.Store.RotateWebhookSecret(e.Acme.ID, ep.ID, \"whsec_newer\", e.Clock.Now().Add(webhooks.SecretOverlap)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 2 {\n\t\tt.Fatalf(\"after a second rotation: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_old\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"dropped secret still signs: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"previous secret after a second rotation: %v\", err)\n\t}\n\n\t// After 24 hours only the current secret signs.\n\te.Clock.Advance(webhooks.SecretOverlap)\n\treq = deliver()\n\th = req.Header.Get(\"Tally-Signature\")\n\tif strings.Count(h, \",v1=\") != 1 {\n\t\tt.Fatalf(\"after 24 hours: Tally-Signature = %s\", h)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_new\"}, 0, e.Clock.Now()); !errors.Is(err, webhooks.ErrSignatureMismatch) {\n\t\tt.Fatalf(\"previous secret after 24 hours: %v\", err)\n\t}\n\tif err := webhooks.Verify(req.Body, h, []string{\"whsec_newer\"}, 0, e.Clock.Now()); err != nil {\n\t\tt.Fatalf(\"current secret: %v\", err)\n\t}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/webhooks/webhooks_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -10060,7 +10060,7 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
           "old_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}",
           "new_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}\n\nfunc TestRotateEndpointSecret(t *testing.T) {\n\te := apitest.New(t)\n\tvar ep store.WebhookEndpoint\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, map[string]any{\"url\": \"https://hooks.acme.example/tally\", \"events\": []string{\"*\"}}, \u0026ep)\n\tvar rotated store.WebhookEndpoint\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Acme.Key, nil, \u0026rotated)\n\tif rotated.ID != ep.ID || rotated.Secret == ep.Secret || !regexp.MustCompile(`^whsec_[0-9a-f]{32}$`).MatchString(rotated.Secret) {\n\t\tt.Fatalf(\"rotated endpoint = %+v\", rotated)\n\t}\n\tif rotated.PreviousSecret != ep.Secret || rotated.PreviousSecretExpiresAt == nil || !rotated.PreviousSecretExpiresAt.Equal(e.Clock.Now().Add(24*time.Hour)) {\n\t\tt.Fatalf(\"previous secret = %q until %v\", rotated.PreviousSecret, rotated.PreviousSecretExpiresAt)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Globex.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"another organization rotated the secret: %s\", r)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/we_missing/rotate-secret\", e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"missing endpoint: %s\", r)\n\t}\n}"
         }
@@ -10084,7 +10084,7 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
             "old_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}",
             "new_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}\n\nfunc TestRotateEndpointSecret(t *testing.T) {\n\te := apitest.New(t)\n\tvar ep store.WebhookEndpoint\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, map[string]any{\"url\": \"https://hooks.acme.example/tally\", \"events\": []string{\"*\"}}, \u0026ep)\n\tvar rotated store.WebhookEndpoint\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Acme.Key, nil, \u0026rotated)\n\tif rotated.ID != ep.ID || rotated.Secret == ep.Secret || !regexp.MustCompile(`^whsec_[0-9a-f]{32}$`).MatchString(rotated.Secret) {\n\t\tt.Fatalf(\"rotated endpoint = %+v\", rotated)\n\t}\n\tif rotated.PreviousSecret != ep.Secret || rotated.PreviousSecretExpiresAt == nil || !rotated.PreviousSecretExpiresAt.Equal(e.Clock.Now().Add(24*time.Hour)) {\n\t\tt.Fatalf(\"previous secret = %q until %v\", rotated.PreviousSecret, rotated.PreviousSecretExpiresAt)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Globex.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"another organization rotated the secret: %s\", r)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/we_missing/rotate-secret\", e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"missing endpoint: %s\", r)\n\t}\n}"
           }
@@ -10108,11 +10108,11 @@
         "name": "Edit",
         "args": {
           "replace_all": false,
-          "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
+          "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
           "old_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}",
           "new_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}\n\nfunc TestRotateEndpointSecret(t *testing.T) {\n\te := apitest.New(t)\n\tvar ep store.WebhookEndpoint\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, map[string]any{\"url\": \"https://hooks.acme.example/tally\", \"events\": []string{\"*\"}}, \u0026ep)\n\tvar rotated store.WebhookEndpoint\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Acme.Key, nil, \u0026rotated)\n\tif rotated.ID != ep.ID || rotated.Secret == ep.Secret || !regexp.MustCompile(`^whsec_[0-9a-f]{32}$`).MatchString(rotated.Secret) {\n\t\tt.Fatalf(\"rotated endpoint = %+v\", rotated)\n\t}\n\tif rotated.PreviousSecret != ep.Secret || rotated.PreviousSecretExpiresAt == nil || !rotated.PreviousSecretExpiresAt.Equal(e.Clock.Now().Add(24*time.Hour)) {\n\t\tt.Fatalf(\"previous secret = %q until %v\", rotated.PreviousSecret, rotated.PreviousSecretExpiresAt)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Globex.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"another organization rotated the secret: %s\", r)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/we_missing/rotate-secret\", e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"missing endpoint: %s\", r)\n\t}\n}"
         },
-        "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go has been updated successfully."
+        "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go has been updated successfully."
       },
       "kind": "tool_result"
     }
@@ -10133,11 +10133,11 @@
           "name": "Edit",
           "args": {
             "replace_all": false,
-            "file_path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
+            "file_path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go",
             "old_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}",
             "new_string": "\tif r := e.Do(\"GET\", \"/v1/webhook-endpoints/\"+ep.ID, e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"deleted endpoint: %s\", r)\n\t}\n}\n\nfunc TestRotateEndpointSecret(t *testing.T) {\n\te := apitest.New(t)\n\tvar ep store.WebhookEndpoint\n\te.MustDo(http.StatusCreated, \"POST\", \"/v1/webhook-endpoints\", e.Acme.Key, map[string]any{\"url\": \"https://hooks.acme.example/tally\", \"events\": []string{\"*\"}}, \u0026ep)\n\tvar rotated store.WebhookEndpoint\n\te.MustDo(http.StatusOK, \"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Acme.Key, nil, \u0026rotated)\n\tif rotated.ID != ep.ID || rotated.Secret == ep.Secret || !regexp.MustCompile(`^whsec_[0-9a-f]{32}$`).MatchString(rotated.Secret) {\n\t\tt.Fatalf(\"rotated endpoint = %+v\", rotated)\n\t}\n\tif rotated.PreviousSecret != ep.Secret || rotated.PreviousSecretExpiresAt == nil || !rotated.PreviousSecretExpiresAt.Equal(e.Clock.Now().Add(24*time.Hour)) {\n\t\tt.Fatalf(\"previous secret = %q until %v\", rotated.PreviousSecret, rotated.PreviousSecretExpiresAt)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/\"+ep.ID+\"/rotate-secret\", e.Globex.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"another organization rotated the secret: %s\", r)\n\t}\n\tif r := e.Do(\"POST\", \"/v1/webhook-endpoints/we_missing/rotate-secret\", e.Acme.Key, nil); r.Code != http.StatusNotFound {\n\t\tt.Fatalf(\"missing endpoint: %s\", r)\n\t}\n}"
           },
-          "output": "The file /tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go has been updated successfully."
+          "output": "The file <scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1/internal/api/api_test.go has been updated successfully."
         }
       },
       "node": "work",
@@ -17686,7 +17686,7 @@
     "data": {
       "adapter": "claude",
       "agentRun": "arun_3c990d80cc03",
-      "cwd": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1",
+      "cwd": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1",
       "effort": "",
       "instructions": true,
       "model": "haiku",
@@ -20269,7 +20269,7 @@
     "projectId": "prj_a036bd3afa1b",
     "taskId": "task_e41e617b19b1",
     "data": {
-      "path": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1"
+      "path": "<scratchpad>/trialwork/all-0-1/tally-webhook-signatures-D-2/data/worktrees/prj_a036bd3afa1b/task_e41e617b19b1"
     }
   },
   {

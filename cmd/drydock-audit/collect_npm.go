@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,18 +33,17 @@ func npmPackages(ctx context.Context) []Item {
 	if b, err := os.ReadFile(filepath.Join(ui, "package-lock.json")); err == nil {
 		_ = json.Unmarshal(b, &lock)
 	}
+	// outdatedKnown says npm answered: only then is a package it does not list "already the newest". A lookup that failed (no
+	// network, a registry error) said nothing, and every package used to be reported current (audit 2026-10-16, L51).
 	latest := map[string]string{}
-	if out, err := run(ctx, ui, nil, "npm", "outdated", "--json", "--long=false"); err != nil {
+	outdatedKnown := false
+	out, code, err := runCode(ctx, ui, nil, "npm", "outdated", "--json", "--long=false")
+	if err != nil && code != 1 {
+		fail("npm outdated: " + err.Error()) // it did not run, or ended with a code that is not "something is behind"
+	} else if l, err := npmOutdatedAnswer(out, code); err != nil {
 		fail("npm outdated: " + err.Error())
-	} else if strings.TrimSpace(out) != "" {
-		var o map[string]struct {
-			Latest string `json:"latest"`
-		}
-		if json.Unmarshal([]byte(out), &o) == nil {
-			for k, v := range o {
-				latest[k] = v.Latest
-			}
-		}
+	} else {
+		latest, outdatedKnown = l, true
 	}
 	var items []Item
 	add := func(deps map[string]string, kind, group string) {
@@ -60,7 +60,7 @@ func npmPackages(ctx context.Context) []Item {
 			it := Item{ID: "npm:" + n, Group: group, Name: n, Kind: kind, Used: used, Where: "ui/package.json"}
 			if l, ok := latest[n]; ok {
 				it.Latest = l
-			} else if len(latest) > 0 || err == nil {
+			} else if outdatedKnown {
 				it.Latest = used // not listed by npm outdated: already newest
 			}
 			items = append(items, it)
@@ -92,6 +92,44 @@ func npmPackages(ctx context.Context) []Item {
 		items = append(items, it)
 	}
 	return items
+}
+
+// npmOutdatedAnswer is parseNPMOutdated for a run that ended with exit code code. npm exits 1 when some package is behind and lists
+// them, and 0 when none is; exit 1 with nothing listed is therefore npm failing (its error went to the error stream), not
+// "nothing is behind".
+func npmOutdatedAnswer(out string, code int) (map[string]string, error) {
+	if code == 1 && strings.TrimSpace(out) == "" {
+		return nil, errors.New("npm exited with code 1 and listed nothing")
+	}
+	return parseNPMOutdated(out)
+}
+
+// parseNPMOutdated reads `npm outdated --json`: the newest version of each package that is behind. Empty output means nothing is
+// behind. An error answer from npm (the registry could not be reached prints {"error":{"code":...,"summary":...}}) and output
+// that is not JSON are errors, not an empty list of packages.
+func parseNPMOutdated(out string) (map[string]string, error) {
+	latest := map[string]string{}
+	if strings.TrimSpace(out) == "" {
+		return latest, nil
+	}
+	var o map[string]struct {
+		Latest  string `json:"latest"`
+		Code    string `json:"code"`
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal([]byte(out), &o); err != nil {
+		return nil, errors.New("unreadable output")
+	}
+	if e, ok := o["error"]; ok && (e.Code != "" || e.Summary != "") {
+		if e.Summary != "" {
+			return nil, errors.New(e.Summary)
+		}
+		return nil, errors.New(e.Code)
+	}
+	for k, v := range o {
+		latest[k] = v.Latest
+	}
+	return latest, nil
 }
 
 func itoa(n int) string {

@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 480ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/build-1791596190738849456.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/build-1791596190738849456.log",
     "data": {
       "argv": [
         "docker",
@@ -50,7 +50,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 260ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/test-1791596191221894456.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/test-1791596191221894456.log",
     "data": {
       "argv": [
         "docker",
@@ -85,7 +85,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 250ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/lint-1791596191484517297.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/lint-1791596191484517297.log",
     "data": {
       "argv": [
         "docker",
@@ -120,7 +120,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 10ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/secrets-1791596191745159137.log",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/checks/secrets-1791596191745159137.log",
     "data": {
       "argv": [
         "drydock",
@@ -140,7 +140,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "2 file(s), +78 -0",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/evidence/task.diff",
+    "ref": "<scratchpad>/trial-work/saasapi-csv-export-D-1/data/runs/run_c02e0780f7fe/evidence/task.diff",
     "data": {
       "Files": 2,
       "Insertions": 78,

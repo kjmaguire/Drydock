@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 540ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/build_0c510515370f.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/build_0c510515370f.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 430ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/test_5163bc413f09.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/test_5163bc413f09.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 430ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/lint_0fd2d1a0f2cd.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/lint_0fd2d1a0f2cd.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/secrets_34268ba12ba0.log",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/checks/secrets_34268ba12ba0.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "6 file(s), +442 -5",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-2/data/runs/run_70056bd07fac/evidence/task.diff",
     "data": {
       "Files": 6,
       "Insertions": 442,

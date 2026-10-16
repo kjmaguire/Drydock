@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 700ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/build_376e14797c76.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/build_376e14797c76.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 700ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/test_30bd1786d034.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/test_30bd1786d034.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 550ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/lint_c232f10da8c9.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/lint_c232f10da8c9.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/secrets_d8edbb3f5f7f.log",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/checks/secrets_d8edbb3f5f7f.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "8 file(s), +337 -8",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-snapshot-v3-D-1/data/runs/run_c7e560641f43/evidence/task.diff",
     "data": {
       "Files": 8,
       "Insertions": 337,

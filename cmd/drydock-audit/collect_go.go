@@ -88,16 +88,23 @@ type listedModule struct {
 		Time    string
 	}
 	Replace *struct{ Path, Version string }
+	Error   *struct{ Err string } // go list -e: the lookup for this module failed
 }
 
-// goModules lists every module in the build list with the newest version the module proxy offers.
+// goModules lists every module in the build list with the newest version the module proxy offers. -e keeps a lookup that failed
+// for one module from failing the whole listing: that module is reported with no newest version ("unknown"), not as current.
 func goModules(ctx context.Context) []Item {
-	out, err := run(ctx, root, nil, "go", "list", "-m", "-u", "-json", "all")
+	out, err := run(ctx, root, nil, "go", "list", "-m", "-u", "-e", "-json", "all")
 	if err != nil {
 		fail("go list -m -u: " + err.Error())
 		return nil
 	}
-	required := goModRequires(ctx)
+	return moduleItems(out, goModRequires(ctx))
+}
+
+// moduleItems turns the JSON stream of go list -m -u -e into the Go library items. A module whose update lookup failed, or output
+// that stops part-way, is recorded as a failed lookup: a module with no answer is never "already the newest" (audit 2026-10-16, L51).
+func moduleItems(out string, required map[string]bool) []Item {
 	dec := json.NewDecoder(strings.NewReader(out))
 	var items []Item
 	for dec.More() {
@@ -115,15 +122,20 @@ func goModules(ctx context.Context) []Item {
 		} else {
 			it.Kind, it.Group = "direct", "Go libraries Drydock imports"
 		}
-		if m.Update != nil {
+		switch {
+		case m.Error != nil:
+			fail("go list -m -u: " + m.Path + ": " + m.Error.Err)
+		case m.Update != nil:
 			it.Latest, it.LatestDate = strings.TrimPrefix(m.Update.Version, "v"), day(m.Update.Time)
-		} else {
+		default:
 			it.Latest = it.Used
 		}
 		if strings.Contains(it.Used, "-0.") || regexp.MustCompile(`-\d{14}-[0-9a-f]{12}$`).MatchString(it.Used) {
 			// a pseudo-version: a commit, not a release
 			it.Note = strings.TrimSpace(it.Note + " Pinned to a commit, not a release.")
-			if m.Update == nil {
+			if m.Error != nil {
+				it.Status = "unknown"
+			} else if m.Update == nil {
 				it.Status = "current"
 			} else {
 				it.Status = "unknown"

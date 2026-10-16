@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 570ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/build_038d947e44b9.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/build_038d947e44b9.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 700ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/test_d51e9a5ef38a.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/test_d51e9a5ef38a.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 850ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/lint_dfc172b58516.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/lint_dfc172b58516.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/secrets_185f430cf03a.log",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/checks/secrets_185f430cf03a.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "3 file(s), +134 -10",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-2/data/runs/run_30a582753e66/evidence/task.diff",
     "data": {
       "Files": 3,
       "Insertions": 134,

@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 680ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/build_2b19b411a975.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/build_2b19b411a975.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 630ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/test_aa76113cf9ce.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/test_aa76113cf9ce.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 530ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/lint_07945794d502.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/lint_07945794d502.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/secrets_23947893cd14.log",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/checks/secrets_23947893cd14.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "9 file(s), +315 -14",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-api-key-hashing-D-1/data/runs/run_a338e2b7468d/evidence/task.diff",
     "data": {
       "Files": 9,
       "Insertions": 315,

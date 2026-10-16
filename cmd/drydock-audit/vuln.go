@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -10,16 +11,38 @@ import (
 	"time"
 )
 
+// govulncheckModule is the scanner's module at the release the audit runs and the CI workflow (.github/workflows/security.yml)
+// runs: pinned, so the code that checks the code is the one Go's checksum database vouches for, not whatever is newest
+// (audit 2026-10-16, L51). Move both together; docs/software-notes.json records it as the version "used".
+const govulncheckModule = "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
+
 // govulncheck runs the Go vulnerability scanner over the whole module. A finding is "called" when the code can reach the
 // vulnerable function; the others are in a dependency or the standard library the build includes but does not call.
 func govulncheck(ctx context.Context) ([]Vuln, string) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	out, err := run(ctx, root, nil, "go", "run", "golang.org/x/vuln/cmd/govulncheck@latest", "-format", "json", "./...")
+	out, err := run(ctx, root, nil, "go", "run", govulncheckModule, "-format", "json", "./...")
 	if err != nil {
 		fail("govulncheck: " + err.Error())
 		return nil, "did not run: " + firstLine(err.Error())
 	}
+	vs, err := parseGovulncheck(out)
+	if err != nil {
+		fail("govulncheck: " + err.Error())
+		return nil, "did not run: " + err.Error()
+	}
+	called := 0
+	for _, v := range vs {
+		if v.Called {
+			called++
+		}
+	}
+	return vs, fmt.Sprintf("%d known vulnerabilities in what is built, %d of them in code that is called", len(vs), called)
+}
+
+// parseGovulncheck reads the scanner's JSON stream. Output that stops part-way through is an error: the findings before the
+// break are not the findings.
+func parseGovulncheck(out string) ([]Vuln, error) {
 	type osvT struct {
 		ID      string `json:"id"`
 		Summary string `json:"summary"`
@@ -38,13 +61,16 @@ func govulncheck(ctx context.Context) ([]Vuln, string) {
 			Trace []frame `json:"trace"`
 		} `json:"finding"`
 	}
+	if strings.TrimSpace(out) == "" {
+		return nil, errors.New("the scanner printed nothing")
+	}
 	summ := map[string]string{}
 	found := map[string]*Vuln{}
 	dec := json.NewDecoder(strings.NewReader(out))
 	for dec.More() {
 		var m msg
 		if err := dec.Decode(&m); err != nil {
-			break
+			return nil, fmt.Errorf("unreadable output: %v", err)
 		}
 		if m.OSV != nil {
 			summ[m.OSV.ID] = m.OSV.Summary
@@ -60,28 +86,33 @@ func govulncheck(ctx context.Context) ([]Vuln, string) {
 			}
 		}
 	}
-	var vs []Vuln
+	vs := []Vuln{}
 	for id, v := range found {
 		v.Summary = summ[id]
 		vs = append(vs, *v)
 	}
 	sort.Slice(vs, func(i, j int) bool { return vs[i].ID < vs[j].ID })
-	called := 0
-	for _, v := range vs {
-		if v.Called {
-			called++
-		}
-	}
-	return vs, fmt.Sprintf("%d known vulnerabilities in what is built, %d of them in code that is called", len(vs), called)
+	return vs, nil
 }
 
-// npmAudit asks the npm registry for advisories against the installed UI packages.
+// npmAudit asks the npm registry for advisories against the locked UI packages.
 func npmAudit(ctx context.Context) ([]Vuln, string) {
-	out, err := run(ctx, filepath.Join(root, "ui"), nil, "npm", "audit", "--json")
+	out, err := runAllowing(ctx, filepath.Join(root, "ui"), nil, []int{1}, "npm", "audit", "--json")
 	if err != nil {
 		fail("npm audit: " + err.Error())
 		return nil, "did not run: " + firstLine(err.Error())
 	}
+	vs, err := parseNPMAudit(out)
+	if err != nil {
+		fail("npm audit: " + err.Error())
+		return nil, "did not run: " + err.Error()
+	}
+	return vs, fmt.Sprintf("%d advisories against installed UI packages", len(vs))
+}
+
+// parseNPMAudit reads `npm audit --json`. An error answer from the registry, or output that is not the report, is an error: it
+// is not "no advisories".
+func parseNPMAudit(out string) ([]Vuln, error) {
 	var a struct {
 		Vulnerabilities map[string]struct {
 			Severity string `json:"severity"`
@@ -89,15 +120,21 @@ func npmAudit(ctx context.Context) ([]Vuln, string) {
 			Range    string `json:"range"`
 			Fix      any    `json:"fixAvailable"`
 		} `json:"vulnerabilities"`
-		Error *struct{ Summary string } `json:"error"`
+		Error *struct {
+			Summary string `json:"summary"`
+		} `json:"error"`
+		Metadata *struct{} `json:"metadata"`
 	}
 	if err := json.Unmarshal([]byte(out), &a); err != nil {
-		return nil, "unreadable output"
+		return nil, errors.New("unreadable output")
 	}
 	if a.Error != nil {
-		return nil, "did not run: " + a.Error.Summary
+		return nil, errors.New(a.Error.Summary)
 	}
-	var vs []Vuln
+	if a.Metadata == nil {
+		return nil, errors.New("the output is not an audit report")
+	}
+	vs := []Vuln{}
 	for name, v := range a.Vulnerabilities {
 		sum := ""
 		for _, x := range v.Via {
@@ -111,7 +148,7 @@ func npmAudit(ctx context.Context) ([]Vuln, string) {
 		vs = append(vs, Vuln{Source: "npm audit", ID: name, Package: name + " " + v.Range, Severity: v.Severity, Summary: sum})
 	}
 	sort.Slice(vs, func(i, j int) bool { return vs[i].ID < vs[j].ID })
-	return vs, fmt.Sprintf("%d advisories against installed UI packages", len(vs))
+	return vs, nil
 }
 
 func firstLine(s string) string {

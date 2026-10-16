@@ -15,7 +15,7 @@
     "kind": "build",
     "passed": true,
     "summary": "build passed in 490ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/build_4ab3e3d89418.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/build_4ab3e3d89418.log",
     "data": {
       "argv": [
         "go",
@@ -37,7 +37,7 @@
     "kind": "test",
     "passed": true,
     "summary": "test passed in 360ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/test_0a1d7b6f6e2b.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/test_0a1d7b6f6e2b.log",
     "data": {
       "argv": [
         "go",
@@ -59,7 +59,7 @@
     "kind": "lint",
     "passed": true,
     "summary": "lint passed in 320ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/lint_4bbfbf999dfb.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/lint_4bbfbf999dfb.log",
     "data": {
       "argv": [
         "go",
@@ -81,7 +81,7 @@
     "kind": "secrets",
     "passed": true,
     "summary": "secrets passed in 20ms",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/secrets_5d33606b6a91.log",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/checks/secrets_5d33606b6a91.log",
     "data": {
       "argv": [
         "drydock",
@@ -101,7 +101,7 @@
     "attempt": 0,
     "kind": "diff",
     "summary": "4 file(s), +108 -7",
-    "ref": "/tmp/claude-0/-home-user-Drydock/927585e5-898b-57de-a294-91a4b635e67b/scratchpad/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/evidence/task.diff",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-zero-line-invoices-D-2/data/runs/run_141320b4edfd/evidence/task.diff",
     "data": {
       "Files": 4,
       "Insertions": 108,

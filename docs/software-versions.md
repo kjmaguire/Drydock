@@ -18,7 +18,7 @@ the notes (below).
 | GitHub Actions in CI | `.github/workflows/*.yml` | git tags of each action |
 | Agent CLIs and ACP bridges | `internal/agents/manifests/cli/*.yaml` | `npm view` |
 | Tools you install (gh, task, osv-scanner, go-licenses, govulncheck, wrangler) | the version `docs/software-notes.json` records as documented | the Go proxy or npm |
-| Security advisories | | `govulncheck` (Go), `npm audit` (UI) |
+| Security advisories | | `govulncheck` (Go; pinned to a release, the same one `.github/workflows/security.yml` runs), `npm audit` (UI) |
 | Documentation that names a different version than the code | `docs/decisions.md` | |
 
 The result is `docs/software-versions.json` (committed). `docs/software-notes.json` is hand-written: what each piece is for, why
@@ -34,8 +34,21 @@ or implements a feature that starts using a new piece of software:
 2. Commit the change itself first, then run `go run ./cmd/drydock-audit -artifact-dir <scratch dir>` (or `task audit`) and commit the new
    `docs/software-versions.json`. The report names the commit it measured; measured with uncommitted changes it says `<commit>-dirty`, because
    the versions it lists are then not the ones that commit pins.
-3. Refresh the Artifact (below) and say in the change what version each piece landed on.
-4. Update `docs/decisions.md` section 2 if it names a version that changed (the audit lists any that now disagree).
+3. Run `go run ./cmd/drydock-notices` and commit `THIRD_PARTY_NOTICES.md` when it changes: its Go and UI tables are generated from
+   the report you just made, the UI lock file and the Go module cache (`go mod download` first), and a test fails when they disagree.
+4. Refresh the Artifact (below) and say in the change what version each piece landed on.
+5. Update `docs/decisions.md` section 2 if it names a version that changed (the audit lists any that now disagree).
+
+## When a lookup fails
+
+The audit never turns a failure into good news (audit 2026-10-16, L51). A program that ends with a failure code is an error even
+when it printed something first; `npm outdated` and `npm audit` exit 1 to say they found something, which is not a failure, but
+exit 1 with nothing listed is. A package or module whose newest version could not be looked up is shown as **unknown**, not as
+current, and the failed lookup is listed in the report (`lookupsFailed`). A scanner whose output stops part-way or is not what it
+should be (`govulncheck` JSON cut off, `npm audit` answering with an error object) reports "did not run", with the reason, instead
+of "0 vulnerabilities". The report is written either way, and the exit status is 2 when any lookup failed, so a measurement made
+without the network cannot pass for a complete one. `govulncheck` is run at the release pinned in `cmd/drydock-audit/vuln.go`
+(and in the workflow), recorded in `docs/software-notes.json` as the version used.
 
 ## Refreshing the Artifact
 
