@@ -1,11 +1,10 @@
 {
-  "generated": "2026-10-16T02:05:31Z",
-  "commit": "41c7529",
+  "generated": "2026-10-16T02:18:32Z",
+  "commit": "c889f31",
   "summary": {
-    "current": 168,
-    "major": 2,
-    "minor": 3,
-    "patch": 1,
+    "current": 171,
+    "minor": 1,
+    "patch": 2,
     "unknown": 1
   },
   "items": [
@@ -6015,25 +6014,25 @@
       "group": "Language and toolchain",
       "name": "Node.js (installed in this sandbox)",
       "kind": "runtime",
-      "used": "24.21.0",
+      "used": "24.22.0",
       "latest": "24.22.0",
-      "status": "minor",
-      "where": "this machine; CI uses node 22 (.github/workflows/ci.yml)",
+      "status": "current",
+      "where": "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)",
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
-      "note": "Newest Node release overall: 26.12.0. The project stays on 22 (decision D9); the latest 22.x is the comparison."
+      "note": "Newest Node release overall: 26.12.0. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
     },
     {
       "id": "npm",
       "group": "Language and toolchain",
       "name": "npm (installed in this sandbox)",
       "kind": "runtime",
-      "used": "11.19.0",
+      "used": "12.2.0",
       "latest": "12.2.0",
-      "status": "major",
+      "status": "current",
       "where": "this machine",
       "role": "Installs the UI packages.",
-      "hold": "Comes with Node; it moves when Node does.",
-      "note": "Ships with Node; the version that comes with Node 22 is the one that matters."
+      "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3).",
+      "note": "Ships with Node; a newer npm can be installed on top of it (npm install -g npm), which is what the development host does."
     },
     {
       "id": "tool:gh",
@@ -6065,13 +6064,13 @@
       "group": "Tools Drydock runs or you install",
       "name": "osv-scanner",
       "kind": "tool",
-      "used": "2.6.0",
+      "used": "2.7.0",
       "latest": "2.7.0",
-      "status": "minor",
+      "status": "current",
       "latestDate": "2026-10-12",
       "where": "docs/decisions.md section 2",
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it.",
-      "hold": "2.7.0 is out; 2.6.0 stays documented until a real run shows the deps check and the security scan read its JSON as before. An attempt to build 2.7.0 from the Go module proxy in the development sandbox (2026-10-16) ran out of disk, so the run is still owed; the owner can do it on the PC with osv-scanner 2.7.0 installed (the deps check and the Security page read its --format json)."
+      "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
     },
     {
       "id": "tool:opengrep",
@@ -6144,7 +6143,7 @@
       "latestDate": "2026-10-14",
       "where": "docs/decisions.md section 2",
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
-      "hold": "29.9.1 is out; 29.8.2 is the engine the sandbox was measured with (decision P30); it moves with the next sandbox run (no Docker in the development sandbox).",
+      "hold": "29.9.1 is out; 29.8.2 stays documented: it is the engine the sandbox was measured with (decision P30), and nothing has run it on 29.9.1. Measured today with CI's ubuntu-latest image too, which carries Docker 28.0.4 (sandbox job of ci, 2026-10-16); the development sandbox has the 29.8.2 client and no daemon. It moves when a sandbox run on 29.9.1 happens, on the owner's PC with Docker Desktop updated.",
       "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
     },
     {
@@ -6165,8 +6164,8 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11672",
-      "latest": "b11672",
-      "status": "current",
+      "latest": "b11675",
+      "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
       "note": "Not pinned: Drydock installs the newest release that carries the backend's archive with a SHA-256 digest, when a person presses Install or Update (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The TurboQuant fork a person may opt into (AtomicBot-ai/atomic-llama-cpp-turboquant) is not tracked here: it is not Drydock's default and trails upstream."
@@ -6199,12 +6198,12 @@
       "group": "UI build and test tools",
       "name": "@types/node",
       "kind": "dev",
-      "used": "24.19.2",
+      "used": "26.6.5",
       "latest": "26.6.5",
-      "status": "major",
+      "status": "current",
       "where": "ui/package.json",
       "role": "Type definitions for the Node APIs the build scripts use.",
-      "hold": "Follows the Node line the UI tooling is on (24 LTS), not the newest Node: the types must match the runtime."
+      "note": "26.6.5 on the owner's instruction (2026-10-16): the types describe Node 26 while the tooling runs on Node 24. The shipped UI is browser code, so the Node types only reach the build and test scripts; tsc passes on 26.6.5. A tooling script that starts using an API only Node 26 has would compile here and fail on Node 24, so such a change is checked by running the scripts, which CI does."
     },
     {
       "id": "npm:playwright",
