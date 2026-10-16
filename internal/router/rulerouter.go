@@ -265,7 +265,12 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	}
 
 	if req.Budget.HardLimit && req.Budget.PctUsed >= 1 {
-		return RoutingDecision{}, block(fmt.Sprintf("the %s budget is at its hard limit; only a human response resumes work", req.Budget.Scope), nil)
+		err := block(fmt.Sprintf("the %s budget is at its hard limit; only a human response resumes work", req.Budget.Scope), nil)
+		var be *BlockedError
+		if errors.As(err, &be) {
+			be.Budget = true
+		}
+		return RoutingDecision{}, err
 	}
 
 	// Stored CEL policies, in priority order.

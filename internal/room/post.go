@@ -306,7 +306,7 @@ func (s *Service) Post(ctx context.Context, p PostParams) (Posted, error) {
 			return ErrArchived
 		}
 		if p.IdempotencyKey != "" {
-			ex, err := queryMessages(ctx, tx, `room_id=? AND idempotency_key=?`, p.RoomID, p.IdempotencyKey)
+			ex, err := queryMessages(ctx, tx, `room_id=? AND idempotency_key<>'' AND idempotency_key=?`, p.RoomID, p.IdempotencyKey)
 			if err != nil {
 				return err
 			}
@@ -706,7 +706,7 @@ func (s *Service) postApproval(ctx context.Context, roomID string, t MsgType, bo
 		if err != nil {
 			return err
 		}
-		if ex, err := queryMessages(ctx, tx, `room_id=? AND idempotency_key=?`, roomID, idem); err != nil {
+		if ex, err := queryMessages(ctx, tx, `room_id=? AND idempotency_key<>'' AND idempotency_key=?`, roomID, idem); err != nil {
 			return err
 		} else if len(ex) > 0 {
 			out.Message, out.Duplicate = ex[0], true

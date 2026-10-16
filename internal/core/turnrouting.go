@@ -35,7 +35,12 @@ func (e *economics) routeTurn(next workflow.NodeHandler) workflow.NodeHandler {
 		if in.TaskID == "" {
 			return next(ctx, in)
 		}
-		rctx, rt := e.decideTurn(ctx, in)
+		rctx, rt, halt := e.decideTurn(ctx, in)
+		if halt != nil {
+			// the router refused the turn because a budget is at its hard limit: the turn waits for a human, it is not run on the
+			// agent's configured model instead (audit 2026-10-16, M4)
+			return e.enforcer.PauseBlocked(ctx, in, halt.Reason)
+		}
 		if rt == nil {
 			return next(rctx, in)
 		}
@@ -52,7 +57,10 @@ func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attem
 	}
 	s := turnSubject{kind: router.RunRoomReply, agent: a, projectID: t.ProjectID, taskID: t.TaskID, runID: t.TurnID, nodeID: "reply", attempt: 1,
 		contextTokens: t.ContextTokens}
-	rctx, rt, staticID := e.decide(ctx, s)
+	rctx, rt, staticID, halt := e.decide(ctx, s)
+	if halt != nil {
+		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", halt.Reason)
+	}
 	if rt == nil {
 		return attempt(ctx, responder.Routed{DecisionID: staticID}, nil)
 	}
@@ -226,21 +234,22 @@ func (e *economics) subjectOf(ctx context.Context, in workflow.NodeInput) (turnS
 		attempt: in.Attempt}, true
 }
 
-func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (context.Context, *routedTurn) {
+func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (context.Context, *routedTurn, *router.BlockedError) {
 	s, ok := e.subjectOf(ctx, in)
 	if !ok {
-		return ctx, nil
+		return ctx, nil, nil
 	}
-	rctx, rt, _ := e.decide(ctx, s)
-	return rctx, rt
+	rctx, rt, _, halt := e.decide(ctx, s)
+	return rctx, rt, halt
 }
 
 // decide asks the router for the turn's model among the agent's own models. Without a list (or when the router cannot
-// choose) the configured model runs, recorded as a static decision whose id is returned.
-func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context, *routedTurn, string) {
+// choose) the configured model runs, recorded as a static decision whose id is returned. The one exception is a budget at its
+// hard limit that no human has allowed this turn to exceed: then the turn must not run at all, and the fourth result says so.
+func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context, *routedTurn, string, *router.BlockedError) {
 	a := s.agent
 	if len(a.RouteModels) == 0 || e.agentRouter == nil {
-		return ctx, nil, e.saveStatic(ctx, s, "the agent's configured model: routing is off for this agent (Team, Edit: models the router may choose)")
+		return ctx, nil, e.saveStatic(ctx, s, "the agent's configured model: routing is off for this agent (Team, Edit: models the router may choose)"), nil
 	}
 	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role),
 		Level: router.LevelBalanced, ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate,
@@ -266,8 +275,11 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 		var be *router.BlockedError
 		if errors.As(err, &be) {
 			reason = be.Reason
+			if be.Budget && !approve {
+				return ctx, nil, "", be
+			}
 		}
-		return ctx, nil, e.saveStatic(ctx, s, "the router could not choose ("+reason+"), so the agent's configured model runs")
+		return ctx, nil, e.saveStatic(ctx, s, "the router could not choose ("+reason+"), so the agent's configured model runs"), nil
 	}
 	tierOf := map[string]string{}
 	for _, r := range a.RouteModels {
@@ -275,7 +287,7 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 	}
 	req.Budget = router.BudgetState{} // the stored request keeps it; a hop reads the budget again
 	return pipeline.WithRoutedModel(ctx, pipeline.RoutedModel{Model: d.Model, Tier: tierOf[d.Model], DecisionID: d.ID, Handoff: d.Handoff}),
-		&routedTurn{req: req, d: d, agent: a, tierOf: tierOf, approve: approve}, d.ID
+		&routedTurn{req: req, d: d, agent: a, tierOf: tierOf, approve: approve}, d.ID, nil
 }
 
 // turnFailures are the escalation counters of a turn. Work, review and security review turns see the run's work: work turns

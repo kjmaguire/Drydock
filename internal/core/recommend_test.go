@@ -95,7 +95,9 @@ func TestRecommendationsAreCheckedAndAppliedOneByOne(t *testing.T) {
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &dev)
 	var srv core.MCPLibraryServer
-	a.call("mcplib.save", core.MCPServerInput{ID: "cfdocs", Display: "Cloudflare docs", Transport: "http", URL: "https://docs.mcp.cloudflare.com/mcp/"}, &srv)
+	// a server that answers (the test MCP server), because a grant names the tools it lists and cannot be made to one that is not there
+	self, _ := os.Executable()
+	a.call("mcplib.save", core.MCPServerInput{ID: "cfdocs", Display: "Cloudflare docs", Transport: "stdio", Argv: []string{self}, Env: map[string]string{testMCPEnv: "1"}}, &srv)
 
 	recommendScript(t, `Here is my advice.
 {"summary": "Give the backend agent Wrangler and the Cloudflare docs.", "recommendations": [
@@ -316,8 +318,10 @@ func TestApplyingAndDismissingAtOnceKeepEveryMarkAndApplyOnce(t *testing.T) {
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &dev)
 	var srv core.MCPLibraryServer
+	self, _ := os.Executable()
 	for _, id := range []string{"one", "two", "three", "four"} {
-		a.call("mcplib.save", core.MCPServerInput{ID: id, Display: "Server " + id, Transport: "http", URL: "https://" + id + ".example.com/mcp"}, &srv)
+		// servers that answer: a grant names the tools the server lists
+		a.call("mcplib.save", core.MCPServerInput{ID: id, Display: "Server " + id, Transport: "stdio", Argv: []string{self}, Env: map[string]string{testMCPEnv: "1"}}, &srv)
 	}
 	recommendScript(t, `{"summary": "Four servers.", "recommendations": [
  {"kind": "mcp", "action": "give", "name": "one", "agents": ["Backend #1"], "reason": "a"},

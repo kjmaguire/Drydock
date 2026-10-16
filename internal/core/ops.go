@@ -335,11 +335,24 @@ type AgentRun struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// UsageTotals is the sum of all of an agent's usage rows, not of the newest few: the Inspector lists the last 50 rows and
+// says what was spent in all (audit 2026-10-16, M21).
+type UsageTotals struct {
+	Rows         int     `json:"rows"`
+	CostUSD      float64 `json:"costUsd"`
+	InputTokens  int64   `json:"inputTokens"`
+	OutputTokens int64   `json:"outputTokens"`
+	// Estimated is how many of the rows have a cost that was estimated, not reported.
+	Estimated int `json:"estimated"`
+}
+
 // AgentDetail is what the Agent Inspector shows.
 type AgentDetail struct {
 	Agent Agent      `json:"agent"`
 	Runs  []AgentRun `json:"runs"`
 	Usage []UsageRow `json:"usage"`
+	// UsageTotals sums every usage row of the agent; Usage is only the newest rows.
+	UsageTotals UsageTotals `json:"usageTotals"`
 	// Isolation says, in plain words, what keeps this agent inside its project. It is never a promise of a sandbox.
 	Isolation Isolation `json:"isolation"`
 }
@@ -364,6 +377,11 @@ func (c *Core) GetAgent(ctx context.Context, id string) (AgentDetail, error) {
 		d.Runs = append(d.Runs, r)
 	}
 	if d.Usage, err = c.Usage(ctx, "", id, 50); err != nil {
+		return d, err
+	}
+	if err := c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(cost_usd),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		COALESCE(SUM(CASE WHEN source='estimated' THEN 1 ELSE 0 END),0) FROM model_usage WHERE agent_id=?`, id).
+		Scan(&d.UsageTotals.Rows, &d.UsageTotals.CostUSD, &d.UsageTotals.InputTokens, &d.UsageTotals.OutputTokens, &d.UsageTotals.Estimated); err != nil {
 		return d, err
 	}
 	return d, rows.Err()

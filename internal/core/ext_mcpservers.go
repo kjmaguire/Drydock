@@ -904,7 +904,8 @@ func (s *mcpServers) grantable(ctx context.Context, server string) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	if r.DiscoveredAt == 0 {
+	// a catalog server comes with the tools its vendor publishes; only a server whose tools are not known at all is asked
+	if r.DiscoveredAt == 0 && len(r.Tools) == 0 {
 		lib, err := s.discover(ctx, server)
 		if err != nil {
 			return nil, fmt.Errorf("Drydock grants a server's tools by name and could not list them: %w", err)

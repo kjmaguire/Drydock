@@ -19,6 +19,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/connections"
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
@@ -137,7 +138,11 @@ type Core struct {
 	Connections *connections.Service
 	Deps        pipeline.Deps
 
-	lock       *datalock.Lock // this process's claim on the data folder
+	lock *datalock.Lock // this process's claim on the data folder
+	// budgets is the budget store once the economics extension created it; budgetGate says its middleware is installed on agent
+	// turns. Open installs a gate that refuses every turn when it is not (budget.go, audit 2026-10-16, M4).
+	budgets    atomic.Pointer[budget.Store]
+	budgetGate atomic.Bool
 	extMethods map[string]Method
 	extClose   []func()
 	mcpw       atomic.Pointer[mcpWiring] // the shared MCP gateway (ext_mcp.go)
@@ -340,6 +345,11 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	if err := c.startExtensions(bg); err != nil {
 		c.logf("extensions: %v", err)
+	}
+	if !c.budgetGate.Load() {
+		// the budgets did not start, so nothing limits what agents spend: no agent turn runs until they do
+		c.logf("the budget gate did not start: agent turns are refused until it does")
+		c.Engine.Use(workflow.KindAgentTask, budget.FailClosed("the budget gate did not start (see the log), so no agent turn runs"))
 	}
 	// the method registry is complete once the extensions have started: build it once for Call
 	m := c.Methods()

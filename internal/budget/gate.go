@@ -33,6 +33,16 @@ type Enforcer struct {
 	Consume func(ctx context.Context, requestID workflow.RequestID) error
 }
 
+// FailClosed is a middleware that refuses every agent turn with message. It stands in for the Enforcer when the budgets could not
+// be started: no limit is no reason to let agents spend without one.
+func FailClosed(message string) workflow.Middleware {
+	return func(next workflow.NodeHandler) workflow.NodeHandler {
+		return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
+			return workflow.NodeOutput{}, errors.New("budget: " + message)
+		}
+	}
+}
+
 // PauseGate is the payload marker of a budget pause request.
 const PauseGate = "budget"
 
@@ -91,8 +101,30 @@ func ApprovedOverLimit(ctx context.Context) bool {
 	return v
 }
 
+// scopeIDs names the project, task, run and agent a turn belongs to. The agent of a work or review turn is the task's assignee or
+// reviewer; the agent of a turn of a template role (spec, tests, design, security review) is the one the run pinned for the role
+// at its start, and the planner's is the one the plan names. A per-agent budget used to apply only to work and review turns: a
+// role or planner turn of an agent over its limit ran (audit 2026-10-16, M4).
 func (e *Enforcer) scopeIDs(ctx context.Context, in workflow.NodeInput) ScopeIDs {
 	ids := ScopeIDs{Project: in.ProjectID, Task: in.TaskID, Run: string(in.RunID)}
+	role := in.Meta["agent"]
+	switch role {
+	case "", "work", "review":
+	case "planner":
+		var pi struct {
+			PlannerAgent string `json:"plannerAgent"`
+		}
+		if json.Unmarshal(in.Input, &pi) == nil {
+			ids.Agent = pi.PlannerAgent
+		}
+	default: // a template role: the run's input holds the agent pinned for it
+		var ti struct {
+			Roles map[string]string `json:"roles"`
+		}
+		if json.Unmarshal(in.Input, &ti) == nil {
+			ids.Agent = ti.Roles[role]
+		}
+	}
 	if in.TaskID == "" {
 		return ids
 	}
@@ -103,13 +135,35 @@ func (e *Enforcer) scopeIDs(ctx context.Context, in workflow.NodeInput) ScopeIDs
 	if ids.Project == "" {
 		ids.Project = project
 	}
-	switch in.Meta["agent"] {
+	switch role {
 	case "work":
 		ids.Agent = assignee
 	case "review":
 		ids.Agent = reviewer
 	}
 	return ids
+}
+
+// PauseBlocked parks the run on the budget pause for a turn the model router refused because a budget is at its hard limit and
+// no human has allowed the turn. The router's refusal used to send the turn on its way on the agent's configured model, which is
+// often the premium one: the turn the budget exists to stop.
+func (e *Enforcer) PauseBlocked(ctx context.Context, in workflow.NodeInput, reason string) (workflow.NodeOutput, error) {
+	ids := e.scopeIDs(ctx, in)
+	sts, err := e.Store.StatusFor(ctx, ids)
+	if err != nil {
+		return workflow.NodeOutput{}, fmt.Errorf("budget: cannot evaluate budgets, agent turn not started: %w", err)
+	}
+	var over []Status
+	for _, st := range sts {
+		if st.State == StateExceeded {
+			over = append(over, st)
+		}
+	}
+	if len(over) == 0 {
+		// the router saw a limit the store does not: stop the turn all the same, with the router's reason
+		return workflow.NodeOutput{}, fmt.Errorf("budget: the agent turn did not start: %s", reason)
+	}
+	return e.pause(ctx, in, ids, over), nil
 }
 
 // priorDecision reads the human's answer to this node's budget pause. It returns true when an approved, human-decided

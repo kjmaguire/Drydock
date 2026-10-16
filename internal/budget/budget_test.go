@@ -497,3 +497,76 @@ func TestPerRunCeilingTemplateAppliesToEachRunSeparately(t *testing.T) {
 	// run 2 starts a new window: its own usage is 0 at the worker turn even though the task already spent 1200
 	r.wait(run2, workflow.StatusCompleted)
 }
+
+// Audit 2026-10-16, M4: a per-agent budget applied only to work and review turns. A turn of a template role (spec, tests,
+// design, security review) and the planner's turn belong to an agent too: the one the run pinned for the role, and the one the
+// plan names. Each of those turns is held when its agent is over its own limit.
+func TestAnAgentsBudgetAlsoHoldsItsRoleAndPlannerTurns(t *testing.T) {
+	r := newRig(t)
+	r.set(budget.Budget{Scope: budget.ScopeAgent, ScopeID: "agtW", LimitTurns: i(1), Enabled: true})
+	r.usage(row{task: "t1", agent: "agtW", in: 10, cost: 0.01}) // the agent has used its one turn
+	r.exec(`INSERT INTO agent_runs(id,agent_id,task_id,status,started_at) VALUES('ar0','agtW','t1','STOPPED',1)`)
+
+	for _, c := range []struct {
+		name, role string
+		input      string
+		task       string
+	}{
+		{"a spec turn of the pm role", "pm", `{"taskId":"t1","roles":{"pm":"agtW","tests":"agtR"}}`, "t1"},
+		{"a tests turn pinned to the same agent", "tests", `{"taskId":"t1","roles":{"tests":"agtW"}}`, "t1"},
+		{"a design turn", "architect", `{"taskId":"t1","roles":{"architect":"agtW"}}`, "t1"},
+		{"the planner's turn, which has no task", "planner", `{"planId":"plan_1","projectId":"prj1","plannerAgent":"agtW"}`, ""},
+	} {
+		name := "roles-" + c.role
+		g := workflow.NewGraph(name).Add(workflow.AgentTask("turn", r.turn("agtW", 1, 0.01)).With("agent", c.role)).Start("turn")
+		if err := r.eng.Register(g); err != nil {
+			t.Fatal(err)
+		}
+		before := r.turns.Load()
+		id, err := r.eng.Start(r.ctx, name, json.RawMessage(c.input), workflow.StartOptions{ProjectID: "prj1", TaskID: c.task})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.wait(id, workflow.StatusWaitingHuman)
+		if r.turns.Load() != before {
+			t.Errorf("%s ran although its agent is over its limit", c.name)
+		}
+	}
+
+	// a role pinned to an agent that has room is not held
+	g := workflow.NewGraph("roles-free").Add(workflow.AgentTask("turn", r.turn("agtR", 1, 0.01)).With("agent", "pm")).Start("turn")
+	if err := r.eng.Register(g); err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.eng.Start(r.ctx, "roles-free", json.RawMessage(`{"taskId":"t1","roles":{"pm":"agtR"}}`), workflow.StartOptions{ProjectID: "prj1", TaskID: "t1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.wait(id, workflow.StatusCompleted)
+}
+
+// A turn the model router refused because a budget is at its hard limit waits for a human, like any turn over a budget; and when
+// the budgets could not start at all, every turn is refused.
+func TestPauseBlockedHoldsTheTurnAndFailClosedRefusesEveryTurn(t *testing.T) {
+	r := newRig(t)
+	r.set(budget.Budget{Scope: budget.ScopeTask, ScopeID: "t1", LimitTokens: i(100), Enabled: true})
+	r.usage(row{task: "t1", agent: "agtW", in: 500, cost: 0.1})
+	in := workflow.NodeInput{NodeInfo: workflow.NodeInfo{RunID: "run_x", ProjectID: "prj1", TaskID: "t1", NodeID: "work", Meta: map[string]string{"agent": "work"}}}
+	out, err := r.enf.PauseBlocked(r.ctx, in, "the task budget is at its hard limit")
+	if err != nil || out.Request == nil || out.Request.Kind != "approval" || !strings.Contains(out.Request.Title, "Budget limit reached") {
+		t.Fatalf("%+v %v", out, err)
+	}
+	// the router saw a limit the store does not: the turn still does not start
+	r2 := newRig(t)
+	if _, err := r2.enf.PauseBlocked(r2.ctx, in, "the agent budget is at its hard limit"); err == nil || !strings.Contains(err.Error(), "did not start") {
+		t.Fatalf("a block with no matching budget: %v", err)
+	}
+
+	h := budget.FailClosed("the budgets did not start")(func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error) {
+		t.Fatal("the turn ran")
+		return workflow.NodeOutput{}, nil
+	})
+	if _, err := h(r.ctx, in); err == nil || !strings.Contains(err.Error(), "the budgets did not start") {
+		t.Fatalf("%v", err)
+	}
+}

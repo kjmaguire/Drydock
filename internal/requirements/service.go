@@ -272,7 +272,7 @@ func (s *Service) Sync(ctx context.Context, r SyncReq) (Requirement, bool, error
 		return Requirement{}, false, errors.New("requirements: a synced document needs a source_ref")
 	}
 	var id string
-	err := s.DB.Reader().QueryRowContext(ctx, `SELECT id FROM requirements WHERE project_id=? AND source_ref=?`, r.ProjectID, r.SourceRef).Scan(&id)
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT id FROM requirements WHERE project_id=? AND source_ref<>'' AND source_ref=?`, r.ProjectID, r.SourceRef).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		out, err := s.create(ctx, r.ProjectID, "sync", r.SourceRef, r.Title, r.Text, r.Format, r.By)
 		return out, err == nil, err

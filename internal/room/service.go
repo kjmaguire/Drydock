@@ -160,7 +160,7 @@ func (s *Service) ListRooms(ctx context.Context, projectID string, includeArchiv
 
 // RoomByTask returns the task room for a task id.
 func (s *Service) RoomByTask(ctx context.Context, taskID string) (Room, error) {
-	r, err := scanRoom(s.db.Reader().QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE kind='task' AND task_id=?`, taskID))
+	r, err := scanRoom(s.db.Reader().QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE kind='task' AND task_id<>'' AND task_id=?`, taskID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Room{}, fmt.Errorf("%w: task room for %s", ErrNotFound, taskID)
 	}
@@ -380,7 +380,7 @@ func (s *Service) CreateTaskChannel(ctx context.Context, sp TaskChannelSpec) (Ro
 		add(Tool(t.Name), "tool")
 	}
 	r, _, err := s.createRoom(ctx, r, mem, sp.CreatedBy, func(tx *sql.Tx) (Room, error) {
-		return scanRoomErr(tx.QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE kind='task' AND task_id=?`, sp.TaskID))
+		return scanRoomErr(tx.QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE kind='task' AND task_id<>'' AND task_id=?`, sp.TaskID))
 	})
 	return r, err
 }

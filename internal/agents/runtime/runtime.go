@@ -323,7 +323,12 @@ func (m *Managed) observe(ctx context.Context, c workflow.Chunk) {
 		var u workflow.UsageChunk
 		if c.Decode(&u) == nil {
 			m.usage = append(m.usage, u)
-			m.recordUsage(ctx, u)
+			if err := m.recordUsage(ctx, u); err != nil {
+				// the turn went on and its cost is in the result, but the budgets read this table: say so instead of letting the
+				// spend go uncounted without a trace (audit 2026-10-16, M4)
+				m.rt.publish(ctx, "agent.usage_unrecorded", m.cfg, m.RunID, map[string]any{"error": err.Error(), "model": u.Model, "costUsd": u.CostUSD,
+					"inputTokens": u.InputTokens, "outputTokens": u.OutputTokens})
+			}
 		}
 	case workflow.ChunkSession:
 		var s workflow.SessionChunk
@@ -376,15 +381,18 @@ func (m *Managed) publishDeltaLocked() {
 	m.rt.publish(context.Background(), "agent.output", m.cfg, m.RunID, map[string]any{"kind": kind, "data": json.RawMessage(data), "coalesced": true})
 }
 
-func (m *Managed) recordUsage(ctx context.Context, u workflow.UsageChunk) {
+func (m *Managed) recordUsage(ctx context.Context, u workflow.UsageChunk) error {
 	if m.rt.DB == nil {
-		return
+		return nil
 	}
 	model := u.Model
 	if model == "" {
 		model = m.cfg.Spec.Model
 	}
-	_ = m.rt.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	// the turn may have been cancelled already (the usage often arrives with its end): the money was spent all the same
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	return m.rt.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO model_usage(ts,agent_run_id,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, storage.Now(), m.RunID, m.cfg.TaskID, m.cfg.AgentID, m.cfg.Provider, model, m.cfg.Tier,
 			u.InputTokens, u.OutputTokens, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens, u.CostUSD, nz(u.Source))

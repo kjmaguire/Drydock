@@ -355,3 +355,36 @@ func TestCloseStaleEndsTheRunsACrashLeftOpen(t *testing.T) {
 		t.Fatalf("a second start closed %d more", n)
 	}
 }
+
+// The budgets read the usage table. A turn whose usage could not be written used to leave no trace at all, and the money it
+// spent was missing from every budget (audit 2026-10-16, M4): it is published, with what the turn used.
+func TestUsageThatCannotBeRecordedIsReportedInsteadOfLost(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "done"}}}})
+	ctx := context.Background()
+	if _, err := h.db.Writer().Exec(`ALTER TABLE model_usage RENAME TO model_usage_gone`); err != nil {
+		t.Fatal(err)
+	}
+	m, err := h.rt.Spawn(ctx, h.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.RunTurn(ctx, "go", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.settle(t)
+	evs, err := h.bus.Replay(ctx, 0, events.Filter{Types: []string{"agent.usage_unrecorded"}}, 0)
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("%v: %d events", err, len(evs))
+	}
+	var d struct {
+		Error        string
+		InputTokens  int
+		OutputTokens int
+	}
+	if err := json.Unmarshal(evs[0].Data, &d); err != nil || d.Error == "" || d.InputTokens != 10 || d.OutputTokens != 5 {
+		t.Fatalf("%s", evs[0].Data)
+	}
+}

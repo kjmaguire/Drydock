@@ -92,17 +92,16 @@ func EconomicsRouter(c *Core) router.ModelRouter {
 }
 
 // EconomicsBudgetBlock reports why an agent turn outside a workflow (a room or direct-message reply) must not start: a budget
-// that applies to it (the project's, the agent's, the task's) is at its hard limit. It returns nil when the turn may start,
-// or when the economics extension did not start. Workflow turns are gated by the budget middleware instead, where a human
-// can resume one turn.
+// that applies to it (the project's, the agent's, the task's) is at its hard limit. It returns nil when the turn may start. It
+// returns an error when the budgets did not start: no turn runs without them. Workflow turns are gated by the budget middleware
+// instead, where a human can resume one turn.
 func EconomicsBudgetBlock(ctx context.Context, c *Core, projectID, taskID, agentID string) error {
-	econMu.Lock()
-	e := econByCore[c]
-	econMu.Unlock()
-	if e == nil || e.budgets == nil {
-		return nil
+	store := c.budgets.Load()
+	if store == nil {
+		// no budget store means the economics extension did not start: fail closed, as the workflow gate does
+		return errors.New("the budgets did not start, so the turn does not start (see the log)")
 	}
-	sts, err := e.budgets.StatusFor(ctx, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+	sts, err := store.StatusFor(ctx, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
 	if err != nil {
 		return fmt.Errorf("budgets could not be read, so the turn does not start: %w", err) // fail closed, as the middleware does
 	}
@@ -148,27 +147,35 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	e := &economics{c: c}
 
 	// --- budgets: the gate on every agent turn ---
+	// The gate is installed before anything that can fail: an extension that does not start leaves no budget gate otherwise, and
+	// agents then run without a limit (audit 2026-10-16, M4). If even this fails, Open installs a gate that refuses every turn.
 	e.budgets = &budget.Store{DB: c.DB}
 	e.enforcer = &budget.Enforcer{Store: e.budgets, Bus: c.Bus, Consume: c.Engine.MarkConsumed, Notify: e.budgetNotice}
+	c.budgets.Store(e.budgets)
 
 	// --- telemetry (off until a human turns it on) ---
-	sink, err := telemetry.New(ctx, c.DB, telemetry.Options{Redact: c.Scanner.Redact})
-	if err != nil {
-		return nil, nil, fmt.Errorf("telemetry: %w", err)
-	}
-	e.sink = sink
+	sink, terr := telemetry.New(ctx, c.DB, telemetry.Options{Redact: c.Scanner.Redact})
 
 	// Middleware order for agent_task nodes: Watchdog (registered by the core), then Telemetry, Budget, the decision
 	// recorder. docs/workflow-engine.md s7 puts Telemetry first; the core registers the watchdog before extensions start,
 	// so it stays outermost. A budget pause is still recorded as a paused span because Telemetry wraps Budget.
-	c.Engine.Use(workflow.KindAgentTask, sink.Middleware(), e.enforcer.Middleware(), e.routeTurn)
-	c.Engine.Use(workflow.KindCheck, sink.Middleware())
-	c.Engine.Observe(sink.Observer())
+	mws := []workflow.Middleware{e.enforcer.Middleware(), e.routeTurn}
+	if terr != nil {
+		c.logf("telemetry unavailable: %v (the budget gate still runs)", terr)
+	} else {
+		e.sink = sink
+		mws = append([]workflow.Middleware{sink.Middleware()}, mws...)
+		c.Engine.Use(workflow.KindCheck, sink.Middleware())
+		c.Engine.Observe(sink.Observer())
+	}
+	c.Engine.Use(workflow.KindAgentTask, mws...)
+	c.budgetGate.Store(true)
 
 	// --- LLM wrapper, quota ledger, router ---
 	e.ledger = providers.NewQuotaLedger(c.Providers, c.Prober, c.Bus, providers.QuotaOptions{})
 	e.ledger.StartPolling(ctx)
 	e.uptime = providers.NewEndpointUptime(c.Providers, providers.UptimeOptions{})
+	var err error
 	e.wrapper, err = llm.NewWrapper(llm.Options{Registry: c.Providers, DB: c.DB, Factory: backends.Factory, Scanner: secretadapt.LLM(c.Scanner),
 		Ledger: e.ledger, Monitor: c.Health, Uptime: e.uptime, Bus: c.Bus})
 	if err != nil {

@@ -273,6 +273,10 @@ func TestBudgetDownshiftAndHardLimit(t *testing.T) {
 	if !errors.As(err, &be) || !strings.Contains(be.Reason, "hard limit") {
 		t.Fatalf("100%% budget: %v", err)
 	}
+	// the block says it is the budget's: a caller must not answer it by running the agent's configured model (audit 2026-10-16, M4)
+	if !be.Budget {
+		t.Fatal("a budget block is not marked as one")
+	}
 	// An explicit pin cannot bypass the 100% pause either.
 	q.Explicit = &Pin{Provider: w.id(w.ant), Model: "prem-1"}
 	if _, err := r.Decide(w.ctx, q); !errors.Is(err, ErrBlocked) {

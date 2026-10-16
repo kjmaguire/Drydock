@@ -13,6 +13,13 @@ import (
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
+// TaskListDefault is how many of the newest tasks task.list returns when the caller does not say; TaskListMax is the most it will
+// return. task.count says how many there are.
+const (
+	TaskListDefault = 500
+	TaskListMax     = 5000
+)
+
 // Method is one callable operation. Both transports (the Wails bridge and the development HTTP server) dispatch through the
 // same registry, so the UI sees identical behavior in the app and under test.
 type Method func(ctx context.Context, params json.RawMessage) (any, error)
@@ -147,12 +154,33 @@ func (c *Core) Methods() map[string]Method {
 		"task.list": bind(func(ctx context.Context, p struct {
 			ProjectID string   `json:"projectId"`
 			Statuses  []string `json:"statuses"`
+			// Limit is how many of the newest tasks to return (default and ceiling: see TaskListDefault and TaskListMax).
+			Limit int `json:"limit"`
 		}) (any, error) {
-			f := tasks.Filter{ProjectID: p.ProjectID, Limit: 500}
+			f := tasks.Filter{ProjectID: p.ProjectID, Limit: p.Limit}
+			if f.Limit <= 0 {
+				f.Limit = TaskListDefault
+			}
+			if f.Limit > TaskListMax {
+				f.Limit = TaskListMax
+			}
 			for _, s := range p.Statuses {
 				f.Statuses = append(f.Statuses, tasks.Status(s))
 			}
 			return c.Tasks.List(ctx, f)
+		}),
+		// task.count is how many tasks match, so a screen that shows the newest TaskListDefault can say it is not showing all of
+		// them (audit 2026-10-16, M21)
+		"task.count": bind(func(ctx context.Context, p struct {
+			ProjectID string   `json:"projectId"`
+			Statuses  []string `json:"statuses"`
+		}) (any, error) {
+			f := tasks.Filter{ProjectID: p.ProjectID}
+			for _, s := range p.Statuses {
+				f.Statuses = append(f.Statuses, tasks.Status(s))
+			}
+			n, err := c.Tasks.Count(ctx, f)
+			return map[string]int{"total": n}, err
 		}),
 		"task.get":  bind(func(ctx context.Context, p idParam) (any, error) { return c.GetTask(ctx, p.ID) }),
 		"task.diff": bind(func(ctx context.Context, p idParam) (any, error) { return c.TaskDiff(ctx, p.ID) }),

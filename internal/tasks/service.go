@@ -298,6 +298,29 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Task, error) {
 	return out, rows.Err()
 }
 
+// Count returns how many tasks match the filter (its Limit is ignored).
+func (s *Service) Count(ctx context.Context, f Filter) (int, error) {
+	q := `SELECT COUNT(*) FROM tasks WHERE 1=1`
+	var args []any
+	if f.ProjectID != "" {
+		q += ` AND project_id=?`
+		args = append(args, f.ProjectID)
+	}
+	if f.Assignee != "" {
+		q += ` AND assignee=?`
+		args = append(args, f.Assignee)
+	}
+	if len(f.Statuses) > 0 {
+		q += ` AND status IN (` + strings.TrimSuffix(strings.Repeat("?,", len(f.Statuses)), ",") + `)`
+		for _, st := range f.Statuses {
+			args = append(args, string(st))
+		}
+	}
+	var n int
+	err := s.DB.Reader().QueryRowContext(ctx, q, args...).Scan(&n)
+	return n, err
+}
+
 // Update changes task fields under compare-and-swap.
 type Update struct {
 	Assignee   *string

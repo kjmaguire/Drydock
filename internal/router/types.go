@@ -311,6 +311,9 @@ var (
 type BlockedError struct {
 	Reason       string
 	Alternatives []Alternative
+	// Budget is set when the block is a budget at its hard limit: the turn must not run on any model until a human answers (a
+	// caller that falls back to the agent's configured model on other blocks must not do so for this one; audit 2026-10-16, M4).
+	Budget bool
 }
 
 func (e *BlockedError) Error() string   { return "router: blocked: " + e.Reason }
