@@ -1,6 +1,7 @@
-# Updates are proposed, not applied: each one is a pull request that CI runs on. A new version is adopted only after two weeks
-# (the project's rule for anything it did not write), hence the cooldown. Every dependency change is also recorded on the
-# Software Versions page (docs/software-versions.md, "The rule").
+# Updates are proposed, not applied: each one is a pull request that CI runs on. A release is proposed only after it has been out
+# for 14 days (the cooldown), so a release that is pulled or found to be compromised soon after publication is not proposed.
+# Every dependency change is also recorded on the Software Versions page (docs/software-versions.md, "The rule"), and the rule
+# there (stay as current as is safe) still applies to a change a person or an agent makes by hand.
 version: 2
 updates:
   - package-ecosystem: gomod
