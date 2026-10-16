@@ -35,7 +35,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | MCP | `github.com/modelcontextprotocol/go-sdk` v1.8.0 behind our own interface | Mixed MIT/Apache-2.0 license in transition: legal sign-off before release. `CommandTransport` kills only the direct child: servers are started under our process manager. |
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
 | Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.9 | Run on Windows to confirm; cannot take a job list (see D7). |
-| Verification tools | osv-scanner v2.6.0, Opengrep 1.31.0, Playwright 1.64.1, Wrangler 4.151.0 as external tools | osv-scanner sends package metadata to osv.dev unless offline: disclosed. Opengrep (LGPL-2.1, native Windows binary) is the security scan's Code engine (P44); Drydock ships no rules for it. |
+| Verification tools | osv-scanner 2.7.0, Opengrep 1.31.0, Playwright 1.64.1, Wrangler 4.151.0 as external tools; osv-scanner and Opengrep installed on request by Drydock from their GitHub releases, checked against GitHub's SHA-256 digest (P66) | osv-scanner sends package metadata to osv.dev unless offline: disclosed. Opengrep (LGPL-2.1, native Windows binary) is the security scan's Code engine (P44); Drydock ships no rules for it. |
 | Local models | llama.cpp's `llama-server`, the newest weekly Windows build (b11669 at the time of writing; not pinned), MIT, from `ggml-org/llama.cpp`'s GitHub release, checked against GitHub's SHA-256 digest; GGUF models from public Hugging Face repositories, checked against the Hub's SHA-256 | P65, `docs/local-models.md`. The TurboQuant fork (`AtomicBot-ai/atomic-llama-cpp-turboquant`) is an opt-in second source behind a warning, not the default. Not yet run against the real llama.cpp |
 | Repo map | `github.com/tree-sitter/go-tree-sitter` v0.25.0 (CGO) + MIT grammars: Go v0.25.0, TypeScript/TSX v0.23.2, JavaScript v0.25.0, Python v0.25.0, C# v0.23.5, Java v0.23.5, Rust v0.24.2; Aider algorithm | D5, P62: built in `internal/repomap` (Linux; the Windows CI jobs build it with MinGW gcc). The grammars' own `queries/tags.scm` plus our extra queries (TSX and JSX element references, which no upstream query covers, and TS, JS, Python, C#, Java, Rust additions). PHP and SQL, probed in Phase 0, are not built. The product exe is built with `CGO_ENABLED=1`. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
@@ -144,8 +144,8 @@ Open, owner action:
   recommendation turn sees the same list. Files only, nothing is run or contacted. `docs/token-control.md`, "As built:
   library versions in the instructions".
 - **P55. A scan tool's program can be chosen, and tools installed while Drydock runs are found (2026-10-15, on the owner's
-  request).** The owner saw osv-scanner and Opengrep "not installed" on the Security page. Drydock still installs neither
-  (P44), but finding them was PATH-only, and a Windows program only sees the PATH it started with, so a tool installed while
+  request).** The owner saw osv-scanner and Opengrep "not installed" on the Security page. Drydock still installed neither
+  then (P44; since P66 it installs both on request), but finding them was PATH-only, and a Windows program only sees the PATH it started with, so a tool installed while
   Drydock ran needed a restart and one installed elsewhere needed a PATH edit. Now: a person can choose each tool's program
   with the window's own Open dialog ("Choose file...", through Wails' dialog; the core gets it as `Config.PickFile`, so the
   method, its checks and its tests are the core's) or type its full path; the choice is the workspace's and "Use PATH
@@ -378,3 +378,27 @@ Open, owner action:
   **Not verified:** anything against the real llama.cpp, GitHub release or Hub (asset names and layouts as read on
   2026-10-15; `local-models.md` section 9); the owner must run it on the PC once. Software: `tool:llama.cpp` (b11669 at the
   time of writing; not pinned, the newest checked build is installed).
+- **P66. Drydock installs the scan's tools itself (2026-10-16, on the owner's request).** The Security page still said
+  osv-scanner and Opengrep were "not installed" after P55, because Drydock installed neither and the owner's PC had neither;
+  asked why not build the install into the app, the owner said to ("why don't we just build that into the app?") and asked
+  for an Update button to the newest release. Built in `internal/scan/install.go`, the core's `security.tool.install`,
+  `security.tool.install.cancel` and `security.tool.remove`, and the tools panel; `docs/security-scan.md` sections 4 and 5.
+  (1) **The tool's own release, checked.** Install reads the tool's GitHub release listing without sign-in, takes the newest
+  stable release whose Windows asset carries the SHA-256 digest GitHub recorded at upload (osv-scanner's
+  `osv-scanner_windows_amd64.exe`, from its goreleaser name template; Opengrep's `opengrep_windows_x86.zip` from 2.0, with
+  `opengrep.exe` and its DLLs, else `opengrep_windows_x86.exe`, as its `install.ps1` says), downloads it from that repository
+  only, refuses a mismatch, and keeps it under the app's data (`tools\<tool>\<tag>\`), unpacked with the runners' guarded
+  unzip where it is an archive. The same path as the local models' builds (P65); the same refusal of a remote install script
+  (Opengrep's `install.ps1` is not run). Both licences allow this (Apache-2.0, LGPL-2.1 as a separate program). (2) **Order
+  of precedence.** A program a person chose (P55) still comes first, then Drydock's install, then PATH and the installers'
+  folders: a person's explicit choice is never overridden by a download. (3) **Update, on request.** The same call looks the
+  newest release up and installs it when newer, else says "already the newest release"; Drydock does not poll GitHub for
+  releases by itself (the Software Versions audit is where currency is measured). Remove deletes Drydock's copy. (4) **In the
+  background, visible.** The install runs after the call returns; its state (phase, bytes so far, result or reason) comes
+  with `security.tools` and each change is announced on `security.settings`, so every open Security page follows it and a
+  page left and reopened shows how the last one ended. Only a person may install or remove (the program reads the whole
+  project). **Tests** against a PROTOCOL FIXTURE of GitHub's releases API and downloads (`scantest.ReleaseFixture`) with the
+  labelled stand-in in place of the installed program, in `internal/scan`, the core, the browser tests and the e2e harness.
+  **Not verified:** a real download from GitHub (asset names and the digest field as documented on 2026-10-16); the owner's
+  first Install on the PC proves it. Software: `tool:osv-scanner` 2.7.0 and `tool:opengrep` 1.31.0 (installed releases
+  follow the newest; the audit measures the documented ones).

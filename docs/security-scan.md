@@ -70,6 +70,9 @@ it (a cancelled scan is stored as cancelled).
 | `security.settings.set {projectId, rulesDir}` or `{workspace: true, rulesDir}` | stores the project's rules folder, or the one folder scans use (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. |
 | `security.tool.set {projectId, tool, path}` | stores the program a person chose for `osv-scanner` or `opengrep`, for the whole workspace (a program is on the computer, not in a project); `""` goes back to finding it. The path must be a full path to an existing file (an `.exe` on Windows); quotes from Explorer's "Copy as path" are removed. Only a person may: the program reads the whole project. The programs are probed (`--version`) once per change: the answer goes to the caller and, for the next three seconds, to every page that re-reads on the `security.settings` event, so a program whose first run is slow is paid for once; a program deleted or replaced meanwhile is probed again at once. |
 | `security.tool.choose {projectId, tool}` | opens the window's own Open dialog (the desktop app, through Wails; filter `*.exe`) and stores the file chosen; cancelling changes nothing. Where the window has no dialog (the browser in development) it is refused and the page offers only the path field (`security.tools` says `canChoose`). |
+| `security.tool.install {projectId, tool}` | Drydock installs the tool itself (decision P66): in the background it reads the tool's GitHub release listing (no sign-in), picks the newest stable release that carries the Windows program with a SHA-256 digest, downloads it from that repository only, refuses it unless the digest matches, and puts the program (unpacked from Opengrep's archive with its DLLs, or the exe renamed) under `<data>\tools\<tool>\<tag>\`. The same call is **Update**: with the installed release already the newest it ends "already the newest release (vX)". Only a person may. The answer, and every later `security.tools`, carries the install's state in `job` (`running` with the phase and the bytes so far, `done`, `failed` with the reason, `cancelled`); each change is announced on `security.settings` (`tool`, `install`). `security.tools` says `canInstall` (Windows). |
+| `security.tool.install.cancel {projectId, tool}` | stops a running install; nothing is left half installed (a download is checked and placed as a whole). |
+| `security.tool.remove {projectId, tool}` | deletes the release Drydock installed; the tool is looked for on PATH again. Only a person may. |
 | `security.scan.start {projectId}` or `{folder}` | starts a scan; refused while one of the same project or folder runs, when the project has no repository, for a folder section 8 refuses, and for anyone but a person. |
 | `security.scan.cancel {projectId}` or `{folder}` | cancels the running scan. |
 | `security.scan.get {projectId}` or `{folder}` | the running scan's snapshot, else the last stored report, else null. |
@@ -79,20 +82,34 @@ it (a cancelled scan is stored as cancelled).
 
 ## 5. Installing the tools (Windows)
 
-Drydock installs nothing and downloads no rules. The page says what is missing and how to get it:
+Drydock ships neither tool and downloads no rules, but it installs the two tools on request (decision P66). On the Security
+page each external tool's row has **Install** (or **Update** once Drydock installed it) and, for an installed one, **Remove**:
 
-- **osv-scanner**: `osv-scanner_windows_amd64.exe` from https://github.com/google/osv-scanner/releases, named
-  `osv-scanner.exe` on your PATH, or `go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`.
-- **Opengrep**: `opengrep_windows_x86.exe` from https://github.com/opengrep/opengrep/releases, named `opengrep.exe` on your
-  PATH, or the repository's `install.ps1`. Opengrep is LGPL-2.1 and ships a native Windows binary; that is why it was
-  chosen over Semgrep (a Python distribution with partial Windows support, and registry rules under a licence that does not
-  allow use inside a commercial product).
+- **Install** reads the tool's own GitHub release listing (`google/osv-scanner`, `opengrep/opengrep`; no sign-in, the
+  repositories are public), takes the newest stable release (no draft, no pre-release) that carries the Windows program with
+  the SHA-256 digest GitHub recorded at upload, downloads that asset from that repository only, checks it, and refuses it when
+  the digest does not match (the download is deleted). The program goes to `%LOCALAPPDATA%\Drydock\tools\<tool>\<tag>\`
+  (the app's data folder): `osv-scanner_windows_amd64.exe` renamed `osv-scanner.exe`; Opengrep's `opengrep_windows_x86.zip`
+  (2.0 and later; `opengrep_windows_x86.exe` before) unpacked with the runners' guarded unzip so `opengrep.exe` keeps its DLLs
+  beside it. No install script from the internet runs (Opengrep's `install.ps1` is not used). The row shows the download's
+  progress; the install runs in the background and survives leaving the page.
+- **Update** is the same call: it looks the newest release up and installs it when it is newer than the one installed,
+  otherwise says "already the newest release (vX)". Drydock does not check for new releases by itself.
+- **Remove** deletes Drydock's copy; the tool is then looked for on PATH again.
+- Without Drydock's install, the page still says how to get each tool by hand: `osv-scanner_windows_amd64.exe` from
+  https://github.com/google/osv-scanner/releases named `osv-scanner.exe` on your PATH (or `go install
+  github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`); `opengrep_windows_x86.zip` from
+  https://github.com/opengrep/opengrep/releases with `opengrep.exe` and its DLLs kept together in a folder on your PATH (or
+  the repository's `install.ps1`). Opengrep is LGPL-2.1 and ships a native Windows binary; that is why it was chosen over
+  Semgrep (a Python distribution with partial Windows support, and registry rules under a licence that does not allow use
+  inside a commercial product).
 - **Finding them** (decision P55): a program a person chose on the Security page ("Choose file..." or its full path) comes
-  first. Otherwise the PATH Drydock started with, then the folders where installers put programs: on Windows the user's and
-  the machine's PATH as they are now in the registry (so a tool installed while Drydock runs is found without restarting it),
-  WinGet's `%LOCALAPPDATA%\Microsoft\WinGet\Links`, Scoop's `%USERPROFILE%\scoop\shims`, `%USERPROFILE%\go\bin` (and
-  `%GOBIN%`) and Chocolatey's `%ProgramData%\chocolatey\bin`. The panel says which: "Chosen file", "Found at", or "Found
-  (not on the PATH Drydock started with) at".
+  first, then the release Drydock installed, then the PATH Drydock started with, then the folders where installers put
+  programs: on Windows the user's and the machine's PATH as they are now in the registry (so a tool installed while Drydock
+  runs is found without restarting it), WinGet's `%LOCALAPPDATA%\Microsoft\WinGet\Links`, Scoop's
+  `%USERPROFILE%\scoop\shims`, `%USERPROFILE%\go\bin` (and `%GOBIN%`) and Chocolatey's `%ProgramData%\chocolatey\bin`.
+  The panel says which: "Chosen file", "Installed by Drydock (vX) at", "Found at", or "Found (not on the PATH Drydock
+  started with) at".
 - **Rules**: a folder of Semgrep-syntax rule files. The `opengrep-rules` repository carries LGPL-2.1 with the Commons Clause
   and says its rules are for research, testing and benchmarking, so Drydock does not fetch it for you: point the scan at
   rules you are licensed to use (your own, or a set whose licence you accepted).
@@ -107,6 +124,15 @@ Drydock installs nothing and downloads no rules. The page says what is missing a
   and paths.
 - `internal/core/ext_security_test.go`: the methods above end to end against a core: tools, the rules folder, start, a second
   start refused, the events, the stored report without the secret, history, cancel, no repository.
+- Installing the tools (P66): `internal/scan/install_test.go` (the newest checked release is picked, drafts, pre-releases,
+  releases without the Windows asset and assets without a digest passed over, Opengrep's archive preferred to its exe; the
+  program placed, renamed or unpacked with its DLLs, the replaced release removed, a mismatching digest refused, a download
+  from another repository refused, Remove) against a PROTOCOL FIXTURE of GitHub's releases API (`scantest.ReleaseFixture`);
+  `internal/core/ext_security_install_test.go` (Install runs in the background and the tools say so, the scan runs the
+  installed program, Update with nothing newer says so and with a newer release installs it, the settings events, a chosen
+  program still first, Remove, cancel while downloading, a second Install or a Remove while one runs refused, a failed install
+  named and retried); the browser tests of the tools panel; `ui/e2e/security.spec.ts` (Install, Update, the scan with the
+  installed tool, Remove, against the harness's fixture release and stand-in program).
 - `ui/e2e/security.spec.ts`: the page against the real core and the stand-in tools: Scan, the three engines done, the
   findings, the key's value absent from the page, the history; and from Home's tile, a folder that is not a project scanned
   the same way, its report reopened from the recent folder scans, no project made.
@@ -123,9 +149,13 @@ Drydock installs nothing and downloads no rules. The page says what is missing a
 - No Trivy, zizmor, Scorecard or SBOM engine; the SARIF reader is the seam for them.
 - The scan runs where Drydock runs (Windows); a repository inside a WSL distro is scanned through its `\\wsl$` path by the
   Windows tools, which is slow and was not measured (decision P41).
-- Real osv-scanner and Opengrep runs were not captured in this repository: the parsers are written from the documented
-  shapes and the SARIF 2.1.0 specification, and proven against the stand-ins. The same holds for `--no-call-analysis=all`
-  and `--no-git-ignore` (P61): written from the tools' documented flags, not run against the real binaries here.
+- A real Opengrep run was not captured in this repository: its SARIF reader is written from the SARIF 2.1.0 specification
+  and proven against the stand-in; osv-scanner 2.7.0 was run for real (its JSON is `internal/checks/testdata/osv-scanner-2.7.0.json`).
+  `--no-git-ignore` (P61) is written from Opengrep's documented flags, not run against the real binary here.
+- The installer (P66) was not run against the real GitHub releases: the asset names come from the tools' own release
+  configuration (osv-scanner's `.goreleaser.yml`, Opengrep's `install.ps1`) and the digest from GitHub's documented API
+  field; the fixture answers in that shape. The first Install on a PC proves it. Drydock does not look for new releases by
+  itself (Update does, on request) and installs the x86-64 build only (neither tool publishes a Windows ARM64 build).
 - A folder is chosen with "Choose folder..." (the window's own dialog through `fs.pickFolder`, decision P58; shown only in the desktop app) or typed or pasted.
 - The `deps` check on a task's diff (`internal/checks`) keeps its own osv-scanner invocation; P61 changed only the scan's.
 

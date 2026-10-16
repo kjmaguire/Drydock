@@ -373,6 +373,13 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11669", Prerelease: true, Body: "## What's new\nLiliCorr speculative decoding and MTP for GLM5-Next", Assets: map[string][]byte{
 		"llama-b11669-bin-win-vulkan-x64.zip": llamatest.ServerZip(), "llama-b11669-bin-win-cpu-x64.zip": llamatest.ServerZip(),
 	}})
+	// PROTOCOL FIXTURE for the security scan's tool installer (decision P66): GitHub's releases API and downloads for
+	// osv-scanner's and Opengrep's repositories, each with one release whose Windows "program" is a few bytes; the core
+	// replaces the installed program with this binary's stand-in (ScanInstall below). Nothing reaches GitHub.
+	toolReleases := scantest.StartReleases()
+	defer toolReleases.Close()
+	toolReleases.Add(scantest.ReleaseSpec{Repo: "google/osv-scanner", Tag: "v2.7.0", Body: "osv-scanner 2.7.0", Assets: map[string][]byte{"osv-scanner_windows_amd64.exe": []byte("MZ stand-in osv-scanner (a test double)")}})
+	toolReleases.Add(scantest.ReleaseSpec{Repo: "opengrep/opengrep", Tag: "v1.31.0", Body: "Opengrep 1.31.0", Assets: map[string][]byte{"opengrep_windows_x86.exe": []byte("MZ stand-in opengrep (a test double)")}})
 	hub := llamatest.StartHub()
 	defer hub.Close()
 	gguf := make([]byte, 24<<20) // 24 MB: a download long enough to be seen in progress
@@ -412,6 +419,13 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		},
 		// TEST DOUBLES for the local models (decision P65): the fixtures above, and the stand-in server (this binary) in place
 		// of the installed placeholder, loading its "model" for a second
+		// TEST DOUBLES for the scan tools' installer (decision P66): the fixture above, and the stand-in (this binary) in
+		// place of the installed placeholder
+		ScanInstall: func(i *scan.Installer) {
+			i.GitHub = host.HTTPAPI{BaseURL: toolReleases.Server.URL}
+			i.HTTP = &http.Client{Transport: toolReleases.Transport}
+			i.Program = func(in scan.InstalledTool) (string, []string) { return self, scantest.Args(in.Tool, "--sleep-ms=1500") }
+		},
 		LocalModels: func(m *localllm.Manager) {
 			m.GitHub = host.HTTPAPI{BaseURL: llamaReleases.Server.URL}
 			m.HTTP = &http.Client{Transport: llamaReleases.Transport}

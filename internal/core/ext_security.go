@@ -28,7 +28,11 @@ import (
 
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
-		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}}
+		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}, jobs: map[string]*toolJob{},
+			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools"))}
+		if c.cfg.ScanInstall != nil {
+			c.cfg.ScanInstall(s.inst)
+		}
 		// a project is not deleted under a running scan; a scan report the database refused goes with the project
 		c.onProjectBusy(func(projectID string) string {
 			s.mu.Lock()
@@ -82,6 +86,25 @@ func init() {
 				Tool      string `json:"tool"`
 			}) (any, error) {
 				return s.chooseTool(ctx, p.ProjectID, p.Tool, c.Human())
+			}),
+			// Drydock installs the tool's newest release itself (decision P66); the same call updates an installed one
+			"security.tool.install": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+				Tool      string `json:"tool"`
+			}) (any, error) {
+				return s.installTool(ctx, p.ProjectID, p.Tool, c.Human())
+			}),
+			"security.tool.install.cancel": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+				Tool      string `json:"tool"`
+			}) (any, error) {
+				return s.cancelInstall(ctx, p.ProjectID, p.Tool)
+			}),
+			"security.tool.remove": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+				Tool      string `json:"tool"`
+			}) (any, error) {
+				return s.removeTool(ctx, p.ProjectID, p.Tool, c.Human())
 			}),
 			// the scan methods take {projectId} (the project's working tree) or {folder} (a full path, decision P61)
 			"security.scan.start": bind(func(ctx context.Context, p scanTarget) (any, error) {
@@ -142,6 +165,10 @@ type securityExt struct {
 		at         time.Time
 		v          scan.Tools
 	}
+	// inst installs the external tools (decision P66); jobs holds each tool's install in progress or how its last one
+	// ended (under mu)
+	inst *scan.Installer
+	jobs map[string]*toolJob
 }
 
 // toolsMemoTTL is how long a tools answer serves the reads that follow one change.
@@ -303,12 +330,12 @@ func (s *securityExt) rulesDir(ctx context.Context, projectID string) string {
 
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	paths, rules := s.paths(ctx), s.rulesDir(ctx, projectID)
-	key := fmt.Sprintf("%s|%v|%s|%v|%s", paths.OSV.Path, paths.OSV.Chosen, paths.Opengrep.Path, paths.Opengrep.Chosen, rules)
+	key := fmt.Sprintf("%s|%v|%v|%s|%v|%v|%s", paths.OSV.Path, paths.OSV.Chosen, paths.OSV.Installed, paths.Opengrep.Path, paths.Opengrep.Chosen, paths.Opengrep.Installed, rules)
 	s.memoMu.Lock()
 	if s.memo.key == key && time.Since(s.memo.at) < toolsMemoTTL && toolsStamp(s.memo.v) == s.memo.stamp {
 		t := s.memo.v
 		s.memoMu.Unlock()
-		return t
+		return s.withInstalls(t)
 	}
 	s.memoMu.Unlock()
 	// the external tools read the whole project: they get what every project command gets (checks.CommandEnv), no more
@@ -317,7 +344,7 @@ func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	s.memoMu.Lock()
 	s.memo.key, s.memo.stamp, s.memo.at, s.memo.v = key, toolsStamp(t), time.Now(), t
 	s.memoMu.Unlock()
-	return t
+	return s.withInstalls(t)
 }
 
 // The programs a person chose for the external tools, workspace-wide (a program is on the computer, not in a project):
@@ -333,16 +360,22 @@ func (s *securityExt) chosenTool(ctx context.Context, tool string) string {
 	return v
 }
 
-// paths are the configured tools with each program a person chose in place of the default. A choice replaces the program
-// only: the leading arguments stay what the configuration says (none in the product; the e2e harness's stand-ins need them).
+// paths are the configured tools with each program a person chose in place of the default, else the one Drydock installed
+// (decision P66). A choice replaces the program only: the leading arguments stay what the configuration says (none in the
+// product; the e2e harness's stand-ins need them).
 func (s *securityExt) paths(ctx context.Context) scan.Paths {
 	p := s.c.cfg.ScanTools
-	if v := s.chosenTool(ctx, "osv-scanner"); v != "" {
-		p.OSV = scan.Tool{Path: v, Args: p.OSV.Args, Chosen: true}
+	pick := func(tool string, dflt scan.Tool) scan.Tool {
+		if v := s.chosenTool(ctx, tool); v != "" {
+			return scan.Tool{Path: v, Args: dflt.Args, Chosen: true}
+		}
+		if in, ok := s.inst.Installed(tool); ok {
+			return s.inst.ToolFor(in)
+		}
+		return dflt
 	}
-	if v := s.chosenTool(ctx, "opengrep"); v != "" {
-		p.Opengrep = scan.Tool{Path: v, Args: p.Opengrep.Args, Chosen: true}
-	}
+	p.OSV = pick("osv-scanner", p.OSV)
+	p.Opengrep = pick("opengrep", p.Opengrep)
 	return p
 }
 
@@ -677,6 +710,11 @@ func (s *securityExt) close() {
 	runs := make([]*scan.Run, 0, len(s.running))
 	for _, r := range s.running {
 		runs = append(runs, r)
+	}
+	for _, j := range s.jobs {
+		if j.cancel != nil {
+			j.cancel()
+		}
 	}
 	s.mu.Unlock()
 	for _, r := range runs {

@@ -95,6 +95,38 @@ test("a tool's program is chosen with the file dialog and forgotten again", asyn
   await expect(pick.getByTestId('tool-clear')).toHaveCount(0);
 });
 
+// Decision P66: Install makes Drydock download a tool's newest release itself (the harness serves a fixture release and a
+// stand-in program), the row says it is installed by Drydock with the release, Update finds nothing newer, the scan runs the
+// installed tool, and Remove goes back to the program found on PATH.
+test("Install downloads a tool's newest release into Drydock, Update checks for a newer one, Remove deletes it", async ({ page }) => {
+  test.setTimeout(300_000);
+  const repo = freshRepo();
+  await createProject(page, 'gocalc-security-install', repo);
+  await projectNav(page, 'nav-security');
+  const osv = page.locator('[data-testid=tool][data-tool=osv-scanner]');
+  await expect(osv).toHaveAttribute('data-found', 'true', { timeout: 60_000 });
+  const row = page.locator('[data-testid=tool-install-row][data-tool=osv-scanner]');
+  await expect(row.getByTestId('tool-install')).toHaveText('Install');
+  await row.getByTestId('tool-install').click();
+  // the install runs in the background; the row shows the installed release once the core announced the end and probed it
+  await expect(osv).toHaveAttribute('data-source', 'installed', { timeout: 60_000 });
+  await expect(osv).toContainText('Installed by Drydock (v2.7.0)');
+  await expect(osv).toContainText('0.0.0-standin');
+  await expect(row.getByTestId('tool-job')).toHaveText('Installed v2.7.0.');
+  await expect(row.getByTestId('tool-install')).toHaveText('Update');
+  // Update: nothing newer in the release listing
+  await row.getByTestId('tool-install').click();
+  await expect(row.getByTestId('tool-job')).toHaveText('Checked: already the newest release (v2.7.0).', { timeout: 60_000 });
+  // the scan runs the installed program
+  await page.getByTestId('scan-button').click();
+  await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
+  await expect(page.locator('[data-testid=scan-engine][data-engine=deps]')).toHaveAttribute('data-status', 'done');
+  await row.getByTestId('tool-remove').click();
+  await expect(osv).not.toHaveAttribute('data-source', 'installed', { timeout: 60_000 });
+  await expect(osv).toContainText('Found at');
+  await expect(row.getByTestId('tool-install')).toHaveText('Install');
+});
+
 // Decision P61: from Home, the workspace's Security scan reads a folder that is not a project (a repository just downloaded):
 // the same three engines, the finding named without the key's value, and the scan kept in the recent folder scans.
 test('Home opens the Security scan, which scans a folder that is not a project and keeps it in the history', async ({ page }) => {

@@ -95,6 +95,9 @@ type Config struct {
 	// LocalModels, when set, adjusts the local models' manager before it starts (decision P65): tests and the e2e harness
 	// replace GitHub, the Hugging Face Hub, the download client and the server program with labelled test doubles.
 	LocalModels func(m *localllm.Manager)
+	// ScanInstall, when set, adjusts the security scan's tool installer before it is used (decision P66): tests and the e2e
+	// harness replace GitHub, the download client and the installed program with labelled test doubles.
+	ScanInstall func(i *scan.Installer)
 }
 
 // FilePick is what a file dialog asks for.

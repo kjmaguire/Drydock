@@ -23,6 +23,12 @@ export interface SecurityClient {
   securityToolSet(projectId: string, tool: ScanToolName, path: string): Promise<SecurityTools>;
   /** Opens the window's file dialog to choose a tool's program; cancelling changes nothing. Refused where there is no dialog. */
   securityToolChoose(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
+  /** Drydock downloads and installs the tool's newest release (or updates the one it installed); the install runs in the background. Only a human may. */
+  securityToolInstall(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
+  /** Stops a running install. */
+  securityToolInstallCancel(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
+  /** Deletes the release Drydock installed; the tool is looked for on PATH again. Only a human may. */
+  securityToolRemove(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
   /** Starts a scan (status "running"). Refused while one runs or when the project has no repository. */
   securityScanStart(projectId: string): Promise<ScanReport>;
   securityScanCancel(projectId: string): Promise<ScanReport>;
@@ -51,6 +57,9 @@ export function createSecurityClient(t: Transport): SecurityClient {
     securitySettingsSet: (projectId, rulesDir) => t.call('security.settings.set', { projectId, rulesDir }),
     securityToolSet: (projectId, tool, path) => t.call('security.tool.set', { projectId, tool, path }),
     securityToolChoose: (projectId, tool) => t.call('security.tool.choose', { projectId, tool }),
+    securityToolInstall: (projectId, tool) => t.call('security.tool.install', { projectId, tool }),
+    securityToolInstallCancel: (projectId, tool) => t.call('security.tool.install.cancel', { projectId, tool }),
+    securityToolRemove: (projectId, tool) => t.call('security.tool.remove', { projectId, tool }),
     securityScanStart: async (projectId) => report(await t.call<ScanReport>('security.scan.start', { projectId })),
     securityScanCancel: async (projectId) => report(await t.call<ScanReport>('security.scan.cancel', { projectId })),
     securityScanGet: async (projectId) => {

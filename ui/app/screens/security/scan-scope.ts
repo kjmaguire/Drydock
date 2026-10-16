@@ -15,6 +15,10 @@ export interface ScanScope {
   setRules(rulesDir: string): Promise<SecurityTools>;
   chooseTool(tool: ScanToolName): Promise<SecurityTools>;
   setTool(tool: ScanToolName, path: string): Promise<SecurityTools>;
+  /** Drydock installs (or updates) the tool itself (decision P66). */
+  installTool(tool: ScanToolName): Promise<SecurityTools>;
+  cancelInstall(tool: ScanToolName): Promise<SecurityTools>;
+  removeTool(tool: ScanToolName): Promise<SecurityTools>;
   start(): Promise<ScanReport>;
   cancel(): Promise<ScanReport>;
   /** The running scan, else the last finished one, else null. */
@@ -40,6 +44,9 @@ export function projectScope(client: SecurityClient, projectId: string): ScanSco
     setRules: (dir) => client.securitySettingsSet(projectId, dir),
     chooseTool: (tool) => client.securityToolChoose(projectId, tool),
     setTool: (tool, path) => client.securityToolSet(projectId, tool, path),
+    installTool: (tool) => client.securityToolInstall(projectId, tool),
+    cancelInstall: (tool) => client.securityToolInstallCancel(projectId, tool),
+    removeTool: (tool) => client.securityToolRemove(projectId, tool),
     start: () => client.securityScanStart(projectId),
     cancel: () => client.securityScanCancel(projectId),
     get: () => client.securityScanGet(projectId),
@@ -63,6 +70,9 @@ export function folderScope(client: SecurityClient, folder: string, typed: () =>
     setRules: (dir) => client.securityWorkspaceRulesSet(dir),
     chooseTool: (tool) => client.securityToolChoose('', tool),
     setTool: (tool, path) => client.securityToolSet('', tool, path),
+    installTool: (tool) => client.securityToolInstall('', tool),
+    cancelInstall: (tool) => client.securityToolInstallCancel('', tool),
+    removeTool: (tool) => client.securityToolRemove('', tool),
     start: async () => {
       const r = await client.securityFolderScanStart(typed().trim());
       onStarted(r);

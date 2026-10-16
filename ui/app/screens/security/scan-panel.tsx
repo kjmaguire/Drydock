@@ -7,8 +7,8 @@
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { KeyRound, Package, ScanSearch, type IconNode } from 'lucide';
 import type { ScanToolName } from '../../api/securityClient.ts';
-import type { EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity, ToolInfo } from '../../api/securityTypes.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import type { EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity, ToolInfo, ToolJob } from '../../api/securityTypes.ts';
+import { formatBytes, formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
@@ -131,6 +131,15 @@ const pickCss = css({
   margin: '0',
   padding: `0 ${t.s4} ${t.s3}`,
   '& input': { flex: '1', minWidth: '220px', fontFamily: t.mono, fontSize: t.textSm },
+});
+const installCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flexWrap: 'wrap',
+  padding: `0 ${t.s4} ${t.s2}`,
+  '& .job': { fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere', minWidth: '0' },
+  '&[data-state="failed"] .job': { color: tone.err.fg },
 });
 const rulesCss = css({
   display: 'grid',
@@ -313,7 +322,7 @@ const TOOL_ROWS: { key: keyof Pick<SecurityTools, 'gitleaks' | 'osv' | 'opengrep
   { key: 'opengrep', name: 'opengrep' },
 ];
 
-function toolState(name: string, info: ToolInfo | undefined): RemixNode {
+function toolState(name: string, info: ToolInfo | undefined, canInstall: boolean): RemixNode {
   if (!info) return <span class="state">not reported</span>;
   if (info.builtIn || name === 'gitleaks') {
     return (
@@ -324,6 +333,14 @@ function toolState(name: string, info: ToolInfo | undefined): RemixNode {
     );
   }
   if (info.found) {
+    if (info.source === 'installed') {
+      return (
+        <span class="state">
+          Installed by Drydock{info.tag ? ` (${info.tag})` : ''} at <span mix={mono}>{info.path || '?'}</span>
+          {info.version ? ` (${info.version})` : ''}
+        </span>
+      );
+    }
     const how = info.source === 'chosen' ? 'Chosen file' : info.source === 'folder' ? 'Found (not on the PATH Drydock started with) at' : 'Found at';
     return (
       <span class="state">
@@ -342,9 +359,25 @@ function toolState(name: string, info: ToolInfo | undefined): RemixNode {
   return (
     <span class="state">
       Not installed
-      {info.install ? <span class="install">{info.install} Or choose its program below.</span> : null}
+      {info.install ? (
+        <span class="install">
+          {info.install} {canInstall ? 'Or choose its program below.' : 'Or choose its program below. Drydock installs it itself on Windows only.'}
+        </span>
+      ) : null}
     </span>
   );
+}
+
+/** What an install (or update) of a tool is doing, or how the last one ended (decision P66). */
+function jobText(job: ToolJob): string {
+  if (job.state === 'running') {
+    if (job.phase?.startsWith('downloading') && job.total > 0) return `${job.phase}: ${formatBytes(job.done)} of ${formatBytes(job.total)}`;
+    return job.phase || 'installing';
+  }
+  if (job.state === 'failed') return `The install failed: ${job.error || 'unknown reason'}`;
+  if (job.state === 'cancelled') return 'The install was cancelled.';
+  if (job.phase?.startsWith('already')) return `Checked: ${job.phase}.`;
+  return `Installed${job.tag ? ` ${job.tag}` : ''}.`;
 }
 
 /**
@@ -448,6 +481,20 @@ export function ScanPanel(
       tools.set(r);
       void handle.update();
     }
+  };
+  // Drydock installs the tool itself (decision P66); the install runs in the background and its progress comes with the
+  // tools on each security.settings event
+  const installTool = async (tool: ScanToolName) => {
+    const r = await act.run(`install:${tool}`, () => scope().installTool(tool));
+    if (r) tools.set(r);
+  };
+  const cancelInstall = async (tool: ScanToolName) => {
+    const r = await act.run(`install-cancel:${tool}`, () => scope().cancelInstall(tool));
+    if (r) tools.set(r);
+  };
+  const removeTool = async (tool: ScanToolName) => {
+    const r = await act.run(`remove:${tool}`, () => scope().removeTool(tool));
+    if (r) tools.set(r);
   };
   const pick = (f: () => void) => {
     f();
@@ -610,17 +657,61 @@ export function ScanPanel(
               {TOOL_ROWS.map(({ key: k, name }) => {
                 const info = tl[k];
                 const row = (
-                  <div key={k} class="row" mix={toolRow} data-testid="tool" data-tool={name} data-found={info?.found ? 'true' : 'false'}>
+                  <div
+                    key={k}
+                    class="row"
+                    mix={toolRow}
+                    data-testid="tool"
+                    data-tool={name}
+                    data-found={info?.found ? 'true' : 'false'}
+                    data-source={info?.source ?? ''}
+                  >
                     <strong>{name}</strong>
-                    {toolState(name, info)}
+                    {toolState(name, info, tl.canInstall === true)}
                   </div>
                 );
                 if (k === 'gitleaks' || !info) return row;
                 const tool = name as ScanToolName;
                 const typed = pathEdit[tool] ?? '';
+                const job = info.job;
+                const installing = job?.state === 'running';
+                const installed = info.source === 'installed';
                 return (
                   <div key={k}>
                     {row}
+                    {tl.canInstall ? (
+                      <div mix={installCss} data-testid="tool-install-row" data-tool={name} data-state={job?.state ?? 'none'}>
+                        {installing ? (
+                          <Button type="button" variant="secondary" size="sm" data-testid="tool-install-cancel" disabled={busy} mix={on('click', () => void cancelInstall(tool))}>
+                            {act.busy === `install-cancel:${tool}` ? 'Cancelling…' : 'Cancel'}
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant={info.found ? 'secondary' : 'primary'}
+                            size="sm"
+                            data-testid="tool-install"
+                            disabled={busy}
+                            title={installed ? 'Look up the newest release and install it if it is newer' : "Download the newest release from the tool's GitHub repository, check it and keep it in Drydock's own folder"}
+                            mix={on('click', () => void installTool(tool))}
+                          >
+                            {act.busy === `install:${tool}` ? 'Starting…' : installed ? 'Update' : 'Install'}
+                          </Button>
+                        )}
+                        {installed && !installing ? (
+                          <Button type="button" variant="ghost" size="sm" data-testid="tool-remove" disabled={busy} mix={on('click', () => void removeTool(tool))}>
+                            {act.busy === `remove:${tool}` ? 'Removing…' : 'Remove'}
+                          </Button>
+                        ) : null}
+                        {job ? (
+                          <span class="job" role="status" data-testid="tool-job" data-state={job.state}>
+                            {jobText(job)}
+                          </span>
+                        ) : (
+                          <span class="job">{installed ? 'Update looks up the newest release.' : `Install downloads the newest release from GitHub, checks its SHA-256 and keeps it in Drydock's own folder.`}</span>
+                        )}
+                      </div>
+                    ) : null}
                     <form
                       data-testid="tool-pick"
                       data-tool={name}

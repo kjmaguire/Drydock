@@ -391,4 +391,103 @@ describe('Security scan page', () => {
     expect(f.querySelector('[data-testid="tool-clear"]')).not.toBeNull();
     expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.textContent).toContain('The chosen file C:\\Old\\osv-scanner.exe is not there');
   });
+
+  it('Install: Drydock downloads the tool itself, shows the download, then Update checks for a newer release and Remove deletes it (P66)', async () => {
+    const calls: string[] = [];
+    let state = tools({
+      osv: { tool: 'osv-scanner', found: false, install: 'Install osv-scanner: press Install below.' },
+      opengrep: { tool: 'opengrep', found: true, path: 'C:\\Tools\\opengrep.exe', version: '1.1.0' },
+      ready: false,
+      canInstall: true,
+    });
+    const { r, s } = show({
+      securityTools: async () => state,
+      securityToolInstall: async (projectId: string, tool: string) => {
+        calls.push(`install ${projectId}:${tool}`);
+        const installed = state.osv.source === 'installed';
+        state = {
+          ...state,
+          osv: {
+            ...state.osv,
+            job: installed
+              ? { state: 'running', phase: 'looking up the newest release', done: 0, total: 0, started: '2026-10-16T03:00:00Z' }
+              : { state: 'running', phase: 'downloading v2.7.0', tag: 'v2.7.0', done: 12 * 1024 * 1024, total: 40 * 1024 * 1024, started: '2026-10-16T03:00:00Z' },
+          },
+        };
+        return state;
+      },
+      securityToolRemove: async (_projectId: string, tool: string) => {
+        calls.push(`remove ${tool}`);
+        state = { ...state, osv: { tool: 'osv-scanner', found: false, install: 'Install osv-scanner: press Install below.' } };
+        return state;
+      },
+    });
+    const row = await waitFor(() => {
+      const x = r.$('[data-testid="tool-install-row"][data-tool="osv-scanner"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    // gitleaks is built in and opengrep is found on PATH: Install is offered for both external tools, Remove for neither
+    expect(r.$('[data-testid="tool-install-row"][data-tool="gitleaks"]')).toBeNull();
+    expect(r.$('[data-testid="tool-install-row"][data-tool="opengrep"] [data-testid="tool-install"]')!.textContent).toBe('Install');
+    expect(r.$$('[data-testid="tool-remove"]').length).toBe(0);
+    expect(row.textContent).toContain("keeps it in Drydock's own folder");
+    await r.act(() => (row.querySelector('[data-testid="tool-install"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual(['install p1:osv-scanner']), r);
+    // while it downloads: the progress, Cancel instead of Install
+    await waitFor(() => expect(row.querySelector('[data-testid="tool-job"]')!.textContent).toBe('downloading v2.7.0: 12 MB of 40 MB'), r);
+    expect(row.querySelector('[data-testid="tool-install"]')).toBeNull();
+    expect(row.querySelector('[data-testid="tool-install-cancel"]')).not.toBeNull();
+    // the core announces the end on security.settings (the tool named): the page re-reads and shows the installed release
+    state = {
+      ...state,
+      osv: {
+        tool: 'osv-scanner',
+        found: true,
+        source: 'installed',
+        tag: 'v2.7.0',
+        path: 'C:\\Users\\kyle\\AppData\\Local\\Drydock\\tools\\osv-scanner\\v2.7.0\\osv-scanner.exe',
+        version: '2.7.0',
+        job: { state: 'done', phase: 'done', tag: 'v2.7.0', done: 40, total: 40, started: '2026-10-16T03:00:00Z', ended: '2026-10-16T03:00:09Z' },
+      },
+      ready: true,
+    };
+    s.emit({ type: 'security.settings', projectId: 'p1', data: { tool: 'osv-scanner', install: 'done' } });
+    await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.getAttribute('data-source')).toBe('installed'), r);
+    expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.textContent).toContain('Installed by Drydock (v2.7.0) at C:\\Users\\kyle');
+    expect(row.querySelector('[data-testid="tool-job"]')!.textContent).toBe('Installed v2.7.0.');
+    expect(row.querySelector('[data-testid="tool-install"]')!.textContent).toBe('Update');
+    expect(row.querySelector('[data-testid="tool-remove"]')).not.toBeNull();
+    expect(rows(r)[1]!.getAttribute('data-status')).toBe('ready');
+    // Update: the same call; with nothing newer the core says so
+    await r.act(() => (row.querySelector('[data-testid="tool-install"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls.length).toBe(2), r);
+    await waitFor(() => expect(row.querySelector('[data-testid="tool-job"]')!.textContent).toBe('looking up the newest release'), r);
+    state = { ...state, osv: { ...state.osv, job: { state: 'done', phase: 'already the newest release (v2.7.0)', tag: 'v2.7.0', done: 0, total: 0, started: '', ended: '' } } };
+    s.emit({ type: 'security.settings', projectId: 'p1', data: { tool: 'osv-scanner', install: 'done' } });
+    await waitFor(() => expect(row.querySelector('[data-testid="tool-job"]')!.textContent).toBe('Checked: already the newest release (v2.7.0).'), r);
+    // a failed install names the reason
+    state = { ...state, osv: { ...state.osv, job: { state: 'failed', error: 'could not read the releases of google/osv-scanner: HTTP 503', done: 0, total: 0, started: '' } } };
+    s.emit({ type: 'security.settings', projectId: 'p1', data: { tool: 'osv-scanner', install: 'failed' } });
+    await waitFor(() => expect(row.querySelector('[data-testid="tool-job"]')!.textContent).toContain('The install failed: could not read the releases'), r);
+    // Remove deletes Drydock's copy; the tool is not installed again
+    await r.act(() => (row.querySelector('[data-testid="tool-remove"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual(['install p1:osv-scanner', 'install p1:osv-scanner', 'remove osv-scanner']), r);
+    await waitFor(() => expect(r.$('[data-testid="tool"][data-tool="osv-scanner"]')!.getAttribute('data-found')).toBe('false'), r);
+    expect(row.querySelector('[data-testid="tool-install"]')!.textContent).toBe('Install');
+    expect(row.querySelector('[data-testid="tool-remove"]')).toBeNull();
+  });
+
+  it('without canInstall (the browser on a development host) no Install is offered and the hint says Windows', async () => {
+    const { r } = show({
+      securityTools: async () => tools({ osv: { tool: 'osv-scanner', found: false, install: 'Install osv-scanner.' }, canInstall: false }),
+    });
+    const t = await waitFor(() => {
+      const x = r.$('[data-testid="tool"][data-tool="osv-scanner"]');
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(r.$('[data-testid="tool-install-row"]')).toBeNull();
+    expect(t.textContent).toContain('Drydock installs it itself on Windows only');
+  });
 });

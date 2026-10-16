@@ -87,10 +87,27 @@ export interface ToolInfo {
   path?: string;
   version?: string;
   install?: string;
-  /** How it was found: the file a person chose, the PATH Drydock started with, or an install folder / a PATH changed since. */
-  source?: 'chosen' | 'path' | 'folder';
+  /** How it was found: the file a person chose, Drydock's own install (P66), the PATH Drydock started with, or an install folder / a PATH changed since. */
+  source?: 'chosen' | 'installed' | 'path' | 'folder';
   /** The file a person chose, also when it is no longer there (found is then false). */
   chosen?: string;
+  /** The release Drydock installed (source 'installed'). */
+  tag?: string;
+  /** The install of the tool in progress, or how the last one ended. */
+  job?: ToolJob;
+}
+
+/** scan.ToolJob: an install (or update) of a tool by Drydock, decision P66. */
+export interface ToolJob {
+  state: 'running' | 'done' | 'failed' | 'cancelled';
+  /** What is happening, in plain words ("looking up the newest release", "downloading v2.7.0", "done"). */
+  phase?: string;
+  tag?: string;
+  done: number;
+  total: number;
+  error?: string;
+  started: string;
+  ended?: string;
 }
 
 export interface SecurityTools {
@@ -103,4 +120,6 @@ export interface SecurityTools {
   ready: boolean;
   /** This window can open a file dialog (the desktop app); elsewhere the person types the full path. */
   canChoose?: boolean;
+  /** Drydock can download and install the external tools here (Windows, decision P66). */
+  canInstall?: boolean;
 }

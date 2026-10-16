@@ -176,11 +176,11 @@
       "role": "Runs Taskfile targets (build, test, lint); optional, not bundled."
     },
     "tool:osv-scanner": {
-      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it.",
+      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline). Installed on request by the Security page's Install button from google/osv-scanner's GitHub releases, checked against GitHub's SHA-256 digest (decision P66), or by you.",
       "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
     },
     "tool:opengrep": {
-      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary; you install it and choose a rules folder.",
+      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary. Installed on request by the Security page's Install button from opengrep/opengrep's GitHub releases (the Windows archive from 2.0, the exe before), checked against GitHub's SHA-256 digest (decision P66), or by you; you choose a rules folder.",
       "note": "Drydock ships and downloads no rules: the opengrep-rules repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and benchmarking, so the person points the scan at rules they are licensed to use. Newest release read from GitHub (releases/latest)."
     },
     "tool:go-licenses": {

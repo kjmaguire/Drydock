@@ -16,8 +16,8 @@ import (
 
 // Install hints, shown when a tool is missing. Drydock installs nothing itself.
 const (
-	osvInstall      = "Install osv-scanner: download osv-scanner_windows_amd64.exe from https://github.com/google/osv-scanner/releases, name it osv-scanner.exe and put it on your PATH (or `go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`)."
-	opengrepInstall = "Install Opengrep: download opengrep_windows_x86.exe from https://github.com/opengrep/opengrep/releases, name it opengrep.exe and put it on your PATH (or run the repository's install.ps1)."
+	osvInstall      = "Install osv-scanner: press Install below, or download osv-scanner_windows_amd64.exe from https://github.com/google/osv-scanner/releases, name it osv-scanner.exe and put it on your PATH (or `go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`)."
+	opengrepInstall = "Install Opengrep: press Install below, or download opengrep_windows_x86.zip (opengrep_windows_x86.exe before 2.0) from https://github.com/opengrep/opengrep/releases, keep opengrep.exe with its DLLs and put that folder on your PATH (or run the repository's install.ps1)."
 )
 
 // gitleaksVersion is the version of the gitleaks rules and engine compiled into Drydock, read from the build's module list.

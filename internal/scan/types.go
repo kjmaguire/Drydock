@@ -161,11 +161,29 @@ type ToolInfo struct {
 	Version string `json:"version,omitempty"`
 	// Install says how to get the tool when it is missing.
 	Install string `json:"install,omitempty"`
-	// Source says how the tool was found: "chosen" (the file a person chose), "path" (on the PATH Drydock started with),
-	// "folder" (in a folder where installers put programs, or on a PATH changed since Drydock started).
+	// Source says how the tool was found: "chosen" (the file a person chose), "installed" (Drydock installed it, decision
+	// P66), "path" (on the PATH Drydock started with), "folder" (in a folder where installers put programs, or on a PATH
+	// changed since Drydock started).
 	Source string `json:"source,omitempty"`
 	// Chosen is the file a person chose for the tool, also when it is no longer there (then Found is false).
 	Chosen string `json:"chosen,omitempty"`
+	// Tag is the release Drydock installed, when it did (Source "installed").
+	Tag string `json:"tag,omitempty"`
+	// Job is the install of the tool in progress, or how the last one ended.
+	Job *ToolJob `json:"job,omitempty"`
+}
+
+// ToolJob is an install of a tool in progress, or how the last one ended (decision P66).
+type ToolJob struct {
+	State string `json:"state"` // running | done | failed | cancelled
+	// Phase says what is happening, in plain words ("looking up the newest release", "downloading v2.7.0", "done").
+	Phase   string    `json:"phase,omitempty"`
+	Tag     string    `json:"tag,omitempty"`
+	Done    int64     `json:"done"`
+	Total   int64     `json:"total"`
+	Error   string    `json:"error,omitempty"`
+	Started time.Time `json:"started"`
+	Ended   time.Time `json:"ended,omitempty"`
 }
 
 // Tools is what the Security page shows about this machine and the project's choices.
@@ -183,6 +201,8 @@ type Tools struct {
 	// CanChoose says this window can open a file dialog to choose a tool's program (the desktop app); elsewhere the person
 	// types the full path.
 	CanChoose bool `json:"canChoose"`
+	// CanInstall says Drydock can download and install the external tools here (Windows, decision P66).
+	CanInstall bool `json:"canInstall"`
 }
 
 // Timeout is how long one engine may take.

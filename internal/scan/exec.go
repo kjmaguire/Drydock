@@ -23,10 +23,12 @@ type Tool struct {
 	Args []string
 	// Chosen is true when Path is the file a person chose on the Security page.
 	Chosen bool
+	// Installed is true when Path is the program Drydock installed (decision P66).
+	Installed bool
 }
 
-// resolve finds the executable and says how: "chosen", "path" or "folder" (FindTool). A Tool with no Path is the named
-// default. look, when set, replaces the lookup (tests).
+// resolve finds the executable and says how: "chosen", "installed", "path" or "folder" (FindTool). A Tool with no Path is
+// the named default. look, when set, replaces the lookup (tests).
 func (t Tool) resolve(name string, look func(string) (string, error)) (string, string, error) {
 	p := t.Path
 	if p == "" {
@@ -36,16 +38,19 @@ func (t Tool) resolve(name string, look func(string) (string, error)) (string, s
 		path, err := look(p)
 		return path, sourceOf(t), err
 	}
-	if t.Chosen {
+	if t.Chosen || t.Installed {
 		path, err := exec.LookPath(p) // an absolute path: is it there and runnable
-		return path, "chosen", err
+		return path, sourceOf(t), err
 	}
 	return FindTool(p)
 }
 
 func sourceOf(t Tool) string {
-	if t.Chosen {
+	switch {
+	case t.Chosen:
 		return "chosen"
+	case t.Installed:
+		return "installed"
 	}
 	return "path"
 }
