@@ -1,10 +1,10 @@
 {
-  "generated": "2026-10-16T02:18:32Z",
-  "commit": "c889f31",
+  "generated": "2026-10-16T02:40:32Z",
+  "commit": "dd05ef0",
   "summary": {
-    "current": 171,
+    "current": 170,
     "minor": 1,
-    "patch": 2,
+    "patch": 3,
     "unknown": 1
   },
   "items": [
@@ -100,8 +100,8 @@
       "name": "opencode (opencode-ai)",
       "kind": "cli",
       "used": "1.19.1",
-      "latest": "1.19.1",
-      "status": "current",
+      "latest": "1.19.2",
+      "status": "patch",
       "where": "internal/agents/manifests/cli/opencode.yaml (recommended; minimum 1.18.35)",
       "role": "OpenCode: an open-source agent that can use many providers.",
       "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back.",
