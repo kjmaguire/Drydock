@@ -2,6 +2,39 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { commandText, importedNote, parseMcpConfig, runsProgram, slugFor, startingChoice } from './import.ts';
 
+/** The arguments of a command line by the rules of CommandLineToArgvW (2n backslashes and a quote: n backslashes, a quote that opens or closes; 2n+1: n backslashes and a quote). */
+function readBack(line: string): string[] {
+  const out: string[] = [];
+  const n = line.length;
+  let i = 0;
+  while (i < n) {
+    while (i < n && line[i] === ' ') i++;
+    if (i >= n) break;
+    let arg = '';
+    let inQuotes = false;
+    while (i < n) {
+      let slashes = 0;
+      while (i < n && line[i] === '\\') {
+        slashes++;
+        i++;
+      }
+      if (i < n && line[i] === '"') {
+        arg += '\\'.repeat(Math.floor(slashes / 2));
+        if (slashes % 2 === 1) arg += '"';
+        else inQuotes = !inQuotes;
+        i++;
+      } else {
+        arg += '\\'.repeat(slashes);
+        if (i >= n || (line[i] === ' ' && !inQuotes)) break;
+        arg += line[i];
+        i++;
+      }
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
 describe('importing mcp.json / claude_desktop_config.json', () => {
   it('turns Claude Desktop servers into library inputs with their secrets write-only', () => {
     const r = parseMcpConfig(
@@ -59,6 +92,19 @@ describe('importing mcp.json / claude_desktop_config.json', () => {
     expect(commandText(['github-mcp-server', 'stdio', '--read-only'])).toBe('github-mcp-server stdio --read-only');
     expect(commandText(['C:\\Program Files\\x.exe', '--name', 'a b', '', 'say "hi"'])).toBe('"C:\\Program Files\\x.exe" --name "a b" "" "say \\"hi\\""');
     expect(commandText([])).toBe('');
+  });
+
+  it('quotes the way Windows reads a command line back: backslashes are doubled only where a quote follows them', () => {
+    // a path with a space keeps its backslashes, except the ones that end it (they would escape the closing quote)
+    expect(commandText(['C:\\My Dir\\'])).toBe('"C:\\My Dir\\\\"');
+    // a quote after backslashes: the backslashes are doubled and the quote is escaped
+    expect(commandText(['a\\"b'])).toBe('"a\\\\\\"b"');
+    expect(commandText(['x\\\\"y'])).toBe('"x\\\\\\\\\\"y"');
+    // a backslash that no quote follows, in an argument that needs no quotes, is left as it is
+    expect(commandText(['C:\\dir\\', 'x'])).toBe('C:\\dir\\ x');
+    // read back by the rules of CommandLineToArgvW, every line gives the arguments it was made from
+    const args = ['C:\\My Dir\\', 'a\\"b', 'x\\\\"y', 'say "hi"', 'plain', '', 'two  spaces', 'tail\\\\'];
+    expect(readBack(commandText(args))).toEqual(args);
   });
 
   it('says after an import that nothing has been started, and where to start one', () => {

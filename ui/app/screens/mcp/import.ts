@@ -29,11 +29,14 @@ export const runsProgram = (c: ImportCandidate): boolean => c.input.transport ==
 export const startingChoice = (r: ImportResult): string[] => r.candidates.filter((c) => !runsProgram(c)).map((c) => c.input.id);
 
 /**
- * A command line as one line of text. An argument with a space or a quote in it is put in quotes, so where one argument ends and
- * the next begins can be read; nothing is cut or left out.
+ * A command line as one line of text. An argument that is empty or has a space or a quote in it is put in double quotes, so where
+ * one argument ends and the next begins can be read; nothing is cut or left out. The quoting is the one Windows reads back
+ * (CommandLineToArgvW): a quote inside is written \" and the backslashes just before it are doubled, as are the ones before the
+ * closing quote; any other backslash stands for itself, so a path such as C:\Program Files\x.exe is not changed.
  */
 export function commandText(argv: readonly string[]): string {
-  return argv.map((a) => (a === '' || /[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+  const quoted = (a: string) => `"${a.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`;
+  return argv.map((a) => (a === '' || /[\s"]/.test(a) ? quoted(a) : a)).join(' ');
 }
 
 /**
